@@ -107,6 +107,7 @@ from tests.golden_harness import (
     run_metab,
     stable_console,
 )
+from tests.held_port import listener_on
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git, _git
 
@@ -366,7 +367,10 @@ class _Sandbox:
         port = int(argv[argv.index("--port") + 1])
         with (
             patch("metabrowser.cli.serve._QuietForceExitServer") as server,
-            patch("metabrowser.cli.serve.find_available_local_port", return_value=port),
+            patch(
+                "metabrowser.cli.serve.listen_on_available_local_port",
+                return_value=listener_on(port),
+            ),
             patch("metabrowser.cli.main.stop_when_stdin_closes") as lifeline,
         ):
             result = run_metab(argv)

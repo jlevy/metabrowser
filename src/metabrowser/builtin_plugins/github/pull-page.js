@@ -428,6 +428,7 @@ const TRUNCATED = Object.freeze({
  *   pull: null | {
  *     title: string, number: number, state: import("./pull-state.js").PullState, stateLabel: string, author: string,
  *     avatar: string | null, actorAvatar: string | null, baseRef: string, headRef: string,
+ *     baseRepository: string | null, headRepository: string | null, headSha: string,
  *     actor: string | null, action: string,
  *     base: string, head: string, htmlUrl: string, created: string, updated: string,
  *     closed: string | null, closedLabel: string | null, labels: PullLabel[],
@@ -1235,6 +1236,9 @@ function describeCore(pull, known = new Map()) {
     actorAvatar: avatarUrl(state === "merged" ? pull.merged_by_avatar_url : pull.author_avatar_url),
     baseRef: text(pull.base?.ref),
     headRef: text(pull.head?.ref),
+    baseRepository: text(pull.base?.repository) || null,
+    headRepository: text(pull.head?.repository) || null,
+    headSha: text(pull.head?.sha),
     // "<merger> merged 6 commits", and for an open, draft, or closed pull request
     // "<author> wants to merge 1 commit", with "<head> → <base>" on the branch line under
     // it. The verbs are github.com's; the branches read source → target, never
@@ -5296,12 +5300,45 @@ export function mountPullPage(container, ctx, mb) {
       ),
     ]);
     placeChildren(branchesRow, [
-      headerPart("branches", [pull.headRef, pull.head, pull.baseRef, pull.base], () =>
-        mb.mergeRefs(
-          { name: pull.headRef, label: pull.head },
-          { name: pull.baseRef, label: pull.base },
-          { kind: "remote" },
-        ),
+      headerPart(
+        "branches",
+        [
+          pull.headRef,
+          pull.head,
+          pull.headRepository,
+          pull.headSha,
+          pull.baseRef,
+          pull.base,
+          pull.baseRepository,
+        ],
+        () => {
+          const sameRepository =
+            pull.headRepository !== null && pull.headRepository === pull.baseRepository;
+          const snapshot =
+            !sameRepository && mb.sourceKind() === "git_revision" ? pull.headSha : "";
+          const headRef = sameRepository
+            ? `refs/remotes/origin/${pull.headRef}`
+            : snapshot
+              ? `refs/pull/${pull.number}/head`
+              : undefined;
+          const baseRef = `refs/remotes/origin/${pull.baseRef}`;
+          return mb.mergeRefs(
+            {
+              name: pull.headRef,
+              label: pull.head,
+              repository: pull.headRepository,
+              ref: headRef,
+              snapshot: snapshot || undefined,
+            },
+            {
+              name: pull.baseRef,
+              label: pull.base,
+              repository: pull.baseRepository,
+              ref: baseRef,
+            },
+            { kind: "remote" },
+          );
+        },
       ),
     ]);
     return stateRow;
@@ -6757,6 +6794,7 @@ export function mountPullPage(container, ctx, mb) {
         ? briefShown.files
         : null;
     if (files === null) {
+      delete sizeRow.dataset.sizeKey;
       const waits = summaryRow.firstChild === summaryPending;
       if (waits ? sizeRow.firstChild !== sizePending : sizeRow.firstChild !== null) {
         sizeRow.replaceChildren(...(waits ? [sizePending] : []));
@@ -6773,8 +6811,10 @@ export function mountPullPage(container, ctx, mb) {
       pushedBytes: size?.pushed_bytes ?? null,
       diffBytes: size?.diff_bytes ?? null,
     });
-    if (sizeRow.dataset.said !== line.text) {
-      sizeRow.dataset.said = line.text;
+    // Rounded sizes can share text across the file size style's threshold.
+    const sizeKey = JSON.stringify([line.text, size?.pushed_bytes, size?.diff_bytes]);
+    if (sizeRow.dataset.sizeKey !== sizeKey) {
+      sizeRow.dataset.sizeKey = sizeKey;
       sizeRow.replaceChildren(...mb.changeSizeLineNodes(line));
     }
   }

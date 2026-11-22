@@ -706,8 +706,10 @@ Useful helpers include:
   where `name` is the copy value, `label` the display, and `kind` is `local`, `remote`,
   or `tag`; pass `trunk` and `head` only from a Git ref’s `is_trunk` and `is_head`, and
   never restyle the chip ([Branch Chips](design-system.md#branch-chips)). Inside a link
-  or button, use `copy: "sibling"` with `mountRefCopies(primary, host)` and call its
-  disposer on unmount; `copy: false` is passive;
+  or button, use `menu: "sibling"` with `mountRefMenus(primary, host)` and call its
+  disposer on unmount.
+  Pass the full Git ref as `ref` to support browsing its source.
+  Use `menu: false` for passive chips;
 - `mergeRefs(source, target, options)` for a merge between two branches, the design
   system’s one notation ([Merge Direction](design-system.md#merge-direction));
 - `actorIdentity(name, options)` and `actorIdentityHtml(name, options)` for a person: an

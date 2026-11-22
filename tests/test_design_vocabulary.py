@@ -891,7 +891,6 @@ _CHIP_CLASSES = frozenset(
         "git-ref-tag",
         "git-ref-trunk",
         "git-ref-head",
-        "git-ref-copyable",
         "git-ref-label",
         "merge-refs-source",
         "merge-refs-target",
@@ -927,7 +926,7 @@ _CHIP_TYPE_AND_BOX = frozenset(
 )
 # A form's own room, on the chip itself and never from a context: the tag's notch and
 # the copyable chip's reserved control.
-_CHIP_FORM_ROOM = {".git-ref-tag": {"padding-left"}, ".git-ref-copyable": {"padding-right"}}
+_CHIP_FORM_ROOM = {".git-ref-tag": {"padding-left"}}
 
 
 # The boxes a chip sits in, in every context: a merge's grid, a history row's ref group, a commit summary's identity and ref groups, and
@@ -1028,12 +1027,12 @@ def test_each_context_assigns_its_chip_kind() -> None:
     # One mapping from a Git kind to a chip's: a tag, a remote branch, else a local branch.
     views = (STATIC / "plugin-sdk-views.js").read_text(encoding="utf-8")
     mapping = 'options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local"'
-    assert views.count(mapping) == 2, "refChip and refChipHtml map kinds one way"
+    assert views.count(mapping) == 1, "refChip and refChipHtml share a kind mapping"
     # A history row, a commit's summary, and its tooltip draw the wire's refs, all three
     # marks included, through one function.
     panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     badges = re.search(
-        r"function renderRefBadges\(refs, copy = \"sibling\"\) \{(.*?)\n  \}", panel, re.S
+        r"function renderRefBadges\(refs, menu = \"sibling\"\) \{(.*?)\n  \}", panel, re.S
     )
     assert badges is not None
     for option in ("kind: ref.kind,", "trunk: ref.is_trunk,", "head: ref.is_head,"):
@@ -1970,7 +1969,11 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
         '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
     ),
     # The View on GitHub button's chevron, which opens its menu.
-    "plugin-sdk-views.js": ('"chip chip-menu-trigger counterpart-more disclosure-toggle"',),
+    "plugin-sdk-views.js": (
+        '"git-ref-action", "disclosure-toggle"',
+        '"git-ref-menu-hit disclosure-toggle"',
+        '"chip chip-menu-trigger counterpart-more disclosure-toggle"',
+    ),
     "agents/agent-log.js": ('class="log-event-header disclosure-toggle"',),
     "event_log/event-log-views.js": ('"disclosure-toggle event-log-row-head"',),
     "structured/tree.js": ('" srow-container disclosure-toggle"',),
@@ -2035,6 +2038,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ),
     ),
     "plugin-sdk-views.js": (
+        ("MetabrowserIcons?.toggle ??", '"git-ref-action", "disclosure-toggle"'),
         (
             "MetabrowserIcons?.toggle ??",
             '"chip chip-menu-trigger counterpart-more disclosure-toggle"',
@@ -2549,7 +2553,7 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
     pull request numbers' rules alone. One shell class, `.summary-number`, takes the token
     and nothing else, so a number keeps its line's ink and size, and no stylesheet restyles
     it, by its own class or by a class a source gives it beside that one. Each surface that
-    paints a count summary puts its numbers in it: the browserless sessions named in the
+    paints a count summary puts its counts in it: the browserless sessions named in the
     design system hold the markup, and tests/test_changed_file_rows_chrome.py and
     tests/test_nav_metadata_chrome.py read 700 for the numbers and 400 for the words in
     Chrome.
@@ -2590,7 +2594,7 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
             if re.search(r"\.github-pull-quiet(?![\w-])\s*[\s>+~]\s*\S", selector):
                 assert "font-weight" not in declarations, (sheet, selector)
     painters = {
-        "static/formatters.js": "{ className: SUMMARY_NUMBER_CLASS, text: part.number",
+        "static/formatters.js": "{ className: part.sizeStyle ?? SUMMARY_NUMBER_CLASS, text: part.number",
         "static/navigation.js": "window.MetabrowserFormatters.countPartsHtml(parts)",
         "static/app.js": "window.MetabrowserFormatters.countPartsNodes(document, parts)",
         "static/git-panel.js": "window.MetabrowserFormatters.countPartsNodes(document, [",
@@ -2798,11 +2802,8 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert group["grid-template-columns"] == (
         "minmax(0, max-content) max-content minmax(0, max-content)"
     ), "each name may shrink and the arrow never shrinks"
-    assert group["min-width"] == "calc(2 * (5px + 19px) + 3em)", "the merge's floor"
-    assert (shell[".git-ref"]["padding"], shell[".git-ref-copyable"]["padding-right"]) == (
-        "0 5px",
-        "19px",
-    ), "the floor counts each chip's padding and copy slot"
+    assert group["min-width"] == "calc(2 * 5px + 3em)", "the merge's floor"
+    assert shell[".git-ref"]["padding"] == "0 5px"
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
@@ -3597,11 +3598,12 @@ def test_diff_text_and_reserved_geometry_use_the_dense_mono_token() -> None:
         assert f"var(--diff-{kind}-row-height)" in view
 
 
-def test_branch_copy_plate_has_readable_interactive_ink() -> None:
-    css = (STATIC / "styles.css").read_text(encoding="utf-8")
-    assert "color: var(--text)" in _rule(css, ".git-ref-copy:is(:hover, :focus-visible)")
+def test_ref_menu_chevron_uses_neutral_ink_without_reserving_space() -> None:
     rules = dict(_rules_of(STATIC / "styles.css"))
-    assert rules[".git-ref-copy-layer > .git-ref-copy"]["color"] == "var(--git-ref-copy-ink)"
+    caret = rules[".git-ref-menu-caret"]
+    assert caret["position"] == "absolute"
+    assert caret["color"] == "var(--muted)"
+    assert rules[".git-ref-menu-caret > svg"]["transform"] == "rotate(90deg)"
 
 
 # ── The Shift reveal's paint ────────────────────────────────────────

@@ -60,6 +60,45 @@ def test_port_search_range_stops_at_maximum_tcp_port(monkeypatch) -> None:
     assert attempted == [server_utils.MAX_TCP_PORT]
 
 
+def test_a_port_a_server_listens_on_is_held_against_the_next_search() -> None:
+    """Two servers that search from one port take two ports, in either order of startup.
+
+    The first socket is held and never accepted on, as a server's is while its
+    application starts. The second search, and a probe, must both see the port taken.
+    """
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        start = int(probe.getsockname()[1])
+    ports = server_utils.port_search_range(start)
+    with server_utils.listen_on_available_local_port("127.0.0.1", ports) as first:
+        held = int(first.getsockname()[1])
+        assert not server_utils.local_port_is_free("127.0.0.1", held)
+        with server_utils.listen_on_available_local_port("127.0.0.1", ports) as second:
+            assert int(second.getsockname()[1]) > held
+        # A connection made before the server accepts waits for it, and is not refused.
+        with socket.create_connection(("127.0.0.1", held), timeout=5):
+            pass
+
+
+def test_a_listener_takes_a_port_held_only_by_a_lingering_connection() -> None:
+    """As ``local_port_is_free`` answers, for the reason its test below gives."""
+
+    with _lingering_connection_on_a_port() as port:
+        ports = server_utils.port_search_range(port)
+        with server_utils.listen_on_available_local_port("127.0.0.1", ports) as listener:
+            assert int(listener.getsockname()[1]) == port
+
+
+def test_a_listener_search_names_the_range_it_exhausted() -> None:
+    with server_utils.listen_on_available_local_port(
+        "127.0.0.1", server_utils.port_search_range(server_utils.MAX_TCP_PORT - 40)
+    ) as held:
+        port = int(held.getsockname()[1])
+        with pytest.raises(RuntimeError, match=rf"range {port}\.\.{port}"):
+            server_utils.listen_on_available_local_port("127.0.0.1", range(port, port + 1))
+
+
 def test_remote_port_probe_script_stops_at_maximum_tcp_port() -> None:
     script = server_utils.remote_port_probe_script(server_utils.MAX_TCP_PORT)
 

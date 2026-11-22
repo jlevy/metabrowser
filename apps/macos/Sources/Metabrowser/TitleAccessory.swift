@@ -226,7 +226,7 @@ final class TitleBarTitleView: NSView {
         var text = NSRect(x: Self.textInset, y: y, width: width, height: height)
         let size = Self.chevronImage?.size ?? .zero
         var mark = NSRect(
-            x: text.maxX + Self.chevronGap, y: ((bounds.height - size.height) / 2).rounded(), width: size.width,
+            x: text.maxX + Self.chevronGap, y: bounds.midY - size.height / 2, width: size.width,
             height: size.height)
         if isRightToLeft {
             text.origin.x = bounds.width - text.maxX
@@ -285,12 +285,11 @@ final class TitleBarTitleView: NSView {
         let active = isActive
         label.attributedStringValue = attributed(title.text, active: active)
         label.alignment = isRightToLeft ? .right : .left
-        // Tertiary at rest, as a pop-up button's indicator is beside its title; secondary
-        // under the pointer or with the chooser open; dimmer in an inactive window.
+        // Match the shell's muted resting ink and stronger ink on hover or while open.
         chevron.contentTintColor =
-            !active ? .quaternaryLabelColor
+            !active ? .tertiaryLabelColor
             : interaction.isHovered || interaction.isPressed || chooserIsOpen
-                ? .secondaryLabelColor : .tertiaryLabelColor
+                ? .labelColor : .secondaryLabelColor
     }
 
     /// The system's fill for a control under the pointer, deeper while pressed, resolved in

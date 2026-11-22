@@ -39,6 +39,7 @@ const HELPERS = [
   "refChip",
   "mergeRefs",
   "mountRefCopies",
+  "mountRefMenus",
   "ageBucket",
   "ageLabelHtml",
   "highlightSyntax",
