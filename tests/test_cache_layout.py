@@ -66,6 +66,7 @@ from tests.cache_home_fixture import (
     _stage_and_publish_source,
     _stage_and_publish_store,
 )
+from tests.held_port import listener_on
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only storage is POSIX-only")
 skip_as_root = pytest.mark.skipif(
@@ -312,7 +313,9 @@ def test_local_browsing_in_process_never_calls_the_application_cache(
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer"),
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         served = runner.invoke(_app, [str(root), "--no-open"])
     recorded = recent_targets.read(config).targets
