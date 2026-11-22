@@ -10,12 +10,12 @@ import random
 import re
 import subprocess
 import sys
-from collections import Counter
 from pathlib import Path
 
 import pytest
 
 from devtools.check_goldens import makefile_list, recipe
+from devtools.shard_weights import FILES, TESTS, fallback, load
 from tests.required_tools import require_chrome
 from tests.suite_gates import (
     admitted_git_tests,
@@ -25,6 +25,7 @@ from tests.suite_gates import (
 )
 from tests.suite_tiers import (
     BY_FILE,
+    BY_TEST,
     CHROME_FIXTURE,
     CHROME_MARKER,
     CHROME_TIER,
@@ -60,34 +61,37 @@ def test_a_shard_outside_1_through_n_is_refused(value: str) -> None:
         parse_shard(value)
 
 
+def _kept(nodeids: list[str], shard: Shard, by: str, seconds: dict[str, float]) -> set[str]:
+    kept = dealt(nodeids, shard, by, seconds)
+    return {nodeid for nodeid, keep in zip(nodeids, kept, strict=True) if keep}
+
+
 @pytest.mark.parametrize("count", [1, 2, 3, 4, 5])
 def test_the_shards_of_any_selection_are_disjoint_and_cover_it(count: int) -> None:
-    """Every size from none to several rounds of *count*, in any order it is collected."""
+    """Every size from none to several rounds of *count*, in any order it is collected,
+    with some tests measured, one of them long, and some not."""
 
     for size in range(4 * count + 3):
+        rng = random.Random(size)
         nodeids = [f"tests/test_m{index % 3}.py::test_{index}" for index in range(size)]
-        shuffled = random.Random(size).sample(nodeids, len(nodeids))
-        parts: list[set[str]] = []
-        for index in range(1, count + 1):
-            shard = Shard(index, count)
-            kept = {
-                nodeid for nodeid, keep in zip(nodeids, dealt(nodeids, shard), strict=True) if keep
-            }
-            # Membership depends on the node IDs, not on the order they arrive in.
-            assert kept == {
-                nodeid
-                for nodeid, keep in zip(shuffled, dealt(shuffled, shard), strict=True)
-                if keep
-            }
-            parts.append(kept)
+        seconds = {nodeid: rng.choice([0.5, 3.0, 94.0]) for nodeid in nodeids[::2]}
+        shuffled = rng.sample(nodeids, len(nodeids))
+        shards = [Shard(index, count) for index in range(1, count + 1)]
+        parts = [_kept(nodeids, shard, BY_TEST, seconds) for shard in shards]
+        # Membership depends on the node IDs and their seconds, not on the order they
+        # arrive in.
+        assert parts == [_kept(shuffled, shard, BY_TEST, seconds) for shard in shards]
         assert sum(len(part) for part in parts) == size
         assert set().union(*parts) == set(nodeids)
-        assert max(map(len, parts)) - min(map(len, parts)) <= 1
+        # An unmeasured test weighs what the measured ones' median does.
+        weights = dict.fromkeys(nodeids, fallback(nodeids, seconds)) | seconds
+        loads = [sum(weights[nodeid] for nodeid in part) for part in parts]
+        assert max(loads) <= sum(loads) / count + max(weights.values(), default=0.0) + 1e-9
 
 
 @pytest.mark.parametrize("count", [1, 2, 3, 4, 5])
 def test_the_shards_by_file_are_disjoint_whole_files_and_cover_the_selection(count: int) -> None:
-    """Each file in one part, whatever the order; the parts balanced to a file's size."""
+    """Each file in one part, whatever the order; the parts balanced to a file's time."""
 
     rng = random.Random(count)
     nodeids = [
@@ -95,27 +99,38 @@ def test_the_shards_by_file_are_disjoint_whole_files_and_cover_the_selection(cou
         for module in range(17)
         for index in range(rng.randint(1, 9))
     ]
-    sizes = Counter(nodeid.split("::")[0] for nodeid in nodeids)
+    files = sorted({nodeid.split("::")[0] for nodeid in nodeids})
+    # A file's time is not its count of tests: the weights say, and two files have none.
+    seconds = {name: rng.choice([0.2, 5.0, 51.0]) for name in files[2:]}
     shuffled = rng.sample(nodeids, len(nodeids))
-    parts: list[set[str]] = []
-    for index in range(1, count + 1):
-        shard = Shard(index, count)
-        kept = {
-            nodeid
-            for nodeid, keep in zip(nodeids, dealt(nodeids, shard, BY_FILE), strict=True)
-            if keep
-        }
-        assert kept == {
-            nodeid
-            for nodeid, keep in zip(shuffled, dealt(shuffled, shard, BY_FILE), strict=True)
-            if keep
-        }
-        parts.append(kept)
+    shards = [Shard(index, count) for index in range(1, count + 1)]
+    parts = [_kept(nodeids, shard, BY_FILE, seconds) for shard in shards]
+    assert parts == [_kept(shuffled, shard, BY_FILE, seconds) for shard in shards]
     assert sum(len(part) for part in parts) == len(nodeids)
     assert set().union(*parts) == set(nodeids)
-    for name in sizes:
+    for name in files:
         assert sum(any(nodeid.startswith(f"{name}::") for nodeid in part) for part in parts) == 1
-    assert max(map(len, parts)) - min(map(len, parts)) <= max(sizes.values())
+    weights = dict.fromkeys(files, fallback(files, seconds)) | seconds
+    loads = [
+        sum(weights[name] for name in {nodeid.split("::")[0] for nodeid in part}) for part in parts
+    ]
+    assert max(loads) <= sum(loads) / count + max(weights.values()) + 1e-9
+
+
+def test_a_tier_is_dealt_by_the_seconds_measured_for_its_tests_and_files() -> None:
+    """With no seconds passed, the committed weights: the tests table, or by file the files."""
+
+    tests, files = load(TESTS), load(FILES)
+    longest = max(tests, key=lambda nodeid: tests[nodeid])
+    nodeids = sorted(tests)
+    alone = _kept(nodeids, Shard(1, 4), BY_TEST, tests)
+    assert longest in alone
+    assert [dealt(nodeids, Shard(index, 4)) for index in (1, 2, 3, 4)] == [
+        dealt(nodeids, Shard(index, 4), BY_TEST, tests) for index in (1, 2, 3, 4)
+    ]
+    modules = [f"{name}::test_it" for name in sorted(files)]
+    assert dealt(modules, Shard(2, 2), BY_FILE) == dealt(modules, Shard(2, 2), BY_FILE, files)
+    assert dealt(modules, Shard(2, 2), BY_FILE) != dealt(modules, Shard(2, 2), BY_FILE, {})
 
 
 # ── The tier markers' meaning, as pure judgements ──────────────────────────────
@@ -263,7 +278,8 @@ def test_the_shards_of_a_tier_partition_it(tmp_path: Path, tiers: dict[str, set[
 
     tier = CHROME_TIER
     parts = [_collected(tmp_path, "-m", tier, f"--shard={index}/3") for index in (1, 2, 3)]
-    assert [len(part) for part in parts] == [2, 1, 1]
+    assert sorted(len(part) for part in parts) == [1, 1, 2]
+    assert sum(len(part) for part in parts) == len(tiers[tier])
     assert set().union(*parts) == tiers[tier]
 
 
@@ -327,8 +343,8 @@ def test_make_test_runs_each_tier_by_its_expression_and_the_parallel_ones_on_wor
     assert recipe(makefile, "test-parallel") == (
         f'\t$(PYTEST) -m "$(PARALLEL_TIER)" {workers} --shard-by=file'
     )
-    assert recipe(makefile, "test-serial") == '\t$(PYTEST) -m "$(SERIAL_TIER)"'
-    assert recipe(makefile, "test-chrome") == '\t$(PYTEST) -m "$(CHROME_TIER)"'
+    assert recipe(makefile, "test-serial") == '\t$(PYTEST) $(EVERY_TEST) -m "$(SERIAL_TIER)"'
+    assert recipe(makefile, "test-chrome") == '\t$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)"'
     assert workers in recipe(makefile, "test-admitted-git")
     assert "$(if $(SHARD),--shard=$(SHARD))" in " ".join(makefile_list(makefile, "PYTEST"))
     # A CI job calls each target directly, so each installs first and is phony.

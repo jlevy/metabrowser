@@ -207,7 +207,7 @@ jobs:
     # second part's 200 seconds, the shortest the 3.13 first part's 161), against 5.0 to
     # 5.8 at the 90th percentile (make ci-report, 2026-11-20) for the one job that ran
     # both parts, which the 3.14t run 44788801411 hit the old 6 minutes with. A part
-    # holds about half the goldens by size and half the serial tests.
+    # holds about half the goldens and half the serial tests, by measured time.
     timeout-minutes: 5
     steps:
       - name: Checkout

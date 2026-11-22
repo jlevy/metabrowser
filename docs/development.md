@@ -76,8 +76,9 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 [End-to-End Testing](e2e-testing.md) covers the test layers, the four parts of
 `make test` and the markers that choose them, the outer tiers (`make test-admitted-git`,
 `make test-macos`, and `make test-live-github`), the skips each tier allows, and
-`make test-report` and `make ci-report`. `tests/golden/cli-check-api.tryscript.md` pins
-a normalized transcript of the `--check-api` sequence against a small fixture.
+`make test-report`, `make ci-report`, and `make shard-weights`.
+`tests/golden/cli-check-api.tryscript.md` pins a normalized transcript of the
+`--check-api` sequence against a small fixture.
 
 The quality, test, audit, and build targets install both locked environments first, and
 Make keeps the stages ordered under parallel jobs.

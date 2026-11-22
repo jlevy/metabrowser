@@ -136,6 +136,7 @@ It becomes four targets that CI can also run one at a time:
     ([How Coverage Is Kept](#how-coverage-is-kept)). `tests/conftest.py` gives it to
     every test that uses the `chrome_profile` fixture, so the Chrome tier needs no list,
     and that fixture is its only source.
+
 - **The three pytest targets partition the suite.** Their expressions cover every
   combination of the two markers, so no test is in none of them or in two.
   `tests/suite_gates.py` holds each marker to its meaning, as it fails a module that
@@ -144,13 +145,30 @@ It becomes four targets that CI can also run one at a time:
   - a test marked `chrome` that does not use `chrome_profile` fails, so no test reaches
     one interpreter by being marked;
   - a `serial` marker without a reason fails.
+
 - **`--dist loadfile`** keeps a module’s tests on one worker and in order, so
   module-scoped fixtures behave as they do today.
   The longest module is 56 seconds, so it does not limit the balance.
+
 - **`--shard=I/N`**, a new option in `tests/`, keeps the collected tests whose index, in
   node-ID order, is `I` modulo `N`. The parts are disjoint and their union is the tier
   by construction, and a unit test holds that for the option itself.
   It needs no record of durations and no dependency.
+
+  *2026-11-22: superseded (bead `mb-j5j2`).* Both reasons stopped holding.
+  One Chrome test grew to 94 seconds, so rank in node-ID order put 360 of the Chrome
+  tier’s 790 seconds of tests in one part of four (run 45062416967), and the nightly
+  soak’s `make ci-report --check` failed on that part, on the first goldens part, which
+  a golden’s size no longer balanced (568 seconds of 844), and on a `unit` part.
+  A stand-in for a unit’s time drifts from it as the suite changes, so the parts are now
+  dealt by the seconds CI measured: `devtools/shard_weights.py` deals each tier heaviest
+  first to the lightest part, from a committed record that `make shard-weights`
+  refreshes from a run’s logs.
+  The parts are still disjoint and cover the tier by construction, and the same in every
+  process, since they depend only on the tests selected and the committed record.
+  Replaying that run’s times through the new deal gives Chrome parts of 196 to 200
+  seconds of tests where they were 120 to 328.
+
 - **`devtools/run_goldens.py`** runs one `tryscript run <file>` per golden from a queue
   of four workers, prints each file’s output whole, records each file’s time, and fails
   unless every file of the glob reported a verdict.

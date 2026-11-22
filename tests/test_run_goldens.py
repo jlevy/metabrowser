@@ -13,6 +13,7 @@ import pytest
 from devtools import run_goldens
 from devtools.check_goldens import makefile_list, recipe
 from devtools.run_goldens import FAIL, NO_VERDICT, PASS, PREFIX
+from devtools.shard_weights import GOLDENS, load
 from tests.required_tools import require_node
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -149,27 +150,57 @@ def test_a_command_that_cannot_start_leaves_its_file_without_a_verdict(
     assert _lines(capsys.readouterr().out)["a.tryscript.md"][0] == NO_VERDICT
 
 
-def test_the_parts_of_a_shard_hold_every_file_once_and_balance_by_size(tmp_path: Path) -> None:
+def test_the_parts_of_a_shard_hold_every_file_once_and_balance_by_time(tmp_path: Path) -> None:
     directory = tmp_path / "goldens"
     directory.mkdir()
-    for name, size in {"a": 90, "b": 50, "c": 40, "d": 30, "e": 10}.items():
-        (directory / f"{name}.tryscript.md").write_text("pass" + "x" * size, encoding="utf-8")
+    seconds: dict[str, float] = {}
+    for name, time in {"a": 90, "b": 50, "c": 40, "d": 30, "e": 10}.items():
+        path = directory / f"{name}.tryscript.md"
+        # A file's size says nothing of its time: the slowest is the smallest.
+        path.write_text("pass" + "x" * (100 - time), encoding="utf-8")
+        seconds[str(path)] = float(time)
     paths = run_goldens.matched([str(directory / "*.tryscript.md")])
 
-    parts = [run_goldens.dealt(paths, index, 2) for index in (1, 2)]
+    parts = [run_goldens.dealt(paths, index, 2, seconds) for index in (1, 2)]
 
     assert sorted(parts[0] + parts[1]) == paths
     assert [[Path(path).stem.split(".")[0] for path in part] for part in parts] == [
         ["a", "d"],
         ["b", "c", "e"],
     ]
-    assert run_goldens.dealt(paths, 1, 1) == paths
+    assert run_goldens.dealt(paths, 1, 1, seconds) == paths
+    # With no time measured for any, as for these, the parts hold the same number of files.
+    assert [len(run_goldens.dealt(paths, index, 2)) for index in (1, 2)] == [3, 2]
+
+
+def test_the_goldens_are_dealt_by_their_measured_seconds_wherever_they_are_named_from(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The committed weights name a golden from the repository's root, as CI's logs do."""
+
+    measured = load(GOLDENS)
+    paths = run_goldens.matched([str(ROOT / "tests/golden/*.tryscript.md")])
+    assert len(measured.keys() & {Path(path).relative_to(ROOT).as_posix() for path in paths}) > 9
+    parts = [run_goldens.dealt(paths, index, 2) for index in (1, 2)]
+    assert sorted(parts[0] + parts[1]) == paths
+
+    monkeypatch.chdir(ROOT / "tests")
+    relative = run_goldens.matched(["golden/*.tryscript.md"])
+
+    assert [Path(path).name for path in run_goldens.dealt(relative, 1, 2)] == [
+        Path(path).name for path in parts[0]
+    ]
+    seconds = [
+        sum(measured.get(Path(path).relative_to(ROOT).as_posix(), 0.0) for path in part)
+        for part in parts
+    ]
+    assert max(seconds) <= sum(seconds) / 2 + max(measured.values())
 
 
 def test_a_shard_runs_only_its_part_and_a_bad_shard_is_refused(
     tmp_path: Path, tryscript: list[str], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    pattern = _goldens(tmp_path / "goldens", big="pass" + "x" * 99, small="pass")
+    pattern = _goldens(tmp_path / "goldens", big="pass", small="pass")
 
     assert run_goldens.main(["--shard", "2/2", pattern, "--", *tryscript]) == 0
 
