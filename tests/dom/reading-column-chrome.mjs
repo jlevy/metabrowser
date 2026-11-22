@@ -21,7 +21,10 @@
 //   the gutter, as it always has, and a source file keeps the gutter with the pane hidden;
 // - a real `\` and Shift-\ glide the column in every frame from where it was drawn to its
 //   new place, never back, with nothing pushed past the pane's end; and
-// - under reduced motion the column moves at once.
+// - under reduced motion the column moves at once; and
+// - the main view's gutter steps up with the window and not with the pane: a narrow window
+//   has the stylesheet's root gutter, each wider one a wider gutter, a toggle leaves it
+//   where it is, and the chevron stays centered in it.
 //
 // Each step writes `phase <name> <ms since start>` to stderr, so a slow run says where.
 import { launchChrome } from "./chrome-session.mjs";
@@ -87,6 +90,8 @@ const READ = `(() => {
     contentRight: paneBox.left + pane.clientWidth,
     frameRight: document.querySelector(".preview-frame").getBoundingClientRect().right,
     padding: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--content-padding-x")),
+    frameLeft: document.querySelector(".preview-frame").getBoundingClientRect().left,
+    chevron: box(document.getElementById("nav-collapse-toggle")),
     column,
     end,
     code: box(code),
@@ -212,6 +217,35 @@ function checkGlide(label, frames, from, to) {
   check(`${label}: nothing passes the pane's end`, !overflow);
 }
 
+// In the page: the gutter the stylesheet's root rule sets, outside any window's step.
+const ROOT_GUTTER = `(() => {
+  for (const sheet of document.styleSheets) {
+    let rules = [];
+    try {
+      rules = [...sheet.cssRules];
+    } catch {
+      continue;
+    }
+    for (const rule of rules) {
+      const value = rule.selectorText === ":root" && rule.style.getPropertyValue("--content-padding-x");
+      if (value) {
+        return parseFloat(value);
+      }
+    }
+  }
+  return null;
+})()`;
+
+/** The chevron centered in the gutter, whatever the gutter's step. */
+function checkChevron(label, page) {
+  const center = (page.chevron.left + page.chevron.right) / 2 - page.frameLeft;
+  check(
+    `${label}: the chevron is centered in the gutter`,
+    near(center, page.padding / 2),
+    `${center}`,
+  );
+}
+
 /** Where a column starts and ends with the pane shown: at the gutter. */
 function checkAtGutter(label, page) {
   check(
@@ -246,6 +280,8 @@ function checkCentered(label, page, shownCorner) {
 }
 
 try {
+  /** The gutter at each window, with the pane shown. @type {Map<number, number>} */
+  const gutters = new Map();
   for (const width of WIDE) {
     await resize(width);
     for (const path of ["view/guide.md", "view/short.md", ""]) {
@@ -254,9 +290,17 @@ try {
       phase(`open ${label}`);
       const shown = await chrome.evaluate(READ);
       checkAtGutter(`${label} shown`, shown);
+      checkChevron(`${label} shown`, shown);
+      gutters.set(width, shown.padding);
       const hiding = await toggle(false);
       phase(`hide ${label}`);
       check(`${label}: the pane is hidden`, hiding.page.collapsed);
+      check(
+        `${label}: hiding the pane leaves the gutter`,
+        hiding.page.padding === shown.padding,
+        `${shown.padding} then ${hiding.page.padding}`,
+      );
+      checkChevron(`${label} hidden`, hiding.page);
       checkCentered(`${label} hidden`, hiding.page, shown.corner.right);
       checkGlide(`${label} hide`, hiding.frames, shown.column.left, hiding.page.column.left);
       const showing = await toggle(true);
@@ -320,6 +364,19 @@ try {
   const narrow = await chrome.evaluate(READ);
   check("narrow hidden: the pane is hidden", narrow.collapsed);
   checkAtGutter("narrow hidden", narrow);
+  checkChevron("narrow hidden", narrow);
+  const rootGutter = await chrome.evaluate(ROOT_GUTTER);
+  check(
+    "narrow: the gutter is the stylesheet's root gutter",
+    rootGutter !== null && narrow.padding === rootGutter,
+    `${narrow.padding} against ${rootGutter}`,
+  );
+  const steps = [narrow.padding, ...WIDE.map((width) => gutters.get(width))];
+  check(
+    "each wider window has a wider gutter",
+    steps.every((gutter, index) => index === 0 || gutter > steps[index - 1]),
+    JSON.stringify(steps),
+  );
   await press(true);
   await chrome.waitFor(SETTLED, STEP_MS).catch(() => {});
   phase("narrow");

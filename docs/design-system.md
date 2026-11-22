@@ -779,6 +779,25 @@ root-size change near a responsive breakpoint can select a different heading tie
 Verify the type boundary at a pane width that stays in the same band and confirm
 computed sizes are identical at two browser root sizes.
 
+### Main View Gutter
+
+The main view’s gutter, `--content-padding-x`, and its block pad, `--content-padding-y`,
+step up with the window, so a wide window’s page has room against the navigation pane
+and the window’s edge, and a narrow window keeps its tight gutter.
+The narrow values are the `:root` rule’s in `static/styles.css`, and the window steps
+are the `@media (min-width: …)` rules right after that block, with the measurement that
+set them.
+
+The window decides rather than the main view, which is the one place the shell sizes
+against the viewport: hiding the navigation pane changes the main view’s width, and a
+gutter keyed to it would jump at every toggle.
+Everything made from the two tokens follows, the view header’s top pad and corner inset,
+the chevron centered in the gutter, and every plugin that pads by them.
+A view header’s narrow container condition is computed from the narrow gutter; see the
+comment beside the steps for the one case, a navigation pane dragged very wide in a wide
+window, where that is not exact.
+`tests/test_reading_column_chrome.py` measures the steps in headless Chrome.
+
 ### Reading Width
 
 Prose reads at a width the reader sets, in **characters**, through “Max text width” in

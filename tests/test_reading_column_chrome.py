@@ -6,7 +6,9 @@ than leave the text at the left edge (docs/design-system.md, "Hiding the Navigat
 Pane"). Which way the column glides, and from where a turned slide picks it up, are
 browserless (``cli-ui-nav-collapse.tryscript.md``). Where the column lands, against the
 header, the tabs, and the corner, and its glide in every frame are a browser's, so
-``tests/dom/reading-column-chrome.mjs`` measures them against a live server.
+``tests/dom/reading-column-chrome.mjs`` measures them against a live server, with the main
+view's gutter at each window's step (docs/design-system.md, "Main View Gutter"), which it
+measures on the same pages.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node

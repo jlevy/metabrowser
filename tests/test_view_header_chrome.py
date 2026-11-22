@@ -217,8 +217,12 @@ def test_the_corner_leaves_a_narrow_title_its_row() -> None:
     assert heading is not None
     gap = re.search(r"\bgap: ([\d.]+)px;", heading.group(1))
     assert gap is not None
+    # The narrow gutter, the root rule's: wider windows step it up (styles.css), and a main
+    # view this narrow is a narrow window's unless the navigation pane is dragged wide.
+    root = re.search(r"(?m)^:root \{([^}]*)\}", css)
+    assert root is not None
     want = (
-        2 * _token_px(css, "--content-padding-x")
+        2 * _token_px(root.group(1), "--content-padding-x")
         + _token_px(css, "--page-title-font-size")
         + float(gap.group(1))
         + _token_px(css, "--view-header-corner-room")
@@ -641,7 +645,8 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert absent["answered"] and absent["marked"], f"{name}: {absent}"
         assert absent["children"] == 0, f"{name}: {absent}"
         assert absent["titleRoom"] == _px(first_tokens["--view-header-corner-room"]), absent
-        assert absent["eyebrowRoom"] == _px(first_tokens["--content-padding-x"]), absent
+        # The gutter steps with the window, so the one where the page was measured.
+        assert absent["eyebrowRoom"] == absent["gutter"], absent
 
     # A name the heading row's whole width holds is one line whatever the main view's width:
     # below the container width the corner is on the eyebrow's row and the title has the
@@ -695,10 +700,9 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         # page, whatever the subject's lines (mb-wcbc).
         title_gap = page["firstLine"]["top"] - page["subject"]["bottom"]
         assert title_gap == _px(tokens["--page-title-gap"]), f"{name}: {title_gap}"
-        assert (
-            abs(view["right"] - button["right"] - _px(tokens["--view-header-corner-inset-end"]))
-            <= TOLERANCE_PX
-        ), f"{name}: {button} {view}"
+        assert abs(view["right"] - button["right"] - _px(page["cornerInsetEnd"])) <= TOLERANCE_PX, (
+            f"{name}: {button} {view}"
+        )
         assert abs(button["height"] - _px(tokens["--view-header-corner-height"])) <= TOLERANCE_PX
         if page["pane"] >= 1180:
             assert page["subjectRoom"] == 0, f"{name}: the subject keeps its width"
