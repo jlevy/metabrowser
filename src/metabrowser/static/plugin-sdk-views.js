@@ -1185,6 +1185,7 @@
     const doc = global.document;
     const menu = doc.createElement("div");
     menu.className = "menu git-ref-menu";
+    menu.setAttribute("data-ref-action-menu", "");
     menu.setAttribute("role", "menu");
     menu.setAttribute("aria-label", `${kind} ${data.label}`);
     const context = doc.createElement("div");
@@ -1338,11 +1339,10 @@
 
   /** @param {Event} event */
   function refTrigger(event) {
-    const button =
-      event.target instanceof Element ? event.target.closest("button[data-ref-menu]") : null;
-    return button instanceof HTMLButtonElement &&
-      global.MetabrowserPluginHost.isOwnedDelegate(button)
-      ? button
+    const target = /** @type {Element | null} */ (event.target);
+    const button = target?.closest?.("button[data-ref-menu]");
+    return button && global.MetabrowserPluginHost.isOwnedDelegate(button)
+      ? /** @type {HTMLButtonElement} */ (button)
       : null;
   }
   global.document?.addEventListener?.("click", (event) => {

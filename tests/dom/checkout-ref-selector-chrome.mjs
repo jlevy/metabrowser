@@ -588,14 +588,14 @@ try {
     const chip = document.querySelector(".source-ref-selector-label [data-ref-menu]");
     const before = chip.getBoundingClientRect().width;
     chip.closest("button").focus();
-    const trigger = document.querySelector(".source-ref-selector-button .git-ref-menu-hit");
+    const trigger = document.querySelector(".source-ref-selector-button button[data-ref-menu]");
     const modifiedArrow = new KeyboardEvent("keydown", {
       key: "ArrowDown", bubbles: true, cancelable: true, metaKey: true,
     });
     const arrowLeftAlone = trigger.dispatchEvent(modifiedArrow) &&
-      document.querySelector(".git-ref-menu") === null;
+      document.querySelector("[data-ref-action-menu]") === null;
     chip.click();
-    const menu = document.querySelector(".git-ref-menu");
+    const menu = document.querySelector("[data-ref-action-menu]");
     const copy = menu.querySelector("button");
     let copied;
     Object.defineProperty(navigator, "clipboard", {
@@ -609,14 +609,14 @@ try {
       items: [...menu.querySelectorAll(".menu-item")].map(item => item.textContent),
       copied,
       widthChanged: chip.getBoundingClientRect().width !== before,
-      caret: getComputedStyle(document.querySelector(".git-ref-menu-hit[aria-expanded=true] svg")).transform,
+      caret: getComputedStyle(trigger.querySelector("svg")).transform,
     };
     const modifiedEscape = new KeyboardEvent("keydown", {
       key: "Escape", bubbles: true, cancelable: true, metaKey: true,
     });
     answer.chordsLeftAlone = arrowLeftAlone && copy.dispatchEvent(modifiedEscape) && menu.isConnected;
     copy.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    answer.dismissed = document.querySelector(".git-ref-menu") === null;
+    answer.dismissed = document.querySelector("[data-ref-action-menu]") === null;
 
     const fork = window.metabrowser.refChip("topic/nested", {
       label: "forker:topic/nested", kind: "remote", repository: "forker/demo",
@@ -624,7 +624,7 @@ try {
     });
     document.querySelector(".header-path").after(fork);
     fork.click();
-    const forkMenu = document.querySelector(".git-ref-menu");
+    const forkMenu = document.querySelector("[data-ref-action-menu]");
     answer.fork = {
       context: forkMenu.getAttribute("aria-label"),
       url: forkMenu.querySelector("a").href,
@@ -706,9 +706,9 @@ try {
 
   result.documents = documents.slice();
   // The history chip selects its exact ref using the same source route as the chooser.
-  await chrome.evaluate(`[...document.querySelectorAll(".git-graph-row [data-ref-menu]")]
+  await chrome.evaluate(`[...document.querySelectorAll('[class$="graph-row"] [data-ref-menu]')]
     .find(chip => JSON.parse(chip.getAttribute("data-ref-menu")).ref === "refs/tags/v1").click();
-    [...document.querySelectorAll(".git-ref-menu button")]
+    [...document.querySelectorAll("[data-ref-action-menu] button")]
       .find(item => item.textContent === "View This Tag").click(); true`);
   await chrome.waitFor(
     `window.METABROWSER_SOURCE_PIN?.ref === "refs/tags/v1" && ${MOUNTED}`,
