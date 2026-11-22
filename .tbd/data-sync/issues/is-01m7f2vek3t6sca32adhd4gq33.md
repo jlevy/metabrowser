@@ -4,8 +4,8 @@ id: is-01m7f2vek3t6sca32adhd4gq33
 title: "Object data model and views: plan and decisions"
 kind: epic
 status: in_progress
-priority: 2
-version: 25
+priority: 0
+version: 26
 spec_path: docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md
 refs:
   - kind: pr
@@ -37,7 +37,8 @@ child_order_hints:
   - is-01m7r76k6f8m2een1fvgt1a1ea
   - is-01m7wy7nzthzeq8efj0p7qckbd
 created_at: 2026-11-15T07:48:21.218Z
-updated_at: 2026-11-20T19:16:41.923Z
+updated_at: 2026-11-22T21:15:37.012Z
+duplicate_of: null
 extensions:
   linear:
     id: 57820908-dc29-41e5-bba7-21e54f4df749

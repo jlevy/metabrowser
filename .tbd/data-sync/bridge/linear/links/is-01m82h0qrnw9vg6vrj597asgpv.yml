@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:3778832c9717da6347d91c1f10087df38d403805e565c5f46cd3a8b2d003db43
+  labels:
+    - linear
+    - Feature
+  priority: 1
+  slot: in_progress
+  status: in_progress
+  title: "Live GitHub updates: what is on screen updates within seconds, everything else
+    every minute or two, inside the rate limit"
+bead_id: is-01m82h0qrnw9vg6vrj597asgpv
+external_id: 0c7789d9-960d-4814-a23b-d2a26e474369
+external_key: OS-627
+external_url: https://linear.app/finterm-ai/issue/OS-627/live-github-updates-what-is-on-screen-updates-within-seconds
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-22T21:35:05.588Z
+state: linked
+synced_at: 2026-11-22T21:35:05.963Z
+type: lk
