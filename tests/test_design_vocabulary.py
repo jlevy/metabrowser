@@ -1575,6 +1575,7 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".parent-nav-arrow"): "a button's glyph",
     ("styles.css", ".fold-expander"): "a control row (Fold Expanders)",
     ("styles.css", ".menu-item"): "a menu",
+    ("styles.css", ".menu-link-url"): "the destination shown inside a menu",
     ("styles.css", ".menu-version"): "a menu's line",
     ("styles.css", ".menu-select"): "a menu's control",
     ("styles.css", ".menu-row"): "a menu's line",
