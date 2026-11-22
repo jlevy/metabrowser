@@ -483,6 +483,7 @@ async def _origin_ref(repository: _Repository, *, root: bool = False) -> _Origin
         return None
 
     location = repository.location
+    required_tip = None
     if ref.startswith(_LOCAL_BRANCH_PREFIX):
         branch = ref.removeprefix(_LOCAL_BRANCH_PREFIX)
         upstream = await _ref_value(
@@ -496,13 +497,19 @@ async def _origin_ref(repository: _Repository, *, root: bool = False) -> _Origin
                 f"{branch}@{{upstream}}",
             ],
         )
+        if upstream is None:
+            # A spelling shared with an origin branch does not establish a relationship.
+            required_tip = (
+                repository.pin.commit_oid if repository.pin else repository.context["revision"]
+            )
         ref = upstream or _ORIGIN_REF_PREFIX + branch
     if ref == _ORIGIN_REF_PREFIX + "HEAD":
         ref = await _ref_value(location, ["symbolic-ref", "--quiet", ref]) or ""
     if ref.startswith(_ORIGIN_REF_PREFIX):
-        return await _origin_branch(
+        named = await _origin_branch(
             location, ref, include_default=root and repository.mirror is None
         )
+        return named if named is not None and required_tip in (None, named.commit) else None
     if repository.mirror is not None and ref.startswith(_TAG_PREFIX):
         tip = await _ref_value(
             location, ["rev-parse", "--verify", "--quiet", "--end-of-options", f"{ref}^{{commit}}"]
@@ -526,7 +533,7 @@ async def _origin_branch(
         ["for-each-ref", "--count=8", "--format=%(refname)%00%(objectname)%00%(symref)", *wanted],
     )
     refs = {}
-    for line in (lines or "").splitlines():
+    for line in (lines or "").split("\n"):
         fields = line.split("\0")
         if len(fields) == 3 and fields[0] in wanted:
             refs[fields[0]] = (fields[1], fields[2])
@@ -551,7 +558,7 @@ async def _ref_value(location: GitLocation, args: list[str]) -> str | None:
     except GitCommandError as exc:
         log.debug("counterpart ref not available: %s", failure_detail(exc))
         return None
-    return os.fsdecode(raw).strip() or None
+    return os.fsdecode(raw.removesuffix(b"\n")) or None
 
 
 async def _pinned_kind(

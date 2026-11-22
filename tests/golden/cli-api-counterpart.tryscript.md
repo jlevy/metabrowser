@@ -516,6 +516,118 @@ status: 200
 ? 0
 ```
 
+## Test: a same-named branch with no upstream needs an exact match
+
+Another branch on origin is allowed to have the same name as a local branch.
+An unconfigured local branch uses that name only when the published tip matches its
+commit.
+
+```console
+$ git -C branch branch --unset-upstream && git -C branch checkout -qb other && printf 'Different readme.\n' > branch/README.md && git -C branch add README.md && git -C branch commit -qm other && git -C branch update-ref refs/remotes/origin/local-docs HEAD && git -C branch checkout -q local-docs
+? 0
+```
+
+```console
+$ metab branch --api '/api/counterpart?page=/view/'
+api: /api/counterpart?page=/view/
+status: 200
+{
+  "page": "/view/",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo"
+  },
+  "reason": null
+}
+? 0
+```
+
+```console
+$ metab branch --api '/api/counterpart?page=/view/README.md'
+api: /api/counterpart?page=/view/README.md
+status: 200
+{
+  "page": "/view/README.md",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/blob/6df6ba6b3b36f70b432b10b50b9a156ba27bc348/README.md"
+  },
+  "reason": null
+}
+? 0
+```
+
+```console
+$ git -C branch update-ref refs/remotes/origin/local-docs HEAD
+? 0
+```
+
+```console
+$ metab branch --api '/api/counterpart?page=/view/'
+api: /api/counterpart?page=/view/
+status: 200
+{
+  "page": "/view/",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/tree/local-docs"
+  },
+  "reason": null
+}
+? 0
+```
+
+## Test: named branch URLs preserve valid Unicode ref characters
+
+The shell constructs the branch names from UTF-8 bytes.
+The first ends in a nonbreaking space, and the second has a Unicode line separator in
+the name.
+
+```console
+$ name="$(printf 'feature\302\240')" && git -C branch update-ref refs/remotes/origin/feature HEAD && git -C branch update-ref "refs/remotes/origin/$name" HEAD && git -C branch branch --set-upstream-to="origin/$name" local-docs >/dev/null
+? 0
+```
+
+```console
+$ metab branch --api '/api/counterpart?page=/view/'
+api: /api/counterpart?page=/view/
+status: 200
+{
+  "page": "/view/",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/tree/feature%C2%A0"
+  },
+  "reason": null
+}
+? 0
+```
+
+```console
+$ name="$(printf 'line\342\200\250break')" && git -C branch update-ref "refs/remotes/origin/$name" HEAD && git -C branch branch --set-upstream-to="origin/$name" local-docs >/dev/null
+? 0
+```
+
+```console
+$ metab branch --api '/api/counterpart?page=/view/'
+api: /api/counterpart?page=/view/
+status: 200
+{
+  "page": "/view/",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/tree/line%E2%80%A8break"
+  },
+  "reason": null
+}
+? 0
+```
+
 ## Test: a branch with no upstream maps at its merge base with origin’s default branch
 
 `topic` has no upstream, so its working tree maps at its merge base with `origin/HEAD`.
