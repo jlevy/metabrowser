@@ -64,7 +64,10 @@ const READ = `(() => {
   const pane = document.getElementById("preview-pane");
   const live = (selector) =>
     [...pane.querySelectorAll(selector)].find(
-      (each) => !each.closest(".preview-file-stage") && each.getBoundingClientRect().width > 0,
+      (each) =>
+        !each.closest(".preview-file-stage") &&
+        getComputedStyle(each).visibility === "visible" &&
+        each.getBoundingClientRect().width > 0,
     ) ?? null;
   const box = (element) => {
     if (!element) {
@@ -265,6 +268,31 @@ try {
       );
     }
   }
+
+  // An expanded README's rail forms part of the column. Once collapsed, it is still
+  // mounted and hidden. The remaining visible headings center without the rail.
+  await open("view/with-readme-toc/");
+  const readme = 'document.querySelector(".folder-overview-panel-document")';
+  const readmeToc = `${readme}?.querySelector(".kpress-toc")`;
+  await chrome.waitFor(
+    `${readmeToc} && getComputedStyle(${readmeToc}).visibility === "visible"`,
+    STEP_MS,
+  );
+  await press(false);
+  await chrome.waitFor(SETTLED, STEP_MS);
+  const withRail = await chrome.evaluate(READ);
+  check("expanded README: the pane is hidden", withRail.collapsed);
+  checkCentered("expanded README with its rail", withRail, withRail.corner.right);
+  await chrome.evaluate(`${readme}.querySelector(".folder-overview-panel-toggle").click()`);
+  await chrome.waitFor(
+    `${readmeToc} && getComputedStyle(${readmeToc}).visibility === "hidden"`,
+    STEP_MS,
+  );
+  const withoutRail = await chrome.evaluate(READ);
+  checkCentered("collapsed README without its rail", withoutRail, withRail.corner.right);
+  await press(true);
+  await chrome.waitFor(SETTLED, STEP_MS);
+  phase("collapsed README");
 
   // A source file keeps the gutter with the pane hidden: it states no reading unit.
   await resize(WIDE[0]);

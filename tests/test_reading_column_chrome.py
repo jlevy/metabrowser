@@ -36,11 +36,12 @@ from tests.test_nav_metadata_chrome import (
     _stop_server,
     _wait_until_serving,
 )
+from tests.test_overview_readme_toc_chrome import README
 
 SESSION = Path(__file__).resolve().parent / "dom" / "reading-column-chrome.mjs"
 _METAB = Path(sys.executable).with_name("metab")
-# A cold Chrome start, which tests/dom/chrome-session.mjs bounds at 30 s, then nine page
-# loads and fifteen toggles, each sampled for under a second.
+# A cold Chrome start, which tests/dom/chrome-session.mjs bounds at 30 s, then the
+# page loads and navigation toggles, each glide sampled for under a second.
 _MEASUREMENT_BUDGET_S = 120.0
 LIFECYCLE_S = (
     _BANNER_BUDGET_S
@@ -70,6 +71,9 @@ def test_hiding_the_navigation_pane_centers_a_reading_column_in_chrome(
     (folder / "guide.md").write_text(_GUIDE, encoding="utf-8")
     (folder / "short.md").write_text("# Short\n\nOne paragraph.\n", encoding="utf-8")
     (folder / "tool.py").write_text('print("a source file")\n', encoding="utf-8")
+    with_readme_toc = folder / "with-readme-toc"
+    with_readme_toc.mkdir()
+    (with_readme_toc / "README.md").write_text(README, encoding="utf-8")
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
     env["METABROWSER_CACHE_DIR"] = str(_private(tmp_path / "cache"))
     env["METABROWSER_CONFIG_DIR"] = str(_private(tmp_path / "config"))
