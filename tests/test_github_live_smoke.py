@@ -35,6 +35,7 @@ from metabrowser.cache.acquire import RepositoryTooLargeError
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests.admitted_git import require_admitted_git
+from tests.held_port import listener_on
 
 LIVE_ENV = "METABROWSER_LIVE_GITHUB"
 
@@ -220,7 +221,9 @@ def test_live_serve_refresh_and_status(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer"),
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = CliRunner().invoke(_app, [f"{HELLO}/blob/master/README#L1", "--no-open"])
     assert result.exit_code == 0, result.output

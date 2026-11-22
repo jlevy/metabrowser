@@ -68,6 +68,7 @@ from tests.golden_harness import (
     origin_identity,
     pin_git_dates,
 )
+from tests.held_port import listener_on
 from tests.required_tools import needs_git, needs_node
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git
 
@@ -179,7 +180,9 @@ def _serve(url: str, *extra: str) -> Any:
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, [url, "--no-open", *extra])
     if result.exit_code == 0:
