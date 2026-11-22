@@ -6,7 +6,7 @@ env:
 ---
 # Root details and mirror headings
 
-The root disclosure shows file totals and a mirror’s source, full commit, and location.
+The root menu shows file totals, the local path, and a short note about the mirror.
 The main heading shows where the mirror is kept.
 This session runs the production formatters and view headers on recorded server output
 for a folder, a mirror, and a mirror whose path contains markup and a directional
@@ -121,8 +121,8 @@ $ node tests/dom/mirror-heading-session.js
       }
     },
     "details": {
-      "location": "squares",
-      "source": "Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repos/store-key-1/repository.git: a bare Git repository, with no checked-out files.",
+      "location": "~/.cache/metabrowser/repos/store-key-1/repository.git",
+      "source": "Bare Git mirror with no checked-out files.",
       "before": "",
       "after": "3 files 140 bytes"
     }
@@ -166,8 +166,8 @@ $ node tests/dom/mirror-heading-session.js
       }
     },
     "details": {
-      "location": "a<b>&�x",
-      "source": "Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repos/store-key-2/repository.git: a bare Git repository, with no checked-out files.",
+      "location": "~/odd\"<&>home/repos/store-key-2/repository.git",
+      "source": "Bare Git mirror with no checked-out files.",
       "before": "",
       "after": "3 files 140 bytes"
     }

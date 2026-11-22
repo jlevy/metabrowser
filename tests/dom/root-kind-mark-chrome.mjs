@@ -245,10 +245,16 @@ for (const theme of ["light", "dark"]) {
     const details = await browser.evaluate(`(() => {
       const root = document.getElementById("root-details");
       const summary = root.querySelector("summary");
+      const caret = summary.querySelector("svg");
+      const closedRotation = getComputedStyle(caret).rotate;
       summary.focus();
       summary.click();
       return {
         open: root.open,
+        closedRotation,
+        openRotation: getComputedStyle(caret).rotate,
+        local: root.querySelector(".root-details-local").innerText,
+        source: root.querySelector(".root-details-source").innerText,
         text: root.querySelector(".root-details-info").innerText,
         removed: document.querySelector(".header-copy") === null,
       };
@@ -258,6 +264,21 @@ for (const theme of ["light", "dark"]) {
       details.open && details.removed && details.text.includes(at.label.split(" (")[0]),
       JSON.stringify(details),
     );
+    check(
+      `${where}: the menu keeps a down chevron and labels the local path`,
+      details.closedRotation === "90deg" &&
+        details.openRotation === details.closedRotation &&
+        details.local.startsWith("Local path"),
+      JSON.stringify(details),
+    );
+    if (kind === "mirror") {
+      check(
+        `${where}: the source tip and the local mirror path are separate`,
+        details.local.endsWith("/repository.git") &&
+          details.source === "Bare Git mirror with no checked-out files.",
+        JSON.stringify(details),
+      );
+    }
     if (kind === "git") {
       await browser.waitFor(
         'document.querySelector("#root-details a[data-web-view=external]") !== null',
@@ -278,6 +299,7 @@ for (const theme of ["light", "dark"]) {
         return {
           copied,
           href: link.href,
+          destination: panel.querySelector(".menu-link-url").innerText,
           labels: [copy.innerText, link.innerText],
           glyphs: [copy, link].map(item => item.querySelector(".menu-item-icon svg") !== null),
           owner: [copy, link].every(window.MetabrowserPluginHost.isOwnedDelegate),
@@ -288,6 +310,7 @@ for (const theme of ["light", "dark"]) {
         `${where}: both link actions use the repository URL and shared icons`,
         links.copied === "https://github.com/octo/demo" &&
           links.href === links.copied &&
+          links.destination === links.copied &&
           links.labels.join("|") === "Copy Link|Open in Browser" &&
           links.glyphs.every(Boolean) &&
           links.owner &&

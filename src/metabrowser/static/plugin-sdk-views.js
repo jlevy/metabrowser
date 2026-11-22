@@ -1942,6 +1942,7 @@
   const counterpartMarks = { github: destinationGlyphs.github };
   /** How long a copied link's confirmation stays under the button, as a code copy's does. */
   const COUNTERPART_COPIED_MS = 1500;
+  let counterpartDestinationId = 0;
 
   /**
    * A page's external counterpart as a split button (docs/design-system.md, "View on
@@ -2017,6 +2018,12 @@
     menu.setAttribute("role", "menu");
     menu.setAttribute("aria-label", counterpart.label);
     menu.hidden = true;
+    const destination = doc.createElement("div");
+    destination.className = "menu-link-url";
+    const destinationId = `counterpart-url-${++counterpartDestinationId}`;
+    destination.setAttribute("id", destinationId);
+    destination.setAttribute("aria-hidden", "true");
+    destination.textContent = counterpart.url;
     let copies = 0;
     const [copy, external] = externalLinkMenuItems(counterpart.url, {
       onActivate: () => close(true),
@@ -2037,7 +2044,10 @@
       },
     });
     copy.dataset.counterpartAction = "copy";
-    menu.append(copy, external);
+    for (const item of [copy, external]) {
+      item.setAttribute("aria-describedby", destinationId);
+    }
+    menu.append(destination, copy, external);
     // Empty until a copy, and in the page from the start: a live region made and filled at
     // once is not announced.
     const status = doc.createElement("span");

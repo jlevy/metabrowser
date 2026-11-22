@@ -392,7 +392,7 @@ async function observe(subject) {
       fileHeaders,
     },
     details: {
-      location: page.heading.dataset.servedRoot,
+      location: page.heading.dataset.mirrorLocation ?? page.heading.dataset.servedRoot,
       source: page.heading.dataset.mirrorTip ?? null,
       before: text(before),
       after: text(after),
@@ -451,17 +451,17 @@ async function main() {
     );
   }
   for (const page of [mirror, hostile]) {
-    const { name, origin, location, pin, ref_name: ref } = page.status;
-    // The note names the store's directory; the tooltip and the status keep the bare
+    const { name, location, pin, ref_name: ref } = page.status;
+    // The note names the store's directory; the details and the status keep the bare
     // repository inside it, where `git -C` works.
     assert(location.endsWith("/repository.git"), `${page.subject}: the location is ${location}`);
     const directory = location.slice(0, -"/repository.git".length);
     const where = `mirror in ${directory}`;
-    const sentence = `Mirror of ${origin} at ${pin}, stored in ${location}: a bare Git repository, with no checked-out files.`;
+    const sentence = "Bare Git mirror with no checked-out files.";
     const { root, file } = page.mainHeading;
 
     // The repository's name is the root, in both headings. The navigation heading is the
-    // name alone: the ref selector names the ref, and the tooltip the commit (mb-qq4e).
+    // name alone: the ref selector names the ref.
     assert(
       page.navigationHeading.text === name && ref !== null,
       `${page.subject}: the navigation heading reads ${page.navigationHeading.text}`,
@@ -487,8 +487,8 @@ async function main() {
         `${page.subject}: a heading does not hold exactly one note`,
       );
     }
-    assert(page.details.location === name, "details name the mirror");
-    assert(page.details.source === sentence, "details specify the full commit and location");
+    assert(page.details.location === location, "details show the local mirror path");
+    assert(page.details.source === sentence, "the tip explains the mirror");
     assert(page.details.after === "3 files 140 bytes", "mirror stats follow the tree");
   }
 
@@ -497,12 +497,6 @@ async function main() {
   for (const key of ["name", "origin", "location"]) {
     const value = hostile.status[key];
     assert(escaped(value) !== value, `the hostile ${key} has no markup to escape: ${value}`);
-    if (key === "origin" || key === "location") {
-      assert(
-        hostile.details.source.includes(value),
-        "source details retain the original text value",
-      );
-    }
     const written = {
       name: [hostile.raw.root, hostile.raw.file, hostile.navigationHeading.html],
       origin: [],

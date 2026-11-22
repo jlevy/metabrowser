@@ -15,7 +15,7 @@
 //   working tree, not these files.
 //   A mirror's note names the store's directory, without the `/repository.git` every
 //   store ends in: the directory's name is what tells one mirror from another. The
-//   tooltip and `/api/source/status` keep the whole location, where `git -C <location>`
+//   root menu and `/api/source/status` keep the whole location, where `git -C <location>`
 //   works. This file is written into a mirror's page, so it names no cache path itself.
 // tests/dom/mirror-heading-session.js runs this file on what the server served.
 
