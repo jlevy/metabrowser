@@ -5,7 +5,7 @@ title: "Branches follow the repository: a view of a branch tracks it in mirror a
 kind: epic
 status: open
 priority: 1
-version: 19
+version: 21
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/631
@@ -25,10 +25,11 @@ child_order_hints:
   - is-01m7v8d2dzrf8cg3wrxezg9bh1
   - is-01m7v8prb166f74m9855fmntda
   - is-01m82j9mkc8hxbezzc94rn8ndc
+  - is-01m82kqa2v7tyt1xy7kxd0j129
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:15:32.417Z
-updated_at: 2026-11-22T21:25:00.142Z
+updated_at: 2026-11-22T21:50:03.938Z
 started_at: 2026-11-20T01:17:55.715Z
 duplicate_of: null
 extensions:
@@ -50,7 +51,7 @@ Where it stands (2026-11-22):
 * Done, #631 (mb-30xb): one mirror per repository, so opening a pull request or any URL inside a repository reuses that repository's mirror.
 * Correct as it was: a folder's working tree is live through the watcher.
 * Not built: a revision of a checkout's branch in folder mode does not follow the branch (mb-0qgm).
-* Decided 2026-11-22 (mb-gkq1): Refresh in folder mode re-reads the checkout's refs and never fetches, as today.
+* Decided 2026-11-22 (mb-gkq1, widened the same day): a repository folder shows its origin's branches and tags from Metabrowser's own store beside the checkout, fetched as often as is useful, and the checkout is never fetched into. Not built (mb-ay84).
 * Decided 2026-11-22 (mb-qp3s), not built: a pull request's served head follows new pushes, and Changes follows with a note naming the old and new head and a way back (mb-6a6w).
 * How soon a followed branch follows: a mirror refreshes only once its last fetch is a freshness window (60 s) old, so a push shows up to about 90 s later. mb-6pzh, under the update cadence epic mb-dip2 (OS-627), brings that to seconds.
 
