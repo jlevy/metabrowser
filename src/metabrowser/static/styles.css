@@ -1865,8 +1865,10 @@ body {
 }
 .root-details:not([open]) > .root-details-panel,
 .root-details-panel [hidden],
-.root-details-local:has(.root-details-location:empty),
 .root-details-source:empty {
+  display: none;
+}
+.root-details-local:has(.root-details-location:empty) {
   display: none;
 }
 .root-details-info,
@@ -2978,8 +2980,8 @@ html.theme-anim .menu {
   max-width: 100%;
 }
 /* Only what a long name needs is local. The button keeps its width, and Group by moves
-   to the next line instead; a name longer than the row shortens. Its span is what a ref
-   chip's copy control is placed against (.git-ref-copy-host), so the list's containing
+   to the next line instead; a name longer than the row shortens. Its span anchors the
+   ref chip's menu trigger (.git-ref-menu-host), so the list's containing
    block stays the toolbar. */
 .source-ref-selector-button {
   display: inline-flex;
@@ -5006,6 +5008,7 @@ a.tab-btn {
 }
 .counterpart-more > .chip-menu-caret {
   margin-inline-end: 0;
+  opacity: 1;
 }
 .counterpart-more[aria-expanded="true"] {
   background: var(--hover-bg);
@@ -7752,9 +7755,8 @@ pre.code-block.metabrowser-source-lines > code {
    chip sits in leave the text's size to inherit. The line is 4/3 of the
    chip's size, 16px at 12px as before, so the box scales with the text: at
    most 16.8px, and the 15.6px chip of a 13px history row keeps a HEAD ring
-   (1px out, 1px off) inside its 22px row. Padding, the copy slot, and the
-   tag's notch stay in px: they are room around the name and a fixed-size
-   icon, not text. */
+   (1px out, 1px off) inside its 22px row. Padding and the tag's notch stay
+   in px. The menu chevron is an overlay within the chip. */
 .git-ref {
   display: inline-flex;
   align-items: center;
@@ -7830,11 +7832,9 @@ pre.code-block.metabrowser-source-lines > code {
    the longer one ellipsizes first — and the arrow never gives way:
    grid's "maximize tracks" step grows both name tracks equally from
    zero and freezes each at its full width.
-   The group never gets narrower than both chips' padding and copy slot
-   (5px and 19px, from `.git-ref` and `.git-ref-copyable`), an ellipsis
-   in each, and the arrow with its spaces (about 1.3em). The em is the
-   size of the text around the merge, which the group inherits; each chip
-   is --git-ref-font-scale of it, so 3em covers the arrow at the group's
+   The group never gets narrower than both chips' padding, an ellipsis
+   in each, and the arrow with its spaces (about 1.3em). Each chip
+   is --git-ref-font-scale of the surrounding text, so 3em covers the arrow at the group's
    size and the two ellipses at the chips' smaller one.
    The equal growth gives each name at least its chip's frame and an
    ellipsis, and what is left is the arrow's. A line too short for that floor moves the merge
@@ -7843,7 +7843,7 @@ pre.code-block.metabrowser-source-lines > code {
   display: inline-grid;
   grid-template-columns: minmax(0, max-content) max-content minmax(0, max-content);
   align-items: center;
-  min-width: calc(2 * (5px + 19px) + 3em);
+  min-width: calc(2 * 5px + 3em);
   max-width: 100%;
   vertical-align: middle;
   /* No size of its own: the arrow is the size of the text around the merge,
@@ -8261,70 +8261,91 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--git-status-deleted);
 }
 
-/* Copy controls reserve their slot, so revealing one never changes a chip's size. */
+/* The whole ref is its menu trigger. The caret covers the trailing edge on hover,
+   focus, and while open, leaving the chip's layout unchanged. */
 .git-ref-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.git-ref-copyable {
+:where(.git-ref-action) {
   position: relative;
-  padding-right: 19px;
+  appearance: none;
+  border: 0;
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
 }
-.git-ref-copy {
-  position: absolute;
-  right: 2px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: var(--icon-box);
-  height: var(--icon-box);
-  min-width: 0;
-  padding: 1px;
-  opacity: 0;
-  color: inherit;
-}
-/* A step under --icon-glyph on purpose: the button is a chip's corner, with 1px of padding
-   in an --icon-box that must not widen the chip, so a full glyph would touch its edges. */
-.git-ref-copy > svg {
-  width: 12px;
-  height: 12px;
-}
-.git-ref:is(:hover, :focus-within) > .git-ref-copy,
-.git-ref-copy-layer > .git-ref-copy {
-  opacity: 1;
-}
-.git-ref-copy:focus-visible {
+.git-ref-action:focus-visible,
+.git-ref-menu-hit:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
-.git-ref-copy-host {
+.git-ref-menu-caret {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  display: inline-grid;
+  place-items: center;
+  width: var(--icon-box);
+  max-width: 100%;
+  background: var(--viz-surface-raised);
+  color: var(--muted);
+  opacity: 0;
+  pointer-events: none;
+}
+.git-ref-menu-caret > svg {
+  width: min(12px, 100%);
+  height: 12px;
+  transform: rotate(90deg);
+}
+:is(.git-ref-action, .git-ref-menu-hit):is(:hover, :focus-visible, [aria-expanded="true"])
+  > .git-ref-menu-caret {
+  opacity: 1;
+}
+:is(.git-ref-action, .git-ref-menu-hit):is(:focus-visible, [aria-expanded="true"])
+  > .git-ref-menu-caret {
+  color: var(--text);
+}
+.git-ref-menu-host {
   position: relative;
 }
-.git-ref-copy-layer {
+.git-ref-menu-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
-.git-ref-copy-layer[hidden] {
+.git-ref-menu-layer[hidden],
+.git-ref-menu-hit[hidden] {
   display: none;
 }
-.git-ref-copy-layer > .git-ref-copy {
-  transform: none;
-  right: auto;
+.git-ref-menu-hit {
+  position: absolute;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-tag);
+  background: transparent;
   pointer-events: auto;
-  color: var(--git-ref-copy-ink);
+  cursor: pointer;
+}
+.git-ref-menu {
+  position: fixed;
+  inline-size: max-content;
+  max-inline-size: min(36ch, calc(100vw - 12px));
+  max-block-size: calc(100vh - 12px);
+  overflow: auto;
+}
+.git-ref-menu > .menu-link-url {
+  max-block-size: 5em;
+  overflow: auto;
+}
+.git-ref-menu-status:not(:empty) {
+  padding: 6px var(--menu-row-inset);
+  color: var(--muted);
 }
 .git-graph-item {
   height: 22px;
-}
-
-.git-ref-copy[hidden] {
-  display: none;
-}
-
-/* The icon primitive gives hover/focus a neutral plate; use readable text ink on it. */
-.git-ref-copy:is(:hover, :focus-visible) {
-  color: var(--text);
 }
 
 /* Destination marks never make a long link an unbreakable inline-flex box. */

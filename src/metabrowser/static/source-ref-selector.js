@@ -239,6 +239,7 @@
           ? {
               name: label.name,
               label: label.name,
+              ref: state.shown?.ref ?? undefined,
               kind:
                 label.kind === "Tag"
                   ? "tag"
@@ -788,11 +789,18 @@
       // answer, and go with the page when it goes (static/source-pin-guard.js).
       /** @type {(gone: boolean) => void} */
       let decided = () => {};
-      deps.hold?.(
+      const held = deps.hold?.(
         new Promise((resolve) => {
           decided = resolve;
         }),
       );
+      if (held === false) {
+        decided(false);
+        state.switching = false;
+        state.error = "A ref switch is already in progress.";
+        render();
+        return;
+      }
       try {
         const response = await deps.request("POST", PIN_ROUTE, body);
         if (disposed) {
@@ -926,7 +934,8 @@
           window.metabrowser.refChip(model.selectedRef.name, {
             label: model.selectedRef.label,
             kind: model.selectedRef.kind,
-            copy: "sibling",
+            ref: model.selectedRef.ref,
+            menu: "sibling",
           }),
         );
       } else if (model.pullNumber !== null) {
@@ -944,7 +953,7 @@
       } else {
         parts.label.textContent = model.button;
       }
-      parts.releaseCopies = window.metabrowser.mountRefCopies(parts.toggle, parts.buttonHost);
+      parts.releaseCopies = window.metabrowser.mountRefMenus(parts.toggle, parts.buttonHost);
     }
     parts.toggle.setAttribute("aria-expanded", String(model.open));
     parts.panel.hidden = !model.open;
@@ -1145,7 +1154,7 @@
     // "checked out" for the branch a checkout's HEAD is on, in words
     // (docs/design-system.md, "Branch Chips").
     name.appendChild(
-      window.metabrowser.refChip(row.ref, { label: row.name, kind: row.chip, copy: false }),
+      window.metabrowser.refChip(row.ref, { label: row.name, kind: row.chip, menu: false }),
     );
     main.append(name);
     if (row.default || row.checkedOut) {
@@ -1641,7 +1650,7 @@
       }
     });
     panel.append(workingTree, kinds, filter, list, note, error);
-    // The button's own box, which a ref chip's copy control is placed against, so that
+    // The button's own box, which a ref chip's menu trigger is placed against, so that
     // the list's containing block stays the toolbar and the list spans the pane. Drawn
     // by the server around its button, and adopted with it.
     const buttonHost =

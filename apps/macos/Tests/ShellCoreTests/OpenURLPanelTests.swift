@@ -39,6 +39,8 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
     /// answers the full one.
     @Test(arguments: [
         ("github.com/jlevy/kpress", "https://github.com/jlevy/kpress"),
+        ("jlevy/metabrowser", "https://github.com/jlevy/metabrowser"),
+        ("  Team-42/Example.docs_repo-2\n", "https://github.com/Team-42/Example.docs_repo-2"),
         ("GitHub.com/jlevy/kpress", "https://GitHub.com/jlevy/kpress"),
         ("www.github.com/jlevy/kpress", "https://www.github.com/jlevy/kpress"),
         ("github.com/jlevy/metabrowser/pull/539/files", "https://github.com/jlevy/metabrowser/pull/539/files"),
@@ -67,8 +69,8 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(GitHubLink.accepts(link))
     }
 
-    /// Anything not plainly a GitHub URL is left as it is: another host, a host with a user
-    /// name, a password, or a port, an SSH address, a path, and `owner/repo`.
+    /// The correction leaves other sites, credentials, ports, and explicit paths alone.
+    /// A repository shortcut has exactly two segments in the GitHub repository grammar.
     @Test(arguments: [
         "https://github.com/jlevy/kpress",
         "gitlab.com/jlevy/kpress",
@@ -91,11 +93,12 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         "/srv/git/kpress",
         "./jlevy/kpress",
         "jlevy",
-        "jlevy/kpress",
         "jlevy/kpress/",
-        "docs/macos-app.md",
-        "src/main.py",
+        "./docs/macos-app.md",
+        "../src/main.py",
         "jlevy/kpress/pull/1",
+        "jlevy/kpress?tab=readme",
+        "jlevy/kpress%2fother",
         "jlevy/kpress#12",
         "jlevy/.",
         "jlevy/..",
@@ -106,11 +109,9 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(OpenURLEntry.corrected(text) == text)
     }
 
-    /// The owner's answer of 2026-11-18 (bead `mb-m4mg`), which 2026-11-19 kept: the panel
-    /// takes no shorthand. `owner/repo` is refused as a relative path such as
-    /// `docs/macos-app.md` is, with the same words, and neither reaches `metab`.
-    @Test(arguments: ["jlevy/kpress", "docs/macos-app.md"])
-    func aShorthandIsRefusedAsAPathIs(_ text: String) {
+    /// Explicit filesystem paths and shorthand for pages inside a repository are refused.
+    @Test(arguments: ["./docs/macos-app.md", "jlevy/kpress/pull/1", "jlevy/kpress#12"])
+    func explicitPathsAndLongerShorthandAreRefused(_ text: String) {
         #expect(OpenURLEntry.corrected(text) == text)
         #expect(OpenURLEntry.link(text) == .failure(.notAFullURL))
         var panel = OpenURLPanel()
@@ -266,21 +267,23 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(panel.message == nil)
     }
 
-    /// Open writes text that is plainly a GitHub URL in full, says nothing about it, and
-    /// asks `metab` about the full URL, which the field now holds.
+    /// Open writes the URL in full in the field before it asks `metab`.
     @Test(arguments: [
-        "github.com/jlevy/metabrowser/pull/539",
-        " http://github.com/jlevy/metabrowser/pull/539\n",
-        "//github.com/jlevy/metabrowser/pull/539",
+        ("https://github.com/jlevy/metabrowser", repository),
+        ("github.com/jlevy/metabrowser", repository),
+        ("jlevy/metabrowser", repository),
+        ("github.com/jlevy/metabrowser/pull/539", pullRequest),
+        (" http://github.com/jlevy/metabrowser/pull/539\n", pullRequest),
+        ("//github.com/jlevy/metabrowser/pull/539", pullRequest),
     ])
-    func openWritesAGitHubURLInFull(_ typed: String) {
+    func openWritesAGitHubURLInFull(_ typed: String, _ expected: URL) {
         var panel = OpenURLPanel()
         panel.edit(typed)
         let opened = panel.open()
-        #expect(opened == pullRequest)
-        #expect(panel.text == pullRequest.absoluteString)
+        #expect(opened == expected)
+        #expect(panel.text == expected.absoluteString)
         #expect(panel.message == nil)
-        #expect(panel.phase == .checking(pullRequest))
+        #expect(panel.phase == .checking(expected))
     }
 
     /// The field holds the full URL, so a refusal of it, the panel's or `metab`'s, is about

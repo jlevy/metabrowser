@@ -1338,6 +1338,34 @@ def test_a_hard_link_appearing_during_creation_is_refused_untouched(
     assert _mode(outside) == 0o644
 
 
+def test_open_or_create_retries_if_an_entry_disappears_after_inspection(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ensure_private_directory(home)
+    _write_file(home, "temporary.lock", b"old")
+    path = home / "temporary.lock"
+    _swap_after_nofollow_stat(monkeypatch, path.name, path.unlink)
+
+    fd = open_private_file(home, path.name, os.O_RDWR | os.O_CREAT)
+    with os.fdopen(fd, "rb") as handle:
+        assert handle.read() == b""
+        assert stat.S_IMODE(os.fstat(handle.fileno()).st_mode) == PRIVATE_FILE_MODE
+    assert path.is_file()
+
+
+def test_open_without_create_reports_an_entry_removed_after_inspection(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ensure_private_directory(home)
+    _write_file(home, "temporary.lock", b"old")
+    path = home / "temporary.lock"
+    _swap_after_nofollow_stat(monkeypatch, path.name, path.unlink)
+
+    with pytest.raises(FileNotFoundError):
+        open_private_file(home, path.name, os.O_RDONLY)
+    assert not path.exists()
+
+
 @pytest.mark.parametrize("flags", [os.O_RDONLY, os.O_WRONLY], ids=["read", "write"])
 def test_a_file_swapped_for_a_fifo_mid_check_does_not_block(
     home: Path, monkeypatch: pytest.MonkeyPatch, flags: int

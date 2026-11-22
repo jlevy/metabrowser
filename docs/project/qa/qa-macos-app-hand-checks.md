@@ -321,7 +321,9 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 1. **The menu.** The File menu reads Open Folder… (Command-O), Open URL… (Command-L),
    then Open Recent. Command-L with a folder’s page focused, with a repository’s page
    focused, and with no window open shows a panel titled Open URL with its field
-   focused; Command-L again brings that panel forward and opens no second one.
+   focused. The three examples beneath the field read
+   `https://github.com/jlevy/metabrowser`, `github.com/jlevy/metabrowser`, and
+   `jlevy/metabrowser`. Command-L again brings the same panel forward.
 2. **A pull request.** Paste `$REPO/pull/517` and press Return: the panel closes, and
    the pull request opens as GitHub Links check 1 opens it, in the repository’s mirror:
    `pgrep -fl -- "metab $REPO/pull/517"` lists one server, and the title’s tooltip says
@@ -331,19 +333,21 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 3. **Each kind.** `$REPO`, `$REPO/tree/main/docs`, `$REPO/blob/main/README.md`, and
    `$REPO/commit/dcf2bcfa8` each bring the repository’s window forward at that page, as
    GitHub Links check 2 does.
-4. **The app’s refusals.** `jlevy/metabrowser`, `gitlab.com/jlevy/metabrowser`,
-   `git@github.com:jlevy/metabrowser.git`, `http://gitlab.com/jlevy/metabrowser`,
+4. **The app’s refusals.** `./jlevy/metabrowser`, `jlevy/metabrowser#517`,
+   `gitlab.com/jlevy/metabrowser`, `git@github.com:jlevy/metabrowser.git`,
+   `http://gitlab.com/jlevy/metabrowser`,
    `https://user:secret@github.com/jlevy/metabrowser`,
    `https://github.com:8443/jlevy/metabrowser`, and
    `https://gitlab.com/jlevy/metabrowser` each show a reason under the field, with no
    alert and no window; the panel stays open with the text, editing it clears the
    reason, and `log show --last 2m --predicate "subsystem == '$APP_ID'"` has no
    `Open URL…` line for any of them, since no `metab` ran.
-5. **An obvious URL is written in full.** `github.com/jlevy/metabrowser`,
-   `http://github.com/jlevy/metabrowser`, and `//github.com/jlevy/metabrowser` each show
-   `https://github.com/jlevy/metabrowser` in the field when Return is pressed, all of it
-   selected and the field still focused, with no message, and open the repository as
-   check 3 does. `github.com/jlevy/metabrowser/issues/1` shows
+5. **The repository URL is written in full.** `github.com/jlevy/metabrowser`,
+   `jlevy/metabrowser`, `http://github.com/jlevy/metabrowser`, and
+   `//github.com/jlevy/metabrowser` each show `https://github.com/jlevy/metabrowser` in
+   the field when Return is pressed, all of it selected and the field still focused,
+   with no message, and open the repository as check 3 does.
+   `github.com/jlevy/metabrowser/issues/1` shows
    `https://github.com/jlevy/metabrowser/issues/1` in the field, selected, and `metab`’s
    message about issues pages under it.
 6. **`metab`’s refusals.** `$REPO/issues/1` shows `metab`’s message about issues pages,

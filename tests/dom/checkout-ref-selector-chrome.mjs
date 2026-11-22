@@ -584,6 +584,56 @@ try {
   await openPanel("Tags");
   result.toTag = await switchBy(rowNamed("v1"));
   result.tag = await chrome.evaluate(PAGE);
+  result.tagMenu = await chrome.evaluate(`(async () => {
+    const chip = document.querySelector(".source-ref-selector-label [data-ref-menu]");
+    const before = chip.getBoundingClientRect().width;
+    chip.closest("button").focus();
+    const trigger = document.querySelector(".source-ref-selector-button button[data-ref-menu]");
+    const modifiedArrow = new KeyboardEvent("keydown", {
+      key: "ArrowDown", bubbles: true, cancelable: true, metaKey: true,
+    });
+    const arrowLeftAlone = trigger.dispatchEvent(modifiedArrow) &&
+      document.querySelector("[data-ref-action-menu]") === null;
+    chip.click();
+    const menu = document.querySelector("[data-ref-action-menu]");
+    const copy = menu.querySelector("button");
+    let copied;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true, value: { writeText: async (name) => { copied = name; } },
+    });
+    copy.click();
+    await Promise.resolve();
+    delete navigator.clipboard;
+    const answer = {
+      context: menu.getAttribute("aria-label"),
+      items: [...menu.querySelectorAll(".menu-item")].map(item => item.textContent),
+      copied,
+      widthChanged: chip.getBoundingClientRect().width !== before,
+      caret: getComputedStyle(trigger.querySelector("svg")).transform,
+    };
+    const modifiedEscape = new KeyboardEvent("keydown", {
+      key: "Escape", bubbles: true, cancelable: true, metaKey: true,
+    });
+    answer.chordsLeftAlone = arrowLeftAlone && copy.dispatchEvent(modifiedEscape) && menu.isConnected;
+    copy.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    answer.dismissed = document.querySelector("[data-ref-action-menu]") === null;
+
+    const fork = window.metabrowser.refChip("topic/nested", {
+      label: "forker:topic/nested", kind: "remote", repository: "forker/demo",
+      ref: "refs/remotes/origin/topic/nested",
+    });
+    document.querySelector(".header-path").after(fork);
+    fork.click();
+    const forkMenu = document.querySelector("[data-ref-action-menu]");
+    answer.fork = {
+      context: forkMenu.getAttribute("aria-label"),
+      url: forkMenu.querySelector("a").href,
+      actions: [...forkMenu.querySelectorAll(".menu-item")].map(item => item.textContent),
+    };
+    fork.click();
+    fork.remove();
+    return answer;
+  })()`);
   await openPanel();
   result.toWorkingTree = await switchBy(
     `document.querySelector(".source-ref-selector-working-tree")`,
@@ -654,7 +704,18 @@ try {
   result.commitsSwitched = { statuses, at: await chrome.evaluate(STALE_AT) };
   await capture("commits-stale");
 
-  result.documents = documents;
+  result.documents = documents.slice();
+  // The history chip selects its exact ref using the same source route as the chooser.
+  await chrome.evaluate(`[...document.querySelectorAll('[class$="graph-row"] [data-ref-menu]')]
+    .find(chip => JSON.parse(chip.getAttribute("data-ref-menu")).ref === "refs/tags/v1").click();
+    [...document.querySelectorAll("[data-ref-action-menu] button")]
+      .find(item => item.textContent === "View This Tag").click(); true`);
+  await chrome.waitFor(
+    `window.METABROWSER_SOURCE_PIN?.ref === "refs/tags/v1" && ${MOUNTED}`,
+    30000,
+  );
+  result.tagFromHistory = await chrome.evaluate(PAGE);
+
   console.log(JSON.stringify(result));
 } finally {
   await chrome.close();

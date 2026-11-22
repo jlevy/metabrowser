@@ -38,7 +38,9 @@ _PACKAGE = Path(server.__file__).parent
 _REPO = Path(__file__).resolve().parents[1]
 _SESSION = "tests/dom/key-reveal-session.js"
 # A listener registered by name, or through a list of event types it loops over.
-_KEYDOWN_LISTENER = re.compile(r'addEventListener\(\s*"keydown"|\[[^\]\[]*"keydown"[^\]\[]*\]')
+_KEYDOWN_LISTENER = re.compile(
+    r'addEventListener(?:\?\.)?\(\s*"keydown"|\[[^\]\[]*"keydown"[^\]\[]*\]'
+)
 _ADD_LISTENER = re.compile(r"addEventListener(?:\?\.)?\(")
 _GUARD = "if (event.altKey || event.ctrlKey || event.metaKey) { return; }"
 
@@ -148,6 +150,16 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             _GUARD,
             via=("handleGutterKey",),
             unmounted="the gutter's own guard, which this PR did not change",
+        ),
+        Listener(
+            "the ref menu's navigation and Escape; Tab and Option-Tab leave it",
+            _GUARD,
+            checks=("tests/dom/checkout-ref-selector-chrome.mjs",),
+        ),
+        Listener(
+            "ArrowDown and ArrowUp opening a ref's action menu",
+            _GUARD,
+            checks=("tests/dom/checkout-ref-selector-chrome.mjs",),
         ),
         Listener(
             "the View on GitHub chevron's ArrowDown and ArrowUp, which open its menu",

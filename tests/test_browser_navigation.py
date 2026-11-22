@@ -19,6 +19,7 @@ from metabrowser.view_routes import (
     format_inventory_view_href,
     format_view_href,
 )
+from tests.held_port import listener_on
 from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -259,7 +260,9 @@ def test_serve_cli_emits_segment_encoded_direct_view_url(tmp_path: Path) -> None
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(
             _app,
@@ -294,7 +297,9 @@ def test_serve_cli_emits_the_canonical_root_url_without_a_selected_path(
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, [str(tmp_path), "--no-open"])
 
