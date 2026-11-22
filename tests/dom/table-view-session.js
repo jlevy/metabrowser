@@ -721,11 +721,35 @@ async function refusals() {
   bad.handle.dispose();
   bad.container.remove();
 
+  let watchState;
+  sdk.watchFile = (_file, options) => {
+    watchState = options.onState;
+    return () => {};
+  };
   const none = mount("people.csv", "f.name=eq:Zed");
   await ready(none);
   step("a filter no row matches", { requests: takeRequests(), ...shown(none) });
+  watchState("live", null);
+  const empty = find(none.container, hasClass("table-empty"));
+  assert.ok(empty, "watch confirmation preserves the empty state");
+  assert.match(text(empty), /^No rows match\./);
+  const clear = find(empty, hasClass("table-clear"));
+  assert.ok(clear);
+  hold = [];
+  click(clear);
+  await settle();
+  assert.equal(hold.length, 1, "the unfiltered query is pending");
+  assert.deepEqual(takeRequests(), ["rows?limit=200&path=people.csv"]);
+  watchState("live", null);
+  assert.equal(shown(none).empty, null, "the old empty answer does not describe the new query");
+  const [release] = hold;
+  hold = null;
+  release();
+  await settle();
+  assert.equal(rowsOf(none).length, 5);
   none.handle.dispose();
   none.container.remove();
+  delete sdk.watchFile;
 
   const opened = mount("people.csv", "record=%404");
   await ready(opened);

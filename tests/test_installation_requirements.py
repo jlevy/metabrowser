@@ -2,7 +2,8 @@
 
 The values live in code: `requires-python` in `pyproject.toml`, `LSMinimumSystemVersion`
 in the app's `Info.plist` with the `platforms` floor in `Package.swift`, the default
-`ARCHES` in `apps/macos/scripts/build-app.sh`, `swift-tools-version` in `Package.swift`,
+`ARCHES` (`default_arches` in `apps/macos/scripts/common.sh`), `swift-tools-version` in
+`Package.swift`,
 and the oldest Xcode the app's CI job selects. A user needs the figures themselves, so
 the installation guide restates them, and this test is what lets it: a change to any
 source fails here until the guide says the new value.
@@ -23,7 +24,7 @@ GUIDE = REPO_ROOT / "docs/installation.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 INFO_PLIST = REPO_ROOT / "apps/macos/Resources/Info.plist"
 PACKAGE_SWIFT = REPO_ROOT / "apps/macos/Package.swift"
-BUILD_APP = REPO_ROOT / "apps/macos/scripts/build-app.sh"
+COMMON_SH = REPO_ROOT / "apps/macos/scripts/common.sh"
 APP_WORKFLOW = REPO_ROOT / ".github/workflows/macos-app.yml"
 
 # What the guide writes for each figure. A figure the guide states anywhere must be the
@@ -71,9 +72,7 @@ def read_sources() -> Sources:
     )
     swift = _one(r"^// swift-tools-version:\s*(\d+(?:\.\d+)*)", package, PACKAGE_SWIFT)
 
-    arches = _one(
-        r'^arches="\$\{ARCHES:-([^}]*)\}"', BUILD_APP.read_text(encoding="utf-8"), BUILD_APP
-    )
+    arches = _one(r'^default_arches="([^"]*)"$', COMMON_SH.read_text(encoding="utf-8"), COMMON_SH)
 
     workflow = yaml.safe_load(APP_WORKFLOW.read_text(encoding="utf-8"))
     included = workflow["jobs"]["app"]["strategy"]["matrix"]["include"]
@@ -107,7 +106,7 @@ def findings(guide: str, sources: Sources) -> list[str]:
             found.append(f"does not say the app is built for {_APPLE_SILICON}")
     else:
         found.append(
-            f"build-app.sh builds {' '.join(sources.arches)} by default; say which Macs the "
+            f"the app is built for {' '.join(sources.arches)} by default; say which Macs the "
             "app runs on, then update this test"
         )
     return found

@@ -8,6 +8,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
+const { createSdkSandbox } = require("./sdk-sandbox.js");
+
 const repoRoot = path.resolve(process.argv[2]);
 const failures = [];
 
@@ -79,31 +81,23 @@ function makeDocument({ highlighted = false, missingCode = false, warning = null
   return { doc, code, host, warning };
 }
 
-const sandbox = {
-  console,
-  document: {
-    createTextNode: (data) => ({ data }),
-    createDocumentFragment: () => ({
-      fragment: true,
-      children: [],
-      appendChild(node) {
-        this.children.push(node);
-        return node;
-      },
-    }),
+// The SDK's view helpers come first, as they do on a page that shows a source view:
+// an append normalizes line endings with the function the first render used, which
+// lives beside the line anchors in plugin-sdk-views.js.
+const sandbox = createSdkSandbox();
+sandbox.document.createTextNode = (data) => ({ data });
+sandbox.document.createDocumentFragment = () => ({
+  fragment: true,
+  children: [],
+  appendChild(node) {
+    this.children.push(node);
+    return node;
   },
-  Math,
-  Number,
-  Object,
-  String,
-};
+});
 const moduleSource = fs.readFileSync(
   path.join(repoRoot, "src/metabrowser/static/source-append.js"),
   "utf-8",
 );
-sandbox.window = sandbox;
-sandbox.globalThis = sandbox;
-vm.createContext(sandbox);
 vm.runInContext(moduleSource, sandbox, { filename: "source-append.js" });
 
 const api = sandbox.MetabrowserSourceAppend;
@@ -180,6 +174,103 @@ check(
 }
 
 check("a missing root refuses", api.appendSourceText(null, "x") === false);
+
+// ── Line endings ──────────────────────────────────────────────────
+//
+// A view's first render shows CRLF and a lone CR as one LF each, and counts its lines
+// from that text. Load more appends text nodes, which no HTML parser reads, so the
+// append owes the same normalization, through the same function. A file is loaded in
+// parts cut at byte offsets, so a CRLF can straddle two parts: the CR ended a line in
+// the first, and the LF that starts the next must not end another.
+const anchors = sandbox.MetabrowserSourceLineAnchors;
+const normalize = anchors.normalizeLineEndings;
+check("LF text is unchanged", normalize("a\nb\n") === "a\nb\n");
+check("CRLF becomes LF", normalize("a\r\nb\r\n") === "a\nb\n");
+check("a lone CR becomes LF", normalize("a\rb\r") === "a\nb\n");
+check("CR CR LF is two line endings", normalize("a\r\r\nb") === "a\n\nb");
+check("an LF after a part that ended in CR is dropped", normalize("\nb", true) === "b");
+check("only that one LF is dropped", normalize("\n\nb", true) === "\nb");
+check("without the flag a leading LF stays", normalize("\nb") === "\nb");
+check("after a CR, other text is unchanged", normalize("b\r\n", true) === "b\n");
+
+/** What a view shows after it opens with `parts[0]` and Load more appends the rest. */
+function loadInParts(parts) {
+  const { doc, code } = makeDocument();
+  // The first render: renderSourceView writes the normalized text as the code's markup.
+  code.appendChild({ data: normalize(parts[0]) });
+  let loaded = parts[0];
+  for (const part of parts.slice(1)) {
+    check(
+      `appending ${JSON.stringify(part)} reports success`,
+      api.appendSourceText(doc, part, loaded) === true,
+    );
+    loaded += part;
+  }
+  return code.text;
+}
+
+const lineEndingTexts = {
+  LF: "one\ntwo\n\nfour\n",
+  CRLF: "one\r\ntwo\r\n\r\nfour\r\n",
+  "lone CR": "one\rtwo\r\rfour\r",
+  mixed: "one\r\ntwo\rthree\n\r\n\r\rsix\n\rlast",
+};
+for (const [label, text] of Object.entries(lineEndingTexts)) {
+  const whole = normalize(text);
+  check(`${label}: the whole text has no CR`, !whole.includes("\r"), JSON.stringify(whole));
+  // Every place the text can be cut in two, a CRLF's middle among them, and in three.
+  for (let first = 1; first < text.length; first += 1) {
+    const two = loadInParts([text.slice(0, first), text.slice(first)]);
+    check(
+      `${label} cut at ${first}: the view shows the normalized text`,
+      two === whole,
+      JSON.stringify(two),
+    );
+    check(
+      `${label} cut at ${first}: the gutter counts the same lines`,
+      anchors.countLines(two) === anchors.countLines(whole),
+      `${anchors.countLines(two)} lines, not ${anchors.countLines(whole)}`,
+    );
+    for (let second = first + 1; second < text.length; second += 1) {
+      const three = loadInParts([
+        text.slice(0, first),
+        text.slice(first, second),
+        text.slice(second),
+      ]);
+      check(
+        `${label} cut at ${first} and ${second}: the view shows the normalized text`,
+        three === whole,
+        JSON.stringify(three),
+      );
+    }
+  }
+}
+
+{
+  // The cases by name, so a failure says which one.
+  check(
+    "appended CRLF lines show as LF lines",
+    loadInParts(["one\r\n", "two\r\nthree\r\n"]) === "one\ntwo\nthree\n",
+  );
+  check(
+    "appended lone-CR lines show as lines, not one line",
+    loadInParts(["one\r", "two\rthree\r"]) === "one\ntwo\nthree\n",
+  );
+  const split = loadInParts(["one\r", "\ntwo\r\n"]);
+  check("a CRLF cut between its CR and LF is one line ending", split === "one\ntwo\n", split);
+  check("a part that is only that LF appends nothing", loadInParts(["one\r", "\n"]) === "one\n");
+  check(
+    "a CR that ends one part and a CR that starts the next are two line endings",
+    loadInParts(["one\r", "\rtwo"]) === "one\n\ntwo",
+  );
+}
+
+// The normalization lives with the line anchors. A page without them is not a shape
+// the append can fill, so it refuses and the caller renders the view again.
+check(
+  "an append without the line anchors refuses",
+  bareApi.appendSourceText(makeDocument().doc, "x") === false,
+);
 
 // ── Text nodes of at most 64 KiB ──────────────────────────────────
 //

@@ -65,6 +65,8 @@ const check = (label, ok, detail = "") => {
 // the move, which ends the node ID Chrome gave the node, came between DOM.querySelector
 // and CSS.getPlatformFontsForNode ("Could not find node with given id", in CI). So a probe
 // waits for its text outside any inert subtree, where the shell leaves it.
+// A commit body also holds hidden plain text in the pane while its Markdown arrives.
+// Wait for the visible text holder, which can replace that placeholder.
 const MARK = `async (probes, waitMs, pollMs) => {
   const unstaged = (node) => node.closest("[inert]") === null;
   const holder = (probe) => {
@@ -73,7 +75,7 @@ const MARK = `async (probes, waitMs, pollMs) => {
     return [scope, ...scope.querySelectorAll("*")].find((node) =>
       [...node.childNodes].some(
         (child) => child.nodeType === 3 && child.textContent.includes(probe.text),
-      ),
+      ) && getComputedStyle(node).visibility === "visible",
     ) ?? null;
   };
   // The probe's h2, by its text, when the probe names one.

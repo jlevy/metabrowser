@@ -37,10 +37,12 @@ env:
 
 jobs:
   plan:
-    # Reads whether main is red, and decides the Chrome tier's interpreters and whether
+    # Reads whether main is red, and decides which path the run takes, the short one of
+    # a pull request or main's whole matrix: each tier's interpreters and parts, whether
+    # the Chrome tier runs and with its slow tests, the admitted Gits, and whether
     # stack-integration has anything to check (devtools/ci_plan.sh). It always runs and
     # writes the event, the base, main's state, both trees, and its decisions to its
-    # summary, so a skipped stack-integration still says why.
+    # summary, so a skipped chrome or stack-integration still says why.
     runs-on: ubuntu-latest
     # 0.1 minutes on runs 44037230262, 44038762653, and 44041984874; a limit is whole
     # minutes.
@@ -51,7 +53,15 @@ jobs:
       contents: read
       actions: read
     outputs:
-      chrome-pythons: ${{ steps.decide.outputs.chrome-pythons }}
+      path: ${{ steps.decide.outputs.path }}
+      pythons: ${{ steps.decide.outputs.pythons }}
+      chrome: ${{ steps.decide.outputs.chrome }}
+      chrome-target: ${{ steps.decide.outputs.chrome-target }}
+      unit-shards: ${{ steps.decide.outputs.unit-shards }}
+      goldens-shards: ${{ steps.decide.outputs.goldens-shards }}
+      chrome-shards: ${{ steps.decide.outputs.chrome-shards }}
+      admitted-git-shards: ${{ steps.decide.outputs.admitted-git-shards }}
+      admitted-gits: ${{ steps.decide.outputs.admitted-gits }}
       integration: ${{ steps.decide.outputs.integration }}
       main-sha: ${{ steps.decide.outputs.main-sha }}
       main-state: ${{ steps.decide.outputs.main-state }}
@@ -76,11 +86,19 @@ jobs:
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
           # Every interpreter main runs each tier on, and the one a pull request runs
-          # the Chrome tier on while main is green. check_ci.py holds both, and the unit
-          # and goldens matrices, to pyproject.toml's classifiers and the free-threaded
-          # build.
+          # them on while main is green. check_ci.py holds both to pyproject.toml's
+          # classifiers and the free-threaded build, and every tier's matrix to this
+          # job's outputs.
           PYTHONS: '["3.12", "3.13", "3.14", "3.14t"]'
           PR_CHROME_PYTHON: "3.13"
+          # The Git releases admitted-git builds on main: ACQUISITION_MINIMUM,
+          # ACQUISITION_NEWEST_PATCHED, and a release at or above FILE_AGES_GIT_MINIMUM
+          # (metabrowser/git/file_ages.py); and the one a pull request builds while main
+          # is green, the minimum, which is the security floor. Checksums are pinned in
+          # devtools/build_admitted_git.sh; check_supply_chain.py requires both floors
+          # here, and the pull request's to be the minimum.
+          ADMITTED_GITS: '["2.43.7", "2.50.1", "2.56.1"]'
+          PR_ADMITTED_GIT: "2.43.7"
         run: bash devtools/ci_plan.sh
 
   lint:
@@ -147,21 +165,28 @@ jobs:
         run: make build
 
   unit:
-    # The parallel tier, in two parts of whole files on each interpreter. Whole, under
-    # xdist, it ran past the time at which the fast CI plan splits a job (Time Limits),
-    # and xdist sped it up less than the factor below which the plan splits it from the
-    # start (Testing Strategy). Phase 1 Measurements in the plan has the times and the
-    # factor.
-    name: unit (${{ matrix.python-version }}, ${{ matrix.shard }}/2)
+    # The parallel tier, in parts of whole files: two on each interpreter on the main
+    # path, and four on one interpreter for a pull request while main is green (the
+    # plan job's pythons and unit-shards; devtools/ci_plan.sh says why those counts).
+    # Whole, under xdist, it ran past the time at which the fast CI plan splits a job
+    # (Time Limits), and xdist sped it up less than the factor below which the plan
+    # splits it from the start (Testing Strategy). Phase 1 Measurements in the plan has
+    # the times and the factor.
+    needs: plan
+    name: unit (${{ matrix.python-version }}, ${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14", "3.14t"]
-        shard: [1, 2]
+        python-version: ${{ fromJSON(needs.plan.outputs.pythons) }}
+        shard: ${{ fromJSON(needs.plan.outputs.unit-shards) }}
     runs-on: ubuntu-latest
-    # The second part, which holds the slower files, sets it: 90th percentile 4.2 minutes
-    # and longest 4.7 over its 23 successful jobs in runs 44037230262 to 44046843606,
-    # stack-integration's included; the first part's is 2.6.
+    # 3.2 to 5.0 minutes over the eight jobs of run 45066732637 (193 to 299 seconds, the
+    # longest on 3.14t), with the parts dealt by the measured time of 55 of the 465
+    # files; dealt by all of them the two parts hold the same seconds of tests
+    # (devtools/shard_weights.json). Before the parts were dealt by time the second set
+    # it: 90th percentile 4.2 minutes over 23 jobs in runs 44037230262 to 44046843606.
+    # The main path sets the limit: a pull request's parts took 2.5 to 3.2 minutes in
+    # three (run 45069289704).
     timeout-minutes: 7
     steps:
       - name: Checkout
@@ -188,26 +213,28 @@ jobs:
         run: uv python install
 
       - name: Run the parallel tier
-        run: make test-parallel SHARD=${{ matrix.shard }}/2
+        run: make test-parallel SHARD=${{ matrix.shard }}
 
   goldens:
-    # The goldens, then the serial tier, in two parts on every interpreter. The serial
-    # tier rides here so that it has the machine to itself and adds no job, and it is
-    # dealt into the same two parts (by test), so each part runs its half of the goldens
-    # and then its half of the serial tier, which keeps the serial tests alone on the
-    # machine and keeps the parts the same length.
-    name: goldens and serial (${{ matrix.python-version }}, ${{ matrix.shard }}/2)
+    # The goldens, then the serial tier, in three parts on each of the plan job's
+    # interpreters (pythons and goldens-shards). The serial tier rides here so that it
+    # has the machine to itself and adds no job, and it is dealt into the same number of
+    # parts (by test), so each part runs its third of the goldens and then its third of
+    # the serial tier, which keeps the serial tests alone on the machine and keeps the
+    # parts the same length.
+    needs: plan
+    name: goldens and serial (${{ matrix.python-version }}, ${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14", "3.14t"]
-        shard: [1, 2]
+        python-version: ${{ fromJSON(needs.plan.outputs.pythons) }}
+        shard: ${{ fromJSON(needs.plan.outputs.goldens-shards) }}
     runs-on: ubuntu-latest
-    # 2.7 to 3.3 minutes over the eight jobs of run 44795249295 (the longest the 3.14t
-    # second part's 200 seconds, the shortest the 3.13 first part's 161), against 5.0 to
-    # 5.8 at the 90th percentile (make ci-report, 2026-11-20) for the one job that ran
-    # both parts, which the 3.14t run 44788801411 hit the old 6 minutes with. A part
-    # holds about half the goldens by size and half the serial tests.
+    # Three parts since 2026-11-22. In two, dealt evenly by measured time, the eight
+    # jobs of run 45066732637 took 2.8 to 3.9 minutes (165 to 234 seconds, the slowest
+    # on 3.12 and 3.14t), which is at the 4.0 the nightly check allows of this limit:
+    # the goldens had grown since the 2.7 to 3.3 of run 44795249295. A part now holds
+    # about a third of the goldens and of the serial tests, by measured time.
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -234,29 +261,37 @@ jobs:
         run: uv python install
 
       - name: Run the goldens
-        run: make test-goldens SHARD=${{ matrix.shard }}/2
+        run: make test-goldens SHARD=${{ matrix.shard }}
 
       # After the goldens, so the serial tier has the machine to itself; it runs when a
       # golden failed too, so the job reports both.
       - name: Run the serial tier
         if: ${{ !cancelled() }}
-        run: make test-serial SHARD=${{ matrix.shard }}/2
+        run: make test-serial SHARD=${{ matrix.shard }}
 
   chrome:
-    # The Chrome tier in four parts: on PR_CHROME_PYTHON for a pull request while main
-    # is green, and on every interpreter for a push to main and for a pull request
-    # while main is red (the plan job's chrome-pythons).
+    # The Chrome tier in four parts. A push to main, and a pull request while main is
+    # red, run all of it on every interpreter (make test-chrome). A pull request while
+    # main is green runs it on PR_CHROME_PYTHON without its slow tests (make
+    # test-chrome-fast), and not at all when its change touches no browser path; the
+    # plan job decides (chrome, chrome-target, pythons, and chrome-shards) and its
+    # summary says from which paths, and ci-ok accepts the skip only when it decided
+    # none.
     needs: plan
-    name: chrome (${{ matrix.python-version }}, ${{ matrix.shard }}/4)
+    if: needs.plan.outputs.chrome != 'none'
+    name: chrome (${{ matrix.python-version }}, ${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        python-version: ${{ fromJSON(needs.plan.outputs.chrome-pythons) }}
-        shard: [1, 2, 3, 4]
+        python-version: ${{ fromJSON(needs.plan.outputs.pythons) }}
+        shard: ${{ fromJSON(needs.plan.outputs.chrome-shards) }}
     runs-on: ubuntu-latest
-    # The second part sets it: 90th percentile 4.3 minutes and longest 4.4 over its nine
-    # successful jobs in runs 44037230262 to 44046843606, stack-integration's included.
-    # The other parts' are 2.0 to 2.7, since a few tests take most of the tier's time.
+    # 4.0 to 4.4 minutes over the sixteen jobs of run 45066732637 (238 to 263 seconds),
+    # every part alike, since the parts are dealt by measured time
+    # (devtools/shard_weights.json). Dealt by rank in node-ID order, the first part took
+    # 6.0 to 6.6 minutes on run 45062416967 and the others 2.7 to 4.7. The main path
+    # sets the limit: a pull request's parts, without the slow tests, took 2.5 to 2.7
+    # minutes (run 45069289704).
     timeout-minutes: 7
     steps:
       - name: Checkout
@@ -283,7 +318,7 @@ jobs:
         run: uv python install
 
       - name: Run the Chrome tier
-        run: make test-chrome SHARD=${{ matrix.shard }}/4
+        run: make ${{ needs.plan.outputs.chrome-target }} SHARD=${{ matrix.shard }}
 
   admitted-git:
     # Production refuses repository acquisition below the Git security floor
@@ -300,18 +335,24 @@ jobs:
     # with nothing patched. METABROWSER_REQUIRE_ADMITTED_GIT turns their below-floor
     # skip into a failure and fails when a different Git answers, so the job cannot
     # pass by testing nothing. Pins and review: SUPPLY-CHAIN-SECURITY.md.
-    name: admitted-git (${{ matrix.git }})
+    #
+    # A push to main, and a pull request while main is red, build all three (the plan
+    # job's ADMITTED_GITS). A pull request while main is green builds the lowest alone,
+    # which is the floor, and runs its tests in two parts of whole files (admitted-gits
+    # and admitted-git-shards).
+    needs: plan
+    name: admitted-git (${{ matrix.git }}, ${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        # ACQUISITION_MINIMUM, ACQUISITION_NEWEST_PATCHED, and a release at or above
-        # FILE_AGES_GIT_MINIMUM (metabrowser/git/file_ages.py). Checksums are pinned in
-        # devtools/build_admitted_git.sh; check_supply_chain.py requires both floors here.
-        git: ["2.43.7", "2.50.1", "2.56.1"]
+        git: ${{ fromJSON(needs.plan.outputs.admitted-gits) }}
+        shard: ${{ fromJSON(needs.plan.outputs.admitted-git-shards) }}
     runs-on: ubuntu-latest
     # 2.7 to 4.1 minutes under xdist over the six jobs of run 44026747033's first three
     # attempts and 2.7 to 3.9 over runs 44037230262 and 44038762653, with the build
-    # cached; building Git took 0.8 to 1.4 more on a cache miss (run 43576279668).
+    # cached; building Git took 0.8 to 1.4 more on a cache miss (run 43576279668). The
+    # main path sets the limit: a pull request's two parts of the lowest release took
+    # 2.4 and 2.7 minutes (run 45069289704).
     timeout-minutes: 8
     steps:
       - name: Checkout
@@ -381,7 +422,7 @@ jobs:
       - name: Run acquisition and full-clone acceptance on the admitted Git
         env:
           METABROWSER_REQUIRE_ADMITTED_GIT: ${{ matrix.git }}
-        run: make test-admitted-git
+        run: make test-admitted-git SHARD=${{ matrix.shard }}
 
   stack-integration:
     # A pull request in an informal chain, its base another branch and no GitHub stack,
@@ -481,6 +522,7 @@ jobs:
         env:
           RESULTS: ${{ toJSON(needs) }}
           INTEGRATION: ${{ needs.plan.outputs.integration }}
+          CHROME: ${{ needs.plan.outputs.chrome }}
           MAIN_STATE: ${{ needs.plan.outputs.main-state }}
           MAIN_RUN: ${{ needs.plan.outputs.main-run }}
           MAIN_RUN_SHA: ${{ needs.plan.outputs.main-run-sha }}

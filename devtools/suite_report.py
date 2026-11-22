@@ -320,6 +320,16 @@ def _seconds(stamp: str) -> float:
     return datetime.fromisoformat(whole + "+00:00").timestamp() + float(f"0.{fraction or 0}")
 
 
+def log_lines(text: str) -> list[str]:
+    """Each line of a log as the command printed it: no job, step, timestamp, or colour."""
+
+    return [
+        _ANSI.sub("", match["text"]).rstrip()
+        for line in text.splitlines()
+        if (match := _LOG_LINE.match(line))
+    ]
+
+
 def parse_log(text: str, *, job: str = "") -> Run:
     """Read one job of a log: the one named, or the first that ran pytest."""
 

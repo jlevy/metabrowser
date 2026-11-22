@@ -431,10 +431,9 @@ async function main() {
       links: __t().qa(".table-reset").length,
     })`);
     phase("records");
-    const waitForCell = (text) =>
-      chrome.waitFor(
-        `__t().qa(".table-cell").some((cell) => cell.textContent === ${JSON.stringify(text)})`,
-      );
+    const hasCell = (text) =>
+      `__t().qa(".table-cell").some((cell) => cell.textContent === ${JSON.stringify(text)})`;
+    const waitForCell = (text) => chrome.waitFor(hasCell(text));
     const initialise = (db, text) => {
       db.exec("CREATE TABLE events (id INTEGER PRIMARY KEY, note TEXT NOT NULL)");
       db.prepare("INSERT INTO events VALUES (?, ?)").run(1, text);
@@ -486,10 +485,20 @@ async function main() {
       searchDb.close();
     }
     await open("search.sqlite/notes?q=needle", 0);
-    await chrome.waitFor(`__t().q(".table-continue")?.textContent === "Continue search"`);
-    await chrome.evaluate(`__t().q(".table-continue").click()`);
-    await chrome.waitFor(`__t().q(".table-empty")?.textContent.includes("16,384")`);
-    await chrome.evaluate(`__t().q(".table-continue").click()`);
+    const resume = `__t().q(".table-continue")`;
+    const examined = `Number(__t().q(".table-empty")?.textContent.match(/first (.+?) rows\\./)?.[1]?.replace(/\\D/g, "") ?? 0)`;
+    await chrome.waitFor(`${resume}?.textContent === "Continue search" && ${examined} > 0`);
+    const first = await chrome.evaluate(examined);
+    await chrome.evaluate(`${resume}.click()`);
+    // The first click ends before the match. A time budget can shorten any scan window.
+    await chrome.waitFor(`${examined} > ${first}`);
+    const found = hasCell("last needle");
+    for (let step = 0; step < 6 && !(await chrome.evaluate(found)); step++) {
+      await chrome.waitFor(`${resume}?.disabled === false`);
+      const previous = await chrome.evaluate(examined);
+      await chrome.evaluate(`${resume}.click()`);
+      await chrome.waitFor(`${found} || ${examined} > ${previous}`);
+    }
     await waitForCell("last needle");
     measured.sqliteSearch = await chrome.evaluate(`!__t().q(".table-continue")`);
     phase("sqlite-search");

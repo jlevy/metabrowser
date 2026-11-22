@@ -240,7 +240,8 @@ def test_shell_keeps_retained_preview_steady_and_animates_only_arrival() -> None
         "preview.replaceChildren(...replacementNodes)"
     )
     assert "preview.innerHTML = html" not in file_render
-    assert "animatePreviewContentArrival(arrivalContent)" in file_render
+    # The view in front at the commit, which a tab chosen during the hold may have changed.
+    assert "animatePreviewContentArrival(arrived)" in file_render
     assert "preview.animate(" not in file_render
 
     stage = app[app.index("function createFilePreviewStage") :][:1_000]
