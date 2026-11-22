@@ -107,6 +107,8 @@ public nonisolated enum RecentTargets {
     /// How soon after one answer the next is asked for. A menu asks whenever it opens,
     /// and AppKit can ask a menu to update several times for one click.
     public static let refreshInterval: Duration = .seconds(2)
+    /// The most recent targets shown in a native menu.
+    public static let menuLimit = 16
 
     /// The mode that lists the targets. Setup refuses a `metab` without it
     /// (`RuntimeDiscovery.validate`), so every `metab` the app runs has the four modes.
@@ -220,12 +222,12 @@ public nonisolated enum RecentTargets {
         case dock
     }
 
-    /// The lines of `menu` for `count` items. Both menus hold every item, in the list's
-    /// order, so the Dock and File > Open Recent never disagree. Open Recent says when
+    /// The lines of `menu` for `count` items. Both menus show up to `menuLimit` in the
+    /// list's order, so the Dock and File > Open Recent agree. Open Recent says when
     /// there are none and ends with Clear Menu; the Dock's holds the items alone, and
     /// nothing when there are none.
     public static func rows(for menu: Menu, count: Int) -> [Row] {
-        let targets = (0..<count).map(Row.target)
+        let targets = (0..<min(count, menuLimit)).map(Row.target)
         switch menu {
         case .dock: return targets
         case .openRecent: return (targets.isEmpty ? [.empty] : targets) + [.separator, .clear]

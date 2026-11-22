@@ -5,9 +5,8 @@ import ShellCore
 /// (`RecentTargets`).
 ///
 /// `metab` keeps the list, so the menus hold what the user opened lately, in this app, in
-/// the other build of it, or with `metab` in Terminal, up to `metab`'s own cap, and the
-/// app decides nothing about membership or order. Both menus are drawn from one answer,
-/// so they list the same targets in the same order (`RecentTargets.rows`).
+/// the other build of it, or with `metab` in Terminal. Both menus show the most recent
+/// entries from one answer, up to `RecentTargets.menuLimit` (`RecentTargets.rows`).
 ///
 /// A menu shows the last answer at once. The app asks again when it becomes active, when
 /// File > Open Recent opens, when the Dock menu is asked for, and once the server it

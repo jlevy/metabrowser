@@ -172,6 +172,14 @@ import Testing
         #expect(rows[3].target == .recent(URL(filePath: "/Volumes/Home/d", directoryHint: .isDirectory)))
     }
 
+    @Test func theTitleMenuCapsRecentTargetsAfterRemovingOpenFolders() {
+        let folders = [open("/Volumes/Home/recent0", .here)]
+        let recents = (0..<20).map { recent("/Volumes/Home/recent\($0)") }
+        let rows = FolderChooser.menuRows(open: folders, recent: recents, home: Self.home)
+        #expect(rows.filter { $0.section == .open }.map(\.title) == ["recent0"])
+        #expect(rows.filter { $0.section == .recent }.map(\.title) == (1...16).map { "recent\($0)" })
+    }
+
     @Test func anOpenRepositoryIsNotListedAgainAmongTheRecent() {
         let rows = FolderChooser.menuRows(
             open: [open("https://github.com/o/r", .background, mark: .mirror)],

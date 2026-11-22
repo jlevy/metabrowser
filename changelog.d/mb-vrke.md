@@ -1,0 +1,1 @@
+- The macOS title-bar folder chooser and Open Recent menu show up to 16 recent targets.
