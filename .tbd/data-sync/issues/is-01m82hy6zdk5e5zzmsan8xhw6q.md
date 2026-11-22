@@ -5,15 +5,16 @@ title: More gracefully responsive layout and padding for wider widths
 kind: task
 status: in_progress
 priority: 0
-version: 5
+version: 6
 labels: []
 dependencies: []
 child_order_hints:
   - is-01m82jnazag8h1b1mf0na6jdm2
   - is-01m82jnfmjhcr55c383063twaa
   - is-01m82jnjt0wecvw96gnjm6gk58
+  - is-01m82sv34h686h0nb0h2begj8z
 created_at: 2026-11-22T21:17:34.575Z
-updated_at: 2026-11-22T21:30:20.350Z
+updated_at: 2026-11-22T23:35:40.943Z
 extensions:
   linear:
     id: 79e3aeab-0661-464d-a802-5624c419ac9a
