@@ -58,6 +58,7 @@ def verdict(
     needs: dict[str, dict[str, object]],
     *,
     integration: str = "none",
+    chrome: str = "whole",
     main_state: str = "green",
     main_run: str = "",
     main_run_sha: str = "",
@@ -69,6 +70,7 @@ def verdict(
     environ = dict(os.environ) | {
         "RESULTS": json.dumps(needs),
         "INTEGRATION": integration,
+        "CHROME": chrome,
         "MAIN_STATE": main_state,
         "MAIN_RUN": main_run,
         "MAIN_RUN_SHA": main_run_sha,
@@ -124,6 +126,44 @@ def test_a_needed_integration_that_was_skipped_fails(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "::error::Not every job succeeded: stack-integration (skipped)" in result.lines
+
+
+def test_a_chrome_job_skipped_because_the_plan_decided_none_is_accepted_and_said(
+    tmp_path: Path,
+) -> None:
+    result = verdict(tmp_path, results(chrome="skipped"), chrome="none")
+
+    assert result.returncode == 0, result.lines
+    accepted = (
+        "chrome skipped: chrome=none, the pull request touches no browser path "
+        "(the plan job's summary says why)"
+    )
+    # Both skips are said, each on its own line.
+    assert accepted in result.lines and accepted in result.summary
+    assert any(line.startswith("stack-integration skipped: ") for line in result.lines)
+
+
+@pytest.mark.parametrize("chrome", ["whole", "fast", ""])
+def test_a_chrome_job_skipped_when_the_plan_decided_to_run_it_fails(
+    tmp_path: Path, chrome: str
+) -> None:
+    """Whole on main, fast on a pull request, or no decision at all, as when the plan
+    job failed: a Chrome job that did not run is a check that did not happen."""
+
+    result = verdict(tmp_path, results(chrome="skipped"), chrome=chrome)
+
+    assert result.returncode == 1
+    assert "::error::Not every job succeeded: chrome (skipped)" in result.lines
+
+
+@pytest.mark.parametrize("outcome", ["failure", "cancelled"])
+def test_a_chrome_job_that_ran_and_did_not_pass_fails_whatever_the_plan_decided(
+    tmp_path: Path, outcome: str
+) -> None:
+    result = verdict(tmp_path, results(chrome=outcome), chrome="none")
+
+    assert result.returncode == 1
+    assert f"::error::Not every job succeeded: chrome ({outcome})" in result.lines
 
 
 def test_a_conflict_with_main_fails_with_the_stack_message(tmp_path: Path) -> None:

@@ -135,7 +135,9 @@ def test_reports_uv_action_and_publish_errors(tmp_path: Path) -> None:
     assert "trusted publishing requires an environment" in message
 
 
-def _write_admitted_git(root: Path, *, reviewed: str, matrix: str) -> None:
+def _write_admitted_git(
+    root: Path, *, reviewed: str, matrix: str, on_pull_request: str = "2.43.7"
+) -> None:
     pin_a, pin_b = "a" * 64, "b" * 64
     (root / "devtools").mkdir()
     (root / "devtools" / "build_admitted_git.sh").write_text(
@@ -148,7 +150,9 @@ def _write_admitted_git(root: Path, *, reviewed: str, matrix: str) -> None:
         encoding="utf-8",
     )
     (root / ".github" / "workflows" / "ci.yml").write_text(
-        f"jobs:\n  admitted-git:\n    strategy:\n      matrix:\n        git: [{matrix}]\n",
+        "jobs:\n  plan:\n    steps:\n      - env:\n"
+        f"          ADMITTED_GITS: '[{matrix}]'\n"
+        f'          PR_ADMITTED_GIT: "{on_pull_request}"\n',
         encoding="utf-8",
     )
     gates = {
@@ -177,3 +181,17 @@ def test_admitted_git_drift_and_an_untested_floor_are_reported(tmp_path: Path) -
     assert "admitted Git table" in message
     assert "must test the acquisition minimum 2.43.7" in message
     assert "newest_patched" not in message
+
+
+def test_a_pull_request_s_admitted_git_has_to_be_the_floor(tmp_path: Path) -> None:
+    """The one release a pull request builds is the one that proves the security floor."""
+
+    _write_repository(tmp_path)
+    _write_admitted_git(
+        tmp_path, reviewed="b" * 64, matrix='"2.43.7", "2.50.1"', on_pull_request="2.50.1"
+    )
+
+    with pytest.raises(
+        RuntimeError, match="PR_ADMITTED_GIT must be the acquisition minimum 2.43.7"
+    ):
+        verify_supply_chain(tmp_path)

@@ -33,7 +33,7 @@ unexport NPM_CONFIG_MINIMUM_RELEASE_AGE
 # npm 11. Repository installs must use the reviewed .npmrc policy instead.
 unexport NPM_CONFIG_BEFORE
 
-.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test test-parallel test-serial test-chrome test-goldens test-admitted-git audit lock upgrade build verify clean
+.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test test-parallel test-serial test-chrome test-chrome-fast test-goldens test-admitted-git audit lock upgrade build verify clean
 
 default: install format lint test
 
@@ -55,7 +55,7 @@ browser-types:
 	npx --no-install tsc --noEmit -p apps/macos/webkit-gate/tsconfig.json
 
 # A CI job calls each test tier's target directly, so each installs first, as `test` does.
-format lint lint-check test test-parallel test-serial test-chrome test-goldens test-admitted-git audit build: | install
+format lint lint-check test test-parallel test-serial test-chrome test-chrome-fast test-goldens test-admitted-git audit build: | install
 
 lint:
 	$(UV_RUN) python -m devtools.lint
@@ -143,14 +143,21 @@ STRICT_SKIPS := $(if $(CI),METABROWSER_STRICT_SKIPS=1)
 # Measurements record; a machine with more processors may want a cap.
 PYTEST_WORKERS ?= logical
 # `SHARD=I/N` runs the Ith of N disjoint parts of a pytest tier (tests/suite_tiers.py) or
-# of the goldens (devtools/run_goldens.py); empty runs the whole tier.
+# of the goldens (devtools/run_goldens.py); empty runs the whole tier. The parts are dealt
+# by the seconds CI measured (devtools/shard_weights.py), which `make shard-weights`
+# refreshes.
 SHARD ?=
 # -rs names every skipped test with its reason, so a skip is read rather than counted,
-# and --durations and --file-durations list the slowest tests and test files
-# (tests/suite_timing.py), so a run says where its time went. A missing Node or Git
-# stops the run; see tests/required_tools.py.
-PYTEST := $(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25 --file-durations=25 \
+# and --durations and --file-durations list the slowest tests and every test file
+# (tests/suite_timing.py), so a run says where its time went. `make shard-weights` reads
+# both from CI's logs to weigh the shards (devtools/refresh_shard_weights.py), which is
+# why every file is listed, some 230 lines in a unit job's log, and why the serial and
+# Chrome tiers, which are dealt by test, list every test (EVERY_TEST): a part of either
+# holds few tests, but more than 25 once the heavy tests fill another part. A missing
+# Node or Git stops the run; see tests/required_tools.py.
+PYTEST := $(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25 --file-durations=0 \
 	$(if $(SHARD),--shard=$(SHARD))
+EVERY_TEST := --durations=0
 # The tiers' -m expressions, which tests/suite_tiers.py defines as TIERS: together they
 # hold every test once, whatever is marked.
 PARALLEL_TIER := not serial and not chrome
@@ -174,10 +181,16 @@ test-parallel:
 	$(PYTEST) -m "$(PARALLEL_TIER)" -n $(PYTEST_WORKERS) --dist loadfile --shard-by=file
 
 test-serial:
-	$(PYTEST) -m "$(SERIAL_TIER)"
+	$(PYTEST) $(EVERY_TEST) -m "$(SERIAL_TIER)"
 
 test-chrome:
-	$(PYTEST) -m "$(CHROME_TIER)"
+	$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)"
+
+# The Chrome tier without the tests measured at SLOW_TEST_S or more (tests/suite_tiers.py),
+# which is what a pull request runs while main is green; `make test` and every push to
+# main run test-chrome, the whole tier (devtools/ci_plan.sh).
+test-chrome-fast:
+	$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)" --skip-slow
 
 test-goldens:
 	$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) $(if $(SHARD),--shard $(SHARD)) '$(GOLDENS)' -- $(TRYSCRIPT)
@@ -200,6 +213,16 @@ test-report:
 .PHONY: ci-report
 ci-report:
 	$(UV_RUN) python -m devtools.ci_report $(CI_REPORT_FLAGS)
+
+# Rewrite devtools/shard_weights.json, the seconds SHARD's parts are dealt by, from the
+# newest green CI run on main as gh reads its job logs; SHARD_WEIGHTS_FLAGS passes
+# devtools/refresh_shard_weights.py its options:
+#   make shard-weights
+#   make shard-weights SHARD_WEIGHTS_FLAGS="--run 45062416967"
+# docs/e2e-testing.md ("Time limits and shards") says when to.
+.PHONY: shard-weights
+shard-weights:
+	$(UV_RUN) python -m devtools.refresh_shard_weights $(SHARD_WEIGHTS_FLAGS)
 
 # The baseline scale benchmark that docs/scale-benchmark.md records: one run of
 # devtools/bench_serving.py per size on its synthetic corpus under .bench/, then one
@@ -302,7 +325,7 @@ ADMITTED_GIT_TESTS := \
 
 test-admitted-git:
 	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --file-durations=25 -n $(PYTEST_WORKERS) --dist loadfile \
-		$(ADMITTED_GIT_TESTS)
+		$(if $(SHARD),--shard=$(SHARD) --shard-by=file) $(ADMITTED_GIT_TESTS)
 
 # The outer tiers nothing in CI runs. docs/e2e-testing.md ("Test Tiers") says what each
 # covers and when to run it.
