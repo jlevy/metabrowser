@@ -201,11 +201,11 @@ and the server, which resolves the link against its mirror, announces the right 
   A checkout with no window on screen, or no answer yet, is passed over.
   The checkout’s `.git/config` can name any repository, so a planted one can at most
   choose which window a mirror’s tab joins; what the tab serves is still the mirror.
-- **Asking before a clone.** A link that would start a new session asks first unless
-  `metab`’s cache holds the repository (`RepositoryCache`), which the app learns from
-  `metab FOLDER --api /api/cache/sources --format json`, page by page, run in the app’s
-  support folder; a published source whose `identity.display_url` is the root, with no
-  problems, is one `metab URL` serves from without cloning.
+- **Asking before a clone.** An external link that would start a new session asks first
+  unless `metab`’s cache holds the repository (`RepositoryCache`), which the app learns
+  from `metab FOLDER --api /api/cache/sources --format json`, page by page, run in the
+  app’s support folder; a published source whose `identity.display_url` is the root,
+  with no problems, is one `metab URL` serves from without cloning.
   An answer it cannot read asks; `tests/test_macos_app_pins.py` holds the keys and the
   value the app reads to what the route prints.
   The confirmation names the repository and says that it clones and reads with the
@@ -217,6 +217,9 @@ and the server, which resolves the link against its mirror, announces the right 
   A repository found or agreed to is not asked about again while the app runs; one
   declined is not asked about again until the burst ends, and the links it turned away
   are counted in the burst’s alert.
+  A submitted Open URL… or a selected recent repository opens directly.
+  When its window is shown, it supersedes an older question about the same repository
+  without authorizing a later external request.
 - **A burst.** One `metab` resolves at a time, a link equal to one waiting or being
   resolved is dropped, and past `LinkQueue.limit` waiting links the rest are counted, as
   are links past `CloneQuestions.limit` repositories waiting for a question and past

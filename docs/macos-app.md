@@ -125,15 +125,18 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   The checkout’s own tab keeps showing your working tree.
   A checkout whose window is minimized, or whose server has not started yet, is passed
   over, and the mirror opens as any new folder does.
-- **Asked once before a clone:** a link to a repository the cache does not hold yet asks
-  first, naming the repository: opening it clones the repository into the cache and
-  reads it, and its pull requests, with your `gh` sign-in.
+- **External links ask before a first clone.** A link sent by Terminal or another app
+  asks before it clones a repository the cache does not hold.
+  The dialog names the repository and says that Metabrowser will read it and its pull
+  requests with your `gh` sign-in.
   Cancel is the default button.
   Other links go on opening while the question waits, and more links into the same
   repository wait for your one answer, which opens the newest.
   After Cancel, links into that repository sent in the same burst are not opened, and
   the app says how many; a link sent later asks again.
   A repository the cache holds opens without asking.
+  Submitting Open URL… or choosing a repository from a native recent menu or the folder
+  chooser gives permission for that open, so Metabrowser skips the clone dialog.
 - **One window per repository:** a repository opens in one window, on its default
   branch, whatever link opened it, and every link into the repository opens in that
   window: a second pull request goes to its page in the same window, and a link to a

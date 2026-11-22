@@ -17,7 +17,7 @@ nonisolated enum AppLog {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = RuntimeSettings()
     private lazy var recentFolders = RecentTargetsMenu(
-        setup: { [weak self] in self?.operations.launchableSetup() }, open: { [weak self] in self?.request($0) })
+        setup: { [weak self] in self?.operations.launchableSetup() }, open: { [weak self] in self?.requestRecent($0) })
     /// The folder chooser each window's title opens (`FolderChooser`).
     private lazy var folderChooser = FolderChooserMenu(
         openFolders: { [weak self] in self?.folderWindows.chooserFolders(for: $0) ?? [] },
@@ -41,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var selection = RuntimeSelection(settings: settings, setup: settings.usable())
     /// The window each waiting folder was asked to open in (`request(_:into:)`).
     private var waitingWindows = WaitingWindows<BrowserWindowController>()
+    /// The recent repositories the user chose that still wait in RuntimeSelection.
+    private var waitingRecentRepositories: Set<URL> = []
     /// The searches, rechecks, and choices that change `selection`, and what follows each.
     private lazy var operations: RuntimeOperations = {
         let settings = self.settings
@@ -97,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var linkProblems = LinkProblems()
     /// Whether a clone question or the problems alert is up: one at a time.
     private var isShowingLinkModal = false
+    private weak var cloneQuestionAlert: NSAlert?
     /// File > Open URL…, made the first time it is chosen and kept: it starts empty each
     /// time it comes on screen.
     private lazy var openURLWindow = OpenURLWindowController(
@@ -492,9 +495,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// resolves the link against its mirror, so a ref with a `/` in it opens the right
     /// page, and a second pull request of the repository opens in the same window.
     ///
-    /// A repository nobody has said may be cloned is looked up in `metab`'s cache in the
-    /// link's turn; one the cache does not hold asks, and its question, with any later
-    /// links into it, waits beside the queue, so the links behind it go on (`CloneQuestions`).
+    /// A sent link looks up its repository in the cache unless it already has approval.
+    /// A repository the cache does not hold needs a question. The question and later
+    /// links into that repository wait beside the queue, so other links go on.
     private func open(_ plan: PresentPlan, with setup: RuntimeSetup) async {
         let root = SessionRoot.repository(plan.repository)
         if let session = sessions[root.key] as? FolderSession {
@@ -513,13 +516,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppLog.app.error(
                 "\(CloneQuestions.limit) repositories wait for an answer about cloning them; a link into \(name, privacy: .public) was dropped")
         case .lookUp:
-            if await isCached(root, with: setup) {
-                if let link = clones.found(root), !isQuitting { openRepository(root, on: link) }
+            let cached = await isCached(root, with: setup)
+            // An explicit open can supersede this lookup while it is suspended.
+            guard !isQuitting, sessions[root.key] == nil else { return }
+            if cached {
+                if let link = clones.found(root) { openRepository(root, on: link) }
             } else {
                 clones.ask(root)
                 showNextLinkModal()
             }
         }
+    }
+
+    /// Opens the plan from a native Open URL submission or a selected recent repository.
+    /// That choice authorizes this open. Once its window is shown, a pending question
+    /// for an earlier link into the same repository has nothing left to decide.
+    private func openEntered(_ plan: PresentPlan) -> Bool {
+        let root = SessionRoot.repository(plan.repository)
+        guard !isQuitting, openRepository(root, on: plan.link, waitForRuntime: false) else { return false }
+        if clones.openedExplicitly(root), let alert = cloneQuestionAlert, NSApp.modalWindow === alert.window {
+            NSApp.abortModal()
+        }
+        showNextLinkModal()
+        return true
     }
 
     /// Whether `metab`'s cache holds `root` (`RepositoryCache`); an answer the app cannot
@@ -545,20 +564,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The repository's window, whose server opens `link`, or a new session whose first
     /// ready server opens it. A new session's window joins the window of an open checkout of
     /// the repository as a tab, if one is on screen (`CheckoutWindow`), and is placed as a
-    /// new folder's otherwise. Without a runtime accepted now, the link waits for one, and
-    /// is resolved again.
+    /// new folder's otherwise. Returns whether a window was shown. A sent link missing its
+    /// runtime waits and is resolved again; a native choice can handle that wait itself.
     ///
     /// Either is an open, so the repository moves to the front of the recent targets: a
     /// new session's server records it as it starts, and the app records one already open
     /// itself, since opening a link in its server records nothing.
-    private func openRepository(_ root: SessionRoot, on link: URL) {
+    @discardableResult
+    private func openRepository(_ root: SessionRoot, on link: URL, waitForRuntime: Bool = true) -> Bool {
         if let session = sessions[root.key] as? FolderSession {
             recentFolders.noteOpened(root.url, isOpen: true)
-            return session.open(link: link)
+            session.open(link: link)
+            return true
         }
-        guard selection.setupForOpening(link) != nil, let session = session(for: root, link: link) else {
-            if !selection.isBusy { showSettings(nil) }
-            return
+        let setup = waitForRuntime ? selection.setupForOpening(link) : operations.launchableSetup()
+        guard setup != nil, let session = session(for: root, link: link) else {
+            if waitForRuntime, !selection.isBusy { showSettings(nil) }
+            return false
         }
         let window = session.makeWindow()
         if let checkout = checkout(of: root.url) {
@@ -572,6 +594,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await session.startServer()
             self.recentFolders.refreshAfterOpen()
         }
+        return true
     }
 
     /// The open checkout of `repository` whose window a new window of its mirror joins as
@@ -637,7 +660,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Metabrowser has no copy of \(name) yet. Opening this link clones the repository into metab’s cache, and reads it and its pull requests with your gh sign-in."
         alert.addButton(withTitle: "Cancel")  // the first button is the default
         alert.addButton(withTitle: "Clone and Open")
+        cloneQuestionAlert = alert
+        defer { cloneQuestionAlert = nil }
         let clone = alert.runModal() == .alertSecondButtonReturn
+        guard clones.asking == root else { return false }
         AppLog.app.info("\(name, privacy: .public): clone \(clone ? "confirmed" : "declined", privacy: .public)")
         return clone
     }
@@ -753,10 +779,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 folderWindows.place(session.makeWindow())
             }
         case .openHere(let url):
-            recentFolders.openListed(url) { [weak self] in self?.request($0, into: window) }
+            recentFolders.openListed(url) { [weak self] in self?.requestRecent($0, into: window) }
         case .openInNewWindow(let url):
-            recentFolders.openListed(url) { [weak self] in self?.request($0) }
+            recentFolders.openListed(url) { [weak self] in self?.requestRecent($0) }
         }
+    }
+
+    /// Reopens the canonical repository the user chose in Open Recent, the Dock menu,
+    /// or the folder chooser. A recent folder follows the usual native folder path.
+    private func requestRecent(_ url: URL, into window: BrowserWindowController? = nil) {
+        guard !isQuitting else { return }
+        guard let repository = PresentPlan.repositoryURL(url.absoluteString) else {
+            return request(url, into: window)
+        }
+        lookForRuntimeChanges()
+        let plan = PresentPlan(kind: .repository, repository: repository, link: repository)
+        guard !openEntered(plan) else { return }
+        _ = selection.setupForOpening(repository)
+        if selection.waitingFolders.contains(repository) { waitingRecentRepositories.insert(repository) }
+        if selection.droppedLinks > 0 { showNextLinkModal() }
+        if !selection.isBusy { showSettings(nil) }
     }
 
     /// File > Close Folder, for the folder the key window shows. Returns false, having
@@ -798,7 +840,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Opens the folders that waited for a runtime, each in the window it was asked to
     /// open in if that window is still open.
     private func openReleased(_ folders: [URL]) {
-        for (folder, window) in waitingWindows.release(folders) { request(folder, into: window) }
+        for (folder, window) in waitingWindows.release(folders) {
+            if waitingRecentRepositories.remove(folder) != nil {
+                requestRecent(folder, into: window)
+            } else {
+                request(folder, into: window)
+            }
+        }
     }
 
     @objc func openFolder(_ sender: Any?) {
