@@ -194,7 +194,7 @@ const MEASURE = `async (which, width) => {
     // paintSize), since this draws the summary in place of the page's own read.
     header
       .querySelector(".github-pull-size")
-      .replaceChildren(...mb.changeSizeLineNodes(mb.changeSizeLine({ commits: 2, files: 35, pushedBytes: 58_270, diffBytes: 198_540 })));
+      .replaceChildren(...mb.changeSizeLineNodes(mb.changeSizeLine({ commits: 8, files: 28, pushedBytes: 64_410, diffBytes: 217_600 })));
   }
   await document.fonts.ready;
   await frames();
@@ -202,6 +202,33 @@ const MEASURE = `async (which, width) => {
     const style = getComputedStyle(node);
     return { size: style.fontSize, lineHeight: style.lineHeight, weight: style.fontWeight, color: style.color };
   };
+  const diffSizePaint = [];
+  if (which === "pull") {
+    const line = header.querySelector(".github-pull-size");
+    const visible = line.cloneNode(true);
+    for (const hidden of visible.querySelectorAll(".visually-hidden")) hidden.remove();
+    const fileRow = document.createElement("div");
+    fileRow.className = "tree-item tree-file";
+    fileRow.innerHTML = [64_410, 217_600]
+      .map((bytes) => window.metabrowser.sizeHtml(bytes, "tree-item-size")).join("");
+    document.body.append(fileRow);
+    const readSize = (container) => [...container.querySelectorAll(".size")].map((element) => {
+      const { color, fontWeight, fontVariantNumeric } = getComputedStyle(element);
+      return { text: element.textContent, color, fontWeight, fontVariantNumeric };
+    });
+    for (const theme of ["light", "dark"]) {
+      document.documentElement.dataset.theme = theme;
+      diffSizePaint.push({
+        theme,
+        text: visible.textContent.replace(/\\s+/g, " ").trim(),
+        painted: readSize(line),
+        files: readSize(fileRow),
+        spoken: [...line.querySelectorAll(".visually-hidden")].map((element) => element.textContent),
+      });
+    }
+    delete document.documentElement.dataset.theme;
+    fileRow.remove();
+  }
   // What a run of text is: a chip keeps its own size, and a revision takes the line's in its
   // own face; any other run is the line's text.
   const kindOf = (element) =>
@@ -268,6 +295,7 @@ const MEASURE = `async (which, width) => {
     body: getComputedStyle(document.documentElement).getPropertyValue("--body-font-size").trim(),
     lines: read(),
     author: author(),
+    diffSizePaint,
   };
   // An avatar arriving in the box, in the glyph's place: a data image, so nothing is asked of
   // the network. Nothing moves: the name starts where it did, and every line keeps its place.
@@ -406,6 +434,25 @@ async function main() {
             `${where}: the ${name}'s revision, if any, is at the body size, its line's`,
             revision.every((run) => run.size === body),
             JSON.stringify(revision),
+          );
+        }
+        for (const size of pull.diffSizePaint) {
+          check(
+            `${where} in ${size.theme}: the pull request byte values match the Files size style`,
+            JSON.stringify(size.painted) === JSON.stringify(size.files) &&
+              size.painted.length === 2 &&
+              size.painted.every(
+                (value) =>
+                  value.fontWeight === "400" && value.fontVariantNumeric === "tabular-nums",
+              ),
+            JSON.stringify(size),
+          );
+          check(
+            `${where} in ${size.theme}: the visible line has dots and the spoken separators are commas`,
+            size.text === "8 commits · 28 files changed · 62.9 KB compressed (212.5 KB raw diff)" &&
+              size.spoken.length === 2 &&
+              size.spoken.every((separator) => separator === ", "),
+            JSON.stringify(size),
           );
         }
         const commitSizes = new Set(textRuns(commit).map((run) => run.size));
