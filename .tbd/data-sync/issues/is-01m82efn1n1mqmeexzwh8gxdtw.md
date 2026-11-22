@@ -5,15 +5,22 @@ title: Retry a cache lock open after concurrent staging cleanup
 kind: bug
 status: in_progress
 priority: 1
-version: 3
+version: 5
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45064439324/job/137337320471
     at: 2026-11-22T20:17:18.474Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/697
+    at: 2026-11-22T20:23:05.196Z
 labels: []
 dependencies: []
 parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 created_at: 2026-11-22T20:17:11.721Z
-updated_at: 2026-11-22T20:17:18.490Z
+updated_at: 2026-11-22T20:23:06.073Z
 ---
 Main CI run 45064439324, job 137337320471, failed test_two_opens_of_an_old_home_at_once_migrate_it_once[f01]. Two cache opens can sweep the same abandoned staging entry. A normal sweep can remove the staging lock between inspection and opening it, causing a create-capable open to return FileNotFoundError. Preserve the existing bounded retry and the no-create behavior.
+
+## Notes
+
+Candidate a2e1a4831 is based on exact failing main 0e4e627e. The deterministic create-capable regression failed with FileNotFoundError on the base, while its no-create control passed. With the bounded O_CREAT-only retry, the local permissions, lock, and migration suites passed with 479 passes and one skip. Normal pre-commit passed. Hosted red-main CI pending.
