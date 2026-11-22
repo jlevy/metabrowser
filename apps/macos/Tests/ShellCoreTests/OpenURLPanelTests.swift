@@ -238,7 +238,8 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
     ) throws -> (OpenURLPanel, OpenURLPanel.Request) {
         var panel = OpenURLPanel()
         panel.edit(text)
-        let request = try #require(panel.open())
+        let opened = panel.open()
+        let request = try #require(opened)
         #expect(request.link == link)
         return (panel, request)
     }
@@ -297,7 +298,8 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
 
         let issues = try #require(URL(string: "https://github.com/jlevy/metabrowser/issues/1"))
         panel.edit("github.com/jlevy/metabrowser/issues/1")
-        let request = try #require(panel.open())
+        let opened = panel.open()
+        let request = try #require(opened)
         #expect(request.link == issues)
         #expect(panel.text == issues.absoluteString)
         let refusal = PresentRefusal(code: "unsupported_github_url", message: "GitHub issues pages are not opened")
@@ -349,7 +351,8 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(panel.message == "Could not present a window.")
         #expect(panel.canOpen)
         #expect(panel.text == pullRequest.absoluteString)
-        let retry = try #require(panel.open())
+        let reopened = panel.open()
+        let retry = try #require(reopened)
         #expect(retry.link == request.link)
         #expect(retry != request)
         #expect(panel.message == nil)

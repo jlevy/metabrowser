@@ -334,7 +334,8 @@ struct LiveMetabTests {
     func theOpenURLPanelSaysWhatMetabAnswers(_ text: String, _ opens: Bool) async throws {
         var panel = OpenURLPanel()
         panel.edit(text)
-        let request = try #require(panel.open())
+        let opened = panel.open()
+        let request = try #require(opened)
         let answer = try await dryRun(request.link.absoluteString)
         let plan = panel.answered(answer, for: request, metab: "metab")
         if opens {
@@ -363,7 +364,8 @@ struct LiveMetabTests {
         let expected = try #require(URL(string: "https://github.com/jlevy/metabrowser"))
         var panel = OpenURLPanel()
         panel.edit(text)
-        let request = try #require(panel.open())
+        let opened = panel.open()
+        let request = try #require(opened)
         #expect(request.link == expected)
         #expect(panel.text == expected.absoluteString)
         let answer = try await dryRun(request.link.absoluteString)
