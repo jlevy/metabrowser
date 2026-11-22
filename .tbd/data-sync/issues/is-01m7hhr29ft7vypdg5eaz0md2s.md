@@ -5,12 +5,14 @@ title: "Release 0.13 owner: make the Developer ID identity valid (install Apple'
 kind: task
 status: open
 priority: 1
-version: 2
+version: 3
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m7hhr43k5rc7ytbxg1vx031s
 parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 created_at: 2026-11-16T06:47:07.822Z
-updated_at: 2026-11-17T03:36:46.077Z
+updated_at: 2026-11-21T20:58:07.879Z
 ---
 
 ## Notes
