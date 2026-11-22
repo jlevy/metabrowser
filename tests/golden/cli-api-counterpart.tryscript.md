@@ -587,7 +587,7 @@ The first ends in a nonbreaking space, and the second has a Unicode line separat
 the name.
 
 ```console
-$ name="$(printf 'feature\302\240')" && git -C branch update-ref refs/remotes/origin/feature HEAD && git -C branch update-ref "refs/remotes/origin/$name" HEAD && git -C branch branch --set-upstream-to="origin/$name" local-docs >/dev/null
+$ name="$(printf 'unicode\302\240')" && git -C branch update-ref refs/remotes/origin/unicode HEAD && git -C branch update-ref "refs/remotes/origin/$name" HEAD && git -C branch branch --set-upstream-to="origin/$name" local-docs >/dev/null
 ? 0
 ```
 
@@ -600,7 +600,7 @@ status: 200
   "counterpart": {
     "provider": "github",
     "label": "View on GitHub",
-    "url": "https://github.com/octo/demo/tree/feature%C2%A0"
+    "url": "https://github.com/octo/demo/tree/unicode%C2%A0"
   },
   "reason": null
 }
