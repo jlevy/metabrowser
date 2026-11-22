@@ -29,7 +29,9 @@ def session() -> dict[str, Any]:
         [require_node(), str(SESSION)],
         capture_output=True,
         text=True,
-        timeout=60,
+        # The session took 0.9 s at a load average near 340 (10-core Mac, 2026-11-22);
+        # the bound stays under the suite's own (tests/test_suite_gates.py).
+        timeout=30,
         check=False,
     )
     assert result.returncode == 0, result.stderr or result.stdout
