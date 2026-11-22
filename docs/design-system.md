@@ -3237,10 +3237,9 @@ rule, a statistic’s label and a table’s headers are labels, and a status is 
 badge. Color is an event’s kind or a tool’s family, nothing else: an agent is a label,
 bold, never a color.
 
-The overview shows [inline progress](#progress-spinners-stay-neutral) as it reads the
-transcripts for session details.
-The checked count includes transcripts it could not read, so it can reach the total even
-when some details are unavailable.
+The overview shows [inline progress](#progress-spinners-stay-neutral) as it reads
+session history to fill in details such as turn and event counts.
+The checked count includes sessions whose details could not be read.
 
 ### Session Rows
 
