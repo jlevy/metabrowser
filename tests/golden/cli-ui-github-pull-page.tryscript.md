@@ -1104,6 +1104,66 @@ $ node tests/dom/github-pull-page-second-session.js
       "markdown": []
     },
     {
+      "step": "the poll's own interval still reads, between probe asks",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "probeAskMs": 5000,
+      "markdown": []
+    },
+    {
+      "step": "a probe ask the server does not answer is reported",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "probeAskMs": 5000,
+      "paint": {
+        "status": "current",
+        "message": "The server did not answer.",
+        "canRefresh": false,
+        "freshness": "Fetched just now via GitHub CLI",
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "repaint",
+      "markdown": []
+    },
+    {
+      "step": "the next probe ask that answers clears it",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "probeAskMs": 5000,
+      "paint": {
+        "status": "current",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched just now via GitHub CLI",
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "an answer slower than the interval is followed by a short gap",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "probeAskMs": 1000,
+      "markdown": []
+    },
+    {
       "step": "hidden, it asks nothing",
       "requests": [],
       "timer": null,
@@ -1128,7 +1188,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "browse": "link to the root",
         "headOffer": null
       },
-      "conversation": "repaint",
+      "conversation": "keep",
       "markdown": []
     }
   ],

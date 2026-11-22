@@ -86,7 +86,6 @@ from metabrowser.builtin_plugins.github.pull_record import (
 )
 from metabrowser.builtin_plugins.github.served_pull import (
     ATTENDED_PROBE_S,
-    FULL_REFRESH_S,
     PullCorePreview,
     PullRefreshOutcome,
     ServedPull,
@@ -588,10 +587,11 @@ def probed_at(
 ) -> str | None:
     """When a probe last found *record* unchanged, if that makes it current at *now*.
 
-    That is a probe of this very record within a freshness window, of a record read within
-    :data:`~.served_pull.FULL_REFRESH_S`, which the catalog does not say GitHub changed
-    since and which needs no store this server has. Otherwise ``None``, and the record's
-    state is the catalog's or the clock's (:func:`pull_state`).
+    That is a probe of this very record within a freshness window, of a record read in full
+    within :data:`~.served_pull.FULL_REFRESH_S` (:meth:`.ServedPull.full_read_overdue`),
+    which the catalog does not say GitHub changed since and which needs no store this
+    server has. Otherwise ``None``, and the record's state is the catalog's or the
+    clock's (:func:`pull_state`).
     """
 
     kept = view.kept
@@ -600,7 +600,7 @@ def probed_at(
         or not isinstance(record, PullRecord)
         or kept.fetched_at != record.fetched_at
         or not kept.probe_vouches(now)
-        or now - _parse_stamp(record.fetched_at) > timedelta(seconds=FULL_REFRESH_S)
+        or kept.full_read_overdue(now)
         or (freshness is not None and freshness.verdict == "changed")
         or (has_store and written_without_store(record))
     ):

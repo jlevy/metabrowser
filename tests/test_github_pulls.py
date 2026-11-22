@@ -6155,6 +6155,24 @@ def test_a_probe_tells_a_change_from_a_new_etag_for_the_same_pull(stand: _Stand)
     assert _probe(stand, record, checks=True).outcome == "changed"
 
 
+def test_a_probe_of_a_record_with_no_etag_reads_once_and_keeps_the_etag(stand: _Stand) -> None:
+    """A cold open's pull, read through GraphQL, has no REST ETag: the first probe asks
+    unconditionally, compares, and keeps the ETag, so it is no change and no second read."""
+
+    pull_path = "repos/octo/demo/pulls/7"
+    record = stand.refresh(7)
+    etag = record.etags[pull_path]
+    cold = record.model_copy(
+        update={"etags": {path: tag for path, tag in record.etags.items() if path != pull_path}}
+    )
+    stand.calls()
+    found = _probe(stand, cold, checks=False)
+    assert found == pulls.PullProbe("unchanged", {pull_path: etag})
+    assert _api_paths(stand) == [pull_path]
+    # The next probe sends that ETag, and GitHub answers 304.
+    assert _probe(stand, cold, checks=False, etags=found.etags) == pulls.PullProbe("unchanged", {})
+
+
 def test_a_checks_probe_reads_the_first_pages_and_sees_a_rerun(stand: _Stand) -> None:
     answers = scenario(stand.origin)
     head = stand.origin["fork_head"]

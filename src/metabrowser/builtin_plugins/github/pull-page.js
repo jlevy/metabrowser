@@ -167,6 +167,11 @@ export const LANDING_SETTLE_MS = 2000;
 // a press of Back takes and short beside the refresh it delays. The wait shows nothing: the
 // page is already painted refreshing.
 export const REFRESH_ASK_MS = 500;
+// The least a probe ask waits after the last one answered. Asks recur every
+// `probe_every_s` from when each was sent, so an answer slower than that interval would
+// otherwise be followed by the next ask at once, back to back for as long as answers are
+// slow. It is a choice: a second is short beside the interval and long beside a request.
+export const PROBE_ASK_GAP_MS = 1000;
 // The blocks a place is counted in: the conversation's cards and sections, and Files
 // changed's files, which keep their order for as long as the page shows one comparison.
 // A place is an index, so a refresh that adds a card above it while a landing holds puts the
@@ -324,7 +329,7 @@ const TRUNCATED = Object.freeze({
  *   head_moved?: boolean,
  *   checks_pending?: boolean,
  *   fresh_for_s: number,
- *   probe_every_s?: number | null,
+ *   probe_every_s: number | null,
  *   record_revision: string | null,
  *   refreshing: boolean,
  *   preparing_comparison?: true,
@@ -1966,6 +1971,8 @@ export function createPullController(deps, options) {
   // every ask. Without `probe_every_s` it asks only for a stale record, once a window.
   /** @type {number | null} */
   let autoAskedAt = null;
+  /** When that ask was answered, or failed, by `deps.now()`. @type {number | null} */
+  let autoAnsweredAt = null;
   /** That ask: none, scheduled (waiting in `askTimer`), or sent and not yet answered. */
   /** @type {"none" | "scheduled" | "sent"} */
   let autoAsk = "none";
@@ -2153,7 +2160,11 @@ export function createPullController(deps, options) {
       return null;
     }
     if (envelope.state === "current" && probeIntervalMs !== null) {
-      return Math.max(0, autoAskedAt + probeIntervalMs - deps.now());
+      return Math.max(
+        0,
+        autoAskedAt + probeIntervalMs - deps.now(),
+        (autoAnsweredAt ?? autoAskedAt) + PROBE_ASK_GAP_MS - deps.now(),
+      );
     }
     // A stale record asks again once a window has passed since the last ask, on the poll
     // that finds it so: the server answers a probe ask that finds a change, or a record
@@ -2200,9 +2211,10 @@ export function createPullController(deps, options) {
       autoAskStale = envelope?.state === "stale";
       autoAskedAt = deps.now();
       try {
-        await askForRefresh({ number: options.number });
+        await askForRefresh({ number: options.number }, { automatic: true });
       } finally {
         autoAsk = "none";
+        autoAnsweredAt = deps.now();
       }
       if (!disposed) {
         render();
@@ -2215,6 +2227,9 @@ export function createPullController(deps, options) {
    * Whether the page asks for the catalog's next scan before it reads: the catalog vouched
    * for this record before, its check is a window old, and none was asked within a window.
    * The server starts it only once a window, and a record it is scanning for stays current.
+   * The check is the envelope's newest, the catalog's or a probe's: while probes vouch for
+   * the record no scan is needed for it, and once they stop, the catalog's own older check
+   * is the one the envelope carries, and the next poll asks for a scan.
    */
   function catalogScanDue() {
     if (disposed || !catalogBacked || envelope === null || !deps.isVisible() || !online()) {
@@ -2698,9 +2713,15 @@ export function createPullController(deps, options) {
    * page's own request says nothing to the reader, whose page still shows what it did and
    * still offers Refresh.
    *
+   * An automatic ask (*automatic*), a visible page's recurring probe or its ask for a stale
+   * record, restarts the poll only when it started a refresh or the poll should be fast and
+   * is not: the poll keeps its own interval, so a server that stops answering is reported
+   * by it, and by the failed ask itself.
+   *
    * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, prepare_comparison?: string, recovery?: {base: string, head: string}}} ask
+   * @param {{automatic?: boolean}} [how]
    */
-  async function askForRefresh(ask) {
+  async function askForRefresh(ask, { automatic = false } = {}) {
     const idle = ask.prepare_comparison !== undefined;
     if (!idle) {
       inFlightRefreshes += 1;
@@ -2716,6 +2737,7 @@ export function createPullController(deps, options) {
     const request = ++sent;
     // A bounded core wait must not shift the first ordinary poll by its response time.
     const fastSince = ask.wait_core === true ? deps.now() : null;
+    let started = false;
     try {
       const response = await deps.request("POST", REFRESH_ROUTE, { body: ask });
       const body = /** @type {{pull?: unknown, error?: unknown} | null} */ (response.body);
@@ -2734,6 +2756,7 @@ export function createPullController(deps, options) {
         if (response.status === 202) {
           // The answer changed; the next poll must not be answered by a 304.
           etag = null;
+          started = true;
         }
         if (!idle) {
           error = null;
@@ -2748,6 +2771,11 @@ export function createPullController(deps, options) {
         }
       }
     } catch {
+      if (automatic) {
+        // As a failed poll is: the server did not answer this page's own ask.
+        error = "The server did not answer.";
+        errorFromComparison = false;
+      }
       if (ask.retry) {
         error = "The refresh request failed.";
         errorFromComparison = ask.comparison === true;
@@ -2765,11 +2793,18 @@ export function createPullController(deps, options) {
     if (!disposed) {
       fetchSelectedChanges();
       render();
-      scheduleNext(
-        fastSince === null
-          ? FAST_POLL_MS
-          : FAST_POLL_MS - (Math.max(0, deps.now() - fastSince) % FAST_POLL_MS),
-      );
+      if (
+        !automatic ||
+        started ||
+        timer === null ||
+        (pollsFast() && timerDue - deps.now() > FAST_POLL_MS)
+      ) {
+        scheduleNext(
+          fastSince === null
+            ? FAST_POLL_MS
+            : FAST_POLL_MS - (Math.max(0, deps.now() - fastSince) % FAST_POLL_MS),
+        );
+      }
       deps.timelineStateChanged?.();
       fetchIdleChanges();
     }

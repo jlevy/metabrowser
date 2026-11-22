@@ -279,6 +279,11 @@ function createPage(runtime, options) {
         log.push(`POST ${route} ${JSON.stringify(requestOptions.body)}`);
         const answer = (route === "/api/source/pin" ? server.pin : server.refresh).shift();
         assert(answer, `no scripted answer for POST ${route}`);
+        if (answer.unanswered) {
+          throw new Error("the server did not answer");
+        }
+        // An answer that takes this long, on the page's clock.
+        clock.now += answer.takesMs ?? 0;
         return answer;
       }
       if (route.startsWith("/api/plugin/github/pull-markdown")) {
@@ -421,6 +426,8 @@ function createPage(runtime, options) {
       timer.callback();
     },
     timersLeft: () => timers.size,
+    /** The poll's timer, to tell a poll left waiting from one armed again. */
+    pollTimer: () => [...timers.entries()].find(([, each]) => !isAsk(each))?.[0] ?? null,
   };
 }
 
@@ -1080,6 +1087,59 @@ async function main() {
     await probing.step("its interval later it asks again, and the probe vouches", async () =>
       probing.fireAsk(recorded.refreshed.body.probe_every_s * 1000),
     ),
+  );
+  // The poll keeps its own slow interval while probe asks answer: an ask that started
+  // nothing leaves it waiting, so it still fires, and a server that stops answering is
+  // reported by it and by the failed ask itself.
+  const pollWaiting = probing.pollTimer();
+  const interval = recorded.refreshed.body.probe_every_s * 1000;
+  for (let ask = 0; ask < 2; ask += 1) {
+    probing.clock.now += interval;
+    probing.server.refresh.push(recorded.probed);
+    await probing.step("another interval, another probe", async () => probing.fireAsk(interval));
+  }
+  assert(
+    probing.pollTimer() === pollWaiting,
+    "a probe ask that started nothing armed the poll again, so it never fires",
+  );
+  probingStory.push(
+    await probing.step("the poll's own interval still reads, between probe asks", async () =>
+      probing.fire(),
+    ),
+  );
+  probing.clock.now += interval;
+  probing.server.refresh.push({ unanswered: true });
+  probingStory.push(
+    await probing.step("a probe ask the server does not answer is reported", async () =>
+      probing.fireAsk(interval),
+    ),
+  );
+  assert(
+    probingStory.at(-1).paint?.message === "The server did not answer.",
+    `a failed probe ask was not reported: ${JSON.stringify(probingStory.at(-1))}`,
+  );
+  probing.clock.now += interval;
+  probing.server.refresh.push(recorded.probed);
+  probingStory.push(
+    await probing.step("the next probe ask that answers clears it", async () =>
+      probing.fireAsk(interval),
+    ),
+  );
+  probing.clock.now += interval;
+  probing.server.refresh.push({ ...recorded.probed, takesMs: interval + 1000 });
+  probingStory.push(
+    await probing.step("an answer slower than the interval is followed by a short gap", async () =>
+      probing.fireAsk(interval),
+    ),
+  );
+  assert(
+    probingStory.at(-1).probeAskMs === runtime.PROBE_ASK_GAP_MS,
+    `a slow answer was followed by an ask at once: ${JSON.stringify(probingStory.at(-1))}`,
+  );
+  probing.clock.now += runtime.PROBE_ASK_GAP_MS;
+  probing.server.refresh.push(recorded.probed);
+  await probing.step("the gap passes and it asks", async () =>
+    probing.fireAsk(runtime.PROBE_ASK_GAP_MS),
   );
   probing.setVisible(false);
   await probing.controller.onVisibilityChange();

@@ -1288,7 +1288,9 @@ async def probe_pull_request(
     status (:func:`checks_probe_paths`). A ``200`` is compared with what the record holds,
     since GitHub sometimes sends a new ETag for the same content, so only a real change is
     ``changed`` (the pull) or ``checks_changed`` (only its checks). A path the record holds
-    no ETag for cannot be asked conditionally and counts as changed.
+    no ETag for, as a cold open's pull read through GraphQL holds none, is asked
+    unconditionally once and compared the same way; its ETag is in the result's ``etags``.
+    The check runs and status are asked together, once the pull is unchanged.
 
     Runs no account check and writes nothing: the full read a change starts checks the
     account and publishes. Raises only :class:`PullDataError`.
@@ -1298,8 +1300,6 @@ async def probe_pull_request(
     pull_path = f"repos/{owner}/{repo}/pulls/{record.number}"
     newer: dict[str, str] = {}
     etag = etags.get(pull_path) or record.etags.get(pull_path)
-    if etag is None:
-        return PullProbe("changed", newer)
     try:
         response = await _get(pull_path, etag=etag)
     except PageTooLargeError as exc:
@@ -1316,21 +1316,21 @@ async def probe_pull_request(
     paths = checks_probe_paths(published, record) if checks else None
     if paths is None:
         return PullProbe("unchanged", newer)
-    for path, same in zip(paths, (_same_check_runs, _same_status), strict=True):
-        etag = etags.get(path) or record.etags.get(path)
-        if etag is None:
-            return PullProbe("checks_changed", newer)
+
+    async def ask(path: str) -> GhResponse | None:
         try:
-            response = await _get(path, etag=etag)
+            return await _get(path, etag=etags.get(path) or record.etags.get(path))
         except PageTooLargeError:
-            return PullProbe("checks_changed", newer)
-        if response.status == 304:
-            continue
-        if not same(response, record):
-            return PullProbe("checks_changed", newer)
-        if response.etag is not None:
+            return None
+
+    answers = await asyncio.gather(*(ask(path) for path in paths))
+    changed = False
+    for path, same, response in zip(paths, (_same_check_runs, _same_status), answers, strict=True):
+        if response is None or (response.status != 304 and not same(response, record)):
+            changed = True
+        elif response.status != 304 and response.etag is not None:
             newer[path] = response.etag
-    return PullProbe("unchanged", newer)
+    return PullProbe("checks_changed" if changed else "unchanged", newer)
 
 
 def _keep_stamp(

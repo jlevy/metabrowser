@@ -213,9 +213,10 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   (`StoreTurn` in `mirror_refresh.py`).
 - **What starts one:** a reader’s own action (`"retry": true`); a visible page whose
   record is stale and not tried within the window; a probe that finds a change; a
-  visible record read `FULL_REFRESH_S` ago; and a [prefetch](#background-prefetch) that
-  names it. A failed refresh is tried again after a window, and after `rate_limited` not
-  before `reset_at`. A branch or tag pin never runs `gh`.
+  visible record last read in full `FULL_REFRESH_S` ago, a read of the checks alone not
+  counting; and a [prefetch](#background-prefetch) that names it.
+  A failed refresh is tried again after a window, and after `rate_limited` not before
+  `reset_at`. A branch or tag pin never runs `gh`.
 - **Probes:** a visible page asks every `probe_every_s` (`ATTENDED_PROBE_S`), and for a
   current record the server answers with a probe (`ServedPull.probe`), a conditional
   read of the pull request that GitHub answers `304` without spending its rate limit,
@@ -223,7 +224,9 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   unchanged probe vouches for the record (`verified_by: "probe"`) and keeps it current
   until the full read `FULL_REFRESH_S` asks; a change starts a refresh at once, a change
   to checks alone reads only them, and a failed probe waits a window.
-  Two pages share one probe, and a rate-limit hold stops them all.
+  Settling checks a probe cannot see (`checks_probe_paths`) leave the record to the
+  window, unvouched. However many pages ask, probes of one pull request are one at a time
+  and `PROBE_FLOOR_S` apart, and a rate-limit hold stops them all.
   The
   [update cadence plan](../specs/active/plan-2026-11-22-pull-request-update-cadence.md)
   records the measurements and the design.

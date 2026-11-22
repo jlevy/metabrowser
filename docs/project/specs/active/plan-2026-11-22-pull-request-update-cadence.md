@@ -304,19 +304,17 @@ per record refresh and one per catalog scan, each about once a minute.
 
 ### Server Changes
 
-- **`gh_lists.py` and `gh.py`:** a conditional account check.
-  `gh_lists.active_account`, over `gh.gh_account` and `gh.gh_active_account`, reads
-  `gh api user` with the ETag of the last answer for that host, treats `304` as “the
-  same login”, and still names the account to `gh_budget.note_account`. `gh_api` admits
-  only `repos/…` paths today, so it gains `user`. The status route keeps
-  `gh auth status`, which alone reports the token’s source and scopes.
-- **`served_pull.py`:** `ServedPull` keeps `probed_at` and the outcome of the last
-  probe. `is_stale` gains the probe rule: an automatic ask for a record probed or read
-  within `ATTENDED_PROBE_S` is fresh; one older than that but read within
-  `FULL_REFRESH_S` starts a probe job; one older than `FULL_REFRESH_S` starts the full
-  read as today. A probe that answers `200` sets the same “changed” state the catalog’s
-  verdict sets (`changed_row`), so the existing rules start the refresh and keep it from
-  looping.
+- **`gh.py`:** a conditional account check.
+  `active_account` reads `gh api user` with the ETag of the last answer for that host,
+  and treats `304` as “the same login”.
+- **`served_pull.py`:** `ServedPull` keeps `probed_at`, when a probe last found the
+  record unchanged, and `full_read_at`, when it was last read in full.
+  `automatic_due` decides each automatic ask: a full read when the record is stale or
+  its last full read is older than `FULL_REFRESH_S`, a probe when one is due
+  (`probe_due`, no closer than `PROBE_FLOOR_S` to the last), and nothing otherwise.
+  A probe that finds a change makes the record stale until an attempt starts after it,
+  so the refresh starts at once and does not loop.
+  The `POST` waits for the probe up to `PROBE_WAIT_S`.
 - **`pull_list_route.py`:** the catalog job probes first, and runs its GraphQL scan only
   when the probe answered `200`, when the last scan is older than `FULL_REFRESH_S`, or
   when a reader asked.
@@ -325,23 +323,22 @@ per record refresh and one per catalog scan, each about once a minute.
   between scans; otherwise it would vouch for nothing in the last third of each
   `FULL_REFRESH_S`.
 - **The envelope:** `verified_by` gains `probe`, and `verified_at` moves with each
-  `304`, so the page’s age line says when GitHub last confirmed the record.
-  `fresh_for_s` becomes the time until the next probe is due, so the page knows when to
-  ask.
+  unchanged probe, so the page’s age line says when GitHub last confirmed the record.
+  `probe_every_s` gives the interval of the page’s asks; `fresh_for_s` still says how
+  long a record is fresh without probes.
 
 The routes are internal contracts and change in one commit with the page, the CLI, and
 the transcripts, with no compatibility layer.
 
 ### Page Changes
 
-- `pull-page.js`: while visible, the page schedules its next ask for when `fresh_for_s`
-  runs out, instead of noticing staleness only at its next 30 s poll, and it asks at
-  once whenever the envelope says the record changed, instead of holding every automatic
-  ask to one per window.
-  The server’s attempt rules already stop a changed record from looping.
+- `pull-page.js`: while visible, the page asks every `probe_every_s` for a current
+  record, and a window after its last ask for a stale one.
+  An ask that starts nothing leaves the poll on its own interval, so the poll still
+  reports a server that stops answering, and so does the failed ask.
+  The server’s attempt rules stop a changed record from looping.
   It polls fast only while a refresh runs, as today.
-  An unchanged probe is one `POST` answered without a job and one `304` `GET`, both
-  local.
+  An unchanged probe is one `POST` answered without a job, local to the machine.
 - `pulls-panel.js`: the same, against `fresh_for_s` of the list envelope.
 - Visibility, focus, and coming back online wake both at once, as they do now.
 
@@ -418,6 +415,8 @@ check.
   `arch-github-pull-requests.md`, and Refresh Cadence in
   `arch-mirror-acquisition-and-refresh.md`.
 - [ ] A conditional account check in `gh.py`, which every job’s account check uses.
+- [ ] The `BACKGROUND_FLOOR` rule for probes (see Budget): below the floor, a probe that
+  answers `200` marks the record changed without starting its full read.
 
 ### Phase 2: Lists and Everything Else
 
