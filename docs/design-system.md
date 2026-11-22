@@ -3237,6 +3237,11 @@ rule, a statistic’s label and a table’s headers are labels, and a status is 
 badge. Color is an event’s kind or a tool’s family, nothing else: an agent is a label,
 bold, never a color.
 
+The overview shows [inline progress](#progress-spinners-stay-neutral) as it reads the
+transcripts for session details.
+The checked count includes transcripts it could not read, so it can reach the total even
+when some details are unavailable.
+
 ### Session Rows
 
 The home’s Running now and Recent sessions are one list of two-line rows
@@ -6477,6 +6482,12 @@ They must not borrow link, status, file-type, or chart colors because a spinner 
 activity, not meaning.
 Prefer the shared spinner classes; custom sizes must still use the shared spinner tokens
 and keyframe.
+
+When a page can show partial results while an index is built, put the status line
+alongside the content in muted text (`--muted`) with the shared small
+`.index-progress-spinner`. Name the work and show a count when one is known.
+Keep the line in the page’s surface so it reads as secondary information beside the
+results.
 
 ### Loading States Are Shapes, Not Sentences
 
