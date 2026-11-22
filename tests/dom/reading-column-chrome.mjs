@@ -142,10 +142,13 @@ async function resize(width) {
 /** @param {string} path */
 async function open(path) {
   await chrome.send("Page.navigate", { url: `${base}/${path}` });
+  // The shell's tools, which bring `\` and the chevron, load after the view; a press before
+  // them does nothing (nav-collapse-chrome.mjs waits the same way).
   await chrome.waitFor(
     `(() => {
       const pane = document.getElementById("preview-pane");
-      return !!pane && !pane.classList.contains("preview-navigation-pending") &&
+      return document.documentElement.dataset.shellToolsReady === "true" &&
+        !!pane && !pane.classList.contains("preview-navigation-pending") &&
         !!pane.querySelector(":scope > .content-body .kpress-long-text, :scope > .content-body .folder-overview-panel-heading, :scope > .content-body .code-block");
     })()`,
     STEP_MS,
