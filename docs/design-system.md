@@ -2212,8 +2212,6 @@ A plugin reaches them as `metabrowser.changeSizeLine` and
   pull request’s page its row is as tall as the summary’s and holds the shell’s pending
   placeholder while the summary waits, so neither row moves the tabs, and it is one
   line, cut short at the row’s end in a narrow pane.
-  A Pulls row, which has room for no second line, ends its change line with the size
-  alone, “· 1.8 MB”, the patch’s size in its tooltip ([The Pulls Tab](#the-pulls-tab)).
 
 `tests/dom/git-panel-behavior.js` pins its words on a commit’s page and hover card,
 `tests/test_git_commit_summary_chrome.py` its ink and weight in both themes, and
@@ -2956,9 +2954,10 @@ opens the page and expands nothing
 there, or Space, Right, or Left on the item, keeps the row where it is, under the
 pointer or the focus, even above a row a reveal placed, whose place gives way to it.
 No row expands on its own: not when it opens, not when it is selected, and not on a
-key’s walk, so Up, Down, J, and K walk the pull requests and each row shows the size of
-its change. A walk or a reveal brings the whole item into view, its three lines and the
-focus ring round them, clear of the sticky filters, not only its link’s two lines.
+key’s walk, so Up, Down, J, and K walk the pull requests and each row shows its file
+statuses and line totals.
+A walk or a reveal brings the whole item into view, its three lines and the focus ring
+round them, clear of the sticky filters, not only its link’s two lines.
 An address naming a changed file opens its owner’s tree if needed
 ([Navigation Reveals the Item](#navigation-reveals-the-item)). Moving to another PR
 closes a tree opened only for that address; trees the reader opened stay open.
@@ -2970,10 +2969,6 @@ for the rows it draws, in one request when the browser is idle, from the cache a
 (`GET pull-files-summary`): it asks GitHub for nothing, and the lists are the ones the
 tab already reads behind the reader, the changed files of the rows in view, and those of
 trees the reader opens.
-Where the list was made from the store, its line ends with what the pull request pushes,
-“· **1.8 MB**”, a bold number in the line’s ink, its tooltip saying it and the patch’s
-size ([Change Size Line](#change-size-line)); the refresh that lists the files measures
-it, so it arrives with the counts, and a list GitHub gave has none.
 A row’s line is read again only when something says its list changed: the list of pull
 requests names a new head commit for it, the prefetch lane reports it listed the row’s
 files, or the row’s tree reads a list of another refresh
