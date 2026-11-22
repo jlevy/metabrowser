@@ -418,6 +418,8 @@ const shellSource = [
   // these states opens one, so the pane's claim finds no page to dispose.
   appDeclaration(/^var pullPageHost = null;$/m, "pull-request page host"),
   appDeclaration(/^var retainedPullPageDispose = null;$/m, "retained pull-request finalizer"),
+  // The view asked for while its file loads; these renders are a double that reads none.
+  appDeclaration(/^var awaitedPreviewView = null;$/m, "awaited view"),
   appDeclaration(/^var pluginViewLifecycle = null;$/m, "plugin view lifecycle"),
   // Showing Files resumes a root summary that waited; none of these states asks for one.
   appDeclaration(/^var _rootSummaryRefresh = null;$/m, "root summary refresh"),
@@ -528,7 +530,9 @@ function createShell(pathname, network, options = {}) {
   const tabClicks = [];
   const tabBar = fakeElement();
   const sourceTab = fakeElement({ parentElement: tabBar });
-  const preview = fakeElement();
+  // Nothing is staged in the pane in these scenarios, which is all the compositor's
+  // stagedFile asks of it (tests/dom/view-tab-hold-session.js stages a file).
+  const preview = fakeElement({ querySelector: () => null });
   const elements = new Map([
     ["preview-pane", preview],
     ["nav-filter-bar", fakeElement()],
@@ -754,12 +758,13 @@ function createShell(pathname, network, options = {}) {
     shellKeymap: null,
     pullHistoryGeneration: 0,
     navScrollShadowUpdate: null,
-    queryHtml: (selector) =>
+    // The pane's own bar holds the Source tab.
+    queryHtml: (selector, root) =>
       selector === ".nav-tab-bar"
         ? navBar
         : selector === ".header-path"
           ? heading
-          : selector === '#preview-pane > .tab-bar > .tab-btn[data-tab="source"]'
+          : root === preview && selector === ':scope > .tab-bar > .tab-btn[data-tab="source"]'
             ? sourceTab
             : null,
     queryHtmlAll: (selector) =>

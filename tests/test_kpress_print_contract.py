@@ -39,12 +39,15 @@ def _render_index_html() -> str:
 
 def test_app_shell_tracks_active_printable_view() -> None:
     src = _read_app_js()
-    assert "function setActivePreviewView" in src
+    # Which view is in front, and its print state, is the compositor's to say.
+    composition = proc_browser.STATIC_DIR.joinpath("view-composition.js").read_text()
+    assert "function setActiveView(host, viewId)" in composition
+    assert "host.dataset.printable = " in composition
+    assert "setActiveView(host, tabId)" in composition
     assert "data-printable" in src
     assert "data-print-profile" in src
     assert "data-render-runtime" in src
     assert 'data-active-view="false"' in src
-    assert "setActivePreviewView(tabId, container)" in src
     # Printing is the browser's, for Command-P and for the rendered document's print
     # button alike: the shell draws no print control and holds no print command (mb-07a1).
     assert "file-header-print" not in src

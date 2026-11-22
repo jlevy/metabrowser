@@ -323,11 +323,160 @@
     });
   }
 
+  // ── View tabs ─────────────────────────────────────────────────
+  //
+  // A file's views share one tab bar, drawn with the views as its siblings, in the
+  // preview pane or in the stage a file waits in while it holds its first paint
+  // (app.js, renderFile). A stage sits inside the pane, so everything here reaches a
+  // host's own children only: a tab chosen in the pane is not a staged file's, unless
+  // the stage is the same file's.
+
+  /**
+   * The stage of `path` in `pane`, while the pane holds that file's first paint. Its bar
+   * is drawn and takes a choice, and its commit brings the chosen view to the front.
+   *
+   * @param {HTMLElement} pane
+   * @param {string | undefined} path
+   * @returns {HTMLElement | null}
+   */
+  function stagedFile(pane, path) {
+    const stage = /** @type {HTMLElement | null} */ (
+      pane.querySelector(":scope > .preview-file-stage")
+    );
+    return stage && path !== undefined && stage.dataset.renderedPath === path ? stage : null;
+  }
+
+  /**
+   * Say which of a host's views is in front, and the print state that follows from it.
+   * The print stylesheet reads that state from the pane: the active view prints when it
+   * is printable, and otherwise the page prints a line saying it is not. Printing itself
+   * is the browser's: Command-P (Control-P elsewhere), the app's File > Print, and a
+   * rendered document's print button (builtin_plugins/markdown/print-indicator.js) all
+   * print through it, so no shell control or command stands in front of it.
+   *
+   * @param {HTMLElement} host The preview pane, or a stage.
+   * @param {string | null | undefined} viewId
+   */
+  function setActiveView(host, viewId) {
+    /** @type {HTMLElement | null} */
+    let active = null;
+    for (const content of /** @type {NodeListOf<HTMLElement>} */ (
+      host.querySelectorAll(":scope > [data-tab-content]")
+    )) {
+      const isActive = !!viewId && content.dataset.tabContent === viewId;
+      window.MetabrowserViewState.setActive(content, isActive);
+      if (isActive) {
+        active = content;
+      }
+    }
+    if (!active || !viewId) {
+      delete host.dataset.activeView;
+      host.dataset.printable = "false";
+      host.dataset.printProfile = "plain";
+      delete host.dataset.renderRuntime;
+      delete host.dataset.kpressEnabled;
+      return;
+    }
+    const printable = active.dataset.printable;
+    host.dataset.activeView = viewId;
+    host.dataset.printable = printable === "true" || printable === "1" ? "true" : "false";
+    host.dataset.printProfile = active.dataset.printProfile || "plain";
+    if (active.dataset.renderRuntime) {
+      host.dataset.renderRuntime = active.dataset.renderRuntime;
+    } else {
+      delete host.dataset.renderRuntime;
+    }
+    if (active.dataset.kpressEnabled) {
+      host.dataset.kpressEnabled = active.dataset.kpressEnabled;
+    } else {
+      delete host.dataset.kpressEnabled;
+    }
+  }
+
+  /**
+   * Select one tab of a view tab bar: mark its button, show its content, mount a view not
+   * shown before, and say which view is active. The tab's click, its letter key, and the
+   * shell's showPreviewTab share this path, and none of them moves focus. Reports whether
+   * the bar has that tab.
+   *
+   * A staged bar takes the choice as the pane's does, and its commit reads the view in
+   * front from the stage, so a tab chosen while a file holds its first paint is the one
+   * that comes up (mb-s588). A tab chosen in the pane while the same file is staged
+   * again, as Load more's render is, is chosen in that stage too.
+   *
+   * @param {HTMLElement} bar
+   * @param {string} tabId
+   */
+  function selectTab(bar, tabId) {
+    const host = bar.parentElement;
+    let found = false;
+    for (const button of /** @type {NodeListOf<HTMLElement>} */ (
+      bar.querySelectorAll(".tab-btn")
+    )) {
+      const on = button.dataset.tab === tabId;
+      button.classList.toggle("active", on);
+      button.setAttribute("aria-selected", on ? "true" : "false");
+      found ||= on;
+    }
+    if (!host || !found) {
+      return false;
+    }
+    /** @type {HTMLElement | null} */
+    let chosen = null;
+    for (const content of /** @type {NodeListOf<HTMLElement>} */ (
+      host.querySelectorAll(":scope > [data-tab-content]")
+    )) {
+      const on = content.dataset.tabContent === tabId;
+      content.style.display = on ? "" : "none";
+      if (on) {
+        chosen = content;
+      }
+    }
+    const inPane = host.id === "preview-pane";
+    if (inPane || host.classList.contains("preview-file-stage")) {
+      setActiveView(host, tabId);
+    }
+    const mountChosen = chosen?._metabrowserMount;
+    if (chosen && typeof mountChosen === "function") {
+      chosen._metabrowserMount = null;
+      mountChosen();
+    }
+    const again = inPane ? stagedFile(host, host.dataset.renderedPath) : null;
+    const againBar = /** @type {HTMLElement | null} */ (again?.querySelector(":scope > .tab-bar"));
+    if (againBar) {
+      selectTab(againBar, tabId);
+    }
+    return true;
+  }
+
+  /**
+   * Give every view tab under `root` its click. The shell binds a staged file's bar before
+   * its first view mounts, so the bar takes a choice through the hold that follows.
+   *
+   * @param {ParentNode} root
+   */
+  function bindTabs(root) {
+    for (const button of /** @type {NodeListOf<HTMLElement>} */ (
+      root.querySelectorAll(".tab-btn")
+    )) {
+      button.addEventListener("click", () => {
+        const bar = /** @type {HTMLElement | null} */ (button.closest(".tab-bar"));
+        if (bar && button.dataset.tab) {
+          selectTab(bar, button.dataset.tab);
+        }
+      });
+    }
+  }
+
   window.MetabrowserViewComposition = Object.freeze({
     FACE_WAIT_MS,
+    bindTabs,
     createLifecycle,
     mount,
     prepare,
+    selectTab,
+    setActiveView,
     settleFaces,
+    stagedFile,
   });
 })();
