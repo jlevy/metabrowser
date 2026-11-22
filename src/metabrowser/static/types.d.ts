@@ -1729,7 +1729,8 @@ type MetabrowserSdk = {
    *  element of class `git-commit-sha`, the commit-ID face. */
   shortCommit(commit: string): string;
   /** A count summary as nodes for its element, painted as the shell paints every count
-   *  summary: each number in `span.summary-number`, each mark in `span.summary-punctuation`,
+   *  summary: each count in `span.summary-number`, byte values in the shared size style,
+   *  each mark in `span.summary-punctuation`,
    *  a separator hidden from assistive technology and its `spoken` in `span.visually-hidden`,
    *  each status count, "21 A", its number and letter in one
    *  `span.summary-status-count.file-change-status`, bold in its status's ink, and the words
@@ -4425,7 +4426,7 @@ declare global {
    */
   type MetabrowserCountPart =
     | string
-    | { readonly number: string }
+    | { readonly number: string; readonly sizeStyle?: "size" | "size size-large" }
     | { readonly punctuation: string }
     | { readonly separator: string; readonly spoken?: string }
     | { readonly status: string; readonly letter: string; readonly count: string };

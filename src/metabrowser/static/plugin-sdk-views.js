@@ -2647,9 +2647,9 @@
    */
   // A change set's size line, "77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw
   // diff)", the line a page header gives its change set above its Diff summary
-  // (docs/design-system.md, "Change Size Line"). A count summary, painted by the shell's one
-  // painter of them: its numbers bold in the line's own ink, a size's unit with its number,
-  // the words and parentheses regular, never a status's color. Here, not in a startup
+  // (docs/design-system.md, "Change Size Line"). The shared painter gives the counts
+  // their emphasis and the byte values the Files navigation's size style. The words
+  // and parentheses keep the line's weight and ink. Here, not in a startup
   // script: only a commit's or a pull request's page, and a commit's hover card, draw it.
 
   /**
@@ -2664,6 +2664,14 @@
   function changeSizeLine(change) {
     /** @param {number | null} count */
     const written = (count) => (count === null ? "?" : mb.formatInteger(count));
+    /**
+     * @param {number} bytes
+     * @returns {{number: string, sizeStyle: "size" | "size size-large"}}
+     */
+    const bytePart = (bytes) => ({
+      number: formatSize(bytes),
+      sizeStyle: mb.sizeClass(bytes) ? "size size-large" : "size",
+    });
     /** @type {Array<{parts: MetabrowserCountParts, words: string}>} */
     const groups = [];
     if (change.commits !== undefined) {
@@ -2682,15 +2690,15 @@
     let sizeParts = [];
     let tooltip = null;
     if (typeof change.pushedBytes === "number") {
-      const pushed = formatSize(change.pushedBytes);
-      sizeParts = [{ number: pushed }, " compressed"];
-      groups.push({ parts: [], words: `${pushed} compressed` });
-      tooltip = `${pushed} compressed: what Git pushes for this change.`;
+      const pushed = bytePart(change.pushedBytes);
+      sizeParts = [pushed, " compressed"];
+      groups.push({ parts: [], words: `${pushed.number} compressed` });
+      tooltip = `${pushed.number} compressed: what Git pushes for this change.`;
       if (typeof change.diffBytes === "number") {
-        const diff = formatSize(change.diffBytes);
-        sizeParts = [...sizeParts, " (", { number: diff }, " raw diff)"];
-        groups.push({ parts: [], words: `${diff} raw diff` });
-        tooltip += ` ${diff} raw diff: its patch, uncompressed.`;
+        const diff = bytePart(change.diffBytes);
+        sizeParts = [...sizeParts, " (", diff, " raw diff)"];
+        groups.push({ parts: [], words: `${diff.number} raw diff` });
+        tooltip += ` ${diff.number} raw diff: its patch, uncompressed.`;
       }
     }
     const separator = { separator: "·", spoken: ", " };

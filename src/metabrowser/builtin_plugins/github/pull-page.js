@@ -6794,6 +6794,7 @@ export function mountPullPage(container, ctx, mb) {
         ? briefShown.files
         : null;
     if (files === null) {
+      delete sizeRow.dataset.sizeKey;
       const waits = summaryRow.firstChild === summaryPending;
       if (waits ? sizeRow.firstChild !== sizePending : sizeRow.firstChild !== null) {
         sizeRow.replaceChildren(...(waits ? [sizePending] : []));
@@ -6810,8 +6811,10 @@ export function mountPullPage(container, ctx, mb) {
       pushedBytes: size?.pushed_bytes ?? null,
       diffBytes: size?.diff_bytes ?? null,
     });
-    if (sizeRow.dataset.said !== line.text) {
-      sizeRow.dataset.said = line.text;
+    // Rounded sizes can share text across the file size style's threshold.
+    const sizeKey = JSON.stringify([line.text, size?.pushed_bytes, size?.diff_bytes]);
+    if (sizeRow.dataset.sizeKey !== sizeKey) {
+      sizeRow.dataset.sizeKey = sizeKey;
       sizeRow.replaceChildren(...mb.changeSizeLineNodes(line));
     }
   }
