@@ -276,7 +276,8 @@ reads perform only deduplication and dictionary lookups.
 Canonical validation occurs on overlay writes, where untrusted host paths first enter
 that store. Catalog projections return identities rather than entries, so a coordinator
 caller must opt in to catalog decorations.
-The activity tracker opts in; bulk Quick File delivery does not traverse the overlay.
+`/api/activity` opts in; the activity tracker’s tick and bulk Quick File delivery do not
+traverse the overlay.
 
 ## State and Failures
 
@@ -395,7 +396,7 @@ The performance gate shared by every provider is in the
 | `/api/file` folder facts | `EntryQuery` |
 | Initial browser stream | A lossless version-pinned snapshot assembled before atomic queue attachment; covered older changes are suppressed per connection |
 | Live browser stream | `changes()` plus coherent rereads |
-| Activity discovery | Provider-filtered catalog reads by terminal extension, ancestor name, and size; results update the host overlay |
+| Activity discovery | Provider-filtered catalog reads by terminal extension, ancestor name, and size, repeated only when the engine version moves; each tick probes a bounded part of the result (`ACTIVE_TRACKER_SWEEP_FILES` in `settings.py`) and updates the host overlay |
 | Index metadata and capabilities | `NavigationQuery`, lifecycle state, engine identity, and `DiagnosticsQuery` |
 
 Safe-path validation and file-content reads remain above the engine.

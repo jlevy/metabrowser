@@ -159,10 +159,25 @@ DEFAULT_EXECUTOR_WORKERS = 64
 
 # ── Active-file tracker ──────────────────────────────────────
 
-# Cadence at which the active-file tracker walks .logs/.state
+# Cadence at which the active-file tracker probes .logs/.state
 # entries to refresh their fingerprint. The live stream and
 # compatibility snapshot use the same activity cadence.
 ACTIVE_TRACKER_INTERVAL_S = 5.0
+
+# How many candidates one tick of the tracker's rotating sweep probes, beyond the
+# files it shows as active and the ones whose catalog facts just changed. It bounds
+# what an idle server pays per tick, and it sets how long a write that no watcher
+# reports can wait for its badge: one tick while the candidates fit in one sweep,
+# otherwise one tick per this many candidates (150 s for 30,000 at the 5 s cadence).
+# A write the watcher reports does not wait for the sweep.
+#
+# Measured with devtools/measure_active_tracker_tick.py on 30,000 trackable files (M1
+# Pro, load average 250 to 330, so CPU time rather than wall time): a probe costs about
+# 10 µs of CPU, and an idle tick took 3.0 ms at 250, 9.8 ms at 1,000, 37.8 ms at 4,000,
+# and 291 ms at 30,000. 1,000 is 0.2% of one core at the 5 s cadence. Before the sweep,
+# a tick probed every candidate and looked a process up for every log: 2.1 to 2.6 s on
+# 3,000 folders of 5 logs and 5.4 to 7.2 s on 300 folders of 95, the same 30,000 files.
+ACTIVE_TRACKER_SWEEP_FILES = 1000
 
 # Files unchanged for this many polls drop their ``active=true``
 # flag. ~30 s of inactivity tags a file as quiet again.
@@ -552,6 +567,7 @@ def client_settings_dict(
 __all__ = [
     "ACTIVE_TRACKER_INTERVAL_S",
     "ACTIVE_TRACKER_QUIET_POLLS",
+    "ACTIVE_TRACKER_SWEEP_FILES",
     "BLOCK_REMOTE_IMAGES_COOKIE",
     "DEFAULT_BROWSER_PORT",
     "DEFAULT_EXECUTOR_WORKERS",
