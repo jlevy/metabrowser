@@ -323,6 +323,19 @@ type MetabrowserRemoteImagesRuntime = Readonly<{
   ): boolean;
 }>;
 
+type MetabrowserRefChipOptions = {
+  label?: string;
+  kind?: string;
+  trunk?: boolean;
+  head?: boolean;
+  menu?: "inline" | "sibling" | false;
+  /** The earlier option for an actionable ref. Actionable chips now open a menu. */
+  copy?: "inline" | "sibling" | false;
+  ref?: string;
+  repository?: string | null;
+  snapshot?: string;
+};
+
 type MetabrowserRepositoryContext = Readonly<{
   branch: string | null;
   /** Whether `origin` has the branch: in the context the server writes, not the SDK's copy. */
@@ -1660,32 +1673,16 @@ type MetabrowserSdk = {
   fileTypes: MetabrowserFileTypeTaxonomyRuntime;
   fileTypeClass(path: string): string;
   fileTypeIcon(path: string): MetabrowserFileTypeIcon;
-  refChipHtml(
-    name: string,
-    options?: {
-      label?: string;
-      kind?: string;
-      trunk?: boolean;
-      head?: boolean;
-      copy?: "inline" | "sibling" | false;
-    },
-  ): string;
-  refChip(
-    name: string,
-    options?: {
-      label?: string;
-      kind?: string;
-      trunk?: boolean;
-      head?: boolean;
-      copy?: "inline" | "sibling" | false;
-    },
-  ): HTMLElement;
+  refChipHtml(name: string, options?: MetabrowserRefChipOptions): string;
+  refChip(name: string, options?: MetabrowserRefChipOptions): HTMLElement;
   /** A merge as source → target: two ref chips and the one shared arrow, left to right. */
   mergeRefs(
-    source: { name: string; label?: string },
-    target: { name: string; label?: string },
-    options?: { kind?: string; copy?: "inline" | "sibling" | false },
+    source: { name: string } & MetabrowserRefChipOptions,
+    target: { name: string } & MetabrowserRefChipOptions,
+    options?: MetabrowserRefChipOptions,
   ): HTMLElement;
+  mountRefMenus(primary: HTMLElement, host: HTMLElement): () => void;
+  /** Same overlay and disposal contract as mountRefMenus. */
   mountRefCopies(primary: HTMLElement, host: HTMLElement): () => void;
   /** A person, as every page draws one: an avatar's box, `--actor-avatar-size` square from
    *  first paint, then the bold name in `.actor-name`. The box holds the avatar where
@@ -3889,7 +3886,7 @@ declare global {
 
   /** What the ref selector shows for one state. */
   type MetabrowserSourceRefSelectorModel = {
-    selectedRef: { name: string; label: string; kind: string } | null;
+    selectedRef: { name: string; label: string; kind: string; ref?: string } | null;
     button: string;
     /** The served pull request's number, "#7", when the page is a pull request's head. */
     pullNumber: string | null;
@@ -3952,7 +3949,7 @@ declare global {
     /** The page's own pathname, sent so a switch can keep it. */
     currentView(): string | null;
     /** A switch is asked: *going* settles true when the page goes, false when it stays. */
-    hold?(going: Promise<boolean>): void;
+    hold?(going: Promise<boolean>): boolean | undefined;
   };
 
   /** The elements the ref selector paints into. */
@@ -3961,7 +3958,7 @@ declare global {
     /** Set when the selector is disposed, so a late load draws nothing. */
     disposed?: boolean;
     root: HTMLElement;
-    /** The button's own box, which a ref chip's copy control is placed against. */
+    /** The button's own box, which a ref chip's menu trigger is placed against. */
     buttonHost: HTMLElement;
     toggle: HTMLButtonElement;
     label: HTMLElement;
@@ -4802,14 +4799,16 @@ declare global {
       ): typeof fetch;
       guardedRequest(url: string, base: string): boolean;
       /** This page's switch: its guarded requests wait until *going* says it stays, and
-       * go with the page when it goes. */
-      hold(going: Promise<boolean>): void;
+       * go with the page when it goes. False when another switch already holds the page. */
+      hold(going: Promise<boolean>): boolean;
     }>;
     /** The pin and ref a pin's page was rendered for; absent on a folder. */
     METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;
     /** Present on a checkout's page, a folder that is a repository's root: on its working
      * tree (`working_tree` true) and on each revision it shows. */
     METABROWSER_SOURCE_CHECKOUT?: { working_tree: boolean };
+    /** The checkout's hosted origin for ref menus on its pinned revision pages. */
+    METABROWSER_CHECKOUT_REF_CONTEXT?: MetabrowserRepositoryContext;
     /** The location note a mirror or pinned checkout carries in its view header. */
     MetabrowserMirrorHeading?: Readonly<{ note(): string }>;
     MetabrowserViewState: MetabrowserViewStateRuntime;

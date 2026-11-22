@@ -811,26 +811,18 @@ async function run() {
     assertContains("badges: head branch is marked", html, "git-ref-head");
     assertContains("badges: remote kind class", html, "git-ref-remote");
     assertContains("badges: tag kind class", html, "git-ref-tag");
-    assertContains("badges: local copy names the branch", html, 'data-ref-copy="main"');
-    assertContains(
-      "badges: remote copy preserves its prefix",
-      html,
-      'data-ref-copy="upstream/trunk"',
-    );
-    assertContains("badges: tag copy names the tag", html, 'data-ref-copy="v1"');
-    assertNotContains(
-      "badges: canonical namespace is not a branch name",
-      html,
-      'data-ref-copy="refs/',
-    );
+    for (const ref of ["refs/heads/main", "refs/remotes/upstream/trunk", "refs/tags/v1"]) {
+      assertContains("badges: menu keeps exact ref", html, `&quot;ref&quot;:&quot;${ref}&quot;`);
+    }
+    assertNotContains("badges: no hover copy", html, "data-mb-copy");
     const longName = `feature/${"long-name-".repeat(30)}←<literal>`;
     const longChip = internals.renderRefBadges([
       { id: `refs/heads/${longName}`, name: longName, kind: "branch" },
     ]);
     assertContains(
-      "badges: visual clipping never truncates the payload",
+      "badges: visual clipping never truncates the name",
       longChip,
-      `data-ref-copy="${longName.replace(/</g, "&lt;").replace(/>/g, "&gt;")}"`,
+      `&quot;name&quot;:&quot;${longName.replace(/</g, "&lt;").replace(/>/g, "&gt;")}&quot;`,
     );
     assertEqual("badges: none renders nothing", internals.renderRefBadges([]), "");
   }

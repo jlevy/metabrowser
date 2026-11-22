@@ -1448,8 +1448,8 @@ def _mirror_tip(status: SourceStatus) -> str | None:
 def _mirror_heading_attrs(status: SourceStatus) -> str:
     """The navigation heading's attributes that say where a served mirror is kept.
 
-    The root menu reads `data-mirror-location` for its local path and `data-mirror-tip`
-    for the source description. The file header uses the location for its inline note.
+    The root menu and the file header read `data-mirror-location`. The heading preserves
+    the same description in `data-mirror-tip` for the browserless shell fixture.
     The location attribute and the status envelope are the only places a response names
     a path in the cache.
     """
@@ -1856,8 +1856,8 @@ async def index(
     # adopts this button, so focus a reader put on it stays
     # (static/source-ref-selector.js#build), and app.js refills the row around it rather
     # than over it (renderNavFilterBar). It removes the button when Git says a checkout's
-    # root is no repository. The button has a span of its own, which a ref chip's copy
-    # control is placed against (`mountRefCopies`), so the list still has the toolbar for
+    # root is no repository. The button has a span of its own, which a ref chip's menu
+    # control is placed against (`mountRefMenus`), so the list still has the toolbar for
     # its containing block and spans the pane, on a ref's page as on the working tree's.
     source_ref_selector = ""
     if checkout is not None or (git_pin and mirror is not None):
@@ -2125,6 +2125,12 @@ async def index(
         )
         if mirror_attrs:
             repository_context_block += f"<script>{_mirror_heading_script()}</script>"
+
+    if pin is not None and checkout is not None and checkout.serves(pin) and tip_context:
+        ref_context = _json.dumps(tip_context).replace("<", "\\u003c")
+        repository_context_block += (
+            f"<script>window.METABROWSER_CHECKOUT_REF_CONTEXT={ref_context};</script>"
+        )
     if checkout is not None:
         # A checkout's page says so, and whether it shows the working tree: the ref
         # selector reads it for what it offers, and the pin guard, which the selector's

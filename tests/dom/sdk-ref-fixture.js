@@ -15,7 +15,7 @@ function refHelpers(document) {
     refChip: sandbox.metabrowser.refChip,
     refChipHtml: sandbox.metabrowser.refChipHtml,
     mergeRefs: sandbox.metabrowser.mergeRefs,
-    mountRefCopies: sandbox.metabrowser.mountRefCopies,
+    mountRefMenus: sandbox.metabrowser.mountRefMenus,
     actorIdentity: sandbox.metabrowser.actorIdentity,
     actorIdentityHtml: sandbox.metabrowser.actorIdentityHtml,
     formatInteger: sandbox.metabrowser.formatInteger,
