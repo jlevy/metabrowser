@@ -21,6 +21,8 @@ COMMON_DOC_FOOTER = "This document follows common-doc-guidelines.md."
 COMMON_DOC_EXEMPT_ROOTS = (
     ROOT / ".agents" / "skills",
     ROOT / ".claude" / "skills",
+    # Tier agent definitions that `tbd setup` writes and rewrites.
+    ROOT / ".claude" / "agents",
     # Golden CLI captures; `make golden-update` rewrites their content.
     ROOT / "tests" / "golden",
 )
