@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections import Counter, deque
+import heapq
+from collections import Counter
 from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, cast
@@ -345,13 +346,35 @@ def _emit_bounded_tree(
     aggregates: Mapping[str, _SubtreeAggregate],
     options: RollupOptions,
 ) -> dict[str, Any]:
-    """Emit directory levels breadth-first under local and global budgets."""
+    """Expand the heaviest pending directory first, under local and global budgets.
 
-    root_node = _directory_node(root_entry, aggregates[root_entry.path], root_ignored, options)
+    A directory's weight is its largest share of the root: of files or bytes, among all
+    files or among unignored ones, so the order serves either measure and either Show
+    ignored setting. Spending the node budget heaviest first gives it to the directories a
+    treemap has room to draw. Level by level, a wide shallow tree (a ``node_modules``) spent
+    it all on tiny entries a few levels down, and large folders elsewhere came back
+    unexpanded. Ties break by path, so the emitted tree is deterministic.
+    """
+
+    root_aggregate = aggregates[root_entry.path]
+
+    def weight(aggregate: _SubtreeAggregate) -> float:
+        return max(
+            _share(aggregate.files_all, root_aggregate.files_all),
+            _share(aggregate.size_all, root_aggregate.size_all),
+            _share(aggregate.files_unignored, root_aggregate.files_unignored),
+            _share(aggregate.size_unignored, root_aggregate.size_unignored),
+        )
+
+    root_node = _directory_node(root_entry, root_aggregate, root_ignored, options)
     remaining_nodes = max(0, options.max_nodes - 1)
-    pending = deque([(root_entry, root_node, 0, root_ignored)])
+    pending: list[tuple[float, str, int, RollupEntry, dict[str, Any], int, bool]] = []
+    sequence = 0
+    heapq.heappush(
+        pending, (-1.0, root_entry.path, sequence, root_entry, root_node, 0, root_ignored)
+    )
     while pending:
-        entry, node, level, ignored = pending.popleft()
+        _, _, _, entry, node, level, ignored = heapq.heappop(pending)
         if level >= options.depth or remaining_nodes <= 0:
             node["children"] = None
             continue
@@ -369,9 +392,22 @@ def _emit_bounded_tree(
                 continue
             child_ignored = ignored or child.gitignored
             if child.type == "dir":
-                child_node = _directory_node(child, aggregates[child.path], child_ignored, options)
+                child_aggregate = aggregates[child.path]
+                child_node = _directory_node(child, child_aggregate, child_ignored, options)
                 emitted.append(child_node)
-                pending.append((child, child_node, level + 1, child_ignored))
+                sequence += 1
+                heapq.heappush(
+                    pending,
+                    (
+                        -weight(child_aggregate),
+                        child.path,
+                        sequence,
+                        child,
+                        child_node,
+                        level + 1,
+                        child_ignored,
+                    ),
+                )
                 remaining_nodes -= 1
             elif child.type == "file":
                 emitted.append(_file_node(child, ignored, options))

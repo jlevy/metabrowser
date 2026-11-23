@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from typing import Any, cast
 
@@ -287,3 +288,53 @@ def test_rollup_mtime_stays_in_the_filesystem_key_order() -> None:
         "mtime",
         "ext",
     ]
+
+
+def test_node_budget_expands_the_heaviest_directory_first() -> None:
+    """A wide, light folder must not spend the budget a deep, heavy one needs.
+
+    Level by level, the budget went to ``wide``'s thirty one-file folders and ``deep/a``
+    came back unexpanded, though it holds most of the files. Heaviest first, the chain
+    down to ``deep/a/b`` expands and its files are emitted.
+    """
+
+    entries: dict[str, _RollupProbe] = {
+        "": _RollupProbe("", "", "root", "dir", "", 0, 1, False, 130),
+        "wide": _RollupProbe("wide", "", "wide", "dir", "", 0, 1, False, 30),
+        "deep": _RollupProbe("deep", "", "deep", "dir", "", 0, 1, False, 100),
+        "deep/a": _RollupProbe("deep/a", "deep", "a", "dir", "", 0, 1, False, 100),
+        "deep/a/b": _RollupProbe("deep/a/b", "deep/a", "b", "dir", "", 0, 1, False, 100),
+    }
+    for i in range(30):
+        folder = f"wide/s{i:02d}"
+        entries[folder] = _RollupProbe(folder, "wide", f"s{i:02d}", "dir", "", 0, 1, False, 1)
+        entries[f"{folder}/x.py"] = _RollupProbe(
+            f"{folder}/x.py", folder, "x.py", "file", ".py", 10, 1, False, None
+        )
+    for i in range(100):
+        path = f"deep/a/b/f{i:03d}.py"
+        entries[path] = _RollupProbe(
+            path, "deep/a/b", f"f{i:03d}.py", "file", ".py", 10, 1, False, None
+        )
+
+    result = build_rollup(
+        entries,
+        group_rollup_children(entries),
+        "",
+        RollupOptions(depth=6, top=50, ext_top=0, max_nodes=40),
+        False,
+    )
+    assert result is not None
+    root = cast(dict[str, Any], result["node"])
+    root_children = {child["name"]: child for child in root["children"]}
+    a = root_children["deep"]["children"][0]
+    assert a["name"] == "a" and a["children"] is not None
+    b = a["children"][0]
+    assert b["name"] == "b" and b["children"], "the heaviest chain was not expanded"
+    assert sum(1 for _ in _walk(root)) <= 40
+
+
+def _walk(node: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    yield node
+    for child in node.get("children") or []:
+        yield from _walk(child)

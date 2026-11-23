@@ -263,8 +263,13 @@ TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
 # extension-tally rows before the remainder row. The semantic breakdown
 # independently caps No extension basenames and Other types extensions;
 # the route clamps every query parameter to the corresponding maximum.
+# ROLLUP_MAX_NODES bounds a response at any depth and top: emission
+# expands the heaviest folder first, so a deep or wide request spends
+# the same node budget, on the folders that hold the most. Twelve
+# levels is deeper than a treemap can draw (each nested level insets
+# its children by a few pixels).
 ROLLUP_DEFAULT_DEPTH = 3
-ROLLUP_MAX_DEPTH = 6
+ROLLUP_MAX_DEPTH = 12
 ROLLUP_DEFAULT_TOP = 40
 ROLLUP_MAX_TOP = 200
 ROLLUP_DEFAULT_EXT_TOP = 12
