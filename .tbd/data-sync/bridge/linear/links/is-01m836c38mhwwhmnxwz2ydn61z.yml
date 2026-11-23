@@ -1,0 +1,18 @@
+base:
+  assignee: null
+  description_hash: sha256v7:5b0ce92256473dedd77bf494ea2967e4061be7ee668b5b0fcf2fecc2e24ec6fa
+  labels:
+    - linear
+    - Feature
+  priority: 2
+  status: open
+  title: "Annotated collections: one format for Guided PR guides, reading lists,
+    dashboards, and boards"
+bead_id: is-01m836c38mhwwhmnxwz2ydn61z
+external_id: e6d16b1a-6932-46d8-ab79-79487c4851c8
+external_key: OS-628
+external_url: https://linear.app/finterm-ai/issue/OS-628/annotated-collections-one-format-for-guided-pr-guides-reading-lists
+remote_updated_at: 2026-11-23T03:20:53.141Z
+state: linked
+synced_at: 2026-11-23T03:20:53.375Z
+type: lk
