@@ -472,7 +472,7 @@ async function main() {
     const viewFile = make("a");
     end.append(viewFile);
     bar.append(...(lead ? [make("span"), toggle, end] : [toggle, end]));
-    const state = view.add({ section, bar, end, toggle, source, id, format: "markdown" });
+    const state = view.add({ section, bar, end, source, id, format: "markdown" });
     assert.equal(section.children.length, 3, "Rendered is all that goes beside Source");
     const [, rendered] = section.children;
     assert.equal(bar.children.at(-1), end, "the chooser adds nothing to the bar itself");
@@ -707,7 +707,6 @@ async function main() {
     section: section4,
     bar: bar4,
     end: end4,
-    toggle: toggle4,
     source: source4,
     id: "h",
     format: "yaml",
@@ -833,7 +832,7 @@ async function main() {
       const toggle = make("button");
       const end = make("div");
       bar.append(toggle, end);
-      view3.add({ section, bar, end, toggle, source, id, format: "markdown" });
+      view3.add({ section, bar, end, source, id, format: "markdown" });
       return section;
     });
     let settled = false;

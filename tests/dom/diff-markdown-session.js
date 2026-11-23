@@ -676,7 +676,6 @@ async function main() {
       section,
       bar,
       end,
-      toggle,
       source,
       id: entry.id,
       format: markdown.renderedFormat(entry),

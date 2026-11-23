@@ -2951,7 +2951,6 @@ function renderFileSection(change, patch, context, view, draw) {
           section,
           bar,
           end,
-          toggle,
           source: body,
           id: String(change.id),
           format,

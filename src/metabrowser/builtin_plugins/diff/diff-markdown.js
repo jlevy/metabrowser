@@ -837,16 +837,16 @@ export function createMarkdownViews(deps) {
   return {
     /**
      * @param {{
-     *   section: HTMLElement, bar: HTMLElement, end: HTMLElement, toggle: HTMLElement,
-     *   source: HTMLElement, id: string, format: RenderedFormat, unavailable?: string
+     *   section: HTMLElement, bar: HTMLElement, end: HTMLElement, source: HTMLElement,
+     *   id: string, format: RenderedFormat, unavailable?: string
      * }} input The file's section; its bar; the group of controls at the bar's end,
-     *   which the chooser leads; the bar's disclosure button, which takes focus when the
-     *   chooser goes; its Source body; and the format it renders as (`renderedFormat`).
+     *   which the chooser leads; its Source body; and the format it renders as
+     *   (`renderedFormat`).
      *   *unavailable* is why no projection is asked for the file, a sentence, for one
      *   whose changes the page has no patch of (`supportsRenderedChange`): it shows
      *   Source, which says the same, from the start.
      */
-    add({ section, bar, end, toggle, source, id, format, unavailable }) {
+    add({ section, bar, end, source, id, format, unavailable }) {
       const control = document.createElement("div");
       control.className = "diff-markdown-control";
       // Markdown is a KPress fragment; a tree is the structured plugin's own surface.
