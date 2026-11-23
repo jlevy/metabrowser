@@ -72,9 +72,10 @@ It links each document below and the contributor standards in `docs/`.
   a draft for free conditional probes every few seconds for what is on screen, full
   reads once every minute or two, and a budget that leaves room for the account’s other
   tools
-- [Treemap granularity: canvas cells and on-demand folders](specs/active/plan-2026-11-22-treemap-canvas-granularity.md):
+- [Treemap granularity: canvas cells and a denser rollup](specs/active/plan-2026-11-22-treemap-canvas-granularity.md):
   a draft for painting every file down to a device pixel on a canvas, with DOM kept for
-  labels and focus, and for fetching large unexpanded folders after the first paint
+  labels, focus, and hover, then sending the Treemap far more of the tree in a compact
+  encoding
 - [Tabular data browsing and live SQLite](specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md):
   a draft for one generic table plugin over CSV, record lists, and SQLite, with
   nondestructive, live reads of databases other applications are writing

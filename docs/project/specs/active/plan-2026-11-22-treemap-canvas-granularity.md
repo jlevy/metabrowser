@@ -1,16 +1,17 @@
-# Plan for Treemap Granularity: Canvas Cells and On-Demand Folders
+# Plan for Treemap Granularity: Canvas Cells and a Denser Rollup
 
-**Date:** 2026-11-22
+**Date:** 2026-11-22 (last updated 2026-11-22)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft, in design review.
+**Status:** Draft, revised after design review.
 Bead `mb-iirq` tracks it, under the treemap epic `mb-bjsy`. It is the fourth and fifth
 layers of the treemap stack, on top of
 [#722](https://github.com/jlevy/metabrowser/pull/722) (heaviest-first rollup),
 [#723](https://github.com/jlevy/metabrowser/pull/723) (deep nesting, containment), and
 [#724](https://github.com/jlevy/metabrowser/pull/724) (compact map on the Overview), so
 those can land first on their own.
+[Design Review](#design-review) records what an independent review changed.
 
 ## Overview
 
@@ -28,28 +29,31 @@ render’s cost. Behind both sits the server’s node budget, `ROLLUP_MAX_NODES`
 a folder the budget did not reach arrives with no children and draws as one solid
 rectangle however large it is.
 
-This plan paints every cell’s fill on one `<canvas>`, down to about one device pixel,
-keeps DOM only for the labels, focus rings, and accessible names of the cells large
-enough to label, hit-tests the map’s geometry for tooltips and clicks, and fetches the
-children of large unexpanded folders on demand.
+This plan fixes the renderer and the data, in that order:
+
+1. **Canvas cells** (layer 4): one `<canvas>` paints every cell down to about one device
+   pixel; DOM keeps only labels, a focus proxy, and the cell under the pointer; the
+   map’s own geometry answers the pointer.
+2. **A denser rollup** (layer 5): the Treemap asks for a larger node budget in a compact
+   encoding, and a map that hides ignored files spends none of it on them.
 
 ## Goals
 
 - Draw every file whose share of the map is at least about one device pixel, as
-  WinDirStat does (see [Prior Art](#prior-art)).
+  WinDirStat does (see [Prior Art](#prior-art)), and keep neighbours of one type
+  distinct.
 
-- A large folder the first rollup did not expand fills in, after the first paint, with
-  its own children.
+- Cut the share of the map drawn as unexpanded solid folders, measured on this
+  repository: 44.9% today (Files, Show ignored on, see [Design Review](#design-review)).
 
-- Every cell answers the pointer as cells do today, however small: the tooltip names the
-  cell under the pointer, a click opens it, and the shared hover marks it.
+- Every cell answers the pointer as cells do today, however small: the tooltip names it,
+  a click opens it, the shared hover marks it.
+
+- Keyboard reach stays what it is today: every folder and file cell drawn is reachable
+  by the arrow keys, named, and opened with Enter; Backspace goes to the parent.
 
 - Relayout and repaint stay within the frame budgets measured for them, in Chrome and in
-  WebKit, and the DOM the map keeps shrinks from up to 1,600 elements to a few hundred.
-
-- Keyboard and screen-reader access stay what they are today: every labelled cell is a
-  focusable control with a name, and Enter on a folder opens it, where its own children
-  are drawn large enough to label.
+  WebKit, and the DOM the map keeps shrinks from up to 1,600 cells to its labels.
 
 ## Non-Goals
 
@@ -61,14 +65,20 @@ children of large unexpanded folders on demand.
   Drill-down stays navigation: a click opens the folder in the Treemap view at that
   path, as today.
 
-- Cushion shading. It is a style choice, not a granularity one; see
-  [Open Questions](#open-questions).
+- Client-side subtree fetching (grafts).
+  The review’s simulation found 16 grafts still leave 29.7% of the map solid at 17
+  requests and 1.44 MB, against 0% for one whole-tree response (see
+  [Design Review](#design-review)). If the denser rollup’s budget still binds on large
+  trees, grafts become a follow-up with the lifecycle the review set out.
+
+- Cushion shading, as a style; but see [Separators](#separators).
 
 - A worker thread or `OffscreenCanvas`. Both work in the WKWebView, and neither is
   needed at the measured costs; the layout stays plain JavaScript, testable without a
   browser.
 
-- Changing what the Files tally, legend, or Overview bars count.
+- Changing what the Files tally, legend, or Overview bars count, or the Overview’s one
+  request.
 
 ## Background
 
@@ -119,307 +129,327 @@ surveys the tools and measures the costs; what this plan takes from it:
 | --- | --- | --- |
 | WinDirStat | paints every item into one bitmap down to 1 px; frames only where the short side is 5 px; 16 px bucket grid for hit tests; hover over the cached bitmap | all four |
 | QDirStat | cuts rows under 3 px and leaves the folder’s corner grey | the remainder, at a 1 px floor instead of 3 |
-| SequoiaView, cushion paper | regenerates the image only when the tree changes; selection is an overlay | the overlay canvas |
-| FoamTree | canvas; a group’s children drawn all or none; redraws only what a hover changes; loads children when a group opens | on-demand folders |
-| ECharts | `childrenVisibleMin` hides children below an area | the expansion threshold |
+| SequoiaView, cushion paper | regenerates the image only when the tree changes; selection is an overlay | the hover canvas |
+| FoamTree | canvas; a group’s children drawn all or none; redraws only what a hover changes; loads children when a group opens | not the lazy loading (see Non-Goals) |
 | webtreemap, Plotly | one DOM or SVG node per cell; coarse by design, sluggish above about 10k | the reason not to grow the DOM |
-| ncdu, duc | cumulative size and count per directory, so an unexpanded folder still lays out | already true of `/api/rollup` |
+| ncdu, duc | cumulative size and count per directory, so an unexpanded folder still lays out; compact on-disk encodings | the compact encoding |
+| Accessible canvas apps | focusable DOM elements over the canvas, focus ring drawn separately | the focus proxy |
 
-Four measurements decide the design (Apple M1 Pro, 1223×587 at `devicePixelRatio` 2):
+Measurements that decide the design (Apple M1 Pro, 1223×587 at `devicePixelRatio` 2):
 
-- **Canvas paint is cheap**: grouped by color, 5 to 9 ms for 10k rectangles and 16 to 23
-  ms for 50k in WKWebView; 8 ms and 38 ms in Chrome.
-  A 36k-file map is about 25 ms in either engine.
-- **DOM teardown in WebKit grows faster than linearly**: 250 ms to remove 5k `<div>`s,
-  1,000 ms for 10k, 4,700 ms for 20k, however they are removed.
-  Today’s 1,600-cell cap is already on that curve, so this plan *shrinks* the DOM.
+- **Canvas paint is cheap but not free**: `fillRect` per rectangle with `fillStyle`
+  grouped, 5 to 9 ms for 10k rectangles and 16 to 23 ms for 50k in WKWebView; 8 ms and
+  38 ms in Chrome, so 50k is already past two frames in Chrome.
+- **DOM teardown in WebKit grows faster than linearly**: 59 ms to remove 1k `<div>`s,
+  201 ms for 4k, 1,000 ms for 10k, 4,700 ms for 20k, however they are removed.
 - **Geometric hit testing is free**: a 16 px bucket grid answers in under 2 µs and
   builds in about 2 ms for 100k rectangles; pixel readback is a synchronous round trip
   to WebKit’s GPU process.
-- **`ctx.filter` does not exist in the WKWebView**, so the hover lift cannot reuse
-  `--viz-data-mark-hover-filter` on the canvas.
+- **`ctx.filter` does not exist in the WKWebView**; a CSS `filter` on an element does.
 
-## Design
-
-### Approach
-
-Three changes, each with its own bound:
-
-1. **One canvas paints every cell’s fill**, down to `paintMinPx`, under `maxPaintCells`.
-2. **DOM keeps only labelled cells**, as transparent controls over the canvas, under
-   `maxLabelCells`, reused across layouts.
-3. **The map asks its host to expand large unexpanded folders**, grafts the answers into
-   its tree, and lays out again.
+## Design: Canvas Cells (Layer 4)
 
 ### Layers
 
 | Layer, bottom to top | Contents | Pointer events |
 | --- | --- | --- |
-| Paint canvas | every cell’s fill, frames, separators | none |
-| Hover canvas | the lift on marked cells, the shimmer on the cell under the pointer | none |
-| Label layer | one transparent element per labelled cell: icon, name, value, focus ring, accessible name | none; the viewport routes them |
+| Paint canvas | every cell’s fill and edge | none |
+| Hover canvas | copies of the marked cells’ pixels, under CSS `filter: var(--viz-data-mark-hover-filter)` | none |
+| Label layer | one text element per labelled cell: icon, name, value | none |
+| Hover anchor | one transparent `.tm-cell` element over the cell under the pointer, carrying today’s shimmer | none |
+| Focus proxy | one `role="button"` element over the focused cell, with its name and focus ring | focusable |
 
-Painting every fill on one canvas removes the stacking problem a DOM and canvas mix
-would have, since a DOM folder’s fill would cover any canvas cell inside it.
-It also matches WinDirStat: a bitmap first, then text where it fits.
-Labels stay DOM, so they are crisp at any zoom, use the app’s fonts, and stay findable
-with the browser’s find-in-page, which a canvas defeats.
+The viewport owns all pointer events and routes them through the hit test.
+Painting every fill on one canvas avoids the stacking problem a DOM and canvas mix has,
+since a DOM folder’s fill covers any canvas cell inside it, and matches WinDirStat: a
+bitmap first, then text where it fits.
+Labels stay DOM, so they are crisp, use the app’s fonts, and stay findable with the
+browser’s find-in-page, which a canvas defeats.
+They are no longer selectable, since the viewport takes the pointer.
 
-The label layer is bounded by `maxLabelCells` and reconciled by path: a layout updates
-the position and text of an element whose cell is still labelled, adds those that became
-labelled, and removes the rest.
-A relayout from a metric change, a resize, or a graft then touches few elements, which
-is what WebKit’s teardown cost asks for.
+The label layer reconciles by `(kind, path)`, since a remainder cell shares its folder’s
+path: a layout moves and retexts the labels that remain, adds new ones, and removes the
+rest. The review counted 73 to 107 labelled cells in every scenario, so the layer needs
+no cap of its own; the paint canvas carries everything else.
 
 ### Layout
 
-`layoutTree` keeps its breadth-first, area-ordered nesting and changes in four ways:
+`layoutTree` keeps its breadth-first, area-ordered nesting and changes in three ways:
 
-- `minCellPx` becomes `paintMinPx`: the smallest painted cell, in CSS pixels, one device
-  pixel (`1 / devicePixelRatio`) by default.
-  Cells below it fold into the parent’s remainder, as today.
-
-- `maxCells` becomes `maxPaintCells`, the cap on all cells; `maxLabelCells` caps the
-  labelled ones, largest first.
-
+- `minCellPx` becomes `paintMinPx`, one device pixel (`1 / devicePixelRatio`) by
+  default. Cells below it fold into the parent’s remainder, as today.
+  `packLevel` still emits a rectangle that is tiny after its final pass, so its area
+  stays true; a cell whose edges snap to zero device pixels paints nothing and is not
+  hit, and a test counts them.
+- `maxCells` becomes `maxPaintCells`.
 - A folder too small for a header nests inside a frame whose width shrinks with depth,
   after the squarified paper (`⌈w·f^(l−1)⌉`), drawn only where the folder’s short side
-  is at least 5 px, WinDirStat’s threshold; below it, its children tile the folder edge
+  is at least 5 px, WinDirStat’s threshold; below it, the folder’s children tile it edge
   to edge. This replaces `frameNestMinPx` and the fixed `padPx` for unlabelled folders.
 
-- For speed at tens of thousands of cells (see [Bounds to Measure](#bounds-to-measure)):
-  the pending-folder choice becomes a binary heap, `cellTypography` runs only for
-  labelled cells, and geometry goes into typed arrays (`x`, `y`, `w`, `h`, `parent`,
-  `depth`, `node`) with an object only for labelled cells.
+Speed work waits for a profile in the browser.
+The review found the cost follows children visited (6,917 at 1,600 cells, 111,333 at
+10,000), because `emitLevel` builds and sorts every child of a folder even when its
+share is a handful of cells, and the pending scan is at most 6.4% of the time at 50k. So
+the first candidate is selecting only the children a folder’s share can hold; a heap and
+typed arrays only if the profile then asks for them.
 
-The output stays parent first, so painting in order draws children over their parents.
+The layout’s outputs are pure data the goldens pin: the **paint list** (rectangle in
+device pixels, color key, depth, edge or not), the **label set**, the **focus order**,
+and the **hit grid**.
+
+### Separators
+
+Today every cell has a 1 px inset edge in a stronger tone (`--tm-edge`, `styles.css`),
+so two files of one type side by side stay two cells, and a folder and its files of the
+folder’s dominant type stay apart.
+A gap alone would show the parent’s fill, usually the same color, and
+`node_modules/zod/src`’s 332 `.ts` files would still read as one block.
+
+- A nesting folder paints its interior in its edge tone, then its children over it.
+- A cell at least `separatorMinDevicePx` (3 to start) on each side draws one device
+  pixel short on its right and bottom edges, so the edge tone shows between neighbours.
+- A smaller cell draws edge to edge.
+  At that scale a run of same-type files reads as texture, as it does in WinDirStat’s
+  flat preset; whether a light cushion term should separate them is the
+  [open question](#open-questions), measured on this case.
 
 ### Painting
 
-- The canvas backing store is the viewport’s padding box times `devicePixelRatio`, with
-  `setTransform(dpr, …)`, and every edge snapped to device pixels, so neighbours neither
-  overlap nor leave hairline gaps.
-
-- **Colors come from the stylesheet, not a second palette.** For each distinct
-  `(palette key, ignored, pending, rest)` combination, a hidden probe element takes the
-  classes and inline style a cell would get, and the map reads its computed
-  `background-color` and `opacity`. The probes are reread when the color scheme or theme
-  changes, so the canvas and the bars and legend beside it cannot disagree.
-
-- A cell at least 3 device pixels on a side draws one device pixel short of its
-  rectangle, as cells do now (`w - 1`); a smaller one draws edge to edge.
-
-- Fills are grouped by color into one path each and filled once, which halves WebKit’s
-  cost at 50k cells. No strokes: a separator is the gap the short fill leaves.
-
+- The backing store is the viewport’s padding box times `devicePixelRatio`, with
+  `setTransform(dpr, …)`, capped at `maxBackingPixels`, set below WebKit’s canvas area
+  limit. A `matchMedia` resolution listener repaints when the pixel ratio changes.
+- **Colors come from the stylesheet.** For each distinct
+  `(palette key, ignored, pending, rest)` combination, a hidden probe element takes a
+  cell’s classes and inline style, and the map reads its `background-color`, `--tm-edge`
+  color, and `opacity`. Probes are reread when the color scheme or theme changes.
+- Rectangles are drawn depth by depth, so parents stay under their children, and within
+  a depth grouped by `fillStyle`, one `fillRect` each: the measured pattern.
 - A pending cell draws at the reduced-motion opacity; the pulse is not animated.
-
-- The paint canvas repaints only on layout or a color change, never on hover.
+- The paint canvas repaints on layout, a color change, or a pixel-ratio change, never on
+  hover. During a resize the bitmap stretches with the viewport, and the map lays out
+  again when the size settles, since `treemap.js` lays out on every resize callback.
 
 ### Hover
 
-The shared hover (`DistributionHover`) keeps its contract with the bars and legend.
+The shared hover (`DistributionHover`) keeps its contract with the bars and legend,
+which key on anchor identity (`distribution-hover.js`, `sameTarget`), as the tooltip
+does (`app.js`, `showTooltip`).
 
-- **Family marks** (a legend entry): the hover canvas fills each marked cell with a
-  lightened copy of its color, computed once per probe color as the lift
-  `--viz-data-mark-hover-filter` gives a DOM mark, since `ctx.filter` is absent in
-  WebKit.
-- **Self mark** (the cell under the pointer): the same lift on one cell, plus the
-  shimmer, animated on the hover canvas in `requestAnimationFrame` for the shimmer’s
-  duration and not at all under `prefers-reduced-motion`.
-- `docs/design-system.md`, “Folder Treemap”, is rewritten to describe this, since the
-  lift is no longer a CSS rule on the cell.
+- **Marks are pixel copies.** For the marked set, the map walks the paint list in order
+  and emits an op only where marking changes: *copy* a marked cell whose parent is not
+  marked, *clear* an unmarked cell whose parent is.
+  Each op copies or clears that rectangle of the paint canvas onto the hover canvas,
+  whose element carries the CSS lift filter.
+  So a marked folder lifts without its unmarked children, translucent ignored cells are
+  not composited twice, and the lift is whatever the theme’s filter is, darkening or
+  brightening. A family that marks every cell is one copy.
+  The op list is pure and golden-pinned.
+- **The cell under the pointer** gets a new hover anchor element for each cell it
+  enters: a transparent `.tm-cell` over the cell’s rectangle with `data-hovered="self"`,
+  so today’s CSS shimmer, its reduced-motion rule, and its compositor animation apply
+  unchanged, and the tooltip and shared hover see a new anchor for every cell.
+  On a nesting folder the anchor would shimmer over its children, so a folder gets the
+  lift and not the shimmer; `docs/design-system.md` says so.
+- **After every layout** the map hit-tests the last pointer position again and moves the
+  anchor, tooltip, and mark if the cell under the pointer changed, since a canvas raises
+  no `mouseover` when its content changes under a still pointer.
 
 ### Hit Testing
 
-After each layout the map builds a 16 px bucket grid over cell indexes: each bucket
-lists the cells overlapping it, deepest last.
+After each layout the map builds a 16 px bucket grid over cell indexes, deepest last.
 A point maps to the deepest cell in its bucket that contains it.
-
-- `mousemove`, throttled to one lookup a frame, gives the tooltip, the self mark, and
-  the cursor; `click` activates; the viewport owns both.
-- The tooltip anchors to one transparent proxy element the map moves over the cell’s
-  rectangle, since `mb.tooltip.show` anchors to an element.
-- The grid and lookup live in a pure module, so their invariants (every interior point
-  maps to the deepest cell containing it; a point in a gap maps to the parent) run
-  browserlessly against the production code.
+`mousemove`, at most one lookup a frame, sets the anchor, tooltip, mark, and cursor;
+`click` activates the cell under the pointer.
+The grid and lookup are a pure module: every interior point maps to the deepest cell
+containing it, and a point in a frame or gap maps to the folder.
 
 ### Keyboard and Accessibility
 
-The label layer keeps today’s roving tabindex: each labelled folder or file is a
-`role="button"` with its accessible name, and the arrow keys, Enter, and Backspace work
-as now. The focus ring is the label element’s outline.
+Today every folder and file cell drawn is a named button in one roving order
+(`treemap-map.js`), and the full view has no outer box.
+One **focus proxy** keeps that: a single `role="button"` element the arrow keys move
+through every actionable cell in layout order, positioned over the focused cell, with
+its accessible name and the focus ring.
+Enter opens the cell; Backspace goes to the parent; the proxy exists whenever any
+actionable cell does, so Backspace works on a map of tiny cells.
+A folder’s name gains its remainder (“…, 351 more files in the remainder”), since
+remainder cells lose their own `role="group"` elements.
+The canvases are `aria-hidden`.
 
-Unlabelled cells are not focusable and have no name of their own: thousands of anonymous
-rectangles are not a structure a keyboard or screen reader can use, and no surveyed tool
-offers one.
-Every unlabelled cell lies inside a labelled ancestor, or the outer box, that
-is focusable and named, and Enter opens it, where its children are drawn large enough to
-label. A folder’s accessible name gains its file count, so a reader hears how much is
-inside before opening it.
-Both canvases are `aria-hidden`.
+## Design: A Denser Rollup (Layer 5)
 
-### On-Demand Folders
+### Where the Area Goes
 
-The map takes an optional `expand(path)` option returning a promise of a rollup `node`.
-After each layout, it collects **expansion candidates**: drawn folders whose node has
-`children: null` and whose rectangle could hold at least `expandMinCells` cells (its
-area over `paintMinPx²`), largest first.
+The review replayed the production `build_rollup` on this worktree (19,917 files, 21,005
+nodes) and laid each tree out with the production layout at 1223×587, Files, Show
+ignored on:
 
-- At most `expandConcurrency` requests are in flight, and at most `expandMaxGrafts`
-  folders are grafted per tree.
-- Each answer replaces the folder’s `children` and `rest` in the map’s copy of the tree,
-  and the map lays out again, coalescing answers that arrive in the same frame into one
-  layout.
-- The view supplies `expand` with `mb.rollup(path, {depth: "max", top: "max"})` and the
-  current Show ignored, so a graft is bounded by the same node budget as the root.
-- Grafts are keyed by path and by the folder’s `(total_files, total_size, mtime)`. When
-  the watch delivers a new root, the map regrafts each cached subtree whose folder is
-  unchanged and drops the rest, so a refresh does not refetch every graft.
-- A folder in `state: "pending"` is not expanded while its scan runs; a changed measure
-  or Show ignored drops every graft.
-- A failed or aborted graft leaves the folder solid; it is not retried until the next
-  root. Disposal aborts every request in flight.
+| Plan | Requests | JSON | Map area in unexpanded folders | In remainders |
+| --- | --- | --- | --- | --- |
+| Today: 4,000 nodes, `top` 200 | 1 | 0.76 MB | 44.9% | 18.0% |
+| 16 client grafts | 17 | 1.44 MB | 29.7% | 18.9% |
+| `top` raised to the budget | 1 | 0.71 MB | 65.3% | 2.8% |
+| 8,000 nodes | 1 | 1.47 MB | 26.6% | 19.0% |
+| The whole tree | 1 | 3.69 MB | 0% | 0% |
 
-The compact map on the Overview takes `expand` too, with a lower `expandMaxGrafts`, so
-the Overview does not cost the server what the Treemap view does.
+The canvas alone leaves 43.6% to 44.9% unexpanded.
+Raising `top` alone makes the first paint worse, because
+`emit_limit = min(top, remaining)` (`inventory_rollup.py`) lets one flat folder take the
+budget.
+The bytes, not the node count, are the cost, and most bytes are per-file keys and
+repeated paths.
 
-### `top` and Flat Folders
+### Changes
 
-`top=200` folds 351 of `tests/`’s files into its remainder however much room the folder
-has. The node budget already bounds the response, so `ROLLUP_MAX_TOP` mainly limits flat
-folders. Raise it to the largest value whose response stays within the payload and
-server-time bounds measured in #723 (see the table beside `ROLLUP_MAX_NODES`), or to
-`ROLLUP_MAX_NODES`, whichever the measurement supports.
+- **A compact encoding.** `/api/rollup?encoding=compact` writes each folder’s file
+  children as positional arrays (name, size, mtime, extension, ignored) without `path`,
+  which the client derives from the folder’s path.
+  The review estimates the whole tree at 1.0 to 1.1 MB this way.
+  Only the Treemap view asks for it, and the folder plugin decodes it, not
+  `plugin-sdk.js`, which is eager and at its startup byte budget.
+- **A node budget the request names.** `nodes=` bounded by a raised `ROLLUP_MAX_NODES`,
+  set from the measurement; the default stays 4,000, so the Overview and other callers
+  are unchanged and the Overview keeps one request of today’s size.
+- **A budget that skips what the map hides.** `ignored=exclude` emits no gitignored
+  children, so with Show ignored off the budget goes to the files the map draws; today
+  88 unignored folders arrive unexpanded with ignored files hidden.
+  The Show ignored toggle then refetches, where today it is client-only.
+- **`top` set together with the budget**, so a flat folder cannot take it.
+- **The body cache** (`ROLLUP_BODY_CACHE_ENTRIES`) gets a byte bound beside its entry
+  bound, since denser bodies raise its ceiling.
 
-Both are needed: on-demand folders fill in what the node budget left solid, and a higher
-`top` fills in what one folder’s child cap folded away.
+Grafts stay out unless this measurement on a large checkout (this repository’s main
+checkout has 35,790 files with ignored files shown) leaves a large unexpanded share.
 
-### Components
+## Components
 
-| File | Change |
-| --- | --- |
-| `treemap-layout.js` | `paintMinPx`, `maxPaintCells`, `maxLabelCells`, depth-thinned frames, the heap, typed-array geometry |
-| `treemap-hit.js` (new, pure) | the bucket grid and point lookup |
-| `treemap-paint.js` (new) | canvas sizing, probe colors, grouped fills, the hover canvas and shimmer |
-| `treemap-map.js` | the three layers, label reconciliation by path, viewport pointer routing, the tooltip proxy, `expand` scheduling and grafts |
-| `styles.css`, `docs/design-system.md` | the label layer’s styles; the hover lift rule moves to the hover canvas |
-| `treemap.js`, `treemap-compact.js` | supply `expand` |
-| `settings.py` | `ROLLUP_MAX_TOP`, from the measurement |
+| File | Layer | Change |
+| --- | --- | --- |
+| `treemap-layout.js` | 4 | `paintMinPx`, `maxPaintCells`, depth-thinned frames, the paint list, the label set, the focus order |
+| `treemap-hit.js` (new, pure) | 4 | the bucket grid and point lookup |
+| `treemap-paint.js` (new) | 4 | backing store, probe colors, depth-ordered grouped fills, edges, mark ops |
+| `treemap-map.js` | 4 | the five layers, label reconciliation, pointer routing, the hover anchor, the focus proxy, disposal |
+| `styles.css`, `docs/design-system.md` | 4 | the layers’ styles; the hover lift on the hover canvas; folders lift without the shimmer |
+| `inventory_rollup.py`, `server.py`, `settings.py` | 5 | `encoding=compact`, `nodes=`, `ignored=exclude`, the budget, `top`, the body cache bound |
+| `treemap.js` | 5 | asks for the dense, compact rollup and decodes it |
 
-`treemap-paint.js` and `treemap-hit.js` load on demand with the folder plugin’s other
-treemap modules, not in the shell’s eager path.
-
-### API Changes
-
-None to `/api/rollup`: `path` already selects a subtree.
-`ROLLUP_MAX_TOP` may rise.
-The map component’s options gain `expand`; it is internal to the folder plugin.
+The new modules load with the folder plugin’s other treemap modules, not in the shell’s
+eager path.
 
 ## Bounds to Measure
 
 Per [rendering large content](../../../large-content-rendering.md), each bound is set
-from a measurement in a real browser and recorded beside its constant.
-Measured in Chrome and in the macOS app’s WKWebView, through the WebKit measurement gate
-(`apps/macos/webkit-gate/run.mjs`, `make macos-webkit-gate`) with a treemap case added,
-on this repository and on a synthetic tree of 100k files:
+from a measurement in a real browser and recorded beside its constant, in Chrome and in
+the macOS app’s WKWebView through the WebKit measurement gate
+(`apps/macos/webkit-gate/run.mjs`), on this repository’s main checkout and on a
+synthetic tree of 100k files.
+The gate judges WebKit against Chrome and leaves times under 5 ms unjudged, so each
+bound also gets an absolute budget of its own.
 
-| Bound | Measures | Starting point |
-| --- | --- | --- |
-| `maxPaintCells` | layout ms and paint ms at 5k, 10k, 25k, 50k, 100k cells | the largest count whose layout plus paint stays near two frames; paint alone allows about 50k (Prior Art) |
-| `maxLabelCells` | label reconciliation ms in WebKit when every label changes, at 200, 400, 800 | a few hundred |
-| `paintMinPx` | visible distinction of 1, 2, and 3 device px cells | one device pixel |
-| hover repaint | ms to fill the hover canvas for a family that marks every cell | under one frame |
-| `expandConcurrency`, `expandMaxGrafts` | server ms and bytes per graft, total relayout ms with all grafts | 4 and 16; the Overview 4 |
-| `expandMinCells` | how many grafted folders change what is visible | 64 |
-| `ROLLUP_MAX_TOP` | payload bytes and server ms for `tests/` and a 5k-file flat folder | as above |
+| Bound | Layer | Measures | Starting point |
+| --- | --- | --- | --- |
+| `maxPaintCells` | 4 | layout and paint ms at 5k, 10k, 25k, 50k cells | the largest count within two frames in both engines; Chrome’s 38 ms at 50k suggests about 25k |
+| `paintMinPx` | 4 | visible distinction of 1, 2, and 3 device px cells | one device pixel |
+| `separatorMinDevicePx` | 4 | same-type neighbours legible on `node_modules/zod/src` | 3 |
+| `maxBackingPixels` | 4 | WebKit’s canvas area limit | below it |
+| mark ops | 4 | ms to apply the ops for a family marking every cell, and the worst alternating case | under one frame |
+| `ROLLUP_MAX_NODES`, `top` | 5 | compact JSON bytes, server ms, unexpanded and remainder share, at 4k, 8k, 16k, 32k nodes and the whole tree | the knee of the unexpanded-share curve |
+| body cache byte bound | 5 | resident bytes at the chosen budget | the ceiling `settings.py` documents |
 
-A first, rough reading of the layout alone, in Node on 2026-11-22, on a synthetic tree
-of 120k files at 1223×587 with `minCellPx: 1`, best of 15 runs on a host at a load
-average near 300: 1.8 ms at 1,600 cells, 18 ms at 5,000, 150 ms at 10,000 and 25,000,
-200 ms at 50,000, 800 ms at 100,000. The load makes the absolute numbers unreliable, but
-the growth is faster than linear, and a profile at 50k cells puts the time in
-`emitLevel`, `squarify`, `cellTypography`, garbage collection, and `layoutTree`’s own
-loop. So the layout changes before the bound is set:
-
-- The pending-folder choice scans every pending folder for the largest (quadratic in
-  folders); it becomes a binary heap.
-- `cellTypography` runs only for labelled cells.
-- Geometry goes into typed arrays, with an object only for labelled cells, to cut
-  allocation.
-
-The bound is then measured in the browser, where the layout runs, not in Node.
+A first reading of the layout alone, in Node on 2026-11-22, on a synthetic tree of 120k
+files at 1223×587, best of 15 runs on a host at a load average near 300: 1.8 ms at 1,600
+cells, 18 ms at 5,000, 150 ms at 10,000 and 25,000, 200 ms at 50,000, 800 ms at 100,000.
+The load makes the absolute numbers unreliable; the growth is the reason the layout is
+profiled before `maxPaintCells` is set.
 
 ## Implementation Plan
 
-Two stack layers, so the renderer can be reviewed, and land, before the data change.
+Two stack layers. The canvas comes first because it is visible on its own (the review
+counted 1,483 to 3,875 cells drawn where today draws 584) and because denser data has
+nowhere to go without it.
+The budget measurement runs first of all, since it decides layer 5’s shape and whether
+grafts are needed at all.
 
 ### Phase 1: Canvas Cells (layer 4, `claude/treemap-canvas`)
 
-- [ ] Layout: the heap, typed-array geometry, `paintMinPx`, `maxPaintCells`,
-  `maxLabelCells`, depth-thinned frames, with vm tests: every cell inside its parent,
-  labelled cells are the largest, bounds respected.
-- [ ] `treemap-hit.js` with focused invariants: every interior point maps to the deepest
-  cell containing it; a point in a gap maps to the parent.
-- [ ] `treemap-paint.js`: sizing, probe colors, grouped fills, the hover canvas and
-  shimmer.
-- [ ] `treemap-map.js`: the three layers, label reconciliation, viewport routing, the
-  tooltip proxy, disposal (canvases, listeners, probes, the theme listener, the
-  shimmer’s frame).
-- [ ] A treemap case in the WebKit gate; measure and set `maxPaintCells`,
-  `maxLabelCells`, `paintMinPx`, and the hover repaint.
-- [ ] Extend the containment Chrome test to every cell (geometry from the layout, pixels
-  sampled at cell centers against the probe colors).
-- [ ] Sessions and goldens (`cli-ui-treemap`, `cli-ui-treemap-compact`), parity rows,
-  `docs/design-system.md` “Folder Treemap”, a changelog fragment.
+- [ ] Measure the budget curve on the main checkout with the review’s replay (it reuses
+  the production `build_rollup`), and record it in the research document.
+- [ ] Layout: `paintMinPx`, `maxPaintCells`, depth-thinned frames, the paint list, the
+  label set, the focus order, with vm tests: every cell inside its parent, labelled
+  cells are the largest, bounds respected, zero-size cells counted.
+- [ ] `treemap-hit.js` with its invariants.
+- [ ] `treemap-paint.js`: backing store, probes, fills, edges, mark ops.
+- [ ] `treemap-map.js`: layers, label reconciliation, routing, the hover anchor, the
+  focus proxy, re-hit-testing after layout; disposal of canvases (zeroed), listeners,
+  probes, the theme and resolution listeners, and pending frames; placeholders that
+  leave the layers in place.
+- [ ] A treemap case in the WebKit gate; profile the layout; set the layer’s bounds.
+- [ ] Extend the containment Chrome test to every cell, sampling pixels at cell centers
+  against the probe colors; keyboard reach over every actionable cell.
+- [ ] Sessions and goldens (`cli-ui-treemap-compact`, `cli-ui-treemap-legend`,
+  `cli-ui-treemap-not-indexed`), driven by pointer coordinates at a pinned pixel ratio;
+  parity rows; `docs/design-system.md` “Folder Treemap”; a changelog fragment.
 
-### Phase 2: On-Demand Folders (layer 5, `claude/treemap-expand`)
+### Phase 2: A Denser Rollup (layer 5, `claude/treemap-dense-rollup`)
 
-- [ ] `expand` scheduling, grafts, regrafting on refresh, abort on dispose, with a
-  browserless session that pins requests made, coalescing, and caps.
-- [ ] The view and compact map supply `expand`.
-- [ ] Measure and set the expansion bounds and `ROLLUP_MAX_TOP`.
-- [ ] A golden for `/api/rollup?path=<subtree>&depth=max&top=max`, parity rows, docs, a
-  changelog fragment.
+- [ ] `encoding=compact`, `nodes=`, `ignored=exclude` in the rollup and route, with
+  tests and a golden for each through `metab --api`.
+- [ ] The Treemap view asks for them and decodes in the folder plugin.
+- [ ] Set `ROLLUP_MAX_NODES`, `top`, and the body cache bound from the measurement.
+- [ ] Parity rows, docs, a changelog fragment; a follow-up bead for grafts only if the
+  measurement asks for one.
 
 ## Testing Strategy
 
-- **Browserless** (the parity rules in `AGENTS.md`): the layout, label reconciliation,
-  hit testing, and expansion scheduling are pure or vm-harnessed JavaScript, so each has
-  focused invariants and a golden session run against the production modules.
-
-- **Chrome**: containment of every cell; the canvas paints the fill the probe resolved
-  at sampled cell centers; a pointer over an unlabelled cell shows its tooltip, and a
-  click opens it.
-
-- **WebKit**: the gate’s treemap case times layout and paint in the app’s WKWebView,
-  where a pair passes when WebKit is under 1.3 times Chrome, the gate’s own rule.
-
-- **Parity exemption**: canvas pixels are paint, so the canvas itself is a named
-  paint-only exemption whose evidence is the Chrome and WebKit checks above; everything
-  the canvas shows comes from the layout the goldens pin.
+- **Browserless** (the parity rules in `AGENTS.md`): the paint list, label set, focus
+  order, hit lookup, mark ops, and the compact decoding are pure outputs of production
+  modules, each with focused invariants and a golden session.
+  Which cells a hover marks stays session-owned, as the parity registry has it today.
+- **Chrome**: containment of every cell; probe colors at sampled cell centers; a pointer
+  over an unlabelled cell shows its tooltip, a click opens it, and a layout under a
+  still pointer moves the tooltip.
+- **WebKit**: the gate’s treemap case, against the absolute budgets as well as Chrome.
+- **Parity exemption**: rasterization only, the step from the pinned paint list and mark
+  ops to pixels, with the Chrome pixel samples and the gate as its evidence.
 
 ## Rollout Plan
 
 Ships with the treemap stack as one artifact: server, browser shell, and the folder
 plugin change together, so no compatibility layer is owed.
-A changelog fragment per layer says the map now draws every file down to a pixel and
-fills in large folders after the first paint.
+A changelog fragment per layer: the map draws every file down to a pixel; the Treemap
+view receives the whole tree, or far more of it, in one request.
+
+## Design Review
+
+An independent review on 2026-11-22 read the first draft against the code, replayed the
+rollup at other budgets, and found:
+
+| Finding | Change |
+| --- | --- |
+| Same-type neighbours would paint as one block: the separator was a gap showing the parent’s same color | [Separators](#separators): interiors in the edge tone |
+| One moving tooltip proxy keeps the first cell’s text: the tooltip and shared hover key on anchor identity | a new hover anchor per cell |
+| Client grafts leave 29.7% unexpanded at 17 requests; raising `top` alone makes it worse | grafts dropped; layer 5 is a compact, denser rollup |
+| A canvas raises no events when its content changes under a still pointer | re-hit-test after every layout |
+| Keyboard reach shrank: the full view has no outer box, and a folder of small files had no tab stop | one focus proxy over every actionable cell |
+| The hover canvas covered unmarked children, double-composited translucent cells, assumed the lift lightens, and animated an infinite shimmer in script | marks as pixel copies under the CSS filter; the shimmer stays CSS on the anchor |
+| The benchmark measured `fillRect` grouped by color, not one path per color; grouping by color breaks parent-first order | depth by depth, grouped within a depth |
+| Layout cost follows children visited, not the pending scan; `maxLabelCells` was never binding | profile first; select only what a share holds; no label cap |
+| “The canvas itself” was a blanket parity exemption | rasterization only; paint list and mark ops pinned |
 
 ## Open Questions
 
-- Should unlabelled cells be reachable by keyboard, through a focus proxy that walks
-  them in layout order, or is opening the enclosing folder enough?
-  This plan says opening the folder is enough.
-
-- Should the Overview’s compact map expand folders at all, or stay one request?
-
-- Cushion shading (van Wijk and van de Wetering) makes deep nesting readable without
-  frames, at the cost of a second visual language beside the bars’ flat fills.
-  Worth a separate experiment?
+- Below `separatorMinDevicePx`, same-type files read as texture.
+  Is a light cushion term (van Wijk and van de Wetering) worth it to separate them,
+  given it is a second visual language beside the bars’ flat fills?
+- A folder under the pointer lifts without shimmering, since its anchor would cover its
+  children. Acceptable, or should the shimmer clip to the folder’s header and frame?
+- With `ignored=exclude`, the Show ignored toggle refetches instead of relaying out.
+  Acceptable for the budget it frees?
 
 ## References
 
+- [Drawing dense, deep treemaps in the browser](../../research/research-2026-11-22-dense-treemap-rendering.md)
 - [Rendering large content](../../../large-content-rendering.md)
 - [Parity Registry](../../architecture/arch-parity-registry.md)
 - `docs/design-system.md`, “Folder Treemap”
