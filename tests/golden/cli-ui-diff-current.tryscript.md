@@ -6,41 +6,44 @@ env:
 ---
 # Golden Test: What a Diff Shows in Diff and in Current
 
-Every file bar with a text diff has a **Diff | Current** chooser at the start of its end
-group, before a rendered file’s **Rendered | Source**. **Diff** is the diff as it was
-before the chooser existed.
+The diff’s toolbar ends with a **Diff | Current** chooser, before **Split | Unified**,
+or alone where the host fixes the layout, as a pull request’s Docs tab does.
+A file bar’s end group holds a rendered file’s **Rendered | Source** alone.
+**Diff** is the diff as it was before the chooser existed.
 **Current** shows the new version alone: a code body draws only the new file’s lines, in
 one column whatever the layout, each hunk’s header naming the new side’s range, added
 lines marked `+` and no removed line drawn; a Rendered Markdown body keeps its added
 blocks and keys and hides its removed ones; a YAML or JSON tree is drawn without its
 removed entries; a deleted file and a file left empty say why they have no lines.
-The choice is one for the whole diff, and every bar’s chooser shows it.
-It is stored as `diff.show`, so every later diff opens in it, and a stored value that is
-not a choice opens **Diff**. A file’s **Rendered | Source** stays its own and is not
-stored. The file whose chooser was used keeps its place on the screen; with no chooser
-used, as for `N`, the file at the pane’s top keeps its place.
+The choice is one for the whole diff.
+Each surface opens on its own default and remembers its own choice: Changes, a commit’s
+page and a patch open on **Diff** and share `diff.show`; a pull request’s Docs tab opens
+on **Current** and keeps `github.docs.show`, so a choice on one does not move the other.
+A stored value that is not a choice reads as the surface’s default and is not rewritten.
+A file’s **Rendered | Source** stays its own and is not stored.
+The file at the pane’s top keeps its place on the screen when the choice changes.
 While the diff shows **Current**, the layout control keeps its place and shows the
 layout **Diff** draws, its chips `aria-disabled` and saying why, and neither they nor
 `L` change anything; **Diff** comes back in that layout.
 `N` chooses the other chip, through the same path as a click.
 The diff attaches it once, through the SDK’s shortcut surface, on the chip it would
-select in the chooser of the file at the pane’s top, or, when that file has none, of the
-next file that has one, or else of the one before it, and moves it as the reader scrolls
-and after each draw.
-A file with no text diff, such as a binary file, has no chooser.
+select in the toolbar’s chooser, and moves it to the new chip after each draw, wherever
+the pane is scrolled.
 
 This browserless session loads the production `builtin_plugins/diff/diff-view.js`,
 `builtin_plugins/diff/diff-markdown.js`, and `builtin_plugins/diff/diff-structured.js`,
 with `static/inert-html.js` and the structured plugin’s tree helpers, and mounts a
-comparison of six files into a small element tree.
-The rendered files’ answers are the server’s projections recorded in
+comparison of six files into a small element tree, as Changes mounts it and as a pull
+request’s Docs tab does, with the layout fixed, **Current** its default, and its own
+preference. The rendered files’ answers are the server’s projections recorded in
 `tests/fixtures/diff-markdown-responses.json` and
 `tests/fixtures/diff-structured-responses.json`. The chip family, the preference store,
 and the shortcut registry are stand-ins, and the geometry is a model: a 600 px pane, a
-30 px file bar, and 20 px rows.
-Each step prints what the diff shows, each bar’s chooser, the layout control, where `N`
-and `L` sit, what was written to the preferences, and what each file draws when the step
-changed it.
+30 px toolbar and file bar, and 20 px rows.
+Each step prints what the diff shows, what its toolbar holds, where `N` and `L` sit,
+what was written to the preferences, what each file bar’s end group holds when that
+changed, and what each file draws when the step changed it.
+The steps across surfaces share one reader’s store and print no drawings.
 
 ```console
 $ node tests/dom/diff-current-session.js
@@ -49,16 +52,23 @@ $ node tests/dom/diff-current-session.js
     {
       "step": "a reader who never chose opens Diff, today's view",
       "shows": "diff",
-      "Diff | Current": "*Diff | Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split",
-        "*Unified"
+      "toolbar": [
+        "Diff | Current: *Diff | Current",
+        "Split | Unified: Split | *Unified"
       ],
       "keys": [
-        "N on docs/guide.md's Current",
+        "N on the toolbar's Current",
         "L on the toolbar's Split"
       ],
       "written": [],
+      "bar ends": {
+        "docs/guide.md": "*Rendered | Source",
+        "a.py": "nothing",
+        "config/app.yaml": "*Rendered | Source",
+        "old.txt": "nothing",
+        "notes.txt": "nothing",
+        "logo.png": "nothing"
+      },
       "files": {
         "docs/guide.md": {
           "nothing": "while its Rendered loads"
@@ -100,13 +110,12 @@ $ node tests/dom/diff-current-session.js
     {
       "step": "the rendered files arrive, their removed blocks, keys and entries among the rest",
       "shows": "diff",
-      "Diff | Current": "*Diff | Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split",
-        "*Unified"
+      "toolbar": [
+        "Diff | Current: *Diff | Current",
+        "Split | Unified: Split | *Unified"
       ],
       "keys": [
-        "N on docs/guide.md's Current",
+        "N on the toolbar's Current",
         "L on the toolbar's Split"
       ],
       "written": [],
@@ -149,31 +158,15 @@ $ node tests/dom/diff-current-session.js
       }
     },
     {
-      "step": "a.py's bar 100 px down: the Markdown file is at the pane's top, and N stays on it",
-      "shows": "diff",
-      "Diff | Current": "*Diff | Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split",
-        "*Unified"
-      ],
-      "keys": [
-        "N on docs/guide.md's Current",
-        "L on the toolbar's Split"
-      ],
-      "written": [],
-      "files": {}
-    },
-    {
-      "step": "Current, chosen on a.py: every file shows its new version, stored for every diff",
-      "place": "a.py's bar 100 px down before, 100 px after",
+      "step": "Current, chosen in the toolbar: every file shows its new version, stored as diff.show",
+      "place": "the first file's bar 30 px down before, 30 px after",
       "shows": "current",
-      "Diff | Current": "Diff | *Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split (unavailable: Split, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)",
-        "*Unified (unavailable: Unified, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)"
+      "toolbar": [
+        "Diff | Current: Diff | *Current",
+        "Split | Unified: Split (unavailable) | *Unified (unavailable)"
       ],
       "keys": [
-        "N on docs/guide.md's Diff",
+        "N on the toolbar's Diff",
         "L on the toolbar's Split"
       ],
       "written": [
@@ -232,18 +225,25 @@ $ node tests/dom/diff-current-session.js
     {
       "step": "the Markdown file's Source in Current: the new file's lines alone",
       "shows": "current",
-      "Diff | Current": "Diff | *Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split (unavailable: Split, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)",
-        "*Unified (unavailable: Unified, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)"
+      "toolbar": [
+        "Diff | Current: Diff | *Current",
+        "Split | Unified: Split (unavailable) | *Unified (unavailable)"
       ],
       "keys": [
-        "N on docs/guide.md's Diff",
+        "N on the toolbar's Diff",
         "L on the toolbar's Split"
       ],
       "written": [
         "diff.show=current"
       ],
+      "bar ends": {
+        "docs/guide.md": "Rendered | *Source",
+        "a.py": "nothing",
+        "config/app.yaml": "*Rendered | Source",
+        "old.txt": "nothing",
+        "notes.txt": "nothing",
+        "logo.png": "nothing"
+      },
       "files": {
         "docs/guide.md": {
           "source": [
@@ -268,18 +268,25 @@ $ node tests/dom/diff-current-session.js
     {
       "step": "and its Rendered again: Rendered | Source is the file's own, unstored",
       "shows": "current",
-      "Diff | Current": "Diff | *Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split (unavailable: Split, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)",
-        "*Unified (unavailable: Unified, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)"
+      "toolbar": [
+        "Diff | Current: Diff | *Current",
+        "Split | Unified: Split (unavailable) | *Unified (unavailable)"
       ],
       "keys": [
-        "N on docs/guide.md's Diff",
+        "N on the toolbar's Diff",
         "L on the toolbar's Split"
       ],
       "written": [
         "diff.show=current"
       ],
+      "bar ends": {
+        "docs/guide.md": "*Rendered | Source",
+        "a.py": "nothing",
+        "config/app.yaml": "*Rendered | Source",
+        "old.txt": "nothing",
+        "notes.txt": "nothing",
+        "logo.png": "nothing"
+      },
       "files": {
         "docs/guide.md": {
           "rendered": [
@@ -300,13 +307,12 @@ $ node tests/dom/diff-current-session.js
     {
       "step": "Split clicked in Current: nothing changes, and nothing is written",
       "shows": "current",
-      "Diff | Current": "Diff | *Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split (unavailable: Split, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)",
-        "*Unified (unavailable: Unified, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)"
+      "toolbar": [
+        "Diff | Current: Diff | *Current",
+        "Split | Unified: Split (unavailable) | *Unified (unavailable)"
       ],
       "keys": [
-        "N on docs/guide.md's Diff",
+        "N on the toolbar's Diff",
         "L on the toolbar's Split"
       ],
       "written": [
@@ -317,13 +323,28 @@ $ node tests/dom/diff-current-session.js
     {
       "step": "nor does L",
       "shows": "current",
-      "Diff | Current": "Diff | *Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split (unavailable: Split, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)",
-        "*Unified (unavailable: Unified, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)"
+      "toolbar": [
+        "Diff | Current: Diff | *Current",
+        "Split | Unified: Split (unavailable) | *Unified (unavailable)"
       ],
       "keys": [
-        "N on docs/guide.md's Diff",
+        "N on the toolbar's Diff",
+        "L on the toolbar's Split"
+      ],
+      "written": [
+        "diff.show=current"
+      ],
+      "files": {}
+    },
+    {
+      "step": "a.py's bar 100 px down: N stays on the toolbar's chooser",
+      "shows": "current",
+      "toolbar": [
+        "Diff | Current: Diff | *Current",
+        "Split | Unified: Split (unavailable) | *Unified (unavailable)"
+      ],
+      "keys": [
+        "N on the toolbar's Diff",
         "L on the toolbar's Split"
       ],
       "written": [
@@ -335,13 +356,12 @@ $ node tests/dom/diff-current-session.js
       "step": "N: Diff again, stored",
       "place": "the Markdown file's bar -110 px from the pane's top before, -110 px after",
       "shows": "diff",
-      "Diff | Current": "*Diff | Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split",
-        "*Unified"
+      "toolbar": [
+        "Diff | Current: *Diff | Current",
+        "Split | Unified: Split | *Unified"
       ],
       "keys": [
-        "N on docs/guide.md's Current",
+        "N on the toolbar's Current",
         "L on the toolbar's Split"
       ],
       "written": [
@@ -411,51 +431,30 @@ $ node tests/dom/diff-current-session.js
       }
     },
     {
-      "step": "old.txt at the pane's top: N's badge is on its chooser",
+      "step": "logo.png at the pane's top: N has not moved",
       "shows": "diff",
-      "Diff | Current": "*Diff | Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split",
-        "*Unified"
+      "toolbar": [
+        "Diff | Current: *Diff | Current",
+        "Split | Unified: Split | *Unified"
       ],
       "keys": [
-        "N on old.txt's Current",
+        "N on the toolbar's Current",
         "L on the toolbar's Split"
       ],
       "written": [
         "diff.show=current",
         "diff.show=diff"
-      ],
-      "files": {}
-    },
-    {
-      "step": "logo.png, with no text diff, at the top: N is on the file before it",
-      "shows": "diff",
-      "Diff | Current": "*Diff | Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split",
-        "*Unified"
-      ],
-      "keys": [
-        "N on notes.txt's Current",
-        "L on the toolbar's Split"
-      ],
-      "written": [
-        "diff.show=current",
-        "diff.show=diff"
-      ],
-      "files": {}
+      ]
     },
     {
       "step": "Split chosen in Diff",
       "shows": "diff",
-      "Diff | Current": "*Diff | Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "*Split",
-        "Unified"
+      "toolbar": [
+        "Diff | Current: *Diff | Current",
+        "Split | Unified: *Split | Unified"
       ],
       "keys": [
-        "N on docs/guide.md's Current",
+        "N on the toolbar's Current",
         "L on the toolbar's Unified"
       ],
       "written": [
@@ -487,13 +486,12 @@ $ node tests/dom/diff-current-session.js
     {
       "step": "Current from Split: one column, and the layout keeps Split to come back to",
       "shows": "current",
-      "Diff | Current": "Diff | *Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "*Split (unavailable: Split, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)",
-        "Unified (unavailable: Unified, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)"
+      "toolbar": [
+        "Diff | Current: Diff | *Current",
+        "Split | Unified: *Split (unavailable) | Unified (unavailable)"
       ],
       "keys": [
-        "N on docs/guide.md's Diff",
+        "N on the toolbar's Diff",
         "L on the toolbar's Unified"
       ],
       "written": [
@@ -555,13 +553,12 @@ $ node tests/dom/diff-current-session.js
     {
       "step": "Diff: Split again",
       "shows": "diff",
-      "Diff | Current": "*Diff | Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "*Split",
-        "Unified"
+      "toolbar": [
+        "Diff | Current: *Diff | Current",
+        "Split | Unified: *Split | Unified"
       ],
       "keys": [
-        "N on docs/guide.md's Current",
+        "N on the toolbar's Current",
         "L on the toolbar's Unified"
       ],
       "written": [
@@ -636,18 +633,24 @@ $ node tests/dom/diff-current-session.js
       "bound": 0
     },
     {
-      "step": "a later diff opens in Current, the stored choice",
+      "step": "Docs, never chosen there: Current, its default, with no layout control",
       "shows": "current",
-      "Diff | Current": "Diff | *Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "Split (unavailable: Split, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)",
-        "*Unified (unavailable: Unified, unavailable. Current shows the new version in one column; choose Diff for Split or Unified.)"
+      "toolbar": [
+        "Diff | Current: Diff | *Current"
       ],
       "keys": [
-        "N on docs/guide.md's Diff",
-        "L on the toolbar's Split"
+        "N on the toolbar's Diff",
+        "not attached"
       ],
       "written": [],
+      "bar ends": {
+        "docs/guide.md": "*Rendered | Source",
+        "a.py": "nothing",
+        "config/app.yaml": "*Rendered | Source",
+        "old.txt": "nothing",
+        "notes.txt": "nothing",
+        "logo.png": "nothing"
+      },
       "files": {
         "docs/guide.md": {
           "rendered": [
@@ -657,7 +660,11 @@ $ node tests/dom/diff-current-session.js
             "added: Read the first setup notes first.",
             "context: Unchanged paragraph 0.",
             "context: Unchanged paragraph 1.",
-            "[5 unchanged blocks]",
+            "context: Unchanged paragraph 2.",
+            "context: Unchanged paragraph 3.",
+            "context: Unchanged paragraph 4.",
+            "context: Unchanged paragraph 5.",
+            "context: Unchanged paragraph 6.",
             "context: Unchanged paragraph 7.",
             "context: [image]",
             "added: The new closing line."
@@ -704,49 +711,102 @@ $ node tests/dom/diff-current-session.js
       }
     },
     {
-      "step": "a stored value that is not a choice opens Diff, and is not rewritten",
-      "shows": "diff",
-      "Diff | Current": "*Diff | Current on 5 of 6 bars (logo.png has none)",
-      "layout": [
-        "*Split",
-        "Unified"
+      "step": "Changes: Current chosen, stored as diff.show",
+      "shows": "current",
+      "toolbar": [
+        "Diff | Current: Diff | *Current",
+        "Split | Unified: *Split (unavailable) | Unified (unavailable)"
       ],
       "keys": [
-        "N on docs/guide.md's Current",
+        "N on the toolbar's Diff",
         "L on the toolbar's Unified"
       ],
-      "written": [],
-      "files": {
-        "docs/guide.md": {
-          "nothing": "while its Rendered loads"
-        },
-        "a.py": {
-          "source": [
-            "@@ -3,3 +3,4 @@ def f():",
-            "4 Split rows"
-          ]
-        },
-        "config/app.yaml": {
-          "nothing": "while its Rendered loads"
-        },
-        "old.txt": {
-          "source": [
-            "@@ -1,2 +0,0 @@",
-            "2 Split rows"
-          ]
-        },
-        "notes.txt": {
-          "source": [
-            "@@ -1,2 +0,0 @@",
-            "2 Split rows"
-          ]
-        },
-        "logo.png": {
-          "source": [
-            "says: Binary file; no textual diff."
-          ]
-        }
+      "written": [
+        "diff.show=current"
+      ]
+    },
+    {
+      "step": "Docs opens on its own default, Current, which Changes did not set",
+      "shows": "current",
+      "toolbar": [
+        "Diff | Current: Diff | *Current"
+      ],
+      "keys": [
+        "N on the toolbar's Diff",
+        "not attached"
+      ],
+      "written": []
+    },
+    {
+      "step": "Docs: Diff chosen, stored as github.docs.show",
+      "shows": "diff",
+      "toolbar": [
+        "Diff | Current: *Diff | Current"
+      ],
+      "keys": [
+        "N on the toolbar's Current",
+        "not attached"
+      ],
+      "written": [
+        "github.docs.show=diff"
+      ]
+    },
+    {
+      "step": "Changes again: Current, its own choice, which Docs did not move",
+      "shows": "current",
+      "toolbar": [
+        "Diff | Current: Diff | *Current",
+        "Split | Unified: *Split (unavailable) | Unified (unavailable)"
+      ],
+      "keys": [
+        "N on the toolbar's Diff",
+        "L on the toolbar's Unified"
+      ],
+      "written": []
+    },
+    {
+      "step": "Docs again: Diff, its own choice",
+      "shows": "diff",
+      "toolbar": [
+        "Diff | Current: *Diff | Current"
+      ],
+      "keys": [
+        "N on the toolbar's Current",
+        "not attached"
+      ],
+      "written": []
+    },
+    {
+      "step": "what the store holds",
+      "stored": {
+        "diff.show": "current",
+        "github.docs.show": "diff"
       }
+    },
+    {
+      "step": "Changes, a stored value that is not a choice: Diff, its default",
+      "shows": "diff",
+      "toolbar": [
+        "Diff | Current: *Diff | Current",
+        "Split | Unified: *Split | Unified"
+      ],
+      "keys": [
+        "N on the toolbar's Current",
+        "L on the toolbar's Unified"
+      ],
+      "written": []
+    },
+    {
+      "step": "Docs, a stored value that is not a choice: Current, its default",
+      "shows": "current",
+      "toolbar": [
+        "Diff | Current: Diff | *Current"
+      ],
+      "keys": [
+        "N on the toolbar's Diff",
+        "not attached"
+      ],
+      "written": []
     }
   ]
 }

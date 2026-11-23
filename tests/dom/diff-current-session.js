@@ -15,14 +15,19 @@
 // bound on an element that holds it; the store answers what was stored; the registry records
 // an attachment and runs its `activate` as it would for the first live target, and
 // tests/dom/plugin-shortcuts-session.js runs the production surface. Geometry is a model, so
-// that the place a choice keeps can be read: the pane is 600 px tall, a file bar is 30 px, and
-// every drawn row 20 px, so a file's place moves as Diff and Current draw more or fewer rows.
+// that the place a choice keeps can be read: the pane is 600 px tall, the toolbar and a file bar
+// are 30 px, and every drawn row 20 px, so a file's place moves as Diff and Current draw more or
+// fewer rows.
 //
-// Each step prints what the diff shows, each bar's Diff | Current (`*` marks the chosen
-// chip), the layout control, where `N` and `L` sit, what was written to the preferences, and,
-// for each file whose drawing the step changed, what it draws: a code body's hunk headers and
-// rows (the line numbers, the marker, the text), a Rendered body's blocks and front matter
-// or its tree's rows, and what a file with no rows says. A row Current leaves hidden is not printed.
+// Each step prints what the diff shows, what its toolbar holds, its Diff | Current (`*` marks
+// the chosen chip), the layout control, where `N` and `L` sit, what was written to the
+// preferences, what each file bar's end group holds where that changed, and, for each file
+// whose drawing the step changed, what it draws: a code body's hunk headers and rows (the line
+// numbers, the marker, the text), a Rendered body's blocks and front matter or its tree's rows,
+// and what a file with no rows says. A row Current leaves hidden is not printed. A pull
+// request's Docs tab mounts the same diff as its page does, with the layout fixed, Current
+// its default, and a preference of its own, and its steps print what it opens on and what is
+// written, apart from Changes' `diff.show`.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -410,7 +415,7 @@ function heightOf(node) {
   if (node.nodeType !== 1 || node.hidden) {
     return 0;
   }
-  if (node.classList.contains("diff-file-bar")) {
+  if (node.classList.contains("diff-file-bar") || node.classList.contains("diff-toolbar")) {
     return BAR_PX;
   }
   if (ROWS.some((name) => node.classList.contains(name))) {
@@ -833,7 +838,7 @@ function treeBody(container) {
   });
 }
 
-/** One bar's chooser: its chips, `*` on the chosen one. */
+/** A chooser's chips, `*` on the chosen one. */
 function chips(control) {
   return control.children
     .map((chip) => `${chip.getAttribute("aria-checked") === "true" ? "*" : ""}${chip.textContent}`)
@@ -871,9 +876,20 @@ async function main() {
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-markdown.js")).href
   );
 
-  /** A diff mounted in the pane under *stored* preferences. */
-  function mount(stored) {
-    const prefs = new Map(Object.entries(stored));
+  /** The mount options a pull request's Docs tab passes (github/pull-page.js). */
+  const DOCS = {
+    unfold: true,
+    layout: "unified",
+    show: "current",
+    showPreference: "github.docs.show",
+  };
+
+  /**
+   * A diff mounted in the pane under *stored* preferences, a plain object or a store shared
+   * with another mount, and the host's *options*: none for Changes, a commit page and a patch.
+   */
+  function mount(stored, options = {}) {
+    const prefs = stored instanceof Map ? stored : new Map(Object.entries(stored));
     const writes = [];
     const binds = [];
     const attachments = [];
@@ -929,12 +945,14 @@ async function main() {
         structuredClone(fileId === "f6" ? trees["config/app.yaml"] : recorded.answers.f1),
       markdownTargets: markdownViews.markdownTargets(recorded.image_route, () => true),
       markdownHoldMs: 0,
+      ...options,
     });
     const root = host.find("diff-root")[0];
+    const toolbar = root.find("diff-toolbar")[0];
     const sections = () => root.children.filter((node) => node.classList.contains("diff-file"));
     const sectionOf = (filePath) => sections()[PATHS.indexOf(filePath)];
     const key = (id) => attachments.find((record) => record.options.id === id);
-    /** Where a key's badge sits: the chip, and the file whose bar holds it. */
+    /** Where a key's badge sits: the chip, and the file whose bar holds it, or the toolbar. */
     const keyAt = (id) => {
       const record = key(id);
       if (record === undefined) {
@@ -947,25 +965,58 @@ async function main() {
       const where = section === null ? "the toolbar" : PATHS[sections().indexOf(section)];
       return `${record.options.key.toUpperCase()} on ${where}'s ${record.target.textContent}`;
     };
+    /** What the toolbar holds, in order, and what each of its choosers reads. */
+    const toolbarNow = () => {
+      assert(toolbar !== undefined, "no toolbar");
+      return toolbar.children.map((child) => {
+        if (child.classList.contains("diff-show-control")) {
+          return `Diff | Current: ${chips(child)}`;
+        }
+        if (child.classList.contains("diff-layout-control")) {
+          return `Split | Unified: ${child.children
+            .map((chip) => {
+              const disabled = chip.getAttribute("aria-disabled") === "true";
+              const chosen = chip.getAttribute("aria-checked") === "true" ? "*" : "";
+              return `${chosen}${chip.textContent}${disabled ? " (unavailable)" : ""}`;
+            })
+            .join(" | ")}`;
+        }
+        return child.className;
+      });
+    };
+    /** What each file bar's end group holds: Rendered | Source, or nothing. */
+    const barEnds = () =>
+      Object.fromEntries(
+        sections().map((section, index) => {
+          const end = section.find("diff-file-end")[0];
+          const held = end.children
+            .filter((child) => !child.classList.contains("diff-markdown-progress"))
+            .map((child) =>
+              child.classList.contains("diff-markdown-control") ? chips(child) : child.className,
+            );
+          return [PATHS[index], held.length === 0 ? "nothing" : held.join(", ")];
+        }),
+      );
     const drawn = new Map();
+    let endsSaid = null;
     return {
       handle,
       root,
       writes,
       binds,
-      sectionOf,
       /** The pane scrolled so *filePath*'s bar is *top* px below the pane's top. */
       scrollTo(filePath, top) {
         pane.scrollTop += sectionOf(filePath).getBoundingClientRect().top - top;
         pane.dispatch("scroll");
       },
       topOf: (filePath) => sectionOf(filePath).getBoundingClientRect().top,
-      /** A chip's click, as the chip family hands it to each handler bound around it. */
-      async click(filePath, value, group = "diff-show-control") {
+      /**
+       * A chip's click, as the chip family hands it to each handler bound around it: in the
+       * toolbar's chooser *group*, or, with a *filePath*, in that file's bar.
+       */
+      async click(group, value, filePath = null) {
         const holder =
-          filePath === null
-            ? root.find("diff-layout-control")[0]
-            : sectionOf(filePath).find(group)[0];
+          filePath === null ? toolbar.find(group)[0] : sectionOf(filePath).find(group)[0];
         const chip = holder.querySelector(`[data-chip-value="${value}"]`);
         for (const record of binds) {
           if (record.bound && record.root.contains(chip)) {
@@ -980,14 +1031,22 @@ async function main() {
         await settle();
       },
       keys: () => [keyAt("diff.show"), keyAt("diff.layout")],
+      /** What a step shows, without the files' drawings. */
+      brief(name, extra = {}) {
+        assert(
+          sections().every((section) => section.find("diff-show-control").length === 0),
+          "a file bar holds a Diff | Current",
+        );
+        return {
+          step: name,
+          ...extra,
+          shows: root.dataset.show,
+          toolbar: toolbarNow(),
+          keys: [keyAt("diff.show"), keyAt("diff.layout")],
+          written: [...writes],
+        };
+      },
       line(name, extra = {}) {
-        const bars = sections().map((section) => {
-          const control = section.find("diff-show-control")[0];
-          return control === undefined ? "none" : chips(control);
-        });
-        const same = bars.filter((each) => each !== "none");
-        assert(new Set(same).size === 1, `the bars disagree: ${bars.join(", ")}`);
-        const layout = root.find("diff-layout-control")[0];
         const files = {};
         for (const filePath of PATHS) {
           const now = drawing(sectionOf(filePath));
@@ -997,27 +1056,20 @@ async function main() {
             files[filePath] = now;
           }
         }
-        return {
-          step: name,
-          ...extra,
-          shows: root.dataset.show,
-          "Diff | Current": `${same[0]} on ${same.length} of ${bars.length} bars (${PATHS.filter((_, index) => bars[index] === "none").join(", ")} has none)`,
-          layout: layout.children.map((chip) => {
-            const disabled = chip.getAttribute("aria-disabled") === "true";
-            const chosen = chip.getAttribute("aria-checked") === "true" ? "*" : "";
-            return `${chosen}${chip.textContent}${disabled ? ` (unavailable: ${chip.getAttribute("aria-label")})` : ""}`;
-          }),
-          keys: [keyAt("diff.show"), keyAt("diff.layout")],
-          written: [...writes],
-          files,
-        };
+        const ends = barEnds();
+        const endsText = JSON.stringify(ends);
+        const said = endsSaid === endsText ? {} : { "bar ends": ends };
+        endsSaid = endsText;
+        return { ...this.brief(name, extra), ...said, files };
       },
     };
   }
 
   const steps = [];
 
-  // Opened by a reader who never chose: Diff, as before Current existed.
+  // Changes, a commit's page or a patch, opened by a reader who never chose: Diff, as before
+  // Current existed. Diff | Current is in the toolbar, before Split | Unified, and a file
+  // bar's end group holds Rendered | Source alone.
   const diff = mount({ "diff.layout": "unified" });
   steps.push(diff.line("a reader who never chose opens Diff, today's view"));
   reveal();
@@ -1027,37 +1079,41 @@ async function main() {
   );
   const attachedShow = diff.binds.length;
 
-  // The reader is in the code file, 100 px down the pane, and chooses Current there.
-  // The reader chooses Current on a.py, whose bar is 100 px down the pane, below the end of
-  // the Markdown file at the pane's top. The file whose chooser was used keeps its place.
-  diff.scrollTo("a.py", 100);
-  await settle();
-  const before = diff.topOf("a.py");
-  steps.push(
-    diff.line("a.py's bar 100 px down: the Markdown file is at the pane's top, and N stays on it"),
+  // The toolbar is at the pane's top, above the first file; choosing there keeps that file
+  // where it is.
+  const first = diff.topOf("docs/guide.md");
+  await diff.click("diff-show-control", "current");
+  assert(
+    diff.topOf("docs/guide.md") === first,
+    `the first file moved to ${diff.topOf("docs/guide.md")} px`,
   );
-  await diff.click("a.py", "current");
-  assert(diff.topOf("a.py") === before, `a.py moved to ${diff.topOf("a.py")} px`);
   steps.push(
-    diff.line("Current, chosen on a.py: every file shows its new version, stored for every diff", {
-      place: `a.py's bar ${before} px down before, ${diff.topOf("a.py")} px after`,
-    }),
+    diff.line(
+      "Current, chosen in the toolbar: every file shows its new version, stored as diff.show",
+      {
+        place: `the first file's bar ${first} px down before, ${diff.topOf("docs/guide.md")} px after`,
+      },
+    ),
   );
 
-  await diff.click("docs/guide.md", "source", "diff-markdown-control");
+  await diff.click("diff-markdown-control", "source", "docs/guide.md");
   steps.push(diff.line("the Markdown file's Source in Current: the new file's lines alone"));
-  await diff.click("docs/guide.md", "rendered", "diff-markdown-control");
+  await diff.click("diff-markdown-control", "rendered", "docs/guide.md");
   steps.push(diff.line("and its Rendered again: Rendered | Source is the file's own, unstored"));
 
   // Layout is Diff's: in Current its chips say why, and neither they nor L change anything.
-  await diff.click(null, "split");
+  await diff.click("diff-layout-control", "split");
   steps.push(diff.line("Split clicked in Current: nothing changes, and nothing is written"));
   await diff.press("diff.layout");
   steps.push(diff.line("nor does L"));
 
-  // N is the other chip, wherever its badge is.
-  // With no chooser used, the file at the pane's top keeps its place: the Markdown file.
+  // N is the other chip of the toolbar's chooser, wherever the pane is. The reader is in
+  // a.py, its bar 100 px down the pane under the end of the Markdown file, and the toolbar
+  // is out of view; the file at the pane's top keeps its place.
+  diff.scrollTo("a.py", 100);
+  await settle();
   const anchor = diff.topOf("docs/guide.md");
+  steps.push(diff.line("a.py's bar 100 px down: N stays on the toolbar's chooser"));
   await diff.press("diff.show");
   assert(diff.topOf("docs/guide.md") === anchor, "N moved the file at the pane's top");
   steps.push(
@@ -1065,24 +1121,21 @@ async function main() {
       place: `the Markdown file's bar ${anchor} px from the pane's top before, ${diff.topOf("docs/guide.md")} px after`,
     }),
   );
-
-  diff.scrollTo("old.txt", 0);
-  await settle();
-  steps.push(diff.line("old.txt at the pane's top: N's badge is on its chooser"));
   diff.scrollTo("logo.png", 0);
   await settle();
-  steps.push(diff.line("logo.png, with no text diff, at the top: N is on the file before it"));
+  steps.push(diff.brief("logo.png at the pane's top: N has not moved"));
 
   // Layout returns with Diff, and Current is one column whatever the layout.
-  diff.scrollTo("docs/guide.md", 0);
+  pane.scrollTop = 0;
+  pane.dispatch("scroll");
   await settle();
-  await diff.click(null, "split");
+  await diff.click("diff-layout-control", "split");
   steps.push(diff.line("Split chosen in Diff"));
-  await diff.click("old.txt", "current");
+  await diff.click("diff-show-control", "current");
   steps.push(
     diff.line("Current from Split: one column, and the layout keeps Split to come back to"),
   );
-  await diff.click("notes.txt", "diff");
+  await diff.click("diff-show-control", "diff");
   steps.push(diff.line("Diff: Split again"));
 
   diff.handle.dispose();
@@ -1096,16 +1149,40 @@ async function main() {
     bound: diff.binds.filter((record) => record.bound).length,
   });
 
-  // The stored choice opens every later diff, and a value that is not one is Diff.
-  const stored = mount({ "diff.layout": "unified", "diff.show": "current" });
+  // A pull request's Docs tab: the layout fixed, so its toolbar holds Diff | Current alone,
+  // and Current its default, which a reader who never chose there opens on.
+  const docs = mount({ "diff.layout": "split" }, DOCS);
   reveal();
   await settle();
-  steps.push(stored.line("a later diff opens in Current, the stored choice"));
-  stored.handle.dispose();
+  steps.push(docs.line("Docs, never chosen there: Current, its default, with no layout control"));
+  docs.handle.dispose();
 
+  // Each surface keeps its own choice. One reader's store, across Changes and Docs:
+  const store = new Map();
+  const changes1 = mount(store);
+  await changes1.click("diff-show-control", "current");
+  steps.push(changes1.brief("Changes: Current chosen, stored as diff.show"));
+  changes1.handle.dispose();
+  const docs1 = mount(store, DOCS);
+  steps.push(docs1.brief("Docs opens on its own default, Current, which Changes did not set"));
+  await docs1.click("diff-show-control", "diff");
+  steps.push(docs1.brief("Docs: Diff chosen, stored as github.docs.show"));
+  docs1.handle.dispose();
+  const changes2 = mount(store);
+  steps.push(changes2.brief("Changes again: Current, its own choice, which Docs did not move"));
+  changes2.handle.dispose();
+  const docs2 = mount(store, DOCS);
+  steps.push(docs2.brief("Docs again: Diff, its own choice"));
+  docs2.handle.dispose();
+  steps.push({ step: "what the store holds", stored: Object.fromEntries(store) });
+
+  // A stored value that is not a choice reads as the surface's default, and is not rewritten.
   const odd = mount({ "diff.show": "both" });
-  steps.push(odd.line("a stored value that is not a choice opens Diff, and is not rewritten"));
+  steps.push(odd.brief("Changes, a stored value that is not a choice: Diff, its default"));
   odd.handle.dispose();
+  const oddDocs = mount({ "github.docs.show": "both" }, DOCS);
+  steps.push(oddDocs.brief("Docs, a stored value that is not a choice: Current, its default"));
+  oddDocs.handle.dispose();
 
   console.log(JSON.stringify({ steps }, null, 2));
   finished = true;

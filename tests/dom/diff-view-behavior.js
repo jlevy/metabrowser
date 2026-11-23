@@ -996,10 +996,9 @@ async function headLinkChecks(mountDiffView, byName) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
     // The bar the production view builds for a rendered file: the name's group, the
-    // disclosure, its copy control, and its stats, then the group at the bar's end: its
-    // progress mark, the diff's Diff | Current, and the file's Rendered | Source, which ends
-    // the bar. This document offers no View file control, which would end the name's group
-    // (tests/dom/diff-view-file-session.js).
+    // disclosure, its copy control, and its stats, then the group at the bar's end, the chooser
+    // behind its progress mark. This document offers no View file control, which would
+    // end the name's group (tests/dom/diff-view-file-session.js).
     const [fileBar] = container.find("diff-file-bar");
     const groups = fileBar.children.map((group) =>
       group.children.map((child) => String(child.className).split(" ").at(-1)),
@@ -1011,7 +1010,7 @@ async function headLinkChecks(mountDiffView, byName) {
         JSON.stringify(groups) ===
           JSON.stringify([
             ["expanded", "diff-file-copy", "diff-file-facts"],
-            ["diff-markdown-progress", "diff-show-control", "diff-markdown-control"],
+            ["diff-markdown-progress", "diff-markdown-control"],
           ]),
       JSON.stringify(groups),
     );
@@ -1429,7 +1428,7 @@ async function main() {
   const preferenceWrites = [];
   const layoutSpecs = [];
   let unbound = 0;
-  // The diff's Diff | Current choosers are bound once, on its root.
+  // The toolbar's Diff | Current chooser is bound apart from the layout control.
   let showBinds = 0;
   let showUnbound = 0;
   const layoutApi = {
@@ -1449,7 +1448,9 @@ async function main() {
     },
     filterControls: {
       groupHtml: (spec) => {
-        layoutSpecs.push(spec);
+        if (spec.key === "diff-layout") {
+          layoutSpecs.push(spec);
+        }
         return `<span role="radiogroup" data-select="${spec.select}" data-layout="${spec.layout}">${spec.options.map((option) => option.label).join("/")}</span>`;
       },
       bind: (root, handlers) => {
@@ -1629,9 +1630,9 @@ async function main() {
         row.find("diff-split-old")[0].classList.contains("diff-split-empty"),
       ),
   );
-  // Diff | Current is on a code file's bar too: one choice for the diff, which draws the
-  // new file's lines in one column whatever the layout, while the layout control keeps its
-  // place, says why it is unavailable, and changes nothing.
+  // Diff | Current is in the diff's toolbar, beside the layout control: one choice for the
+  // diff, which draws the new file's lines in one column whatever the layout, while the
+  // layout control keeps its place, says why it is unavailable, and changes nothing.
   let showChange = null;
   let currentLayoutChange = null;
   const showSpecs = [];
@@ -1655,11 +1656,19 @@ async function main() {
   const currentHost = new FakeElement("div");
   const currentHandle = mountDiffView(currentHost, byName.get("modified-with-heading"), currentApi);
   const codeBar = currentHost.find("diff-file-bar")[0];
-  const showSpec = showSpecs.find((spec) => spec.key.startsWith("diff-show:"));
+  const showSpec = showSpecs.find((spec) => spec.key === "diff-show");
+  const currentToolbar = currentHost.find("diff-toolbar")[0];
   check(
-    "a code file's bar ends with the Diff | Current chooser and wraps around it",
-    codeBar.find("diff-file-end")[0].children[0]?.classList.contains("diff-show-control") ===
-      true && codeBar.classList.contains("diff-file-bar-chooser"),
+    "the toolbar ends with Diff | Current, then Split | Unified",
+    JSON.stringify(currentToolbar.children.map((child) => child.className)) ===
+      JSON.stringify(["diff-show-control", "diff-layout-control"]),
+    JSON.stringify(currentToolbar.children.map((child) => child.className)),
+  );
+  check(
+    "a code file's bar holds no chooser and does not wrap",
+    codeBar.find("diff-file-end")[0].children.length === 0 &&
+      currentHost.find("diff-show-control").length === 1 &&
+      !codeBar.classList.contains("diff-file-bar-markdown"),
   );
   check(
     "the chooser is one joined, exclusive group named for what it chooses",
@@ -1706,7 +1715,7 @@ async function main() {
     JSON.stringify(layoutInCurrent),
   );
   check(
-    "the choice is stored for every diff",
+    "the choice is stored as diff.show, which every surface but Docs shares",
     JSON.stringify(preferenceWrites.slice(writesBefore)) ===
       JSON.stringify([{ key: "diff.show", value: "current" }]),
     JSON.stringify(preferenceWrites.slice(writesBefore)),
@@ -1734,7 +1743,7 @@ async function main() {
     ...currentApi,
     filterControls: {
       groupHtml: (spec) => {
-        if (spec.key.startsWith("diff-show:")) {
+        if (spec.key === "diff-show") {
           deletedShow = spec.key;
         }
         return "";
@@ -1755,6 +1764,96 @@ async function main() {
       deletedCurrent.find("diff-line").length === 0,
   );
   deletedHandle.dispose();
+
+  // A host that fixes the layout and opens on Current, as a pull request's Docs tab does:
+  // its toolbar holds Diff | Current alone, it opens in Current with nothing stored, and it
+  // reads and writes its own preference, never `diff.show`, so a choice on Changes does not
+  // move it, nor its own Changes. A stored value that is not a choice reads as its default.
+  const docsReads = [];
+  const docsWrites = [];
+  const docsStored = new Map([["diff.show", "diff"]]);
+  let docsChange = null;
+  const docsSpecs = [];
+  const docsApi = {
+    ...layoutApi,
+    prefs: {
+      get: (key, fallback) => {
+        docsReads.push(key);
+        return docsStored.has(key) ? docsStored.get(key) : fallback;
+      },
+      set: (key, value) => {
+        docsWrites.push({ key, value });
+        docsStored.set(key, value);
+        return true;
+      },
+    },
+    filterControls: {
+      groupHtml: (spec) => {
+        docsSpecs.push(spec);
+        return "";
+      },
+      bind: (root, handlers) => {
+        if (root.classList.contains("diff-show-control")) {
+          docsChange = handlers.onChange;
+        }
+        return () => {};
+      },
+    },
+  };
+  const docsOptions = { layout: "unified", show: "current", showPreference: "github.docs.show" };
+  const docsHost = new FakeElement("div");
+  const docsHandle = mountDiffView(
+    docsHost,
+    byName.get("modified-with-heading"),
+    docsApi,
+    docsOptions,
+  );
+  const docsToolbar = docsHost.find("diff-toolbar")[0];
+  check(
+    "a fixed layout's toolbar is drawn for Diff | Current alone",
+    JSON.stringify(docsToolbar?.children.map((child) => child.className)) ===
+      JSON.stringify(["diff-show-control"]) && docsSpecs.every((spec) => spec.key === "diff-show"),
+    JSON.stringify(docsToolbar?.children.map((child) => child.className)),
+  );
+  check(
+    "a surface that opens on Current does so with nothing stored, reading its own preference",
+    docsHost.find("diff-root")[0].dataset.show === "current" &&
+      docsHost.find("diff-hunk-current").length === 1 &&
+      docsSpecs.at(-1).value === "current" &&
+      JSON.stringify(docsReads) === JSON.stringify(["github.docs.show"]),
+    JSON.stringify({ reads: docsReads, value: docsSpecs.at(-1)?.value }),
+  );
+  docsChange("diff-show", "diff", "one");
+  check(
+    "its choice is stored as its own preference, and diff.show is untouched",
+    JSON.stringify(docsWrites) === JSON.stringify([{ key: "github.docs.show", value: "diff" }]) &&
+      docsStored.get("diff.show") === "diff" &&
+      docsHost.find("diff-root")[0].dataset.show === "diff",
+    JSON.stringify(docsWrites),
+  );
+  docsHandle.dispose();
+  docsStored.set("github.docs.show", "both");
+  const oddDocs = new FakeElement("div");
+  const oddDocsHandle = mountDiffView(
+    oddDocs,
+    byName.get("modified-with-heading"),
+    docsApi,
+    docsOptions,
+  );
+  check(
+    "a stored value that is not a choice reads as the surface's own default",
+    oddDocs.find("diff-root")[0].dataset.show === "current",
+  );
+  oddDocsHandle.dispose();
+  docsStored.set("diff.show", "current");
+  const changesHost = new FakeElement("div");
+  const changesHandle = mountDiffView(changesHost, byName.get("modified-with-heading"), docsApi);
+  check(
+    "a surface with no default of its own opens on what diff.show holds",
+    changesHost.find("diff-root")[0].dataset.show === "current" && docsReads.at(-1) === "diff.show",
+    JSON.stringify(docsReads),
+  );
+  changesHandle.dispose();
 
   const pureDelete = new FakeElement("div");
   mountDiffView(pureDelete, byName.get("deleted-file"), layoutApi);
@@ -2016,8 +2115,9 @@ async function main() {
   );
   check("revision-hosted change sets keep their toolbar", hosted.find("diff-toolbar").length === 1);
   // A layout the host fixes has no layout control, and leaves the toolbar what else it holds:
-  // a change set's totals, here; with nothing else, as on a pull request's Docs tab, there is
-  // no toolbar, and the files follow at once.
+  // a change set's totals and Diff | Current, here; Diff | Current alone, as on a pull
+  // request's Docs tab. A toolbar with nothing in it, where the chip family is not loaded,
+  // is not drawn, and the files follow at once.
   const fixedApi = { filterControls: { groupHtml: () => "", bind: () => () => {} } };
   const fixedTotals = new FakeElement("div");
   mountDiffView(fixedTotals, twoFiles, fixedApi, { layout: "unified" });
@@ -2026,15 +2126,33 @@ async function main() {
     fixedTotals.find("diff-toolbar").length === 1 &&
       fixedTotals.find("diff-summary").length === 1 &&
       fixedTotals.find("diff-layout-control").length === 0 &&
+      fixedTotals.find("diff-show-control").length === 1 &&
       fixedTotals.find("diff-root")[0]?.dataset.layout === "unified",
   );
   const fixedBare = new FakeElement("div");
   mountDiffView(fixedBare, twoFiles, fixedApi, { showSummary: false, layout: "unified" });
-  const fixedRoot = fixedBare.find("diff-root")[0];
+  const fixedToolbar = fixedBare.find("diff-toolbar")[0];
   check(
-    "a fixed layout with nothing else for the toolbar draws none",
-    fixedBare.find("diff-toolbar").length === 0 &&
-      fixedBare.find("diff-layout-control").length === 0 &&
+    "a fixed layout with nothing else for the toolbar draws it for Diff | Current alone",
+    JSON.stringify(fixedToolbar?.children.map((child) => child.className) ?? null) ===
+      JSON.stringify(["diff-show-control"]),
+    JSON.stringify(fixedToolbar?.children.map((child) => child.className) ?? null),
+  );
+  const fixedBare2 = new FakeElement("div");
+  mountDiffView(
+    fixedBare2,
+    twoFiles,
+    { filterControls: undefined },
+    {
+      showSummary: false,
+      layout: "unified",
+    },
+  );
+  const fixedRoot = fixedBare2.find("diff-root")[0];
+  check(
+    "a fixed layout with nothing at all for the toolbar draws none",
+    fixedBare2.find("diff-toolbar").length === 0 &&
+      fixedBare2.find("diff-layout-control").length === 0 &&
       fixedRoot?.children[0]?.classList.contains("diff-hydration-failure") === true &&
       fixedRoot.children[1]?.classList.contains("diff-file") === true,
     JSON.stringify(fixedRoot?.children.map((child) => child.className) ?? null),

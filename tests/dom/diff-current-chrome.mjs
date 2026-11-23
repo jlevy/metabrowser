@@ -1,7 +1,9 @@
-// A diff file bar's end group, laid out by headless Chrome: the production `mountDiffView`
-// (builtin_plugins/diff/diff-view.js), with diff-markdown.js's views and the shell's own chip
-// family (static/filter-controls.js), mounts a comparison of a Markdown file and a code file
-// under the shell's, the diff plugin's, and KPress's stylesheets.
+// A diff's toolbar and its file bars' end groups, laid out by headless Chrome: the production
+// `mountDiffView` (builtin_plugins/diff/diff-view.js), with diff-markdown.js's views and the
+// shell's own chip family (static/filter-controls.js), mounts a comparison of a Markdown file
+// and a code file twice under the shell's, the diff plugin's, and KPress's stylesheets: as a
+// pull request's Changes mounts it, and as its Docs tab does, with the layout fixed, Current
+// its default, and a preference of its own (github/pull-page.js).
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
 //     KPRESS_STATIC=/dir/with/kpress/css/and/fonts CURRENT_INPUT=/path/to/input.json \
@@ -9,16 +11,16 @@
 //
 // tests/test_diff_current_chrome.py writes CURRENT_INPUT ({sheets}), copies KPress's
 // stylesheets and faces out of the installed package, owns the profile, and runs this in a
-// process group of its own. CURRENT_SHOTS, when set, receives a screenshot of the diff in
-// Diff and in Current, with the Markdown file in Rendered and in Source, and one narrow.
+// process group of its own. CURRENT_SHOTS, when set, receives screenshots: Changes in Diff
+// and in Current, Changes narrow, and Docs in Current and in Diff.
 //
 // What it measures is layout, which no browserless DOM computes (docs/design-system.md,
-// "Diff File Bar"): the bar's end group is right-aligned, its Diff | Current and the
-// Markdown file's Rendered | Source share one line in that order, Rendered | Source ends
-// the bar, and a bar with Diff | Current alone ends with it; where the bar is too narrow
-// for its two groups, the end group takes the next line, still at the bar's end, with both
-// choosers on it; and choosing Current or Source moves neither chooser. The Markdown file's
-// answer is the server's projection recorded in tests/fixtures/diff-markdown-responses.json.
+// "Diff Toolbar" and "Diff File Bar"): on Changes the toolbar's Diff | Current and
+// Split | Unified share one line in that order, right-aligned at the toolbar's content end;
+// on Docs, Diff | Current alone ends the toolbar there; a file bar's end group holds a
+// Markdown file's Rendered | Source alone, which ends the bar, and a code file's nothing; and
+// choosing Current, or Source, moves no chooser. The Markdown file's answer is the server's
+// projection recorded in tests/fixtures/diff-markdown-responses.json.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -60,7 +62,14 @@ const hunk = (oldStart, oldCount, newStart, newCount, lines) => ({
   old_count: oldCount,
   old_start: oldStart,
 });
-/** A Markdown file, whose bar has both choosers, and a code file, whose bar has one. */
+/** The mount options a pull request's Docs tab passes (github/pull-page.js). */
+const DOCS = {
+  unfold: true,
+  layout: "unified",
+  show: "current",
+  showPreference: "github.docs.show",
+};
+/** A Markdown file, whose bar ends with Rendered | Source, and a code file, whose bar ends bare. */
 const COMPARISON = {
   manifest: {
     cursor: null,
@@ -152,7 +161,10 @@ import { mountDiffView } from "/diff/diff-view.js";
 import * as markdownViews from "/diff/diff-markdown.js";
 window.diffCurrent = { mountDiffView, markdownViews };
 </script>
-</head><body><div id="preview-pane" class="preview-pane"><div id="host" class="metabrowser-diff-host" style="width: 900px"></div></div></body></html>`;
+</head><body><div id="preview-pane" class="preview-pane">
+<div id="changes" class="metabrowser-diff-host" style="width: 900px"></div>
+<div id="docs" class="metabrowser-diff-host" style="width: 900px; margin-top: 24px"></div>
+</div></body></html>`;
 
 const TYPES = { ".css": "text/css", ".js": "text/javascript", ".woff2": "font/woff2" };
 function serve() {
@@ -183,12 +195,14 @@ function serve() {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
-// In the page: mount the comparison as a pull request's Changes does, with the shell's chip
-// family and a preference store of the page's own, and the recorded answer for the
+// In the page: mount the comparison in the host *hostId* with the host's *options*, the
+// shell's chip family, a preference store of its own, and the recorded answer for the
 // Markdown file. Resolves once the Rendered view is drawn.
-const MOUNT = `async (comparison, answer, imageRoute) => {
+const MOUNT = `async (hostId, options, comparison, answer, imageRoute) => {
   const { mountDiffView, markdownViews } = window.diffCurrent;
+  const host = document.getElementById(hostId);
   const prefs = new Map([["diff.layout", "unified"]]);
+  const writes = [];
   const api = {
     highlightSyntax: async () => null,
     isLargeTextPreview: () => true,
@@ -197,31 +211,35 @@ const MOUNT = `async (comparison, answer, imageRoute) => {
     loadKpressAssets: async () => {},
     prefs: {
       get: (key, fallback) => (prefs.has(key) ? prefs.get(key) : fallback),
-      set: (key, value) => (prefs.set(key, value), true),
+      set: (key, value) => (prefs.set(key, value), writes.push(key + "=" + value), true),
     },
     filterControls: window.metabrowser.filterControls,
   };
-  mountDiffView(document.getElementById("host"), comparison, api, {
+  (window.writes ??= {})[hostId] = writes;
+  mountDiffView(host, comparison, api, {
     showSummary: false,
     markdownViews,
     renderMarkdown: async () => structuredClone(answer),
     markdownTargets: markdownViews.markdownTargets(imageRoute, () => true),
     markdownHoldMs: 0,
+    ...options,
   });
   for (let frame = 0; frame < 120; frame += 1) {
-    const rendered = document.querySelector(".diff-markdown");
+    const rendered = host.querySelector(".diff-markdown");
     if (rendered && !rendered.hidden && rendered.querySelector(".diff-markdown-block")) {
-      return true;
+      return host.querySelector(".diff-root")?.dataset.show ?? null;
     }
     await new Promise((resolve) => requestAnimationFrame(resolve));
   }
   return false;
 }`;
 
-// Each bar's boxes at the host's width *width*: the bar's content box, its two groups, and
-// its choosers, in the viewport's coordinates.
-const BARS = `async (width) => {
-  document.getElementById("host").style.width = width + "px";
+// The boxes of the host *hostId* at the width *width*: its toolbar's content box and
+// choosers, and each bar's content box, its two groups, and what its end group holds, in the
+// viewport's coordinates.
+const MEASURE = `async (hostId, width) => {
+  const host = document.getElementById(hostId);
+  host.style.width = width + "px";
   for (let frame = 0; frame < 3; frame += 1) {
     await new Promise((resolve) => requestAnimationFrame(resolve));
   }
@@ -230,64 +248,122 @@ const BARS = `async (width) => {
     const rect = node.getBoundingClientRect();
     return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
   };
-  return [...document.querySelectorAll(".diff-file-bar")].map((bar) => {
-    const style = getComputedStyle(bar);
-    const rect = bar.getBoundingClientRect();
+  const content = (node) => {
+    const style = getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
     return {
-      path: bar.querySelector(".diff-file-path")?.textContent ?? bar.textContent,
+      left: rect.left + node.clientLeft + Number.parseFloat(style.paddingLeft),
+      right: rect.right - node.clientLeft - Number.parseFloat(style.paddingRight),
       top: rect.top,
-      contentRight: rect.right - bar.clientLeft - Number.parseFloat(style.paddingRight),
+    };
+  };
+  const chips = (node) =>
+    node ? [...node.querySelectorAll("[data-chip-value]")].map((chip) => chip.textContent) : [];
+  const toolbar = host.querySelector(".diff-toolbar");
+  return {
+    shows: host.querySelector(".diff-root")?.dataset.show ?? null,
+    toolbar: toolbar && {
+      content: content(toolbar),
+      holds: [...toolbar.children].map((child) => child.className),
+      show: box(toolbar.querySelector(".diff-show-control")),
+      layout: box(toolbar.querySelector(".diff-layout-control")),
+      showChips: chips(toolbar.querySelector(".diff-show-control")),
+      layoutChips: chips(toolbar.querySelector(".diff-layout-control")),
+      scrolls: toolbar.scrollWidth > toolbar.clientWidth,
+    },
+    bars: [...host.querySelectorAll(".diff-file-bar")].map((bar) => ({
+      path: bar.querySelector(".diff-file-path")?.textContent ?? bar.textContent,
+      ...content(bar),
       lead: box(bar.querySelector(".diff-file-lead")),
       end: box(bar.querySelector(".diff-file-end")),
-      show: box(bar.querySelector(".diff-show-control")),
       format: box(bar.querySelector(".diff-markdown-control")),
-      chips: [...bar.querySelectorAll(".diff-file-end [data-chip-value]")].map((chip) => chip.textContent),
-    };
-  });
+      holds: [...bar.querySelector(".diff-file-end").children]
+        .filter((child) => !child.classList.contains("diff-markdown-progress"))
+        .map((child) => child.className),
+      chips: chips(bar.querySelector(".diff-file-end")),
+    })),
+  };
 }`;
 
-/** A chip's click, by the shell's chip family, on the first bar that has it. */
-const CLICK = `async (value) => {
-  document.querySelector('.diff-file-end [data-chip-value="' + value + '"]').click();
+/** A chip's click, by the shell's chip family, in the host *hostId*'s *where*. */
+const CLICK = `async (hostId, where, value) => {
+  const host = document.getElementById(hostId);
+  host.querySelector(where + ' [data-chip-value="' + value + '"]').click();
   for (let frame = 0; frame < 3; frame += 1) {
     await new Promise((resolve) => requestAnimationFrame(resolve));
   }
-  return document.querySelector(".diff-root")?.dataset.show ?? null;
+  return host.querySelector(".diff-root")?.dataset.show ?? null;
 }`;
 
-/** The end group's checks for every bar at one width. */
-function endGroup(bars, width) {
-  const [markdown, code] = bars;
-  check(`${width} px: two bars`, bars.length === 2, `${bars.length}`);
+/** The toolbar's checks for one surface at one width. */
+function toolbarChecks(surface, measured, width) {
+  const { toolbar } = measured;
+  const at = `${surface}, ${width} px`;
+  check(`${at}: a toolbar is drawn`, toolbar !== null);
+  if (toolbar === null) {
+    return;
+  }
   check(
-    `${width} px: the Markdown bar's end group reads Diff | Current, then Rendered | Source`,
-    markdown.chips.join(" ") === "Diff Current Rendered Source",
-    markdown.chips.join(" "),
+    `${at}: the toolbar's Diff | Current reads Diff, Current`,
+    toolbar.showChips.join(" ") === "Diff Current",
+    toolbar.showChips.join(" "),
+  );
+  check(`${at}: nothing in the toolbar scrolls`, toolbar.scrolls === false);
+  check(
+    `${at}: Diff | Current is inside the toolbar's content box`,
+    toolbar.show.left >= toolbar.content.left - TOLERANCE_PX,
+    JSON.stringify({ show: toolbar.show, content: toolbar.content }),
+  );
+  if (surface === "Docs") {
+    check(
+      `${at}: the toolbar holds Diff | Current alone, at its content box's end`,
+      JSON.stringify(toolbar.holds) === JSON.stringify(["diff-show-control"]) &&
+        toolbar.layout === null &&
+        near(toolbar.show.right, toolbar.content.right),
+      JSON.stringify({ holds: toolbar.holds, show: toolbar.show, content: toolbar.content }),
+    );
+    return;
+  }
+  check(
+    `${at}: the toolbar holds Diff | Current, then Split | Unified`,
+    JSON.stringify(toolbar.holds) ===
+      JSON.stringify(["diff-show-control", "diff-layout-control"]) &&
+      toolbar.layoutChips.join(" ") === "Split Unified",
+    JSON.stringify({ holds: toolbar.holds, chips: toolbar.layoutChips }),
   );
   check(
-    `${width} px: the Markdown bar's choosers share one line`,
-    near(markdown.show.top, markdown.format.top) &&
-      near(markdown.show.bottom, markdown.format.bottom),
-    JSON.stringify([markdown.show, markdown.format]),
+    `${at}: the two choosers share one line`,
+    near(toolbar.show.top, toolbar.layout.top) && near(toolbar.show.bottom, toolbar.layout.bottom),
+    JSON.stringify([toolbar.show, toolbar.layout]),
   );
   check(
-    `${width} px: Diff | Current comes before Rendered | Source`,
-    markdown.show.right <= markdown.format.left + TOLERANCE_PX,
-    JSON.stringify([markdown.show, markdown.format]),
+    `${at}: Diff | Current comes before Split | Unified, which ends the toolbar's content box`,
+    toolbar.show.right <= toolbar.layout.left + TOLERANCE_PX &&
+      near(toolbar.layout.right, toolbar.content.right),
+    JSON.stringify({ show: toolbar.show, layout: toolbar.layout, content: toolbar.content }),
+  );
+}
+
+/** The file bars' checks for one surface at one width: each end group holds no Diff | Current. */
+function barChecks(surface, measured, width) {
+  const [markdown, code] = measured.bars;
+  const at = `${surface}, ${width} px`;
+  check(`${at}: two bars`, measured.bars.length === 2, `${measured.bars.length}`);
+  check(
+    `${at}: the Markdown bar's end group holds Rendered | Source alone`,
+    JSON.stringify(markdown.holds) === JSON.stringify(["diff-markdown-control"]) &&
+      markdown.chips.join(" ") === "Rendered Source",
+    JSON.stringify({ holds: markdown.holds, chips: markdown.chips }),
   );
   check(
-    `${width} px: Rendered | Source ends the bar, at its content box's end`,
-    near(markdown.format.right, markdown.end.right) &&
-      near(markdown.end.right, markdown.contentRight),
-    JSON.stringify({ format: markdown.format, end: markdown.end, right: markdown.contentRight }),
+    `${at}: Rendered | Source ends the bar, at its content box's end`,
+    near(markdown.format.right, markdown.end.right) && near(markdown.end.right, markdown.right),
+    JSON.stringify({ format: markdown.format, end: markdown.end, right: markdown.right }),
   );
   check(
-    `${width} px: a code file's bar ends with its Diff | Current`,
-    code.chips.join(" ") === "Diff Current" &&
-      code.format === null &&
-      near(code.show.right, code.end.right) &&
-      near(code.end.right, code.contentRight),
-    JSON.stringify({ chips: code.chips, show: code.show, right: code.contentRight }),
+    `${at}: a code file's bar end holds nothing`,
+    code.holds.length === 0 && code.chips.length === 0 && code.format === null,
+    JSON.stringify({ holds: code.holds, chips: code.chips }),
   );
 }
 
@@ -295,14 +371,24 @@ function endGroup(bars, width) {
 let chrome = null;
 const server = /** @type {http.Server} */ (await serve());
 const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
-/** @param {string} name */
-const shot = async (name) => {
+/**
+ * A screenshot of the host *hostId*, its toolbar and files.
+ * @param {string} hostId
+ * @param {string} name
+ */
+const shot = async (hostId, name) => {
   if (!SHOTS || !chrome) {
     return;
   }
-  const clip = await chrome.evaluate(`(() => {
-    const rect = document.getElementById("host").getBoundingClientRect();
-    return { x: rect.left, y: rect.top, width: rect.width, height: rect.height, scale: 1 };
+  // In view first: what the diff draws as it comes into view is drawn before the capture.
+  const clip = await chrome.evaluate(`(async () => {
+    const host = document.getElementById(${JSON.stringify(hostId)});
+    host.scrollIntoView();
+    for (let frame = 0; frame < 3; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    const rect = host.getBoundingClientRect();
+    return { x: rect.left, y: rect.top + scrollY, width: rect.width, height: rect.height, scale: 1 };
   })()`);
   const { data } = await chrome.send("Page.captureScreenshot", {
     format: "png",
@@ -311,6 +397,73 @@ const shot = async (name) => {
   });
   fs.mkdirSync(SHOTS, { recursive: true });
   fs.writeFileSync(path.join(SHOTS, `${name}.png`), Buffer.from(data, "base64"));
+};
+/**
+ * Mount *options* in *hostId*.
+ * @param {string} hostId
+ * @param {Record<string, unknown>} options
+ */
+const mount = (hostId, options) =>
+  chrome?.evaluate(
+    `(${MOUNT})(${JSON.stringify(hostId)}, ${JSON.stringify(options)}, ${JSON.stringify(COMPARISON)}, ${JSON.stringify(recorded.answers.f1)}, ${JSON.stringify(recorded.image_route)})`,
+  );
+/**
+ * @param {string} hostId
+ * @param {number} width
+ */
+const measure = (hostId, width) =>
+  chrome?.evaluate(`(${MEASURE})(${JSON.stringify(hostId)}, ${width})`);
+/**
+ * @param {string} hostId
+ * @param {string} where
+ * @param {string} value
+ */
+const click = (hostId, where, value) =>
+  chrome?.evaluate(
+    `(${CLICK})(${JSON.stringify(hostId)}, ${JSON.stringify(where)}, ${JSON.stringify(value)})`,
+  );
+// Choosing keeps every chooser where it was. Only the chosen chip's word changes, to the
+// medium weight a selected chip takes ("Choosing Among Values"), so a chooser's width moves
+// by that word's, measured at 0.28 to 0.31 px in Chrome, and the chooser before it moves by
+// as much; a pixel bounds it. A bar below the Markdown file moves with the rows Current
+// hides above it, and a screenshot scrolls the page, so each chooser's top is read against
+// its own toolbar's or bar's.
+const stays = (label, before, after) => {
+  const pairs = [
+    [
+      after.toolbar?.show,
+      before.toolbar?.show,
+      after.toolbar?.content.top,
+      before.toolbar?.content.top,
+    ],
+    [
+      after.toolbar?.layout,
+      before.toolbar?.layout,
+      after.toolbar?.content.top,
+      before.toolbar?.content.top,
+    ],
+    ...after.bars.map((bar, index) => [
+      bar.format,
+      before.bars[index].format,
+      bar.top,
+      before.bars[index].top,
+    ]),
+  ];
+  const moved = pairs.flatMap(([now, was, nowTop, wasTop]) =>
+    now == null && was == null
+      ? []
+      : [
+          now.top - nowTop - (was.top - wasTop),
+          now.bottom - nowTop - (was.bottom - wasTop),
+          now.left - was.left,
+          now.right - was.right,
+        ],
+  );
+  check(
+    label,
+    moved.every((delta) => Math.abs(delta) < 1),
+    JSON.stringify(moved),
+  );
 };
 try {
   chrome = await launchChrome(/** @type {string} */ (process.env.CHROME_BIN), {
@@ -323,77 +476,63 @@ try {
   await chrome.waitFor(
     "document.readyState === 'complete' && !!window.MetabrowserInertHtml && !!window.diffCurrent && !!window.metabrowser.filterControls",
   );
-  const mounted = await chrome.evaluate(
-    `(${MOUNT})(${JSON.stringify(COMPARISON)}, ${JSON.stringify(recorded.answers.f1)}, ${JSON.stringify(recorded.image_route)})`,
+  const changesShows = await mount("changes", {});
+  check(
+    "Changes opens on Diff, its Rendered view drawn",
+    changesShows === "diff",
+    `${changesShows}`,
   );
-  check("the Markdown file's Rendered view is drawn", mounted === true, `${mounted}`);
+  const docsShows = await mount("docs", DOCS);
+  check("Docs opens on Current, its Rendered view drawn", docsShows === "current", `${docsShows}`);
   await chrome.evaluate("document.fonts.ready.then(() => true)");
 
-  const wide = await chrome.evaluate(`(${BARS})(900)`);
-  endGroup(wide, 900);
-  check(
-    "900 px: each bar is one line, the end group beside the name's group",
-    wide.every((bar) => near(bar.end.top, bar.lead.top) || bar.end.top < bar.lead.bottom),
-    JSON.stringify(wide.map((bar) => [bar.lead, bar.end])),
-  );
-  await shot("diff-rendered");
+  for (const width of [900, 380]) {
+    for (const [surface, hostId] of [
+      ["Changes", "changes"],
+      ["Docs", "docs"],
+    ]) {
+      const measured = await measure(hostId, width);
+      toolbarChecks(surface, measured, width);
+      barChecks(surface, measured, width);
+    }
+    if (width === 380) {
+      await shot("changes", "narrow-changes-diff");
+      await shot("docs", "narrow-docs-current");
+    }
+  }
+  await measure("docs", 900);
+  const before = await measure("changes", 900);
+  await shot("changes", "changes-diff");
+  await shot("docs", "docs-current");
 
-  // Narrow enough that the name's group and the end group do not fit one line.
-  const narrow = await chrome.evaluate(`(${BARS})(380)`);
-  endGroup(narrow, 380);
-  check(
-    "380 px: the Markdown bar's end group takes the next line",
-    narrow[0].end.top >= narrow[0].lead.bottom - TOLERANCE_PX,
-    JSON.stringify([narrow[0].lead, narrow[0].end]),
-  );
-  await shot("narrow-diff-rendered");
+  const shown = await click("changes", ".diff-toolbar .diff-show-control", "current");
+  check("Current is chosen on Changes", shown === "current", `${shown}`);
+  const current = await measure("changes", 900);
+  toolbarChecks("Changes", current, 900);
+  barChecks("Changes", current, 900);
+  stays("choosing Current on Changes moves no chooser", before, current);
+  await shot("changes", "changes-current");
+  await click("changes", ".diff-file-end", "source");
+  const source = await measure("changes", 900);
+  barChecks("Changes", source, 900);
+  stays("choosing Source moves no chooser", current, source);
+  const docsAfter = await measure("docs", 900);
+  check("Changes' choice leaves Docs in Current", docsAfter.shows === "current", docsAfter.shows);
 
-  // Choosing keeps both choosers on their line at the bar's end. Only the chosen chip's
-  // word changes, to the medium weight a selected chip takes ("Choosing Among Values"), so
-  // a chooser's width moves by that word's, measured at 0.28 to 0.31 px in Chrome, and the
-  // chooser before it moves by as much; a pixel bounds it. A bar below the Markdown file
-  // moves with the rows Current hides above it, so each box is read against its own bar.
-  const stays = (label, after) => {
-    const moved = after.flatMap((bar, index) =>
-      [
-        [bar.show, before[index].show],
-        [bar.format, before[index].format],
-      ].flatMap(([now, was]) =>
-        now === null && was === null
-          ? []
-          : [
-              now.top - bar.top - (was.top - before[index].top),
-              now.bottom - bar.top - (was.bottom - before[index].top),
-              now.left - was.left,
-              now.right - was.right,
-            ],
-      ),
-    );
-    check(
-      label,
-      after.every(
-        (bar, index) =>
-          near(bar.show.top - bar.top, before[index].show.top - before[index].top) &&
-          near(bar.end.right, before[index].end.right),
-      ) && moved.every((delta) => Math.abs(delta) < 1),
-      JSON.stringify(moved),
-    );
-  };
-  await chrome.evaluate(`(${BARS})(900)`);
-  const before = await chrome.evaluate(`(${BARS})(900)`);
-  const shown = await chrome.evaluate(`(${CLICK})("current")`);
-  check("Current is chosen", shown === "current", `${shown}`);
-  const current = await chrome.evaluate(`(${BARS})(900)`);
-  endGroup(current, 900);
-  stays("choosing Current keeps both choosers on their line at the bar's end", current);
-  await shot("current-rendered");
-  await chrome.evaluate(`(${CLICK})("source")`);
-  const source = await chrome.evaluate(`(${BARS})(900)`);
-  endGroup(source, 900);
-  stays("choosing Source keeps both choosers on their line at the bar's end", source);
-  await shot("current-source");
-  await chrome.evaluate(`(${CLICK})("diff")`);
-  await shot("diff-source");
+  const docsBefore = docsAfter;
+  const docsShown = await click("docs", ".diff-toolbar .diff-show-control", "diff");
+  check("Diff is chosen on Docs", docsShown === "diff", `${docsShown}`);
+  const docsDiff = await measure("docs", 900);
+  toolbarChecks("Docs", docsDiff, 900);
+  stays("choosing Diff on Docs moves no chooser", docsBefore, docsDiff);
+  await shot("docs", "docs-diff");
+  const writes = await chrome.evaluate("window.writes");
+  check(
+    "each surface writes its own preference",
+    JSON.stringify(writes) ===
+      JSON.stringify({ changes: ["diff.show=current"], docs: ["github.docs.show=diff"] }),
+    JSON.stringify(writes),
+  );
 } finally {
   await chrome?.close();
   server.close();

@@ -352,9 +352,8 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     # The bar is two groups, each a centered row of boxes, and a box in the bar itself: the
     # name's, the toggle with the copy control right after it, the change's stats, and then
     # the View file or View on branch control, a box at the path's size, which centering
-    # puts on its baseline; and its end's, the diff's Diff | Current chooser
-    # (`addShowControl` in diff-view.js) and a file's Rendered | Source chooser, behind the
-    # file's progress mark (`add` in diff-markdown.js).
+    # puts on its baseline; and its end's, a file's Rendered | Source chooser behind its
+    # progress mark (`add` in diff-markdown.js).
     lead = box(
         "diff-file-lead",
         toggle,
@@ -365,10 +364,9 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     end = box(
         "diff-file-end",
         box("diff-markdown-progress"),
-        box("diff-show-control"),
         box("diff-markdown-control"),
     )
-    bar = el("diff-file-bar diff-file-bar-chooser", lead, end)
+    bar = el("diff-file-bar diff-file-bar-markdown", lead, end)
     el("content-body metabrowser-diff-host", el("diff-file", bar))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-facts", facts))
@@ -599,11 +597,11 @@ def test_diff_file_bar_keeps_its_actions_by_the_name_and_its_chooser_at_its_end(
     end = _rule(diff_css, f"{host} .diff-file-end")
     assert "flex: none;" in end
     assert "margin-inline-start: auto;" in end
-    # Only a bar with a chooser, Diff | Current or Rendered | Source, wraps, and its end group,
-    # where it alone is wider than the bar, wraps too, with each line at the bar's end.
+    # Only a bar with a Rendered | Source chooser wraps, and its end group, where it alone is
+    # wider than the bar, wraps too, with each line at the bar's end.
     assert "flex-wrap" not in _rule(diff_css, f"{host} .diff-file-bar")
-    assert "flex-wrap: wrap;" in _rule(diff_css, f"{host} .diff-file-bar-chooser")
-    wrapping_end = _rule(diff_css, f"{host} .diff-file-bar-chooser .diff-file-end")
+    assert "flex-wrap: wrap;" in _rule(diff_css, f"{host} .diff-file-bar-markdown")
+    wrapping_end = _rule(diff_css, f"{host} .diff-file-bar-markdown .diff-file-end")
     assert "flex: 0 1 auto;" in wrapping_end
     assert "flex-wrap: wrap;" in wrapping_end
     assert "justify-content: flex-end;" in wrapping_end

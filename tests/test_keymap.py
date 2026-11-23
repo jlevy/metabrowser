@@ -313,7 +313,8 @@ def test_letters_never_collide_on_one_screen() -> None:
 
     A file's tab bar shares the screen with the shell's letters, and a pull request page
     shares it with its own tab letters, the diff's layout and Diff | Current keys on its
-    Changes tab, and the shell's letters. Two keys on one screen never share a letter;
+    Changes tab and Diff | Current's on its Docs tab, and the shell's letters. Two keys on
+    one screen never share a letter;
     screens never shown together may, as Charts and Conversation share ``C``.
     """
     shell = {key for key in RESERVED_SHELL_KEYS if key.isalpha()}

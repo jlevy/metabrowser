@@ -57,6 +57,12 @@ type MetabrowserRenderContext = {
   /** A layout the host fixes, which the diff draws whatever the reader's stored choice, with
    *  no layout control and no `L`: a pull request's Docs tab draws `"unified"`. */
   layout?: "unified" | "split";
+  /** What the diff's Diff | Current chooser opens on before the reader chooses on this
+   *  surface (Diff unless the host says Current), and the preference that choice is
+   *  remembered as (`diff.show` unless the host keeps its own): a pull request's Docs tab
+   *  opens on `"current"` and remembers it as `github.docs.show`. */
+  show?: "diff" | "current";
+  showPreference?: string;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;

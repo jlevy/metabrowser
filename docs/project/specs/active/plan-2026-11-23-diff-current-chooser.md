@@ -6,6 +6,8 @@
 
 **Status:** Planned 2026-11-23; implemented as one stack on #759, beads `mb-wexb`,
 `mb-wd9o`, `mb-256j`, `mb-ubs0`, `mb-yt73` and `mb-o8gd` under the feature `mb-iw3x`.
+Revised the same day after the owner tried it (`mb-s5ui`): the chooser moved from the
+file bars to the diff’s toolbar, and each surface got its own default and preference.
 This plan is `mb-93t2`.
 
 ## Overview
@@ -19,9 +21,12 @@ The owner asked, on 2026-11-23, for a second chooser beside every **Rendered** |
 - **Source**, the unified diff without its deleted lines, each remaining line in the
   color it has in the new file.
 
-The chooser is right-aligned at the file bar’s end, as **Split** | **Unified** and
-**Rendered** | **Source** are, and **Rendered** | **Source** stays at the far right, so
-the end group reads `[Diff | Current] [Rendered | Source]`.
+The first version put the chooser at each file bar’s end, before **Rendered** |
+**Source**. After trying it, the owner asked on the same day to “move the Diff | Current
+to be on the diff as a whole, next to Split | Unified on the Changes tab and in a
+similar place on the Docs tab”, with Changes opening on **Diff** and Docs on **Current**
+(`mb-s5ui`). So the chooser is in the diff’s toolbar, right-aligned beside **Split** |
+**Unified**, and a file bar’s end group is `[spinner] [Rendered | Source]` again.
 
 ## What Exists Today
 
@@ -55,55 +60,61 @@ changes marked.
 
 ### Where It Shows
 
-| Surface | Diff \| Current | Why |
-| --- | --- | --- |
-| Changes, every file with a text diff | Yes | The owner’s first surface, and Current is one choice for the diff (below), so it means the same on a code file as on a document |
-| Docs, every document | Yes | Reading documents as they now are is what Current is for |
-| A commit’s page, every file with a text diff | Yes, Source Current | Current is a projection of the hunks every diff has, so it needs no rendered route |
-| A patch or diff document | Yes, Source Current | The same projection of the same hunks |
-| Guided Review excerpts | No | An excerpt shows the lines a step of the guide cites, deletions among them, and has no file bar to hold a chooser; its module is on #677 and is not changed here |
-| Rendered Markdown | Yes | Removed blocks and removed front matter keys are left out; added blocks keep their fill and their `<ins>` marks |
-| Rendered YAML and JSON | Yes | The merged tree without its removed entries; added entries keep their fill |
-| A file with no text diff: binary, too large, failed, unsupported, or a change with no content (a rename or a mode change) | No | Both choices would show the same sentence, so there is nothing to choose; its Rendered \| Source, where it has one, stays as it is |
+| Surface | Diff \| Current | Opens on | Why |
+| --- | --- | --- | --- |
+| Changes | In the toolbar, beside Split \| Unified | Diff | The owner’s first surface, and Current is one choice for the diff (below), so it means the same on a code file as on a document |
+| Docs | In the toolbar, alone, where Changes has both | Current | Reading documents as they now are is what Current is for |
+| A commit’s page | In the toolbar, beside Split \| Unified; Source Current | Diff | Current is a projection of the hunks every diff has, so it needs no rendered route |
+| A patch or diff document | In the toolbar, beside Split \| Unified; Source Current | Diff | The same projection of the same hunks |
+| Guided Review excerpts | No | — | An excerpt shows the lines a step of the guide cites, deletions among them, and has no toolbar to hold a chooser; its module is on #677 and is not changed here |
+| Rendered Markdown | Yes | — | Removed blocks and removed front matter keys are left out; added blocks keep their fill and their `<ins>` marks |
+| Rendered YAML and JSON | Yes | — | The merged tree without its removed entries; added entries keep their fill |
+| A file with no text diff: binary, too large, failed, unsupported, or a change with no content (a rename or a mode change) | Shows the same either way | — | Both choices show the same sentence; its Rendered \| Source, where it has one, stays as it is |
 
 A file whose Rendered is unavailable shows Source, as today, and in Current shows Source
 Current; its Rendered chip stays unavailable for its reason.
 
 ### Placement
 
-The chooser is the first item of the bar’s end group (`.diff-file-end`), so **Rendered**
-| **Source** keeps the far end:
+The chooser is in the diff’s toolbar (`.diff-toolbar`), right-aligned, before the layout
+control, so **Split** | **Unified** keeps the far end where readers know it, and the two
+whole-diff choosers share one line:
 
 ```
-[name group ...]                     [spinner] [Diff | Current] [Rendered | Source]
+[File type ...]                                  [Diff | Current] [Split | Unified]
 ```
 
-The Rendered spinner stays at the start of the end group, before both choosers, so the
-two sit at the end group’s gap, and the spinner, which keeps its place while hidden,
-still moves neither.
-A bar with a chooser wraps as a bar with Rendered | Source does today: the name’s group
-keeps the first line, the end group takes the next at the bar’s end, and where the end
-group alone is wider than the bar its choosers wrap, each line at the bar’s end.
+Docs has no layout control, so its toolbar holds **Diff** | **Current** alone, at the
+same end. #759 left Docs with no toolbar when it held nothing; it has one again for this
+chooser. A file bar’s end group is `[spinner] [Rendered | Source]`, as before the
+chooser: what is chosen for one file is on its bar, and what is chosen for the whole
+diff is in its toolbar.
+
+| Where | Before `mb-s5ui` | After |
+| --- | --- | --- |
+| Changes | Each bar with a text diff: `[Diff \| Current] [Rendered \| Source]` | Toolbar: `[File type] [Diff \| Current] [Split \| Unified]`; bars: `[Rendered \| Source]` |
+| Docs | Each document’s bar; no toolbar | Toolbar: `[Diff \| Current]`; bars: `[Rendered \| Source]` |
+| A commit’s page and a patch | Each bar with a text diff | Toolbar: `[Diff \| Current] [Split \| Unified]`, after a patch’s Diff summary |
 
 ### One Choice for the Diff
 
 Diff | Current is one choice for the whole diff, as the layout is, not one per file as
-Rendered | Source is.
-Every bar that has the chooser shows the same value, and choosing in any bar, or with
-the key, redraws every file.
+Rendered | Source is, which is why it belongs in the toolbar beside the layout.
+Choosing, by the chooser or the key, redraws every file.
 
 - **It is the layout’s kind of choice.** It says how a change is drawn, the same for
   every file, where Rendered | Source says what one file can offer, which is per file
   because each file’s Rendered may be unavailable.
 - **A key needs one target.** The design system gives no key to a per-file affordance,
   of which a page has many (“No key on an ancillary item”); a choice for the whole diff
-  is one control drawn in many places, and its key has one meaning.
+  is one control, and its key has one meaning.
 - **Reading the new version is a task for the whole change.** A reader reading a pull
   request’s documents as they now are would otherwise choose Current on each of them.
 
-The file whose chooser was clicked keeps its place on the screen while the files around
-it redraw, and the key keeps the place of the file at the pane’s top, by the view’s
-`holdPlace`, once per batch where the redraw runs in batches.
+The file at the pane’s top keeps its place on the screen while the files redraw, whether
+the reader clicked the chooser or pressed the key, by the view’s `holdPlace`, once per
+batch where the redraw runs in batches; a file a jump pinned keeps the pane’s top
+instead.
 
 ### Composition with Split | Unified
 
@@ -116,17 +127,36 @@ width, so Diff returns in the layout the width allows.
 A host that fixes the layout, as Docs fixes Unified, has no layout control, and Current
 is the same one column there.
 
-### What Is Remembered
+### Defaults by Surface and What Is Remembered
 
-The choice is stored as the layout is: `diff.show`, `"diff"` or `"current"`, through
-`api.prefs`, read at every mount and written at every choice, so it holds across files,
-diffs, pages, and served folders.
-A missing or unusable stored value is Diff, so a reader who never chose sees today’s
-view. Rendered | Source stays per file and unremembered.
+Each surface opens on its own default and remembers its own choice, so choosing Current
+on Changes does not change what Docs opens on, and choosing Diff on Docs does not change
+Changes:
+
+| Surface | Opens on | Preference |
+| --- | --- | --- |
+| A pull request’s Changes, a commit’s page, a patch or diff document | Diff | `diff.show` |
+| A pull request’s Docs | Current | `github.docs.show` |
+
+The mounting context says which, as #759 had Docs pass `layout: "unified"`: the diff
+plugin’s `render` passes the context’s `show` (`"diff"` or `"current"`) and
+`showPreference` to `mountDiffView`, which opens on `show` unless the reader stored a
+choice under `showPreference`, and stores each choice there.
+Without them it opens on Diff and uses `diff.show`. Docs passes `show: "current"` and
+`showPreference: "github.docs.show"` (`DOCS_SHOW_PREFERENCE` in `github/pull-page.js`),
+so the diff plugin knows nothing of GitHub; the key is named for its owner, the GitHub
+plugin, as `diff.show` and `diff.layout` are for the diff plugin.
+Changes, a commit’s page, and a patch share `diff.show`, as they share `diff.layout`.
+
+A stored value is `"diff"` or `"current"`, through `api.prefs`, read at every mount and
+written at every choice, so it holds across diffs, pages, and served folders.
+A missing value, or a stored value other than `"diff"` or `"current"`, reads as the
+surface’s default, Diff on Changes and Current on Docs, and is not rewritten until the
+reader chooses. Rendered | Source stays per file and unremembered.
 
 The stored choice could hide deletions on a diff the reader opens later.
-Every bar then shows **Current** selected, and the bar’s stats still count the deleted
-lines, so the choice is in view wherever it applies.
+The toolbar then shows **Current** selected, and each bar’s stats still count the
+deleted lines, so the choice is in view wherever it applies.
 
 ### The Key
 
@@ -140,8 +170,10 @@ through the same path as a click.
   `test_next_and_previous_are_chords_that_reserve_no_letter` holds that Control-N leaves
   it free.
 - It is attached once per diff, through the SDK’s shortcut surface, on the chip it would
-  select in the bar of the file at the pane’s top, which is sticky and so always in
-  view, and it moves when that file changes or the chooser is drawn again.
+  select in the toolbar’s chooser, as `L` is on the layout control’s, and moves to the
+  new chip when the chooser is drawn again.
+  It works wherever the pane is scrolled; the first version moved it to the bar of the
+  file at the pane’s top, which `mb-s5ui` removed with the per-bar choosers.
 
 `tests/test_keymap.py` reads the letter beside `diff.show` in `diff-view.js`, as it
 reads `diff.layout`’s, and `docs/keyboard-shortcuts.md` gets its row.
@@ -207,13 +239,14 @@ rules out. It is an interaction row of the
 [parity registry](../../architecture/arch-parity-registry.md), `diff.show-current`,
 whose session `tests/dom/diff-current-session.js` mounts a comparison of six files and
 recorded rendered answers through the production `diff-view.js`, `diff-markdown.js`, and
-`diff-structured.js`, and whose golden `tests/golden/cli-ui-diff-current.tryscript.md`
-prints, for each step, what each file draws, the chooser, the layout control, `N`, and
-what was stored.
-Its data input is the rendered route its recorded answers come from; the
-stored choice is browser state, as `diff.layout` is.
-That the end group’s two choosers share a line at the bar’s end is layout, a
-paint-exempt row with a headless Chrome check.
+`diff-structured.js`, as Changes mounts it and as Docs does, and whose golden
+`tests/golden/cli-ui-diff-current.tryscript.md` prints, for each step, what each file
+draws, what the toolbar holds, what each bar’s end group holds, `N`, and what was stored
+under which preference.
+Its data input is the rendered route its recorded answers come from; the stored choice
+is browser state, as `diff.layout` is.
+That the toolbar’s two choosers share a line at its right end is layout, a paint-exempt
+row with a headless Chrome check.
 
 ## Implementation
 
@@ -230,6 +263,12 @@ One stack on #759, one commit per bead:
   session and its golden, and the parity row.
 - [x] `mb-o8gd`: the design system’s file bar and chooser vocabulary, the pull request
   review guide, and the Chrome check of the end group.
+- [x] `mb-s5ui`: after the owner tried it, the chooser in the diff’s toolbar beside
+  Split | Unified, alone on Docs, which has a toolbar again; Changes, a commit’s page
+  and a patch opening on Diff under `diff.show`, and Docs on Current under
+  `github.docs.show`; `N` on the toolbar’s chooser; the file bar’s end group back to
+  Rendered | Source alone; and the session, golden, Chrome check, design system, review
+  guide, parity rows, and changelog to match.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

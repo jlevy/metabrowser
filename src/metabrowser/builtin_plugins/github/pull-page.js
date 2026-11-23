@@ -275,6 +275,11 @@ export function diffTab(tab) {
 /** The File type group the Docs tab shows, in the diff's `group=` vocabulary. */
 const DOCS_GROUP = "type:docs";
 
+/** The preference the Docs tab remembers its Diff | Current choice as, apart from the
+ * `diff.show` that Changes, a commit's page and a patch share, so a choice on one tab does
+ * not move the other. */
+const DOCS_SHOW_PREFERENCE = "github.docs.show";
+
 /**
  * Whether a diff document lists no changed file, and its list was not cut short at its
  * bounds: a Docs tab with no document to show.
@@ -7627,10 +7632,14 @@ export function mountPullPage(container, ctx, mb) {
                 ? {
                     // Docs: the documents alone, every fold open, and no File type or
                     // layout choice. A rendered document has no layout, and a document's
-                    // Source reads as its Rendered does, in one column.
+                    // Source reads as its Rendered does, in one column. Docs opens on the
+                    // new versions (Current), and remembers the reader's Diff | Current
+                    // apart from Changes' `diff.show`, so neither moves the other.
                     group: DOCS_GROUP,
                     unfold: true,
                     layout: "unified",
+                    show: "current",
+                    showPreference: DOCS_SHOW_PREFERENCE,
                     emptyText: "No documents changed in this pull request.",
                     onDocument: (/** @type {unknown} */ document_) => {
                       documented = true;

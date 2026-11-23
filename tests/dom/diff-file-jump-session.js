@@ -500,7 +500,7 @@ async function main() {
       filterControls: {
         groupHtml: () => "",
         bind(control, options) {
-          // The layout control's own binding; the diff's Diff | Current choosers bind its root.
+          // The layout control's own binding; Diff | Current binds its own chooser.
           if (control.classList.contains("diff-layout-control")) {
             changeLayout = (layout) => options.onChange("diff-layout", layout, "one");
           }

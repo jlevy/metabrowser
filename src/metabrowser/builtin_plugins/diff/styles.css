@@ -32,7 +32,7 @@
 
 /* The toolbar draws no rule under itself (mb-a073): the first file card's own border, its
    12 px margin below, is the line between the toolbar and the files, and on a commit's or a
-   pull request's page, where the toolbar holds the layout control alone, a rule there would
+   pull request's page, where the toolbar holds the diff's choosers alone, a rule there would
    draw a second line 12 px above it. Where the toolbar leads with the Diff summary, its
    header is the tree's root, and the tree opens under it as it does at a page's top, with
    no line between them. The toolbar is not sticky, so nothing scrolls under it. */
@@ -180,12 +180,16 @@
   );
 }
 
-.metabrowser-diff-host .diff-layout-control {
+/* The diff's choosers end the toolbar, on one line at its right: Diff | Current
+   (`renderShowControl` in diff-view.js), then Split | Unified, or Diff | Current alone
+   where the host fixes the layout, as a pull request's Docs tab does. The first of them
+   takes the toolbar's free space. */
+.metabrowser-diff-host :is(.diff-show-control, .diff-layout-control) {
   flex: none;
   margin-left: auto;
 }
 
-/* The File type filter (diff-type-filter.js) leads the layout control at the toolbar's end:
+/* The File type filter (diff-type-filter.js) leads the choosers at the toolbar's end:
    the menu, how many files it keeps, and Clear. */
 .metabrowser-diff-host .diff-type-control {
   display: flex;
@@ -195,7 +199,9 @@
   margin-left: auto;
 }
 
-.metabrowser-diff-host .diff-type-control + .diff-layout-control {
+.metabrowser-diff-host
+  :is(.diff-type-control, .diff-show-control)
+  + :is(.diff-show-control, .diff-layout-control) {
   margin-left: 0;
 }
 
@@ -247,11 +253,10 @@
 
 /* The bar's two groups. It leads with what names the file and where it opens,
    the disclosure, the copy control right after the name, the change's stats and
-   notes, and the View file control, and ends with the diff's Diff | Current
-   chooser and a file's Rendered | Source chooser, which is at the bar's far end.
-   Each is one flex item, so a long path is cut
+   notes, and the View file control, and ends with a file's Rendered | Source
+   chooser, at the bar's far end. Each is one flex item, so a long path is cut
    short with its copy control, stats, and View file still beside it, and where
-   a bar wraps (`.diff-file-bar-chooser`) its end group moves to the next line
+   a bar wraps (`.diff-file-bar-markdown`) its end group moves to the next line
    whole and keeps to the bar's end there. The end group's start margin takes
    the bar's free space, which stays part of the bar's one activation surface. */
 .metabrowser-diff-host .diff-file-lead {
@@ -654,29 +659,27 @@
   white-space: nowrap;
 }
 
-/* A bar with a chooser, Diff | Current or Rendered | Source, wraps where its two groups
-   do not fit one line: the name keeps the first to itself, and the choosers' group takes
-   the second, at the bar's end (`.diff-file-end`). Where that group alone is wider than
-   the bar, it wraps too, each of its lines at the bar's end, so no control is cut off. */
-.metabrowser-diff-host .diff-file-bar-chooser {
+/* A bar with a Rendered | Source chooser wraps where its two groups do not fit one
+   line: the name keeps the first to itself, and the chooser's group takes the second,
+   at the bar's end (`.diff-file-end`). Where that group alone is wider than the bar, it
+   wraps too, each of its lines at the bar's end, so no control is cut off. */
+.metabrowser-diff-host .diff-file-bar-markdown {
   flex-wrap: wrap;
 }
 
-.metabrowser-diff-host .diff-file-bar-chooser .diff-file-end {
+.metabrowser-diff-host .diff-file-bar-markdown .diff-file-end {
   flex: 0 1 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
-/* The diff's Diff | Current chooser (`addShowControl` in diff-view.js) and a file's
-   Rendered | Source chooser, which ends the bar. */
-.metabrowser-diff-host :is(.diff-show-control, .diff-markdown-control) {
+.metabrowser-diff-host .diff-markdown-control {
   display: flex;
   flex: none;
   margin-block: 2px;
 }
 
-/* Leads the end group, toward the bar's free space. Keeps its place in the bar, so it
+/* Leads the chooser, toward the bar's free space. Keeps its place in the bar, so it
    never moves the controls, and appears only after the loading-state delay
    (.mb-delayed-loading). */
 .metabrowser-diff-host .diff-markdown-progress {

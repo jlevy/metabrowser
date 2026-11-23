@@ -516,7 +516,10 @@ async function main() {
   const c = file("c", { lead: true });
   const d = file("d");
   assert.equal(a.source.hidden, true, "a file waits for Rendered before showing Source");
-  assert.ok(a.bar.classList.contains("diff-file-bar-chooser"), "a chooser lays the bar out for it");
+  assert.ok(
+    a.bar.classList.contains("diff-file-bar-markdown"),
+    "a chooser lays the bar out for it",
+  );
   assert.equal(a.control.hidden, false);
   assert.equal(a.progress.hidden, false);
   view.observe(root, null);
@@ -619,7 +622,7 @@ async function main() {
   assert.equal(c.sourceChoice.attributes.get("aria-checked"), "true");
   assert.equal(c.control.hidden, false, "a file that can only show Source keeps its chooser");
   assert.equal(c.progress.hidden, false, "and its progress mark's place");
-  assert.ok(c.bar.classList.contains("diff-file-bar-chooser"), "and its bar's layout");
+  assert.ok(c.bar.classList.contains("diff-file-bar-markdown"), "and its bar's layout");
   const why = "This file is too large to show rendered.";
   assert.equal(c.renderedChoice.attributes.get("aria-disabled"), "true");
   assert.equal(c.renderedChoice.disabled, undefined, "it takes the pointer, so it can say why");
@@ -674,7 +677,7 @@ async function main() {
   assert.equal(d.renderedChoice.dataset.tipText, undefined);
   assert.equal(d.control.hidden, false, "a retryable failure keeps the chooser");
   assert.equal(d.progress.hidden, false);
-  assert.ok(d.bar.classList.contains("diff-file-bar-chooser"));
+  assert.ok(d.bar.classList.contains("diff-file-bar-markdown"));
   assert.equal(d.source.hidden, false, "a failed render shows Source");
   assert.equal(d.section.children.length, 3, "and says nothing about it");
   await d.renderedChoice.click();
@@ -762,16 +765,13 @@ async function main() {
     source.id = id;
     section.append(bar, source);
     const end = make("div");
-    // The diff's Diff | Current chooser is in the end group first: the progress mark
-    // leads it, and Rendered | Source ends it.
-    const show = make("div");
-    end.append(show);
     bar.append(make("button"), end);
     view5.add({ section, bar, end, source, id, format: "markdown", gone });
-    const [progress, between, control] = end.children;
-    assert.equal(end.children.length, 3);
+    // Diff | Current is the diff's, in its toolbar: the end group is the progress mark and
+    // Rendered | Source alone, in Current as in Diff.
+    const [progress, control] = end.children;
+    assert.equal(end.children.length, 2);
     assert.equal(progress.getAttribute("role"), "status", "the progress mark leads the group");
-    assert.equal(between, show, "Diff | Current stays between the mark and the chooser");
     assert.ok(control.classList.contains("diff-markdown-control"), "Rendered | Source ends it");
     return { section, source, rendered: section.children[1] };
   };

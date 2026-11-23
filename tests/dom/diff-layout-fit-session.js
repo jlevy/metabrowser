@@ -260,7 +260,7 @@ async function main() {
       },
       filterControls: {
         groupHtml(next) {
-          // The layout control's chips; the Diff | Current choosers have their own session.
+          // The layout control's chips; Diff | Current's have their own session.
           if (next.key !== "diff-layout") {
             return "";
           }
@@ -334,12 +334,18 @@ async function main() {
           retargets: record.retargets,
         };
       },
-      /** What a host's fixed layout leaves out: the toolbar, the control, `L`, the preference. */
+      /**
+       * What a host's fixed layout leaves out, the control, `L`, the preference, and what its
+       * toolbar holds without them: Diff | Current alone, whose chips and `N` this stand-in
+       * does not draw (tests/dom/diff-current-session.js has them).
+       */
       fixed() {
         return {
-          toolbars: host.find("diff-toolbar").length,
+          toolbar: host
+            .find("diff-toolbar")
+            .map((toolbar) => toolbar.children.map((child) => child.className).join(", ")),
           layoutControls: host.find("diff-layout-control").length,
-          keysAttached: attachments.length,
+          layoutKeys: attachments.filter((record) => record.options.id === "diff.layout").length,
           preferenceReads: reads,
         };
       },
@@ -487,12 +493,12 @@ async function main() {
   assert(keyed.key().on === "detached", "dispose left L attached");
 
   // A layout the host fixes, as a pull request's Docs tab fixes Unified: drawn under a stored
-  // Split at any width, with no control, no `L`, and no toolbar, which holds nothing else
-  // there, and the stored choice neither read nor written.
+  // Split at any width, with no control and no `L`, its toolbar holding Diff | Current alone,
+  // and the stored choice neither read nor written.
   await settle();
   const fixed = mount(1049, "split", 0, true, { layout: "unified" });
   const sayFixed = (name) => steps.push({ step: name, ...fixed.line(), ...fixed.fixed() });
-  sayFixed("a host's fixed Unified, wide, under a stored Split: no control, no L, no toolbar");
+  sayFixed("a host's fixed Unified, wide, under a stored Split: no control, no L");
   await fixed.width(440);
   sayFixed("narrow: Unified still, and nothing to say why");
   await fixed.width(1049);

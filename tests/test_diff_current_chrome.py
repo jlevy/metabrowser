@@ -1,15 +1,16 @@
-"""A diff file bar's end group, laid out by headless Chrome.
+"""A diff's toolbar choosers and its file bars' end groups, laid out by headless Chrome.
 
-A file bar ends with its choosers, right-aligned: the diff's **Diff** | **Current** on
-every bar with a text diff, then a rendered file's **Rendered** | **Source**, which ends
-the bar, both on one line (docs/design-system.md, "Diff File Bar"). Where the bar is too
-narrow for its two groups, the end group takes the next line, still at the bar's end.
-Which chooser a bar has and their order are pinned browserlessly
-(``tests/dom/diff-view-behavior.js``, ``tests/test_design_vocabulary.py``); where they
-land is layout, which only a browser computes, so ``tests/dom/diff-current-chrome.mjs``
-mounts a Markdown file and a code file through the production ``mountDiffView``, with the
-shell's chip family, and measures the bars, at a wide and a narrow width, in Diff and in
-Current, and with the Markdown file in Rendered and in Source.
+The diff's toolbar ends with its choosers, on one line and right-aligned: **Diff** |
+**Current**, then **Split** | **Unified**, or **Diff** | **Current** alone where the host
+fixes the layout, as a pull request's Docs tab does (docs/design-system.md, "Diff
+Toolbar"). A file bar's end group holds a rendered file's **Rendered** | **Source** alone,
+at the bar's end ("Diff File Bar"). What the toolbar and a bar hold, and in what order, is
+pinned browserlessly (``tests/dom/diff-view-behavior.js``,
+``tests/golden/cli-ui-diff-current.tryscript.md``); where they land is layout, which only a
+browser computes, so ``tests/dom/diff-current-chrome.mjs`` mounts a Markdown file and a
+code file through the production ``mountDiffView``, with the shell's chip family, as
+Changes mounts it and as Docs does, and measures the toolbars and bars at a wide and a
+narrow width, in Diff and in Current, and with the Markdown file in Rendered and in Source.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 ``CURRENT_SHOTS`` in the environment names a directory for a screenshot of each state.
@@ -38,7 +39,9 @@ LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 
-def test_a_bars_choosers_share_its_end_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
+def test_the_toolbars_choosers_share_its_end_in_chrome(
+    tmp_path: Path, chrome_profile: Path
+) -> None:
     chrome = require_chrome()
     sheets = _kpress_static(tmp_path / "kpress")
     current_input = tmp_path / "input.json"
