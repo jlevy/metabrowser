@@ -30,7 +30,10 @@ import pytest
 from metabrowser.builtin_plugins.github import gh_lists, pull_files_refresh, pull_list, pull_record
 from metabrowser.builtin_plugins.github.gh import GhError, GhResponse
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError
-from metabrowser.builtin_plugins.github.pull_files_refresh import refresh_pull_files
+from metabrowser.builtin_plugins.github.pull_files_refresh import (
+    FallbackRefused,
+    refresh_pull_files,
+)
 from metabrowser.builtin_plugins.github.pull_files_route import (
     FilesRefreshRequest,
     FilesRequestError,
@@ -611,6 +614,54 @@ def test_a_comparison_git_cannot_list_falls_through_to_github(
     local = LocalComparison(tmp_path / "no-such-store.git", "b" * 40, "c" * 40)
     listed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
     assert (listed.listed_from, len(listed.rows)) == ("github", 2)
+
+
+def test_a_fallback_the_caller_refuses_reads_nothing_and_keeps_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    """B1 of review B on #737: the prefetch lists what the store gives past its governor,
+    and asks it again only when Git cannot give the list after all."""
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    local = LocalComparison(tmp_path / "no-such-store.git", "b" * 40, "c" * 40)
+    asked: list[bool] = []
+
+    async def fallback(answer: bool) -> bool:
+        asked.append(answer)
+        return answer
+
+    with pytest.raises(FallbackRefused):
+        asyncio.run(
+            refresh_pull_files(
+                repository, TREE_PULL, local=local, slot=_free, fallback=partial(fallback, False)
+            )
+        )
+    assert asked == [False]
+    assert not Path(os.environ["FAKE_GH_LOG"]).exists(), "no account check and no list"
+    assert read_files_refresh(repository.home, repository.slug, TREE_PULL) is None
+    assert read_pull_files(repository.home, repository.slug, TREE_PULL) == "not_cached"
+    listed = asyncio.run(
+        refresh_pull_files(
+            repository, TREE_PULL, local=local, slot=_free, fallback=partial(fallback, True)
+        )
+    )
+    assert (listed.listed_from, len(listed.rows), asked) == ("github", 2, [False, True])
+
+
+def test_a_list_the_store_gives_never_asks_the_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    _answer(tmp_path, monkeypatch, {})
+    local = _comparison_for_limit_test(tmp_path)
+
+    async def fallback() -> bool:
+        raise AssertionError("the store gave the list")
+
+    listed = asyncio.run(
+        refresh_pull_files(repository, TREE_PULL, local=local, slot=_free, fallback=fallback)
+    )
+    assert listed.listed_from == "comparison" and listed.rows
+    assert not Path(os.environ["FAKE_GH_LOG"]).exists()
 
 
 @pytest.mark.parametrize("lender", ["lender_missing", "commits_unavailable"])

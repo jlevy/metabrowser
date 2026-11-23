@@ -101,9 +101,12 @@ ceiling, `SPECULATIVE_CORE_PER_HOUR`: the prefetch, the backfill past every read
 prefix, the cores walk past the rows on screen, and the label set’s periodic read run
 inside `gh_budget.speculative`, which counts what they spend toward the share too, and
 are refused with `self_ceiling` once it is spent.
-What is on screen is never refused for the share, so it keeps the rest of the ceiling.
-`GET pulls-prefetch` reports the ceiling and the share and what the hour has used of
-each under `governor.ceiling`, beside the governor’s other state.
+Inside the share the prefetch goes first: the backfill and the cores walk, whose cost
+grows with the catalog, also stop at `CATALOG_SPECULATIVE_CORE_PER_HOUR`, the share less
+what the prefetch’s caps can spend, so they cannot take that part before the prefetch
+asks. What is on screen is never refused for the share, so it keeps the rest of the
+ceiling. `GET pulls-prefetch` reports the ceiling and the share and what the hour has
+used of each under `governor.ceiling`, beside the governor’s other state.
 
 ### The GitHub Status Check
 
@@ -719,8 +722,9 @@ for that if no reader has yet.
 Those lists cost no GitHub request and go first; the rest alternate records and file
 lists from GitHub.
 The lane rereads each item from disk before it runs and stops when the
-governor refuses; the module docstring works out its caps, the GitHub points they cost,
-and the measurements behind the order.
+governor refuses, except for the lists the store gives, which cost GitHub nothing and
+are listed whatever the governor says; the module docstring works out its caps, the
+GitHub points they cost, and the measurements behind the order.
 A background job takes no network slot, waits behind every other job at a store turn and
 is cancelled when one starts waiting, and is joined and promoted by a reader’s request
 for the same pull request.
