@@ -726,7 +726,7 @@ mb.registerView("diff", "diff", {
       changedFiles,
       ...(typeof ctx.openFile === "function" ? { openFile: ctx.openFile } : {}),
       ...(ctx.unfold === true ? { unfold: true } : {}),
-      ...(ctx.layout === "unified" || ctx.layout === "split" ? { layout: ctx.layout } : {}),
+      ...(ctx.layout === "unified" ? { layout: ctx.layout } : {}),
       ...(typeof ctx.emptyText === "string" ? { emptyText: ctx.emptyText } : {}),
       viewFile,
       ...(!rendered
