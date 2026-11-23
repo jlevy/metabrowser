@@ -1,0 +1,15 @@
+---
+type: is
+id: is-01m84zkqj2vs24fbx4ygf6wveq
+title: "Diff | Current: the choice is remembered, has a key, and a browserless session golden plus a route/CLI equivalent"
+kind: task
+status: open
+priority: 2
+version: 1
+spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
+labels: []
+dependencies: []
+parent_id: is-01m84zd2x1v206rxsr1fspew62
+created_at: 2026-11-23T19:55:00.027Z
+updated_at: 2026-11-23T19:55:00.027Z
+---

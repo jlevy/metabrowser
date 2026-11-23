@@ -5,7 +5,7 @@ title: "Diff | Current: show a file's current version, its changes marked, besid
 kind: feature
 status: open
 priority: 2
-version: 3
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels: []
 dependencies: []
@@ -13,7 +13,12 @@ parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 child_order_hints:
   - is-01m84zddypdtqj4a9fj8f58287
   - is-01m84zdqftrf8jjbyz108151j2
+  - is-01m84zk6ansaqq4a1tr2c2pnpd
+  - is-01m84zkbbsym0ezq55f8zmg1bm
+  - is-01m84zkjpq6q850pb85782y3g2
+  - is-01m84zkqj2vs24fbx4ygf6wveq
+  - is-01m84zkvs3zz3076170rd0krth
 created_at: 2026-11-23T19:51:22.203Z
-updated_at: 2026-11-23T19:51:43.317Z
+updated_at: 2026-11-23T19:55:04.324Z
 ---
 Everywhere a diff file bar has Rendered | Source, add a second chooser, Diff | Current. Diff is today's view. Current shows only the new version: in Rendered, added and changed blocks tinted green, with no removed blocks and no redlines; in Source, the unified diff with deleted lines left out, added lines green and context plain. The choice has a CLI/route equivalent and a browserless session golden, and is remembered as Rendered | Source is.
