@@ -215,7 +215,9 @@ interaction session and fails when a named function did not execute.
 | `source.checkout-refs` | data | `/api/source/refs` | `owned-route` | `metab checkout --api /api/source/refs` | `cli-api-source-checkout.txt` |
 | `source.ref-pulls` | data | `/api/source/refs` | `owned-route` | `metab https://github.com/octo/demo --api '/api/source/refs?kind=branch&q=%2328'` | `cli-github-ref-pulls.txt` |
 | `source.checkout-revision` | data | `/api/source/pin` | `owned-route` | `metab checkout --api /api/source/pin --data pin-feature-view.json` | `cli-api-source-checkout.txt` |
-| `source.checkout-origin-store` | data | `/api/source/refs`, `/api/source/refresh`, `/api/source/pin` | `owned-route` | `metab checkout --api '/api/source/refs?kind=remote'` | `cli-api-source-checkout-store.txt` |
+| `source.checkout-origin-refs` | data | `/api/source/refs` | `owned-route` | `metab checkout --api '/api/source/refs?kind=remote'` | `cli-api-source-checkout-store.txt` |
+| `source.checkout-origin-refresh` | data | `/api/source/refresh` | `owned-route` | `metab checkout --api /api/source/refresh --data refresh.json` | `cli-api-source-checkout-store.txt` |
+| `source.checkout-origin-branch` | data | `/api/source/pin` | `owned-route` | `metab checkout --api /api/source/pin --data pin-origin-trunk.json` | `cli-api-source-checkout-store.txt` |
 | `source.ref-selector-origin` | interaction | `static/source-ref-selector.js#askForOrigin`, `static/source-ref-selector.js#describe`, `static/source-ref-selector.js#sameListing`, `static/source-ref-selector.js#watchPulls` | `/api/source/refs`, `/api/source/refresh`, `/api/source/pin` | `node tests/dom/source-ref-selector-origin-session.js` | `cli-ui-source-ref-selector-origin.tryscript.md` |
 | `source.checkout-ref-option` | data | `/api/source/status` | `owned-route` | `metab checkout --ref feature --api /api/source/status` | `cli-api-source-checkout.txt` |
 | `source.checkout-revision-content` | data | `/api/catalog` | `owned-route` | `metab checkout --ref feature --api /api/catalog` | `cli-api-source-checkout.txt` |

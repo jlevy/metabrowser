@@ -1292,6 +1292,12 @@ async def api_source_pin(request: Request) -> JSONResponse:
     try:
         body = await _json_object(request)
         source = _switchable(request, "pin")
+        if isinstance(source, CheckoutRevisions):
+            # The store of its origin, if the cache has one: an origin branch is read
+            # from it, and a one-shot command opens it at the request that needs it.
+            store = checkout_store(request.app)
+            if store is not None:
+                await store.ensure_open()
         selection = _selection(body, checkout=isinstance(source, CheckoutRevisions))
         # Where the page is, read on the subject it was drawn for, before any switch.
         identity = _view_identity(

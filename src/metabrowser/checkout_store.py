@@ -331,6 +331,9 @@ class CheckoutStore:
         self.session: MirrorSession | None = None
         self._refs_location: GitLocation | None = None
         self._made = asyncio.Event()
+        # Set as the application stops: an acquisition still unwinding adopts nothing,
+        # so no session of a stopped application is left named for the root.
+        self._closed = False
         self._opening = asyncio.Lock()
         self._tasks: list[asyncio.Task[None]] = []
         self._key = "checkout-store:" + hashlib.sha256(str(root).encode()).hexdigest()[:24]
@@ -499,7 +502,7 @@ class CheckoutStore:
         from metabrowser.cache.served_mirror import StoreMirror
         from metabrowser.git.process import GitLocation, repository_store_target
 
-        if self.session is not None:
+        if self.session is not None or self._closed:
             return
         mirror = StoreMirror.from_published(published)
         own = f"{published.store_id}:"
@@ -523,6 +526,8 @@ class CheckoutStore:
         target = await asyncio.to_thread(repository_store_target, git_dir=published.git_dir)
         # The commit only names the location; the state read is of the store's refs.
         self._refs_location = GitLocation.revision(target, published.default_revision)
+        if self._closed:
+            return
         self.session = session
         self._absent = None
         self._failed_at = None
@@ -583,6 +588,7 @@ class CheckoutStore:
     async def aclose(self) -> None:
         """Stop the timer and any probe, and leave the working tree served."""
 
+        self._closed = True
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
@@ -644,6 +650,8 @@ async def lifespan_checkout_store(app: Any) -> AsyncGenerator[None]:
     coordinator = refresh_coordinator(app)
     checkout = checkout_revisions() if mirror_session(app) is None else None
     if checkout is not None and coordinator is not None:
+        # Nothing an earlier application in this process kept for the root is this one's.
+        set_origin_session(checkout.root, None)
         store = CheckoutStore(checkout.root, coordinator, serving=_serving)
         app.state.checkout_store = store
         if _serving:

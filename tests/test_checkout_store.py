@@ -542,3 +542,33 @@ def test_a_follow_in_flight_does_not_take_back_the_working_tree_the_reader_chose
     assert not chooser.is_alive() and answers[0].status_code == 200
     _ready(served)
     assert served.get("/api/source/status").json()["subject"] == "attached_filesystem"
+
+
+def test_an_acquisition_that_ends_as_the_application_stops_leaves_no_session_behind(
+    folder: _Folder,
+) -> None:
+    """A store adopted after its application closed would name a session of a stopped
+    loop for the root, which the next application in the process would then list from."""
+
+    from metabrowser.cache.lender import checkout_origin
+    from metabrowser.checkout_revisions import CheckoutRevisions
+    from metabrowser.checkout_store import CheckoutStore, acquire_checkout_store
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    async def scenario() -> tuple[bool, bool]:
+        source = checkout_origin(folder.checkout)
+        assert source is not None
+        published = await acquire_checkout_store(source, home=folder.home, checkout=folder.checkout)
+        coordinator = RefreshCoordinator()
+        store = CheckoutStore(folder.checkout, coordinator, serving=False)
+        # The origin is read, and the acquisition is still to end, as the application stops.
+        store._origin = await asyncio.to_thread(  # pyright: ignore[reportPrivateUsage]
+            checkout_store._read_origin,  # pyright: ignore[reportPrivateUsage]
+            folder.checkout,
+        )
+        await store.aclose()
+        await store._adopt(published)  # pyright: ignore[reportPrivateUsage]
+        await coordinator.aclose()
+        return store.session is None, CheckoutRevisions(folder.checkout).origin is None
+
+    assert asyncio.run(scenario()) == (True, True)
