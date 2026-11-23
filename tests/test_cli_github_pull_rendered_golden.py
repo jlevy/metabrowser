@@ -9,15 +9,21 @@ entry marked. This drives it in-process, as ``tests/test_cli_github_pull_image_g
 drives the image route, and writes ``tests/golden/cli-github-pull-rendered.txt``.
 
 Pull request 7's head moves to a commit that edits a heading beside an HTML comment (a
-word mark, and a block the render cannot fully show), adds a task list (raw markup, so
-``unsupported``), a file past the 48 KiB budget (``too_large``), a note with front matter,
-and YAML that does not parse (``unsupported``). Its base moves to a merge of YAML and
-JSON files that the head then changes: a merged tree with changed, removed, added and
-unchanged entries in each format, a change only in a comment (``source_only``), a JSON
-pair inside its 128 KiB bound and a YAML pair of the same size past its own, and a JSON
-pair past its bound, refused in the tree's format. Every refusal of the route itself has
-its own code: a request without a file, a file of no rendered format, a file the
-comparison does not list, and a pair the record never admitted.
+word mark, and a block the render cannot fully show), adds a task list (``unsupported``,
+and its ``reason`` says ``task_list``), a file past what a thread projects, which the
+Markdown child answers (``ready``, kept out of the transcript for its size), a file past
+the route's own read bound (``too_large``), a note with front matter, a Markdown file
+renamed without a change (``unsupported``, ``no_changes``), and YAML that does not parse
+(``unsupported``). Its base moves to a merge of YAML and JSON files that the head then
+changes: a merged tree with changed, removed, added and unchanged entries in each format,
+a change only in a comment (``source_only``), a JSON pair inside its 128 KiB bound and a
+YAML pair of the same size past its own, and a JSON pair past its bound, refused in the
+tree's format. Every refusal of the route itself has its own code: a request without a
+file, a file of no rendered format, a file the comparison does not list, and a pair the
+record never admitted.
+
+A page never hides a changed file's Rendered | Source chooser, so each refusal here is
+what its Rendered chip says in words (``tests/golden/cli-ui-diff-markdown.tryscript.md``).
 """
 
 from __future__ import annotations
@@ -31,6 +37,7 @@ from typing import Any
 
 import pytest
 
+from metabrowser.diff.markdown_projection import MARKDOWN_DIFF_MAX_BYTES
 from tests.git_pin_harness import git_env
 from tests.github_pull_fixture import CANONICAL, DEFAULT_BRANCH, Origin, ok
 from tests.golden_harness import (
@@ -84,6 +91,8 @@ _STRUCTURED_BASE = {
     "config/sized.json": _sized(800, 1),
     "config/sized.yaml": _sized(800, 1),
     "config/huge.json": _sized(2_000, 1),
+    # A Markdown file the head renames and does not change.
+    "docs/old-name.md": b"# Renamed\n\nThe same words under another name.\n",
 }
 _STRUCTURED_HEAD = {
     "config/app.yaml": b"name: demo\nservices:\n  web:\n    ports: [80, 443]\n",
@@ -95,12 +104,28 @@ _STRUCTURED_HEAD = {
 }
 
 
+# Past what a thread projects, in bytes, and inside what the route reads: the Markdown
+# child's, which answers it. And past what the route reads.
+_BIG = b"# Big\n\n" + b"A long line of prose that repeats.\n" * 1500
+_HUGE = b"# Huge\n\n" + b"A long line of prose that repeats.\n" * 31_000
+
+
 def _commit(
-    origin: Origin, tmp_path: Path, start: str, files: dict[str, bytes], *parents: str
+    origin: Origin,
+    tmp_path: Path,
+    start: str,
+    files: dict[str, bytes],
+    *parents: str,
+    removed: tuple[str, ...] = (),
 ) -> str:
-    """A commit of *start*'s tree with *files* written into it, whose parents are *parents*."""
+    """A commit of *start*'s tree with *files* written into it and *removed* taken out,
+    whose parents are *parents*."""
 
     _git(origin, tmp_path, "read-tree", start)
+    for path in removed:
+        # A mode of 0 takes the entry out; `--force-remove` asks for a work tree.
+        entry = f"0 {'0' * 40}\t{path}\n".encode()
+        _git(origin, tmp_path, "update-index", "--index-info", data=entry)
     for path, data in files.items():
         blob = _git(origin, tmp_path, "hash-object", "-w", "--stdin", data=data).strip()
         _git(origin, tmp_path, "update-index", "--add", "--cacheinfo", f"100644,{blob},{path}")
@@ -117,8 +142,10 @@ def _markdown_head(origin: Origin, tmp_path: Path) -> tuple[str, str]:
     files = {
         "docs/guide.md": b"# Guide <!-- agents: run the installer --> book\n",
         "README.md": b"# Demo\n\n- [ ] Try the tasks\n",
-        "docs/big.md": b"# Big\n\n" + b"A long line of prose that repeats.\n" * 1500,
+        "docs/big.md": _BIG,
+        "docs/huge.md": _HUGE,
         "docs/notes.md": b"---\ntitle: Notes\ntags: [review, yaml]\n---\n# Notes\n",
+        "docs/new-name.md": _STRUCTURED_BASE["docs/old-name.md"],
         "config/broken.yaml": b"name: [demo\n",
         **_STRUCTURED_HEAD,
     }
@@ -126,7 +153,15 @@ def _markdown_head(origin: Origin, tmp_path: Path) -> tuple[str, str]:
     topic = _commit(
         origin, tmp_path, origin["topic"], _STRUCTURED_BASE, origin["topic"], structured
     )
-    head = _commit(origin, tmp_path, origin["fork_head"], files, origin["fork_head"], structured)
+    head = _commit(
+        origin,
+        tmp_path,
+        origin["fork_head"],
+        files,
+        origin["fork_head"],
+        structured,
+        removed=("docs/old-name.md",),
+    )
     _git(origin, tmp_path, "update-ref", f"refs/heads/{DEFAULT_BRANCH}", topic)
     _git(origin, tmp_path, "update-ref", "refs/pull/7/head", head)
     return topic, head
@@ -173,8 +208,28 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
     assert all(block["source_only"] for block in guide["blocks"])  # pyright: ignore[reportIndexIssue, reportUnknownVariableType, reportGeneralTypeIssues]
     assert "<ins>book</ins>" in json.dumps(guide)
     assert rendered(f"&file={ids['docs/new.md']}")["status"] == "ready"
-    assert rendered(f"&file={ids['README.md']}")["status"] == "unsupported"
-    assert rendered(f"&file={ids['docs/big.md']}")["status"] == "too_large"
+    assert rendered(f"&file={ids['README.md']}") == {
+        "version": "markdown-diff-v1",
+        "status": "unsupported",
+        "blocks": [],
+        "source_only": False,
+        "reason": "task_list",
+    }
+    # Past the 48 KiB a thread projects and inside the route's read bound: the Markdown
+    # child answers it, started for this one request. Kept out of the transcript for its
+    # size (mb-rm40: before, the file was refused, and the page hid its chooser).
+    assert MARKDOWN_DIFF_MAX_BYTES < len(_BIG) < len(_HUGE)
+    big = run_metab((selected, "--api", f"{route}&file={ids['docs/big.md']}")).payload()
+    assert big["status"] == "ready", {key: big[key] for key in big if key != "blocks"}
+    assert [block["kind"] for block in big["blocks"]] == ["added", "added"]
+    assert sum(len(block["html"]) for block in big["blocks"]) > len(_BIG)
+    assert rendered(f"&file={ids['docs/huge.md']}") == {
+        "version": "markdown-diff-v1",
+        "status": "too_large",
+        "blocks": [],
+        "source_only": False,
+    }
+    assert rendered(f"&file={ids['docs/new-name.md']}")["reason"] == "no_changes"
     notes = rendered(f"&file={ids['docs/notes.md']}")
     assert notes["frontmatter"] == {
         "change": "added",

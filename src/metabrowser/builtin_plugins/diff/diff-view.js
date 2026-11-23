@@ -45,6 +45,10 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Record<string, unknown>} change
  * @property {HTMLElement} body
  * @property {Set<string>} expandedFolds
+ * @property {boolean} unfold Whether every fold of the file opens as it is drawn, as a
+ *   pull request's Docs tab shows its documents whole (`mountDiffView`'s *unfold*).
+ * @property {Set<string>} foldsOpened The folds *unfold* has opened: each opens the first
+ *   time it is drawn, so one the reader closes stays closed when the file is drawn again.
  * @property {Map<string, {timer: number}>} foldTasks
  * @property {Record<string, unknown>} patch
  * @property {DiffViewApi} api
@@ -100,6 +104,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  *   summary is drawn on, or null where it could not be loaded.
  * @property {((path: string) => void) | null} openFile How the host opens one changed file
  *   at its own address, or null where a file has none in this diff.
+ * @property {boolean} unfold Whether folds open as they are drawn (*unfold*).
  */
 
 /**
@@ -191,6 +196,9 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   stale: "The comparison changed underneath this file. Refresh to reload it.",
   unsupported: "This change cannot be shown as a text diff.",
 });
+
+// What a file whose availability the table does not name says.
+const UNAVAILABLE_COPY = "These changes are unavailable.";
 
 // A single file's answer owes the file or a reason. `deferred` there is neither, so it is
 // said as what it is and not as a failure of this page; in a document with no source to
@@ -579,6 +587,12 @@ function appendFoldedRows(section, rows, changedRunOf, renderRow, state, hunkInd
     }
     section.append(...run.slice(0, FOLD_VISIBLE).map(renderRow));
     const key = `${String(state.change.id)}:${hunkIndex}:${changedRun}`;
+    if (state.unfold && !state.foldsOpened.has(key)) {
+      // Drawn open, its rows materialized in batches as a reader's opening does; once,
+      // so a fold the reader closed stays closed when a layout change draws it again.
+      state.foldsOpened.add(key);
+      state.expandedFolds.add(key);
+    }
     const expanded = state.expandedFolds.has(key);
     foldSequence += 1;
     const group = el("div", `diff-fold-group${expanded ? "" : " diff-fold-collapsed"}`);
@@ -634,9 +648,10 @@ function renderSplitHunk(hunk, state, hunkIndex) {
  * @param {Record<string, unknown>} patch
  * @param {DiffViewApi} api
  * @param {HTMLElement} body
+ * @param {boolean} [unfold]
  * @returns {FileViewState}
  */
-export function createFileState(change, patch, api, body) {
+export function createFileState(change, patch, api, body, unfold = false) {
   const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
   return {
     api,
@@ -644,6 +659,8 @@ export function createFileState(change, patch, api, body) {
     change,
     expandedFolds: new Set(),
     foldTasks: new Map(),
+    unfold,
+    foldsOpened: new Set(),
     patch,
     renderModel: measureProjection(
       api,
@@ -1808,16 +1825,26 @@ function wholeTotalsOf(manifest, given) {
  * (mb-pb35): the summary is drawn there, for one file too, since there it stands for the
  * change set's totals, and the toolbar holds the layout control alone. *whole* is the
  * change set's whole totals, where its list was cut short and the page knows them
- * (`wholeTotalsOf`).
+ * (`wholeTotalsOf`). A *control* the host keeps across mounts, a narrowed diff's File type
+ * control, leads the layout control.
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files
  * @param {MountedDiffState} view
  * @param {boolean} showSummary
  * @param {HTMLElement | null} [summaryHost]
  * @param {WholeTotals | null} [whole]
+ * @param {HTMLElement | null} [hostControl]
  * @returns {{toolbar: HTMLElement, unbind: () => void}}
  */
-function renderDiffToolbar(totals, files, view, showSummary, summaryHost = null, whole = null) {
+function renderDiffToolbar(
+  totals,
+  files,
+  view,
+  showSummary,
+  summaryHost = null,
+  whole = null,
+  hostControl = null,
+) {
   const toolbar = el("div", "diff-toolbar");
   /** @type {(() => void) | null} */
   let disposeSummary = null;
@@ -1840,6 +1867,9 @@ function renderDiffToolbar(totals, files, view, showSummary, summaryHost = null,
   const filterControls = view.api?.filterControls;
   if (!filterControls) {
     return { toolbar, unbind: () => disposeSummary?.() };
+  }
+  if (hostControl !== null) {
+    toolbar.append(hostControl);
   }
   const control = el("div", "diff-layout-control");
   view.layoutControl = control;
@@ -2485,7 +2515,7 @@ function spliceDeferred(file, loaded, view) {
     file.body.append(el("div", "diff-availability", "No content changes."));
     return "none";
   }
-  const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body);
+  const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body, view.unfold);
   if (!view.awaitingWidth) {
     renderFileBody(state, view.layout);
   }
@@ -2940,6 +2970,7 @@ function renderFileSection(change, patch, context, view, draw) {
   // synthesized click bubbles here. Only the copy control, a file's
   // Rendered | Source chooser, and the View file controls opt out.
   const format = view.markdown?.format(change) ?? null;
+  const availability = String(change.availability);
   const markdown =
     format === null
       ? null
@@ -2947,10 +2978,14 @@ function renderFileSection(change, patch, context, view, draw) {
           section,
           bar,
           end,
-          toggle,
           source: body,
           id: String(change.id),
           format,
+          // A file whose changes did not load has no Rendered either, for the reason its
+          // body gives below.
+          ...(availability === "ready" || availability === "deferred"
+            ? {}
+            : { unavailable: AVAILABILITY_COPY[availability] || UNAVAILABLE_COPY }),
         });
   let expanded = true;
   /** @param {boolean} next */
@@ -2982,13 +3017,12 @@ function renderFileSection(change, patch, context, view, draw) {
     }
   });
 
-  const availability = String(change.availability);
   if (availability === "deferred" && context.revision) {
     queueDeferredHydration(section, body, change, context.revision, view);
     return section;
   }
   if (availability !== "ready" || patch === undefined) {
-    const copy = AVAILABILITY_COPY[availability] || "These changes are unavailable.";
+    const copy = AVAILABILITY_COPY[availability] || UNAVAILABLE_COPY;
     body.append(el("div", "diff-availability", copy));
     return section;
   }
@@ -3005,7 +3039,7 @@ function renderFileSection(change, patch, context, view, draw) {
     queueDeferredHydration(section, body, change, context.revision ?? "", view, held);
     return section;
   }
-  const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body);
+  const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body, view.unfold);
   view.files.push(state);
   if (!view.awaitingWidth) {
     renderFileBody(state, view.layout);
@@ -3155,7 +3189,11 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   markdownTargets?: (value: string, image: boolean) => boolean,
  *   markdownHoldMs?: number,
  *   changedFiles?: MetabrowserChangedFilesTree | null,
- *   openFile?: (path: string) => void
+ *   openFile?: (path: string) => void,
+ *   summaryManifest?: Record<string, unknown> | null,
+ *   toolbarControl?: HTMLElement | null,
+ *   emptyText?: string,
+ *   unfold?: boolean
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
@@ -3168,6 +3206,12 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   where a page that places the summary at its own top wants it drawn (mb-pb35).
  *   *summaryTotals* are the change set's whole totals, which its summary says where the list
  *   is cut short at its bound, as a commit's page knows them (A3 of review A on #470).
+ *   A diff narrowed to some file types (diff-type-filter.js) passes the whole comparison's
+ *   manifest as *summaryManifest*, so its summary still describes the whole change set; its
+ *   File type control as *toolbarControl*, which leads the layout control; and *emptyText*,
+ *   what it says when it keeps no file. *unfold* draws every fold open, the rendered
+ *   view's unchanged runs and the text diff's long changed runs alike, for a page that
+ *   shows its files whole: a pull request's Docs tab.
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
@@ -3220,6 +3264,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     yielders: new Set(),
     changedFiles: options.changedFiles ?? null,
     openFile: options.openFile ?? null,
+    unfold: options.unfold === true,
   };
   view.hydration = createHydrationScheduler(hydrationHost(view));
   if (
@@ -3235,6 +3280,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         controls: api.filterControls,
         ...(options.markdownTargets === undefined ? {} : { isTarget: options.markdownTargets }),
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
+        unfold: options.unfold === true,
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;
@@ -3277,17 +3323,24 @@ export function mountDiffView(container, document_, api, options = {}) {
       document_.manifest
     );
   const patches = /** @type {Record<string, Record<string, unknown>>} */ (document_.patches);
-  const totals = manifest.totals;
   view.listTruncated = manifest.truncated === true;
+  // A diff narrowed to some file types describes the whole change set in its summary.
+  const described = /** @type {typeof manifest} */ (options.summaryManifest ?? manifest);
   const { toolbar, unbind } = renderDiffToolbar(
-    totals,
-    manifest.files,
+    described.totals,
+    described.files,
     view,
     options.showSummary !== false,
     options.summaryHost ?? null,
-    wholeTotalsOf(manifest, options.summaryTotals ?? null),
+    wholeTotalsOf(described, options.summaryTotals ?? null),
+    options.toolbarControl ?? null,
   );
   root.append(toolbar);
+  // A list cut short at its bounds may have left out what was asked for: the truncation
+  // notice below says so, and "none" would not be true.
+  if (manifest.files.length === 0 && manifest.truncated !== true && options.emptyText) {
+    root.append(el("div", "diff-availability diff-type-empty", options.emptyText));
+  }
   // What the source could not model is left out of the files below, so it is said above them.
   for (const warning of /** @type {string[]} */ (view.resolved.warnings ?? [])) {
     root.append(noticeEl("warning", "diff-warning", warning));

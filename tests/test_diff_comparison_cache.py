@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 
 import pytest
 from httpx2 import Response
+from starlette.datastructures import QueryParams
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
@@ -375,12 +376,8 @@ def test_a_folder_is_never_kept_because_its_working_tree_is_an_input(tmp_path: P
 
 
 def _plain_request(**params: str) -> Any:
-    class _Query:
-        def get(self, key: str, default: str = "") -> str:
-            return params.get(key, default)
-
     request = Mock(spec=["query_params", "headers"])
-    request.query_params = _Query()
+    request.query_params = QueryParams(params)
     request.headers = {}
     return request
 
@@ -609,6 +606,52 @@ def test_initial_page_policies_share_only_the_manifest_and_complete_to_the_same_
         for count in (0, 51):
             with pytest.raises(ValueError, match="max_initial_files"):
                 await sidekick.comparison_at(request(), location, max_initial_files=count)
+
+    asyncio.run(run())
+
+
+def test_a_narrowed_answer_is_kept_apart_and_its_bound_counts_only_kept_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`&types=` shares the listing, has a tag and a body of its own, and hydrates the
+    first kept files rather than the first files."""
+    store, base, target = _store(tmp_path)
+    location = GitLocation.revision(repository_store_target(git_dir=store), target)
+    monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
+    spy = _Spy(monkeypatch)
+
+    def request(types: str = "") -> Request:
+        params = {"left": base, "right": target, "base_policy": "merge_base"}
+        query = urlencode({**params, **({"types": types} if types else {})})
+        return Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/comparison",
+                "query_string": query.encode(),
+                "headers": [],
+            }
+        )
+
+    def paths(answer: dict[str, Any]) -> list[str]:
+        return [(c.get("new") or c["old"])["path"] for c in answer["manifest"]["files"]]
+
+    async def run() -> None:
+        whole = await sidekick.comparison_at(request(), location, max_initial_files=1)
+        python = await sidekick.comparison_at(request(".py"), location, max_initial_files=1)
+        again = await sidekick.comparison_at(request(), location, max_initial_files=1)
+        assert again.body == whole.body
+        assert again.headers["etag"] == whole.headers["etag"]
+        assert python.headers["etag"] != whole.headers["etag"]
+        answer = json.loads(bytes(python.body))
+        kept = paths(answer)
+        assert kept and all(path.endswith(".py") for path in kept)
+        assert len(kept) < len(paths(json.loads(bytes(whole.body))))
+        # The one hydrated file is the first kept one, whatever comes before it unkept.
+        first = answer["manifest"]["files"][0]
+        assert list(answer["patches"]) == [first["id"]]
+        assert answer["manifest"]["totals"]["files"] == len(kept)
+        assert spy.manifests == 1
 
     asyncio.run(run())
 
