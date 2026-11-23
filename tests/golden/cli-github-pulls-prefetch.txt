@@ -563,7 +563,7 @@ status: 200
 --- body ---
 {"number": 7}
 --- gh ---
-gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/issues/7
 gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/check-runs?per_page=100&page=1 (If-None-Match)

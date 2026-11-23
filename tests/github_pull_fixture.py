@@ -73,7 +73,7 @@ DEFAULT_BRANCH: Final = "topic"
 _WHEN: Final = 1788000000
 
 _FAKE_GH: Final = """#!{python}
-import json, os, sys
+import hashlib, json, os, re, sys
 
 args = sys.argv[1:]
 log = os.environ.get("FAKE_GH_LOG")
@@ -180,7 +180,23 @@ if args[:1] == ["api"]:
             entry = {{"status": 200, "headers": {{"Etag": '"user-' + active["login"] + '"'}},
                      "body": {{"login": active["login"], "id": 1, "type": "User"}}}}
     else:
-        entry = pick(path, scenario["api"].get(path, {{"status": 404, "body": {{"message": "Not Found"}}}}))
+        missing = {{"status": 404, "body": {{"message": "Not Found"}}}}
+        issue = re.fullmatch(r"(repos/[^/]+/[^/]+)/issues/([0-9]+)", path or "")
+        if issue and path not in scenario["api"]:
+            # A probe's read (pulls.probe_path): the pull request as its issue carries it,
+            # from the scenario's answer for the pull. It embeds no repository, so its
+            # ETag is its own fields' and a push that moves the pull's ETag leaves it
+            # alone, as measured on 2026-11-23 (pulls.PROBE_RESOURCE).
+            pull = scenario["api"].get(issue.group(1) + "/pulls/" + issue.group(2), missing)
+            entry = pick(path, pull)
+            if entry["status"] == 200 and isinstance(entry.get("body"), dict):
+                body = {{key: entry["body"].get(key) for key in ("number", "updated_at", "state", "title")}}
+                body["pull_request"] = {{"merged_at": entry["body"].get("merged_at")}}
+                tag = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:32]
+                headers = {{**entry.get("headers", {{}}), "Etag": 'W/"issue-' + tag + '"'}}
+                entry = {{"status": 200, "headers": headers, "body": body}}
+        else:
+            entry = pick(path, scenario["api"].get(path, missing))
     status = entry["status"]
     headers = dict(entry.get("headers", {{}}))
     body = entry["raw"].encode() if "raw" in entry else json.dumps(entry.get("body", None)).encode()

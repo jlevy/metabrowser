@@ -1235,15 +1235,68 @@ type ProbeOutcome = Literal["unchanged", "changed", "checks_changed"]
 
 
 @dataclass(frozen=True, slots=True)
+class IssueSeen:
+    """The pull request's issue as a probe last saw it: its ``updated_at`` and that answer's ETag.
+
+    It outlives the record it was read beside, since a ``304`` for the ETag says the issue
+    still has this ``updated_at`` whichever record is held.
+    """
+
+    updated_at: str
+    etag: str
+
+
+@dataclass(frozen=True, slots=True)
 class PullProbe:
     """What one probe found: whether the record still describes GitHub, and newer ETags.
 
-    ``etags`` holds the ETag of each path GitHub answered ``200`` without changing anything
-    the record shows, for the next probe to send instead of the record's.
+    ``etags`` holds the ETag of each check-run or status page GitHub answered ``200``
+    without changing anything the record shows, for the next probe to send instead of the
+    record's. ``seen`` is the issue as this probe found it, for the next probe to send;
+    ``None`` when GitHub sent no ETag with it.
     """
 
     outcome: ProbeOutcome
     etags: dict[str, str]
+    seen: IssueSeen | None = None
+
+
+# What a probe of a pull request reads: its issue, ``repos/o/r/issues/<n>``, not the pull.
+# The pull's representation embeds its base and head repository objects, so its ETag moves
+# with the whole repository; the issue's embeds no repository, and its ``updated_at`` is
+# the pull request's own. Measured 2026-11-23, 01:47 to 02:32 UTC, with gh 2.98.0:
+# conditional reads of both representations of ten open pull requests, every 15 to 20 s,
+# in NixOS/nixpkgs (six), jlevy/metabrowser (two), pytorch/pytorch, and rust-lang/rust,
+# 661 rounds in all.
+#
+# - The pull answered ``200`` with its ``updated_at`` unchanged 90 times. Across the 86
+#   bodies kept after each pull's first, what differed from the one before was the base
+#   repository's ``open_issues_count`` (56 times, so any issue or pull request opened or
+#   closed), its ``pushed_at`` (40), and the pull's ``mergeable`` as GitHub recomputed
+#   it (20).
+# - The issue answered ``304`` in all 90 of those rounds.
+# - The issue answered ``200`` twice, both in the round the pull's ``updated_at`` moved:
+#   labels a bot added (02:08:12, seen 02:08:31) and a force-push of the head (02:19:22,
+#   seen 02:19:32), where the issue's body differed only in ``updated_at``.
+#
+# So a probe of the issue costs a ``core`` call when the pull request changes, not when
+# its repository does, and the bound on paid probes the plan proposed is not built.
+PROBE_RESOURCE: Final = "issues"
+
+
+def probe_path(published: PublishedSource | ListedRepository, number: int) -> str:
+    """The path a probe of pull request *number* asks: its issue (:data:`PROBE_RESOURCE`)."""
+
+    owner, repo = _owner_and_repo(published)
+    return f"repos/{owner}/{repo}/{PROBE_RESOURCE}/{number}"
+
+
+def _issue_updated_at(value: object, number: int) -> str:
+    item = as_dict(value)
+    updated = item.get("updated_at")
+    if item.get("number") != number or not isinstance(updated, str):
+        raise UnreadableItemError
+    return updated
 
 
 def checks_probe_paths(
@@ -1293,44 +1346,57 @@ async def probe_pull_request(
     *,
     etags: dict[str, str],
     checks: bool,
+    seen: IssueSeen | None = None,
 ) -> PullProbe:
     """Ask GitHub whether *record* still describes pull request ``record.number``.
 
-    Each request is conditional, on the ETag in *etags* or else the record's, and GitHub
-    does not count one it answers ``304`` against the rate limit (measured 2026-11-22; see
-    docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md). The pull is
-    asked first; with *checks*, so are the first pages of its head's check runs and
-    status (:func:`checks_probe_paths`). A ``200`` is compared with what the record holds,
-    since GitHub sometimes sends a new ETag for the same content, so only a real change is
-    ``changed`` (the pull) or ``checks_changed`` (only its checks). A path the record holds
-    no ETag for, as a cold open's pull read through GraphQL holds none, is asked
-    unconditionally once and compared the same way; its ETag is in the result's ``etags``.
-    The check runs and status are asked together, once the pull is unchanged.
+    Each request is conditional, and GitHub does not count one it answers ``304`` against
+    the rate limit (measured 2026-11-22; see
+    docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md).
+
+    The pull request's issue is asked first (:func:`probe_path`), with the ETag of *seen*,
+    what the last probe found, whichever record it ran beside. Its ``updated_at`` is the
+    pull request's own, and moves with its state, merge, title, body, labels, comments,
+    reviews, and pushes to its head. So the record is ``changed`` when the issue's
+    ``updated_at``, from a ``200`` or else *seen*'s when GitHub answers ``304``, is not
+    the record's, and a ``200`` with the same one, as a reaction makes, changes nothing.
+    With no *seen*, the first probe of a number in a server, it is asked unconditionally
+    once. The issue does not carry ``mergeable`` or the head: the full read a change
+    starts reads them, and a mergeability GitHub recomputes with nothing else changed
+    waits for the next full read.
+
+    With *checks*, once the issue is unchanged, the first pages of the head's check runs
+    and status are asked together (:func:`checks_probe_paths`), each on the ETag in
+    *etags* or else the record's; a ``200`` is compared with what the record holds, and
+    only a real change is ``checks_changed``.
 
     Runs no account check and writes nothing: the full read a change starts checks the
     account and publishes. Raises only :class:`PullDataError`.
     """
 
-    owner, repo = _owner_and_repo(published)
-    pull_path = f"repos/{owner}/{repo}/pulls/{record.number}"
     newer: dict[str, str] = {}
-    etag = etags.get(pull_path) or record.etags.get(pull_path)
     try:
-        response = await _get(pull_path, etag=etag)
+        response = await _get(
+            probe_path(published, record.number), etag=seen.etag if seen is not None else None
+        )
     except PageTooLargeError as exc:
         raise _unreadable_pull() from exc
-    if response.status != 304:
+    if response.status == 304:
+        if seen is None:
+            raise unconditional_304()
+        found: IssueSeen | None = seen
+        updated_at = seen.updated_at
+    else:
         try:
-            pull = _pull(response_json(response), record.number)
+            updated_at = _issue_updated_at(response_json(response), record.number)
         except READ_FAILURES as exc:
             raise _unreadable_pull() from exc
-        if pull != record.pull:
-            return PullProbe("changed", newer)
-        if response.etag is not None:
-            newer[pull_path] = response.etag
+        found = IssueSeen(updated_at, response.etag) if response.etag is not None else None
+    if updated_at != record.pull.updated_at:
+        return PullProbe("changed", newer, found)
     paths = checks_probe_paths(published, record) if checks else None
     if paths is None:
-        return PullProbe("unchanged", newer)
+        return PullProbe("unchanged", newer, found)
 
     async def ask(path: str) -> GhResponse | None:
         try:
@@ -1345,7 +1411,7 @@ async def probe_pull_request(
             changed = True
         elif response.status != 304 and response.etag is not None:
             newer[path] = response.etag
-    return PullProbe("checks_changed" if changed else "unchanged", newer)
+    return PullProbe("checks_changed" if changed else "unchanged", newer, found)
 
 
 def _keep_stamp(
@@ -1436,7 +1502,10 @@ __all__ = [
     "PullDataError",
     "PullDataState",
     "PullProbe",
+    "IssueSeen",
+    "PROBE_RESOURCE",
     "checks_probe_paths",
+    "probe_path",
     "last_refresh",
     "open_pull_request",
     "probe_pull_request",

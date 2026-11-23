@@ -664,7 +664,7 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-gh api repos/octo/demo/pulls/10 (If-None-Match)
+gh api repos/octo/demo/issues/10
 # metab https://github.com/octo/demo --api /api/source/status
 exit: 0
 --- stdout ---

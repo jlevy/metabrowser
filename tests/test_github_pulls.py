@@ -6261,47 +6261,123 @@ def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
     assert stand.record(7) == conflict
 
 
+ISSUE_PATH = "repos/octo/demo/issues/7"
+
+
 def _probe(
-    stand: _Stand, record: PullRecord, *, checks: bool, etags: dict[str, str] | None = None
+    stand: _Stand,
+    record: PullRecord,
+    *,
+    checks: bool,
+    etags: dict[str, str] | None = None,
+    seen: pulls.IssueSeen | None = None,
 ) -> pulls.PullProbe:
     return asyncio.run(
-        pulls.probe_pull_request(stand.published, record, etags=etags or {}, checks=checks)
+        pulls.probe_pull_request(
+            stand.published, record, etags=etags or {}, checks=checks, seen=seen
+        )
     )
 
 
-def test_a_probe_asks_only_the_pull_and_never_the_account(stand: _Stand) -> None:
-    """An unchanged pull request is one conditional read that GitHub answers ``304``."""
+def _sent_etags(stand: _Stand) -> list[tuple[str, str | None]]:
+    """Each ``gh api`` call's path and the ETag it sent, if it was conditional."""
+
+    sent: list[tuple[str, str | None]] = []
+    for call in stand.calls():
+        args: list[str] = call["args"]
+        etag = next((arg for arg in args if arg.startswith("If-None-Match: ")), None)
+        sent.append((args[-1], etag.split(": ", 1)[1] if etag else None))
+    return sent
+
+
+def test_a_probe_asks_only_the_issue_and_never_the_account(stand: _Stand) -> None:
+    """The first probe of a number reads its issue once; after that an unchanged pull
+    request is one conditional read that GitHub answers ``304``."""
 
     record = stand.refresh(7)
+    assert pulls.probe_path(stand.published, 7) == ISSUE_PATH
     stand.calls()
-    found = _probe(stand, record, checks=False)
-    assert found == pulls.PullProbe("unchanged", {})
-    calls = stand.calls()
-    assert [call["args"][-1] for call in calls] == ["repos/octo/demo/pulls/7"]
-    assert not any(
-        call["args"][-1] == "user" or call["args"][:2] == ["auth", "status"] for call in calls
-    )
+    first = _probe(stand, record, checks=False)
+    assert first.outcome == "unchanged" and first.etags == {}
+    assert first.seen is not None and first.seen.updated_at == record.pull.updated_at
+    assert _sent_etags(stand) == [(ISSUE_PATH, None)]
+    again = _probe(stand, record, checks=False, seen=first.seen)
+    assert again == pulls.PullProbe("unchanged", {}, first.seen)
+    assert _sent_etags(stand) == [(ISSUE_PATH, first.seen.etag)]
 
 
-def test_a_probe_tells_a_change_from_a_new_etag_for_the_same_pull(stand: _Stand) -> None:
-    """GitHub sometimes sends a new ETag for the same content (2026-11-22), and only a change
-    to what the record holds is ``changed``; the new ETag is kept for the next probe."""
+def test_a_push_to_the_repository_moves_the_pulls_etag_and_not_the_probes(
+    stand: _Stand,
+) -> None:
+    """mb-2ppr: the pull embeds its repositories, whose ``pushed_at`` and counts move with
+    every push and every issue opened; the issue a probe reads embeds neither, so its
+    ETag holds (measured 2026-11-23, beside ``pulls.PROBE_RESOURCE``)."""
 
     answers = scenario(stand.origin)
     pull_path = "repos/octo/demo/pulls/7"
     record = stand.refresh(7)
+    seen = _probe(stand, record, checks=False).seen
     body = answers["api"][pull_path]["body"]
-    same = ok(pull_path, body, {"Etag": 'W/"rotated"'})
-    stand.answer(_api(answers, pull_path, same))
-    found = _probe(stand, record, checks=False)
-    assert found == pulls.PullProbe("unchanged", {pull_path: 'W/"rotated"'})
-    # The next probe sends that ETag, and GitHub answers 304 again.
-    assert _probe(stand, record, checks=False, etags=found.etags) == pulls.PullProbe(
-        "unchanged", {}
-    )
+    base = {**body["base"], "repo": {"pushed_at": "2026-09-17T11:59:00Z", "open_issues": 12}}
+    pushed = ok(pull_path, {**body, "base": base})
+    assert pushed["headers"]["Etag"] != record.etags[pull_path]
+    stand.answer(_api(answers, pull_path, pushed))
+    stand.calls()
+    assert _probe(stand, record, checks=False, seen=seen) == pulls.PullProbe("unchanged", {}, seen)
+    assert seen is not None and _sent_etags(stand) == [(ISSUE_PATH, seen.etag)]
+
+
+def test_a_probe_finds_a_change_by_the_issues_updated_at_and_keeps_what_it_saw(
+    stand: _Stand,
+) -> None:
+    answers = scenario(stand.origin)
+    pull_path = "repos/octo/demo/pulls/7"
+    record = stand.refresh(7)
+    seen = _probe(stand, record, checks=False).seen
+    body = answers["api"][pull_path]["body"]
     merged = {**body, "state": "closed", "merged": True, "updated_at": "2026-09-17T11:00:00Z"}
     stand.answer(_api(answers, pull_path, ok(pull_path, merged)))
-    assert _probe(stand, record, checks=True).outcome == "changed"
+    stand.calls()
+    found = _probe(stand, record, checks=True, seen=seen)
+    assert found.outcome == "changed" and found.seen is not None and found.seen != seen
+    assert found.seen.updated_at == "2026-09-17T11:00:00Z"
+    # The checks are not asked once the pull request itself changed.
+    assert _api_paths(stand) == [ISSUE_PATH]
+    # A 304 for what that probe saw is still a change beside the older record, for free...
+    assert _probe(stand, record, checks=False, seen=found.seen) == pulls.PullProbe(
+        "changed", {}, found.seen
+    )
+    assert _sent_etags(stand) == [(ISSUE_PATH, found.seen.etag)]
+    # ...and no change beside the record the full read brings.
+    newer = stand.refresh(7)
+    assert newer.pull.updated_at == "2026-09-17T11:00:00Z"
+    assert _probe(stand, newer, checks=False, seen=found.seen) == pulls.PullProbe(
+        "unchanged", {}, found.seen
+    )
+
+
+def test_a_new_issue_etag_with_the_same_updated_at_changes_nothing(stand: _Stand) -> None:
+    """A reaction moves the issue's ETag and not its ``updated_at``: one paid read, the new
+    ETag kept, and no full read."""
+
+    answers = scenario(stand.origin)
+    record = stand.refresh(7)
+    seen = _probe(stand, record, checks=False).seen
+    reacted = ok(
+        ISSUE_PATH,
+        {"number": 7, "updated_at": record.pull.updated_at, "reactions": {"+1": 1}},
+        {"Etag": 'W/"rotated"'},
+    )
+    stand.answer(_api(answers, ISSUE_PATH, reacted))
+    found = _probe(stand, record, checks=False, seen=seen)
+    assert found == pulls.PullProbe(
+        "unchanged", {}, pulls.IssueSeen(record.pull.updated_at, 'W/"rotated"')
+    )
+    # An issue GitHub answers for another number, or without a time, fails the probe.
+    stand.answer(_api(answers, ISSUE_PATH, ok(ISSUE_PATH, {"number": 8, "updated_at": "x"})))
+    with pytest.raises(PullDataError) as unreadable:
+        _probe(stand, record, checks=False, seen=seen)
+    assert unreadable.value.state == "gh_failed"
 
 
 def test_an_app_authored_pull_reads_the_same_through_graphql_and_rest(stand: _Stand) -> None:
@@ -6321,24 +6397,6 @@ def test_an_app_authored_pull_reads_the_same_through_graphql_and_rest(stand: _St
     assert pulls._graph_pull(graph, 7).author == "octocat"  # pyright: ignore[reportPrivateUsage]
 
 
-def test_a_probe_of_a_record_with_no_etag_reads_once_and_keeps_the_etag(stand: _Stand) -> None:
-    """A cold open's pull, read through GraphQL, has no REST ETag: the first probe asks
-    unconditionally, compares, and keeps the ETag, so it is no change and no second read."""
-
-    pull_path = "repos/octo/demo/pulls/7"
-    record = stand.refresh(7)
-    etag = record.etags[pull_path]
-    cold = record.model_copy(
-        update={"etags": {path: tag for path, tag in record.etags.items() if path != pull_path}}
-    )
-    stand.calls()
-    found = _probe(stand, cold, checks=False)
-    assert found == pulls.PullProbe("unchanged", {pull_path: etag})
-    assert _api_paths(stand) == [pull_path]
-    # The next probe sends that ETag, and GitHub answers 304.
-    assert _probe(stand, cold, checks=False, etags=found.etags) == pulls.PullProbe("unchanged", {})
-
-
 def test_a_checks_probe_reads_the_first_pages_and_sees_a_rerun(stand: _Stand) -> None:
     answers = scenario(stand.origin)
     head = stand.origin["fork_head"]
@@ -6347,8 +6405,9 @@ def test_a_checks_probe_reads_the_first_pages_and_sees_a_rerun(stand: _Stand) ->
     record = stand.refresh(7)
     assert pulls.checks_probe_paths(stand.published, record) == (runs_path, status_path)
     stand.calls()
-    assert _probe(stand, record, checks=True) == pulls.PullProbe("unchanged", {})
-    assert _api_paths(stand) == sorted(["repos/octo/demo/pulls/7", runs_path, status_path])
+    first = _probe(stand, record, checks=True)
+    assert (first.outcome, first.etags) == ("unchanged", {})
+    assert _api_paths(stand) == sorted([ISSUE_PATH, runs_path, status_path])
     rerun = copy.deepcopy(answers["api"][runs_path]["body"])
     for run in rerun["check_runs"]:
         run.update(status="in_progress", conclusion=None)

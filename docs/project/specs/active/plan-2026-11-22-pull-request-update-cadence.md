@@ -38,9 +38,9 @@ reader’s other tools.
   Metabrowser’s own stores are kept current whatever is visible, since fetching into
   them spends none (see [Metabrowser’s Own Stores](#metabrowsers-own-stores)).
 - An idle visible page costs almost no GitHub rate limit: change detection uses
-  conditional requests, which GitHub does not count when it answers `304`. A push to the
-  repository changes the answer, so each one costs a call, and that cost is bounded (see
-  [Budget](#budget)).
+  conditional requests, which GitHub does not count when it answers `304`. The pull
+  request’s probe reads its issue, whose answer changes only when the pull request does
+  (see [Budget](#budget)).
 - Background work yields to visible work and stops before the account’s budget runs low,
   as `BACKGROUND_FLOOR` already does.
   A change found on the page on screen is still read below the floor.
@@ -161,6 +161,26 @@ Review A of #696 read one unchanged pull request three times across pushes and g
 `200`s whose bodies differed only in `pushed_at`. So a `200` is a hint, not proof: the
 design compares the pull request before starting a full read.
 
+The issue representation of a pull request, `repos/o/r/issues/<n>`, embeds no
+repository. Bead `mb-2ppr` measured both on 2026-11-23, from 01:47 to 02:32 UTC with gh
+2.98.0: conditional reads of each representation of ten open pull requests every 15 to
+20 s, six in NixOS/nixpkgs, two in jlevy/metabrowser, and one each in pytorch/pytorch
+and rust-lang/rust, 661 rounds in all.
+
+- The pull answered `200` with its `updated_at` unchanged 90 times.
+  In the bodies kept, what differed was the base repository’s `open_issues_count`, which
+  moves when any issue or pull request opens or closes, its `pushed_at`, and the pull’s
+  `mergeable` as GitHub recomputed it.
+  So more than pushes moves a pull’s ETag.
+- The issue answered `304` in all 90 of those rounds.
+- The issue answered `200` twice, each in the round the pull’s `updated_at` moved:
+  labels a bot added, seen 19 s later, and a force-push of the head, seen 10 s later.
+- Of ten recently updated nixpkgs pull requests, the issue’s `updated_at` was the time
+  of a merge on four, of a force-push on one, and of a label on two.
+  The first page of the other three’s timelines did not say what had moved it.
+
+`PROBE_RESOURCE` in `pulls.py` records the same numbers beside the path.
+
 One conditional `gh api` used 0.06 s of CPU and 45 MB of memory for 0.6 s (three runs,
 load average 295).
 
@@ -174,10 +194,14 @@ Every automatic read of GitHub is one of three kinds, and each has its own caden
    It is one conditional REST request carrying the newest ETag the probe saw for that
    path, kept apart from the record’s own.
    A `304` costs nothing and changes nothing.
-   A `200` costs one call; when the pull request as the record projects it differs from
-   the record’s (for the list: the first row’s number and `updated_at`), it marks the
-   record changed and the matching full read starts at once.
+   A `200` costs one call; when its `updated_at` is not the record’s (for the list: the
+   first row’s number and `updated_at`), it marks the record changed and the matching
+   full read starts at once.
    Otherwise it keeps the new ETag for the next probe and leaves the record alone.
+   A pull request’s probe keeps what it saw of the issue, its `updated_at` and ETag,
+   across records, so a `304` still says which `updated_at` GitHub has.
+   A full read that leaves the record behind the change a probe saw, as when the pull’s
+   answer lags its issue’s, is tried again once a window, not on every probe.
    A record marked changed is not probed again until a full read of it has been tried,
    and a failed one holds probes for a freshness window, so a full read that cannot run
    does not turn every probe into a paid `200`. A probe needs no account check: it
@@ -194,7 +218,7 @@ Every automatic read of GitHub is one of three kinds, and each has its own caden
 
 | What | Probe | Probe cadence | Full read when nothing changed |
 | --- | --- | --- | --- |
-| The pull request on a visible page | `GET repos/o/r/pulls/<n>` with the record’s ETag | `ATTENDED_PROBE_S` | Record, every `FULL_REFRESH_S` |
+| The pull request on a visible page | `GET repos/o/r/issues/<n>` with the ETag the last probe saw | `ATTENDED_PROBE_S` | Record, every `FULL_REFRESH_S` |
 | Its checks, while open and `checks_pending` or inside `NO_CHECKS_GRACE_S` | First page of `commits/<head>/check-runs` and `commits/<head>/status`, with the record’s ETags | `CHECKS_PROBE_S` | `checks_only` record refresh, every `FULL_REFRESH_S` |
 | A visible Pulls list, or the repository of a visible page | `GET repos/o/r/pulls?state=all&sort=updated&direction=desc&per_page=1` with the last answer’s ETag | `LIST_PROBE_S` | Catalog delta scan, every `FULL_REFRESH_S` |
 | Its changed files and stacks | None; they follow the record and the catalog | — | Every `FULL_REFRESH_S`, and the files list whenever the head moves |
@@ -207,8 +231,9 @@ first, so its one-row page changes, and its ETag with it, whenever any pull requ
 `updated_at` moves or a new one appears.
 The pull request probe covers what moves `updated_at` on one pull request: state, merge,
 title, body, labels, comments, reviews, and pushes.
-`mergeable` does not move `updated_at` either, but the probe’s `200` carries it and the
-comparison reads it.
+`mergeable` does not move `updated_at`, and the issue does not carry it, so a
+mergeability GitHub recomputes with nothing else changed shows at the next
+`FULL_REFRESH_S` read.
 Check runs and statuses are not in the pull request at all, which is why checks have
 their own probe and `pull_freshness.py` has its `checks` verdict.
 
@@ -273,15 +298,16 @@ guards and adds one:
 - **Admission everywhere** (new): the cores walk, stacks, labels, and the timeline ask
   `gh_budget.admission` before automatic work, as the backfill and prefetch already do.
   A reader’s own action still never asks.
-- **A bound on paid probes** (new, Phase 1): a probe is free only while its ETag holds,
-  and a push to any branch of the repository moves the ETag of every pull request in it
-  (see [How Soon GitHub Reports a Change](#how-soon-github-reports-a-change)). So a
-  probe costs one `core` per push to the repository, per visible page, per server, and
-  the list probe’s row embeds the same objects.
-  After a few consecutive `200`s that changed nothing, a key’s probe interval doubles,
-  up to `FULL_REFRESH_S`; a `304` or a real change resets it.
-  Probing a representation that embeds no repository, such as the issue, would avoid the
-  cost; measuring that is bead `mb-2ppr`.
+- **Probes that pay only for the pull request’s own changes** (built, Phase 1): a probe
+  is free only while its ETag holds, and a pull’s ETag moves with its whole repository
+  (see [How Soon GitHub Reports a Change](#how-soon-github-reports-a-change)). So the
+  pull request’s probe reads its issue, `pulls.probe_path`, whose ETag held through
+  every such move measured.
+  The bound first proposed here, a probe interval that doubles after `200`s that changed
+  nothing (bead `mb-y7ut`), is not built: with the issue such a `200` is a reaction or
+  the like, not every push.
+  The list probe of Phase 2 reads a pull’s row, which embeds the same repository
+  objects, so it needs its own measurement, and that bound if it pays per push.
 - **A self-ceiling** (new), `AUTOMATIC_CORE_PER_HOUR`, in `gh_budget.py`: the `core`
   this process’s automatic work may spend in a rolling hour, counted from what the
   process spends itself, which it knows exactly: one `core` for each REST answer that is
@@ -300,11 +326,11 @@ so one endpoint would need more than 35 visible pages on one account to near its
 and the per-server probe cap bounds requests in flight.
 
 Steady-state cost for one visible page with nothing changing on GitHub, from the
-measurements above: probes 0 while nothing is pushed to the repository, and one `core`
-per push otherwise, bounded as above; full reads about 0 once the account check is
-conditional; and 40 record refreshes and 40 catalog scans an hour, at most 40 GraphQL
-points. Today the same page costs about 3 `core` a minute in account checks alone: two
-per record refresh and one per catalog scan, each about once a minute.
+measurements above: probes 0 while the pull request does not change, whatever is pushed
+to its repository; full reads about 0 once the account check is conditional; and 40
+record refreshes and 40 catalog scans an hour, at most 40 GraphQL points.
+Today the same page costs about 3 `core` a minute in account checks alone: two per
+record refresh and one per catalog scan, each about once a minute.
 
 ### Server Changes
 
@@ -442,8 +468,9 @@ account check and the bounds on probes.
 - [x] The `BACKGROUND_FLOOR` rule for probes (see [Priority](#priority)): below the
   floor, a change a probe finds on the page on screen still starts its full read, and
   the `FULL_REFRESH_S` reads stop (bead `mb-qngw`).
-- [ ] The bound on paid probes (see [Budget](#budget)): a key’s probe interval doubles
-  after consecutive `200`s that changed nothing (bead `mb-y7ut`).
+- [x] Probes that are not paid for per push (see [Budget](#budget)): the pull request’s
+  probe reads its issue, measured under bead `mb-2ppr`, so the doubling interval of bead
+  `mb-y7ut` is not built.
 - [x] A per-server cap on probes in flight, `MAX_PROBES_IN_FLIGHT` in `served_pull.py`,
   and probes as coordinator jobs, which shutdown cancels (bead `mb-et0k`).
 
@@ -480,8 +507,8 @@ account check and the bounds on probes.
   Tests check that a probe starts a full read only for a real change, that a probe never
   runs an account check, that two tabs asking at once get one probe, that a hold stops
   probes, that below the floor a change a probe finds is still read while the
-  `FULL_REFRESH_S` reads stop, and that `200`s which change nothing lengthen the probe
-  interval.
+  `FULL_REFRESH_S` reads stop, and that a push which moves the pull’s ETag leaves the
+  probe’s alone.
 - **Goldens:** `--api` transcripts for `pull-refresh` answered by a probe (unchanged,
   changed, ETag-only), and the envelope’s `verified_by: probe`, as the parity registry
   requires.

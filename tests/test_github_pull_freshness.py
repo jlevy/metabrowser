@@ -1063,3 +1063,64 @@ def test_a_probe_is_a_job_of_the_coordinator_so_shutdown_cancels_it(
     asyncio.run(run())
     # A cancelled probe found nothing and failed nothing.
     assert held.probed_at is None and held.probe_due(NOW + timedelta(seconds=ATTENDED_PROBE_S))
+
+
+# ── What a probe saw of the issue ──────────────────────────────
+
+
+def test_what_a_probe_saw_of_the_issue_outlives_the_record_it_ran_beside(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """mb-2ppr: the next record's first probe is conditional too, where a ``checks_only``
+    read every few seconds while CI runs would otherwise make each one a paid read."""
+
+    record = _record(state="closed", fetched=NOW)
+    held = _held(record, tmp_path)
+    seen = pulls.IssueSeen(record.pull.updated_at, 'W/"issue"')
+    sent: list[pulls.IssueSeen | None] = []
+
+    async def probe(_published: object, _record: object, **kwargs: Any) -> pulls.PullProbe:
+        sent.append(kwargs["seen"])
+        return pulls.PullProbe("unchanged", {}, seen)
+
+    monkeypatch.setattr(pulls, "probe_pull_request", probe)
+    monkeypatch.setattr(pulls, "utc_now", lambda: NOW)
+    asyncio.run(held.probe(record))
+    newer = record.model_copy(update={"fetched_at": _stamp(NOW + timedelta(seconds=1))})
+    held.saw_record(newer.fetched_at)
+    assert held.probed_at is None
+    asyncio.run(held.probe(newer))
+    assert sent == [None, seen] and held.probed_at == _stamp(NOW)
+
+
+def test_a_change_the_full_read_did_not_bring_is_read_again_once_a_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pull's own answer can lag its issue's. A read that leaves the record behind the
+    change a probe saw is not started again by every probe, as a row the catalog reports
+    is not (``_attempted_row``): once a window."""
+
+    record = _record(state="closed", fetched=NOW)
+    held = _held(record, tmp_path)
+    ahead = pulls.IssueSeen(_stamp(NOW + timedelta(seconds=30)), 'W/"ahead"')
+    _probing(monkeypatch, [pulls.PullProbe("changed", {}, ahead)] * 3)
+    clock = [NOW]
+    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    asyncio.run(held.probe(record))
+    assert held.automatic_due(NOW) == "full"
+
+    async def refresh(*_args: object, **_kwargs: object) -> PullRecord:
+        # The pull as GitHub's pull endpoint still has it: the same ``updated_at``.
+        return record.model_copy(update={"fetched_at": _stamp(clock[0])})
+
+    monkeypatch.setattr(pulls, "refresh_pull_request", refresh)
+    clock[0] = NOW + timedelta(seconds=1)
+    asyncio.run(held.refresh())
+    lagging = record.model_copy(update={"fetched_at": held.fetched_at})
+    clock[0] = NOW + timedelta(seconds=ATTENDED_PROBE_S + 1)
+    asyncio.run(held.probe(lagging))
+    # The same change again: the record is not vouched for, and no second read is due.
+    assert held.probed_at is None and held.automatic_due(clock[0]) is None
+    clock[0] = NOW + WINDOW + timedelta(seconds=2)
+    asyncio.run(held.probe(lagging))
+    assert held.automatic_due(clock[0]) == "full"

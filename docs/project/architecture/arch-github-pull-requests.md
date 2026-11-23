@@ -230,11 +230,15 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   `reset_at`. A branch or tag pin never runs `gh`.
 - **Probes:** a visible page asks every `probe_every_s` (`ATTENDED_PROBE_S`), and for a
   current record the server answers with a probe (`ServedPull.probe`), a conditional
-  read of the pull request that GitHub answers `304` without spending its rate limit,
-  and, while checks are pending, of their first pages every `CHECKS_PROBE_S`. An
-  unchanged probe vouches for the record (`verified_by: "probe"`) and keeps it current
-  until the full read `FULL_REFRESH_S` asks; a change starts a refresh at once, a change
-  to checks alone reads only them, and a failed probe waits a window.
+  read of the pull request’s issue (`pulls.probe_path`) that GitHub answers `304`
+  without spending its rate limit, and, while checks are pending, of their first pages
+  every `CHECKS_PROBE_S`. The issue’s `updated_at` is the pull request’s own, and its
+  ETag does not move with the repository as the pull’s does; `PROBE_RESOURCE` records
+  the measurement. It carries neither `mergeable` nor the head, which the full read a
+  change starts reads.
+  An unchanged probe vouches for the record (`verified_by: "probe"`) and keeps it
+  current until the full read `FULL_REFRESH_S` asks; a change starts a refresh at once,
+  a change to checks alone reads only them, and a failed probe waits a window.
   Settling checks a probe cannot see (`checks_probe_paths`) leave the record to the
   window, unvouched. However many pages ask, probes of one pull request are one at a time
   and `PROBE_FLOOR_S` apart, and a rate-limit hold stops them all.

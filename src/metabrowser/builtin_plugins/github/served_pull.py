@@ -295,9 +295,14 @@ class ServedPull:
     _displayed: tuple[str, str] | None = field(default=None, repr=False)
     # Probes (:func:`.pulls.probe_pull_request`) of the record held: when one last found it
     # unchanged (``probed_at``), when one was last tried, for the pull and for its checks,
-    # and when one last failed. ``_probe_etags`` are newer ETags GitHub sent for content
+    # and when one last failed. ``_probe_etags`` are newer ETags GitHub sent for checks
     # the record already holds. ``_probe_saw`` is a change a probe found, ``pull`` or only
     # ``checks``, and when, which makes the record due until an attempt starts after it.
+    # ``_issue_seen`` is the pull request's issue as the last probe found it, kept across
+    # records. ``_probe_saw_updated`` is the issue ``updated_at`` of the change a probe
+    # found, and ``_attempted_updated`` the one the last refresh was started for: a read
+    # that did not bring the record up to it is tried again once a window, not on every
+    # probe, as an answer that lags the catalog's row is (``_attempted_row``).
     probed_at: str | None = field(default=None, repr=False)
     _probe_attempt: datetime | None = field(default=None, repr=False)
     _checks_probe_attempt: datetime | None = field(default=None, repr=False)
@@ -305,6 +310,9 @@ class ServedPull:
     _probe_etags: dict[str, str] = field(default_factory=dict, repr=False)
     _probe_saw: Literal["pull", "checks"] | None = field(default=None, repr=False)
     _probe_saw_at: datetime | None = field(default=None, repr=False)
+    _issue_seen: pulls.IssueSeen | None = field(default=None, repr=False)
+    _probe_saw_updated: str | None = field(default=None, repr=False)
+    _attempted_updated: str | None = field(default=None, repr=False)
     _probe_task: asyncio.Future[None] | None = field(default=None, repr=False)
     # When the record held was last read in full, not ``checks_only``, and when a full read
     # was last tried: :data:`FULL_REFRESH_S` is measured from these, since a ``checks_only``
@@ -601,7 +609,11 @@ class ServedPull:
         )
         try:
             found = await pulls.probe_pull_request(
-                self.published, record, etags=dict(self._probe_etags), checks=checks
+                self.published,
+                record,
+                etags=dict(self._probe_etags),
+                checks=checks,
+                seen=self._issue_seen,
             )
         except Exception as exc:
             # Nothing waits on a probe's result but this record's freshness: any failure,
@@ -614,6 +626,8 @@ class ServedPull:
             else:
                 log.exception("probing pull request %s failed", self.number)
             return
+        # The issue as GitHub has it now, whichever record this probe ran beside.
+        self._issue_seen = found.seen
         if self.fetched_at != record.fetched_at:
             # A newer record arrived while it ran; what it found is about the older one.
             return
@@ -623,6 +637,20 @@ class ServedPull:
             if vouches:
                 self.probed_at = _stamp(now)
             return
+        updated = found.seen.updated_at if found.seen is not None else None
+        if (
+            found.outcome == "changed"
+            and updated is not None
+            and updated == self._attempted_updated
+            and self._last_attempt is not None
+            and now - self._last_attempt <= timedelta(seconds=FRESHNESS_WINDOW_S)
+        ):
+            # The read this change started did not bring the record up to it, as when
+            # the pull's own answer lags its issue's: no vouching, and no read again
+            # until a window has passed.
+            return
+        if found.outcome == "changed":
+            self._probe_saw_updated = updated
         self._probe_saw = (
             "pull" if found.outcome == "changed" or self._probe_saw == "pull" else "checks"
         )
@@ -634,6 +662,7 @@ class ServedPull:
         self.probed_at = None
         self._probe_etags = {}
         self._probe_saw = self._probe_saw_at = None
+        self._probe_saw_updated = None
         self._probe_failed = None
         # ``_checks_probe_attempt`` is kept: the checks probes keep their own cadence across
         # the checks_only reads they start, rather than starting afresh after each one.
@@ -736,6 +765,10 @@ class ServedPull:
         previous_attempt, self._last_attempt = self._last_attempt, started
         previous_full, previous_asked = self._full_attempt, self._full_asked
         previous_row, self._attempted_row = self._attempted_row, self.changed_row
+        previous_updated, self._attempted_updated = (
+            self._attempted_updated,
+            self._probe_saw_updated,
+        )
         self._refreshing = True
         try:
             while True:
@@ -871,6 +904,7 @@ class ServedPull:
                     return
         except asyncio.CancelledError:
             self._last_attempt, self._attempted_row = previous_attempt, previous_row
+            self._attempted_updated = previous_updated
             self._full_attempt, self._full_asked = previous_full, previous_asked
             raise
         finally:
