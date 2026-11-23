@@ -1,9 +1,10 @@
-"""A checkout served as a folder: which GitHub repository its pull requests are of.
+"""Which GitHub repository a served checkout's pull requests are of.
 
-A folder server has no mirror session, so the pull routes ask this module instead. The
+A checkout's server has no mirror session, so the pull routes ask this module. The
 repository is the one :func:`~metabrowser.repository_context.discover_repository_context`
-reads from the served root's checkout, a subdirectory's included: the ``origin`` remote,
-read from files with no Git process. It is reduced through this plugin's URL grammar to
+reads for the working tree, a subdirectory, or a revision the checkout serves.
+The reader gets the ``origin`` remote directly from the checkout's files. The plugin's URL
+grammar reduces it to
 ``https://github.com/<owner>/<repo>``, lowercased, so an HTTPS and an SSH remote of one
 repository, and a mirror of it, share one identity and one set of records. A remote the
 grammar refuses is not one the routes list: they answer ``not_github``. On a fork,
@@ -45,7 +46,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, overload
 
 from metabrowser import event_log
-from metabrowser.builtin_plugins.github.gh_lists import PullDataError
+from metabrowser.builtin_plugins.github.gh_lists import PullDataError, PullDataState
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.mirror_refresh import MAX_PULL_JOBS, PullJobStart, StoreTurn, mirror_session
 from metabrowser.source import get_source_session
@@ -117,9 +118,15 @@ def _served_key(app: Any) -> tuple[str, str] | None:
 
     if mirror_session(app) is not None:
         return None
-    root = get_source_session().subject.filesystem_root
+    subject = get_source_session().subject
+    root = subject.filesystem_root
     if root is None:
-        return None
+        from metabrowser.checkout_revisions import checkout_revisions
+
+        checkout = checkout_revisions()
+        if checkout is None or not checkout.serves(subject):
+            return None
+        root = checkout.root
     from metabrowser.home import StorageDirectoryError, application_cache
 
     try:
@@ -185,7 +192,7 @@ async def ensure_resolved(app: Any) -> None:
 
 
 def served_checkout(app: Any) -> CheckoutRepository | None:
-    """The served checkout's repository, or ``None``: a mirror, a pin, or a plain folder.
+    """The served checkout's repository, or ``None`` when the subject has no checkout.
 
     From memory once :func:`ensure_resolved` has run, which every route does first.
     """
@@ -519,7 +526,10 @@ async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource
             repository.git_source, home=repository.home, checkout=repository.checkout_root
         )
     except CheckoutStoreError as exc:
-        raise PullDataError(exc.code, _ACQUISITION_FAILURE.get(exc.code, str(exc))) from exc
+        # A comparison has no state of its own for an acquisition that ran out its
+        # deadline, which core tells apart for its timer: it is the Git failure it was.
+        state: PullDataState = "git_failed" if exc.code == "timed_out" else exc.code
+        raise PullDataError(state, _ACQUISITION_FAILURE.get(state, str(exc))) from exc
 
 
 async def _keep_comparison_failure(

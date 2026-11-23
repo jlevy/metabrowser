@@ -417,7 +417,7 @@ def test_labels_have_a_row_while_unknown_or_present() -> None:
     # A pull request with no labels has no labels row, and no gap for it.
     assert "if (pull.labels.length > 0) {" in page
     # While the record is on its way the row is held, empty, with the rows it may have.
-    assert "children.push(stateRow, branchesRow, openedRow, labelsRow);" in page
+    assert "children.push(openedRow, stateRow, branchesRow, labelsRow);" in page
 
 
 def test_the_stack_chip_ends_the_authors_row() -> None:

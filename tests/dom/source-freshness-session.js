@@ -337,7 +337,9 @@ async function settle() {
 
 // A repository folder that keeps a store of its checkout's origin: the row is on every
 // page of the folder, its working tree's too, says what was fetched is that store, and
-// its Refresh fetches the store. The reload offer is the ref selector's there.
+// its Refresh fetches the store. A page that shows nothing of the store has it fetched
+// quietly when it has grown old, and says "Refreshing…" only for the reader's own press.
+// The reload offer is the ref selector's there.
 async function runFolder() {
   const steps = [];
   const options = { checkout: true };
@@ -345,13 +347,23 @@ async function runFolder() {
     const page = createPage();
     const controller = freshness.createController(page.deps, options);
     page.setStatus(recordedFolder.status_stale);
-    page.answerPost("/api/source/refresh", 202, recordedFolder.refresh_started.body);
+    page.answerPageAsk(recordedFolder.ask_started.status, recordedFolder.ask_started.body);
     await page.start(controller);
-    steps.push(page.observe("the working tree's page, its origin's store grown old, asks once"));
+    steps.push(
+      page.observe("the working tree's page, its origin's store grown old, asks quietly, once"),
+    );
 
     page.setStatus(recordedFolder.status_refreshed);
     await page.fireTimer();
     steps.push(page.observe("the store was fetched; the row says when, and nothing reloads"));
+
+    page.answerPost(
+      "/api/source/refresh",
+      recordedFolder.refresh_started.status,
+      recordedFolder.refresh_started.body,
+    );
+    await controller.requestRefresh();
+    steps.push(page.observe("the reader's own Refresh says so while it runs"));
 
     page.setStatus(recordedFolder.status_refresh_failed);
     await page.fireTimer();

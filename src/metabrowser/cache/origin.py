@@ -204,6 +204,7 @@ def mirror_fetch_args(
     prune: bool,
     progress: bool = False,
     negotiation: tuple[str, ...] = (),
+    config: tuple[str, ...] = (),
 ) -> list[str]:
     """One fetch of every branch and tag from *remote_url* into the mirror namespaces.
 
@@ -225,7 +226,9 @@ def mirror_fetch_args(
     for the stall bound is said at :data:`HTTP_LOW_SPEED_TIME_S`.
 
     *negotiation* is an overlay store's ``--negotiation-tip`` arguments, which keep the
-    fetch to what the checkout it borrows from lacks.
+    fetch to what the checkout it borrows from lacks, and *config* its ``-c`` options
+    (``OVERLAY_FETCH_CONFIG`` in ``lender.py``), which keep it from touching that
+    checkout's objects.
     """
 
     flags = ["--prune", "--atomic"] if prune else []
@@ -234,6 +237,7 @@ def mirror_fetch_args(
     flags.extend(negotiation)
     return [
         *origin_git_args(remote_url),
+        *config,
         "fetch",
         "--porcelain",
         *flags,

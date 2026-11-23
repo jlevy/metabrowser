@@ -31,6 +31,7 @@ from pathlib import Path
 
 import pytest
 
+from metabrowser.settings import DOC_MAX_CHARS_DEFAULT
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
 
@@ -59,6 +60,7 @@ def test_a_structured_diff_wraps_changes_and_bounds_its_draw_in_chrome(
             "CHROME_BIN": chrome,
             "CHROME_PROFILES": str(chrome_profile),
             "STRUCTURED_SWEEP": "",
+            "DOC_MAX_CHARS": str(DOC_MAX_CHARS_DEFAULT),
         },
     )
     if result.timed_out:

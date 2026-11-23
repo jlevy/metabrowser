@@ -26,13 +26,12 @@ setChangeLoader((revision, path, options) => fetchComparison(revision, options, 
 // neither spelling can be mistaken for a revision.
 
 /**
- * @typedef {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string, image_route?: string, rendered_route?: string, branch?: {ref: string} | null}} Comparison
+ * @typedef {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string, image_route?: string, rendered_route?: string, branch?: {ref: string | null} | null}} Comparison
  *   *route* is the plugin route that answers the comparison, *rendered_route* the one
  *   that renders a changed Markdown file of it, and *image_route* the one that serves an
  *   image that Markdown shows: all come from the server that issued them, so this plugin
- *   spells none. *branch* is a pull request's: its head ref when the comparison shows the
- *   pull request's head, which View on branch opens, and null when it shows another
- *   commit, which nothing opens.
+ *   spells none. A pull request's *branch* names the ref its file controls open.
+ *   A null ref opens by commit. A null branch omits the controls.
  */
 
 /** @param {Comparison} comparison */

@@ -2,8 +2,8 @@ import CoreGraphics
 
 /// Where a new folder window opens, and how large, on the screen it opens on.
 ///
-/// A new window is 80% of the screen's usable height, whatever the screen's size, and
-/// 90% of its usable width up to a cap; neither is less than the window's minimum size.
+/// A new window is 92% of the screen's usable height and 90% of its usable width up to
+/// a cap. Each dimension honors the window's minimum size.
 /// No shape is promised: the window follows the screen's, so on a portrait display it is
 /// taller than wide. The first window is centered as AppKit's `center()` centers a
 /// window; each next one steps down and to the right of the window placed last, while
@@ -13,9 +13,8 @@ import CoreGraphics
 /// Frames are in AppKit's screen coordinates, whose y axis points up, and `visible` is
 /// the screen's `visibleFrame`: without the menu bar, and without the Dock when it shows.
 public nonisolated enum NewWindowFrame {
-    /// The window's height, as a share of the visible height: the user asked for about
-    /// 80% of the screen's height, whatever its size.
-    public static let heightFraction: CGFloat = 0.8
+    /// The window's height as a share of the screen's visible height.
+    public static let heightFraction: CGFloat = 0.92
     /// The window's width, as a share of the visible width, so a narrow screen still has
     /// room beside it to step the next window right.
     public static let widthFraction: CGFloat = 0.9

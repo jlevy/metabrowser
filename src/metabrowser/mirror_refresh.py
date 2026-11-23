@@ -62,7 +62,7 @@ import contextlib
 import logging
 import re
 import time
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -420,6 +420,11 @@ class ServedMirror(Protocol):
 
     async def ref_tip(self, ref: str) -> str | None:
         """The commit *ref* names in the mirror now, or ``None`` when it is gone."""
+        ...
+
+    async def ref_tips(self, refs: Sequence[str]) -> dict[str, str]:
+        """The commit each of *refs* names in the mirror now, in one read; a ref that is
+        gone is left out."""
         ...
 
     async def default_tip(self) -> str | None:

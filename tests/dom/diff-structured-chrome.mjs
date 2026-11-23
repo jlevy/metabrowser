@@ -39,7 +39,7 @@ const check = (label, ok, detail = "") => {
   }
 };
 
-const PAGE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>structured diff</title>
+const PAGE_HTML = `<!doctype html><html style="--doc-max-chars: ${process.env.DOC_MAX_CHARS}"><head><meta charset="utf-8"><title>structured diff</title>
 <link rel="stylesheet" href="/static/styles.css">
 <link rel="stylesheet" href="/plugins/structured/styles.css">
 <link rel="stylesheet" href="/plugins/diff/styles.css">
@@ -328,6 +328,64 @@ try {
       "a changed container's row keeps one line for its preview",
       data.height === wrapped.height,
       `${data.height}`,
+    );
+
+    // A top-level row starts the tree column. Measure the chevron and content together.
+    const geometry = await chrome.evaluate(`(async () => {
+      await window.page.mount([{ key: "mode", change: "added", value: "fast" }]);
+      const file = document.querySelector(".diff-file");
+      const tree = document.getElementById("tree");
+      const row = tree.querySelector(".srow-change-added");
+      const read = (width) => {
+        file.style.inlineSize = width + "px";
+        const start = file.getBoundingClientRect().left + file.clientLeft;
+        const end = start + file.clientWidth;
+        const band = row.getBoundingClientRect();
+        const chevron = row.querySelector(".srow-chevron").getBoundingClientRect();
+        const content = row.querySelector(".srow-content").getBoundingClientRect();
+        const style = getComputedStyle(row);
+        return {
+          startInset: chevron.left - start,
+          endInset: end - content.right,
+          bandStart: band.left - start,
+          bandEnd: end - band.right,
+          gutterColor: style.borderInlineStartColor,
+          gutterWidth: parseFloat(style.borderInlineStartWidth),
+        };
+      };
+      const wide = read(1000);
+      const narrow = read(360);
+      // The format controller sets hidden on a rendered tree when selecting Source.
+      tree.hidden = true;
+      return { wide, narrow, hiddenDisplay: getComputedStyle(tree).display };
+    })()`);
+    for (const [size, measured] of [
+      ["wide", geometry.wide],
+      ["narrow", geometry.narrow],
+    ]) {
+      check(
+        `${size}: the tree is centered in the diff box`,
+        Math.abs(measured.startInset - measured.endInset) < 0.5,
+        JSON.stringify(measured),
+      );
+      check(
+        `${size}: the colored change gutter stays at the edge of the full-width band`,
+        measured.bandStart === 0 &&
+          measured.bandEnd === 0 &&
+          measured.gutterWidth > 0 &&
+          measured.gutterColor !== "rgba(0, 0, 0, 0)",
+        JSON.stringify(measured),
+      );
+    }
+    check(
+      "the wide diff box has larger margins than the narrow box",
+      geometry.wide.startInset > geometry.narrow.startInset,
+      JSON.stringify(geometry),
+    );
+    check(
+      "Source hides the rendered tree",
+      geometry.hiddenDisplay === "none",
+      geometry.hiddenDisplay,
     );
 
     // The note above a source-only tree is quiet chrome, in the app's muted token.

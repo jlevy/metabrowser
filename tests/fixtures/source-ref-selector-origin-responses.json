@@ -763,7 +763,11 @@
         },
         "refreshing": false
       },
-      "pull_requests": null,
+      "pull_requests": {
+        "state": "absent",
+        "complete": false,
+        "refreshing": false
+      },
       "refs": [
         {
           "name": "origin/trunk",

@@ -1647,6 +1647,24 @@ async function main() {
     browse: browseCode(onMirror),
     checkoutAtHead: onMirror.checkoutAtHead,
   };
+  const pinnedCheckoutPage = { number: 7, tab: "files", nowMs: page.clock.now, checkoutPin: true };
+  const pinnedCheckout = structuredClone(recorded.current.body);
+  pinnedCheckout.pin_ref = "refs/heads/topic";
+  pinnedCheckout.pin = pinnedCheckout.record.pull.base.sha;
+  const otherPin = runtime.describePull(pinnedCheckout, pinnedCheckoutPage);
+  assert(
+    otherPin.browse === null && otherPin.headOffer === null && otherPin.comparison?.branch === null,
+    "an unrelated checkout pin offers no PR head or file switch",
+  );
+  pinnedCheckout.pin = head;
+  const headPin = runtime.describePull(pinnedCheckout, pinnedCheckoutPage);
+  assert(
+    headPin.browse?.kind === "link" &&
+      headPin.browse.at === head &&
+      headPin.headOffer === null &&
+      headPin.comparison?.branch?.ref === null,
+    "a checkout already at the PR head keeps its direct code and file links",
+  );
 
   // What a review comment shows of its hunk: the recorded pull request with one comment,
   // whose fields are the case's, through describePull. The stand-in's hunks are short, as

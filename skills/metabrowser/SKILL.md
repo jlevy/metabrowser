@@ -51,22 +51,20 @@ subcommands instead of mode flags; report that and use its own help if the envir
 resolves one.
 
 This skill is tested against the `metab` built from the same commit of its repository,
-not against a release: a skill installed from a release tag matches that release, and
-one installed from `main` can name a flag or route that no release has yet.
+so a skill installed from a release tag matches that release.
+The skill on `main` can name a flag or route that no release has yet.
 `metab --version` names the build you have, and the Unreleased section of the
 [changelog](https://github.com/jlevy/metabrowser/blob/main/CHANGELOG.md) lists what the
 source has that the newest release lacks.
-Until the next release, the skill on `main` needs a `metab` built from a source
-checkout: clone the repository and set it up as
+If you need an unreleased feature, follow
 [Install metab](https://github.com/jlevy/metabrowser/blob/main/docs/installation.md#install-metab)
-describes for the code on `main`, then use the checkout’s `.venv/bin/metab` as the local
-command. When a command here fails with `No such option`, or `--api` answers 404 for a
-route named here, the build is older than the skill: report that, and use a source build
-or the build’s own `--help`. Use one build for one cache: an older `metab` reads a
-record a newer one wrote as `absent`, with the reason `schema_mismatch` or `unreadable`.
-The macOS app is a separate front end over the same server, and this skill hands it
-pages with `--present`; the app needs `metab` 0.13.0 or later, the first release with
-`--present`, and no release on PyPI has it yet.
+for the code on `main` and use the checkout’s `.venv/bin/metab`. When a command here
+fails with `No such option`, or `--api` answers 404 for a route named here, check the
+build’s own `--help` and report any version mismatch.
+Use one build for one cache: an older `metab` reads a record a newer one wrote as
+`absent`, with the reason `schema_mismatch` or `unreadable`. The macOS app is a separate
+front end over the same server, and this skill hands it pages with `--present`. For that
+handoff, the app needs `metab` 0.13.0 or later.
 
 ## Route the Task
 
