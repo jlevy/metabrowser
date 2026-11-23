@@ -83,37 +83,81 @@ function filesOf(document_) {
 }
 
 /**
- * The filter's state machine. It mounts *whole* at once, asks for the counts, and on each
- * choice asks for that choice's comparison, dropping an answer a later choice overtook,
- * and mounts it in place of the diff before it. Every choice paints at once, so the menu
- * shows it while its files load.
+ * The change in *document_* at *path*, on either side, or null.
+ *
+ * @param {DiffDocument} document_
+ * @param {string} path
+ * @returns {Record<string, unknown> | null}
+ */
+function changeAt(document_, path) {
+  const manifest = /** @type {{files?: Array<Record<string, unknown>>} | undefined} */ (
+    document_.manifest
+  );
+  for (const change of manifest?.files ?? []) {
+    const sides = /** @type {Array<{path?: unknown} | null | undefined>} */ ([
+      change.new,
+      change.old,
+    ]);
+    if (sides.some((side) => side?.path === path)) {
+      return change;
+    }
+  }
+  return null;
+}
+
+/**
+ * The filter's state machine. It mounts *whole*, or the *initial* choice's answer, asks for
+ * the counts, and on each choice asks for that choice's comparison, dropping an answer a
+ * later choice overtook, and mounts it in place of the diff before it. Every choice paints
+ * at once, so the menu shows it while its files load, and is told to *changed*.
+ *
+ * A jump to a file the choice hides, from the Diff summary or a host's list of files, goes
+ * back to every type and then to the file: a jump is the reader asking to see that file,
+ * and the whole comparison is in hand, so it costs no request. A lookup answers for the
+ * whole comparison for the same reason.
  *
  * @param {{
  *   whole: DiffDocument,
  *   wholeFiles?: number | null,
+ *   initial?: {types: Array<string>, document: DiffDocument} | null,
  *   load: (types: string, signal: AbortSignal) => Promise<DiffDocument>,
  *   counts: (signal: AbortSignal) => Promise<MetabrowserPublicTypeTally>,
  *   mount: (document_: DiffDocument, narrowed: {kept: number, whole: number} | null) => DiffHandle,
  *   paint: (state: TypeFilterState) => void,
  *   swap?: (change: () => void) => void,
+ *   changed?: (types: Array<string> | null) => void,
  *   report?: (what: "counts" | "files", error: unknown) => void,
  * }} deps
  *   *wholeFiles* is how many files the whole comparison changes where its list is cut
  *   short; otherwise the whole document's totals say it.
+ *   *initial* is a choice the host kept, as a pull request's page keeps it while the reader
+ *   is on another tab, with its answer, which mounts first.
  *   *swap* runs each replacement of the mounted diff, which moves the toolbar control into
  *   the new diff, so a host can keep focus where it was.
  */
 export function createTypeFilter(deps) {
   const whole = deps.wholeFiles ?? filesOf(deps.whole) ?? 0;
+  const initial = deps.initial ?? null;
+  const initialTypes = initial === null ? null : typesParam(initial.types);
   /** @type {TypeFilterState} */
-  const state = { types: null, tally: null, loading: false, failed: false, kept: null, whole };
+  const state = {
+    types: initialTypes === null ? null : initialTypes.split(","),
+    tally: null,
+    loading: false,
+    failed: false,
+    kept: initial === null || initialTypes === null ? null : (filesOf(initial.document) ?? 0),
+    whole,
+  };
   let disposed = false;
   /** @type {AbortController | null} */
   let pending = null;
   const countsController = new AbortController();
   /** @type {Map<(file: unknown) => void, () => void>} */
   const listeners = new Map();
-  let current = deps.mount(deps.whole, null);
+  let current =
+    initial === null || state.kept === null
+      ? deps.mount(deps.whole, null)
+      : deps.mount(initial.document, { kept: state.kept, whole });
 
   const paint = () => {
     if (!disposed) {
@@ -142,12 +186,14 @@ export function createTypeFilter(deps) {
   /** @param {ReadonlyArray<string> | null} next */
   async function select(next) {
     const param = typesParam(next);
-    if (disposed || param === typesParam(state.types)) {
+    // The same choice again does nothing, unless its files did not load: then it asks again.
+    if (disposed || (param === typesParam(state.types) && !state.failed)) {
       return;
     }
     pending?.abort();
     pending = null;
     state.types = param === null ? null : param.split(",");
+    deps.changed?.(state.types === null ? null : state.types.slice());
     state.failed = false;
     if (param === null) {
       state.loading = false;
@@ -181,6 +227,17 @@ export function createTypeFilter(deps) {
     paint();
   }
 
+  /**
+   * Whether the choice hides *path*: the whole comparison changes it, and the diff mounted
+   * now does not show it.
+   *
+   * @param {string} path
+   */
+  function hidden(path) {
+    const lookup = /** @type {{kind?: unknown}} */ (current.fileForPath(path));
+    return lookup.kind !== "file" && changeAt(deps.whole, path) !== null;
+  }
+
   deps.counts(countsController.signal).then(
     (tally) => {
       if (!disposed) {
@@ -206,8 +263,25 @@ export function createTypeFilter(deps) {
     handle: () => current,
     /** @type {DiffHandle} */
     facade: {
-      scrollToFile: (path) => current.scrollToFile(path),
-      fileForPath: (path) => current.fileForPath(path),
+      scrollToFile(path) {
+        if (state.types !== null && !disposed && hidden(path)) {
+          void select(null);
+        }
+        return current.scrollToFile(path);
+      },
+      fileForPath(path) {
+        const change = disposed || !hidden(path) ? null : changeAt(deps.whole, path);
+        if (change === null) {
+          return current.fileForPath(path);
+        }
+        return {
+          kind: "file",
+          path,
+          fileId: String(change.id),
+          changeKind: String(change.kind),
+          availability: String(change.availability),
+        };
+      },
       currentFile: () => current.currentFile(),
       firstScreen: () => current.firstScreen(),
       onCurrentFile(listener) {

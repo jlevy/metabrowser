@@ -4429,6 +4429,13 @@ export function mountPullPage(container, ctx, mb) {
   let diffFor = null;
   /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */
   let diffHandle = null;
+  /**
+   * The File type choice of Changes, null for every type: the page's, kept while the reader
+   * is on another tab and given to each mount (the diff plugin's `ctx.types`).
+   *
+   * @type {Array<string> | null}
+   */
+  let diffTypes = null;
   /** @type {HTMLElement | null} */
   let diffHost = null;
   /** @type {Set<(file: Extract<import("../diff/diff-view.js").FileLookup, {kind: "file"}> | null) => void>} */
@@ -7050,6 +7057,12 @@ export function mountPullPage(container, ctx, mb) {
               ...(prefetched === undefined ? {} : { raw: prefetched }),
               // The page draws the Diff summary at its top; the diff draws none (mb-pb35).
               summary: false,
+              // The File type choice is the page's: kept while the reader is on another tab,
+              // and gone with the page, as the diff's place is.
+              types: diffTypes,
+              onTypes: (types) => {
+                diffTypes = types;
+              },
               onDocument: (document_) => {
                 documented = true;
                 showSummary(comparison, document_);

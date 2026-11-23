@@ -44,6 +44,10 @@ type MetabrowserRenderContext = {
   /** Told the validated comparison a view mounts, so a page that draws its Diff summary
    *  itself has the comparison's files however the diff came by them. */
   onDocument?: (document: Record<string, unknown>) => void;
+  /** A diff's File type choice the host kept, which mounts first, and how the host is told
+   *  each new choice (null for every type); a pull request's page keeps it across tabs. */
+  types?: Array<string> | null;
+  onTypes?: (types: Array<string> | null) => void;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;

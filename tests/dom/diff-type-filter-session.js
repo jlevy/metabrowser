@@ -231,37 +231,41 @@ async function main() {
       },
     },
   });
+  /** A stand-in mount into *list*, recording the files it was given. */
+  const mounter = (list) => (document_, narrowed) => {
+    const files = document_.manifest.files.map((file) => file.new.path);
+    const entry = {
+      files,
+      narrowed,
+      disposed: false,
+      listeners: new Set(),
+    };
+    list.push(entry);
+    return {
+      scrollToFile: (p) => (files.includes(p) ? "jumped" : "absent"),
+      fileForPath: (p) => (files.includes(p) ? { kind: "file", path: p } : { kind: "absent" }),
+      currentFile: () => ({ path: files[0] ?? null }),
+      firstScreen: () => Promise.resolve(),
+      onCurrentFile(listener) {
+        entry.listeners.add(listener);
+        listener({ path: files[0] ?? null });
+        return () => entry.listeners.delete(listener);
+      },
+      cancelPending() {},
+      dispose() {
+        entry.disposed = true;
+      },
+    };
+  };
+  const changes = [];
   filter = createTypeFilter({
     whole: documentOf(WHOLE),
     load: (types, signal) => ask(`types=${types}`, signal),
     counts: (signal) => ask("view=types", signal),
-    mount(document_, narrowed) {
-      const files = document_.manifest.files.map((file) => file.new.path);
-      const entry = {
-        files,
-        narrowed,
-        disposed: false,
-        listeners: new Set(),
-      };
-      mounts.push(entry);
-      return {
-        scrollToFile: (p) => (files.includes(p) ? "jumped" : "absent"),
-        fileForPath: (p) => (files.includes(p) ? { kind: "file", path: p } : { kind: "absent" }),
-        currentFile: () => ({ path: files[0] ?? null }),
-        firstScreen: () => Promise.resolve(),
-        onCurrentFile(listener) {
-          entry.listeners.add(listener);
-          listener({ path: files[0] ?? null });
-          return () => entry.listeners.delete(listener);
-        },
-        cancelPending() {},
-        dispose() {
-          entry.disposed = true;
-        },
-      };
-    },
+    mount: mounter(mounts),
     paint: (state) => control.paint(state),
     swap: (change) => control.swap(change),
+    changed: (types) => changes.push(types),
     report: (what) => reports.push(what),
   });
   control.attachKey();
@@ -326,6 +330,10 @@ async function main() {
   failing.reject(Object.assign(new Error("503"), { status: 503 }));
   await settle();
   step("a choice whose files do not load keeps the diff it had");
+  filter.select([".rs", ".png"]);
+  step("the same choice again asks again");
+  await answer("types=.png,.rs", documentOf(kept([".png"])));
+  step("its files");
   element.trigger.focused = false;
   bound.onClear();
   step("Clear");
@@ -334,6 +342,19 @@ async function main() {
   attached.activate();
   step("Y opens the menu");
   assert(focusedMenu === "types", "Y focused no row of the menu");
+  bound.onMenuPick("types", ".py");
+  await answer("types=.py", documentOf(kept([".py"])));
+  // A lookup answers for the whole comparison, and a jump to a file the choice hides goes
+  // back to every type first, asking nothing.
+  const lookups = ["README.md", "src/app.py", "absent.txt"].map(
+    (p) => `${p}: ${facade.fileForPath(p).kind}`,
+  );
+  const jumps = [`src/app.py: ${facade.scrollToFile("src/app.py")}`];
+  step("Python chosen, then a jump to a file it shows");
+  jumps.push(`absent.txt: ${facade.scrollToFile("absent.txt")}`);
+  step("a jump to a file no type shows changes nothing");
+  jumps.push(`README.md: ${facade.scrollToFile("README.md")}`);
+  step("a jump to a file the choice hides goes back to every type");
 
   // The handle a host holds goes to whichever diff is mounted, and its file listener is
   // carried from each diff to the next.
@@ -357,11 +378,34 @@ async function main() {
   assert(attached.detached, "dispose left Y attached");
   assert(bound === null, "dispose left the control bound");
 
+  // A choice the host kept, as a pull request's page keeps it while the reader is on
+  // another tab, mounts its answer first, never the whole comparison.
+  const keptMounts = [];
+  const keptPaints = [];
+  const again = createTypeFilter({
+    whole: documentOf(WHOLE),
+    initial: { types: [".py", ".md"], document: documentOf(kept([".md", ".py"])) },
+    load: () => new Promise(() => {}),
+    counts: () => new Promise(() => {}),
+    mount: mounter(keptMounts),
+    paint: (state) => keptPaints.push({ types: state.types, kept: state.kept, whole: state.whole }),
+  });
+  const keptChoice = {
+    mounts: keptMounts.map((mount) => ({ files: mount.files, narrowed: mount.narrowed })),
+    painted: keptPaints[0],
+    types: again.types(),
+  };
+  again.facade.dispose();
+
   console.log(
     JSON.stringify(
       {
         steps,
         hostListener: listenerCalls,
+        toldTheHost: changes.map((types) => (types === null ? "every type" : types.join(","))),
+        lookups,
+        jumps,
+        keptChoice,
         reports,
         key: {
           id: attached.id,

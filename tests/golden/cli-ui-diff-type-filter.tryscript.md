@@ -18,12 +18,18 @@ toolbar says how many of the comparison’s files it keeps, with **Clear**. One 
 types is one address whatever order it was picked in, an answer a later choice overtook
 is dropped, and going back to **Any type** mounts the whole comparison it kept, asking
 for nothing. A choice that keeps no file says so, and one whose files do not load says
-that and keeps the diff it had.
+that and keeps the diff it had, and choosing it again asks again.
 **Clear** gives focus to the menu’s trigger, since it is gone once nothing is chosen.
 `Y` opens the menu with its checked row focused, through the SDK’s shortcut surface, and
 its target follows each repaint.
 The handle a host holds goes to whichever diff is mounted, and its current-file listener
 is carried from each diff to the next.
+Each choice is told to the host (`toldTheHost`), and a choice the host kept, as a pull
+request’s page keeps it while the reader is on another tab, mounts its answer first
+(`keptChoice`), never the whole comparison.
+A lookup answers for the whole comparison, and a jump to a file the choice hides goes
+back to every type and then to the file, asking nothing, since the whole comparison is
+in hand; a jump to a file no type shows changes nothing.
 
 This browserless session loads the production `builtin_plugins/diff/diff-type-filter.js`
 with `static/filter-controls.js`, whose menu rows and markup the control draws.
@@ -484,6 +490,68 @@ $ node tests/dom/diff-type-filter-session.js
       }
     },
     {
+      "step": "the same choice again asks again",
+      "requests": [
+        "types=.png,.rs"
+      ],
+      "mounted": [],
+      "narrowed": {
+        "kept": 0,
+        "whole": 6
+      },
+      "control": {
+        "trigger": ".png",
+        "rows": [
+          "[ ] Any type",
+          "— Groups",
+          "[ ] Documentation 2",
+          "[ ] Code 3",
+          "— Documentation",
+          "[ ] Markdown 2",
+          "— Code",
+          "[ ] Python 2",
+          "[ ] JavaScript 1",
+          "[ ] .md 2",
+          "[ ] .py 2",
+          "[ ] .js 1",
+          "[x] .png 1"
+        ],
+        "note": "0 of 6 files",
+        "clear": true,
+        "busy": true
+      }
+    },
+    {
+      "step": "its files",
+      "requests": [],
+      "mounted": [],
+      "narrowed": {
+        "kept": 0,
+        "whole": 6
+      },
+      "control": {
+        "trigger": ".png",
+        "rows": [
+          "[ ] Any type",
+          "— Groups",
+          "[ ] Documentation 2",
+          "[ ] Code 3",
+          "— Documentation",
+          "[ ] Markdown 2",
+          "— Code",
+          "[ ] Python 2",
+          "[ ] JavaScript 1",
+          "[ ] .md 2",
+          "[ ] .py 2",
+          "[ ] .js 1",
+          "[x] .png 1"
+        ],
+        "note": "0 of 6 files",
+        "clear": true,
+        "busy": true
+      }
+    },
+    {
       "step": "Clear",
       "requests": [],
       "mounted": [
@@ -533,6 +601,107 @@ $ node tests/dom/diff-type-filter-session.js
         "clear": false,
         "busy": false
       }
+    },
+    {
+      "step": "Python chosen, then a jump to a file it shows",
+      "requests": [
+        "types=.py"
+      ],
+      "mounted": [
+        "src/app.py",
+        "src/util.py"
+      ],
+      "narrowed": {
+        "kept": 2,
+        "whole": 6
+      },
+      "control": {
+        "trigger": "Python",
+        "rows": [
+          "[ ] Any type",
+          "— Groups",
+          "[ ] Documentation 2",
+          "[ ] Code 3",
+          "— Documentation",
+          "[ ] Markdown 2",
+          "— Code",
+          "[x] Python 2",
+          "[ ] JavaScript 1",
+          "[ ] .md 2",
+          "[x] .py 2",
+          "[ ] .js 1",
+          "[ ] .png 1"
+        ],
+        "note": "2 of 6 files",
+        "clear": true,
+        "busy": false
+      }
+    },
+    {
+      "step": "a jump to a file no type shows changes nothing",
+      "requests": [],
+      "mounted": [
+        "src/app.py",
+        "src/util.py"
+      ],
+      "narrowed": {
+        "kept": 2,
+        "whole": 6
+      },
+      "control": {
+        "trigger": "Python",
+        "rows": [
+          "[ ] Any type",
+          "— Groups",
+          "[ ] Documentation 2",
+          "[ ] Code 3",
+          "— Documentation",
+          "[ ] Markdown 2",
+          "— Code",
+          "[x] Python 2",
+          "[ ] JavaScript 1",
+          "[ ] .md 2",
+          "[x] .py 2",
+          "[ ] .js 1",
+          "[ ] .png 1"
+        ],
+        "note": "2 of 6 files",
+        "clear": true,
+        "busy": false
+      }
+    },
+    {
+      "step": "a jump to a file the choice hides goes back to every type",
+      "requests": [],
+      "mounted": [
+        "README.md",
+        "docs/guide.md",
+        "src/app.py",
+        "src/util.py",
+        "web/app.js",
+        "logo.png"
+      ],
+      "control": {
+        "trigger": "Any type",
+        "rows": [
+          "[x] Any type",
+          "— Groups",
+          "[ ] Documentation 2",
+          "[ ] Code 3",
+          "— Documentation",
+          "[ ] Markdown 2",
+          "— Code",
+          "[ ] Python 2",
+          "[ ] JavaScript 1",
+          "[ ] .md 2",
+          "[ ] .py 2",
+          "[ ] .js 1",
+          "[ ] .png 1"
+        ],
+        "note": null,
+        "clear": false,
+        "busy": false
+      }
     }
   ],
   "hostListener": [
@@ -544,8 +713,64 @@ $ node tests/dom/diff-type-filter-session.js
     "README.md",
     "README.md",
     null,
+    "README.md",
+    "src/app.py",
     "README.md"
   ],
+  "toldTheHost": [
+    ".md",
+    ".md,.py",
+    ".py",
+    ".js,.py",
+    "every type",
+    ".md,readme",
+    "every type",
+    ".rs",
+    ".png,.rs",
+    ".png,.rs",
+    "every type",
+    ".py",
+    "every type",
+    ".py"
+  ],
+  "lookups": [
+    "README.md: file",
+    "src/app.py: file",
+    "absent.txt: absent"
+  ],
+  "jumps": [
+    "src/app.py: jumped",
+    "absent.txt: absent",
+    "README.md: jumped"
+  ],
+  "keptChoice": {
+    "mounts": [
+      {
+        "files": [
+          "README.md",
+          "docs/guide.md",
+          "src/app.py",
+          "src/util.py"
+        ],
+        "narrowed": {
+          "kept": 4,
+          "whole": 6
+        }
+      }
+    ],
+    "painted": {
+      "types": [
+        ".md",
+        ".py"
+      ],
+      "kept": 4,
+      "whole": 6
+    },
+    "types": [
+      ".md",
+      ".py"
+    ]
+  },
   "reports": [
     "files"
   ],

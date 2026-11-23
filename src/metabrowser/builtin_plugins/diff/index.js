@@ -479,20 +479,46 @@ function wholeFiles(document_, summaryTotals) {
 }
 
 /**
+ * A comparison narrowed to some file types (`types=`, sorted and joined), validated, with
+ * the revision beside it for the deferred loader, as the whole comparison's.
+ *
+ * @param {string} revision
+ * @param {string} types
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<Record<string, unknown>>}
+ */
+async function loadNarrowed(revision, types, signal) {
+  const payload = await fetchComparison(
+    revision,
+    signal === undefined ? undefined : { signal },
+    undefined,
+    { types },
+  );
+  const result = validateDocument(payload);
+  if (!result.ok) {
+    throw new Error(`This diff document is not valid: ${result.error}`);
+  }
+  Object.defineProperty(result.document, "__revision", { value: revision, enumerable: false });
+  return result.document;
+}
+
+/**
  * A comparison's diff with its File type filter in the toolbar (diff-type-filter.js). The
- * whole comparison mounts at once; a choice asks the same route for `types=` and mounts
- * that answer in its place, its summary still the whole comparison's, and the counts are
- * the route's `view=types` answer, asked for as the diff mounts. The handle a host holds
- * goes to whichever diff is mounted.
+ * whole comparison mounts at once, or the choice its host kept (*kept*); a choice asks the
+ * same route for `types=` and mounts that answer in its place, its summary still the whole
+ * comparison's, and the counts are the route's `view=types` answer, asked for as the diff
+ * mounts. Each choice is told to the host (`ctx.onTypes`). The handle a host holds goes to
+ * whichever diff is mounted.
  *
  * @param {HTMLElement} container
  * @param {Record<string, unknown>} whole
  * @param {string} revision
  * @param {Parameters<typeof mountDiffView>[3]} options
- * @param {unknown} summaryTotals
+ * @param {{summaryTotals?: unknown, onTypes?: (types: Array<string> | null) => void}} ctx
  * @param {TypeFilterModule} module
+ * @param {{types: Array<string>, document: Record<string, unknown>} | null} kept
  */
-function mountTypeFiltered(container, whole, revision, options, summaryTotals, module) {
+function mountTypeFiltered(container, whole, revision, options, ctx, module, kept) {
   const { createTypeFilter, createTypeFilterControl, NONE_KEPT } = module;
   const fc = /** @type {NonNullable<typeof mb.filterControls>} */ (mb.filterControls);
   const element = document.createElement("div");
@@ -503,19 +529,15 @@ function mountTypeFiltered(container, whole, revision, options, summaryTotals, m
     formatInteger: (value) => mb.formatInteger(value),
     shortcuts: mb.shortcuts,
   });
+  // A narrowed diff's summary still lists every file: one it hides goes back to every type
+  // and then to the file, as the host's own jumps do, unless the host opens files itself.
+  const openFile =
+    options?.openFile ?? ((/** @type {string} */ path) => void filter?.facade.scrollToFile(path));
   filter = createTypeFilter({
     whole,
-    wholeFiles: wholeFiles(whole, summaryTotals),
-    async load(types, signal) {
-      const payload = await fetchComparison(revision, { signal }, undefined, { types });
-      const result = validateDocument(payload);
-      if (!result.ok) {
-        throw new Error(`This diff document is not valid: ${result.error}`);
-      }
-      // As the whole comparison's: the deferred loader reads the revision beside it.
-      Object.defineProperty(result.document, "__revision", { value: revision, enumerable: false });
-      return result.document;
-    },
+    wholeFiles: wholeFiles(whole, ctx.summaryTotals),
+    initial: kept,
+    load: (types, signal) => loadNarrowed(revision, types, signal),
     counts: (signal) =>
       /** @type {Promise<MetabrowserPublicTypeTally>} */ (
         fetchComparison(revision, { signal }, undefined, { view: "types" })
@@ -529,10 +551,12 @@ function mountTypeFiltered(container, whole, revision, options, summaryTotals, m
           : {
               summaryManifest: /** @type {Record<string, unknown>} */ (whole.manifest),
               emptyText: NONE_KEPT,
+              openFile,
             }),
       }),
     paint: (state) => control.paint(state),
     swap: (change) => control.swap(change),
+    ...(typeof ctx.onTypes === "function" ? { changed: ctx.onTypes } : {}),
     report(what, error) {
       console.error(
         "metabrowser diff: view load failed",
@@ -714,14 +738,33 @@ mb.registerView("diff", "diff", {
     if (module === null) {
       return mountDiffView(container, result.document, mb, options);
     }
-    return mountTypeFiltered(
-      container,
-      result.document,
-      revision,
-      options,
-      ctx.summaryTotals,
-      module,
-    );
+    // The choice the host kept, as a pull request's page keeps it across its tabs, mounts
+    // first; one whose files do not load leaves every type, and the host is told so.
+    const keptTypes = Array.isArray(ctx.types) && ctx.types.length > 0 ? ctx.types : null;
+    let kept = null;
+    if (keptTypes !== null) {
+      const param = module.typesParam(keptTypes);
+      try {
+        kept =
+          param === null
+            ? null
+            : { types: keptTypes, document: await loadNarrowed(revision, param, signal) };
+      } catch (error) {
+        if (signal?.aborted) {
+          return null;
+        }
+        console.error(
+          "metabrowser diff: view load failed",
+          { hook: "diff/comparison types", revision },
+          error,
+        );
+        ctx.onTypes?.(null);
+      }
+      if (signal?.aborted) {
+        return null;
+      }
+    }
+    return mountTypeFiltered(container, result.document, revision, options, ctx, module, kept);
   },
   /**
    * The comparison `render` would fetch for `ctx.comparison`, fetched now, for a page that
