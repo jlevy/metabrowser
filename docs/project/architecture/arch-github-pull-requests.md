@@ -586,23 +586,35 @@ The served code follows the same head
   **Show the earlier changes** mounts the replaced diff from its own routes, which name
   two immutable commits.
   That diff is the reader’s choice, so `filesAction` answers `offer` for it and it stays
-  until **Show the newer changes**; leaving Changes ends the choice.
+  until **Show the newer changes**, also through a reload, since the history entry
+  remembers the choice (`chosenEarlier`); leaving Changes ends it.
 - **Across a reload:** on a repository URL the page reloads when the served pin follows
   the head, because a page names its pin on every data request
   ([Source Sessions and Pins](arch-source-sessions-and-pins.md)). So the history entry
   remembers the comparison Changes last showed and the one its note named
-  (`rememberedChanges`), beside the reader’s place, and a page loaded again on an entry
-  that showed another comparison says so in the same line.
-  An entry reached by Back after the head moved says it too.
+  (`rememberedChanges`), and whether the reader chose the earlier one, beside the
+  reader’s place. A page loaded again on an entry that showed another comparison says so
+  in the same line, and one whose reader chose the earlier diff shows it again with the
+  offer of the newer. An entry reached by Back after the head moved says it too.
 - **The reader’s place:** a place in Changes names its file (`PanePlace`), which the
   mounted diff maps to a block and back, so the place held through a replacement, or
   landed on after a reload, is in the same file, at the same offset, where the new diff
-  has that file. A file the new diff lacks leaves the place at its index.
-  The hold is a landing’s: it lasts until the page is still or the reader moves.
+  has that file. A file the new diff lacks puts the reader at the top of the block at the
+  place’s index, since the offset was a line of a file that is gone.
+  The place is held and written to the entry before the old diff is taken away, so the
+  emptied pane’s clamp to its top, which arrives as a scroll, writes nothing while the
+  new comparison is read, and a reload in that time lands on the reader’s file.
+  From the new diff’s arrival the hold is a landing’s: it lasts until the page is still
+  or the reader moves.
 
 `tests/dom/github-pull-page-session.js` pins the decision, the note, the entry’s memory,
 and the place; `tests/dom/github-pull-repair-lifecycle-behavior.js` and
 `tests/dom/github-pull-page-mount-behavior.js` drive them through the mounted page.
+`tests/dom/github-pull-changes-follow-behavior.js` drives the join: a mounted page with
+a history entry, whose diff view answers `sectionForPath` and `pathForSection` from its
+own sections, follows a head, keeps the place through the emptied pane, and is mounted
+again on the entry; `tests/dom/diff-file-jump-session.js` pins the two accessors of the
+production diff view.
 
 ## Conversation Timeline
 

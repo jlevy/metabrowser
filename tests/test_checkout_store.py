@@ -588,6 +588,10 @@ def test_a_checkout_with_a_local_origin_or_none_keeps_no_store_and_is_served_as_
         ("http://example.com/octo/demo.git", "http://example.com/octo/demo.git"),
         ("http://token@example.com/octo/demo.git", "http://example.com/octo/demo.git"),
         ("git://example.com/octo/demo.git", "git://example.com/octo/demo.git"),
+        # A query string or a fragment can carry a credential: neither is shown.
+        ("http://host/a/b.git?token=secret", "http://host/a/b.git"),
+        ("http://host/a/b.git#fragment", "http://host/a/b.git"),
+        ("git://tok@host/a/b.git#x?token=secret", "git://host/a/b.git"),
     ],
 )
 def test_an_origin_reached_another_way_is_one_metabrowser_cannot_fetch(

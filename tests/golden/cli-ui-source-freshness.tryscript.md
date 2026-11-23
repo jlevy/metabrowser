@@ -1431,6 +1431,23 @@ $ node tests/dom/source-freshness-session.js folder
         "offer": null,
         "error": null
       }
+    },
+    {
+      "step": "an origin branch's page, its store grown old, asks loudly",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {}"
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin into Metabrowser's store. It was last fetched 5 d ago.",
+        "offer": null,
+        "error": null
+      }
     }
   ]
 }

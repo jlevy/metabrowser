@@ -535,7 +535,7 @@ def _origin_url(root: Path) -> tuple[str, Path] | None:
 
 def unfetched_origin_address(root: Path) -> str | None:
     """The origin of the checkout at *root* when it is on another machine by a transport
-    the grammar refuses, without its userinfo; ``None`` otherwise.
+    the grammar refuses, without its userinfo, query, or fragment; ``None`` otherwise.
 
     ``http://`` and ``git://`` are these: both name a repository elsewhere, and
     Metabrowser fetches over neither, since neither is encrypted and the acquisition
@@ -554,7 +554,9 @@ def unfetched_origin_address(root: Path) -> str | None:
     # An ``https`` address the grammar refuses is misspelled, not reached another way.
     if scheme is None or scheme.group().lower() in ("file://", "https://"):
         return None
-    return redact_userinfo(url)
+    # The grammar never vetted this address, and a token can ride in its query string
+    # as well as in its userinfo, so it is shown only up to the first ``?`` or ``#``.
+    return redact_userinfo(re.split(r"[?#]", url, maxsplit=1)[0])
 
 
 def _write_atomic(path: Path, text: str) -> None:
@@ -1019,6 +1021,14 @@ async def negotiation_tip_args(
 # before this is covered too. Nothing else Metabrowser runs in a store writes an object:
 # its other writers are ``update-ref`` and ``remote prune``, and maintenance and
 # collection are off (``_STORE_CONFIG`` in ``acquire.py``).
+#
+# So kept packs accumulate: every fetch that brings anything leaves one, and nothing
+# consolidates them. Without this the same fetches left loose objects, which also only
+# grew. Measured 2026-11-23 by review B of the pull request that added this, with Git
+# 2.56.1 at a load average near 350, on two overlays fed the same 616 one-commit
+# fetches, 616 packs against 1,842 loose objects: ``log`` of all 619 commits took 0.16 to
+# 0.21 s against 0.08 to 0.17 s, and a lookup of an absent object 0.07 to 0.10 s against
+# 0.02 to 0.04 s. Consolidation was looked at and left: nothing there needs a bound yet.
 OVERLAY_FETCH_CONFIG: Final = ("-c", "fetch.unpackLimit=1")
 
 

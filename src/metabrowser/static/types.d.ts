@@ -3653,6 +3653,7 @@ declare global {
   type MetabrowserSourcePage = { pin: string; ref: string | null };
 
   type MetabrowserSourceOffer =
+    | { kind: "switch"; ref: string; latest: string; text: string; commit: string; button: string }
     | { kind: "reload"; text: string; button: string }
     | { kind: "retry"; text: string; button: string };
 

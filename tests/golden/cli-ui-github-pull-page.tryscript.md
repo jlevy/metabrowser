@@ -1717,9 +1717,10 @@ $ node tests/dom/github-pull-page-second-session.js
     "what is not a place is no place: \"nonsense\"": "pane at 0; entry \"nonsense\"; 0 written; nothing running",
     "in Changes a place names its file": "pane at 460; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 1 written; nothing running",
     "the diff is replaced: the place is held, and written for a reload": "pane at 0; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 1 written; holding",
+    "the emptied pane clamps to its top: the place stays written": "pane at 0; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 0 written; holding",
     "the newer diff paints: the pane is in the same file, a block further on": "pane at 710; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 0 written; holding, settling",
     "a file above it draws its lines: the pane is put back": "pane at 1310; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 0 written; holding, settling",
-    "loaded again on a diff without the file: the place is its index's": "pane at 410; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 0 written; holding, settling",
+    "loaded again on a diff without the file: the top of the block at its index": "pane at 370; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 0 written; holding, settling",
     "a place whose file is not a name is no place": "pane at 0; entry {\"block\":1,\"offset\":5,\"top\":400,\"file\":7}; 0 written; nothing running",
     "dispose ends all of it": "pane at 900; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; nothing running",
     "a disposed keeper does nothing": "pane at 900; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; nothing running"

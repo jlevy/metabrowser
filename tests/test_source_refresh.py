@@ -232,20 +232,33 @@ def test_a_folder_reports_no_freshness_and_refuses_both_routes(tmp_path: Path) -
 # ── Refresh ──────────────────────────────────────────────────────────
 
 
-def test_a_branch_a_tag_and_a_pull_requests_head_follow_their_ref() -> None:
-    """Which pins move when a fetch moves their ref. A pull request's head does, as
-    GitHub names it and nothing like it; a commit opened by its ID is served under no ref."""
+def test_every_ref_a_mirror_pins_under_follows_and_nothing_else_does() -> None:
+    """Which pins move when a fetch moves their ref: every ref a mirror serves one under.
 
-    for ref in ("refs/remotes/origin/trunk", "refs/tags/v1", "refs/pull/7/head"):
-        assert follows_moves(ref), ref
-    for ref in (
-        None,
+    Held to the pin resolver's own rule, so a namespace a mirror learns to pin under is
+    one this test asks about (A9 of review A on #745). A pull request's head follows as
+    GitHub names it and nothing like it does. A commit asked for by its ID is another
+    matter: the session never moves it, whatever ref names it (``MirrorSession._by_id``).
+    """
+
+    from metabrowser.cache.resolve import MIRROR_REFS, is_pinnable_ref
+
+    refs = (
+        "refs/remotes/origin/trunk",
+        "refs/remotes/origin/release/v1",
+        "refs/tags/v1",
+        "refs/pull/7/head",
         "refs/pull/7/merge",
         "refs/pull/0/head",
         "refs/pull/7/head/x",
         "refs/heads/m",
-    ):
-        assert not follows_moves(ref), ref
+        "refs/notes/commits",
+        "refs/stash",
+    )
+    for ref in refs:
+        assert follows_moves(ref) == is_pinnable_ref(ref, MIRROR_REFS), ref
+    assert [ref for ref in refs if follows_moves(ref)] == list(refs[:4])
+    assert not follows_moves(None)
 
 
 def test_a_refresh_that_moves_the_served_branch_is_followed(
@@ -483,37 +496,54 @@ def test_a_commit_id_at_the_tip_of_the_ref_last_served_keeps_the_ref(
     """A switch by commit ID to another commit and back stays on the ref it left.
 
     View file on a diff switches by commit ID. Without this the way back to the branch
-    tip left the server on no ref: the selector read "Commit: …" and freshness stopped
-    following the branch.
+    tip left the server on no ref: the selector read "Commit: …" and freshness no longer
+    said when the branch moved on. The commit is still one opened by its ID, so it stays
+    put when the branch moves, and status reports the branch's new tip as ``latest``,
+    which the row offers; asking for the branch by name follows it again (mb-cww9).
     """
 
     topic = "refs/remotes/origin/topic"
-    # The tip of the ref served is what is served already.
-    same = _post(served, "/api/source/pin", {"oid": origin.second}).json()
-    assert (same["changed"], same["status"]["ref"]) == (False, topic)
-    away = _post(served, "/api/source/pin", {"oid": origin.first}).json()
+
+    def pin(body: dict[str, Any]) -> Any:
+        return _post(served, "/api/source/pin", body)
+
+    # The tip of the ref served is what is served already, and the page still follows it.
+    same = pin({"oid": origin.second}).json()
+    assert (same["changed"], same["status"]["ref"], same["status"]["follows"]) == (
+        False,
+        topic,
+        True,
+    )
+    away = pin({"oid": origin.first}).json()
     assert (away["changed"], away["status"]["pin"], away["status"]["ref"]) == (
         True,
         origin.first,
         None,
     )
-    back = _post(served, "/api/source/pin", {"oid": origin.second[:12]}).json()["status"]
+    back = pin({"oid": origin.second[:12]}).json()["status"]
     assert (back["pin"], back["ref"], back["ref_name"]) == (origin.second, topic, "topic")
-    # Freshness follows the ref again.
-    assert (back["latest"], back["ref_on_origin"]) == (origin.second, True)
-    # A commit that is not the tip of the ref last served has no ref, as before.
-    again = _post(served, "/api/source/pin", {"oid": origin.first}).json()["status"]
-    assert again["ref"] is None
-    # After the branch moves in the mirror, its old tip is only a commit. The commit
-    # served by its ID does not move with the branch.
+    # Freshness reads the ref again, and the commit asked for by its ID does not follow it.
+    assert (back["latest"], back["ref_on_origin"], back["follows"]) == (origin.second, True, False)
+    # The same commit asked for by the branch's name is the same pin, which follows now.
+    named = pin({"ref": "topic"}).json()
+    assert (named["changed"], named["status"]["follows"]) == (False, True)
+
+    # Back by ID again: when the branch moves in the mirror, the pin stays, and status
+    # reports the branch's new tip.
+    assert pin({"oid": origin.first}).json()["status"]["ref"] is None
+    assert pin({"oid": origin.second}).json()["status"]["follows"] is False
     newer = _push_commit(origin, "later.txt", "later\n", "third")
     assert _post(served, "/api/source/refresh").status_code == 202
     stayed = _settle(served)
-    assert (stayed["pin"], stayed["ref"], stayed["follows"]) == (origin.first, None, False)
-    old_tip = _post(served, "/api/source/pin", {"oid": origin.second}).json()["status"]
-    assert (old_tip["pin"], old_tip["ref"]) == (origin.second, None)
-    tip = _post(served, "/api/source/pin", {"oid": newer}).json()["status"]
-    assert (tip["pin"], tip["ref"]) == (newer, topic)
+    assert (stayed["pin"], stayed["ref"], stayed["follows"]) == (origin.second, topic, False)
+    assert stayed["latest"] == newer
+    taken = pin({"ref": "topic"}).json()["status"]
+    assert (taken["pin"], taken["ref"], taken["follows"]) == (newer, topic, True)
+    # After the branch moved, its old tip is only a commit.
+    old_tip = pin({"oid": origin.second}).json()["status"]
+    assert (old_tip["pin"], old_tip["ref"], old_tip["follows"]) == (origin.second, None, False)
+    tip = pin({"oid": newer}).json()["status"]
+    assert (tip["pin"], tip["ref"], tip["follows"]) == (newer, topic, False)
 
 
 def test_a_branch_pushed_after_serving_began_is_fetched_once_and_served(

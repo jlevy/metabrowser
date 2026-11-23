@@ -915,6 +915,27 @@ def test_explicit_repair_preserves_route_and_response_ownership(scenario: str) -
     }
 
 
+def test_changes_follows_a_moved_head_in_the_readers_file_and_entry() -> None:
+    """The production page joins a followed diff to the reader's place and history entry.
+
+    A mounted page with a history entry and a diff view that answers ``sectionForPath`` and
+    ``pathForSection`` from its own sections (A4 of review A on #745): the place names its
+    file, the emptied pane's clamp to its top is not written while the newer comparison is
+    read (A3), the newer diff keeps the reader's file, a page mounted again on the entry says
+    the same note and lands there, the reader's choice of the earlier diff outlives a reload
+    (A5), and a file the newer diff lacks lands on a block's top (A8).
+    """
+
+    assert run_session("github-pull-changes-follow-behavior.js") == {
+        "placeNamesItsFile": True,
+        "clampIsNotWritten": True,
+        "followKeepsTheFile": True,
+        "reloadSaysAndLands": True,
+        "choiceSurvivesReload": True,
+        "missingFileLandsOnABlockTop": True,
+    }
+
+
 def test_pending_file_selection_belongs_to_one_files_visit() -> None:
     assert run_session("github-pull-pending-file-behavior.js") == {
         "abandonedJump": False,

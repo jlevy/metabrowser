@@ -615,7 +615,12 @@ function placeStory(runtime) {
         return stage.files === null || at.block < 0 ? at : { ...at, file: stage.files[at.block] };
       },
       apply(place) {
-        const fileBlock = stage.files === null ? -1 : stage.files.indexOf(place.file);
+        // As the page's own keeper asks the mounted diff: a place that names no file, or a
+        // page with no diff to ask, leaves it out; a diff without the file answers -1.
+        const fileBlock =
+          place.file === undefined || stage.files === null
+            ? undefined
+            : stage.files.indexOf(place.file);
         const top = runtime.scrollTopOf(place, tops(), fileBlock);
         if (top === null) {
           return false;
@@ -785,6 +790,13 @@ function placeStory(runtime) {
   step("the diff is replaced: the place is held, and written for a reload", () =>
     keeper.holdAt(reading),
   );
+  // The emptied pane clamps to its top while the newer comparison is read, which arrives as
+  // a scroll: it is the hold's, so the place a reload lands on stays the reader's (A3 of
+  // review A on #745).
+  step("the emptied pane clamps to its top: the place stays written", () => {
+    keeper.scrolled();
+    fireWrite();
+  });
   stage.heights = [250, 300, 400, 500];
   stage.files = ["new.py", "a.py", "b.py", "c.py"];
   step("the newer diff paints: the pane is in the same file, a block further on", () =>
@@ -796,7 +808,9 @@ function placeStory(runtime) {
   stage.files = ["new.py", "a.py", "c.py"];
   stage.heights = [250, 900, 500];
   reopen(stage.heights);
-  step("loaded again on a diff without the file: the place is its index's", () => keeper.land());
+  step("loaded again on a diff without the file: the top of the block at its index", () =>
+    keeper.land(),
+  );
   keeper.readerMoved();
   stage.files = null;
   stage.entry = { block: 1, offset: 5, top: 400, file: 7 };
@@ -1716,6 +1730,23 @@ async function main() {
     assert(runtime.rememberedChanges(junk) === null, `not a memory: ${JSON.stringify(junk)}`);
   }
   assert(entry({ shown: recordComparison, from: "x" }).from === null, "a from that is none");
+  // The reader's choice of the earlier diff is in the entry too, so the reload each later
+  // push makes keeps it (A5 of review A on #745): only `true` is a choice, and a record that
+  // names the remembered commits again has nothing earlier to show.
+  const choice = entry({ shown: openedOnPin, from: null, chosen: true });
+  assert(
+    choice.chosen === true &&
+      entry({ shown: openedOnPin, from: null, chosen: "yes" }).chosen === false &&
+      entry({ shown: openedOnPin, from: null }).chosen === false,
+    "an entry's choice is true or none",
+  );
+  assert(
+    runtime.chosenEarlier(choice, recordComparison) === choice.shown &&
+      runtime.chosenEarlier(choice, openedOnPin) === null &&
+      runtime.chosenEarlier({ ...choice, chosen: false }, recordComparison) === null &&
+      runtime.chosenEarlier(null, recordComparison) === null,
+    "a page loaded again shows the earlier diff its reader chose, and only that",
+  );
   const changesFollowed = {
     "the first diff of a page": noted(null, null, recordComparison),
     "a newer head replaces the diff shown": noted(openedOnPin, null, recordComparison),
@@ -1817,15 +1848,14 @@ async function main() {
   pinnedCheckout.pin = pinnedCheckout.record.pull.base.sha;
   const otherPin = runtime.describePull(pinnedCheckout, pinnedCheckoutPage);
   assert(
-    otherPin.browse === null && otherPin.headOffer === null && otherPin.comparison?.branch === null,
-    "an unrelated checkout pin offers no PR head or file switch",
+    otherPin.browse === null && otherPin.comparison?.branch === null,
+    "an unrelated checkout pin offers no code or file switch",
   );
   pinnedCheckout.pin = head;
   const headPin = runtime.describePull(pinnedCheckout, pinnedCheckoutPage);
   assert(
     headPin.browse?.kind === "link" &&
       headPin.browse.at === head &&
-      headPin.headOffer === null &&
       headPin.comparison?.branch?.ref === null,
     "a checkout already at the PR head keeps its direct code and file links",
   );

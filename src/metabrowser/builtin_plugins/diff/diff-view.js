@@ -3501,7 +3501,10 @@ export function mountDiffView(container, document_, api, options = {}) {
       view.disposed ? null : (fileEntryForPath(view, path)?.section ?? null),
     /** @param {Element} section */
     pathForSection(section) {
-      const entry = view.bySection.get(/** @type {HTMLElement} */ (section));
+      // A disposed view says nothing of its files, as `sectionForPath` does not.
+      const entry = view.disposed
+        ? undefined
+        : view.bySection.get(/** @type {HTMLElement} */ (section));
       if (entry === undefined) {
         return null;
       }

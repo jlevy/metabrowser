@@ -679,7 +679,8 @@ async def resolve_pin(
     pinned by ID has no ref, unless it is the tip of one of *keep_refs* in the mirror
     now: the refs a server was serving, which a reader who went to another commit and
     came back by ID is still on. The first such ref is kept, so the selector names it
-    and freshness keeps following it. A request names its own first such ref, as View on
+    and freshness says when it moves on; the commit itself stays put
+    (``MirrorSession._by_id``). A request names its own first such ref, as View on
     branch names the pull request's head. Otherwise it is served under a pull request's
     head when it is the tip of one the mirror holds. ``HEAD`` is the default branch,
     *default_ref*, as in a URL.
