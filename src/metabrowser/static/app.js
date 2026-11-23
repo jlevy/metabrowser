@@ -5642,15 +5642,6 @@ var FILTER_SIZE_OPTIONS = [
   { value: "1g", label: ">1G" },
 ];
 
-// Named shorthands at the top of the type menu. The server injects the
-// vocabulary so the index can count the same tokens the browser uses.
-var FILTER_TYPE_PRESETS = _METABROWSER_SETTINGS.FILTER_TYPE_PRESETS || [];
-
-// The extension menu is built from what the folder actually contains,
-// not a fixed vocabulary, so it never offers a type with nothing
-// behind it and never omits one the tree is full of.
-var FILTER_TYPE_MENU_MAX = 20;
-
 // Deliberately not persisted. The drawer holds the secondary controls,
 // so a session that starts with it open costs vertical space the user
 // did not ask for on this visit. Filter selections are transient too;
@@ -5755,31 +5746,18 @@ function patchOpenRecencyTallyCounts() {
   }
 }
 
-function filterTypePresets() {
-  const showIgnored = filterState ? filterState.get().showIgnored : true;
-  const counts = new Map(
-    _typePresetTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
-  );
-  return FILTER_TYPE_PRESETS.map((preset) => ({
-    ...preset,
-    count: counts.get(preset.id) || 0,
-  }));
+// The tally the server last sent, for `filterControls.typeMenu`.
+function filterTypeTally() {
+  return {
+    extensions: _extensionTally,
+    canonical_extensions: _canonicalExtensionTally,
+    type_families: _typeFamilyTally,
+    type_presets: _typePresetTally,
+  };
 }
 
-function filterTypeFamilies(groupId) {
-  const showIgnored = filterState ? filterState.get().showIgnored : true;
-  const counts = new Map(
-    _typeFamilyTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
-  );
-  return (window.MetabrowserFileTypeTaxonomy?.families || [])
-    .filter((family) => !groupId || (family.groupId || family.category) === groupId)
-    .map((family) => ({
-      id: `family:${family.id}`,
-      label: family.label,
-      values: family.extensions.slice(),
-      count: counts.get(family.id) || 0,
-    }))
-    .filter((family) => family.count > 0);
+function filterTypeMenuOptions() {
+  return { showIgnored: filterState ? filterState.get().showIgnored : true, iconFor: getFileIcon };
 }
 
 // Where the drawer's filters take their keyboard numbers while the drawer is closed: its
@@ -5811,24 +5789,9 @@ function filterGroupOptions() {
 }
 
 function filterTypePresetSections() {
-  // Documentation first, as everywhere the app lists the groups (displayGroups).
-  const groups = window.MetabrowserFileTypeTaxonomy?.displayGroups || [];
-  const groupPresets = filterTypePresets();
-  if (groups.length === 0) {
-    return [
-      { id: "groups", label: "Groups", presets: groupPresets },
-      { id: "families", label: "Families", presets: filterTypeFamilies() },
-    ];
-  }
-  return [
-    { id: "groups", label: "Groups", presets: groupPresets },
-    ...groups.map((group) => ({
-      id: `families:${group.id}`,
-      label: group.label,
-      icon: ICONS.withClass?.(group.icon, "category-icon"),
-      presets: filterTypeFamilies(group.id),
-    })),
-  ];
+  return filterControls
+    ? filterControls.typeMenu.presetSections(filterTypeTally(), filterTypeMenuOptions())
+    : [];
 }
 
 function allFilterTypePresets() {
@@ -5836,41 +5799,9 @@ function allFilterTypePresets() {
 }
 
 function filterTypeOptions() {
-  const showIgnored = filterState ? filterState.get().showIgnored : true;
-  const source = _canonicalExtensionTally.length > 0 ? _canonicalExtensionTally : _extensionTally;
-  const ranked = source
-    .map(
-      (row) => /** @type {[string, number]} */ ([row[0], showIgnored ? row[1] + row[2] : row[1]]),
-    )
-    // An extension that exists only under gitignored paths has nothing
-    // to offer once those rows are hidden.
-    .filter((row) => row[1] > 0)
-    // Re-rank on the count actually being shown. The server ranks by
-    // the total, so hiding gitignored rows would otherwise leave the
-    // menu ordered by numbers that are no longer on screen — .py with
-    // 157 tracked files sorting below .d.ts with one.
-    .sort((a, b) => (b[1] === a[1] ? (a[0] < b[0] ? -1 : 1) : b[1] - a[1]));
-  // A hard cap, including anything currently selected. Appending
-  // selected-but-unranked tokens instead let one preset add dozens of
-  // rows — most of them extensions this folder does not contain, and
-  // bare filename tokens like "makefile" listed as if they were
-  // suffixes. A preset's members outside the top rows stay reachable
-  // through the preset row itself and through Clear.
-  const kept = ranked.slice(0, FILTER_TYPE_MENU_MAX);
-  return kept.map(([ext, count]) => {
-    // Same icon the tree row shows for that type, resolved through the
-    // same matcher, so a menu row and the files it keeps are visibly
-    // the same thing. `getFileIcon` wants a filename, not an
-    // extension, so give it a synthetic one.
-    const fi = getFileIcon(`x${ext}`);
-    return {
-      value: ext,
-      label: ext,
-      count: count,
-      icon: fi.svg,
-      iconClass: fi.cls,
-    };
-  });
+  return filterControls
+    ? filterControls.typeMenu.options(filterTypeTally(), filterTypeMenuOptions())
+    : [];
 }
 
 // A recency window, Live included, reads /api/recent, which scans the whole index and
@@ -6137,14 +6068,9 @@ function initFilterBar() {
       if (!preset) {
         return;
       }
-      // Additive, like the extensions beside it: turning Docs on adds
-      // its values to whatever is already picked, and turning it off
-      // removes only its own.
-      var current = filterState.get().types || [];
-      var next = wasOn
-        ? current.filter((value) => preset.values.indexOf(value) < 0)
-        : current.concat(preset.values.filter((value) => current.indexOf(value) < 0));
-      filterState.set({ types: next.length > 0 ? next : null });
+      filterState.set({
+        types: filterControls.typeMenu.togglePreset(filterState.get().types, preset.values, wasOn),
+      });
     },
     onMenuPick: (key, value) => {
       // The any-row clears the dimension back to its default rather

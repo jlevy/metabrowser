@@ -368,12 +368,15 @@ def test_extension_tallies_come_from_the_index_not_the_catalog() -> None:
     while gitignored rows are visible."""
 
     js = _read("app.js")
-    start = js.index("function filterTypeOptions()")
-    block = js[start : start + 1500]
+    start = js.index("function filterTypeTally()")
+    block = js[start : start + 600]
     assert "_extensionTally" in block
     assert "knownFileCatalog" not in block
-    # Tracked and ignored stay apart so the count follows the setting.
-    assert "showIgnored ? row[1] + row[2] : row[1]" in block
+    # Tracked and ignored stay apart so the count follows the setting:
+    # filter-controls.js's typeMenu adds the ignored column only while it is shown
+    # (tests/dom/filter-controls-behavior.js).
+    options_start = js.index("function filterTypeMenuOptions()")
+    assert "showIgnored" in js[options_start : options_start + 300]
 
 
 def _rule(css: str, selector: str) -> str:
@@ -767,8 +770,9 @@ def test_type_presets_name_registry_display_groups() -> None:
     settings = (proc_browser.STATIC_DIR.parent / "settings.py").read_text()
     assert '"FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS' in settings
 
-    js = _read("app.js")
-    assert "var FILTER_TYPE_PRESETS = _METABROWSER_SETTINGS.FILTER_TYPE_PRESETS || [];" in js
+    # The menu reads the server's vocabulary, so the index counts the tokens it offers.
+    controls = _read("filter-controls.js")
+    assert "window.METABROWSER_SETTINGS?.FILTER_TYPE_PRESETS" in controls
 
     # The convention: leading dot is an extension, anything else a
     # whole filename. Docs reaches README and LICENSE only because of it.
@@ -990,30 +994,19 @@ def test_the_recency_cap_records_why_it_is_where_it_is() -> None:
     assert "RECENT_MAX_LIMIT = 5_000" in block
 
 
-def test_the_extension_list_is_hard_capped() -> None:
-    """Appending selected-but-unranked tokens let one preset add dozens
-    of rows — extensions the folder does not contain, and bare filename
-    tokens like "makefile" listed as if they were suffixes."""
-
-    js = _read("app.js")
-    assert "var FILTER_TYPE_MENU_MAX = 20;" in js
-    start = js.index("function filterTypeOptions()")
-    block = js[start : start + 1800]
-    assert "ranked.slice(0, FILTER_TYPE_MENU_MAX)" in block
-    # Nothing is pushed back in past the cap.
-    assert "kept.push(" not in block
-
-
 def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
     """The aggregate rows must answer the same question as selecting
-    them, including extensionless filenames and Show ignored."""
+    them, including extensionless filenames and Show ignored.
+
+    The extension list's hard cap and the counts' Show ignored rule are
+    filter-controls.js's typeMenu, which tests/dom/filter-controls-behavior.js runs."""
 
     js = _read("app.js")
     assert "var _typePresetTally = [];" in js
-    start = js.index("function filterTypePresets()")
-    block = js[start : start + 1000]
-    assert "showIgnored ? row[1] + row[2] : row[1]" in block
-    assert "count:" in block
+    start = js.index("function filterTypeTally()")
+    block = js[start : start + 600]
+    assert "type_presets: _typePresetTally" in block
+    assert "type_families: _typeFamilyTally" in block
     tally_start = js.index("function updateFilterTallies(data)")
     tally_block = js[tally_start : tally_start + 1800]
     assert "registryMismatch" not in tally_block
@@ -1022,9 +1015,8 @@ def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
     render_start = js.index("function renderNavFilterBar()")
     render_block = js[render_start : render_start + 2200]
     assert "presetSections: filterTypePresetSections()" in render_block
-    assert "function filterTypeFamilies(groupId)" in js
-    assert "window.MetabrowserFileTypeTaxonomy?.displayGroups" in js
-    assert "_typeFamilyTally" in js
+    # The display groups lead the families, in the order every surface lists them.
+    assert "taxonomy?.displayGroups" in _read("filter-controls.js")
 
 
 def test_age_options_use_index_wide_tracked_and_ignored_tallies() -> None:
