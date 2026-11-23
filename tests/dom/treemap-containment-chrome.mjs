@@ -82,9 +82,12 @@ const MAP_MODULE = `performance.getEntriesByType("resource").map((e) => e.name).
 // Every painted cell's pixels and every label's box, against the map's own reading. A label
 // may meet its cell's edge; past it, or past the viewport's padding box, by more than its
 // rounding is an escape. A cell's center pixel is its fill: sampled for every cell at
-// least 6 device pixels on a side, whose center no child covers, and held against the
+// least 3 device pixels on a side, whose center no child covers, and held against the
 // color its style resolved to from its probe (inspectTreemap's styles), for the opaque
-// styles, whose pixel is that color alone.
+// styles, whose pixel is that color alone. A fill is whole device pixels and nothing else
+// paints over a leaf on this canvas, so a 3-pixel fill's center is a pixel off its edge.
+// Folders are sized for their chrome, so every file of the narrow window's tree is drawn
+// 4 to 5 px on its short side: a floor of 6 sampled none of them.
 const read = (selector) => `(async () => {
   // A label's left and width are written to a tenth of a pixel, each rounding by up to 0.05.
   const SLACK = 0.1 + 1e-6;
@@ -130,7 +133,7 @@ const read = (selector) => `(async () => {
   const fills = new Map();
   for (const [i, rect] of byCell) {
     const style = map.styles[rect.style];
-    if (covered.has(i) || rect.w < 6 || rect.h < 6 || !style || style.alpha !== 1) continue;
+    if (covered.has(i) || rect.w < 3 || rect.h < 3 || !style || style.alpha !== 1) continue;
     const cx = rect.x + Math.floor(rect.w / 2);
     const cy = rect.y + Math.floor(rect.h / 2);
     const k = (cy * canvas.width + cx) * 4;
@@ -160,6 +163,7 @@ const read = (selector) => `(async () => {
   ).length;
   return {
     cells: map.cells.length,
+    box: [viewport.clientWidth, viewport.clientHeight],
     painted: map.paint.length,
     tiny,
     deepest,

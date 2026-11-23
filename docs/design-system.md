@@ -4864,7 +4864,15 @@ frame, with no label, and its files are still drawn.
 Frames thin with depth, and a folder too small for one draws its children edge to edge,
 so deep levels keep their area for cells (`frameDecay` in `treemap-layout.js`). A folder
 whose children all fold into its remainder stays one solid cell.
-Every cell lies inside its parent’s cell and inside the map’s border.
+A folder is sized for its header and frame as well as its contents, so a file’s area is
+its share of the map’s value at every depth rather than shrinking by each folder’s
+chrome around it: the layout weights each folder by its value plus an estimate of the
+chrome its subtree draws, and corrects that estimate with one more layout on a map small
+enough for it to be cheap (`chromeRounds`, `chromePasses`, and `chromePassMaxCells` in
+`treemap-layout.js`, with their measurements).
+A folder’s own rectangle is therefore larger than its value alone: its area is its
+files’ and its chrome’s. Every cell lies inside its parent’s cell and inside the map’s
+border.
 
 The map paints its cells on a canvas rather than drawing an element for each, so it
 draws cells down to a device pixel, up to `PAINT_MAX_CELLS` (`treemap-map.js`, with its

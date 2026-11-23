@@ -907,7 +907,8 @@ function ownPointOf(cells, index) {
     label: proxy.getAttribute("aria-label"),
   });
   const keys = [{ key: "(none)", ...proxyAt() }];
-  for (const key of ["ArrowRight", "ArrowRight", "ArrowLeft", "ArrowRight", "Enter", "Backspace"]) {
+  /** @param {string} key */
+  const press = (key) => {
     const before = map();
     const event = viewport().emit("keydown", { key });
     const after = map();
@@ -918,7 +919,17 @@ function ownPointOf(cells, index) {
       `${key} on the focus proxy: ${JSON.stringify(proxyAt())}`,
     );
     keys.push({ key, ...proxyAt() });
+  };
+  for (const key of ["ArrowRight", "ArrowRight", "ArrowLeft"]) {
+    press(key);
   }
+  // Then to the folder, wherever the layout put it in the order, so Enter opens a folder.
+  const folderAt = focusOrder.indexOf("docs/build");
+  while (focusOrder.indexOf(proxyAt().on ?? "") !== folderAt) {
+    press(focusOrder.indexOf(proxyAt().on ?? "") < folderAt ? "ArrowRight" : "ArrowLeft");
+  }
+  press("Enter");
+  press("Backspace");
   const keyboard = {
     proxy: {
       role: proxy.getAttribute("role"),
@@ -936,6 +947,7 @@ function ownPointOf(cells, index) {
       !keyboard.proxy.hidden &&
       keyboard.proxy.controls === 1 &&
       navigation.length === 2 &&
+      same(navigation[0], ["docs/build", "treemap"]) &&
       same(navigation[1], ["", "treemap"]),
     `the keyboard: ${JSON.stringify(keyboard)}`,
   );

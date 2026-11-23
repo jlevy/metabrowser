@@ -461,6 +461,81 @@ function fileNode(name, pathStr, size, extras) {
   check("the cap still holds while spreading", spread.length <= 200, `${spread.length}`);
 }
 
+// ── chrome compensation: a file's area follows its value at any depth ──
+{
+  // Eight 1,000-byte files at each of seven levels, each level a folder inside
+  // the last, so every level's files sit inside one more header or frame.
+  const levels = 7;
+  /** @param {number} level @param {string} prefix */
+  function chain(level, prefix) {
+    const files = Array.from({ length: 8 }, (_, i) =>
+      fileNode(`f${i}.py`, `${prefix}f${i}.py`, 1000),
+    );
+    if (level === levels - 1) {
+      return { files, size: 8000, count: 8 };
+    }
+    const sub = chain(level + 1, `${prefix}d${level + 1}/`);
+    const dir = dirNode(`d${level + 1}`, `${prefix}d${level + 1}`, {
+      total_size: sub.size,
+      unignored_size: sub.size,
+      total_files: sub.count,
+      unignored_files: sub.count,
+      children: sub.files,
+    });
+    return { files: [...files, dir], size: sub.size + 8000, count: sub.count + 8 };
+  }
+  const top = chain(0, "");
+  const tree = dirNode("root", "", {
+    total_size: top.size,
+    unignored_size: top.size,
+    total_files: top.count,
+    unignored_files: top.count,
+    children: top.files,
+  });
+  /** @param {Record<string, any>} options */
+  function depthRatio(options) {
+    const cells = layout.layoutTree(tree, { w: 1200, h: 800 }, { metric: "size", ...options });
+    /** @param {number} depth */
+    const perValue = (depth) => {
+      const files = cells.filter((c) => c.kind === "file" && c.depth === depth);
+      return files.reduce((s, c) => s + (c.w * c.h) / c.value, 0) / Math.max(1, files.length);
+    };
+    const deepest = Math.max(...cells.filter((c) => c.kind === "file").map((c) => c.depth));
+    return { ratio: perValue(deepest) / perValue(0), deepest, cells };
+  }
+  const plain = depthRatio({ chromeRounds: 0, chromePasses: 0 });
+  const estimated = depthRatio({ chromePasses: 0 });
+  const corrected = depthRatio({});
+  check(
+    "uncompensated, the deepest files shrink by each folder's chrome",
+    plain.deepest === levels - 1 && plain.ratio < 0.8,
+    `${plain.ratio.toFixed(3)} at depth ${plain.deepest}`,
+  );
+  check(
+    "the chrome estimate gives the deepest files near their share",
+    estimated.ratio > 0.9 && estimated.ratio < 1.1,
+    estimated.ratio.toFixed(3),
+  );
+  check(
+    "the corrective pass gives the deepest files their share",
+    corrected.deepest === levels - 1 && Math.abs(corrected.ratio - 1) < 0.02,
+    corrected.ratio.toFixed(3),
+  );
+  check(
+    "a compensated cell still carries its own value, not its weight",
+    corrected.cells
+      .filter((c) => c.kind === "dir")
+      .every((c) => c.value === c.bytes && c.value === (levels - c.depth - 1) * 8000),
+    JSON.stringify(corrected.cells.filter((c) => c.kind === "dir").map((c) => [c.depth, c.value])),
+  );
+  const capped = depthRatio({ chromePassMaxCells: 10 });
+  check(
+    "a map past chromePassMaxCells keeps the estimate alone",
+    capped.ratio === estimated.ratio,
+    `${capped.ratio} vs ${estimated.ratio}`,
+  );
+}
+
 // ── budget timing ───────────────────────────────────────────────
 {
   // Budget: lay out a two-level tree that emits ~800 cells.

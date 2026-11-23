@@ -96,15 +96,15 @@ $ node tests/dom/treemap-compact-session.js
       "asked": true,
       "cells": [
         "dir src 600x218",
-        "dir src/lib 243x189",
-        "file src/cache.md 199x189",
-        "dir src/docs 155x122",
-        "file src/README.md 155x68",
-        "file src/lib/app.py 130x163",
-        "file src/lib/util.py 109x98",
-        "file src/lib/cli.py 109x65",
-        "file src/docs/guide.md 100x99",
-        "file src/docs/notes.md 50x99"
+        "dir src/lib 257x189",
+        "file src/cache.md 179x189",
+        "dir src/docs 161x131",
+        "file src/README.md 161x58",
+        "file src/lib/app.py 138x163",
+        "file src/lib/util.py 115x98",
+        "file src/lib/cli.py 115x65",
+        "file src/docs/guide.md 104x108",
+        "file src/docs/notes.md 52x108"
       ],
       "labelled": [
         "src",
@@ -258,12 +258,12 @@ $ node tests/dom/treemap-compact-session.js
         "cursor": "pointer"
       },
       "pointerAfter": {
-        "on": "src/docs/notes.md",
+        "on": "src/docs/guide.md",
         "anchor": "tm-cell tm-hover-anchor tm-file",
         "shimmers": true,
-        "tooltip": "src/docs/notes.md / 1 files · 1500 B / modified then",
+        "tooltip": "src/docs/guide.md / 1 files · 3000 B / modified then",
         "marked": [
-          "src/docs/notes.md"
+          "src/docs/guide.md"
         ],
         "cursor": "pointer"
       },
@@ -273,15 +273,15 @@ $ node tests/dom/treemap-compact-session.js
       "asked": true,
       "cells": [
         "dir src 600x218",
-        "dir src/lib 255x189",
-        "dir src/docs 170x189",
-        "file src/README.md 170x95",
-        "file src/cache.md 170x95",
-        "file src/lib/app.py 84x163",
-        "file src/lib/cli.py 84x163",
-        "file src/lib/util.py 84x163",
-        "file src/docs/guide.md 83x165",
-        "file src/docs/notes.md 83x165"
+        "dir src/lib 266x189",
+        "dir src/docs 178x189",
+        "file src/README.md 151x94",
+        "file src/cache.md 151x95",
+        "file src/lib/app.py 87x163",
+        "file src/lib/cli.py 87x163",
+        "file src/lib/util.py 87x163",
+        "file src/docs/guide.md 87x164",
+        "file src/docs/notes.md 87x164"
       ],
       "labelled": [
         "src",
@@ -304,14 +304,14 @@ $ node tests/dom/treemap-compact-session.js
       "asked": true,
       "cells": [
         "dir src 600x218",
-        "dir src/lib 298x189",
-        "dir src/docs 199x189",
-        "file src/README.md 99x189",
-        "file src/lib/app.py 98x163",
-        "file src/lib/cli.py 98x163",
-        "file src/lib/util.py 98x163",
-        "file src/docs/guide.md 97x164",
-        "file src/docs/notes.md 97x164"
+        "dir src/lib 305x189",
+        "dir src/docs 204x189",
+        "file src/README.md 87x189",
+        "file src/lib/app.py 100x163",
+        "file src/lib/cli.py 100x163",
+        "file src/lib/util.py 100x163",
+        "file src/docs/guide.md 100x164",
+        "file src/docs/notes.md 100x164"
       ],
       "labelled": [
         "src",
@@ -337,14 +337,14 @@ $ node tests/dom/treemap-compact-session.js
       "asked": true,
       "cells": [
         "dir src 600x218",
-        "dir src/lib 298x189",
-        "dir src/docs 199x189",
-        "file src/README.md 99x189",
-        "file src/lib/app.py 98x163",
-        "file src/lib/cli.py 98x163",
-        "file src/lib/util.py 98x163",
-        "file src/docs/guide.md 97x164",
-        "file src/docs/notes.md 97x164"
+        "dir src/lib 305x189",
+        "dir src/docs 204x189",
+        "file src/README.md 87x189",
+        "file src/lib/app.py 100x163",
+        "file src/lib/cli.py 100x163",
+        "file src/lib/util.py 100x163",
+        "file src/docs/guide.md 100x164",
+        "file src/docs/notes.md 100x164"
       ],
       "labelled": [
         "src",

@@ -15,8 +15,12 @@
 // Folders large enough for a label nest under a header strip; smaller
 // ones nest with no label, inside a frame that thins with depth or, when
 // too small for a frame, edge to edge, and the tooltip names them. Each
-// cell records its parent's index, which hit testing and hover marks use. Bounds: cells below `minCellPx` in either dimension merge into
-// their parent's rest cell, and nesting stops once `maxCells` cells
+// cell records its parent's index, which hit testing and hover marks use.
+// A folder is sized for its header and frame as well as its contents
+// (`chromeRounds`, `chromePasses`), so a file's area follows its value
+// however deep it sits, instead of shrinking by each folder's chrome
+// around it. Bounds: cells below `minCellPx` in either dimension merge
+// into their parent's rest cell, and nesting stops once `maxCells` cells
 // exist, so pathological trees cannot flood the DOM.
 
 /**
@@ -80,6 +84,38 @@ const LAYOUT_DEFAULTS = {
    * into the many small ones that share a map.
    */
   minNestShare: 4,
+  /**
+   * Rounds of the chrome estimate (estimateChrome), which sizes each folder for
+   * its header and frame as well as its contents, so a file's area follows its
+   * value at every depth rather than shrinking with each folder around it. 0
+   * sizes folders by value alone. Measured on this repository at 1100 by 560,
+   * 2026-11-23, the 10th-percentile file's area over the median file's, by
+   * value: 0.55 (bytes) and 0.51 (files) uncompensated; 0.72 and 0.68 after
+   * one round, 0.93 and 0.92 after two, 0.94 and 0.89 after four, no better
+   * after six. Each round is two walks of the rollup's nodes: four add about
+   * 2 ms to a 31 ms layout of 23,000 cells.
+   */
+  chromeRounds: 4,
+  /**
+   * Layouts after the first that correct the estimate by the chrome the last
+   * layout drew, folder by folder, while that layout has at most
+   * `chromePassMaxCells` cells. The estimate takes every folder for a square,
+   * and a squarified folder is longer than one and spends 2 to 4 points more
+   * of its area on frame; nested eight deep, that leaves the deepest files at
+   * 0.55 to 0.7 of their area. One pass brings this repository's 10th
+   * percentile to 0.98 (bytes) and 0.97 (files), at the cost of a second
+   * layout.
+   */
+  chromePasses: 1,
+  /**
+   * The most cells a layout may have and still be corrected by a second one.
+   * A layout of 5,000 cells takes about 5 ms (PAINT_MAX_CELLS, treemap-map.js,
+   * measures the layout as about half of 11 ms), a third of a frame; a larger
+   * map keeps the estimate alone, which on this repository with its ignored
+   * files (23,000 cells) holds depths 1 to 8 within 8% of their area and
+   * leaves the deepest at 0.55 to 0.7, from 0.28 uncompensated.
+   */
+  chromePassMaxCells: 5000,
 };
 
 const TYPOGRAPHY_DEFAULTS = Object.freeze({
@@ -102,7 +138,7 @@ const NO_LABEL = Object.freeze({
 
 /**
  * @typedef {{x: number, y: number, w: number, h: number}} Rect
- * @typedef {{value: number, bytes?: number, count?: number} & Record<string, any>} WeightedItem
+ * @typedef {{value: number, actual?: number, bytes?: number, count?: number} & Record<string, any>} WeightedItem
  */
 
 /** @param {number} value @param {number} min @param {number} max */
@@ -274,7 +310,9 @@ function restValue(rest, opts) {
  * it represents — nothing is dropped silently.
  *
  * @param {WeightedItem[]} items  sorted descending by value; at most
- *   one `{rest: true}` seed carrying server-side remainder weight
+ *   one `{rest: true}` seed carrying server-side remainder weight. An item's
+ *   `value` is the weight its area follows; `actual`, when present, is the
+ *   metric it stands for, which the remainder reports.
  * @param {Rect} rect
  * @param {number} capacity  max rects to emit, including the remainder
  * @param {number} minPx
@@ -288,6 +326,7 @@ function packLevel(items, rect, capacity, minPx) {
     return { placed: none, remainder: null };
   }
   let remainderValue = 0;
+  let remainderActual = 0;
   let remainderCount = 0;
   let remainderBytes = 0;
   /** @type {WeightedItem[]} */
@@ -295,6 +334,7 @@ function packLevel(items, rect, capacity, minPx) {
   for (const it of items) {
     if (it.rest) {
       remainderValue += it.value;
+      remainderActual += it.actual ?? it.value;
       remainderCount += Number(it.count) || 0;
       remainderBytes += Number(it.bytes) || 0;
     } else if (it.value > 0) {
@@ -306,6 +346,7 @@ function packLevel(items, rect, capacity, minPx) {
   const foldCut = (kept, cut) => {
     for (const it of cut) {
       remainderValue += it.value;
+      remainderActual += it.actual ?? it.value;
       remainderCount += Number(it.count) || 0;
       remainderBytes += Number(it.bytes) || 0;
     }
@@ -355,7 +396,7 @@ function packLevel(items, rect, capacity, minPx) {
         y: p.y,
         w: p.w,
         h: p.h,
-        value: remainderValue,
+        value: remainderActual,
         count: remainderCount,
         bytes: remainderBytes,
       };
@@ -364,6 +405,60 @@ function packLevel(items, rect, capacity, minPx) {
     }
   }
   return { placed: emitted, remainder };
+}
+
+/**
+ * Type sizes for a cell with room for its label; a smaller cell is never
+ * labelled, and most cells of a dense map are smaller.
+ * @param {{w: number, h: number}} rect
+ * @param {Record<string, any>} opts
+ */
+function typographyFor(rect, opts) {
+  return rect.w >= opts.labelMinW && rect.h >= opts.labelMinH ? cellTypography(rect) : NO_LABEL;
+}
+
+/**
+ * Where a folder's children go when it nests: under its label strip when it is
+ * large enough, otherwise inside a thin frame, or edge to edge. Null when it
+ * stays a solid cell. The layout and the chrome estimate both decide by it.
+ *
+ * @param {Rect} cell
+ * @param {number} depth  the folder's own depth
+ * @param {Record<string, any>} node
+ * @param {Record<string, any>} opts
+ * @returns {{inner: Rect, framed: boolean} | null}
+ */
+function nestGeometry(cell, depth, node, opts) {
+  // A folder whose children all fold into its remainder (the rollup's node
+  // budget ran out at it) has nothing to show inside but one inert
+  // remainder cell, so it stays a solid cell, named by its own tooltip.
+  const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+  if (node.type !== "dir" || !hasChildren || depth + 1 >= opts.nestDepth) {
+    return null;
+  }
+  const labelFits = cell.w >= opts.labelMinW && cell.h >= opts.labelMinH;
+  const labelled = labelFits && cell.h >= opts.nestMinH;
+  // A folder with room for its label but too short to nest under it stays a
+  // solid, labelled cell; every other folder nests without a header.
+  if (labelFits && !labelled) {
+    return null;
+  }
+  const inset = labelled
+    ? opts.padPx
+    : Math.min(cell.w, cell.h) >= opts.frameNestMinPx
+      ? Math.ceil(opts.padPx * opts.frameDecay ** depth)
+      : 0;
+  const top = labelled ? cellTypography(cell).headerPx : inset;
+  const inner = {
+    x: cell.x + inset,
+    y: cell.y + top,
+    w: cell.w - 2 * inset,
+    h: cell.h - top - inset,
+  };
+  if (inner.w < opts.minCellPx || inner.h < opts.minCellPx) {
+    return null;
+  }
+  return { inner, framed: !labelled };
 }
 
 /**
@@ -383,11 +478,194 @@ function packLevel(items, rect, capacity, minPx) {
  */
 function layoutTree(rootNode, viewport, options) {
   const opts = Object.assign({}, LAYOUT_DEFAULTS, options);
+  if (!rootNode || viewport.w <= 0 || viewport.h <= 0) {
+    return [];
+  }
+  // A folder's chrome is what it draws around its children: its header strip
+  // and frame. Weighting each folder by its value plus its subtree's chrome,
+  // at the area per unit of value that leaves the whole map's chrome paid for,
+  // gives every file the same area per unit of value at every depth.
+  const estimate =
+    opts.chromeRounds > 0 ? estimateChrome(rootNode, viewport, opts, opts.chromeRounds) : null;
+  let cells =
+    estimate && estimate.total > 0 && estimate.perValue > 0
+      ? layoutPass(rootNode, viewport, opts, estimate.byPath, estimate.perValue)
+      : layoutPass(rootNode, viewport, opts, null, 0);
+  const area = viewport.w * viewport.h;
+  for (
+    let pass = 0;
+    pass < opts.chromePasses && cells.length <= opts.chromePassMaxCells;
+    pass += 1
+  ) {
+    const chrome = subtreeChrome(cells);
+    const rootValue = cells.reduce((sum, c) => (c.parent === -1 ? sum + c.value : sum), 0);
+    const perValue = (area - chrome.total) / Math.max(rootValue, Number.MIN_VALUE);
+    // A map that is all chrome, a box too small for its folders, has no area
+    // left to compensate from, so it keeps the layout it has.
+    if (chrome.total <= 0 || !(perValue > 0)) {
+      break;
+    }
+    cells = layoutPass(rootNode, viewport, opts, chrome.byPath, perValue);
+  }
+  return cells;
+}
+
+/**
+ * Estimate each folder's subtree chrome without laying the tree out: every
+ * folder is taken to be square (an only child fills its parent's interior
+ * exactly), its area its share of its parent's interior by weight, and its
+ * chrome what nestGeometry would leave around its children at that size.
+ * Weights depend on the chrome and the chrome on the sizes, so the estimate
+ * repeats `rounds` times from no chrome. Each round is two walks of the
+ * nodes and no packing, a small part of one layout.
+ *
+ * @param {Record<string, any>} rootNode
+ * @param {{w: number, h: number}} viewport
+ * @param {Record<string, any>} opts
+ * @param {number} rounds
+ * @returns {{byPath: Map<string, number>, total: number, perValue: number}}
+ */
+function estimateChrome(rootNode, viewport, opts, rounds) {
+  // The tree flattened breadth first: parents before children.
+  /** @type {Record<string, any>[]} */
+  const nodes = [rootNode];
+  const parent = [-1];
+  const depth = [-1];
+  const value = [0];
+  /** Each folder's total child value, rest included. */
+  const childValue = [0];
+  for (let i = 0; i < nodes.length; i += 1) {
+    const node = nodes[i];
+    const children = Array.isArray(node.children) ? node.children : [];
+    let sum = node.rest ? restValue(node.rest, opts) || 0 : 0;
+    for (const child of children) {
+      const v = nodeValue(child, opts);
+      if (!(v > 0)) {
+        continue;
+      }
+      sum += v;
+      if (child.type === "dir") {
+        nodes.push(child);
+        parent.push(i);
+        depth.push(depth[i] + 1);
+        value.push(v);
+        childValue.push(0);
+      }
+    }
+    childValue[i] = sum;
+  }
+  const n = nodes.length;
+  const chrome = new Float64Array(n);
+  const own = new Float64Array(n);
+  const area = new Float64Array(n);
+  const innerArea = new Float64Array(n);
+  const innerW = new Float64Array(n);
+  const innerH = new Float64Array(n);
+  /** Sum of each folder's children's chrome, its interior's extra weight. */
+  const childChrome = new Float64Array(n);
+  const onlyChild = new Uint8Array(n);
+  const siblings = new Int32Array(n);
+  for (let i = 1; i < n; i += 1) {
+    siblings[parent[i]] += 1;
+  }
+  const total = viewport.w * viewport.h;
+  const rootValue = childValue[0];
+  let perValue = total / Math.max(rootValue, Number.MIN_VALUE);
+  for (let round = 0; round < rounds; round += 1) {
+    perValue = (total - childChrome[0]) / Math.max(rootValue, Number.MIN_VALUE);
+    if (!(perValue > 0)) {
+      break;
+    }
+    innerW[0] = viewport.w;
+    innerH[0] = viewport.h;
+    innerArea[0] = total;
+    for (let i = 1; i < n; i += 1) {
+      const p = parent[i];
+      const weightSum = perValue * childValue[p] + childChrome[p];
+      const a = weightSum > 0 ? (innerArea[p] * (perValue * value[i] + chrome[i])) / weightSum : 0;
+      area[i] = a;
+      // An only child that is its parent's whole value fills the interior;
+      // any other is taken to be square.
+      const fills = siblings[p] === 1 && childValue[p] === value[i];
+      onlyChild[i] = fills ? 1 : 0;
+      const w = fills ? innerW[p] : Math.sqrt(a);
+      const h = fills ? innerH[p] : Math.sqrt(a);
+      const nest = a > 0 ? nestGeometry({ x: 0, y: 0, w, h }, depth[i], nodes[i], opts) : null;
+      if (nest) {
+        innerW[i] = nest.inner.w;
+        innerH[i] = nest.inner.h;
+        innerArea[i] = nest.inner.w * nest.inner.h;
+        own[i] = Math.max(0, a - innerArea[i]);
+      } else {
+        innerW[i] = 0;
+        innerH[i] = 0;
+        innerArea[i] = 0;
+        own[i] = 0;
+      }
+    }
+    // Bottom up: a folder's chrome is its own plus its nested children's.
+    childChrome.fill(0);
+    for (let i = n - 1; i >= 1; i -= 1) {
+      chrome[i] = innerArea[i] > 0 ? own[i] + childChrome[i] : 0;
+      childChrome[parent[i]] += chrome[i];
+    }
+  }
+  /** @type {Map<string, number>} */
+  const byPath = new Map();
+  for (let i = 1; i < n; i += 1) {
+    if (chrome[i] > 0) {
+      byPath.set(nodes[i].path, chrome[i]);
+    }
+  }
+  return { byPath, total: childChrome[0], perValue };
+}
+
+/**
+ * Each nested folder's chrome in a layout, by path: its header strip and
+ * frame (the cell less the inner rectangle its children tile), plus the
+ * chrome of every folder nested inside it. Cells are emitted parent first,
+ * so one pass from the end sums every subtree.
+ *
+ * @param {Record<string, any>[]} cells
+ * @returns {{byPath: Map<string, number>, total: number}}
+ */
+function subtreeChrome(cells) {
+  const sums = new Float64Array(cells.length);
+  /** @type {Map<string, number>} */
+  const byPath = new Map();
+  let total = 0;
+  for (let i = cells.length - 1; i >= 0; i -= 1) {
+    const cell = cells[i];
+    if (cell.nested && cell.inner) {
+      sums[i] += Math.max(0, cell.w * cell.h - cell.inner.w * cell.inner.h);
+    }
+    if (sums[i] > 0 && cell.kind === "dir") {
+      byPath.set(cell.path, sums[i]);
+    }
+    if (cell.parent >= 0) {
+      sums[cell.parent] += sums[i];
+    } else {
+      total += sums[i];
+    }
+  }
+  return { byPath, total };
+}
+
+/**
+ * One layout of the tree. With `chrome`, a folder weighs its value plus the
+ * chrome its subtree drew in an earlier pass, expressed in value units at
+ * `perValue` area per unit, so its files keep the area their values earn.
+ *
+ * @param {Record<string, any>} rootNode
+ * @param {{w: number, h: number}} viewport
+ * @param {Record<string, any>} opts
+ * @param {Map<string, number> | null} chrome
+ * @param {number} perValue
+ * @returns {Record<string, any>[]}
+ */
+function layoutPass(rootNode, viewport, opts, chrome, perValue) {
   /** @type {Record<string, any>[]} */
   const cells = [];
-  if (!rootNode || viewport.w <= 0 || viewport.h <= 0) {
-    return cells;
-  }
   const excludeIgnored = opts.includeIgnored === false;
 
   /** @typedef {{cell: Record<string, any>, index: number, node: Record<string, any>, inner: Rect, framed: boolean, area: number}} PendingNest */
@@ -404,37 +682,12 @@ function layoutTree(rootNode, viewport, options) {
    * @param {Record<string, any>} node
    */
   function considerNesting(cell, index, node) {
-    // A folder whose children all fold into its remainder (the rollup's node
-    // budget ran out at it) has nothing to show inside but one inert
-    // remainder cell, so it stays a solid cell, named by its own tooltip.
-    const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-    if (node.type !== "dir" || !hasChildren || cell.depth + 1 >= opts.nestDepth) {
+    const nest = nestGeometry(/** @type {Rect} */ (cell), cell.depth, node, opts);
+    if (!nest) {
       return;
     }
-    const labelFits = cell.w >= opts.labelMinW && cell.h >= opts.labelMinH;
-    const labelled = labelFits && cell.h >= opts.nestMinH;
-    // A folder with room for its label but too short to nest under it stays a
-    // solid, labelled cell; every other folder nests without a header.
-    if (labelFits && !labelled) {
-      return;
-    }
-    const inset = labelled
-      ? opts.padPx
-      : Math.min(cell.w, cell.h) >= opts.frameNestMinPx
-        ? Math.ceil(opts.padPx * opts.frameDecay ** cell.depth)
-        : 0;
-    const top = labelled ? cell.headerPx : inset;
-    const inner = {
-      x: cell.x + inset,
-      y: cell.y + top,
-      w: cell.w - 2 * inset,
-      h: cell.h - top - inset,
-    };
-    if (inner.w < opts.minCellPx || inner.h < opts.minCellPx) {
-      return;
-    }
-    const area = inner.w * inner.h;
-    pending.push({ cell, index, node, inner, framed: !labelled, area });
+    const area = nest.inner.w * nest.inner.h;
+    pending.push({ cell, index, node, inner: nest.inner, framed: nest.framed, area });
     pendingArea += area;
   }
 
@@ -454,8 +707,10 @@ function layoutTree(rootNode, viewport, options) {
     for (const child of children) {
       const value = nodeValue(child, opts);
       if (value > 0) {
+        const extra = chrome && child.type === "dir" ? (chrome.get(child.path) ?? 0) : 0;
         items.push({
-          value,
+          value: extra > 0 ? value + extra / perValue : value,
+          actual: value,
           bytes:
             child.type === "dir"
               ? excludeIgnored
@@ -492,7 +747,7 @@ function layoutTree(rootNode, viewport, options) {
     const packed = packLevel(items, rect, capacity, opts.minCellPx);
     for (const p of packed.placed) {
       const node = p.item.node;
-      const typography = typographyFor(p);
+      const typography = typographyFor(p, opts);
       const cell = {
         kind: node.type,
         name: node.name,
@@ -502,7 +757,7 @@ function layoutTree(rootNode, viewport, options) {
         w: p.w,
         h: p.h,
         depth,
-        value: p.item.value,
+        value: p.item.actual ?? p.item.value,
         // Real magnitudes regardless of the active metric, so labels
         // can always show true bytes/counts.
         bytes:
@@ -523,7 +778,7 @@ function layoutTree(rootNode, viewport, options) {
       considerNesting(cell, cells.length - 1, node);
     }
     if (packed.remainder) {
-      const typography = typographyFor(packed.remainder);
+      const typography = typographyFor(packed.remainder, opts);
       cells.push({
         kind: "rest",
         name: "…",
@@ -541,15 +796,6 @@ function layoutTree(rootNode, viewport, options) {
       });
     }
     return cells.length - before;
-  }
-
-  /**
-   * Type sizes for a cell with room for its label; a smaller cell is never
-   * labelled, and most cells of a dense map are smaller.
-   * @param {{w: number, h: number}} rect
-   */
-  function typographyFor(rect) {
-    return rect.w >= opts.labelMinW && rect.h >= opts.labelMinH ? cellTypography(rect) : NO_LABEL;
   }
 
   emitLevel(rootNode, { x: 0, y: 0, w: viewport.w, h: viewport.h }, 0, opts.maxCells, -1);
