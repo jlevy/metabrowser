@@ -248,9 +248,10 @@ def _builtin_plugin_letters() -> dict[str, str]:
     """Each letter a built-in plugin gives a control through ``shortcuts.attach()``.
 
     The pull request page attaches its tabs' letters from ``PULL_TABS`` in
-    ``github/pull-page.js``, the diff view its layout key in ``renderDiffToolbar`` in
-    ``diff/diff-view.js``, and a diff's File type filter its key in
-    ``diff/diff-type-filter.js``. Each letter maps to where it is declared.
+    ``github/pull-page.js``, the diff view its layout key in ``renderDiffToolbar`` and its
+    Diff | Current key in ``attachShowKey``, both in ``diff/diff-view.js``, and a diff's
+    File type filter its key in ``diff/diff-type-filter.js``. Each letter maps to where it
+    is declared.
     """
     pull_page = (_BUILTIN_PLUGINS / "github" / "pull-page.js").read_text(encoding="utf-8")
     tabs = re.search(r"\nconst PULL_TABS = Object\.freeze\(\[(.*?)\n\]\);", pull_page, re.S)
@@ -261,6 +262,10 @@ def _builtin_plugin_letters() -> dict[str, str]:
     layout = re.search(r'\n      id: "diff\.layout",\n      key: "([^"]*)",', toolbar)
     assert layout, "diff/diff-view.js renderDiffToolbar attaches diff.layout"
     letters[layout[1]] = "diff/diff-view.js renderDiffToolbar"
+    attach = diff_view[diff_view.index("\nfunction attachShowKey(") :]
+    show = re.search(r'\n    id: "diff\.show",\n    key: "([^"]*)",', attach)
+    assert show, "diff/diff-view.js attachShowKey attaches diff.show"
+    letters[show[1]] = "diff/diff-view.js attachShowKey"
     type_filter = (_BUILTIN_PLUGINS / "diff" / "diff-type-filter.js").read_text(encoding="utf-8")
     types = re.search(r'\n        id: "diff\.type-filter",\n        key: "([^"]*)",', type_filter)
     assert types, "diff/diff-type-filter.js attaches diff.type-filter"
@@ -288,6 +293,7 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
     assert calls == [
         "diff/diff-type-filter.js",
         "diff/diff-view.js",
+        "diff/diff-view.js",
         "github/pull-page.js",
         "github/pull-page.js",
         "github/pulls-panel.js",
@@ -296,7 +302,7 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
     panel = (_BUILTIN_PLUGINS / "github" / "pulls-panel.js").read_text(encoding="utf-8")
     assert panel.count("numbered: true,") == 2, "the Pulls panel's two calls take no letter"
     letters = _builtin_plugin_letters()
-    assert set(letters) == {"c", "d", "g", "e", "l", "y"}
+    assert set(letters) == {"c", "d", "g", "e", "l", "n", "y"}
     served = serialize_reserved_shell_keys()
     assert {key: source for key, source in letters.items() if key in served} == {}
     assert not set(letters) & reserved_keys_for("pull-request")
@@ -306,9 +312,10 @@ def test_letters_never_collide_on_one_screen() -> None:
     """Within one screen a letter reaches one control.
 
     A file's tab bar shares the screen with the shell's letters, and a pull request page
-    shares it with its own tab letters, the diff's layout key on its Changes tab, and the
-    shell's letters. Two keys on one screen never share a letter; screens never shown
-    together may, as Charts and Conversation share ``C``.
+    shares it with its own tab letters, the diff's layout and Diff | Current keys on its
+    Changes tab and Diff | Current's on its Docs tab, and the shell's letters. Two keys on
+    one screen never share a letter;
+    screens never shown together may, as Charts and Conversation share ``C``.
     """
     shell = {key for key in RESERVED_SHELL_KEYS if key.isalpha()}
     for kind in _served_kinds():

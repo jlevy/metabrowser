@@ -29,7 +29,8 @@ writes. The diff attaches it once, through the SDK’s shortcut surface, on the 
 would select, and moves it to the new chip after each draw.
 A host that fixes the layout, as a pull request’s Docs tab fixes **Unified**, gets it at
 every width under any stored choice, with no layout control and no `L`, reads and writes
-no preference, and draws no toolbar when nothing else is in it.
+no layout preference, and its toolbar holds **Diff | Current** alone
+(`tests/golden/cli-ui-diff-current.tryscript.md`).
 
 This browserless session loads the production `builtin_plugins/diff/diff-view.js` and
 mounts a document of the conformance corpus into a small element tree.
@@ -552,7 +553,7 @@ $ node tests/dom/diff-layout-fit-session.js
       }
     },
     {
-      "step": "a host's fixed Unified, wide, under a stored Split: no control, no L, no toolbar",
+      "step": "a host's fixed Unified, wide, under a stored Split: no control, no L",
       "draws": "unified",
       "splitRows": 0,
       "unifiedRows": 4,
@@ -560,9 +561,11 @@ $ node tests/dom/diff-layout-fit-session.js
       "control": null,
       "tips": [],
       "preference": [],
-      "toolbars": 0,
+      "toolbar": [
+        "diff-show-control"
+      ],
       "layoutControls": 0,
-      "keysAttached": 0,
+      "layoutKeys": 0,
       "preferenceReads": 0
     },
     {
@@ -574,9 +577,11 @@ $ node tests/dom/diff-layout-fit-session.js
       "control": null,
       "tips": [],
       "preference": [],
-      "toolbars": 0,
+      "toolbar": [
+        "diff-show-control"
+      ],
       "layoutControls": 0,
-      "keysAttached": 0,
+      "layoutKeys": 0,
       "preferenceReads": 0
     },
     {
@@ -588,9 +593,11 @@ $ node tests/dom/diff-layout-fit-session.js
       "control": null,
       "tips": [],
       "preference": [],
-      "toolbars": 0,
+      "toolbar": [
+        "diff-show-control"
+      ],
       "layoutControls": 0,
-      "keysAttached": 0,
+      "layoutKeys": 0,
       "preferenceReads": 0
     }
   ],

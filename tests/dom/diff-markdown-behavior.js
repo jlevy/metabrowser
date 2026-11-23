@@ -741,6 +741,132 @@ async function main() {
   assert.equal(settled4, true, "and the first screen does not wait for it");
   view4.dispose();
 
+  // Current: the new version alone. A changed Markdown file's removed blocks and removed
+  // front matter keys are hidden, by the attribute, and its added blocks and keys stay;
+  // a deleted file, which has no current version, shows its Source body, which says so.
+  // Diff draws them all again, from what was drawn.
+  const loads5 = [];
+  const root5 = make("div");
+  const view5 = createMarkdownViews({
+    controls: { groupHtml: (spec) => spec, bind: () => () => {} },
+    load: (id) => new Promise((resolve) => loads5.push({ id, resolve })),
+    ensureInert: async () => inert,
+    async loadStyles() {},
+    mutate: (change) => change(),
+    now: time.now,
+    later: time.later,
+    cancel: time.cancel,
+  });
+  const file5 = (id, gone) => {
+    const section = make("section");
+    root5.append(section);
+    const bar = make("div");
+    const source = make("div");
+    source.id = id;
+    section.append(bar, source);
+    const end = make("div");
+    bar.append(make("button"), end);
+    view5.add({ section, bar, end, source, id, format: "markdown", gone });
+    // Diff | Current is the diff's, in its toolbar: the end group is the progress mark and
+    // Rendered | Source alone, in Current as in Diff.
+    const [progress, control] = end.children;
+    assert.equal(end.children.length, 2);
+    assert.equal(progress.getAttribute("role"), "status", "the progress mark leads the group");
+    assert.ok(control.classList.contains("diff-markdown-control"), "Rendered | Source ends it");
+    return { section, source, rendered: section.children[1] };
+  };
+  const changed5 = file5("m", false);
+  const deleted5 = file5("x", true);
+  view5.observe(root5, null);
+  observer.notify([changed5, deleted5].map(({ section }) => arrival({ section })));
+  const changedProjection = {
+    version: "markdown-diff-v1",
+    status: "ready",
+    source_only: false,
+    frontmatter: {
+      change: "modified",
+      entries: [
+        { key: "title", text: "Guide", change: "context" },
+        { key: "status", text: "draft", change: "removed" },
+        { key: "status", text: "final", change: "added" },
+      ],
+    },
+    blocks: [
+      { kind: "context", html: "<p>Kept</p>", source_only: false },
+      { kind: "removed", html: "<p>Old <del>word</del></p>", source_only: false },
+      { kind: "added", html: "<p>New <ins>word</ins></p>", source_only: false },
+    ],
+  };
+  loads5[0].resolve(changedProjection);
+  await new Promise(setImmediate);
+  const [drawn5] = changed5.rendered.children;
+  const [front, kept, removed5, added5] = drawn5.children;
+  const list = front.children[0].children[1];
+  const [, , oldTerm, oldValue, newTerm, newValue] = list.children;
+  assert.ok(removed5.className.includes("diff-markdown-removed"));
+  assert.ok(oldTerm.className.includes("diff-frontmatter-removed"));
+  const hiddenParts = () =>
+    [kept, removed5, added5, oldTerm, oldValue, newTerm, newValue].map((part) => part.hidden);
+  assert.deepEqual(hiddenParts(), [false, false, false, false, false, false, false]);
+  assert.equal(changed5.rendered.hidden, false, "Diff draws the changed file's Rendered");
+  loads5[1].resolve({ ...changedProjection, frontmatter: undefined });
+  await new Promise(setImmediate);
+  assert.equal(deleted5.rendered.hidden, false, "and the deleted file's");
+  view5.show(true);
+  assert.deepEqual(
+    hiddenParts(),
+    [false, true, false, true, true, false, false],
+    "Current hides the removed block and the removed key's term and value, and only them",
+  );
+  assert.equal(changed5.rendered.hidden, false, "it is still the file's Rendered");
+  assert.equal(deleted5.rendered.hidden, true, "a deleted file has no current version");
+  assert.equal(deleted5.source.hidden, false, "so it shows its Source body, which says so");
+  assert.equal(loads5.length, 2, "nothing is asked again");
+  view5.show(false);
+  assert.deepEqual(hiddenParts(), [false, false, false, false, false, false, false]);
+  assert.equal(deleted5.rendered.hidden, false, "Diff shows the deleted file's Rendered again");
+  assert.equal(deleted5.source.hidden, true);
+  view5.dispose();
+
+  // A diff that opens in Current draws a file's Rendered in it from its first draw.
+  const loads6 = [];
+  const root6 = make("div");
+  const view6 = createMarkdownViews({
+    controls: { groupHtml: (spec) => spec, bind: () => () => {} },
+    load: (id) => new Promise((resolve) => loads6.push({ id, resolve })),
+    ensureInert: async () => inert,
+    async loadStyles() {},
+    mutate: (change) => change(),
+    now: time.now,
+    later: time.later,
+    cancel: time.cancel,
+    current: true,
+  });
+  const section6 = make("section");
+  root6.append(section6);
+  const bar6 = make("div");
+  const source6 = make("div");
+  source6.id = "n";
+  section6.append(bar6, source6);
+  const end6 = make("div");
+  bar6.append(make("button"), end6);
+  view6.add({
+    section: section6,
+    bar: bar6,
+    end: end6,
+    source: source6,
+    id: "n",
+    format: "markdown",
+  });
+  view6.observe(root6, null);
+  observer.notify([{ target: section6, isIntersecting: true }]);
+  loads6[0].resolve({ ...changedProjection, frontmatter: undefined });
+  await new Promise(setImmediate);
+  const [, removed6, added6] = section6.children[1].children[0].children;
+  assert.equal(removed6.hidden, true, "its removed block is hidden as it is placed");
+  assert.equal(added6.hidden, false);
+  view6.dispose();
+
   // A sanitizer that loaded nothing, or whose load failed, is loaded again when Rendered
   // is chosen again. Each failure is logged, not shown.
   const warn2 = console.warn;

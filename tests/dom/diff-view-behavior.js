@@ -194,6 +194,13 @@ class FakeElement {
     return this.find(selector.slice(1)).find((node) => node !== this) ?? null;
   }
 
+  /** Descendants of one class; markup set as `innerHTML` is not parsed, so it has none. */
+  querySelectorAll(selector) {
+    return selector.startsWith(".")
+      ? this.find(selector.slice(1)).filter((node) => node !== this)
+      : [];
+  }
+
   text() {
     return [...this.walk()]
       .map((node) => node.textContent)
@@ -1143,8 +1150,12 @@ async function main() {
   const viewPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js");
   const {
     composeTextRuns,
+    currentAbsence,
     mountDiffSummary,
     mountDiffView: mountDiffViewImpl,
+    patchRowCounts,
+    projectCurrentHunk,
+    reservedRows,
     setChangeLoader,
   } = await import(pathToFileURL(viewPath).href);
   // A count summary and a brief change line are painted by the shell's painters, as the
@@ -1207,6 +1218,47 @@ async function main() {
   const firstNumbers = lines[0].find("diff-line-number").map((cell) => cell.textContent);
   check("context rows carry both numbers", JSON.stringify(firstNumbers) === '["3","3"]');
   check("hunk heading renders", container.text().includes("def f():"));
+
+  // Current's rows, by the rules that draw and reserve them: the new file's lines alone,
+  // a hunk with none of them left out, and a file with no new version said in a sentence.
+  const opsHunk = (...ops) => ({ lines: ops.map((op) => ({ op })) });
+  check(
+    "Current draws a hunk's context and added lines, in order, and no removed one",
+    JSON.stringify(
+      projectCurrentHunk({
+        lines: ["context", "del", "add", "context"].map((op, at) => ({ op, at })),
+      }).map((line) => line.at),
+    ) === "[0,2,3]",
+  );
+  check(
+    "a held patch counts in Current the rows Current draws",
+    JSON.stringify(
+      patchRowCounts(
+        { hunks: [opsHunk("context", "del", "del", "add", "context"), opsHunk("del")] },
+        "current",
+      ),
+    ) === JSON.stringify({ lines: 3, headers: 1, folds: 0, notices: 0 }),
+  );
+  check(
+    "a long removal folds in Diff and draws nothing in Current",
+    patchRowCounts({ hunks: [opsHunk("context", ...Array(50).fill("del"))] }, "current").folds ===
+      0 &&
+      patchRowCounts({ hunks: [opsHunk("context", ...Array(50).fill("del"))] }, "unified").folds ===
+        1,
+  );
+  check(
+    "a deferred file reserves its added lines and context in Current",
+    reservedRows({ additions: 10, deletions: 5 }, "current") === 17 &&
+      reservedRows({ additions: 10, deletions: 5 }, "unified") === 22,
+  );
+  check(
+    "a deleted file and an emptied one say why Current shows no lines",
+    currentAbsence({ kind: "deleted" }, []) ===
+      "This file was deleted, so it has no current version." &&
+      currentAbsence({ kind: "modified" }, [{ newStart: 0, newCount: 0 }]) ===
+        "This file is empty now." &&
+      currentAbsence({ kind: "modified" }, [{ newStart: 4, newCount: 0 }]) === null,
+  );
 
   // Unified syntax is progressive: complete plain text mounts before
   // the asynchronous helper can settle, then only the existing text
@@ -1376,6 +1428,9 @@ async function main() {
   const preferenceWrites = [];
   const layoutSpecs = [];
   let unbound = 0;
+  // The toolbar's Diff | Current chooser is bound apart from the layout control.
+  let showBinds = 0;
+  let showUnbound = 0;
   const layoutApi = {
     highlightSyntax: async (source) => {
       layoutSyntaxCalls += 1;
@@ -1393,10 +1448,18 @@ async function main() {
     },
     filterControls: {
       groupHtml: (spec) => {
-        layoutSpecs.push(spec);
+        if (spec.key === "diff-layout") {
+          layoutSpecs.push(spec);
+        }
         return `<span role="radiogroup" data-select="${spec.select}" data-layout="${spec.layout}">${spec.options.map((option) => option.label).join("/")}</span>`;
       },
-      bind: (_root, handlers) => {
+      bind: (root, handlers) => {
+        if (!root.classList.contains("diff-layout-control")) {
+          showBinds += 1;
+          return () => {
+            showUnbound += 1;
+          };
+        }
         layoutChange = handlers.onChange;
         return () => {
           unbound += 1;
@@ -1567,6 +1630,231 @@ async function main() {
         row.find("diff-split-old")[0].classList.contains("diff-split-empty"),
       ),
   );
+  // Diff | Current is in the diff's toolbar, beside the layout control: one choice for the
+  // diff, which draws the new file's lines in one column whatever the layout, while the
+  // layout control keeps its place, says why it is unavailable, and changes nothing.
+  let showChange = null;
+  let currentLayoutChange = null;
+  const showSpecs = [];
+  const currentApi = {
+    ...layoutApi,
+    filterControls: {
+      groupHtml: (spec) => {
+        showSpecs.push(spec);
+        return "";
+      },
+      bind: (root, handlers) => {
+        if (root.classList.contains("diff-layout-control")) {
+          currentLayoutChange = handlers.onChange;
+        } else {
+          showChange = handlers.onChange;
+        }
+        return () => {};
+      },
+    },
+  };
+  const currentHost = new FakeElement("div");
+  const currentHandle = mountDiffView(currentHost, byName.get("modified-with-heading"), currentApi);
+  const codeBar = currentHost.find("diff-file-bar")[0];
+  const showSpec = showSpecs.find((spec) => spec.key === "diff-show");
+  const currentToolbar = currentHost.find("diff-toolbar")[0];
+  check(
+    "the toolbar ends with Diff | Current, then Split | Unified",
+    JSON.stringify(currentToolbar.children.map((child) => child.className)) ===
+      JSON.stringify(["diff-show-control", "diff-layout-control"]),
+    JSON.stringify(currentToolbar.children.map((child) => child.className)),
+  );
+  check(
+    "a code file's bar holds no chooser and does not wrap",
+    codeBar.find("diff-file-end")[0].children.length === 0 &&
+      currentHost.find("diff-show-control").length === 1 &&
+      !codeBar.classList.contains("diff-file-bar-markdown"),
+  );
+  check(
+    "the chooser is one joined, exclusive group named for what it chooses",
+    showSpec?.label === "Diff or current version" &&
+      showSpec.layout === "joined" &&
+      showSpec.select === "one" &&
+      showSpec.value === "diff" &&
+      JSON.stringify(showSpec.options.map((option) => [option.label, option.tip])) ===
+        JSON.stringify([
+          ["Diff", "Show what changed, removals included"],
+          ["Current", "Show the new version alone, its changes marked"],
+        ]),
+    JSON.stringify(showSpec),
+  );
+  const writesBefore = preferenceWrites.length;
+  showChange(showSpec.key, "current", "one");
+  await Promise.resolve();
+  const currentRoot = currentHost.find("diff-root")[0];
+  const currentLines = currentHost.find("diff-line");
+  check(
+    "Current draws the new file's lines in one column, in place of Split",
+    currentRoot.dataset.show === "current" &&
+      currentHost.find("diff-split-row").length === 0 &&
+      currentHost.find("diff-hunk-current").length === 1 &&
+      JSON.stringify(currentLines.map((row) => row.find("diff-line-marker")[0].textContent)) ===
+        JSON.stringify([" ", "+", " "]) &&
+      currentLines.every((row) => row.find("diff-line-number").length === 1),
+    `${currentHost.find("diff-split-row").length} split rows, ${currentLines.length} lines`,
+  );
+  check(
+    "its hunk header names the new side's range alone",
+    currentHost.find("diff-hunk-header")[0].textContent.startsWith("@@ +3,"),
+    currentHost.find("diff-hunk-header")[0].textContent,
+  );
+  const layoutInCurrent = showSpecs.filter((spec) => spec.key === "diff-layout").at(-1);
+  check(
+    "the layout control keeps the stored layout and says why neither chip can be chosen",
+    layoutInCurrent.value === "split" &&
+      layoutInCurrent.options.every(
+        (option) =>
+          option.tip ===
+          "Current shows the new version in one column; choose Diff for Split or Unified.",
+      ),
+    JSON.stringify(layoutInCurrent),
+  );
+  check(
+    "the choice is stored as diff.show, which every surface but Docs shares",
+    JSON.stringify(preferenceWrites.slice(writesBefore)) ===
+      JSON.stringify([{ key: "diff.show", value: "current" }]),
+    JSON.stringify(preferenceWrites.slice(writesBefore)),
+  );
+  const writesInCurrent = preferenceWrites.length;
+  currentLayoutChange("diff-layout", "unified", "one");
+  check(
+    "choosing a layout in Current changes nothing and stores nothing",
+    currentRoot.dataset.layout === "split" &&
+      currentHost.find("diff-hunk-current").length === 1 &&
+      preferenceWrites.length === writesInCurrent,
+  );
+  showChange(showSpec.key, "diff", "one");
+  await Promise.resolve();
+  check(
+    "Diff draws the stored layout again",
+    currentRoot.dataset.show === "diff" &&
+      currentHost.find("diff-split-row").length === 3 &&
+      showSpecs.filter((spec) => spec.key === "diff-layout").at(-1).options[1].tip === undefined,
+  );
+  currentHandle.dispose();
+  const deletedCurrent = new FakeElement("div");
+  let deletedShow = null;
+  const deletedHandle = mountDiffView(deletedCurrent, byName.get("deleted-file"), {
+    ...currentApi,
+    filterControls: {
+      groupHtml: (spec) => {
+        if (spec.key === "diff-show") {
+          deletedShow = spec.key;
+        }
+        return "";
+      },
+      bind: (root, handlers) => {
+        if (!root.classList.contains("diff-layout-control")) {
+          showChange = handlers.onChange;
+        }
+        return () => {};
+      },
+    },
+  });
+  showChange(deletedShow, "current", "one");
+  await Promise.resolve();
+  check(
+    "a deleted file says in Current that it has no current version",
+    deletedCurrent.text().includes("This file was deleted, so it has no current version.") &&
+      deletedCurrent.find("diff-line").length === 0,
+  );
+  deletedHandle.dispose();
+
+  // A host that fixes the layout and opens on Current, as a pull request's Docs tab does:
+  // its toolbar holds Diff | Current alone, it opens in Current with nothing stored, and it
+  // reads and writes its own preference, never `diff.show`, so a choice on Changes does not
+  // move it, nor its own Changes. A stored value that is not a choice reads as its default.
+  const docsReads = [];
+  const docsWrites = [];
+  const docsStored = new Map([["diff.show", "diff"]]);
+  let docsChange = null;
+  const docsSpecs = [];
+  const docsApi = {
+    ...layoutApi,
+    prefs: {
+      get: (key, fallback) => {
+        docsReads.push(key);
+        return docsStored.has(key) ? docsStored.get(key) : fallback;
+      },
+      set: (key, value) => {
+        docsWrites.push({ key, value });
+        docsStored.set(key, value);
+        return true;
+      },
+    },
+    filterControls: {
+      groupHtml: (spec) => {
+        docsSpecs.push(spec);
+        return "";
+      },
+      bind: (root, handlers) => {
+        if (root.classList.contains("diff-show-control")) {
+          docsChange = handlers.onChange;
+        }
+        return () => {};
+      },
+    },
+  };
+  const docsOptions = { layout: "unified", show: "current", showPreference: "github.docs.show" };
+  const docsHost = new FakeElement("div");
+  const docsHandle = mountDiffView(
+    docsHost,
+    byName.get("modified-with-heading"),
+    docsApi,
+    docsOptions,
+  );
+  const docsToolbar = docsHost.find("diff-toolbar")[0];
+  check(
+    "a fixed layout's toolbar is drawn for Diff | Current alone",
+    JSON.stringify(docsToolbar?.children.map((child) => child.className)) ===
+      JSON.stringify(["diff-show-control"]) && docsSpecs.every((spec) => spec.key === "diff-show"),
+    JSON.stringify(docsToolbar?.children.map((child) => child.className)),
+  );
+  check(
+    "a surface that opens on Current does so with nothing stored, reading its own preference",
+    docsHost.find("diff-root")[0].dataset.show === "current" &&
+      docsHost.find("diff-hunk-current").length === 1 &&
+      docsSpecs.at(-1).value === "current" &&
+      JSON.stringify(docsReads) === JSON.stringify(["github.docs.show"]),
+    JSON.stringify({ reads: docsReads, value: docsSpecs.at(-1)?.value }),
+  );
+  docsChange("diff-show", "diff", "one");
+  check(
+    "its choice is stored as its own preference, and diff.show is untouched",
+    JSON.stringify(docsWrites) === JSON.stringify([{ key: "github.docs.show", value: "diff" }]) &&
+      docsStored.get("diff.show") === "diff" &&
+      docsHost.find("diff-root")[0].dataset.show === "diff",
+    JSON.stringify(docsWrites),
+  );
+  docsHandle.dispose();
+  docsStored.set("github.docs.show", "both");
+  const oddDocs = new FakeElement("div");
+  const oddDocsHandle = mountDiffView(
+    oddDocs,
+    byName.get("modified-with-heading"),
+    docsApi,
+    docsOptions,
+  );
+  check(
+    "a stored value that is not a choice reads as the surface's own default",
+    oddDocs.find("diff-root")[0].dataset.show === "current",
+  );
+  oddDocsHandle.dispose();
+  docsStored.set("diff.show", "current");
+  const changesHost = new FakeElement("div");
+  const changesHandle = mountDiffView(changesHost, byName.get("modified-with-heading"), docsApi);
+  check(
+    "a surface with no default of its own opens on what diff.show holds",
+    changesHost.find("diff-root")[0].dataset.show === "current" && docsReads.at(-1) === "diff.show",
+    JSON.stringify(docsReads),
+  );
+  changesHandle.dispose();
+
   const pureDelete = new FakeElement("div");
   mountDiffView(pureDelete, byName.get("deleted-file"), layoutApi);
   const pureDeleteRows = pureDelete.find("diff-split-change");
@@ -1580,6 +1868,11 @@ async function main() {
   const pointerUpListeners = documentListeners.get("pointerup")?.length ?? 0;
   splitHandle.dispose();
   check("layout control binding disposes with the view", unbound === 1, String(unbound));
+  check(
+    "the Diff | Current binding is one per diff and disposes with it",
+    showBinds > 0 && showUnbound === 1,
+    `${showBinds} bound, ${showUnbound} unbound`,
+  );
   check(
     "selection gate listeners dispose with the view",
     (documentListeners.get("pointerup")?.length ?? 0) === pointerUpListeners - 1,
@@ -1605,8 +1898,10 @@ async function main() {
     ...layoutApi,
     filterControls: {
       ...layoutApi.filterControls,
-      bind: (_root, handlers) => {
-        boundedLayoutChange = handlers.onChange;
+      bind: (root, handlers) => {
+        if (root.classList.contains("diff-layout-control")) {
+          boundedLayoutChange = handlers.onChange;
+        }
         return () => {};
       },
     },
@@ -1820,8 +2115,9 @@ async function main() {
   );
   check("revision-hosted change sets keep their toolbar", hosted.find("diff-toolbar").length === 1);
   // A layout the host fixes has no layout control, and leaves the toolbar what else it holds:
-  // a change set's totals, here; with nothing else, as on a pull request's Docs tab, there is
-  // no toolbar, and the files follow at once.
+  // a change set's totals and Diff | Current, here; Diff | Current alone, as on a pull
+  // request's Docs tab. A toolbar with nothing in it, where the chip family is not loaded,
+  // is not drawn, and the files follow at once.
   const fixedApi = { filterControls: { groupHtml: () => "", bind: () => () => {} } };
   const fixedTotals = new FakeElement("div");
   mountDiffView(fixedTotals, twoFiles, fixedApi, { layout: "unified" });
@@ -1830,15 +2126,33 @@ async function main() {
     fixedTotals.find("diff-toolbar").length === 1 &&
       fixedTotals.find("diff-summary").length === 1 &&
       fixedTotals.find("diff-layout-control").length === 0 &&
+      fixedTotals.find("diff-show-control").length === 1 &&
       fixedTotals.find("diff-root")[0]?.dataset.layout === "unified",
   );
   const fixedBare = new FakeElement("div");
   mountDiffView(fixedBare, twoFiles, fixedApi, { showSummary: false, layout: "unified" });
-  const fixedRoot = fixedBare.find("diff-root")[0];
+  const fixedToolbar = fixedBare.find("diff-toolbar")[0];
   check(
-    "a fixed layout with nothing else for the toolbar draws none",
-    fixedBare.find("diff-toolbar").length === 0 &&
-      fixedBare.find("diff-layout-control").length === 0 &&
+    "a fixed layout with nothing else for the toolbar draws it for Diff | Current alone",
+    JSON.stringify(fixedToolbar?.children.map((child) => child.className) ?? null) ===
+      JSON.stringify(["diff-show-control"]),
+    JSON.stringify(fixedToolbar?.children.map((child) => child.className) ?? null),
+  );
+  const fixedBare2 = new FakeElement("div");
+  mountDiffView(
+    fixedBare2,
+    twoFiles,
+    { filterControls: undefined },
+    {
+      showSummary: false,
+      layout: "unified",
+    },
+  );
+  const fixedRoot = fixedBare2.find("diff-root")[0];
+  check(
+    "a fixed layout with nothing at all for the toolbar draws none",
+    fixedBare2.find("diff-toolbar").length === 0 &&
+      fixedBare2.find("diff-layout-control").length === 0 &&
       fixedRoot?.children[0]?.classList.contains("diff-hydration-failure") === true &&
       fixedRoot.children[1]?.classList.contains("diff-file") === true,
     JSON.stringify(fixedRoot?.children.map((child) => child.className) ?? null),

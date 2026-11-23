@@ -727,6 +727,8 @@ mb.registerView("diff", "diff", {
       ...(typeof ctx.openFile === "function" ? { openFile: ctx.openFile } : {}),
       ...(ctx.unfold === true ? { unfold: true } : {}),
       ...(ctx.layout === "unified" || ctx.layout === "split" ? { layout: ctx.layout } : {}),
+      ...(ctx.show === "diff" || ctx.show === "current" ? { show: ctx.show } : {}),
+      ...(typeof ctx.showPreference === "string" ? { showPreference: ctx.showPreference } : {}),
       ...(typeof ctx.emptyText === "string" ? { emptyText: ctx.emptyText } : {}),
       viewFile,
       ...(!rendered

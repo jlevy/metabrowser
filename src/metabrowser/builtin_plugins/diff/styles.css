@@ -32,7 +32,7 @@
 
 /* The toolbar draws no rule under itself (mb-a073): the first file card's own border, its
    12 px margin below, is the line between the toolbar and the files, and on a commit's or a
-   pull request's page, where the toolbar holds the layout control alone, a rule there would
+   pull request's page, where the toolbar holds the diff's choosers alone, a rule there would
    draw a second line 12 px above it. Where the toolbar leads with the Diff summary, its
    header is the tree's root, and the tree opens under it as it does at a page's top, with
    no line between them. The toolbar is not sticky, so nothing scrolls under it. */
@@ -180,12 +180,16 @@
   );
 }
 
-.metabrowser-diff-host .diff-layout-control {
+/* The diff's choosers end the toolbar, on one line at its right: Diff | Current
+   (`renderShowControl` in diff-view.js), then Split | Unified, or Diff | Current alone
+   where the host fixes the layout, as a pull request's Docs tab does. The first of them
+   takes the toolbar's free space. */
+.metabrowser-diff-host :is(.diff-show-control, .diff-layout-control) {
   flex: none;
   margin-left: auto;
 }
 
-/* The File type filter (diff-type-filter.js) leads the layout control at the toolbar's end:
+/* The File type filter (diff-type-filter.js) leads the choosers at the toolbar's end:
    the menu, how many files it keeps, and Clear. */
 .metabrowser-diff-host .diff-type-control {
   display: flex;
@@ -195,7 +199,9 @@
   margin-left: auto;
 }
 
-.metabrowser-diff-host .diff-type-control + .diff-layout-control {
+.metabrowser-diff-host
+  :is(.diff-type-control, .diff-show-control)
+  + :is(.diff-show-control, .diff-layout-control) {
   margin-left: 0;
 }
 
@@ -480,6 +486,12 @@
   line-height: 1.5;
 }
 
+/* Current draws the new file's lines in one column, at their new numbers alone
+   (`renderCurrentLine` in diff-view.js), so the row has one number column. */
+.metabrowser-diff-host .diff-hunk-current .diff-line {
+  grid-template-columns: 3.5em 1.25em 1fr;
+}
+
 .metabrowser-diff-host .diff-hunk-split {
   min-width: 44em;
 }
@@ -678,6 +690,13 @@
 }
 
 .metabrowser-diff-host :is(.diff-markdown, .diff-structured, .diff-file-body)[hidden] {
+  display: none;
+}
+
+/* What Current leaves out of rendered Markdown, its removed blocks and front matter keys,
+   which the format controller hides by the attribute (`removedParts` in diff-markdown.js):
+   hidden whatever display a block's own styles give it. */
+.metabrowser-diff-host :is(.diff-markdown-block, .diff-markdown-frontmatter :is(dt, dd))[hidden] {
   display: none;
 }
 

@@ -9,7 +9,8 @@
 // [data-mb-copy] delegation; the inline +N −N stat pair and change
 // notes; then the View file controls of diff-view-file.js when the page
 // can open a file at a commit; and, at the bar's end, a file's
-// Rendered | Source chooser (diff-markdown.js). Sections start
+// Rendered | Source chooser (diff-markdown.js). The diff's own choosers,
+// Diff | Current and Split | Unified, end its toolbar. Sections start
 // expanded; the bar collapses the body without disposing it.
 // Every availability state has exactly one rendering path — an absent
 // patch is a labeled state, never an empty box. Rendering is
@@ -106,6 +107,25 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {((path: string) => void) | null} openFile How the host opens one changed file
  *   at its own address, or null where a file has none in this diff.
  * @property {boolean} unfold Whether folds open as they are drawn (*unfold*).
+ * @property {Shown} show What the diff shows, one choice for every file (`setShow`).
+ * @property {string} showPreference The preference the choice is remembered as: the
+ *   surface's own (*showPreference*), or `diff.show`.
+ * @property {HTMLElement | null} showControl The toolbar's Diff | Current chooser.
+ * @property {MetabrowserPublicPluginShortcutHandle | null} showKey `N`, on the chip it would
+ *   select in the toolbar's chooser (`attachShowKey`).
+ */
+
+/**
+ * What a diff shows: its changes, or the new version alone with its changes marked.
+ *
+ * @typedef {"diff" | "current"} Shown
+ */
+
+/**
+ * What a file's code rows are drawn as: its changes in one of the two layouts, or, in
+ * Current, its new version in one column whatever the layout (`projectionOf`).
+ *
+ * @typedef {"unified" | "split" | "current"} Projection
  */
 
 /**
@@ -290,6 +310,9 @@ const FILE_BORDER_PX = 2;
 export const SPLIT_RETURN_MARGIN_PX = 20;
 const SPLIT_TOO_NARROW_TIP =
   "Too narrow for Split, so this shows Unified. Choose Split to scroll sideways.";
+// Why the layout chips are unavailable while the diff shows Current (`renderLayoutControl`).
+const LAYOUT_IN_CURRENT_TIP =
+  "Current shows the new version in one column; choose Diff for Split or Unified.";
 
 /** @param {string} tag @param {string} className @param {string} [text] */
 function el(tag, className, text) {
@@ -644,6 +667,103 @@ function renderSplitHunk(hunk, state, hunkIndex) {
 }
 
 /**
+ * The rows a hunk draws in Current: its lines of the new file, context and added, in order.
+ * Pure.
+ *
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
+ */
+export function projectCurrentHunk(hunk) {
+  return hunk.lines.filter((line) => line.op !== "del");
+}
+
+/**
+ * A line of the new file: its new number alone, and its marker, so an added line says so
+ * by more than its color.
+ *
+ * @param {FileViewState} state
+ * @param {DiffLine} line
+ */
+function renderCurrentLine(state, line) {
+  const refined = line.intralineRefined ? " diff-line-refined" : "";
+  const row = el("div", `diff-line diff-line-${line.op}${refined}`);
+  row.append(
+    el("span", "diff-line-number", line.newNumber === null ? "" : String(line.newNumber)),
+    el("span", "diff-line-marker", line.op === "add" ? "+" : " "),
+    renderTextHost(state, line, "new"),
+  );
+  if (line.noNewline) {
+    row.append(el("span", "diff-line-no-newline", "⏎ absent"));
+    row.dataset.tipText = "No newline at end of file";
+  }
+  return row;
+}
+
+/**
+ * A hunk in Current: its header names the new side's range alone, and a changed run folds
+ * by the rows Current draws of it, under the key Diff's fold of that run has.
+ *
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
+ * @param {DiffLine[]} rows `projectCurrentHunk`'s.
+ * @param {FileViewState} state
+ * @param {number} hunkIndex
+ */
+function renderCurrentHunk(hunk, rows, state, hunkIndex) {
+  const section = el("div", "diff-hunk diff-hunk-current");
+  const heading = hunk.heading ? ` ${hunk.heading}` : "";
+  section.append(
+    el("div", "diff-hunk-header", `@@ +${hunk.newStart},${hunk.newCount} @@${heading}`),
+  );
+  appendFoldedRows(
+    section,
+    rows,
+    (line) => line.changedRun,
+    (line) => renderCurrentLine(state, line),
+    state,
+    hunkIndex,
+  );
+  return section;
+}
+
+/**
+ * What a file with no lines in its new version says in Current, or null for one that has
+ * lines: a deleted file, and a file left empty, whose one hunk ends at the new side's line
+ * 0. Pure.
+ *
+ * @param {Record<string, unknown>} change
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"]} hunks
+ * @returns {string | null}
+ */
+export function currentAbsence(change, hunks) {
+  if (String(change.kind) === "deleted") {
+    return "This file was deleted, so it has no current version.";
+  }
+  if (hunks.length > 0 && hunks.every((hunk) => hunk.newStart === 0 && hunk.newCount === 0)) {
+    return "This file is empty now.";
+  }
+  return null;
+}
+
+/**
+ * Draw a file's Current: each hunk's lines of the new file. A hunk that only removed lines,
+ * with no context around it, has none and is left out.
+ *
+ * @param {FileViewState} state
+ */
+function renderCurrentBody(state) {
+  const absence = currentAbsence(state.change, state.renderModel.hunks);
+  if (absence !== null) {
+    state.body.append(el("div", "diff-availability diff-current-absent", absence));
+    return;
+  }
+  for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
+    const rows = projectCurrentHunk(hunk);
+    if (rows.length > 0) {
+      state.body.append(renderCurrentHunk(hunk, rows, state, hunkIndex));
+    }
+  }
+}
+
+/**
  * Build the cached semantic state shared by every projection.
  * @param {Record<string, unknown>} change
  * @param {Record<string, unknown>} patch
@@ -682,7 +802,7 @@ export function createFileState(change, patch, api, body, unfold = false) {
 /**
  * Render one active projection from cached source and token facts.
  * @param {FileViewState} state
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 export function renderFileBody(state, layout) {
   cancelFoldMaterializations(state);
@@ -692,12 +812,16 @@ export function renderFileBody(state, layout) {
     () => {
       state.body.replaceChildren();
       state.textHosts = [];
-      for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
-        state.body.append(
-          layout === "split"
-            ? renderSplitHunk(hunk, state, hunkIndex)
-            : renderUnifiedHunk(hunk, state, hunkIndex),
-        );
+      if (layout === "current") {
+        renderCurrentBody(state);
+      } else {
+        for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
+          state.body.append(
+            layout === "split"
+              ? renderSplitHunk(hunk, state, hunkIndex)
+              : renderUnifiedHunk(hunk, state, hunkIndex),
+          );
+        }
       }
       if (state.patch.truncated) {
         state.body.append(
@@ -760,7 +884,7 @@ function refreshTextHosts(state) {
  * @param {DiffViewApi} api
  * @param {AbortSignal} signal
  * @param {() => boolean} isCurrent
- * @param {() => "unified" | "split" | null} currentLayout `null` until a layout is drawn.
+ * @param {() => Projection | null} currentLayout `null` until a layout is drawn.
  */
 async function enhanceFileIntraline(state, api, signal, isCurrent, currentLayout) {
   try {
@@ -886,7 +1010,7 @@ function scheduleFileEnhancement(view, state) {
       api,
       view.controller.signal,
       () => mountIsCurrent(view, generation),
-      () => (view.awaitingWidth ? null : view.layout),
+      () => (view.awaitingWidth ? null : projectionOf(view)),
     );
     await enhanceFileSyntax(state, api, view.controller.signal, () =>
       mountIsCurrent(view, generation),
@@ -1081,6 +1205,7 @@ function repaintViewFileControls(view) {
  * disclosure trigger (kind, path), the copy control right after the name, the change's
  * stats and notes, which describe the trigger, and the View file controls. Its end group
  * holds a file's Rendered | Source chooser alone (diff-markdown.js), at the bar's far end.
+ * Diff | Current is the whole diff's, in its toolbar (`renderShowControl`).
  *
  * @param {Record<string, unknown>} change
  * @param {string} toggleId
@@ -1284,18 +1409,32 @@ function renderLayoutControl(view) {
   }
   // The control shows what the diff draws. While Split does not fit that is Unified, and
   // the reader's choice waits in `chosenLayout`, so Split says why it is not selected.
+  // While the diff shows Current, one column whatever the layout, it keeps its place and
+  // shows the layout Diff draws, and both chips say why neither can be chosen. They are
+  // `aria-disabled`, not `disabled`, so the pointer and the keyboard reach what they say.
+  const current = view.show === "current";
   const fellBack = view.chosenLayout === "split" && view.layout === "unified";
+  const splitTip = current ? LAYOUT_IN_CURRENT_TIP : fellBack ? SPLIT_TOO_NARROW_TIP : null;
   control.innerHTML = filterControls.groupHtml({
     key: "diff-layout",
     label: "Diff layout",
     layout: "joined",
     options: [
-      { label: "Split", value: "split", ...(fellBack ? { tip: SPLIT_TOO_NARROW_TIP } : {}) },
-      { label: "Unified", value: "unified" },
+      { label: "Split", value: "split", ...(splitTip ? { tip: splitTip } : {}) },
+      { label: "Unified", value: "unified", ...(current ? { tip: LAYOUT_IN_CURRENT_TIP } : {}) },
     ],
     select: "one",
     value: view.layout,
   });
+  if (current) {
+    for (const chip of control.querySelectorAll("[data-chip-value]")) {
+      chip.setAttribute("aria-disabled", "true");
+      chip.setAttribute(
+        "aria-label",
+        `${chip.getAttribute("data-chip-value") === "split" ? "Split" : "Unified"}, unavailable. ${LAYOUT_IN_CURRENT_TIP}`,
+      );
+    }
+  }
   // The markup is new, so `L`'s badge moves to the new chip it would select.
   const option = view.layoutKey ? layoutKeyOption(view) : null;
   if (option) {
@@ -1337,7 +1476,8 @@ export function toggleLayout(view) {
  * @param {boolean} [persist]
  */
 export function setLayout(view, value, persist = true) {
-  if (view.disposed) {
+  // Current is one column whatever the layout, so neither chip, nor `L`, changes anything.
+  if (view.disposed || view.show === "current") {
     return;
   }
   const layout = value === "split" ? "split" : "unified";
@@ -1350,6 +1490,165 @@ export function setLayout(view, value, persist = true) {
     view.api?.prefs?.set("diff.layout", layout);
   }
   drawLayout(view, layout);
+}
+
+// ── Diff | Current ──────────────────────────────────────────────
+//
+// One choice for the whole diff, as the layout is, in its toolbar beside Split | Unified:
+// choosing draws every file again. docs/project/specs/active/
+// plan-2026-11-23-diff-current-chooser.md has the reasons.
+
+/**
+ * Draw the toolbar's Diff | Current chooser from the diff's choice. Focus in it stays on the
+ * chosen chip: the markup is new. `N`'s badge moves to the new chip it would select.
+ *
+ * @param {MountedDiffState} view
+ */
+function renderShowControl(view) {
+  const control = view.showControl;
+  const filterControls = view.api?.filterControls;
+  if (!control || !filterControls) {
+    return;
+  }
+  const active = /** @type {Element | null | undefined} */ (globalThis.document?.activeElement);
+  const restore = active != null && control.contains?.(active) === true;
+  control.innerHTML = filterControls.groupHtml({
+    key: "diff-show",
+    label: "Diff or current version",
+    layout: "joined",
+    options: [
+      { label: "Diff", value: "diff", tip: "Show what changed, removals included" },
+      { label: "Current", value: "current", tip: "Show the new version alone, its changes marked" },
+    ],
+    select: "one",
+    value: view.show,
+  });
+  if (restore) {
+    /** @type {HTMLElement | null} */ (
+      control.querySelector(`[data-chip-value="${view.show}"]`)
+    )?.focus();
+  }
+  const option = view.showKey ? showKeyOption(view) : null;
+  if (option) {
+    view.showKey?.retarget(option);
+  }
+}
+
+/**
+ * What the diff shows when it opens: the reader's last choice on this surface, stored as
+ * *preference*, or the surface's own default (*fallback*) for a reader who never chose there
+ * or a stored value that is not a choice. A pull request's Docs tab opens on Current and
+ * remembers its choice apart; every other surface opens on Diff and shares `diff.show`.
+ *
+ * @param {DiffViewApi | undefined} api
+ * @param {string} [preference]
+ * @param {Shown} [fallback]
+ * @returns {Shown}
+ */
+export function readShowPreference(api, preference = "diff.show", fallback = "diff") {
+  const value = api?.prefs?.get(preference, /** @type {unknown} */ (fallback));
+  return value === "current" || value === "diff" ? value : fallback;
+}
+
+/**
+ * The reader's choice of what the diff shows: store it, so this surface's diffs open in it,
+ * and draw it. The file at the pane's top keeps its place on the screen; a file a jump
+ * pinned keeps the pane's top.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} value
+ */
+export function setShow(view, value) {
+  if (view.disposed) {
+    return;
+  }
+  const show = value === "current" ? "current" : "diff";
+  if (show === view.show) {
+    return;
+  }
+  const place = view.pinned === null ? placeOfTopFile(view) : null;
+  view.show = show;
+  view.api?.prefs?.set(view.showPreference, show);
+  drawShow(view, place);
+}
+
+/**
+ * `N`: switch the diff between Diff and Current, exactly as clicking the other chip does.
+ *
+ * @param {MountedDiffState} view
+ */
+export function toggleShow(view) {
+  setShow(view, view.show === "current" ? "diff" : "current");
+}
+
+/**
+ * The chip `N` would select, the one not checked: what its badge sits on.
+ *
+ * @param {MountedDiffState} view
+ * @returns {HTMLElement | null}
+ */
+function showKeyOption(view) {
+  const other = view.show === "current" ? "diff" : "current";
+  return /** @type {HTMLElement | null} */ (
+    view.showControl?.querySelector(`[data-chip-value="${other}"]`) ?? null
+  );
+}
+
+/**
+ * Give the diff its `N`, once, on the toolbar's chooser, drawn before this runs. Each later
+ * draw retargets it (`renderShowControl`), and dispose() detaches it.
+ *
+ * @param {MountedDiffState} view
+ */
+function attachShowKey(view) {
+  const shortcuts = view.api?.shortcuts;
+  const option = typeof shortcuts?.attach === "function" ? showKeyOption(view) : null;
+  if (!shortcuts || !option) {
+    return;
+  }
+  view.showKey = shortcuts.attach(option, {
+    activate: () => toggleShow(view),
+    copy: {
+      action: "Toggle Diff or Current",
+      description: "Switch the diff between what changed and the new version alone.",
+      hint: "Current",
+    },
+    group: "controls",
+    id: "diff.show",
+    key: "n",
+    order: 41,
+  });
+}
+
+/**
+ * What the diff's code rows are drawn as now: Current whatever the layout, or the layout.
+ *
+ * @param {MountedDiffState} view
+ * @returns {Projection}
+ */
+function projectionOf(view) {
+  return view.show === "current" ? "current" : view.layout;
+}
+
+/**
+ * Draw what the diff shows now: the toolbar's choosers, the code rows of every file, and the
+ * Rendered layer's files.
+ *
+ * @param {MountedDiffState} view
+ * @param {{section: HTMLElement, top: number} | null} anchor
+ */
+function drawShow(view, anchor) {
+  view.root.dataset.show = view.show;
+  renderShowControl(view);
+  renderLayoutControl(view);
+  view.markdown?.controller.show(view.show === "current");
+  if (view.awaitingWidth) {
+    // Nothing is drawn before the first width, which draws what is chosen then.
+    holdPlace(view, anchor);
+  } else {
+    reproject(view, anchor);
+  }
+  view.notifyCurrentFile();
 }
 
 /**
@@ -1381,31 +1680,51 @@ function fitLayout(view, width) {
 }
 
 /**
- * Reproject cached file state.
+ * Draw the diff in *layout*. In Current the rows are one column whatever the layout, so
+ * only the first width, before which nothing was drawn, draws them.
  *
  * @param {MountedDiffState} view
  * @param {"unified" | "split"} layout
  */
 function drawLayout(view, layout) {
+  const first = view.awaitingWidth;
   view.awaitingWidth = false;
   view.layout = layout;
   view.root.dataset.layout = layout;
   renderLayoutControl(view);
   view.notifyCurrentFile();
+  if (first || view.show !== "current") {
+    reproject(view);
+  }
+}
+
+/**
+ * Reproject cached file state as `projectionOf` says, in batches above 100 files. With an
+ * *anchor*, that file keeps its place after each batch; without one, as for a layout, the
+ * browser's scroll anchoring keeps it.
+ *
+ * @param {MountedDiffState} view
+ * @param {{section: HTMLElement, top: number} | null} [anchor]
+ */
+function reproject(view, anchor) {
+  const projection = projectionOf(view);
   for (const file of view.deferred.values()) {
-    reserveFileBody(file, layout);
+    reserveFileBody(file, projection);
   }
   view.layoutGeneration += 1;
   const layoutGeneration = view.layoutGeneration;
   if (view.files.length <= LAYOUT_PROJECTION_BATCH_FILES) {
     delete view.root.dataset.layoutPending;
     for (const state of view.files) {
-      renderFileBody(state, layout);
+      renderFileBody(state, projection);
+    }
+    if (anchor !== undefined) {
+      holdPlace(view, anchor);
     }
     return;
   }
   view.root.dataset.layoutPending = "true";
-  projectLayoutBatch(view, layout, layoutGeneration, 0);
+  projectLayoutBatch(view, projection, layoutGeneration, 0, anchor);
 }
 
 /**
@@ -1413,11 +1732,12 @@ function drawLayout(view, layout) {
  * check makes a rapid second switch authoritative without cancelling shared
  * hydration or syntax work.
  * @param {MountedDiffState} view
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  * @param {number} layoutGeneration
  * @param {number} start
+ * @param {{section: HTMLElement, top: number} | null} [anchor] Held after each batch.
  */
-function projectLayoutBatch(view, layout, layoutGeneration, start) {
+function projectLayoutBatch(view, layout, layoutGeneration, start, anchor) {
   if (view.disposed || view.layoutGeneration !== layoutGeneration) {
     return;
   }
@@ -1425,13 +1745,16 @@ function projectLayoutBatch(view, layout, layoutGeneration, start) {
   for (let index = start; index < end; index += 1) {
     renderFileBody(view.files[index], layout);
   }
+  if (anchor !== undefined) {
+    holdPlace(view, anchor);
+  }
   if (end >= view.files.length) {
     delete view.root.dataset.layoutPending;
     return;
   }
   const timer = setTimeout(() => {
     view.timers.delete(timer);
-    projectLayoutBatch(view, layout, layoutGeneration, end);
+    projectLayoutBatch(view, layout, layoutGeneration, end, anchor);
   }, 0);
   view.timers.add(timer);
 }
@@ -1834,15 +2157,16 @@ function wholeTotalsOf(manifest, given) {
 }
 
 /**
- * The layout control is present in the shell unless the host fixes the layout
- * (*chooseLayout* false), as a pull request's Docs tab does. A multi-file diff's toolbar leads
- * with its Diff summary; single-file views avoid repeating their file bar. A page that places
- * the summary at its own top passes the place (*summaryHost*), as a commit's page does
- * (mb-pb35): the summary is drawn there, for one file too, since there it stands for the
- * change set's totals, and the toolbar holds the layout control alone. *whole* is the
- * change set's whole totals, where its list was cut short and the page knows them
+ * The toolbar ends with the diff's choosers: Diff | Current, then the layout control, which
+ * is present in the shell unless the host fixes the layout (*chooseLayout* false), as a pull
+ * request's Docs tab does, where Diff | Current ends the toolbar alone. A multi-file diff's
+ * toolbar leads with its Diff summary; single-file views avoid repeating their file bar. A
+ * page that places the summary at its own top passes the place (*summaryHost*), as a
+ * commit's page does (mb-pb35): the summary is drawn there, for one file too, since there it
+ * stands for the change set's totals, and the toolbar holds the choosers alone. *whole* is
+ * the change set's whole totals, where its list was cut short and the page knows them
  * (`wholeTotalsOf`). A *control* the host keeps across mounts, a narrowed diff's File type
- * control, leads the layout control.
+ * control, leads the choosers.
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files
  * @param {MountedDiffState} view
@@ -1890,8 +2214,29 @@ function renderDiffToolbar(
   if (hostControl !== null) {
     toolbar.append(hostControl);
   }
+  const show = el("div", "diff-show-control");
+  view.showControl = show;
+  renderShowControl(view);
+  toolbar.append(show);
+  const unbindShow = filterControls.bind(show, {
+    onChange(key, value, select) {
+      if (key === "diff-show" && select === "one") {
+        setShow(view, value);
+      }
+    },
+  });
+  // Once, after the first draw, as `L` below: every host reaches this view through the
+  // plugin's render, so a diff file, the Git commit view, and a pull request's Changes and
+  // Docs all have `N`.
+  attachShowKey(view);
   if (!chooseLayout) {
-    return { toolbar, unbind: () => disposeSummary?.() };
+    return {
+      toolbar,
+      unbind: () => {
+        unbindShow();
+        disposeSummary?.();
+      },
+    };
   }
   const control = el("div", "diff-layout-control");
   view.layoutControl = control;
@@ -1905,6 +2250,7 @@ function renderDiffToolbar(
     },
   });
   const unbind = () => {
+    unbindShow();
     unbindControls();
     disposeSummary?.();
   };
@@ -2254,17 +2600,32 @@ function isAbortError(error) {
 }
 
 /**
+ * The rows a changed run of *adds* added and *dels* removed lines draws: Split pairs them,
+ * Unified draws each, and Current draws the added alone. Pure.
+ *
+ * @param {number} adds
+ * @param {number} dels
+ * @param {Projection} layout
+ */
+function changedRows(adds, dels, layout) {
+  if (layout === "split") {
+    return Math.max(adds, dels);
+  }
+  return layout === "current" ? adds : adds + dels;
+}
+
+/**
  * Rows a deferred file should reserve until it arrives. An estimate from the manifest's line
  * counts, in the layout it will draw: a long run folds to its visible rows, and a change on
  * both sides has context around it. Pure.
  *
  * @param {Record<string, unknown>} change
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 export function reservedRows(change, layout) {
   const adds = Number(change.additions ?? 0);
   const dels = Number(change.deletions ?? 0);
-  const changed = layout === "split" ? Math.max(adds, dels) : adds + dels;
+  const changed = changedRows(adds, dels, layout);
   const shown = FOLD_THRESHOLD > 0 && changed > FOLD_THRESHOLD ? FOLD_VISIBLE + 1 : changed;
   const context = adds > 0 && dels > 0 ? 6 : 0;
   return shown + context + 1;
@@ -2277,7 +2638,7 @@ export function reservedRows(change, layout) {
  * height accounts for each row kind separately. Soft-wrapped code can grow. Pure.
  *
  * @param {Record<string, unknown>} patch
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 export function patchRows(patch, layout) {
   const { lines, headers, folds, notices } = patchRowCounts(patch, layout);
@@ -2286,18 +2647,22 @@ export function patchRows(patch, layout) {
 
 /**
  * Count each differently sized row without drawing held lines. Soft-wrapped code can
- * grow after rendering; the single-line chrome has its exact shared CSS metrics.
+ * grow after rendering; the single-line chrome has its exact shared CSS metrics. Current
+ * leaves out a hunk with no line of the new file, header and all.
  * @param {Record<string, unknown>} patch
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 export function patchRowCounts(patch, layout) {
   const rows = { lines: 0, headers: 0, folds: 0, notices: patch.truncated ? 1 : 0 };
   for (const hunk of /** @type {{lines?: {op?: unknown}[]}[]} */ (patch.hunks ?? [])) {
+    if (layout === "current" && (hunk.lines ?? []).every((line) => line.op === "del")) {
+      continue;
+    }
     rows.headers += 1;
     let adds = 0;
     let dels = 0;
     const endRun = () => {
-      const run = layout === "split" ? Math.max(adds, dels) : adds + dels;
+      const run = changedRows(adds, dels, layout);
       const folded = FOLD_THRESHOLD > 0 && run > FOLD_THRESHOLD;
       rows.lines += folded ? FOLD_VISIBLE : run;
       rows.folds += folded ? 1 : 0;
@@ -2355,7 +2720,7 @@ function reserveBody(body, rows) {
  * Reserve the rows this file will draw in the current layout. Held answers use
  * their patch; a file not fetched yet uses the manifest estimate.
  * @param {DeferredFile} file
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 function reserveFileBody(file, layout) {
   if (file.held !== null) {
@@ -2364,7 +2729,7 @@ function reserveFileBody(file, layout) {
   }
   const adds = Number(file.change.additions ?? 0);
   const dels = Number(file.change.deletions ?? 0);
-  const changed = layout === "split" ? Math.max(adds, dels) : adds + dels;
+  const changed = changedRows(adds, dels, layout);
   const folds = FOLD_THRESHOLD > 0 && changed > FOLD_THRESHOLD ? 1 : 0;
   reserveBody(file.body, {
     lines: reservedRows(file.change, layout) - 1 - folds,
@@ -2539,7 +2904,7 @@ function spliceDeferred(file, loaded, view) {
   }
   const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body, view.unfold);
   if (!view.awaitingWidth) {
-    renderFileBody(state, view.layout);
+    renderFileBody(state, projectionOf(view));
   }
   // Only a file whose rows are in the page is a file of the view: one whose render threw
   // would throw again at every relayout.
@@ -2601,7 +2966,7 @@ function queueDeferredHydration(section, body, change, revision, view, held = nu
   });
   view.deferredBySection.set(section, id);
   view.hydration.add(id, view.deferred.size);
-  reserveFileBody(/** @type {DeferredFile} */ (view.deferred.get(id)), view.layout);
+  reserveFileBody(/** @type {DeferredFile} */ (view.deferred.get(id)), projectionOf(view));
 }
 
 /** @param {MountedDiffState} view */
@@ -3004,6 +3369,7 @@ function renderFileSection(change, patch, context, view, draw) {
           source: body,
           id: String(change.id),
           format,
+          gone: String(change.kind) === "deleted",
           // A file whose changes did not load has no Rendered either, for the reason its
           // body gives below.
           ...(availability === "ready" || availability === "deferred"
@@ -3065,7 +3431,7 @@ function renderFileSection(change, patch, context, view, draw) {
   const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body, view.unfold);
   view.files.push(state);
   if (!view.awaitingWidth) {
-    renderFileBody(state, view.layout);
+    renderFileBody(state, projectionOf(view));
   }
   scheduleFileEnhancement(view, state);
   return section;
@@ -3079,7 +3445,7 @@ function renderFileSection(change, patch, context, view, draw) {
  * @param {Record<string, unknown>} change
  * @param {Record<string, unknown> | undefined} patch
  * @param {{revision?: string}} context
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 function bodyRows(change, patch, context, layout) {
   const availability = String(change.availability);
@@ -3217,7 +3583,9 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   toolbarControl?: HTMLElement | null,
  *   emptyText?: string,
  *   unfold?: boolean,
- *   layout?: "unified" | "split"
+ *   layout?: "unified" | "split",
+ *   show?: "diff" | "current",
+ *   showPreference?: string
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
@@ -3238,7 +3606,12 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   shows its files whole: a pull request's Docs tab. *layout* is a layout the host fixes:
  *   the diff draws it, apart from the fallback where Split does not fit, with no layout
  *   control and no `L`, and neither reads nor writes the reader's stored choice. A pull
- *   request's Docs tab draws Unified, the form its rendered documents take.
+ *   request's Docs tab draws Unified, the form its rendered documents take. *show* is what
+ *   the toolbar's Diff | Current opens on before the reader chooses on this surface, Diff
+ *   unless the host says Current, and *showPreference* the preference the choice is
+ *   remembered as, `diff.show` unless the host keeps its own; a stored value that is not a
+ *   choice reads as *show*. A pull request's Docs tab opens on Current and remembers its
+ *   choice as `github.docs.show`, so neither its choice nor Changes' moves the other.
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, sectionForPath: (path: string) => HTMLElement | null, pathForSection: (section: Element) => string | null, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
@@ -3246,6 +3619,10 @@ export function mountDiffView(container, document_, api, options = {}) {
   const fixedLayout =
     options.layout === "unified" || options.layout === "split" ? options.layout : null;
   const chosenLayout = fixedLayout ?? readLayoutPreference(api);
+  const showPreference =
+    typeof options.showPreference === "string" && options.showPreference !== ""
+      ? options.showPreference
+      : "diff.show";
   // Measured before the first draw, so a narrow pane never draws Split to throw it away. A
   // container that is not laid out yet has no width, as a commit's stage has none until it
   // is placed, so nothing is drawn until its first report decides.
@@ -3294,6 +3671,10 @@ export function mountDiffView(container, document_, api, options = {}) {
     changedFiles: options.changedFiles ?? null,
     openFile: options.openFile ?? null,
     unfold: options.unfold === true,
+    show: readShowPreference(api, showPreference, options.show === "current" ? "current" : "diff"),
+    showPreference,
+    showControl: null,
+    showKey: null,
   };
   view.hydration = createHydrationScheduler(hydrationHost(view));
   if (
@@ -3310,6 +3691,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         ...(options.markdownTargets === undefined ? {} : { isTarget: options.markdownTargets }),
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
         unfold: options.unfold === true,
+        current: view.show === "current",
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;
@@ -3344,6 +3726,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     });
   }
   const removeSelectionGate = installSplitSelectionGate(root);
+  root.dataset.show = view.show;
   if (!view.awaitingWidth) {
     root.dataset.layout = view.layout;
   }
@@ -3365,8 +3748,9 @@ export function mountDiffView(container, document_, api, options = {}) {
     options.toolbarControl ?? null,
     fixedLayout === null,
   );
-  // A fixed layout leaves the toolbar what else it holds, and a toolbar with nothing in it,
-  // as on a pull request's Docs tab, is not drawn.
+  // A fixed layout leaves the toolbar what else it holds, Diff | Current on a pull request's
+  // Docs tab, and a toolbar with nothing in it, as where the chip family is not loaded, is not
+  // drawn.
   const drawsToolbar = fixedLayout === null || toolbar.children.length > 0;
   if (drawsToolbar) {
     root.append(toolbar);
@@ -3402,7 +3786,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         root.append(renderFileSection(change, patch, context, view, draw));
         if (screen !== null) {
           estimatedTop +=
-            screen.barPx + bodyRows(change, patch, context, view.layout) * screen.rowPx;
+            screen.barPx + bodyRows(change, patch, context, projectionOf(view)) * screen.rowPx;
         }
       }
       if (manifest.truncated) {
@@ -3646,6 +4030,8 @@ export function mountDiffView(container, document_, api, options = {}) {
       view.viewFile?.dispose();
       view.layoutKey?.detach();
       view.layoutKey = null;
+      view.showKey?.detach();
+      view.showKey = null;
       unbind();
       removeSelectionGate();
       root.remove();

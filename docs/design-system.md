@@ -1256,7 +1256,7 @@ state looks like.
 
 | Offers | Primitive | ARIA and keyboard | Used by |
 | --- | --- | --- | --- |
-| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags, and for a checkout Branches / Tags / Remotes |
+| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Diff / Current, Rendered / Source, Files / Bytes, Branches / Tags, and for a checkout Branches / Tags / Remotes |
 | Any of a set of labelled values | `.chip-group[data-select="many"]` | `group` of buttons with `aria-pressed`; each a tab stop | An agent log’s event types |
 | One of a few values in a menu, where the glyph is the label | `.menu-chooser` of `.menu-seg` | `group` of `menuitemradio` with `aria-checked`; each a tab stop | Theme and reading font |
 | One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector of a mirror and of a checkout |
@@ -1281,8 +1281,9 @@ Build a chip group with `metabrowser.filterControls.groupHtml` and `bind`, inclu
 outside a filter bar: an exclusive choice is the same control whatever it chooses.
 A consumer may repaint the group from its state on every change, and `bind` puts focus
 back on the chosen chip, so the arrow keys keep working.
-Every changed file of a rendered format has a Rendered | Source chooser, whatever its
-size and whatever the server answers.
+A diff’s toolbar has a Diff | Current chooser beside Split | Unified, one choice for the
+whole diff ([Diff Toolbar](#diff-toolbar)). Every changed file of a rendered format has
+a Rendered | Source chooser, whatever its size and whatever the server answers.
 Where only Source can be shown, Rendered keeps its place, dimmed and `aria-disabled`,
 and its tooltip and accessible name say why: a disabled button takes no pointer and no
 focus, so nothing could say it.
@@ -2443,7 +2444,9 @@ The stat pair and notes are not in the disclosure trigger but describe it
 The bar reveals the copy control while the pointer is on it or the keyboard’s focus is
 in it; unseen, the control keeps its place, so nothing moves when it shows.
 The bar ends with a file’s **Rendered** | **Source** chooser alone, so the chooser is at
-the far end of every bar that has one, on Docs and Changes alike.
+the far end of every bar that has one, on Docs and Changes alike:
+`[spinner] [Rendered | Source]`. **Diff** | **Current** chooses for the whole diff, so
+it is in the diff’s [toolbar](#diff-toolbar), not on a bar.
 A long path is cut short on one line with its copy control, stats, and View file still
 after it.
 
@@ -2454,9 +2457,10 @@ On a pull request’s Changes, a changed Markdown file’s bar carries that choo
 joined chip pair, and before it a small spinner that keeps its place in the bar and
 appears only after the loading-state delay while the rendered view is on its way.
 Such a bar wraps where its two groups do not fit one line: the name’s group keeps the
-first line, and the group at the bar’s end takes the next, still at the bar’s end.
-A file that falls back permanently to Source loses the chooser and the spinner, and its
-bar lays out as any other file’s, with a long path truncated on one line.
+first line, and the group at the bar’s end takes the next, still at the bar’s end; an
+end group wider than the bar wraps too, each of its lines at the bar’s end, so no
+control is cut off. A bar with no chooser, as a code file’s, lays out as any other
+file’s, with a long path truncated on one line.
 Where the main UI can show the file the change makes, the name’s group ends with one
 quiet text action that opens it there, with the tree, the tabs, and the ref selector
 around it: **View file** on a commit’s diff, at the commit, and **View on branch** on a
@@ -2510,13 +2514,40 @@ green or red literals.
 The gutter is an inset decoration on the first line-number cell, not a grid column or
 added element, so context and changed rows retain identical line number and text
 alignment. Unified and split layouts consume the same `.diff-line-add`/`.diff-line-del`
-and `.diff-intraline-change` vocabulary.
+and `.diff-intraline-change` vocabulary, and **Current** draws the new file’s lines in
+it too: an added line keeps its fills and gutter, and no deleted line is drawn.
 
 The line marker and line numbers continue to state change direction without color.
 The gutter is a persistent structural cue, not the only cue.
 Syntax foregrounds retain at least 4.5:1 contrast over line surfaces in both themes, and
 intraline ranges use the standard text foreground to meet the same floor over their
 stronger overlay.
+
+### Diff Toolbar
+
+The diff’s toolbar ends with its choosers for the whole diff, on one line at its right:
+`[Diff | Current] [Split | Unified]`. A pull request’s Docs tab fixes the layout, so its
+toolbar holds **Diff** | **Current** alone, at the same end.
+Where the diff has a [File type](#diff-file-type-control) control, it leads them.
+On a commit’s page and a pull request’s Changes and Docs the toolbar holds nothing else,
+since the page draws the [Diff summary](#diff-summary) at its top; a patch’s toolbar
+leads with the summary.
+
+Each chooser chooses one thing, and its scope is what it chooses:
+
+| Chooser | Chooses | Where, and for what | Remembered as | Key |
+| --- | --- | --- | --- | --- |
+| **Diff** \| **Current** | What changed, or the new version alone | The diff’s toolbar, for the whole diff | `diff.show`; on Docs, `github.docs.show` | `N` |
+| **Split** \| **Unified** | How the code rows are laid out | The diff’s toolbar, for the whole diff | `diff.layout` | `L` |
+| **Rendered** \| **Source** | How one file is drawn | A rendered-format file’s bar, for that file | Not remembered | None |
+
+Each surface opens on its own **Diff** | **Current** and keeps its own choice: Changes,
+a commit’s page, and a patch open on **Diff** and share `diff.show`; Docs opens on
+**Current** and keeps `github.docs.show`, so a choice on one never moves the other.
+The page that mounts the diff passes its default and its preference; a stored value that
+is not a choice reads as that default.
+Choosing redraws every file, and the file at the pane’s top keeps its place on the
+screen.
 
 ### Diff Layout Control
 
@@ -2529,16 +2560,21 @@ tip on **Split** saying why; the stored choice is not touched, so Split returns 
 there is room, and choosing **Split** there draws it with a sideways scroll.
 A pull request’s Docs tab has no layout control and no `L`: a rendered document has no
 layout, so the tab draws a document’s text diff in **Unified**, one column as its
-rendered view is, whatever the stored choice, and with nothing else in its toolbar it
-draws none.
+rendered view is, whatever the stored choice, and its toolbar holds **Diff** |
+**Current** alone. While the diff shows **Current**, which is one column whatever the
+layout, the control keeps its place and shows the layout **Diff** draws, so nothing in
+the toolbar moves. Its chips are `aria-disabled`, not `disabled`, and their tooltip and
+accessible name say that Current shows the new version in one column and that **Diff**
+has Split and Unified; neither they nor `L` change the layout then, and **Diff** returns
+in it.
 
 The diff’s toolbar, which holds the control, draws no rule under itself.
 The first file card’s own border, at the cards’ 12 px gap below the toolbar’s padding,
 is the line between the toolbar and the files.
-On a commit’s page and a pull request’s Changes, where the toolbar holds the control
-alone, a rule there would draw a second line 12 px above the card’s. In a patch’s
-toolbar the [Diff summary](#diff-summary)’s header is its tree’s root, and the tree
-opens under it with no line between them, as it does at a page’s top.
+On a commit’s page and a pull request’s Changes and Docs, where the toolbar holds the
+diff’s choosers alone, a rule there would draw a second line 12 px above the card’s. In
+a patch’s toolbar the [Diff summary](#diff-summary)’s header is its tree’s root, and the
+tree opens under it with no line between them, as it does at a page’s top.
 The toolbar is not sticky, so nothing scrolls under it that a rule would separate.
 `tests/dom/diff-summary-chrome.mjs` reads in Chrome that a patch’s toolbar and a
 commit’s draw no rule and that the first card starts 12 px below them.

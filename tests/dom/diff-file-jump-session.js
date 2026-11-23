@@ -73,6 +73,11 @@ class LaidOutElement {
     const owner = this;
     this.classList = {
       contains: (name) => owner.className.split(" ").includes(name),
+      add(...names) {
+        for (const name of names) {
+          this.toggle(name, true);
+        }
+      },
       toggle(name, force) {
         const names = new Set(owner.className.split(" ").filter(Boolean));
         const want = force === undefined ? !names.has(name) : force;
@@ -494,8 +499,11 @@ async function main() {
       ...require("./changed-files-tree-fixture.js").shellPainters(),
       filterControls: {
         groupHtml: () => "",
-        bind(_control, options) {
-          changeLayout = (layout) => options.onChange("diff-layout", layout, "one");
+        bind(control, options) {
+          // The layout control's own binding; Diff | Current binds its own chooser.
+          if (control.classList.contains("diff-layout-control")) {
+            changeLayout = (layout) => options.onChange("diff-layout", layout, "one");
+          }
           return () => {};
         },
       },

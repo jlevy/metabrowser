@@ -27,7 +27,8 @@
  * }} Entry */
 /** @typedef {MetabrowserStructuredTreeRow} Row */
 /** @typedef {Pick<MetabrowserStructuredExports, "materializeRows" | "calculateOptimalExpansion" | "renderRowHtml" | "expansion">} TreeHelpers */
-/** @typedef {{open: Set<string>, shown: Map<string, number>, tree: TreeHelpers}} View */
+/** @typedef {{open: Set<string>, shown: Map<string, number>, tree: TreeHelpers, current: boolean}} View
+ *   *current*: the new version alone, every removed entry left out (`diffRows`). */
 
 // Rows the first draw mounts. In document order, a modified mapping or list opens while
 // its page of rows fits, and a whole added or removed value opens as the file view would
@@ -181,7 +182,8 @@ export function initialExpansion(root, tree) {
 }
 
 /**
- * An entry's rows at *path*, with its view's open paths open and its pages drawn.
+ * An entry's rows at *path*, with its view's open paths open and its pages drawn. In
+ * Current a removed entry has none, and a page counts the entries Current draws.
  * @param {Entry} entry
  * @param {string} path
  * @param {number} level
@@ -190,6 +192,9 @@ export function initialExpansion(root, tree) {
  * @param {Row[]} rows
  */
 function entryRows(entry, path, level, item, view, rows) {
+  if (view.current && entry.change === "removed") {
+    return;
+  }
   const key = entry.key ?? null;
   if (entry.change === "modified") {
     const children = entry.entries ?? [];
@@ -210,22 +215,33 @@ function entryRows(entry, path, level, item, view, rows) {
     if (!expanded) {
       return;
     }
-    const drawn = Math.min(children.length, view.shown.get(path) ?? PAGE);
-    for (let index = 0; index < drawn; index++) {
-      entryRows(children[index], `${path}/${index}`, level + 1, list, view, rows);
+    // Positions stay the merged tree's, so a path names the same entry in Diff and Current.
+    /** @param {Entry} child */
+    const drawsIn = (child) => !(view.current && child.change === "removed");
+    const limit = view.shown.get(path) ?? PAGE;
+    let index = 0;
+    for (let drawn = 0; index < children.length && drawn < limit; index++) {
+      if (drawsIn(children[index])) {
+        entryRows(children[index], `${path}/${index}`, level + 1, list, view, rows);
+        drawn++;
+      }
     }
-    if (drawn < children.length) {
-      let changed = 0;
-      for (let index = drawn; index < children.length; index++) {
+    let hidden = 0;
+    let changed = 0;
+    for (; index < children.length; index++) {
+      if (drawsIn(children[index])) {
+        hidden++;
         changed += children[index].change === "context" ? 0 : 1;
       }
+    }
+    if (hidden > 0) {
       rows.push({
         path: `${path}/+`,
         level: level + 1,
         kind: "more",
         key: null,
         isArrayIndex: false,
-        hidden: children.length - drawn,
+        hidden,
         changed,
         ...(changed ? { change: "modified" } : {}),
       });
@@ -252,16 +268,18 @@ function entryRows(entry, path, level, item, view, rows) {
  * The rows a merged tree draws with *open* paths open, in document order, each with its
  * change, and each open container's children a page at a time (*shown* maps a
  * container's path to how many it draws instead). A whole value's rows come from the
- * tree view's own `materializeRows`.
+ * tree view's own `materializeRows`. With *current*, the new version alone: every removed
+ * entry is left out, and a "more" row counts only the entries that draw.
  * @param {Entry[]} root
  * @param {Set<string>} open
  * @param {TreeHelpers} tree
  * @param {Map<string, number>} [shown]
+ * @param {boolean} [current]
  * @returns {Row[]}
  */
-export function diffRows(root, open, tree, shown = new Map()) {
+export function diffRows(root, open, tree, shown = new Map(), current = false) {
   /** @type {View} */
-  const view = { open, shown, tree };
+  const view = { open, shown, tree, current };
   /** @type {Row[]} */
   const rows = [];
   rootPaths(root).forEach((path, index) => {
@@ -330,20 +348,26 @@ function sameRow(a, b) {
  * @param {HTMLElement} container
  * @param {Entry[]} root
  * @param {TreeHelpers} tree
- * @param {{sourceOnly?: boolean}} [options] *sourceOnly*: the answer's `source_only`, said
- *   in one line above the tree: that the tree shows no change, or, beside changes it
- *   draws, that Source shows one it draws as unchanged.
- * @returns {{dispose: () => void}}
+ * @param {{sourceOnly?: boolean, current?: boolean}} [options] *sourceOnly*: the answer's
+ *   `source_only`, said in one line above the tree: that the tree shows no change, or,
+ *   beside changes it draws, that Source shows one it draws as unchanged. *current*: the
+ *   tree opens showing the new version alone (`setCurrent`).
+ * @returns {{dispose: () => void, setCurrent: (next: boolean) => void}}
  */
 export function mountStructuredDiff(container, root, tree, options = {}) {
   /** @type {View} */
-  const view = { open: initialExpansion(root, tree), shown: new Map(), tree };
+  const view = {
+    open: initialExpansion(root, tree),
+    shown: new Map(),
+    tree,
+    current: options.current === true,
+  };
   const indent = tree.expansion.indentChars;
   /** @param {Row[]} rows */
   const html = (rows) => rows.map((row) => tree.renderRowHtml(row, indent)).join("");
   const viewport = document.createElement("div");
   viewport.className = "tree-viewport tree-viewport-flat";
-  let rows = diffRows(root, view.open, tree, view.shown);
+  let rows = diffRows(root, view.open, tree, view.shown, view.current);
   viewport.innerHTML = html(rows);
 
   /**
@@ -429,6 +453,19 @@ export function mountStructuredDiff(container, root, tree, options = {}) {
   return {
     dispose() {
       viewport.removeEventListener("click", onClick);
+    },
+    /**
+     * Draw the new version alone, or the merged tree (*next* false), with what the reader
+     * opened and paged still open: paths are the merged tree's in both.
+     * @param {boolean} next
+     */
+    setCurrent(next) {
+      if (next === view.current) {
+        return;
+      }
+      view.current = next;
+      rows = diffRows(root, view.open, tree, view.shown, view.current);
+      viewport.innerHTML = html(rows);
     },
   };
 }
