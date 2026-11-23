@@ -478,7 +478,14 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
             status_code=409,
         )
     # A visible page's automatic ask also keeps its repository's list probed, beside its
-    # own record's probe and for no longer (:func:`.pull_list_route.attend_list`).
+    # own record's probe and for no longer (:func:`.pull_list_route.attend_list`). The
+    # answer waits for it, at most ``PROBE_WAIT_S`` and a thread's read: a one-shot
+    # ``metab --api`` drains the coordinator's jobs running when the answer comes and then
+    # shuts the application down, which cancels every other task, and neither the ask's
+    # read of the catalog nor the scan a probe's change starts is such a job until it has
+    # begun. Without the wait, whether a one-shot ask probes the list and scans for what
+    # it finds would depend on timing (review A7 of #737). The two probes run side by
+    # side, so the wait is the list's time past the record's.
     attending = None if ask.retry else attend_list(list_view(request.app, DEFAULT_LIST))
     try:
         with _whose(ask.retry):
