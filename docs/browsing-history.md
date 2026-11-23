@@ -94,7 +94,8 @@ click it to fetch now.
 A branch or tag is shown as the mirror last fetched it, as github.com shows a branch:
 when a fetch moves the served branch, the page follows it to the new commit by itself,
 on the same file or folder when the new commit has it, or at the root when it does not.
-A commit you opened by its ID stays put.
+A commit you opened by its ID stays put, also when it is a branch’s tip; when that
+branch moves on, the foot offers its new commit with **Switch**.
 
 ## Branches and Tags of a Local Checkout
 

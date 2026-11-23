@@ -324,7 +324,12 @@ function paintOf(model) {
     label: model.label,
     tone: model.tone,
     detail: model.detail,
-    offer: offer === null ? null : `${offer.text} [${offer.button}]`,
+    offer:
+      offer === null
+        ? null
+        : offer.kind === "switch"
+          ? `${offer.text} ${offer.commit} [${offer.button}] → ${offer.ref}`
+          : `${offer.text} [${offer.button}]`,
     error: model.error,
   };
 }
@@ -1227,12 +1232,13 @@ async function run() {
     }),
   }));
 
-  // A focused invariant of `describe`, outside the recorded conversation: the recording's
-  // mirror has no pull request heads to pin. A pin on a pull request's head follows it as a
-  // branch's does (`follows_moves` in mirror_refresh.py), so a page drawn for the head
-  // before goes with it and is offered nothing.
+  // Focused invariants of `describe`, outside the recorded conversation: the recording's
+  // mirror has no pull request heads to pin. A pin on a pull request's head follows it as
+  // a branch's does (`follows_moves` in mirror_refresh.py), and the row names the pull
+  // request, not its raw ref. A commit opened by its ID that is such a head stays put
+  // (`follows` false), and the head's new tip is offered instead.
   {
-    const moved = {
+    const onHead = {
       ...recorded.stale,
       ref: "refs/pull/7/head",
       ref_name: "refs/pull/7/head",
@@ -1240,13 +1246,57 @@ async function run() {
       pin: recorded.refreshed.pin,
       latest: recorded.refreshed.pin,
     };
-    const model = freshness.describe(moved, {
-      shown: { pin: recorded.stale.pin, ref: moved.ref },
+    const followed = freshness.describe(onHead, {
+      shown: { pin: recorded.stale.pin, ref: onHead.ref },
       nowMs: NOW_MS,
     });
     assert(
-      model.follow?.ref === moved.ref && model.follow.commit === moved.pin && model.offer === null,
-      `a pull request's head is followed, not offered: ${JSON.stringify(model)}`,
+      followed.follow?.ref === onHead.ref &&
+        followed.follow.commit === onHead.pin &&
+        followed.offer === null &&
+        followed.label === "Updating to pull request #7…" &&
+        followed.detail.startsWith("pull request #7 is now at "),
+      `a pull request's head is followed, and named: ${JSON.stringify(followed)}`,
+    );
+    const byId = { ...onHead, follows: false, pin: recorded.stale.pin };
+    const offered = freshness.describe(byId, {
+      shown: { pin: byId.pin, ref: byId.ref },
+      nowMs: NOW_MS,
+    });
+    assert(
+      offered.follow === null &&
+        offered.offer?.kind === "switch" &&
+        offered.offer.ref === byId.ref &&
+        offered.offer.text === "pull request #7 is now at" &&
+        offered.offer.button === "Switch",
+      `a commit opened by its ID is offered its ref's new tip: ${JSON.stringify(offered)}`,
+    );
+
+    // Taking the offer asks for the ref by name, which the server follows from then on, and
+    // reloads; a refusal says so and keeps the offer.
+    const page = createPage();
+    page.setStatus(byId);
+    const controller = freshness.createController(page.deps, {
+      shown: { pin: byId.pin, ref: byId.ref },
+    });
+    await page.start(controller);
+    page.observe("opened on a commit a pull request's head has moved on from");
+    page.answerPost("/api/source/pin", 409, { code: "ref_moved" });
+    await controller.acceptOffer();
+    const refused = page.observe("the switch is refused");
+    page.answerPost("/api/source/pin", 200, { changed: true, status: onHead });
+    await controller.acceptOffer();
+    const taken = page.observe("the switch is taken");
+    controller.dispose();
+    const asked = `POST /api/source/pin ${JSON.stringify({ ref: byId.ref })}`;
+    assert(
+      refused.requests.includes(asked) &&
+        refused.reloads === 0 &&
+        refused.paint.error === "Could not switch to that commit." &&
+        refused.paint.offer?.startsWith("pull request #7 is now at ") &&
+        taken.requests.includes(asked) &&
+        taken.reloads === 1,
+      `the offer switches to the ref by name: ${JSON.stringify({ refused, taken })}`,
     );
   }
 

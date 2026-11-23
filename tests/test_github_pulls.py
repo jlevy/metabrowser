@@ -1884,6 +1884,61 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
         git_repo.clear_repo_cache()
 
 
+def test_a_commit_pinned_by_its_id_stays_when_the_pull_request_it_heads_moves(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A commit opened by its ID stays put, also while it is a pull request's head.
+
+    The mirror names such a pin by the pull request whose head it is, so the selector can
+    say so, but the reader asked for a commit: the next push must not move it, and a pull
+    request they never opened is not attended, so nothing probes it (A2 of review A on
+    #745, reproduced as the review did: from a page on the branch, with no pull request
+    attended, pin the head by ID and refresh). The newer head is reported as ``latest``.
+    A request that names the ref, as Browse code and View on branch do with ``under``,
+    follows it.
+    """
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    monkeypatch.setattr(pulls, "utc_now", lambda: datetime.now(UTC).replace(microsecond=0))
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    _move_pull_head(stand, earlier)
+    stand.answer(_answering_head(stand, earlier))
+
+    def pin(client: TestClient, body: dict[str, str]) -> dict[str, Any]:
+        answer = client.post("/api/source/pin", json=body, headers=_JSON)
+        assert answer.status_code == 200, answer.text
+        return answer.json()["status"]
+
+    try:
+        result = _serve(CANONICAL)
+        assert result.exit_code == 0, result.output
+        with TestClient(app) as client:
+            assert settle(client)["pull_request"] is None
+            assert client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON).status_code == 202
+            _until(client, 7)
+            by_id = pin(client, {"oid": earlier})
+            assert (by_id["pin"], by_id["ref"]) == (earlier, "refs/pull/7/head")
+            assert (by_id["follows"], by_id["pull_request"]) == (False, None)
+
+            _move_pull_head(stand, head)
+            stand.answer(scenario(stand.origin))
+            assert client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON).status_code == 202
+            deadline = time.monotonic() + 30
+            while _read(client, 7).json()["record"]["pull"]["head"]["sha"] != head:
+                assert time.monotonic() < deadline, "the refresh did not read the newer head"
+                time.sleep(0.01)
+            _until(client, 7)
+            status = client.get("/api/source/status").json()
+            assert (status["pin"], status["latest"]) == (earlier, head)
+            assert (status["follows"], status["pull_request"]) == (False, None)
+
+            named = pin(client, {"oid": head, "under": "refs/pull/7/head"})
+            assert (named["pin"], named["follows"], named["pull_request"]) == (head, True, 7)
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+
+
 def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1986,9 +2041,23 @@ def test_a_pin_on_another_pull_requests_head_makes_it_the_attended_one(
     assert pin({"ref": DEFAULT_BRANCH})["pull_request"] == 8
     assert session.companion is attended
     assert pin({"ref": "refs/pull/7/head"})["pull_request"] == 7
-    # View file switches by commit ID: under that head's ref, it is the same switch.
+    # A switch by commit ID alone is named by the head it is, and attends nothing new: the
+    # reader opened a commit. Naming the head too, as View on branch does, attends it.
     by_commit = pin({"oid": stand.origin["merged_head"]})
-    assert (by_commit["ref"], by_commit["pull_request"]) == ("refs/pull/8/head", 8)
+    assert (by_commit["ref"], by_commit["pull_request"]) == ("refs/pull/8/head", 7)
+    assert by_commit["follows"] is False
+    # The same commit asked for by the head's name is the same pin, which now follows the
+    # head and attends its pull request.
+    flipped = pin({"ref": "refs/pull/8/head"})
+    assert (flipped["pin"], flipped["pull_request"], flipped["follows"]) == (
+        stand.origin["merged_head"],
+        8,
+        True,
+    )
+    assert pin({"ref": "refs/pull/7/head"})["pull_request"] == 7
+    assert pin({"ref": DEFAULT_BRANCH})["follows"] is True
+    named = pin({"oid": stand.origin["merged_head"], "under": "refs/pull/8/head"})
+    assert (named["ref"], named["pull_request"], named["follows"]) == ("refs/pull/8/head", 8, True)
 
 
 def _serving_repository_url(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:

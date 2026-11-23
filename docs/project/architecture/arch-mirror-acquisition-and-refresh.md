@@ -329,7 +329,8 @@ store a repository folder keeps of its checkout’s origin
   few seconds later and not a window and a poll later.
   The request waits for the probe at most `STORE_PROBE_WAIT_S` and never for a fetch.
   Core probes with Git alone and knows no provider.
-  A tag, a commit opened by its ID, and a pull request’s head are not probed.
+  A tag, a commit opened by its ID that no branch names, and a pull request’s head are
+  not probed.
 - **What holds a probe or a page’s fetch:** one probe runs at a time, no closer than
   `STORE_PROBE_FLOOR_S` to the last, however many tabs ask, and none while a refresh
   runs. A probe that failed, or a fetch that failed, holds the page’s asks for a
@@ -392,11 +393,15 @@ The owner set this on 2026-11-19, replacing the earlier rule that a refresh neve
 the served commit and offered the new one behind a **Switch** button (bead `mb-pq8y`),
 and on 2026-11-22 for a pull request’s head (bead `mb-6a6w`).
 
-- **Which pins follow:** one served under the origin’s branch, a tag, or a pull
-  request’s head, `refs/pull/<n>/head` (`follows_moves` in `mirror_refresh.py`), which
-  status reports as `follows`. A commit opened by its ID is served under no ref, or
-  under one only while it is that ref’s tip, as View file’s way back is, and then
-  follows it as the selector names it.
+- **Which pins follow:** one asked for by the origin’s branch, a tag, or a pull
+  request’s head, `refs/pull/<n>/head` (`follows_moves` in `mirror_refresh.py`), by name
+  or as `under`, which status reports as `follows`. A commit opened by its ID stays put,
+  as the owner decided (bead `mb-cww9`): it is served under no ref, or named by one
+  whose tip it is, the ref last served, as View file’s way back is, or a pull request’s
+  head, so the selector names that ref, but it never moves with it
+  (`MirrorSession._by_id`), and a pull request it heads is not attended.
+  When that ref moves on, status reports its tip as `latest`, and the row offers it,
+  `<ref> is now at <commit>` with **Switch**, which asks for the ref by name.
   A pull request’s head moves in the mirror when that pull request’s refresh fetches it,
   so the job that refreshes a pull request observes the mirror when it ends, as a fetch
   of the mirror does.
@@ -456,7 +461,7 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
   With the page’s `/view/` address it answers `view_href`, where that page goes on the
   new pin. Its refusals are the `SelectionError` subclasses in `mirror_refresh.py`. A
   commit pinned by ID is served under the ref last served, or a pull request’s head ref,
-  the first whose tip it is.
+  the first whose tip it is, and stays put there.
   A request may name the ref as `under`, as View on branch and Browse code name the pull
   request’s `refs/pull/<n>/head`; when that ref is not at the commit, because the pull
   request moved on after the page was drawn, nothing is switched and the answer is
