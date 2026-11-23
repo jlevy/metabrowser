@@ -462,9 +462,13 @@ jobs:
           - test-chrome SHARD=3/4
           - test-chrome SHARD=4/4
     runs-on: ubuntu-latest
-    # As for the unit and chrome jobs, whose slowest parts these repeat: 1.2 to 4.3
-    # minutes over the 24 parts of runs 44037230262, 44041984874, and 44045094850.
-    timeout-minutes: 7
+    # The goldens and serial part sets it: 90th percentile 6.0 minutes and longest 6.3
+    # over its 19 passing jobs in the 20 runs 45119143049 to 45136984133, where every
+    # other part's 90th percentile was 2.3 to 4.5 and its longest 5.5. The goldens had
+    # grown since the 1.2 to 4.3 minutes of runs 44037230262, 44041984874, and
+    # 44045094850, which set 7, and at 7 one slow wheel download (`uv sync` preparing 67
+    # packages in 2 m 45 s, not its usual 2 s) ended the part (run 45134271894, mb-lo7l).
+    timeout-minutes: 9
     steps:
       - name: Checkout the pull request head
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

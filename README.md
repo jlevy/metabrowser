@@ -89,20 +89,20 @@ Metabrowser to Applications after installing a compatible `metab`.
 If the app cannot start a folder, open **Settings**. It shows the required version and
 any rejected runtimes.
 After installing or updating `metab`, use **Find Again** or **Choose metab…** to select
-the executable.
-If Settings says the required version is pending on PyPI, use the preview
-runtime described below or run the public CLI in your web browser.
-**Check Setup…** checks the tools and paths the app actually uses, which can differ from
-the ones in your terminal.
+the executable. If your preview requires a newer version than
+[PyPI](https://pypi.org/project/metabrowser/) offers, use the checkout’s `metab` as
+described below.
+**Check Setup…** checks the tools and paths the app actually uses, which
+can differ from the ones in your terminal.
 Restart an open folder’s server if the app offers to after an upgrade.
 See [Choosing a metab](docs/macos-app.md#choosing-a-metab) for runtime discovery and the
 app’s trust checks.
 
 #### Developer preview
 
-The current preview requires `metab` 0.13.0 or later, which is pending on PyPI. To try
-the preview, install Xcode 26.6 or later, uv, and
+To build the preview, install Xcode 26.6 or later, uv, and
 [the repository’s pinned Node version](docs/development.md#set-up).
+The preview requires `metab` 0.13.0 or later.
 In Terminal:
 
 ~~~shell
@@ -113,8 +113,8 @@ make macos-app
 ~~~
 
 Open the app at the path printed by the build.
-In **Settings → Choose metab…**, select `.venv/bin/metab` inside that checkout.
-If the build fails or the runtime is rejected, check the
+To use the checkout’s runtime, select its `.venv/bin/metab` in **Settings → Choose
+metab…**. If the build fails or the runtime is rejected, check the
 [development prerequisites](docs/development.md#set-up) and
 [preview setup guide](docs/installation.md#the-macos-app) for the checkout and version
 the app expects.

@@ -123,7 +123,12 @@ For
   they center onto one baseline.
   At the path’s size alone the link form still sat 0.5 px above it at 14 px and 0.75 px
   at 13 px, at ratios of 1 and 2, until it took the toggle’s `normal` line height
-  ([Type by Role](#type-by-role)).
+  ([Type by Role](#type-by-role)). On 2026-11-23 the toggle and the control each moved
+  into a group of the bar, each centered in its group and each group in the bar
+  ([Diff File Bar](../../docs/design-system.md#diff-file-bar)). In headless Chrome, on a
+  pull request’s Changes and a commit’s page, on every bar drawn on one line, the
+  control’s baseline was the path’s, 0 px apart, at ratios of 1 and 2: the link form as
+  the pages drew it, and a button of the control’s class put in its place.
 - A mirror’s location note at the far end of the file header, centered rather than
   baseline-aligned, sits 0.25px above the path at a device pixel ratio of 1. On
   2026-11-16 and 2026-11-17, at the header’s one size, 13 px and then 14 px

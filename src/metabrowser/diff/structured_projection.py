@@ -142,9 +142,16 @@ class StructuredDiffEntry(TypedDict):
     entries: NotRequired[list[StructuredDiffEntry]]
 
 
+# Why a projection refuses, where that says more than its status, as a Markdown
+# projection's ``reason`` does: both sides hold the same bytes, or the worker stopped it.
+type StructuredRefusal = Literal["no_changes", "deadline"]
+
+
 class StructuredDiffProjection(TypedDict):
     version: str
     status: Status
+    # Present on a refusal whose cause the page can name.
+    reason: NotRequired[StructuredRefusal]
     format: NotRequired[Format]
     root: list[StructuredDiffEntry]
     source_only: bool
@@ -152,6 +159,10 @@ class StructuredDiffProjection(TypedDict):
 
 class _Unsupported(Exception):
     """A side the tree view would not draw: malformed, or a key twice in one mapping."""
+
+
+class _Unchanged(_Unsupported):
+    """Both sides are the same bytes."""
 
 
 class _OverBudget(Exception):
@@ -670,11 +681,19 @@ def _visible(entries: Sequence[StructuredDiffEntry]) -> bool:
 
 
 def unavailable_structured_diff(
-    status: Literal["unsupported", "too_large"],
+    status: Literal["unsupported", "too_large"], reason: StructuredRefusal | None = None
 ) -> StructuredDiffProjection:
-    """A projection that refuses, with no partial tree."""
+    """A projection that refuses, with no partial tree, and *reason* where one is known."""
 
-    return {"version": STRUCTURED_DIFF_VERSION, "status": status, "root": [], "source_only": False}
+    refusal: StructuredDiffProjection = {
+        "version": STRUCTURED_DIFF_VERSION,
+        "status": status,
+        "root": [],
+        "source_only": False,
+    }
+    if reason is not None:
+        refusal["reason"] = reason
+    return refusal
 
 
 def structured_format(ext: str) -> Format | None:
@@ -695,8 +714,8 @@ def _project(old: bytes | None, new: bytes | None, fmt: Format) -> StructuredDif
         raise _OverBudget("structured input bytes")
     if old is not None and new is not None and old == new:
         # A rename or a mode change: nothing to draw, as Markdown refuses a patch with no
-        # hunks, so the file gets no chooser.
-        raise _Unsupported("both sides are the same bytes")
+        # hunks, and the page says that the content did not change.
+        raise _Unchanged("both sides are the same bytes")
     projection = _Projection()
     before = _MISSING if old is None else projection.plain(_parse(old, fmt, pair_bytes))
     after = _MISSING if new is None else projection.plain(_parse(new, fmt, pair_bytes))
@@ -725,6 +744,8 @@ def project_structured_diff(
         return _project(old, new, fmt)
     except _OverBudget:
         return unavailable_structured_diff("too_large")
+    except _Unchanged:
+        return unavailable_structured_diff("unsupported", "no_changes")
     except _Unsupported:
         return unavailable_structured_diff("unsupported")
 

@@ -1,0 +1,222 @@
+name: Diagnostic CLI 0.13.0 release comparison
+
+on:
+  push:
+    branches: [codex/cli-013-release-benchmark]
+
+permissions:
+  contents: read
+
+jobs:
+  release-comparison:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CONTROL_SHA: 87b8ec812774bb12a4d9f5f29901719b8b66d323
+      CANDIDATE_SHA: 29f9f8c36661ffde18d02990873771088522e662
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.26"
+          checksum: "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
+          python-version: "3.13"
+          enable-cache: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.18.0"
+      - name: Build exact wheels and public corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'v0.12.0^{commit}')" = "$CONTROL_SHA"
+          test -z "$(git status --porcelain)"
+          command -v xvfb-run
+          command -v google-chrome
+          support="$RUNNER_TEMP/mb-release-comparison"
+          mkdir -p "$support"/{tmp,uv,cargo,evidence}
+          export TMPDIR="$support/tmp" UV_CACHE_DIR="$support/uv" CARGO_TARGET_DIR="$support/cargo"
+          git worktree add --detach "$support/control" "$CONTROL_SHA"
+          git worktree add --detach "$support/candidate" "$CANDIDATE_SHA"
+          df -h "$support"
+          for side in control candidate; do
+            (
+              cd "$support/$side"
+              uv --config-file uv.toml sync --locked --all-extras --all-groups
+              uv --config-file uv.toml build --clear --no-build-isolation --wheel \
+                --out-dir "$support/$side-wheel"
+              wheel=("$support/$side-wheel"/metabrowser-*.whl)
+              test "${#wheel[@]}" -eq 1
+              UV_PROJECT_ENVIRONMENT="$support/$side-env" \
+                uv --config-file uv.toml sync --locked --no-dev --no-install-project
+              uv --config-file uv.toml pip install --no-deps --compile-bytecode \
+                --python "$support/$side-env/bin/python" "${wheel[0]}"
+              uv --config-file uv.toml pip check --python "$support/$side-env/bin/python"
+              expected="$(basename "${wheel[0]}" | cut -d- -f2)"
+              test "$("$support/$side-env/bin/metab" --version)" = "metab $expected"
+              printf '%s\n' "${wheel[0]}" > "$support/$side.wheel-path"
+              sha256sum "${wheel[0]}" | awk '{print $1}' > "$support/evidence/$side.sha256"
+              uv --config-file uv.toml pip list --format json \
+                --python "$support/$side-env/bin/python" > "$support/evidence/$side-dependencies.json"
+            )
+          done
+          cd "$support/candidate"
+          npm ci
+          uv --config-file uv.toml run --frozen python -c \
+            'import sys; from pathlib import Path; from devtools.bench_serving import build_project_corpus; print(build_project_corpus(Path(sys.argv[1]), 10))' \
+            "$support/project-10"
+          test -z "$(git status --porcelain)"
+          cp "$support/project-10/.bench-corpus.json" "$support/evidence/corpus.json"
+      - name: Capture cold paired startup runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          support="$RUNNER_TEMP/mb-release-comparison"
+          results="$support/evidence"
+          export TMPDIR="$support/tmp" UV_CACHE_DIR="$support/uv" CARGO_TARGET_DIR="$support/cargo"
+          export XDG_CACHE_HOME="$support/cache" XDG_CONFIG_HOME="$support/config"
+          cd "$support/candidate"
+          python_run=(uv --config-file uv.toml run --frozen python)
+          bench=("${python_run[@]}" explorations/performance-loop/run.py)
+          control_label=exp-102-cli-013-http-ready-v0120
+          candidate_label=exp-102-cli-013-http-ready-candidate
+          ledger=explorations/performance-loop/results/runs.jsonl
+          pending=explorations/performance-loop/results/pending.json
+          capture_driver="$GITHUB_WORKSPACE/explorations/performance-loop/capture-browser.js"
+          control_wheel="$(cat "$support/control.wheel-path")"
+          candidate_wheel="$(cat "$support/candidate.wheel-path")"
+          {
+            uname -srmo
+            lscpu | grep -E '^(CPU\(s\)|Model name|Architecture):'
+            node --version
+            uv --version
+            google-chrome --version
+            printf 'ImageOS=%s ImageVersion=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
+            printf 'control=%s\ncandidate=%s\n' "$CONTROL_SHA" "$CANDIDATE_SHA"
+            printf 'diagnostic_driver_commit=%s\n' "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+          } > "$results/host.txt"
+          wait_for_idle() {
+            for _ in {1..24}; do
+              if awk '$1 < 1.1 {pass=1} END {exit !pass}' /proc/loadavg; then
+                cat /proc/loadavg >> "$results/load-before-runs.txt"
+                return 0
+              fi
+              sleep 5
+            done
+            printf 'Unable to reach 1-minute load below 1.1.\n' >&2
+            return 1
+          }
+          "${bench[@]}" count "$support/project-10" > "$results/count.txt"
+          count="$(awk '/^files / {gsub(/,/, "", $2); print $2}' "$results/count.txt")"
+          [[ "$count" =~ ^[1-9][0-9]*$ ]]
+          wait_for_idle
+          backend_status=0
+          "${python_run[@]}" -m devtools.compare_builds "$support/project-10" \
+            --baseline "$support/control-env/bin/metab" --candidate "$support/candidate-env/bin/metab" \
+            --runs 5 --corpus-name project-10 --output "$results/backend.json" \
+            > "$results/backend.log" 2>&1 || backend_status=$?
+
+          launch() {
+            if [[ "$1" = control ]]; then
+              "${bench[@]}" serve --metab "$support/control-env/bin/metab" \
+                --artifact "$control_wheel" --build-ref "$CONTROL_SHA" \
+                --tree "$support/project-10" --files "$count" --exp exp-102 --label "$control_label"
+            else
+              "${bench[@]}" serve --metab "$support/candidate-env/bin/metab" \
+                --artifact "$candidate_wheel" --build-ref "$CANDIDATE_SHA" \
+                --tree "$support/project-10" --files "$count" --exp exp-102 --label "$candidate_label"
+            fi
+          }
+
+          wait_for_http() {
+            local output="$1" socket_epoch="$2" origin probe timing first_request
+            local response_epoch spawned_epoch
+            origin="$(jq -er '.measurement_origin' "$pending")"
+            spawned_epoch="$(jq -er '.server_spawned_epoch_ms' "$pending")"
+            first_request="$(date +%s%3N)"
+            for probe in {1..15}; do
+              if timing="$(curl --silent --show-error --fail --output /dev/null \
+                --max-time 2 --write-out '%{http_code} %{time_starttransfer} %{time_total}' \
+                "$origin/api/routes" 2>"$output.stderr")" && [[ "$timing" == "200 "* ]]; then
+                response_epoch="$(date +%s%3N)"
+                jq -nc --argjson spawn "$spawned_epoch" --argjson socket "$socket_epoch" \
+                  --argjson first_request "$first_request" --argjson response "$response_epoch" \
+                  --argjson attempt "$probe" --arg timing "$timing" \
+                  '{server_spawned_epoch_ms:$spawn,socket_ready_observed_epoch_ms:$socket,
+                    first_http_probe_epoch_ms:$first_request,http_ready_epoch_ms:$response,
+                    probe_attempt:$attempt,http_curl_status_ttfb_total:$timing}' > "$output"
+                return 0
+              fi
+              sleep 0.05
+            done
+            cat "$output.stderr" >&2
+            printf 'No HTTP 200 response from /api/routes after TCP readiness.\n' >&2
+            return 1
+          }
+
+          wait_for_idle
+          launch control > "$results/serve-warmup.log" 2>&1
+          "${bench[@]}" fingerprint >> "$results/serve-warmup.log" 2>&1
+          candidate_hard_failure=0
+          rejected_captures=0
+          for pair in {1..5}; do
+            sides=(control candidate)
+            if (( pair % 2 == 0 )); then sides=(candidate control); fi
+            for side in "${sides[@]}"; do
+              wait_for_idle
+              printf 'Starting pair %s: %s\n' "$pair" "$side"
+              capture_stem="$results/browser-$side-$pair"
+              launch "$side" > "$capture_stem.serve.log" 2>&1
+              socket_epoch="$(date +%s%3N)"
+              wait_for_http "$capture_stem.readiness.json" "$socket_epoch"
+              capture_status=0
+              profile_url="$(jq -er '.url' "$pending")"
+              xvfb-run -a -s '-screen 0 1920x1200x24' node "$capture_driver" \
+                --headed --chrome "$(command -v google-chrome)" --width 1600 --height 1040 \
+                --probe "$PWD/explorations/performance-loop/probe.js" --url "$profile_url" \
+                --output "$capture_stem.json" > "$capture_stem.log" 2>&1 || capture_status=$?
+              if (( capture_status == 0 )); then
+                "${bench[@]}" record --json-file "$capture_stem.json" >> "$capture_stem.log" 2>&1 || capture_status=$?
+              fi
+              if ! grep -q '^recorded ' "$capture_stem.log"; then
+                printf 'Unrecorded pair %s %s (exit %s)\n' "$pair" "$side" "$capture_status" \
+                  | tee -a "$results/rejected-captures.txt"
+                cat "$capture_stem.log"
+                rejected_captures=$((rejected_captures + 1))
+                # Preserve fingerprint continuity even when an attempted capture was refused.
+                "${bench[@]}" fingerprint --timeout 120 > "$capture_stem.fingerprint.log" 2>&1
+                continue
+              fi
+              if [[ "$side" = candidate && "$capture_status" != 0 ]]; then candidate_hard_failure=1; fi
+              jq -c --arg a "$control_label" --arg b "$candidate_label" \
+                'select(.label==$a or .label==$b)' "$ledger" > "$results/browser-ledger.jsonl"
+            done
+          done
+          printf 'Rejected captures: %s\n' "$rejected_captures"
+          # Stock compare treats different dependency environments as incompatible.
+          # Both exact wheels pin different KPress versions, so retain that verdict
+          # alongside the absolute candidate budgets and interleaved whole-release data.
+          compare_status=0
+          "${bench[@]}" compare "$control_label" "$candidate_label" \
+            --expect-build "$control_label=wheel:sha256:$(cat "$results/control.sha256")" \
+            --expect-build "$candidate_label=wheel:sha256:$(cat "$results/candidate.sha256")" \
+            > "$results/comparison.log" 2>&1 || compare_status=$?
+          cat "$results/comparison.log"
+          printf 'backend_status=%s\ncandidate_hard_failure=%s\ncompare_status=%s\n' \
+            "$backend_status" "$candidate_hard_failure" "$compare_status" > "$results/status.txt"
+          test "$backend_status" = 0
+          test "$rejected_captures" = 0
+          test "$(jq -s length "$results/browser-ledger.jsonl")" = 10
+          test "$candidate_hard_failure" = 0
+          test "$compare_status" = 0
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-013-release-comparison
+          path: ${{ runner.temp }}/mb-release-comparison/evidence
+          if-no-files-found: warn
+          retention-days: 7
