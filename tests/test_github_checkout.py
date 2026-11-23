@@ -963,7 +963,10 @@ def test_an_optional_job_a_reader_promoted_is_not_ended_by_another_readers_start
     """Bead mb-qi6a (review A2 of #762): a reader's start for 12 promoted the optional
     comparison job of 12 and was answered ``joined``. A reader's start for 11 then
     cancelled that job as if it were still optional, and nothing started it again, so
-    12 had no refresh, or no comparison, until its page next asked."""
+    12 had no refresh, or no comparison, until its page next asked.
+
+    Review B5 of #762: a prefetch was still ``not_due`` beside the promoted job, until
+    some other reader's start forgot it as the optional one."""
     from metabrowser.builtin_plugins.github import checkout as checkout_module
     from metabrowser.builtin_plugins.github.served_pull import ServedPull
     from metabrowser.mirror_refresh import RefreshCoordinator
@@ -1010,16 +1013,20 @@ def test_an_optional_job_a_reader_promoted_is_not_ended_by_another_readers_start
         try:
             assert start(12, comparison=True, eager_revision="a" * 64) == "started"
             await asyncio.wait_for(started.wait(), 5)
+            # Beside the optional job a prefetch is not due...
+            answers.append(start(13, background=True))
             if asked == "metadata":
                 answers.append(start(12))
             else:
                 answers.append(start(12, comparison=True))
-                release.set()
+            # ...but 12's job is a reader's now, not the checkout's optional one, so a
+            # prefetch starts beside it, as beside any reader's job (review B5 of #762),
+            # before any other reader's start and after one.
+            answers.append(start(13, background=True))
+            release.set()
             await asyncio.wait_for(working.wait(), 5)
             answers.append(start(11))
-            # 12's job is a reader's now, not the checkout's optional one, so a prefetch
-            # starts beside it, as beside any reader's job.
-            answers.append(start(13, background=True))
+            answers.append(start(14, background=True))
             for _ in range(3):
                 await coordinator.drain(timeout_s=5)
         finally:
@@ -1028,7 +1035,7 @@ def test_an_optional_job_a_reader_promoted_is_not_ended_by_another_readers_start
 
     coordinator = RefreshCoordinator()
     asyncio.run(run())
-    assert answers == ["joined", "started", "started"]
+    assert answers == ["not_due", "joined", "started", "started", "started"]
     work = "refresh" if asked == "metadata" else "comparison"
     assert f"{work} 12 cancelled" not in events, events
     assert f"{work} 12 ends" in events, events
@@ -2538,6 +2545,50 @@ def test_a_reader_s_failure_is_reported_even_when_its_stamp_is_refused(
 
 
 @pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("kept", [True, False], ids=["kept", "off"])
+def test_the_prefetchs_attach_keeps_no_store_where_none_of_the_origin_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, kept: bool
+) -> None:
+    """Review B1 of #762: with ``METABROWSER_ORIGIN_STORE=0`` the Pulls tab's prefetch still
+    attached the checkout's store for its lists of changed files, which fetched the origin,
+    though no reader asked for a comparison. Now it attaches none and each list goes to
+    GitHub; kept, it attaches the store as before."""
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.checkout_store import ORIGIN_STORE_ENV
+    from tests.golden_harness import isolate_cli
+
+    if kept:
+        monkeypatch.delenv(ORIGIN_STORE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(ORIGIN_STORE_ENV, "0")
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, home)  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    fetched: list[str] = []
+
+    def origin_url(_source: object) -> str:
+        fetched.append("origin")
+        return pull_origin.url
+
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", origin_url)
+
+    async def run() -> object:
+        async with checkout_module.checkout_store_turn(repository, lambda: None):
+            return await checkout_module.attach_store_for_lists(repository)
+
+    attached = asyncio.run(run())
+    state = checkout_module._checkout_state(repository)  # pyright: ignore[reportPrivateUsage]
+    assert (attached is not None, state.pulls.git_dir is not None, bool(fetched)) == (
+        kept,
+        kept,
+        kept,
+    )
+
+
+@pytest.mark.usefixtures("fresh_checkout_state", "keeps_origin_store")
 def test_the_prefetchs_attach_gives_way_to_a_readers_and_binds_one_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:

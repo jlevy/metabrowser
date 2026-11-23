@@ -296,8 +296,12 @@ cost alone
   so (`transport_unsupported`); a server never tries it.
   With `METABROWSER_ORIGIN_STORE=0` (`ORIGIN_STORE_ENV` in `checkout_store.py`) no
   application keeps a store for any checkout, a server’s or a one-shot command’s alike:
-  `lifespan_checkout_store` reads it, so a transcript answers what a served page does.
-  The test suite sets it, and a test of the store unsets it.
+  `lifespan_checkout_store` reads it, so a transcript answers what a served page does,
+  and the GitHub plugin’s prefetch attaches none for its lists
+  (`attach_store_for_lists`). The one exception is a reader’s comparison of a pull
+  request, which still makes the store and fetches it from the origin
+  (`_acquire_comparison` in the GitHub plugin’s `checkout.py`). The test suite sets it,
+  and a test of the store unsets it.
 - **When it is fetched:** from the moment the folder is served, by the rules of every
   store Metabrowser keeps
   ([Refresh Cadence](arch-mirror-acquisition-and-refresh.md#refresh-cadence)). A server

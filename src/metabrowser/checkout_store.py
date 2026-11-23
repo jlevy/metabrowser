@@ -722,9 +722,11 @@ class CheckoutStore:
 # of it is refused as a folder's with no store. The lifespan reads it
 # (:func:`lifespan_checkout_store`), so a transcript answers what a served page does.
 # A pull request's comparison, which a reader asks a provider plugin for, still makes the
-# store (:func:`acquire_checkout_store`). The test suite sets it, so that no server a test
-# starts as a process of its own reaches a repository's origin, which one in process
-# reaches through ``remote_url_for``; a test of the store unsets it
+# store and fetches it from the origin (:func:`acquire_checkout_store`); a plugin's
+# background work asks :func:`origin_store_wanted` first, as the GitHub plugin's prefetch
+# does before it attaches a store for its lists. The test suite sets it, so that no
+# server a test starts as a process of its own reaches a repository's origin, which one
+# in process reaches through ``remote_url_for``; a test of the store unsets it
 # (``tests/conftest.py``, bead mb-i4x0).
 ORIGIN_STORE_ENV: Final = "METABROWSER_ORIGIN_STORE"
 _OFF: Final = frozenset({"0", "false", "no", "off"})

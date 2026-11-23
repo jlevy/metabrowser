@@ -419,9 +419,10 @@ def start_pull_refresh(
 
     A *background* start, a prefetch's, is a metadata refresh that counts toward no bound,
     takes no network slot, and gives way at the checkout's turn (:class:`StoreTurn`); it
-    is ``not_due`` while the optional comparison job runs. A reader's start that joins it
-    promotes it to the reader's, and from then on it counts, and a background job holding
-    the turn it waits for is stopped, as on a mirror.
+    is ``not_due`` while the optional comparison job runs and is still optional, and starts
+    beside one a reader's start has promoted, as beside any reader's job. A reader's start
+    that joins it promotes it to the reader's, and from then on it counts, and a background
+    job holding the turn it waits for is stopped, as on a mirror.
 
     A reader's start that joins a job already told to stop, a prefetch's that gave way at
     the turn or the optional job another reader's start ended, has the reader's job
@@ -459,7 +460,7 @@ def start_pull_refresh(
     if background:
         if coordinator.running(key):
             return "joined"
-        if eager is not None:
+        if eager is not None and eager.mode == "idle":
             return "not_due"
         state.background.add(key)
         return coordinator.start(
@@ -793,7 +794,9 @@ ATTACH_WAIT_S: Final = 30.0
 
 async def attach_store_for_lists(repository: CheckoutRepository) -> PublishedSource | None:
     """The checkout's store, attached now if it has none, for the prefetch to list changed
-    files from (:mod:`.pull_prefetch`); ``None`` when it could not be attached.
+    files from (:mod:`.pull_prefetch`); ``None`` when it could not be attached, or when no
+    store of the checkout's origin is to be kept
+    (:func:`~metabrowser.checkout_store.origin_store_wanted`).
 
     The caller holds the checkout's store turn (:func:`checkout_store_turn`), as a reader's
     comparison does when it attaches the same store (:func:`_attach_store`), so the two
@@ -801,7 +804,13 @@ async def attach_store_for_lists(repository: CheckoutRepository) -> PublishedSou
     after :data:`ATTACH_WAIT_S`, and a failure is only logged, since each list then goes to
     GitHub as it would have, and a reader's comparison reports its own.
     """
+    from metabrowser.checkout_store import origin_store_wanted
 
+    if not origin_store_wanted():
+        # Nothing a reader asked for: the prefetch neither makes the store nor fetches the
+        # pull requests' heads into one a reader's comparison made, and each list goes to
+        # GitHub. The reader's comparison is the one thing that still makes the store.
+        return None
     state = _checkout_state(repository)
     if state.pulls.git_dir is None:
         try:
