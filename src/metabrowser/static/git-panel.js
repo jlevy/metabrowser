@@ -452,11 +452,10 @@
    * out-of-root files, and bounds remain siblings because they describe the
    * rendered change rather than the commit's identity and message.
    *
-   * The page's summary is a page header, as a pull request's is, in the same order and
-   * type (docs/design-system.md, "Page Headers"): the subject, then one line each for the
-   * author, the revision and its refs, where a pull request has its branches, and the age,
-   * where a pull request has its row of ages, then the Diff summary; every line under the
-   * subject is at the body size. The hover card keeps its one line of metadata.
+   * The detail uses the shared page-header type and spacing (docs/design-system.md,
+   * "Page Headers"). Its subject is followed by the author, the revision and its refs,
+   * the committed age, the size line, and the Diff summary. The hover card keeps its
+   * one line of metadata.
    *
    * @param {MetabrowserGitCommitDetail} detail
    * @param {{compact?: boolean, size?: MetabrowserGitChangeSize | null}} [options] *size* is
@@ -537,7 +536,7 @@
       // and the size when `placeCommitSize` has it. None where the detail has no count.
       if (commitTotals(stats) !== null) {
         const kept = sizeCache.get(commit.id) ?? null;
-        html += `<div class="git-commit-size page-header-line">${commitSizeLineHtml(stats, kept)}</div>`;
+        html += `<div class="git-commit-size page-header-line page-header-size">${commitSizeLineHtml(stats, kept)}</div>`;
       }
       html += `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">${renderCommitTotals(stats)}</div>`;
     }

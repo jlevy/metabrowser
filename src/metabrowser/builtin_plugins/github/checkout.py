@@ -1,9 +1,10 @@
-"""A checkout served as a folder: which GitHub repository its pull requests are of.
+"""Which GitHub repository a served checkout's pull requests are of.
 
-A folder server has no mirror session, so the pull routes ask this module instead. The
+A checkout's server has no mirror session, so the pull routes ask this module. The
 repository is the one :func:`~metabrowser.repository_context.discover_repository_context`
-reads from the served root's checkout, a subdirectory's included: the ``origin`` remote,
-read from files with no Git process. It is reduced through this plugin's URL grammar to
+reads for the working tree, a subdirectory, or a revision the checkout serves.
+The reader gets the ``origin`` remote directly from the checkout's files. The plugin's URL
+grammar reduces it to
 ``https://github.com/<owner>/<repo>``, lowercased, so an HTTPS and an SSH remote of one
 repository, and a mirror of it, share one identity and one set of records. A remote the
 grammar refuses is not one the routes list: they answer ``not_github``. On a fork,
@@ -117,9 +118,15 @@ def _served_key(app: Any) -> tuple[str, str] | None:
 
     if mirror_session(app) is not None:
         return None
-    root = get_source_session().subject.filesystem_root
+    subject = get_source_session().subject
+    root = subject.filesystem_root
     if root is None:
-        return None
+        from metabrowser.checkout_revisions import checkout_revisions
+
+        checkout = checkout_revisions()
+        if checkout is None or not checkout.serves(subject):
+            return None
+        root = checkout.root
     from metabrowser.home import StorageDirectoryError, application_cache
 
     try:
@@ -185,7 +192,7 @@ async def ensure_resolved(app: Any) -> None:
 
 
 def served_checkout(app: Any) -> CheckoutRepository | None:
-    """The served checkout's repository, or ``None``: a mirror, a pin, or a plain folder.
+    """The served checkout's repository, or ``None`` when the subject has no checkout.
 
     From memory once :func:`ensure_resolved` has run, which every route does first.
     """
