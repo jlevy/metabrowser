@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import pulls
+from metabrowser.builtin_plugins.github import gh_budget, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import CatalogState
 from metabrowser.builtin_plugins.github.pull_freshness import (
     NO_CHECKS_GRACE_S,
@@ -896,3 +896,90 @@ def test_the_checks_probes_keep_their_cadence_through_jitter_and_checks_only_rea
     # A newer record keeps the checks probes' clock.
     held.saw_record(_stamp(clock[0] + timedelta(seconds=1)))
     assert held._checks_probe_attempt == clock[0]  # pyright: ignore[reportPrivateUsage]
+
+
+# ── Below the floor ────────────────────────────────────────────
+
+
+def _observe_core(remaining: int, *, limit: int = 5000) -> None:
+    """The account's core budget as a response just reported it, resetting in an hour."""
+
+    gh_budget.observe(
+        {
+            "x-ratelimit-limit": str(limit),
+            "x-ratelimit-remaining": str(remaining),
+            "x-ratelimit-reset": str(int((NOW + timedelta(hours=1)).timestamp())),
+            "x-ratelimit-resource": "core",
+        },
+        resource="core",
+    )
+
+
+def test_below_the_floor_probes_go_on_and_only_a_change_they_find_is_read_in_full(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """mb-qngw, the owner's rule: below ``BACKGROUND_FLOOR`` the periodic full read stops,
+    probes keep running, and a change one finds on the page on screen is still read."""
+
+    record = _record(state="closed", fetched=NOW)
+    held = _held(record, tmp_path)
+    _probing(monkeypatch, [pulls.PullProbe("unchanged", {}), pulls.PullProbe("changed", {})])
+    clock = [NOW]
+    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    asyncio.run(held.probe(record))
+    late = NOW + timedelta(seconds=FULL_REFRESH_S + 1)
+    assert held.automatic_due(late) == "full"
+    held._full_asked = False  # pyright: ignore[reportPrivateUsage]
+
+    _observe_core(int(gh_budget.BACKGROUND_FLOOR * 5000))
+    assert held.below_floor(late)
+    # The full read is as overdue as it was, and waits; the probe is what is due.
+    assert held.full_read_overdue(late) and not held.full_read_due(late)
+    assert not held.is_stale(late, window_s=FRESHNESS_WINDOW_S)
+    assert held.automatic_due(late) == "probe"
+    assert not held._full_asked  # pyright: ignore[reportPrivateUsage]
+    # A probe that finds a change starts its full read all the same.
+    clock[0] = late
+    asyncio.run(held.probe(record))
+    assert held.is_stale(late, window_s=FRESHNESS_WINDOW_S)
+    assert held.automatic_due(late) == "full"
+
+    # Above the floor again, the periodic read is due as before.
+    unprobed = _held(record, tmp_path)
+    assert unprobed.automatic_due(late) == "probe"
+    _observe_core(int(gh_budget.BACKGROUND_FLOOR * 5000) + 1)
+    assert not unprobed.below_floor(late) and unprobed.automatic_due(late) == "full"
+
+
+def test_below_the_floor_a_change_the_catalog_reports_is_read_and_a_checks_window_is_not(
+    tmp_path: Path,
+) -> None:
+    record = _record(fetched=NOW - 2 * WINDOW)
+    held = _held(record, tmp_path)
+    _observe_core(100)
+    # An open record the catalog vouches for has its checks read once a window: periodic.
+    held.saw_record(
+        record.fetched_at, freshness=record_freshness(record, _catalog(), _row(), now=NOW)
+    )
+    assert held.checks_due and not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
+    # A row that says GitHub changed it is a change found on the page on screen.
+    changed = record_freshness(
+        record, _catalog(), _row(updated=NOW - timedelta(minutes=1)), now=NOW
+    )
+    held.saw_record(record.fetched_at, freshness=changed)
+    assert held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
+    assert held.automatic_due(NOW) == "full"
+
+
+def test_a_rate_limit_hold_stops_the_read_of_a_change_a_probe_found_below_the_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record = _record(state="closed", fetched=NOW)
+    held = _held(record, tmp_path)
+    _probing(monkeypatch, [pulls.PullProbe("changed", {})])
+    monkeypatch.setattr(pulls, "utc_now", lambda: NOW)
+    _observe_core(100)
+    asyncio.run(held.probe(record))
+    assert held.automatic_due(NOW) == "full"
+    gh_budget.hold(_stamp(NOW + timedelta(minutes=10)), now=NOW)
+    assert held.automatic_due(NOW) is None

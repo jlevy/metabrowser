@@ -12,7 +12,22 @@ the account had already spent 416 core and 162 GraphQL points of the hour from o
 clients. So background work is admitted only while each observed resource it spends has
 more than :data:`BACKGROUND_FLOOR` of its limit remaining and no hold applies
 (:func:`admission`). With nothing observed it is admitted, and its first response is
-observed. A reader's own work is never asked.
+observed.
+
+Three kinds of work go below the floor, and only a hold stops them (the owner's rule,
+2026-11-22):
+
+- a reader's own action (Retry, Reload, Fetch), which is never asked;
+- the probes of the pull request on a visible page, conditional reads GitHub does not
+  count when it answers ``304``; and
+- the full read of a change such a probe finds, or the catalog reports, on that pull
+  request: the floor is a reserve for the reader, and this is the page the reader is
+  looking at.
+
+Everything else automatic stops below it: prefetch and backfill, which ask
+:func:`admission`, and the reads a visible page's clock alone asks for, a record's
+:data:`~.served_pull.FULL_REFRESH_S` full read and an open one's checks once a window
+(:meth:`.served_pull.ServedPull.below_floor`).
 
 The observations and the hold are this process's, and belong to the account the last
 account check named (:func:`note_account`, called by :func:`~.gh.gh_account` and
@@ -31,9 +46,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Final, Literal, TypedDict
 
 # A reserve for the reader and the account's other clients, not a measure of Metabrowser's
-# own use: 1,250 of 5,000 core points cover a reader who refreshes a pull request every 30 s
-# for two hours, 240 refreshes at the 8 points one costs at most (two account checks, the
-# pull, and five parts of a page each), with room beside it.
+# own use. Below it only a reader's own action and a change found on the pull request on
+# screen are read (the module docstring has the rule). A full read costs at most 6 core
+# points, the pull and five parts of a page each, now that the account checks are
+# conditional (:func:`~.gh.gh_account`), so 1,250 of 5,000 cover 200 such reads, a
+# reader's Refresh or a change a probe found, with room beside them for the point a probe
+# costs when GitHub answers it ``200``.
 BACKGROUND_FLOOR: Final = 0.25
 # How long a refusal that named no reset time holds: the refresh coordinator's window, as
 # ``pull_list_refresh`` waits after one.

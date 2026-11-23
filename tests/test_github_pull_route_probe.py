@@ -18,7 +18,7 @@ from typing import Any, cast
 
 import pytest
 
-from metabrowser.builtin_plugins.github import pulls, served_pull
+from metabrowser.builtin_plugins.github import gh_budget, pulls, served_pull
 from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
 from metabrowser.builtin_plugins.github.pull_record import PullRecord
 from metabrowser.builtin_plugins.github.pull_route import (
@@ -163,3 +163,37 @@ def test_the_envelope_is_vouched_for_only_by_a_probe_of_the_record_it_carries(
     )
     assert vouched(storeless, has_store=True) is None
     assert vouched(record, has_store=True) == held.probed_at
+
+
+def test_below_the_floor_an_overdue_full_read_waits_while_probes_vouch_and_find_changes(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """mb-qngw: the ask that would start the ``FULL_REFRESH_S`` read probes instead, the
+    envelope stays vouched for so the page keeps asking, and a change is read at once."""
+
+    route = _Route(stand, monkeypatch)
+    route.now += timedelta(seconds=FULL_REFRESH_S + 1)
+    gh_budget.observe(
+        {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "40",
+            "x-ratelimit-reset": str(int((route.now + timedelta(hours=1)).timestamp())),
+        },
+        resource="core",
+    )
+    route.answers.append(pulls.PullProbe("unchanged", {}))
+    assert route.ask() == "not_due"
+    assert len(route.probes) == 1 and route.started == []
+    view = cast("PullView", SimpleNamespace(kept=route.held))
+    assert route.held.full_read_overdue(route.now)
+    vouched = probed_at(view, route.record, now=route.now, has_store=False, freshness=None)
+    assert vouched is not None and vouched == route.held.probed_at
+    route.now += timedelta(seconds=ATTENDED_PROBE_S)
+    route.answers.append(pulls.PullProbe("changed", {}))
+    assert route.ask() == "started"
+    assert route.started == [7]
+    # Above the floor the same overdue record is read in full without a probe.
+    gh_budget.forget()
+    above = _Route(stand, monkeypatch)
+    above.now += timedelta(seconds=FULL_REFRESH_S + 1)
+    assert above.ask() == "started" and above.probes == []

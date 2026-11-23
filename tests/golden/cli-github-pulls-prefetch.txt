@@ -528,8 +528,52 @@ gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
 gh api user (If-None-Match)
+## The clock moves on 5 s, to 2026-09-17T14:01:06Z.
+## 7 is retitled on GitHub while the budget is that low, and its page's automatic ask probes it. The probe's own answer shows the budget below the floor, and the change it found is read in full all the same: the floor stops the reads the clock asks for, not a change found on the page the reader is looking at.
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "number": 7,
+    "state": "current",
+    "fetched_at": "2026-09-17T14:01:01Z",
+    "verified_at": "2026-09-17T14:01:01Z",
+    "verified_by": "catalog",
+    "head_moved": false,
+    "checks_pending": false
+  },
+  "status_route": "/api/plugin/github/pull?number=7"
+}
+after: /api/plugin/github/pull?number=7
+status: 200
+{
+  "number": 7,
+  "state": "current",
+  "fetched_at": "2026-09-17T14:01:06Z",
+  "verified_at": "2026-09-17T14:01:06Z",
+  "verified_by": "catalog",
+  "head_moved": false,
+  "checks_pending": false
+}
+--- stderr ---
+--- body ---
+{"number": 7}
+--- gh ---
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api user
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/check-runs?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/status?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh api user (If-None-Match)
 ## GitHub refuses the catalog's next scan with its rate limit exhausted. The hold it leaves beside the catalog defers any prefetch until it lifts, in this process or another.
-## The clock moves on 61 s, to 2026-09-17T14:02:02Z.
+## The clock moves on 61 s, to 2026-09-17T14:02:07Z.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -554,7 +598,7 @@ status: 200
     "outcome": "rate_limited",
     "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
     "reset_at": "2026-09-23T16:46:00Z",
-    "at": "2026-09-17T14:02:02Z"
+    "at": "2026-09-17T14:02:07Z"
   }
 }
 --- stderr ---

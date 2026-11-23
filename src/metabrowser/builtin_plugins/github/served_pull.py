@@ -361,6 +361,11 @@ class ServedPull:
         the catalog cannot loop. One whose checks alone are due (``checks_due``, an open pull
         request the catalog vouches for but read longer ago than the window) is due once a
         window.
+
+        Below :data:`~.gh_budget.BACKGROUND_FLOOR` (:meth:`below_floor`) only a change is
+        due, one a probe found or the catalog reports: the reads the clock alone asks for,
+        a record's age and an open one's checks, wait until the account's budget is back
+        above it, as background work does. A reader's own action never asks this.
         """
 
         window = timedelta(seconds=window_s)
@@ -379,8 +384,9 @@ class ServedPull:
         if self.changed_row is not None and self.fetched_at is not None:
             # GitHub changed it after this record: due unless an attempt saw that very row.
             return not held and (self._attempted_row != self.changed_row or not attempted_within)
+        spare = not self.below_floor(now)
         if self.checks_due and not unserved and self.fetched_at is not None:
-            return not held and not attempted_within
+            return spare and not held and not attempted_within
         newest = max(
             (stamp for stamp in (self.fetched_at, self.verified_at) if stamp is not None),
             default=None,
@@ -393,7 +399,7 @@ class ServedPull:
             # What succeeded was a server with no store writing that record. This one's
             # refresh, which fetches the head into its store, has not been tried.
             return True
-        return self._last_attempt is None or now - self._last_attempt > window
+        return spare and (self._last_attempt is None or now - self._last_attempt > window)
 
     def _held(self, now: datetime) -> bool:
         """Whether GitHub's rate limit holds an automatic read of this record at *now*."""
@@ -405,6 +411,16 @@ class ServedPull:
             and last["reset_at"] is not None
             and now < _parse_stamp(last["reset_at"])
         ) or gh_budget.held_until(now) is not None
+
+    def below_floor(self, now: datetime) -> bool:
+        """Whether the account's ``core`` budget is at or below the background floor at *now*.
+
+        Then this record's periodic reads stop (:meth:`is_stale`, :meth:`full_read_due`),
+        while its probes go on, since a ``304`` is free, and a change one finds is still
+        read in full: the owner's rule of 2026-11-22, in :mod:`.gh_budget`'s docstring.
+        """
+
+        return gh_budget.admission(("core",), now=now).reason == "below_floor"
 
     def probe_vouches(self, now: datetime) -> bool:
         """Whether a probe found the record held unchanged within a freshness window."""
@@ -421,6 +437,8 @@ class ServedPull:
         otherwise, or when its full read is overdue (:meth:`full_read_due`), so even a
         record the catalog or the probes vouch for is read in full that often while a page
         shows it. ``probe`` when none of that holds and a probe is due (:meth:`probe_due`).
+        Below the background floor neither clock asks for a full read, so the ask probes,
+        and ``full`` is then only a change a probe or the catalog found.
         """
 
         window = FULL_REFRESH_S if self.probe_vouches(now) else FRESHNESS_WINDOW_S
@@ -443,8 +461,9 @@ class ServedPull:
     def full_read_due(self, now: datetime) -> bool:
         """Whether a full read is overdue (:meth:`full_read_overdue`) and may start at *now*.
 
-        Not while GitHub's limit holds, within a freshness window of a failed refresh of any
-        kind (:meth:`_failed_recently`), nor within :data:`FULL_REFRESH_S` of the last full
+        Not while GitHub's limit holds, below the background floor (:meth:`below_floor`),
+        within a freshness window of a failed refresh of any kind
+        (:meth:`_failed_recently`), nor within :data:`FULL_REFRESH_S` of the last full
         read tried, so a failing one is not retried on every ask. ``checks_only`` reads,
         which neither count as one nor hold one back, do not move either clock.
         """
@@ -452,6 +471,7 @@ class ServedPull:
         return (
             self.full_read_overdue(now)
             and not self._held(now)
+            and not self.below_floor(now)
             and not self._failed_recently(now)
             and (
                 self._full_attempt is None

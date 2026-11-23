@@ -592,6 +592,11 @@ def probed_at(
     which the catalog does not say GitHub changed since and which needs no store this
     server has. Otherwise ``None``, and the record's state is the catalog's or the
     clock's (:func:`pull_state`).
+
+    Below the background floor (:meth:`.ServedPull.below_floor`) the overdue full read
+    waits, and the probe goes on vouching: it is all that reads the record then, and a
+    page asks every ``probe_every_s`` only for a record it is told is current, so one
+    marked stale would be probed once a window and a change found that much later.
     """
 
     kept = view.kept
@@ -600,7 +605,7 @@ def probed_at(
         or not isinstance(record, PullRecord)
         or kept.fetched_at != record.fetched_at
         or not kept.probe_vouches(now)
-        or kept.full_read_overdue(now)
+        or (kept.full_read_overdue(now) and not kept.below_floor(now))
         or (freshness is not None and freshness.verdict == "changed")
         or (has_store and written_without_store(record))
     ):

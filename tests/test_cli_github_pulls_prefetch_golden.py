@@ -353,6 +353,32 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     ]
     assert report["governor"]["admits"] is False
 
+    session.advance(5)
+    session.say(
+        "7 is retitled on GitHub while the budget is that low, and its page's automatic ask "
+        "probes it. The probe's own answer shows the budget below the floor, and the change "
+        "it found is read in full all the same: the floor stops the reads the clock asks "
+        "for, not a change found on the page the reader is looking at."
+    )
+    pull_path = "repos/octo/demo/pulls/7"
+    retitled = {
+        **moved["api"][pull_path]["body"],
+        "title": "Retitled below the floor",
+        "updated_at": _stamp(session.now - timedelta(seconds=2)),
+    }
+    changed = {**moved, "api": {**moved["api"], pull_path: ok(pull_path, retitled)}}
+    session.answer(_low_budget(changed, 1000))
+    found = session.run(CANONICAL, "--api", f"{PULL}-refresh", body={"number": 7})
+    assert found.exit_code == 0, found.stderr
+    assert '"refresh": "started"' in found.stdout
+    calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
+    # The probe, then the whole record between its two account checks.
+    assert calls[1] == "gh api user" and calls[-1] == "gh api user (If-None-Match)", calls
+    assert len(calls) == 9, calls
+    reread = session.run(CANONICAL, "--api", f"{PULL}?number=7", full=True).payload()
+    assert reread["record"]["pull"]["title"] == "Retitled below the floor"
+    session.blocks.pop()
+
     session.say(
         "GitHub refuses the catalog's next scan with its rate limit exhausted. The hold it "
         "leaves beside the catalog defers any prefetch until it lifts, in this process or another."

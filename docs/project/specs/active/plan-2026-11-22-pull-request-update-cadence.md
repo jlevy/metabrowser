@@ -264,9 +264,11 @@ guards and adds one:
 - `BACKGROUND_FLOOR` (kept): below it, the `FULL_REFRESH_S` reads and preparation stop.
   Probes keep running, and a change one finds on the attended pull request or the
   visible list still starts its full read, as [Priority](#priority) says (the owner’s
-  rule, 2026-11-22). The change that builds this rewrites the floor’s sizing comment and
-  the docstring of `gh_budget.py`, which say today that only a reader’s own work goes
-  below it.
+  rule, 2026-11-22). Built for the pull request on screen: `ServedPull.below_floor`
+  holds the reads its clock alone asks for, and the floor’s sizing comment and the
+  docstring of `gh_budget.py` say what goes below it.
+  While the floor holds the full read, an unchanged probe keeps the record current in
+  the envelope, since the page asks every `probe_every_s` only for a current record.
 - The rate-limit hold (kept): nothing automatic runs before `reset_at`.
 - **Admission everywhere** (new): the cores walk, stacks, labels, and the timeline ask
   `gh_budget.admission` before automatic work, as the backfill and prefetch already do.
@@ -437,7 +439,7 @@ account check and the bounds on probes.
   `arch-mirror-acquisition-and-refresh.md`.
 - [x] A conditional account check in `gh_lists.active_account`, which every job’s
   account check uses (bead `mb-1bir`).
-- [ ] The `BACKGROUND_FLOOR` rule for probes (see [Priority](#priority)): below the
+- [x] The `BACKGROUND_FLOOR` rule for probes (see [Priority](#priority)): below the
   floor, a change a probe finds on the page on screen still starts its full read, and
   the `FULL_REFRESH_S` reads stop (bead `mb-qngw`).
 - [ ] The bound on paid probes (see [Budget](#budget)): a key’s probe interval doubles

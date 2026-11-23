@@ -74,9 +74,12 @@ and names its reader as `gh:<login>`.
 resource every response carries, and holds every resource after a `rate_limited` refusal
 until its `reset_at`. Background work is admitted only while each resource it spends has
 more than `BACKGROUND_FLOOR` of its limit left and no hold applies; a reader’s own work
-is never asked. The observations belong to the account the last account check named, and
-another account forgets them; since `remaining` is the account’s, several servers on one
-account stop together.
+is never asked. Below the floor a visible page’s pull request is still probed, and a
+change a probe or the catalog finds on it is still read in full, while the reads its
+clock alone asks for stop (`ServedPull.below_floor`); the module’s docstring has the
+rule. The observations belong to the account the last account check named, and another
+account forgets them; since `remaining` is the account’s, several servers on one account
+stop together.
 
 ### The GitHub Status Check
 
@@ -235,6 +238,12 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   Settling checks a probe cannot see (`checks_probe_paths`) leave the record to the
   window, unvouched. However many pages ask, probes of one pull request are one at a time
   and `PROBE_FLOOR_S` apart, and a rate-limit hold stops them all.
+- **Below `BACKGROUND_FLOOR`:** probes go on, since a `304` is free, and a change one
+  finds, or the catalog reports, still starts its read.
+  The `FULL_REFRESH_S` read and an open record’s once-a-window checks read wait until
+  the budget is back above the floor, and meanwhile an unchanged probe keeps vouching
+  for a record whose full read is overdue, so the page keeps asking every
+  `probe_every_s`. What a probe cannot see is that much later below the floor.
   The
   [update cadence plan](../specs/active/plan-2026-11-22-pull-request-update-cadence.md)
   records the measurements and the design.
