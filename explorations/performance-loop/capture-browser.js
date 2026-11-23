@@ -2361,7 +2361,7 @@ async function capture(options) {
       chrome.kill("SIGKILL");
       await new Promise((resolve) => chrome.once("exit", resolve));
     }
-    fs.rmSync(profileDirectory, { force: true, recursive: true });
+    fs.rmSync(profileDirectory, { force: true, recursive: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 

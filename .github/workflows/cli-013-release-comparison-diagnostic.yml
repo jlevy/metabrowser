@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 45
     env:
       CONTROL_SHA: 87b8ec812774bb12a4d9f5f29901719b8b66d323
-      CANDIDATE_SHA: ed7e1f10ffcd7be3524113edd6dc940cfe74c708
+      CANDIDATE_SHA: 80fb76d63b8d19c2e5537ea6e9c9128506b3ad63
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -82,8 +82,8 @@ jobs:
           cd "$support/candidate"
           python_run=(uv --config-file uv.toml run --frozen python)
           bench=("${python_run[@]}" explorations/performance-loop/run.py)
-          control_label=exp-102-cli-013-http-ready-font-tcp-v0120
-          candidate_label=exp-102-cli-013-http-ready-font-tcp-candidate
+          control_label=exp-102-cli-013-http-ready-final-selector-tcp-v0120
+          candidate_label=exp-102-cli-013-http-ready-final-selector-tcp-candidate
           ledger=explorations/performance-loop/results/runs.jsonl
           pending=explorations/performance-loop/results/pending.json
           capture_driver="$GITHUB_WORKSPACE/explorations/performance-loop/capture-browser.js"
@@ -163,7 +163,14 @@ jobs:
           "${bench[@]}" fingerprint >> "$results/serve-warmup.log" 2>&1
           candidate_hard_failure=0
           rejected_captures=0
-          for pair in {1..5}; do
+          complete_pairs=0
+          capture_manifest="$results/capture-manifest.tsv"
+          printf "pair\tside\tstatus\texit_status\n" > "$capture_manifest"
+          # Start with five pairs. Append whole pairs only to replace a pair
+          # with refused evidence, up to three replacements on this runner.
+          for pair in {1..8}; do
+            if (( complete_pairs == 5 )); then break; fi
+            admitted_in_pair=0
             sides=(control candidate)
             if (( pair % 2 == 0 )); then sides=(candidate control); fi
             for side in "${sides[@]}"; do
@@ -187,16 +194,20 @@ jobs:
                   | tee -a "$results/rejected-captures.txt"
                 cat "$capture_stem.log"
                 rejected_captures=$((rejected_captures + 1))
+                printf "%s\t%s\trefused\t%s\n" "$pair" "$side" "$capture_status" >> "$capture_manifest"
                 # Preserve fingerprint continuity even when an attempted capture was refused.
                 "${bench[@]}" fingerprint --timeout 120 > "$capture_stem.fingerprint.log" 2>&1
                 continue
               fi
+              admitted_in_pair=$((admitted_in_pair + 1))
+              printf "%s\t%s\trecorded\t%s\n" "$pair" "$side" "$capture_status" >> "$capture_manifest"
               if [[ "$side" = candidate && "$capture_status" != 0 ]]; then candidate_hard_failure=1; fi
               jq -c --arg a "$control_label" --arg b "$candidate_label" \
                 'select(.label==$a or .label==$b)' "$ledger" > "$results/browser-ledger.jsonl"
             done
+            if (( admitted_in_pair == 2 )); then complete_pairs=$((complete_pairs + 1)); fi
           done
-          printf 'Rejected captures: %s\n' "$rejected_captures"
+          printf 'Complete pairs: %s; rejected captures: %s\n' "$complete_pairs" "$rejected_captures"
           # Stock compare treats different dependency environments as incompatible.
           # Both exact wheels pin different KPress versions, so retain that verdict
           # alongside the absolute candidate budgets and interleaved whole-release data.
@@ -206,11 +217,13 @@ jobs:
             --expect-build "$candidate_label=wheel:sha256:$(cat "$results/candidate.sha256")" \
             > "$results/comparison.log" 2>&1 || compare_status=$?
           cat "$results/comparison.log"
-          printf 'backend_status=%s\ncandidate_hard_failure=%s\ncompare_status=%s\n' \
-            "$backend_status" "$candidate_hard_failure" "$compare_status" > "$results/status.txt"
+          printf 'backend_status=%s\ncandidate_hard_failure=%s\ncompare_status=%s\ncomplete_pairs=%s\nrejected_captures=%s\n' \
+            "$backend_status" "$candidate_hard_failure" "$compare_status" "$complete_pairs" "$rejected_captures" \
+            > "$results/status.txt"
+          recorded_captures="$(awk -F '\t' '$3 == "recorded" { total += 1 } END { print total + 0 }' "$capture_manifest")"
+          test "$complete_pairs" = 5
+          test "$(jq -s length "$results/browser-ledger.jsonl")" = "$recorded_captures"
           test "$backend_status" = 0
-          test "$rejected_captures" = 0
-          test "$(jq -s length "$results/browser-ledger.jsonl")" = 10
           test "$candidate_hard_failure" = 0
           test "$compare_status" = 0
       - name: Verify the adopted TCP transport on Linux
