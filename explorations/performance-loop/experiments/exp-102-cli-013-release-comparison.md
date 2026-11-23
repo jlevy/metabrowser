@@ -306,8 +306,8 @@ The relative comparison above uses the three complete pairs only.
 The final comparison measured `80fb76d63b8d19c2e5537ea6e9c9128506b3ad63`, the TCP fix on
 the merged sidebar font revision.
 Its wheel SHA-256 was
-`b3be120606fa26402b39950fe19e047b391501fa8f1800a0da4ffea1a1e838cd`. The control still
-used the published v0.12.0 wheel bytes.
+`b3be120606fa26402b39950fe19e047b391501fa8f1800a0da4ffea1a1e838cd`. The workflow rebuilt
+the control wheel from the `v0.12.0` tag and its lockfile.
 The [preregistered replacement workflow](exp-102-exact-pr-head-protocol.txt) recorded
 the same installed-wheel, synthetic-corpus, input, visibility, and hard-budget checks.
 It specified five complete interleaved pairs and allowed at most three additional whole
