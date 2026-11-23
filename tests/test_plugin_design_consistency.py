@@ -48,6 +48,10 @@ BUTTON_CLASS_ALLOWLIST = {
     # label type (docs/design-system.md, "Data Tables").
     "table-sort": "a sortable column's header label, which sorts it",
     "table-head-menu": "a column header's menu trigger",
+    # A guide's step list is a table of contents of its steps, in the description's text
+    # size; `.menu-item` is a menu's row at the controls' size (docs/design-system.md,
+    # "Guided Review").
+    "github-pull-guide-steps-link": "a Guided Review step list row, which goes to its step",
 }
 
 _QUOTED = re.compile(r"""(["'\x60])((?:\\.|(?!\1).)*)\1""", re.DOTALL)

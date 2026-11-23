@@ -13,3 +13,6 @@
   by its contract ID, and a guide goes out of date when the pull request’s head or merge
   base changes ([Guided Review](docs/reviewing-pull-requests.md#guided-review)). First
   contributed in #599.
+- **App contract:** `metab --plugins --json` lists `diff` among the github plugin’s
+  `requires`, since Guided Review draws its excerpts with the diff plugin’s renderer.
+  The macOS app reads the list as it is and needs no change.

@@ -1983,7 +1983,7 @@
 }
 .github-pull-guide-position {
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
 }
 .github-pull-guide-steps {
   margin: 0;
@@ -2013,18 +2013,18 @@
   color: var(--link);
 }
 .github-pull-guide-steps-link:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 .github-pull-guide-steps-number {
   min-width: 1.5em;
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
   text-align: end;
 }
+/* The note is metadata, at its row's size ("Type Scale"). */
 .github-pull-guide-steps-link .github-pull-guide-step-changed {
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
 }
 
 /* An arrow button: the arrow alone in the step list's head, beside its words below a step. */
