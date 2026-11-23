@@ -7650,9 +7650,12 @@ export function mountPullPage(container, ctx, mb) {
               summary: false,
               ...(docs
                 ? {
-                    // Docs: the documents alone, every fold open, and no File type choice.
+                    // Docs: the documents alone, every fold open, and no File type or
+                    // layout choice. A rendered document has no layout, and a document's
+                    // Source reads as its Rendered does, in one column.
                     group: DOCS_GROUP,
                     unfold: true,
+                    layout: "unified",
                     emptyText: "No documents changed in this pull request.",
                     onDocument: (/** @type {unknown} */ document_) => {
                       documented = true;

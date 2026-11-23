@@ -129,6 +129,13 @@ For
   pull request’s Changes and a commit’s page, on every bar drawn on one line, the
   control’s baseline was the path’s, 0 px apart, at ratios of 1 and 2: the link form as
   the pages drew it, and a button of the control’s class put in its place.
+  Later on 2026-11-23 the stats and notes left the toggle for a box of their own after
+  the copy control, set at the path’s size and line height, and the control followed
+  them in the name’s group.
+  In headless Chrome, on a pull request’s Docs and Changes, the path’s, the stats’, and
+  View on branch’s text had one top and one bottom in bars 920 px wide at ratios of 1
+  and 2 and 400 px wide at 1, and the chooser ended at the bar’s end pad, on the bar’s
+  line at 920 px and on a second line at 400.
 - A mirror’s location note at the far end of the file header, centered rather than
   baseline-aligned, sits 0.25px above the path at a device pixel ratio of 1. On
   2026-11-16 and 2026-11-17, at the header’s one size, 13 px and then 14 px

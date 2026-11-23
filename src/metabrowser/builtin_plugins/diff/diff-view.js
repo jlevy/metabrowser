@@ -5,11 +5,12 @@
 //
 // Each file renders as a section under a bar: the section-disclosure
 // primitive carrying the filename (styled as a filename, not a
-// heading), the inline +N −N stat pair, and change notes; beside it a
-// copy-path control riding the shared [data-mb-copy] delegation; and,
-// at the bar's end, the View file controls of diff-view-file.js when
-// the page can open a file at a commit. Sections start expanded; the
-// bar collapses the body without disposing it.
+// heading); right after the name a copy-path control riding the shared
+// [data-mb-copy] delegation; the inline +N −N stat pair and change
+// notes; then the View file controls of diff-view-file.js when the page
+// can open a file at a commit; and, at the bar's end, a file's
+// Rendered | Source chooser (diff-markdown.js). Sections start
+// expanded; the bar collapses the body without disposing it.
 // Every availability state has exactly one rendering path — an absent
 // patch is a labeled state, never an empty box. Rendering is
 // deliberately dumber than the model: the data plane is tested by the
@@ -1076,18 +1077,19 @@ function repaintViewFileControls(view) {
 
 /**
  * The per-file bar, in two groups, per the section-disclosure and icon button primitives
- * in the design system. It leads with what names the file: one disclosure trigger (kind,
- * path, stats, notes) and the copy control beside it. It ends with what shows the file
- * another way: the View file controls, which a file's Rendered | Source chooser leads
- * (diff-markdown.js).
+ * in the design system. It leads with what names the file and where it opens: one
+ * disclosure trigger (kind, path), the copy control right after the name, the change's
+ * stats and notes, which describe the trigger, and the View file controls. Its end group
+ * holds a file's Rendered | Source chooser alone (diff-markdown.js), at the bar's far end.
  *
  * @param {Record<string, unknown>} change
  * @param {string} toggleId
  * @param {string} bodyId
+ * @param {string} factsId The id of the stats and notes, which describe the trigger.
  * @param {MountedDiffState} view
  * @returns {{bar: HTMLElement, end: HTMLElement, toggle: HTMLElement, notice: HTMLElement | null}}
  */
-function renderFileBar(change, toggleId, bodyId, view) {
+function renderFileBar(change, toggleId, bodyId, factsId, view) {
   const api = view.api;
   // The path is shown as the Diff summary shows it, by the server's display rule, and the
   // raw path stays for the copy control and the jump; without the shared tree it is raw.
@@ -1121,14 +1123,24 @@ function renderFileBar(change, toggleId, bodyId, view) {
           { additions: count(change.additions), deletions: count(change.deletions) },
           countFormatter(api),
         );
-  if (counts !== null) {
-    const stats = el("span", "diff-file-stats");
-    stats.append(el("span", "diff-stat-add", counts.additions));
-    stats.append(el("span", "diff-stat-del", counts.deletions));
-    toggle.append(stats);
-  }
-  for (const note of notes) {
-    toggle.append(el("span", "diff-file-note", note));
+  // The change's stats and notes follow the copy control, which sits right after the name
+  // it copies, so they are not in the trigger: they describe it, and a click on them
+  // toggles the file as anywhere else on the bar does.
+  /** @type {HTMLElement | null} */
+  let facts = null;
+  if (counts !== null || notes.length > 0) {
+    facts = el("span", "diff-file-facts");
+    facts.setAttribute("id", factsId);
+    toggle.setAttribute("aria-describedby", factsId);
+    if (counts !== null) {
+      const stats = el("span", "diff-file-stats");
+      stats.append(el("span", "diff-stat-add", counts.additions));
+      stats.append(el("span", "diff-stat-del", counts.deletions));
+      facts.append(stats);
+    }
+    for (const note of notes) {
+      facts.append(el("span", "diff-file-note", note));
+    }
   }
   // Each group is one flex item: a bar that wraps or cuts a long path short never parts
   // the copy control from the name it copies, and its end group moves as one.
@@ -1148,6 +1160,9 @@ function renderFileBar(change, toggleId, bodyId, view) {
     copy.innerHTML = shellIcon("copy");
     lead.append(copy);
   }
+  if (facts !== null) {
+    lead.append(facts);
+  }
   bar.append(lead, end);
 
   /** @type {HTMLElement | null} */
@@ -1159,7 +1174,7 @@ function renderFileBar(change, toggleId, bodyId, view) {
     notice.hidden = true;
     const said = { element: notice, timer: 0 };
     const controls = actions.map((action) => renderViewFileControl(action, view, said));
-    end.append(...controls);
+    lead.append(...controls);
     view.viewFileBars.push({ change, controls, said });
   }
   return { bar, end, toggle, notice };
@@ -1819,9 +1834,10 @@ function wholeTotalsOf(manifest, given) {
 }
 
 /**
- * The layout control is always present in the shell. A multi-file diff's toolbar leads with
- * its Diff summary; single-file views avoid repeating their file bar. A page that places the
- * summary at its own top passes the place (*summaryHost*), as a commit's page does
+ * The layout control is present in the shell unless the host fixes the layout
+ * (*chooseLayout* false), as a pull request's Docs tab does. A multi-file diff's toolbar leads
+ * with its Diff summary; single-file views avoid repeating their file bar. A page that places
+ * the summary at its own top passes the place (*summaryHost*), as a commit's page does
  * (mb-pb35): the summary is drawn there, for one file too, since there it stands for the
  * change set's totals, and the toolbar holds the layout control alone. *whole* is the
  * change set's whole totals, where its list was cut short and the page knows them
@@ -1834,6 +1850,8 @@ function wholeTotalsOf(manifest, given) {
  * @param {HTMLElement | null} [summaryHost]
  * @param {WholeTotals | null} [whole]
  * @param {HTMLElement | null} [hostControl]
+ * @param {boolean} [chooseLayout] Whether the reader chooses the layout here, with the
+ *   control and `L`.
  * @returns {{toolbar: HTMLElement, unbind: () => void}}
  */
 function renderDiffToolbar(
@@ -1844,6 +1862,7 @@ function renderDiffToolbar(
   summaryHost = null,
   whole = null,
   hostControl = null,
+  chooseLayout = true,
 ) {
   const toolbar = el("div", "diff-toolbar");
   /** @type {(() => void) | null} */
@@ -1870,6 +1889,9 @@ function renderDiffToolbar(
   }
   if (hostControl !== null) {
     toolbar.append(hostControl);
+  }
+  if (!chooseLayout) {
+    return { toolbar, unbind: () => disposeSummary?.() };
   }
   const control = el("div", "diff-layout-control");
   view.layoutControl = control;
@@ -2954,9 +2976,10 @@ function renderFileSection(change, patch, context, view, draw) {
   sectionSequence += 1;
   const toggleId = `diff-file-toggle-${sectionSequence}`;
   const bodyId = `diff-file-body-${sectionSequence}`;
+  const factsId = `diff-file-facts-${sectionSequence}`;
   const section = el("section", "diff-file");
   section.setAttribute("aria-labelledby", toggleId);
-  const { bar, end, toggle, notice } = renderFileBar(change, toggleId, bodyId, view);
+  const { bar, end, toggle, notice } = renderFileBar(change, toggleId, bodyId, factsId, view);
   const body = el("div", "diff-file-body");
   body.setAttribute("id", bodyId);
   if (notice) {
@@ -3193,7 +3216,8 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   summaryManifest?: Record<string, unknown> | null,
  *   toolbarControl?: HTMLElement | null,
  *   emptyText?: string,
- *   unfold?: boolean
+ *   unfold?: boolean,
+ *   layout?: "unified" | "split"
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
@@ -3211,12 +3235,17 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   File type control as *toolbarControl*, which leads the layout control; and *emptyText*,
  *   what it says when it keeps no file. *unfold* draws every fold open, the rendered
  *   view's unchanged runs and the text diff's long changed runs alike, for a page that
- *   shows its files whole: a pull request's Docs tab.
+ *   shows its files whole: a pull request's Docs tab. *layout* is a layout the host fixes:
+ *   the diff draws it, apart from the fallback where Split does not fit, with no layout
+ *   control and no `L`, and neither reads nor writes the reader's stored choice. A pull
+ *   request's Docs tab draws Unified, the form its rendered documents take.
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, sectionForPath: (path: string) => HTMLElement | null, pathForSection: (section: Element) => string | null, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
-  const chosenLayout = readLayoutPreference(api);
+  const fixedLayout =
+    options.layout === "unified" || options.layout === "split" ? options.layout : null;
+  const chosenLayout = fixedLayout ?? readLayoutPreference(api);
   // Measured before the first draw, so a narrow pane never draws Split to throw it away. A
   // container that is not laid out yet has no width, as a commit's stage has none until it
   // is placed, so nothing is drawn until its first report decides.
@@ -3334,8 +3363,14 @@ export function mountDiffView(container, document_, api, options = {}) {
     options.summaryHost ?? null,
     wholeTotalsOf(described, options.summaryTotals ?? null),
     options.toolbarControl ?? null,
+    fixedLayout === null,
   );
-  root.append(toolbar);
+  // A fixed layout leaves the toolbar what else it holds, and a toolbar with nothing in it,
+  // as on a pull request's Docs tab, is not drawn.
+  const drawsToolbar = fixedLayout === null || toolbar.children.length > 0;
+  if (drawsToolbar) {
+    root.append(toolbar);
+  }
   // A list cut short at its bounds may have left out what was asked for: the truncation
   // notice below says so, and "none" would not be true.
   if (manifest.files.length === 0 && manifest.truncated !== true && options.emptyText) {
@@ -3354,9 +3389,9 @@ export function mountDiffView(container, document_, api, options = {}) {
   // Soft wraps and arriving scrollbars can add height. Drawing every hydrated file at
   // once was one task of style, layout and commit
   // proportional to the rows: 1,083 ms at 114,609 nodes on a 1,031-file comparison (review
-  // of #284, E1). The toolbar is counted as about a bar.
+  // of #284, E1). The toolbar, where there is one, is counted as about a bar.
   const budget = firstScreenBudget(screen);
-  let estimatedTop = screen?.barPx ?? 0;
+  let estimatedTop = drawsToolbar ? (screen?.barPx ?? 0) : 0;
   measureProjection(
     api,
     "diffMount:projection",
