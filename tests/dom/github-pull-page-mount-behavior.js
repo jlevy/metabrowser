@@ -1407,7 +1407,7 @@ async function tabKeys(page) {
       .map((command) => command.bindings.visible.join(""))
       .join(" ");
   const live = () =>
-    ["conversation", "files", "checks"].filter((id) =>
+    ["conversation", "docs", "files", "checks"].filter((id) =>
       registry.isLive(`plugin.github.pull.tab.${id}`),
     );
   /** Press `key`, and say what the page did: the route it opened, or the tab now shown. */
@@ -3417,6 +3417,7 @@ async function run() {
         .map((tab) => [tab.textContent, tab.getAttribute("href")]),
       [
         ["Conversation", "/pull/7"],
+        ["Docs", "/pull/7/docs"],
         ["Changes", "/pull/7/files"],
         ["Checks", "/pull/7/checks"],
       ],
