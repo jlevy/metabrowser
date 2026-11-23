@@ -5,15 +5,16 @@ title: A reader joining a checkout's background pull job that is being stopped i
 kind: bug
 status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
+parent_id: is-01m82h0qrnw9vg6vrj597asgpv
 hold: null
 hold_until: null
 created_at: 2026-11-23T15:54:51.444Z
-updated_at: 2026-11-23T17:29:16.295Z
+updated_at: 2026-11-23T20:48:50.564Z
 started_at: 2026-11-23T16:10:30.078Z
 closed_at: 2026-11-23T17:29:16.293Z
 close_reason: "Fixed in #762 (6fd2b2092): RefreshCoordinator.start_again_when_stopped, shared by MirrorSession and checkout.start_pull_refresh, restarts a pull job a reader joins while it is being stopped, including the eager-revision promotion and the optional comparison. test_a_readers_start_that_joins_a_job_being_stopped_gets_its_job fails 4/4 with origin/main's checkout.py and mirror_refresh.py and passes with the fix. Review C of #721, C1."

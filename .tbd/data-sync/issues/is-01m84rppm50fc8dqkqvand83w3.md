@@ -5,12 +5,13 @@ title: "PR #761 A1: the cores walk takes the share between the page's asks, so a
 kind: bug
 status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 labels: []
 dependencies: []
+parent_id: is-01m82h0qrnw9vg6vrj597asgpv
 created_at: 2026-11-23T17:54:17.348Z
-updated_at: 2026-11-23T18:55:49.267Z
+updated_at: 2026-11-23T20:48:44.895Z
 closed_at: 2026-11-23T18:55:49.245Z
 close_reason: "Fixed in 0ace3fe37 on claude/catalog-share-order (PR #761), per the owner's option 1: pull_prefetch.reserved keeps one scan's records (RECORDS_PER_SCAN, at most the hour's room) for an idle lane a page asked for within ASKED_WITHIN_S (150 s, the panel's longest gap between asks plus a scan's run; tests/test_github_pull_prefetch.py pins the sum). The B1 test again pins #737's order, and test_a_walk_longer_than_an_hours_share_leaves_the_prefetch_its_records_every_hour runs a walk across three hours' roll (records read 9, 12, 12). Review A's model at 5,000 rows: records/h 7,2,2,2 before, 9,11,12,12 after."
 resolution: null

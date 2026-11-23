@@ -5,7 +5,7 @@ title: "Live GitHub updates: what is on screen updates within seconds, everythin
 kind: epic
 status: closed
 priority: 1
-version: 41
+version: 54
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 refs:
   - kind: pr
@@ -14,6 +14,18 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/709
     at: 2026-11-22T22:59:19.912Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/756
+    at: 2026-11-23T20:48:40.094Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/758
+    at: 2026-11-23T20:48:40.095Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/761
+    at: 2026-11-23T20:48:40.095Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/762
+    at: 2026-11-23T20:48:40.095Z
 labels:
   - linear
   - Feature
@@ -53,8 +65,20 @@ child_order_hints:
   - is-01m84jpbs7staabvpby1qp2bnr
   - is-01m84p4yd4zy6m6qyfvr2a5q74
   - is-01m84qwq4kcjc2m1apazxnrk43
+  - is-01m84jcvbcn1d54ba93avka51z
+  - is-01m84jcww556yrj71kb61gq73b
+  - is-01m84rppm50fc8dqkqvand83w3
+  - is-01m84rpqk0a14rpgjhvqm92ajd
+  - is-01m84yzxjdr25zvf4w89w88074
+  - is-01m84hw0nn5n2eydwsqpft9w17
+  - is-01m84kpm3ss3z672r1vpc8x705
+  - is-01m84kptkdcyv1605ygg9tg131
+  - is-01m84jjarhfsse2yh3gy5mnkqq
+  - is-01m84rxw22jd5dtfbcpky2c9cx
+  - is-01m84rxx9w226sz3h6zeb0aqbb
+  - is-01m84tyharp73rhm840rgmbrk5
 created_at: 2026-11-22T21:01:28.721Z
-updated_at: 2026-11-23T17:40:05.906Z
+updated_at: 2026-11-23T20:49:00.591Z
 closed_at: 2026-11-23T13:47:01.557Z
 close_reason: "All agreed phases and follow-ups merged in stack #710 (PRs #696-#747, main b68cc9571). Open follow-ups: mb-pgru, mb-m3gp, mb-mg37."
 resolution: null

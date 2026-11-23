@@ -5,11 +5,13 @@ title: "PR #761 A6: under a flood of one-shot askers, refusals that never ask ag
 kind: bug
 status: open
 priority: 3
-version: 2
+version: 3
+spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 labels: []
 dependencies: []
+parent_id: is-01m82h0qrnw9vg6vrj597asgpv
 created_at: 2026-11-23T18:33:31.199Z
-updated_at: 2026-11-23T18:33:46.566Z
+updated_at: 2026-11-23T20:49:00.576Z
 ---
 Review A6 (Low) of PR #761: https://github.com/jlevy/metabrowser/pull/761#pullrequestreview-6026703603 (review A, head 3f6e1a0c6). It is not a regression: main granted fewer probes in every case below.
 

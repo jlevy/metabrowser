@@ -5,15 +5,16 @@ title: "PR #737 D1: the catalog's part holds a first visit's backfill and cores 
 kind: bug
 status: closed
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
+parent_id: is-01m82h0qrnw9vg6vrj597asgpv
 hold: null
 hold_until: null
 created_at: 2026-11-23T16:04:03.050Z
-updated_at: 2026-11-23T20:48:03.489Z
+updated_at: 2026-11-23T20:48:41.672Z
 started_at: 2026-11-23T16:10:25.841Z
 closed_at: 2026-11-23T20:48:03.488Z
 close_reason: "Fixed by #761 (merged as c7e2b5991): the catalog's backfill now shares the speculative share and runs first (_backfill_first), and its cost beyond one share is documented."
