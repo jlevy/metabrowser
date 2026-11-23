@@ -163,15 +163,20 @@ async function prefetchMarkdown(markdown, payload, signal) {
   }
 }
 
-/** @param {string} key @param {{signal?: AbortSignal}} [options] @param {string} [file] */
-function fetchComparison(key, options, file) {
+/**
+ * @param {string} key
+ * @param {{signal?: AbortSignal}} [options]
+ * @param {string} [file]
+ * @param {Record<string, string>} [narrowing] `types=` or `view=types` (diff-type-filter.js).
+ */
+function fetchComparison(key, options, file, narrowing = {}) {
   const target = key.startsWith("/")
     ? pluginComparisonRoute(key)
     : { plugin: "diff", hook: "comparison", params: comparisonParams(key) };
   return mb.fetchPluginData(
     target.plugin,
     target.hook,
-    { ...target.params, ...(file === undefined ? {} : { file }) },
+    { ...target.params, ...narrowing, ...(file === undefined ? {} : { file }) },
     options,
   );
 }
@@ -410,6 +415,146 @@ function changedFilesTree() {
   });
 }
 
+/** @typedef {typeof import("./diff-type-filter.js")} TypeFilterModule */
+
+/**
+ * diff-type-filter.js, for a comparison that may change more than one file, on a page whose
+ * SDK has the File type menu; otherwise null.
+ *
+ * An on-demand tier, asked for beside the comparison so it is in hand when the diff mounts,
+ * not a request after the comparison answers. A patch file's diff never asks, nor a
+ * comparison its page already knows changes one file (*summaryTotals*); any other comparison
+ * asks whether or not it turns out to change more than one. On 2026-11-22 it was 12,382
+ * bytes, 4,075 gzipped at `delivery.GZIP_LEVEL`: one small local request beside the
+ * comparison's own, which cli-ui-diff-view-file.tryscript.md counts. A failed import leaves
+ * the diff without its filter, and says why in the console.
+ *
+ * @param {string} revision
+ * @param {unknown} summaryTotals
+ * @returns {Promise<TypeFilterModule | null> | null}
+ */
+function typeFilterModule(revision, summaryTotals) {
+  const known = /** @type {{files?: unknown} | null | undefined} */ (summaryTotals)?.files;
+  if (
+    !revision ||
+    typeof mb.filterControls?.typeMenu !== "object" ||
+    (typeof known === "number" && known <= 1)
+  ) {
+    return null;
+  }
+  return import("./diff-type-filter.js").catch((error) => {
+    console.error("metabrowser diff: the File type filter is unavailable", error);
+    return null;
+  });
+}
+
+/**
+ * Whether a comparison's diff offers its File type filter: one of more than one file, on a
+ * page whose SDK has the File type menu. A patch file's document, which no route narrows,
+ * and a single file's diff have none.
+ *
+ * @param {Record<string, unknown>} document_
+ * @param {unknown} summaryTotals
+ */
+function filterable(document_, summaryTotals) {
+  return (
+    typeof mb.filterControls?.typeMenu === "object" && wholeFiles(document_, summaryTotals) > 1
+  );
+}
+
+/**
+ * How many files the whole comparison changes: the page's own totals where it knows them,
+ * as a commit's page does for a list cut short, or else the document's.
+ *
+ * @param {Record<string, unknown>} document_
+ * @param {unknown} summaryTotals
+ */
+function wholeFiles(document_, summaryTotals) {
+  const given = /** @type {{files?: unknown} | null | undefined} */ (summaryTotals)?.files;
+  if (typeof given === "number") {
+    return given;
+  }
+  const manifest = /** @type {{totals?: {files?: unknown}} | undefined} */ (document_.manifest);
+  return typeof manifest?.totals?.files === "number" ? manifest.totals.files : 0;
+}
+
+/**
+ * A comparison's diff with its File type filter in the toolbar (diff-type-filter.js). The
+ * whole comparison mounts at once; a choice asks the same route for `types=` and mounts
+ * that answer in its place, its summary still the whole comparison's, and the counts are
+ * the route's `view=types` answer, asked for as the diff mounts. The handle a host holds
+ * goes to whichever diff is mounted.
+ *
+ * @param {HTMLElement} container
+ * @param {Record<string, unknown>} whole
+ * @param {string} revision
+ * @param {Parameters<typeof mountDiffView>[3]} options
+ * @param {unknown} summaryTotals
+ * @param {TypeFilterModule} module
+ */
+function mountTypeFiltered(container, whole, revision, options, summaryTotals, module) {
+  const { createTypeFilter, createTypeFilterControl, NONE_KEPT } = module;
+  const fc = /** @type {NonNullable<typeof mb.filterControls>} */ (mb.filterControls);
+  const element = document.createElement("div");
+  /** @type {ReturnType<TypeFilterModule["createTypeFilter"]> | null} */
+  let filter = null;
+  const control = createTypeFilterControl(element, fc, {
+    select: (types) => filter?.select(types),
+    formatInteger: (value) => mb.formatInteger(value),
+    shortcuts: mb.shortcuts,
+  });
+  filter = createTypeFilter({
+    whole,
+    wholeFiles: wholeFiles(whole, summaryTotals),
+    async load(types, signal) {
+      const payload = await fetchComparison(revision, { signal }, undefined, { types });
+      const result = validateDocument(payload);
+      if (!result.ok) {
+        throw new Error(`This diff document is not valid: ${result.error}`);
+      }
+      // As the whole comparison's: the deferred loader reads the revision beside it.
+      Object.defineProperty(result.document, "__revision", { value: revision, enumerable: false });
+      return result.document;
+    },
+    counts: (signal) =>
+      /** @type {Promise<MetabrowserPublicTypeTally>} */ (
+        fetchComparison(revision, { signal }, undefined, { view: "types" })
+      ),
+    mount: (document_, narrowed) =>
+      mountDiffView(container, document_, mb, {
+        ...options,
+        toolbarControl: element,
+        ...(narrowed === null
+          ? {}
+          : {
+              summaryManifest: /** @type {Record<string, unknown>} */ (whole.manifest),
+              emptyText: NONE_KEPT,
+            }),
+      }),
+    paint: (state) => control.paint(state),
+    swap: (change) => control.swap(change),
+    report(what, error) {
+      console.error(
+        "metabrowser diff: view load failed",
+        {
+          hook: what === "counts" ? "diff/comparison view=types" : "diff/comparison types",
+          revision,
+        },
+        error,
+      );
+    },
+  });
+  control.attachKey();
+  const { facade } = filter;
+  return {
+    ...facade,
+    dispose() {
+      facade.dispose();
+      control.dispose();
+    },
+  };
+}
+
 /** @param {HTMLElement} container @param {string} message */
 function renderFailure(container, message) {
   const notice = document.createElement("div");
@@ -442,6 +587,8 @@ mb.registerView("diff", "diff", {
     const markdown = markdownLayer(ctx.comparison);
     // The tree the Diff summary is drawn on, whose display rule the file bars show paths by.
     const summaryTree = changedFilesTree();
+    // Asked for beside the comparison too, for a diff of more than one file.
+    const typeFilter = typeFilterModule(revision, ctx.summaryTotals);
     let payload;
     try {
       payload = revision
@@ -533,7 +680,8 @@ mb.registerView("diff", "diff", {
     // itself and asks for none (`summary: false`). Direct diff documents and other
     // comparisons lead their toolbar with it.
     const summaryHost = ctx.summaryHost ?? null;
-    return mountDiffView(container, result.document, mb, {
+    /** @type {Parameters<typeof mountDiffView>[3]} */
+    const options = {
       showSummary: ctx.summary !== false && (summaryHost !== null || !ctx.revision),
       summaryHost,
       // The commit's own totals, which the summary says where the list is cut short (A3 of
@@ -555,7 +703,25 @@ mb.registerView("diff", "diff", {
               ? { markdownHoldMs: ctx.markdownHoldMs }
               : {}),
           }),
-    });
+    };
+    const module =
+      typeFilter !== null && filterable(result.document, ctx.summaryTotals)
+        ? await typeFilter
+        : null;
+    if (signal?.aborted) {
+      return null;
+    }
+    if (module === null) {
+      return mountDiffView(container, result.document, mb, options);
+    }
+    return mountTypeFiltered(
+      container,
+      result.document,
+      revision,
+      options,
+      ctx.summaryTotals,
+      module,
+    );
   },
   /**
    * The comparison `render` would fetch for `ctx.comparison`, fetched now, for a page that

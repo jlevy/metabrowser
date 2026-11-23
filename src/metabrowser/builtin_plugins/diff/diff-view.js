@@ -1802,16 +1802,26 @@ function wholeTotalsOf(manifest, given) {
  * (mb-pb35): the summary is drawn there, for one file too, since there it stands for the
  * change set's totals, and the toolbar holds the layout control alone. *whole* is the
  * change set's whole totals, where its list was cut short and the page knows them
- * (`wholeTotalsOf`).
+ * (`wholeTotalsOf`). A *control* the host keeps across mounts, a narrowed diff's File type
+ * control, leads the layout control.
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files
  * @param {MountedDiffState} view
  * @param {boolean} showSummary
  * @param {HTMLElement | null} [summaryHost]
  * @param {WholeTotals | null} [whole]
+ * @param {HTMLElement | null} [hostControl]
  * @returns {{toolbar: HTMLElement, unbind: () => void}}
  */
-function renderDiffToolbar(totals, files, view, showSummary, summaryHost = null, whole = null) {
+function renderDiffToolbar(
+  totals,
+  files,
+  view,
+  showSummary,
+  summaryHost = null,
+  whole = null,
+  hostControl = null,
+) {
   const toolbar = el("div", "diff-toolbar");
   /** @type {(() => void) | null} */
   let disposeSummary = null;
@@ -1834,6 +1844,9 @@ function renderDiffToolbar(totals, files, view, showSummary, summaryHost = null,
   const filterControls = view.api?.filterControls;
   if (!filterControls) {
     return { toolbar, unbind: () => disposeSummary?.() };
+  }
+  if (hostControl !== null) {
+    toolbar.append(hostControl);
   }
   const control = el("div", "diff-layout-control");
   view.layoutControl = control;
@@ -3148,7 +3161,10 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   markdownTargets?: (value: string, image: boolean) => boolean,
  *   markdownHoldMs?: number,
  *   changedFiles?: MetabrowserChangedFilesTree | null,
- *   openFile?: (path: string) => void
+ *   openFile?: (path: string) => void,
+ *   summaryManifest?: Record<string, unknown> | null,
+ *   toolbarControl?: HTMLElement | null,
+ *   emptyText?: string
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
@@ -3161,6 +3177,10 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   where a page that places the summary at its own top wants it drawn (mb-pb35).
  *   *summaryTotals* are the change set's whole totals, which its summary says where the list
  *   is cut short at its bound, as a commit's page knows them (A3 of review A on #470).
+ *   A diff narrowed to some file types (diff-type-filter.js) passes the whole comparison's
+ *   manifest as *summaryManifest*, so its summary still describes the whole change set; its
+ *   File type control as *toolbarControl*, which leads the layout control; and *emptyText*,
+ *   what it says when it keeps no file.
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
@@ -3270,17 +3290,22 @@ export function mountDiffView(container, document_, api, options = {}) {
       document_.manifest
     );
   const patches = /** @type {Record<string, Record<string, unknown>>} */ (document_.patches);
-  const totals = manifest.totals;
   view.listTruncated = manifest.truncated === true;
+  // A diff narrowed to some file types describes the whole change set in its summary.
+  const described = /** @type {typeof manifest} */ (options.summaryManifest ?? manifest);
   const { toolbar, unbind } = renderDiffToolbar(
-    totals,
-    manifest.files,
+    described.totals,
+    described.files,
     view,
     options.showSummary !== false,
     options.summaryHost ?? null,
-    wholeTotalsOf(manifest, options.summaryTotals ?? null),
+    wholeTotalsOf(described, options.summaryTotals ?? null),
+    options.toolbarControl ?? null,
   );
   root.append(toolbar);
+  if (manifest.files.length === 0 && options.emptyText) {
+    root.append(el("div", "diff-availability diff-type-empty", options.emptyText));
+  }
   // What the source could not model is left out of the files below, so it is said above them.
   for (const warning of /** @type {string[]} */ (view.resolved.warnings ?? [])) {
     root.append(noticeEl("warning", "diff-warning", warning));

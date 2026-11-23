@@ -248,8 +248,9 @@ def _builtin_plugin_letters() -> dict[str, str]:
     """Each letter a built-in plugin gives a control through ``shortcuts.attach()``.
 
     The pull request page attaches its tabs' letters from ``PULL_TABS`` in
-    ``github/pull-page.js``, and the diff view its layout key in ``renderDiffToolbar`` in
-    ``diff/diff-view.js``. Each letter maps to where it is declared.
+    ``github/pull-page.js``, the diff view its layout key in ``renderDiffToolbar`` in
+    ``diff/diff-view.js``, and a diff's File type filter its key in
+    ``diff/diff-type-filter.js``. Each letter maps to where it is declared.
     """
     pull_page = (_BUILTIN_PLUGINS / "github" / "pull-page.js").read_text(encoding="utf-8")
     tabs = re.search(r"\nconst PULL_TABS = Object\.freeze\(\[(.*?)\n\]\);", pull_page, re.S)
@@ -260,6 +261,10 @@ def _builtin_plugin_letters() -> dict[str, str]:
     layout = re.search(r'\n      id: "diff\.layout",\n      key: "([^"]*)",', toolbar)
     assert layout, "diff/diff-view.js renderDiffToolbar attaches diff.layout"
     letters[layout[1]] = "diff/diff-view.js renderDiffToolbar"
+    type_filter = (_BUILTIN_PLUGINS / "diff" / "diff-type-filter.js").read_text(encoding="utf-8")
+    types = re.search(r'\n        id: "diff\.type-filter",\n        key: "([^"]*)",', type_filter)
+    assert types, "diff/diff-type-filter.js attaches diff.type-filter"
+    letters[types[1]] = "diff/diff-type-filter.js createTypeFilterControl"
     return letters
 
 
@@ -281,6 +286,7 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
     # The pull request page attaches its tabs' letters and numbers its header's controls,
     # and the Pulls panel numbers its state chips and its Reload: numbers, so no letter.
     assert calls == [
+        "diff/diff-type-filter.js",
         "diff/diff-view.js",
         "github/pull-page.js",
         "github/pull-page.js",
@@ -290,7 +296,7 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
     panel = (_BUILTIN_PLUGINS / "github" / "pulls-panel.js").read_text(encoding="utf-8")
     assert panel.count("numbered: true,") == 2, "the Pulls panel's two calls take no letter"
     letters = _builtin_plugin_letters()
-    assert set(letters) == {"c", "g", "e", "l"}
+    assert set(letters) == {"c", "g", "e", "l", "y"}
     served = serialize_reserved_shell_keys()
     assert {key: source for key, source in letters.items() if key in served} == {}
     assert not set(letters) & reserved_keys_for("pull-request")
@@ -374,6 +380,7 @@ def test_the_documented_keymap_is_the_keys_the_app_binds() -> None:
     for label, key in re.findall(r'label: "([^"]+)", key: "([a-z])"', pull_page):
         assert any(key in keys and label in meaning for keys, meaning in rows), (key, label)
     assert any("l" in keys and "Diff layout" in meaning for keys, meaning in rows)
+    assert any("y" in keys and "File type" in meaning for keys, meaning in rows)
     digits = [keys for keys, _meaning in rows if any(re.search(r"\d", key) for key in keys)]
     assert digits == [["0"], ["1–9"]], "Home's 0, then the numbers as one positional row"
     assert any(keys == ["0"] and meaning.startswith("Home") for keys, meaning in rows)
