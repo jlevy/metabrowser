@@ -5,12 +5,12 @@
 //
 // Each file renders as a section under a bar: the section-disclosure
 // primitive carrying the filename (styled as a filename, not a
-// heading), the inline +N −N stat pair, and change notes; beside it a
-// copy-path control riding the shared [data-mb-copy] delegation; then
-// the View file controls of diff-view-file.js when the page can open a
-// file at a commit; and, at the bar's end, a file's Rendered | Source
-// chooser (diff-markdown.js). Sections start expanded; the bar
-// collapses the body without disposing it.
+// heading); right after the name a copy-path control riding the shared
+// [data-mb-copy] delegation; the inline +N −N stat pair and change
+// notes; then the View file controls of diff-view-file.js when the page
+// can open a file at a commit; and, at the bar's end, a file's
+// Rendered | Source chooser (diff-markdown.js). Sections start
+// expanded; the bar collapses the body without disposing it.
 // Every availability state has exactly one rendering path — an absent
 // patch is a labeled state, never an empty box. Rendering is
 // deliberately dumber than the model: the data plane is tested by the
@@ -1078,17 +1078,18 @@ function repaintViewFileControls(view) {
 /**
  * The per-file bar, in two groups, per the section-disclosure and icon button primitives
  * in the design system. It leads with what names the file and where it opens: one
- * disclosure trigger (kind, path, stats, notes), the copy control beside it, and the View
- * file controls. Its end group holds a file's Rendered | Source chooser alone
- * (diff-markdown.js), at the bar's far end.
+ * disclosure trigger (kind, path), the copy control right after the name, the change's
+ * stats and notes, which describe the trigger, and the View file controls. Its end group
+ * holds a file's Rendered | Source chooser alone (diff-markdown.js), at the bar's far end.
  *
  * @param {Record<string, unknown>} change
  * @param {string} toggleId
  * @param {string} bodyId
+ * @param {string} factsId The id of the stats and notes, which describe the trigger.
  * @param {MountedDiffState} view
  * @returns {{bar: HTMLElement, end: HTMLElement, toggle: HTMLElement, notice: HTMLElement | null}}
  */
-function renderFileBar(change, toggleId, bodyId, view) {
+function renderFileBar(change, toggleId, bodyId, factsId, view) {
   const api = view.api;
   // The path is shown as the Diff summary shows it, by the server's display rule, and the
   // raw path stays for the copy control and the jump; without the shared tree it is raw.
@@ -1122,14 +1123,24 @@ function renderFileBar(change, toggleId, bodyId, view) {
           { additions: count(change.additions), deletions: count(change.deletions) },
           countFormatter(api),
         );
-  if (counts !== null) {
-    const stats = el("span", "diff-file-stats");
-    stats.append(el("span", "diff-stat-add", counts.additions));
-    stats.append(el("span", "diff-stat-del", counts.deletions));
-    toggle.append(stats);
-  }
-  for (const note of notes) {
-    toggle.append(el("span", "diff-file-note", note));
+  // The change's stats and notes follow the copy control, which sits right after the name
+  // it copies, so they are not in the trigger: they describe it, and a click on them
+  // toggles the file as anywhere else on the bar does.
+  /** @type {HTMLElement | null} */
+  let facts = null;
+  if (counts !== null || notes.length > 0) {
+    facts = el("span", "diff-file-facts");
+    facts.setAttribute("id", factsId);
+    toggle.setAttribute("aria-describedby", factsId);
+    if (counts !== null) {
+      const stats = el("span", "diff-file-stats");
+      stats.append(el("span", "diff-stat-add", counts.additions));
+      stats.append(el("span", "diff-stat-del", counts.deletions));
+      facts.append(stats);
+    }
+    for (const note of notes) {
+      facts.append(el("span", "diff-file-note", note));
+    }
   }
   // Each group is one flex item: a bar that wraps or cuts a long path short never parts
   // the copy control from the name it copies, and its end group moves as one.
@@ -1148,6 +1159,9 @@ function renderFileBar(change, toggleId, bodyId, view) {
     copy.setAttribute("aria-label", "Copy path");
     copy.innerHTML = shellIcon("copy");
     lead.append(copy);
+  }
+  if (facts !== null) {
+    lead.append(facts);
   }
   bar.append(lead, end);
 
@@ -2962,9 +2976,10 @@ function renderFileSection(change, patch, context, view, draw) {
   sectionSequence += 1;
   const toggleId = `diff-file-toggle-${sectionSequence}`;
   const bodyId = `diff-file-body-${sectionSequence}`;
+  const factsId = `diff-file-facts-${sectionSequence}`;
   const section = el("section", "diff-file");
   section.setAttribute("aria-labelledby", toggleId);
-  const { bar, end, toggle, notice } = renderFileBar(change, toggleId, bodyId, view);
+  const { bar, end, toggle, notice } = renderFileBar(change, toggleId, bodyId, factsId, view);
   const body = el("div", "diff-file-body");
   body.setAttribute("id", bodyId);
   if (notice) {

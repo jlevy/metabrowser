@@ -1511,7 +1511,7 @@ unsettled rather than consistently offset.
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | Pull request row, in [the Pulls tab](#the-pulls-tab) | The title, alone on the first line; the number’s line and the age, on the second | State icon, on the first line; chevron, on the change line |
-| Diff file bar | Change letter, path, change stats, and notes | Chevron, copy button, a Markdown, YAML, or JSON file’s **Rendered** \| **Source** chooser and its spinner, View file or View on branch control |
+| Diff file bar | Change letter and path; change stats and notes, inside their box | Chevron, copy button, the box of change stats and notes, a Markdown, YAML, or JSON file’s **Rendered** \| **Source** chooser and its spinner, View file or View on branch control |
 
 The row keeps `align-items: center`, and each text child opts in with
 `align-self: baseline`. A box aligned to the baseline would sit its bottom edge on the
@@ -1532,12 +1532,12 @@ capitals. A run’s status badge is one, for Running, Live, Done, Failed, and Ru
 and a pull request’s state badge is another; `tests/dom/github-pull-header-chrome.mjs`
 checks both in Chrome.
 
-The diff file bar’s View file or View on branch control is a box after the copy control,
-not text inside the toggle, so it is set at the path’s own size and line height: text of
-one size and one line height centers onto one baseline.
-The bar’s two groups ([Diff File Bar](#diff-file-bar)) are centered rows of boxes too,
-and each is centered in the bar, so the toggle, the control, and the chooser share the
-bar’s center.
+The diff file bar’s change stats and notes, and its View file or View on branch control,
+are boxes after the copy control, not text inside the toggle, so each is set at the
+path’s own size and line height: text of one size and one line height centers onto one
+baseline. The bar’s two groups ([Diff File Bar](#diff-file-bar)) are centered rows of
+boxes too, and each is centered in the bar, so the toggle, the control, and the chooser
+share the bar’s center.
 
 Two rows are deliberately not in the table.
 A [view header](#view-headers)’s eyebrow sets its text at one size and centers it.
@@ -2434,15 +2434,18 @@ same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
 
 The bar is two groups.
 It leads with what names the file and where it opens, in left-aligned reading order:
-chevron, kind letter, filename in the shell’s file-path typography, the stat pair beside
-the name, and any note, then the `[data-mb-copy]` copy control right after them, the
-file-header copy affordance, present wherever a filename is, and then the View file or
-View on branch control.
+chevron, kind letter, filename in the shell’s file-path typography, then the
+`[data-mb-copy]` copy control right after the name, the file-header copy affordance,
+present wherever a filename is, then the stat pair and any note, and then the View file
+or View on branch control.
+The stat pair and notes are not in the disclosure trigger but describe it
+(`aria-describedby`), so the copy control can sit between them and the name.
 The bar reveals the copy control while the pointer is on it or the keyboard’s focus is
 in it; unseen, the control keeps its place, so nothing moves when it shows.
 The bar ends with a file’s **Rendered** | **Source** chooser alone, so the chooser is at
 the far end of every bar that has one, on Docs and Changes alike.
-A long path is cut short on one line with its copy control and View file still after it.
+A long path is cut short on one line with its copy control, stats, and View file still
+after it.
 
 The whole bar is one activation surface, the folder-row rule applied to a section
 header: clicking anywhere toggles, with only the copy control, the View file or View on

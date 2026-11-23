@@ -989,7 +989,7 @@ async function headLinkChecks(mountDiffView, byName) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
     // The bar the production view builds for a rendered file: the name's group, the
-    // disclosure and its copy control, then the group at the bar's end, the chooser
+    // disclosure, its copy control, and its stats, then the group at the bar's end, the chooser
     // behind its progress mark. This document offers no View file control, which would
     // end the name's group (tests/dom/diff-view-file-session.js).
     const [fileBar] = container.find("diff-file-bar");
@@ -1002,7 +1002,7 @@ async function headLinkChecks(mountDiffView, byName) {
         JSON.stringify(["diff-file-lead", "diff-file-end"]) &&
         JSON.stringify(groups) ===
           JSON.stringify([
-            ["expanded", "diff-file-copy"],
+            ["expanded", "diff-file-copy", "diff-file-facts"],
             ["diff-markdown-progress", "diff-markdown-control"],
           ]),
       JSON.stringify(groups),
@@ -1658,7 +1658,7 @@ async function main() {
   );
   check("copy control is an icon button", copy.classList.contains("icon-btn"));
   // The bar is two groups: what names the file, the disclosure with the copy control
-  // right after it, and the controls at its end, here none.
+  // right after it and then the change's stats, and the controls at its end, here none.
   const bar = container.find("diff-file-bar")[0];
   const [lead, end] = bar.children;
   check(
@@ -1668,16 +1668,27 @@ async function main() {
       end.classList.contains("diff-file-end"),
     JSON.stringify(bar.children.map((child) => child.className)),
   );
+  const facts = lead.children[2];
   check(
-    "copy control sits right after the disclosure, beside the name",
-    lead.children.length === 2 && lead.children[0] === toggle && lead.children[1] === copy,
+    "copy control sits right after the disclosure, beside the name, before its stats",
+    lead.children.length === 3 &&
+      lead.children[0] === toggle &&
+      lead.children[1] === copy &&
+      facts.classList.contains("diff-file-facts"),
     JSON.stringify(lead.children.map((child) => child.className)),
   );
   check("a bar with nowhere to go ends with no control", end.children.length === 0);
   check(
-    "stats sit beside the filename",
-    toggle.children[2].classList.contains("diff-file-path") &&
-      toggle.children[3].classList.contains("diff-file-stats"),
+    "the name ends the disclosure, and the stats follow the copy control",
+    toggle.children.length === 3 &&
+      toggle.children[2].classList.contains("diff-file-path") &&
+      facts.children[0]?.classList.contains("diff-file-stats") === true,
+    JSON.stringify(toggle.children.map((child) => child.className)),
+  );
+  check(
+    "the stats describe the disclosure they left",
+    typeof facts.getAttribute("id") === "string" &&
+      toggle.getAttribute("aria-describedby") === facts.getAttribute("id"),
   );
   const stats = container.find("diff-file-stats")[0];
   check(
@@ -1708,6 +1719,13 @@ async function main() {
     !body.classList.contains("diff-file-body-collapsed") &&
       toggle.getAttribute("aria-expanded") === "true",
   );
+  stats.click();
+  check(
+    "a click on the stats toggles, as anywhere else on the bar",
+    body.classList.contains("diff-file-body-collapsed") &&
+      toggle.getAttribute("aria-expanded") === "false",
+  );
+  toggle.click();
 
   // Disposal removes everything the mount added.
   handle.dispose();

@@ -246,13 +246,13 @@
 }
 
 /* The bar's two groups. It leads with what names the file and where it opens,
-   the disclosure, the copy control beside the name, and the View file control,
-   and ends with a file's Rendered | Source chooser, at the bar's far end. Each
-   is one flex item, so a long path is cut short with its copy control and View
-   file still beside it, and where a bar wraps (`.diff-file-bar-markdown`) its
-   end group moves to the next line whole and keeps to the bar's end there. The
-   end group's start margin takes the bar's free space, which stays part of the
-   bar's one activation surface. */
+   the disclosure, the copy control right after the name, the change's stats and
+   notes, and the View file control, and ends with a file's Rendered | Source
+   chooser, at the bar's far end. Each is one flex item, so a long path is cut
+   short with its copy control, stats, and View file still beside it, and where
+   a bar wraps (`.diff-file-bar-markdown`) its end group moves to the next line
+   whole and keeps to the bar's end there. The end group's start margin takes
+   the bar's free space, which stays part of the bar's one activation surface. */
 .metabrowser-diff-host .diff-file-lead {
   display: flex;
   align-items: center;
@@ -315,11 +315,30 @@
   flex: none;
 }
 
-/* The note, the change letter, and the stats share the path's baseline,
-   as a nav tree row's text does ("Row Text Shares a Baseline" in the
-   design system); the chevron is a box and stays centered. */
-.metabrowser-diff-host .diff-file-toggle
-  > :is(.diff-file-kind, .diff-file-path, .diff-file-stats, .diff-file-note) {
+/* The change letter shares the path's baseline, as a nav tree row's text
+   does ("Row Text Shares a Baseline" in the design system); the chevron is a
+   box and stays centered. */
+.metabrowser-diff-host .diff-file-toggle > :is(.diff-file-kind, .diff-file-path) {
+  align-self: baseline;
+}
+
+/* The change's stats and notes, after the copy control: a box in the name's
+   group, set at the path's own size and line height, as the View file control
+   is, so centering puts their text on the path's baseline, and their own text
+   shares one baseline inside it. They keep their width: the path gives way
+   first. */
+.metabrowser-diff-host .diff-file-facts {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  line-height: normal;
+  white-space: nowrap;
+}
+
+.metabrowser-diff-host .diff-file-facts > :is(.diff-file-stats, .diff-file-note) {
   align-self: baseline;
 }
 
@@ -395,9 +414,9 @@
   display: none;
 }
 
-/* Copy path, right after the name, its stats, and its notes, as the file
-   header's follows its path ("Copyable Identifiers Use One Delegate" in the
-   design system). */
+/* Copy path, right after the name and before its stats and notes, as the
+   file header's follows its path ("Copyable Identifiers Use One Delegate" in
+   the design system). */
 .metabrowser-diff-host .diff-file-copy {
   /* A 20px hit target keeps the 24px row exact under its 1px border;
      the token re-scope leaves the icon-btn primitive untouched. */

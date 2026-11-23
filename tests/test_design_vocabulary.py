@@ -341,18 +341,24 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
         box("diff-file-chevron"),
         text("diff-file-kind diff-file-kind-modified"),
         text("diff-file-path"),
+    )
+    # The change's stats and notes, after the copy control: a box at the path's size, which
+    # centering puts on its baseline, with its own text on one baseline.
+    facts = box(
+        "diff-file-facts",
         text("diff-file-stats", el("diff-stat-add"), el("diff-stat-del")),
         text("diff-file-note"),
     )
     # The bar is two groups, each a centered row of boxes, and a box in the bar itself: the
-    # name's, the toggle with the copy control beside it and then the View file or View on
-    # branch control, a box at the path's size, which centering puts on its baseline; and
-    # its end's, a file's Rendered | Source chooser behind its progress mark (`add` in
-    # diff-markdown.js).
+    # name's, the toggle with the copy control right after it, the change's stats, and then
+    # the View file or View on branch control, a box at the path's size, which centering
+    # puts on its baseline; and its end's, a file's Rendered | Source chooser behind its
+    # progress mark (`add` in diff-markdown.js).
     lead = box(
         "diff-file-lead",
         toggle,
         box("icon-btn icon-btn-reveal diff-file-copy"),
+        facts,
         box("diff-file-view"),
     )
     end = box(
@@ -363,6 +369,7 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     bar = el("diff-file-bar diff-file-bar-markdown", lead, end)
     el("content-body metabrowser-diff-host", el("diff-file", bar))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
+    rows.append(("Diff file bar", f"{diff_host} .diff-file-facts", facts))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-lead", lead))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-end", end))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-bar", bar))
@@ -438,10 +445,10 @@ def test_row_text_shares_one_baseline() -> None:
         assert not re.search(r"\.(?:file-header|view-header)", selector), (
             f"{selector} aligns a view header's text to a baseline"
         )
-    # The diff bar's View file controls are centered boxes beside the toggle, so they
-    # land on the path's baseline only at the path's own size: the toggle's, which its
-    # path inherits, and the view's, both the main view's body size.
-    for selector in (".diff-file-toggle", ".diff-file-view"):
+    # The diff bar's stats and View file controls are centered boxes beside the toggle, so
+    # they land on the path's baseline only at the path's own size: the toggle's, which its
+    # path inherits, the stats', and the view's, all the main view's body size.
+    for selector in (".diff-file-toggle", ".diff-file-facts", ".diff-file-view"):
         assert "font-size: var(--body-font-size);" in _rule(
             diff_css, f".metabrowser-diff-host {selector}"
         ), f"{selector} left the diff bar's one text size"
@@ -449,7 +456,8 @@ def test_row_text_shares_one_baseline() -> None:
     # And at the toggle's line height, a button's `normal`: at the bar's 1.5, which a link
     # inherits, the link form sat 0.5 px above the path's baseline in Chrome and the button
     # form on it (Design Rule Measurements, "Row Baselines").
-    assert "line-height: normal;" in _rule(diff_css, ".metabrowser-diff-host .diff-file-view")
+    for selector in (".diff-file-facts", ".diff-file-view"):
+        assert "line-height: normal;" in _rule(diff_css, f".metabrowser-diff-host {selector}")
     assert "line-height" not in _rule(diff_css, ".metabrowser-diff-host .diff-file-toggle")
 
 
@@ -565,7 +573,10 @@ def test_diff_file_bar_keeps_its_actions_by_the_name_and_its_chooser_at_its_end(
     put them there (docs/design-system.md, "Diff File Bar"; mb-leg0). In headless Chrome, on
     a pull request's Changes and a commit's page, in bars from 159 to 1,063 px wide, Copy
     path started the name's group's gap after the toggle and the end group ended at the
-    bar's end pad on every bar, with no control cut off.
+    bar's end pad on every bar, with no control cut off. With the stats and View on branch
+    moved into the name's group, on a pull request's Docs and Changes in bars 400 and 920 px
+    wide, the path, Copy path, the stats, and View on branch read in that order and the
+    chooser ended at the bar's end pad (Design Rule Measurements, "Row Baselines").
     """
 
     diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(
@@ -574,12 +585,12 @@ def test_diff_file_bar_keeps_its_actions_by_the_name_and_its_chooser_at_its_end(
     host = ".metabrowser-diff-host"
     # The name's group and the toggle in it take their content's width and give way before
     # anything else does, so Copy path sits right after the name at any width and a long
-    # path is cut short with the control still beside it, and View file after them both.
+    # path is cut short with the control still beside it, and the stats and View file after.
     for selector in (".diff-file-lead", ".diff-file-toggle"):
         rule = _rule(diff_css, f"{host} {selector}")
         assert "flex: 0 1 auto;" in rule, f"{selector} grows or keeps its width"
         assert "min-width: 0;" in rule, f"{selector} cannot give way to a long path"
-    for selector in (".diff-file-copy", ".diff-file-view"):
+    for selector in (".diff-file-copy", ".diff-file-facts", ".diff-file-view"):
         assert "flex: none;" in _rule(diff_css, f"{host} {selector}"), f"{selector} gives way"
     # The end group keeps its width, and its start margin takes the bar's free space, which
     # holds it at the bar's end on a line of its own too.
