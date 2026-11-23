@@ -266,8 +266,9 @@ TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
 # The Treemap asks for both maxima, depth and top, and lets
 # ROLLUP_MAX_NODES bound the response: emission expands the heaviest
 # folder first, so a deep or wide request spends the same node budget,
-# on the folders that hold the most. Twelve levels is deeper than the
-# map can draw (each nested level insets its children by a few pixels).
+# on the folders that hold the most. The depth bounds the request, not
+# what is drawn: the node budget and the map's room decide that, and a
+# chain of single-folder levels can nest past twelve in a large pane.
 #
 # What depth does add is reach: a deep request can expand a large
 # directory far down, and expanding a directory visits every child.
@@ -307,11 +308,13 @@ ROLLUP_WATCH_DEBOUNCE_MS = 1_000
 # breakdown, the treemap at its own depth), and several tabs on the same folder
 # ask for the same ones, so a cache of a few entries covers the repeats.
 #
-# This bounds entries, not bytes. Measured on a 100k-file tree, the largest
-# shape the browser asks for (depth 3, default bounds) encodes to ~200 KB, and
-# a body is capped by ROLLUP_MAX_NODES regardless of tree size, so eight
-# entries is a ceiling near 1.6 MB rather than something that grows with the
-# root.
+# This bounds entries, not bytes. The largest shape the browser asks for is
+# the Treemap's, depth and top at their maxima, which spends the whole node
+# budget: on a 19,731-file repository it encoded to 234,883 bytes at 1,200
+# nodes (review of #724, 2026-11-22), and a 100k-file tree at depth 3 with
+# default bounds to ~200 KB. A body is capped by ROLLUP_MAX_NODES regardless
+# of tree size, so eight entries is a ceiling near 1.9 MB rather than
+# something that grows with the root.
 #
 # This is a settled-index optimization. During a scan the revision has already
 # moved by the time a body is stored, so every stored body is unreachable the

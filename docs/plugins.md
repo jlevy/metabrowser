@@ -980,6 +980,9 @@ Folder aggregate views can use these bounded inventory helpers:
   `depth`, `top`, `ext_top`, `filename_top`, `remaining_top`, and `ext_rank` map to
   `/api/rollup`; `depth: 0`, `top: 0`, and `ext_rank: "dual"` give a tally-only
   count-and-byte summary.
+  `depth: "max"` and `top: "max"` ask for the deepest and widest tree the route serves
+  (`ROLLUP_MAX_DEPTH` and `ROLLUP_MAX_TOP` in `src/metabrowser/settings.py`), which the
+  route’s node budget bounds, as the Treemap does.
   `filename_top` and `remaining_top` default to, and cannot exceed,
   `ROLLUP_FILE_TYPE_FILENAME_LIMIT` and `ROLLUP_FILE_TYPE_REMAINING_LIMIT` in
   `src/metabrowser/settings.py`.

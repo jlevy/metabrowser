@@ -144,6 +144,7 @@ CHROME_TESTS = (
     "tests.test_staged_fonts_chrome",
     "tests.test_title_prefix_chrome",
     "tests.test_transitions_instrument",
+    "tests.test_treemap_containment_chrome",
     "tests.test_treemap_legend_hover_chrome",
     "tests.test_type_scale_chrome",
     "tests.test_view_header_chrome",

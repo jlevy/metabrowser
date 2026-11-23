@@ -32,13 +32,26 @@ const LAYOUT_DEFAULTS = {
    * the rollup's own depth and the cells' room bound it.
    */
   nestDepth: Infinity,
-  /** Directory cells at least this wide and tall nest under a labelled header strip. */
-  nestMinW: 72,
-  nestMinH: 48,
   /**
-   * Smaller directory cells at least this size on both sides still nest, in a
-   * frame `padPx` wide with no header: their files are drawn, and the tooltip
-   * names the folder. Below it a folder is one solid cell.
+   * A cell at least this wide and tall has room for its label. These are the
+   * map's paint thresholds (treemap-map.js passes its preset's in), so a
+   * folder the map would label is never framed instead, which hid the names
+   * of folders that had room for them.
+   */
+  labelMinW: 56,
+  labelMinH: 16,
+  /**
+   * A folder with room for its label nests its children under the label
+   * strip when it is at least this tall: the strip, the padding, and a row of
+   * children at least 20 px tall. A shorter one is a solid, labelled cell.
+   */
+  nestMinH: 40,
+  /**
+   * A folder too small for its label nests, in a frame `padPx` wide with no
+   * header, when it is at least this size on both sides: its files are drawn,
+   * and the tooltip names the folder. Below it a folder is one solid cell.
+   * 14 px leaves an interior of 10 px, room for a child of more than twice
+   * minCellPx on each side; a smaller frame draws mostly frame.
    */
   frameNestMinPx: 14,
   /** Inner padding between a directory cell border and its children (px). */
@@ -46,6 +59,9 @@ const LAYOUT_DEFAULTS = {
   /**
    * Fewest cells a nesting folder is offered, however small its share of the
    * remaining area: enough for a few files and the remainder beside them.
+   * Fewer left a small folder's children all folded into its remainder, a
+   * nest with nothing to show; more drained the budget from large folders
+   * into the many small ones that share a map.
    */
   minNestShare: 4,
 };
@@ -364,12 +380,16 @@ function layoutTree(rootNode, viewport, options) {
    * @param {Record<string, any>} node
    */
   function considerNesting(cell, node) {
-    const hasChildren = (Array.isArray(node.children) && node.children.length > 0) || !!node.rest;
+    // A folder whose children all fold into its remainder (the rollup's node
+    // budget ran out at it) has nothing to show inside but one inert
+    // remainder cell, so it stays a solid cell, named by its own tooltip.
+    const hasChildren = Array.isArray(node.children) && node.children.length > 0;
     if (node.type !== "dir" || !hasChildren || cell.depth + 1 >= opts.nestDepth) {
       return;
     }
-    const labelled = cell.w >= opts.nestMinW && cell.h >= opts.nestMinH;
-    const framed = !labelled && cell.w >= opts.frameNestMinPx && cell.h >= opts.frameNestMinPx;
+    const labelFits = cell.w >= opts.labelMinW && cell.h >= opts.labelMinH;
+    const labelled = labelFits && cell.h >= opts.nestMinH;
+    const framed = !labelFits && cell.w >= opts.frameNestMinPx && cell.h >= opts.frameNestMinPx;
     if (!labelled && !framed) {
       return;
     }

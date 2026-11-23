@@ -4824,11 +4824,17 @@ node budget on the heaviest folders first (`inventory_rollup.py`), so the nodes 
 the map can draw them.
 The layout fills the largest pending folder next, from a share of the remaining cell
 budget proportional to its area, so the cells reach every large region of the map rather
-than draining into the first folder drawn (`treemap-layout.js`). A folder large enough
-for a label nests under a header strip; a smaller one nests inside a thin frame with no
+than draining into the first folder drawn (`treemap-layout.js`). A folder with room for
+its label is labelled, and nests under its label strip when it is tall enough for a row
+of children too; only a folder too small for a label nests inside a thin frame, with no
 label, and its files are still drawn.
-Every cell lies inside its parent’s rectangle and inside the map’s border: the map lays
-out to its padding box, the box absolutely placed cells are positioned in.
+A framed folder is its own keyboard control, since it has no label to carry one.
+A folder whose children all fold into its remainder stays one solid cell.
+Every cell lies inside its parent’s cell and inside the map’s border.
+The map lays out to its padding box, the box absolutely placed cells are positioned in,
+and a cell draws at exactly its rectangle: its edge is an inset shadow that takes no
+room, and a cell with no label has no padding, which would otherwise set a floor on its
+size (`styles.css`, `.tm-cell`); `tests/test_treemap_containment_chrome.py` measures it.
 A cell too small for any text, a framed folder’s included, names itself in its tooltip.
 
 The Files context above the map mounts the same reusable folder-rollup controls used by

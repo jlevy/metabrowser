@@ -31,23 +31,14 @@ const SIZE_PRESETS = Object.freeze({
 
 /**
  * The rollup a treemap requests: the deepest tree the server returns, with
- * the most children per folder (ROLLUP_MAX_DEPTH and ROLLUP_MAX_TOP,
- * settings.py). The server's node budget, not these, bounds the response, and
- * the layout folds whatever has no room into remainder cells. A page without
- * the settings asks for the server's defaults.
- * @returns {{depth?: number, top?: number}}
+ * the most children per folder (the SDK resolves "max" to ROLLUP_MAX_DEPTH and
+ * ROLLUP_MAX_TOP, settings.py). The server's node budget, not these, bounds
+ * the response, and the layout folds whatever has no room into remainder
+ * cells.
+ * @returns {{depth: "max", top: "max"}}
  */
 export function treemapRollupQuery() {
-  const settings = window.METABROWSER_SETTINGS;
-  /** @type {{depth?: number, top?: number}} */
-  const query = {};
-  if (typeof settings?.ROLLUP_MAX_DEPTH === "number") {
-    query.depth = settings.ROLLUP_MAX_DEPTH;
-  }
-  if (typeof settings?.ROLLUP_MAX_TOP === "number") {
-    query.top = settings.ROLLUP_MAX_TOP;
-  }
-  return query;
+  return { depth: "max", top: "max" };
 }
 
 /**
@@ -99,8 +90,12 @@ export function createTreemapMap(mb, palette, viewport, options) {
     return cell.kind === "dir" || cell.kind === "file";
   }
 
-  /** @param {Record<string, any>} cell @param {TreemapState} state */
-  function cellClasses(cell, state) {
+  /**
+   * @param {Record<string, any>} cell
+   * @param {TreemapState} state
+   * @param {boolean} bare  the cell draws no label, so it has no padding
+   */
+  function cellClasses(cell, state, bare) {
     const cls = [
       "tm-cell",
       `tm-${cell.kind}`,
@@ -121,6 +116,9 @@ export function createTreemapMap(mb, palette, viewport, options) {
     }
     if (cell.framed) {
       cls.push("tm-framed");
+    }
+    if (bare) {
+      cls.push("tm-bare");
     }
     return cls.join(" ");
   }
@@ -216,7 +214,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
       ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
       : ` role="group" aria-label="${aria}"`;
     return (
-      `<div class="${cellClasses(cell, state)}"${outerAttrs}` +
+      `<div class="${cellClasses(cell, state, !showLabel)}"${outerAttrs}` +
       ` data-tm-cell="${index}" data-tm-kind="${cell.kind}" data-tm-path="${mb.escapeHtml(cell.path)}"` +
       ` style="${style}${palette.styleFor(cellPaletteKey(cell))}">${label}</div>`
     );
@@ -480,6 +478,8 @@ export function createTreemapMap(mb, palette, viewport, options) {
     const state = options.getState();
     cells = layoutTree(node, box, {
       ...preset.layout,
+      labelMinW: preset.labelMinW,
+      labelMinH: preset.labelMinH,
       metric: state.metric,
       includeIgnored: state.includeIgnored,
     });

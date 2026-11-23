@@ -1585,14 +1585,14 @@ type MetabrowserFileTypeLegend = {
 type MetabrowserRollupOptions = {
   active?: () => boolean;
   debounceMs?: number;
-  depth?: number;
+  depth?: number | "max";
   ext_rank?: "bytes" | "dual";
   ext_top?: number;
   filename_top?: number;
   onError?: (error: unknown) => void;
   remaining_top?: number;
   signal?: AbortSignal;
-  top?: number;
+  top?: number | "max";
 };
 
 type MetabrowserRollupWatch = {

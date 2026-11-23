@@ -81,8 +81,17 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 0;
-  padding: 1px 4px;
-  border: 1px solid var(--viz-border-subtle);
+  /* A cell draws at exactly the size the layout gave it, however small, so
+     it stays inside its parent and the map's border: its edge is an inset
+     shadow, which takes no room, rather than a border, and a cell with no
+     label has no padding (.tm-bare). A border-box cell is never smaller than
+     its padding and border, and those once drew a 2 px cell 10 px wide,
+     over its neighbours and past its folder's edge. The padding is the old
+     1px 4px plus the 1 px the border took, so labels sit where they did. */
+  padding: 2px 5px;
+  border: 0;
+  --tm-edge: var(--viz-border-subtle);
+  box-shadow: inset 0 0 0 1px var(--tm-edge);
   background: var(--viz-surface);
   overflow: hidden;
   cursor: default;
@@ -108,7 +117,7 @@
    An attribute rather than :hover, because the pointer may be on a legend
    entry naming the cell's family rather than on the cell: the map, its bars,
    and its legend share one hover, which marks the cell under the pointer, or
-   every cell of the family an entry names (treemap.js, drawCellHover). */
+   every cell of the family an entry names (treemap-map.js, drawCellHover). */
 .tm-cell[data-hovered] {
   filter: var(--viz-data-mark-hover-filter);
 }
@@ -118,7 +127,7 @@
    hovered cell paints, which its filter makes a stacking context, so a label
    keeps its contrast.
 
-   Only that cell. A legend entry marks every cell of its family (treemap.js,
+   Only that cell. A legend entry marks every cell of its family (treemap-map.js,
    drawCellHover), and a family can hold every cell the map draws, up to
    maxCells in treemap-layout.js; each shimmering cell is a layer of its own
    and its own animation, so the cost grew with the family. Those cells take
@@ -152,18 +161,21 @@
 .tm-cell:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
-  box-shadow: inset 0 0 0 4px var(--viz-surface);
+  box-shadow:
+    inset 0 0 0 1px var(--tm-edge),
+    inset 0 0 0 5px var(--viz-surface);
   z-index: 3;
 }
 
 .tm-dir {
-  border-color: var(--viz-border);
+  --tm-edge: var(--viz-border);
 }
 
-/* A folder too small for a label still nests, inside a frame of its own
-   padding (treemap-layout.js, frameNestMinPx). The frame is all of it that
-   shows, so it carries no label or padding of its own; the tooltip names it. */
-.tm-framed {
+/* A cell drawing no label: a small file, or a folder too small for a label
+   that nests inside a frame of its own padding (treemap-layout.js,
+   frameNestMinPx). It has nothing to inset, and padding would set a floor on
+   its size; the tooltip names it. */
+.tm-bare {
   padding: 0;
 }
 
@@ -237,7 +249,7 @@
     var(--mb-distribution-color, var(--viz-border)) 34%,
     var(--viz-surface)
   );
-  border-color: color-mix(
+  --tm-edge: color-mix(
     in srgb,
     var(--mb-distribution-color, var(--viz-border)) 74%,
     var(--viz-border)

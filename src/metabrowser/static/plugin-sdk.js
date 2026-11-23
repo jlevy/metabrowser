@@ -876,6 +876,8 @@
       remaining_top: settings.ROLLUP_FILE_TYPE_REMAINING_LIMIT,
       ext_rank: settings.ROLLUP_DEFAULT_EXT_RANK || "bytes",
       debounceMs: settings.ROLLUP_WATCH_DEBOUNCE_MS || ROLLUP_FALLBACK_DEBOUNCE_MS,
+      maxDepth: settings.ROLLUP_MAX_DEPTH,
+      maxTop: settings.ROLLUP_MAX_TOP,
     };
   }
 
@@ -883,7 +885,10 @@
     // Core rollup endpoint for directory subtrees (see /api/rollup).
     // ``path`` may be "" for the served root. Optional opts:
     // depth / top / ext_top / filename_top / remaining_top query overrides
-    // plus ``signal``.
+    // plus ``signal``. ``depth: "max"`` and ``top: "max"`` ask for the
+    // deepest and widest tree the route serves (ROLLUP_MAX_DEPTH and
+    // ROLLUP_MAX_TOP, settings.py), the node budget bounding the answer;
+    // a page without the settings asks for the route's defaults.
     if (typeof path !== "string") {
       throw new Error("fetchRollup: path must be a string");
     }
@@ -892,7 +897,10 @@
     const url = new URL("/api/rollup", global.location.origin);
     url.searchParams.set("path", path);
     for (const key of ["depth", "top", "ext_top", "filename_top", "remaining_top", "ext_rank"]) {
-      const value = options[key] !== undefined ? options[key] : defaults[key];
+      let value = options[key] !== undefined ? options[key] : defaults[key];
+      if (value === "max") {
+        value = key === "depth" ? defaults.maxDepth : key === "top" ? defaults.maxTop : undefined;
+      }
       if (value !== undefined && value !== null) {
         url.searchParams.set(key, String(value));
       }

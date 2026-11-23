@@ -519,6 +519,35 @@ sandbox.MetabrowserNavigationRoute.attachController({
       container.viewport.innerHTML.includes("a.py"),
     container.viewport.innerHTML.slice(0, 200),
   );
+  {
+    // The map lays out to the viewport's padding box (clientWidth and
+    // clientHeight, inside its border), not to its bounding box, which is
+    // larger by the border: laying out to that pushed the right- and
+    // bottom-edge cells under the border.
+    container.viewport.clientWidth = 798;
+    container.viewport.clientHeight = 598;
+    sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
+    const boxes = [
+      ...container.viewport.innerHTML.matchAll(
+        /left:([\d.]+)px;top:([\d.]+)px;width:([\d.]+)px;height:([\d.]+)px/g,
+      ),
+    ].map((m) => m.slice(1).map(Number));
+    const reach = boxes.reduce(
+      (most, [left, top, width, height]) => [
+        Math.max(most[0], left + width),
+        Math.max(most[1], top + height),
+      ],
+      [0, 0],
+    );
+    check(
+      "cells lay out inside the viewport's client box, not its bounding box",
+      boxes.length > 0 && reach[0] <= 798 && reach[1] <= 598 && reach[0] > 790,
+      JSON.stringify({ cells: boxes.length, reach }),
+    );
+    delete container.viewport.clientWidth;
+    delete container.viewport.clientHeight;
+    sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
+  }
   check(
     "folder labels carry a trailing slash without changing the accessible name",
     container.viewport.innerHTML.includes('<span class="tm-cell-label">docs/</span>') &&
@@ -1170,6 +1199,23 @@ sandbox.MetabrowserNavigationRoute.attachController({
     overrideUrl.searchParams.get("type_top") === null &&
       overrideUrl.searchParams.get("remaining_top") === "9",
     overrideUrl.search,
+  );
+
+  // "max" asks for the route's deepest and widest tree, which the SDK reads from the
+  // page's settings so that a plugin does not; without them it asks for the defaults.
+  sandbox.METABROWSER_SETTINGS = { ROLLUP_MAX_DEPTH: 12, ROLLUP_MAX_TOP: 200 };
+  await mb.fetchRollup("deep", { depth: "max", top: "max" });
+  const maxUrl = new URL(fetchCalls.at(-1));
+  delete sandbox.METABROWSER_SETTINGS;
+  await mb.fetchRollup("deep", { depth: "max", top: "max" });
+  const bareUrl = new URL(fetchCalls.at(-1));
+  check(
+    '"max" depth and top resolve to the route\'s maxima, or to its defaults without settings',
+    maxUrl.searchParams.get("depth") === "12" &&
+      maxUrl.searchParams.get("top") === "200" &&
+      bareUrl.searchParams.get("depth") === null &&
+      bareUrl.searchParams.get("top") === null,
+    `${maxUrl.search} ${bareUrl.search}`,
   );
 
   if (failures.length > 0) {

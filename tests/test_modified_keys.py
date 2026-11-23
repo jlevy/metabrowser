@@ -189,7 +189,7 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
     ),
     "builtin_plugins/folder/treemap-map.js": (
         Listener(
-            "the tree map's cells, in the Treemap view and the Overview's compact map",
+            "the tree map's cells, in the Treemap view",
             "if (e.altKey || e.ctrlKey || e.metaKey) { return; }",
             via=("onKeyDown",),
             checks=("tests/dom/folder-plugin-behavior.js",),

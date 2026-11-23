@@ -300,7 +300,8 @@ function fileNode(name, pathStr, size, extras) {
     if (c.x < -eps || c.y < -eps || c.x + c.w > view.w + eps || c.y + c.h > view.h + eps) {
       escapesView += 1;
     }
-    const parentPath = c.kind === "rest" ? null : c.path.split("/").slice(0, -1).join("/");
+    // A remainder cell carries its folder's own path.
+    const parentPath = c.kind === "rest" ? c.path : c.path.split("/").slice(0, -1).join("/");
     const parent = parentPath ? byPath.get(parentPath) : null;
     if (
       parent &&
@@ -336,6 +337,60 @@ function fileNode(name, pathStr, size, extras) {
     "a framed folder's children start one pad inside it, not below a header",
     framedChild && Math.abs(framedChild[1].y - framedChild[0].y) < framedChild[0].headerPx,
     JSON.stringify(framedChild),
+  );
+  const padPx = 2;
+  const offsets = framed.map((f) => {
+    const inside = cells.filter(
+      (c) => c.path.startsWith(`${f.path}/`) || (c.kind === "rest" && c.path === f.path),
+    );
+    return [
+      Math.min(...inside.map((c) => c.x)) - f.x,
+      Math.min(...inside.map((c) => c.y)) - f.y,
+    ];
+  });
+  check(
+    "a framed folder's children start exactly one pad inside its frame",
+    offsets.every(([dx, dy]) => Math.abs(dx - padPx) < eps && Math.abs(dy - padPx) < eps),
+    JSON.stringify(offsets.slice(0, 4)),
+  );
+  // A folder the map would label is labelled, not framed: framing it hid the
+  // names of folders that had room for them.
+  const labelMin = { w: 56, h: 16 };
+  check(
+    "only folders too small for a label are framed",
+    framed.every((f) => f.w < labelMin.w || f.h < labelMin.h),
+    JSON.stringify(framed.filter((f) => f.w >= labelMin.w && f.h >= labelMin.h).slice(0, 3)),
+  );
+  const headed = cells.filter((c) => c.nested && !c.framed);
+  check(
+    "a folder nests under its label only with room for the label and a row of children",
+    headed.length > 0 && headed.every((c) => c.w >= labelMin.w && c.h >= 40),
+    `${headed.length}`,
+  );
+
+  // A folder whose children all folded into its remainder at the rollup's node
+  // budget has nothing to nest: it stays one solid cell, not a frame around a
+  // single inert remainder.
+  const restOnly = layout.layoutTree(
+    dirNode("root", "", {
+      total_size: 2000,
+      children: [
+        dirNode("capped", "capped", {
+          total_size: 1500,
+          children: [],
+          rest: { dirs: 0, files: 9, size: 1500, unignored_files: 9, unignored_size: 1500 },
+        }),
+        fileNode("a.py", "a.py", 500),
+      ],
+    }),
+    { w: 400, h: 300 },
+    { metric: "size" },
+  );
+  const capped = restOnly.find((c) => c.path === "capped" && c.kind === "dir");
+  check(
+    "a folder holding only its remainder stays solid",
+    !!capped && !capped.nested && !capped.framed && restOnly.every((c) => c.kind !== "rest"),
+    JSON.stringify(restOnly.map((c) => [c.kind, c.path, c.nested])),
   );
 
   // The budget spreads across the map rather than draining into the first
