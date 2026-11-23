@@ -325,6 +325,8 @@ guards and adds one:
   the head’s check runs and status keep their ETags while the repository moves, and
   every `200` after a page’s first changed something the record keeps (`CHECKS_PROBE_S`
   records the numbers).
+  That is a sample: if a check app answers paid `200`s that change nothing, the bound
+  that remains is the self-ceiling below, past which probes slow to `FULL_REFRESH_S`.
   The pull, asked while mergeability is unknown, can answer a paid `200` that still says
   `null`, and `MERGEABLE_SETTLE_S` bounds those asks; none was seen, since GitHub
   answered every pull by the next read.

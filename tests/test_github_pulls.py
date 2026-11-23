@@ -1819,8 +1819,8 @@ def test_a_refresh_answer_leaves_out_the_record_its_asker_holds(
 ) -> None:
     """An ask that names the record it holds gets every field but that record (mb-jd08).
 
-    A visible page asks every ``probe_every_s``, and the whole envelope each time was
-    344 KiB and 1.7 ms on the event loop for the largest record measured.
+    A visible page asks every ``probe_every_s``; what the whole envelope cost each time
+    is recorded beside ``pull_route.refresh_answer_pull``.
     """
 
     _stand, client = pinned_pull

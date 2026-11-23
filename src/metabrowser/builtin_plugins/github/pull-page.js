@@ -2506,9 +2506,12 @@ export function createPullController(deps, options) {
    * The envelope a refresh answered, with the record the page holds put back where the
    * answer left it out. An ask that names `held`, the revision of the record the page
    * shows, is answered `record_held` in place of that record when the server's is the
-   * same one, which is nearly every answer of a page left open: the whole envelope each
-   * `probe_every_s` cost 1.7 ms of the server's event loop and 344 KiB for the largest
-   * record measured (`refresh_answer_pull` in pull_route.py).
+   * same one, which is nearly every answer of a page left open (`refresh_answer_pull` in
+   * pull_route.py records what the whole envelope cost each `probe_every_s`).
+   *
+   * The revision leaves out the record's `fetched_at`, which a read that found the same
+   * content moves, so the record takes the answer's: the envelope's `fetched_at` is its
+   * record's, and the age line is counted from the record.
    *
    * Null when the page no longer holds that record as the server has it: another revision
    * since the ask, or a record whose comparison a server with no store drops (`no_store`),
@@ -2530,7 +2533,7 @@ export function createPullController(deps, options) {
     ) {
       return null;
     }
-    return { ...rest, record: envelope.record };
+    return { ...rest, record: { ...envelope.record, fetched_at: rest.fetched_at } };
   }
 
   /**

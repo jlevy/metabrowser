@@ -265,7 +265,14 @@ function createPage(runtime, options) {
   let navigations = [];
   // What the conversation last painted, to run the page's own paint decision on each paint.
   let conversation = { key: "", textRevision: null };
-  const server = { pull: null, refresh: [], pin: [], markdown: new Map(), held: [] };
+  const server = {
+    pull: null,
+    refresh: [],
+    pin: [],
+    markdown: new Map(),
+    held: [],
+    waiting: [],
+  };
   const clock = { now: Date.parse("2026-09-17T12:00:30Z") };
 
   const deps = {
@@ -276,6 +283,10 @@ function createPage(runtime, options) {
         assert(answer, `no scripted answer for POST ${route}`);
         if (answer.unanswered) {
           throw new Error("the server did not answer");
+        }
+        if (answer.waits) {
+          // An answer still on its way, until the step releases it (`releaseRefresh`).
+          return new Promise((resolve) => server.waiting.push(() => resolve(answer)));
         }
         // An answer that takes this long, on the page's clock.
         clock.now += answer.takesMs ?? 0;
@@ -346,6 +357,11 @@ function createPage(runtime, options) {
     clock,
     setVisible(value) {
       visible = value;
+    },
+    /** Answer the oldest refresh request still on its way. */
+    async releaseRefresh() {
+      server.waiting.shift()();
+      await settle();
     },
     async releaseMarkdown() {
       while (server.held.length > 0) {
@@ -1123,8 +1139,8 @@ async function main() {
     `a probed page does not ask again after probe_every_s: ${JSON.stringify(firstAsk)}`,
   );
   // The ask named the record the page shows, and the answer came without it (mb-jd08: the
-  // whole envelope every interval was 344 KiB for the largest record measured). The page
-  // still shows that record, under the verdict the answer brought.
+  // cost of the whole envelope every interval is recorded beside `refresh_answer_pull` in
+  // pull_route.py). The page still shows that record, under the verdict the answer brought.
   const heldAsk = `POST /api/plugin/github/pull-refresh ${JSON.stringify({
     number: 7,
     held: recorded.refreshed.body.record_revision,
@@ -1267,6 +1283,105 @@ async function main() {
       `an answer about another record was not followed by a whole read: ${JSON.stringify(reread)}`,
     );
   }
+  // The revision leaves out `fetched_at`, so a read another asker made of the same content
+  // is answered without the record too: the page's record takes the answer's time, and its
+  // age line says what the whole answer would have (review A1 on #746).
+  probing.clock.now += 5 * 60_000;
+  const readElsewhere = new Date(probing.clock.now).toISOString().replace(".000Z", "Z");
+  const heldPull = recorded.probed.body.pull;
+  probing.server.refresh.push({
+    ...recorded.probed,
+    body: {
+      ...recorded.probed.body,
+      pull: { ...heldPull, fetched_at: readElsewhere, verified_at: readElsewhere },
+    },
+  });
+  await probing.step("a held answer after another asker's read", async () =>
+    probing.fireAsk(interval),
+  );
+  const wholeAnswer = runtime.describePull(
+    {
+      ...probing.server.pull.body,
+      fetched_at: readElsewhere,
+      verified_at: readElsewhere,
+      verified_by: heldPull.verified_by,
+      record: { ...probing.server.pull.body.record, fetched_at: readElsewhere },
+    },
+    { number: 7, tab: "", nowMs: probing.clock.now, online: true },
+  );
+  assert(
+    /just now/u.test(wholeAnswer.freshness) &&
+      probing.lastModel().freshness === wholeAnswer.freshness,
+    `a held record kept its own age: ${probing.lastModel().freshness}, not ${wholeAnswer.freshness}`,
+  );
+  // A held answer that lands after a newer read was shown is dropped, as a whole one is:
+  // it is merged with the page's record and then refused by its request's number.
+  probing.clock.now += interval;
+  probing.server.refresh.push({
+    ...recorded.probed,
+    waits: true,
+    body: { ...recorded.probed.body, pull: { ...heldPull, state: "stale" } },
+  });
+  await probing.step("an ask whose answer is slow", async () => probing.fireAsk(interval));
+  probing.server.pull = {
+    ...recorded.probed_current,
+    etag: `${recorded.probed_current.etag}-newer`,
+  };
+  const newer = await probing.step("a poll answers first", async () => probing.fire());
+  assert(
+    JSON.stringify(newer.requests) ===
+      JSON.stringify(["GET /api/plugin/github/pull?number=7 (If-None-Match)"]) &&
+      probing.lastModel().status === "current",
+    `a poll beside a slow ask did not read: ${JSON.stringify(newer)}`,
+  );
+  const late = await probing.step("the slow held answer lands", () => probing.releaseRefresh());
+  assert(
+    probing.lastModel().status === "current" && late.paint?.status !== "stale",
+    `a held answer older than what the page shows replaced it: ${JSON.stringify(late)}`,
+  );
+  // A mismatch that lands while a reader's Refresh is on its way, as Changes offers one for
+  // a current record: its read finds the Refresh pending and sends nothing, and the
+  // Refresh's own answer arms the poll again.
+  const crossing = createPage(runtime, { number: 7, tab: "files", brief: true });
+  crossing.clock.now = Date.parse("2026-09-17T12:06:00Z");
+  crossing.server.pull = recorded.refreshed;
+  await crossing.controller.start();
+  crossing.server.refresh.push({
+    ...recorded.probed,
+    waits: true,
+    body: { ...recorded.probed.body, pull: { ...heldPull, record_revision: "0".repeat(64) } },
+  });
+  await crossing.step("an ask whose answer is slow", async () => crossing.fireAsk());
+  crossing.server.refresh.push({
+    status: 202,
+    etag: null,
+    waits: true,
+    body: { pull: { ...recorded.refreshed.body, refreshing: true } },
+  });
+  const pressed = await crossing.step("the reader presses Refresh meanwhile", () => {
+    void crossing.controller.requestRefresh();
+  });
+  assert(
+    pressed.requests.length === 1 && /"retry":true/u.test(pressed.requests[0]),
+    `Changes sent no Refresh beside the page's own ask: ${JSON.stringify(pressed)}`,
+  );
+  const crossed = await crossing.step(
+    "the ask's answer names a record the page lacks",
+    async () => {
+      await crossing.releaseRefresh();
+      crossing.fire();
+    },
+  );
+  assert(
+    crossed.requests.length === 0 && crossing.pollTimer() === null,
+    `a read was sent under a pending Refresh: ${JSON.stringify(crossed)}`,
+  );
+  const answered = await crossing.step("the Refresh answers", () => crossing.releaseRefresh());
+  assert(
+    crossing.pollTimer() !== null && answered.timer === "fast",
+    `a mismatch under a pending Refresh left no poll armed: ${JSON.stringify(answered)}`,
+  );
+  crossing.controller.dispose();
   probing.setVisible(false);
   await probing.controller.onVisibilityChange();
   probingStory.push(

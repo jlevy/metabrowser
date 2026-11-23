@@ -103,8 +103,13 @@ PROBE_FLOOR_S: Final = 4.0
 # conditional reads of both pages for six heads, four with runs in progress, the 56
 # answered ``200`` after a page's first each changed a run's status or conclusion, added
 # a run, or changed the status, all of which a record keeps; and for four pull requests
-# whose checks had ended, both pages answered ``304`` in all 96 reads over 7 minutes in
-# which the pull's own ETag moved seven times.
+# whose checks had ended, both pages answered ``304`` in all 96 reads of each page over
+# 7 minutes in which the pull's own ETag moved seven times.
+# That is a sample, mostly of GitHub Actions runs. A check app that rewrites a run's
+# output while it stays in progress would answer a paid ``200`` that changes nothing a
+# record keeps, one ``core`` each interval; what bounds those is the checks ending and
+# the process's ceiling (:func:`.gh_budget.over_ceiling`), past which
+# :meth:`ServedPull.probe_due` slows every probe to :data:`FULL_REFRESH_S`.
 CHECKS_PROBE_S: Final = 10.0
 # How long a record the probes vouch for goes without a full read. A probe cannot see an
 # edited comment, a reaction, a re-run check of a finished head, or a mergeability GitHub
