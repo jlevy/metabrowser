@@ -287,8 +287,11 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
 `pull_route.py` builds the pull envelope from the cache and memory alone; its docstring
 lists the states. The envelope’s `pin` is the commit the server serves and can differ
 from the record’s head: a pull request opened from the list moves no pin, a commit URL
-inside the pull request pins that commit, and a refresh can find a newer head, which the
-page offers as `latest` rather than switching under a reader.
+inside the pull request pins that commit, and a refresh can find a newer head.
+A pin served under the pull request’s own `refs/pull/<n>/head` follows that head, as a
+branch’s pin follows its branch
+([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)), so
+the envelope names an earlier head only until the refresh job has observed the mirror.
 **Browse code** is a link to the served root when the pin is the record’s head, and
 otherwise a button that posts the head’s commit to `/api/source/pin`, naming the pull
 request’s `refs/pull/<n>/head` as the ref to serve it under, and then opens the root, so
@@ -559,6 +562,43 @@ source with a message that images in diagrams from untrusted text are not loaded
 The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
 
+## Changes Follows the Head
+
+Changes shows the record’s comparison, so a record read at a newer head, or against a
+base that moved, replaces the diff on screen without the reader asking.
+The owner set this on 2026-11-22 (bead `mb-6a6w`), replacing the diff that stayed until
+**Show the newer changes**: with a visible page probed every few seconds, that offer
+appeared seconds after every push of a review.
+The served code follows the same head
+([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)).
+
+- **The decision:** `filesAction` in `pull-page.js` answers `follow` for a mounted diff
+  whose comparison is no longer the record’s. A refresh the reader asked for that finds
+  another head is followed too, not repaired first.
+- **The note:** the diff that was replaced is kept (`followedFrom`), and `followedNote`
+  says what the line above the new diff names: both heads, or, for the same head from
+  another merge base, that the comparison changed.
+  **Show the earlier changes** mounts the replaced diff from its own routes, which name
+  two immutable commits.
+  That diff is the reader’s choice, so `filesAction` answers `offer` for it and it stays
+  until **Show the newer changes**; leaving Changes ends the choice.
+- **Across a reload:** on a repository URL the page reloads when the served pin follows
+  the head, because a page names its pin on every data request
+  ([Source Sessions and Pins](arch-source-sessions-and-pins.md)). So the history entry
+  remembers the comparison Changes last showed and the one its note named
+  (`rememberedChanges`), beside the reader’s place, and a page loaded again on an entry
+  that showed another comparison says so in the same line.
+  An entry reached by Back after the head moved says it too.
+- **The reader’s place:** a place in Changes names its file (`PanePlace`), which the
+  mounted diff maps to a block and back, so the place held through a replacement, or
+  landed on after a reload, is in the same file, at the same offset, where the new diff
+  has that file. A file the new diff lacks leaves the place at its index.
+  The hold is a landing’s: it lasts until the page is still or the reader moves.
+
+`tests/dom/github-pull-page-session.js` pins the decision, the note, the entry’s memory,
+and the place; `tests/dom/github-pull-repair-lifecycle-behavior.js` and
+`tests/dom/github-pull-page-mount-behavior.js` drive them through the mounted page.
+
 ## Conversation Timeline
 
 `POST pull-timeline` (`pull_timeline.py`) gives Conversation the order of commits,
@@ -776,7 +816,8 @@ no store.
   `MAX_ISSUED_COMPARISONS`), then runs the
   [object recovery](arch-mirror-acquisition-and-refresh.md#object-recovery).
   A successful repair remounts the same comparison once, and a failed one leaves it in
-  place.
+  place. A refresh that finds another head is followed instead
+  ([Changes Follows the Head](#changes-follows-the-head)).
 
 `GET` routes never acquire or fetch.
 What a reader sees for each failure name, and what to do, is in

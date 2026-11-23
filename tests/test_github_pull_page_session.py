@@ -380,7 +380,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 time.sleep(0.01)
 
             # Served an older head of 7, as a page left open is: a refresh finds a newer
-            # one, and the pin stays until the reader takes the offer.
+            # one, and the server follows the pull request's head to it.
             def _answering_7(head: str) -> None:
                 path = "repos/octo/demo/pulls/7"
                 body = answers["api"][path]["body"]
@@ -406,7 +406,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             assert client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY).json()
             clock[0] = FETCHED_AT + timedelta(minutes=41)
             _answering_7(origin["fork_head"])
-            recorded["behind_head"] = _fetched(client, 7)
+            recorded["followed_head"] = _fetched(client, 7)
 
             # A number with no record, and a press of Fetch past the bound on jobs.
             recorded["absent_14"] = _answer(client.get(_PULL, params={"number": 14}))
@@ -458,10 +458,10 @@ def test_recording_is_what_a_served_pull_request_answers(
         "too_many",
     )
     assert recorded["not_github"]["body"]["reason"] == "not_github"
-    behind = recorded["behind_head"]["body"]
-    assert behind["pin"] == pull_origin["fork_earlier"]
-    assert behind["pin_ref"] == "refs/pull/7/head"
-    assert behind["record"]["pull"]["head"]["sha"] == pull_origin["fork_head"]
+    followed = recorded["followed_head"]["body"]
+    assert followed["pin"] == pull_origin["fork_head"] != pull_origin["fork_earlier"]
+    assert followed["pin_ref"] == "refs/pull/7/head"
+    assert followed["record"]["pull"]["head"]["sha"] == pull_origin["fork_head"]
     assert recorded["switch_refused"]["status"] == 404
     assert recorded["pending"]["body"]["refreshing"] is True
     assert recorded["current"]["body"]["state"] == "current"
@@ -554,11 +554,7 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     for when, checkout_page in transcript["checkout"].items():
         if when.startswith("a mirror"):
             continue
-        assert (
-            checkout_page["browse"],
-            checkout_page["headOffer"],
-            checkout_page["comparison"],
-        ) == (None, None, None)
+        assert (checkout_page["browse"], checkout_page["comparison"]) == (None, None)
     assert transcript["hunks"] and transcript["place"]
 
 
@@ -690,8 +686,11 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "the preparation ends with no comparison: nothing",
             "a record whose comparison nothing prepares: nothing",
             "Changes, its diff reads no comparison: nothing",
-            "a record with a moved head lands, offering the newer changes: nothing",
-            "the reader takes them, their diff not yet read: the pending placeholder",
+            # Changes follows a moved head; the way back shows the earlier diff, whose failed
+            # read leaves the record's summary drawn, as a repair of an older diff does.
+            "a record with a moved head is followed: its diff reads the comparison: the summary",
+            "the reader goes back: the earlier diff reads none again: the summary",
+            "the reader takes the newer changes, their diff not yet read: the summary",
             "their diff reads the comparison: the summary",
             "Changes, its diff throws: nothing",
             "Retry, the diff not yet read: the pending placeholder",
@@ -789,22 +788,20 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "numbered after a refresh with no pin: 1 Refresh",
             f"1: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
             "2: not handled",
-            # Code behind the head offers to switch to it, numbered after Refresh; while the
-            # refresh 2 asks for runs, Refresh waits, shown and disabled, and keeps 2, so the
-            # offer keeps 3 and a second 2 asks nothing (B2 of review B on #506).
+            # While the refresh 2 asks for runs, Refresh waits, shown and disabled, and keeps
+            # 2, so a second 2 asks nothing (B2 of review B on #506). Code on the pull
+            # request's head numbers no switch to it: the server follows that head.
             f"1: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered with the code behind the head: "
-            "1 Browse code, 2 Refresh, 3 Switch to the head",
+            "numbered with the code on the head: 1 Browse code, 2 Refresh",
             f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered while that refresh runs: 1 Browse code, 2 Refresh, 3 Switch to the head",
+            "numbered while that refresh runs: 1 Browse code, 2 Refresh",
             "2: nothing asked",
-            # Once the refresh ends Refresh is offered again on Changes, and the offer keeps 3;
-            # on Conversation nothing is left to refresh, so Refresh is not shown and the offer
-            # takes 2 (C2 of review C on #506, accepted).
-            "numbered once the refresh ends: 1 Browse code, 2 Refresh, 3 Switch to the head",
-            "numbered on Conversation once the refresh ends: 1 Browse code, 2 Switch to the head",
-            "3: POST /api/source/pin "
-            '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head"}',
+            # Once the refresh ends Refresh is offered again on Changes; on Conversation
+            # nothing is left to refresh, so Refresh is not shown (C2 of review C on #506,
+            # accepted).
+            "numbered once the refresh ends: 1 Browse code, 2 Refresh",
+            "numbered on Conversation once the refresh ends: 1 Browse code",
+            "3: not handled",
             "Shift+H: not handled",
             "Shift+E: opened the checks route",
             "Shift+C: opened the conversation route",

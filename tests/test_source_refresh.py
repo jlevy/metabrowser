@@ -55,6 +55,7 @@ from metabrowser.mirror_refresh import (
     RefreshCoordinator,
     RefreshResult,
     followed_outcome,
+    follows_moves,
     mirror_session,
     probes_origin,
     refresh_coordinator,
@@ -229,6 +230,22 @@ def test_a_folder_reports_no_freshness_and_refuses_both_routes(tmp_path: Path) -
 
 
 # ── Refresh ──────────────────────────────────────────────────────────
+
+
+def test_a_branch_a_tag_and_a_pull_requests_head_follow_their_ref() -> None:
+    """Which pins move when a fetch moves their ref. A pull request's head does, as
+    GitHub names it and nothing like it; a commit opened by its ID is served under no ref."""
+
+    for ref in ("refs/remotes/origin/trunk", "refs/tags/v1", "refs/pull/7/head"):
+        assert follows_moves(ref), ref
+    for ref in (
+        None,
+        "refs/pull/7/merge",
+        "refs/pull/0/head",
+        "refs/pull/7/head/x",
+        "refs/heads/m",
+    ):
+        assert not follows_moves(ref), ref
 
 
 def test_a_refresh_that_moves_the_served_branch_is_followed(

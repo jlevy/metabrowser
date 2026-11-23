@@ -1835,7 +1835,7 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Serve mode: the cold read pins the head, the pull route answers, a refresh runs in
-    the coordinator, and a newer head is offered as ``latest`` rather than switched to."""
+    the coordinator, and the pin follows a newer head that refresh finds (mb-6a6w)."""
 
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
     # The session's freshness window reads the wall clock, so records do too here.
@@ -1859,12 +1859,15 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
             started = client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON)
             assert started.status_code == 202 and started.json()["pull"]["refreshing"] is True
             status = settle(client)
-            assert (status["pin"], status["latest"]) == (earlier, head)
+            # The pull request's own job observed the mirror when it ended, and the pin,
+            # served under the pull request's head, went with the ref it had just fetched.
+            assert (status["follows"], status["ref"]) == (True, "refs/pull/7/head")
+            assert (status["pin"], status["latest"]) == (head, head)
             envelope = _read(client, 7).json()
             assert envelope["last_refresh"]["outcome"] == "succeeded"
-            assert (envelope["pin"], envelope["record"]["pull"]["head"]["sha"]) == (earlier, head)
+            assert (envelope["pin"], envelope["record"]["pull"]["head"]["sha"]) == (head, head)
 
-            # Taking the offer switches by the pull request's ref, as the page does.
+            # A page drawn for the earlier head asks for the ref, which changes nothing now.
             taken = client.post("/api/source/pin", json={"ref": "refs/pull/7/head"}, headers=_JSON)
             assert taken.status_code == 200, taken.text
             assert taken.json()["status"]["pin"] == head

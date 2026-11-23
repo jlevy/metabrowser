@@ -198,11 +198,6 @@ const MEASURE = `async (name, change, tab, width) => {
       envelope.record = structuredClone(recorded[holder].body.record);
     }
   }
-  // A pin behind the pull request's head draws the offer to switch to it.
-  if (change.pinBehind) {
-    body.pin = "1".repeat(40);
-    body.pin_ref = "refs/pull/" + body.number + "/head";
-  }
   // A checkout, which has no pin, at the pull request's head draws the offer to browse it.
   if (change.checkoutAtHead) {
     body.pin = null;
@@ -750,8 +745,7 @@ const RECORDS = [
   ["closed", {}],
   ["stale", {}],
   ["on_head", {}],
-  ["behind_head", {}],
-  ["current", { pinBehind: true }],
+  ["followed_head", {}],
   ["on_head", { checkoutAtHead: true }],
   ["current", { lastRefresh: RATE_LIMITED }],
   ["current", { lastRefresh: RATE_LIMITED, liftSoon: true }],
@@ -1756,12 +1750,9 @@ const RUN_BADGE = `async (live, width) => {
   );
   return { from: labelBefore, to: badge.textContent, width: Math.round(badge.getBoundingClientRect().width * 10) / 10, moved };
 }`;
-// The records whose status row draws an offer: to switch to the head, and to browse it.
-const OFFER_RECORDS = [
-  ["behind_head", {}],
-  ["current", { pinBehind: true }],
-  ["on_head", { checkoutAtHead: true }],
-];
+// The record whose status row draws an offer: to browse the checkout at the head. Code
+// served on the pull request's head follows it, so no record offers a switch to it.
+const OFFER_RECORDS = [["on_head", { checkoutAtHead: true }]];
 // The same records by the labels the header parts give them.
 const OFFERED = new Set(
   OFFER_RECORDS.map(
@@ -2876,10 +2867,8 @@ async function main() {
           }
         }
         check(
-          "both offers are drawn by the records that carry them",
-          offersDrawn.has("behind_head") &&
-            offersDrawn.has("current pinBehind") &&
-            offersDrawn.has("on_head checkoutAtHead"),
+          "the offer is drawn by the record that carries it",
+          offersDrawn.has("on_head checkoutAtHead"),
           JSON.stringify([...offersDrawn]),
         );
         lap("the offers");
