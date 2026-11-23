@@ -160,7 +160,7 @@ the last column names.
 | `/view/<container>/<inner>` | One entry inside a container file | A container’s address, then a path within it | [Plugin System](arch-plugin-system.md) |
 | `/commit/<rev>` | A commit’s change set against its first parent | A full commit ID; the page refuses anything else as `revision_not_full` | [Git](arch-git.md) |
 | `/commit/<rev>/<inner>` | One file’s diff in that change set | A commit ID, then a path; the Commits tab restores the commit, not yet the file | [Git](arch-git.md) |
-| `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | A pull request’s Conversation, Changes, or Checks tab | A pull-request number, then a tab | [GitHub Pull Requests](arch-github-pull-requests.md) |
+| `/pull/<n>`, `/pull/<n>/docs`, `/pull/<n>/files`, `/pull/<n>/checks` | A pull request’s Conversation, Docs, Changes, or Checks tab | A pull-request number, then a tab | [GitHub Pull Requests](arch-github-pull-requests.md) |
 | `/pull/<n>/files/<path>` | Changes, at one changed file | A number, then a path in its comparison, never looked up on disk | [GitHub Pull Requests](arch-github-pull-requests.md) |
 | `/pulls` | A repository’s pull requests, with none selected | None; `?state=` names the filter | [GitHub Pull Requests](arch-github-pull-requests.md) |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison, `...` for the merge base | Two revisions, then a path | Planned, not built |

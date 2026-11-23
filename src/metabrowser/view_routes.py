@@ -20,8 +20,8 @@ COMMIT_ROUTE_PREFIX = "/commit/"
 PULL_ROUTE_PREFIX = "/pull/"
 # The list of a repository's pull requests, with `?state=` for a filter, as on GitHub.
 PULLS_ROUTE = "/pulls"
-# Conversation is the PR page itself. Changes and Checks have their own addresses.
-PULL_ROUTE_TABS = ("", "files", "checks")
+# Conversation is the PR page itself. Docs, Changes, and Checks have their own addresses.
+PULL_ROUTE_TABS = ("", "docs", "files", "checks")
 # A pull-request number as the GitHub URL reducer admits one.
 _PULL_NUMBER = re.compile(r"^[1-9][0-9]{0,9}$")
 _VIEW_ROUTE_PREFIX_BYTES = VIEW_ROUTE_PREFIX.encode()

@@ -97,6 +97,8 @@
 //     counterpartButton(counterpart)      — the button, from the server's answer
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
+//     filterControls.typeMenu             — File type menu rows from a tally
+//                                          for the Files tab and diffs
 //     class="disclosure-toggle"           — on any control that shows or hides
 //                                          content: the host stylesheet keeps it from
 //                                          selecting text, even on a double or triple
