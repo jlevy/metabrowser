@@ -203,7 +203,7 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   its row’s position (`@<n>`). A cell keeps what plain JSON would lose: an integer past
   2⁵³, an infinite real, a long value’s length, invalid UTF-8, a value whose type
   differs from its column’s, and a short row’s missing cells.
-  The kind’s one view is still its Source until the table view arrives
+  Table is the default view, and Source is available
   ([Table Sources](docs/project/architecture/arch-plugin-system.md#table-sources)).
 
 - **Plugin SDK:** a plugin can serve its own kind as tables through the built-in `table`
@@ -630,9 +630,9 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   afterwards, since the saved list names its mirror by path.
   That first open writes to the cache, so the cache must be writable once; a read-only
   copy is not migrated.
-  Until then `/api/cache/*` answers `migration_pending`, and the macOS app, which reads
-  that route to know whether a repository is cached, asks its clone question once for a
-  repository it already holds; opening the repository migrates the cache.
+  Until then `/api/cache/*` answers `migration_pending`. If another app sends a link to
+  a repository already in the old cache, Metabrowser asks its clone question once.
+  Opening the repository migrates the cache.
   A `metab` of an earlier release refuses a migrated cache and asks for an upgrade.
   Stop running `metab` servers before the first new `metab` opens a repository (the
   macOS app restarts its own).
@@ -954,11 +954,10 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   instead of asking for the full URL: `github.com/owner/repo` and
   `//github.com/owner/repo` get `https://`, and `http://github.com/…` becomes
   `https://`. The field shows the full URL it checks.
-  Another site’s address, a local path, an SSH address, and a shorthand such as
-  `owner/repo` are still refused.
-  `metab github.com/owner/repo` likewise opens `https://github.com/owner/repo` when
-  nothing on disk has that name; a folder that does is still served, so write the
-  `https://` to open the repository whatever is on disk.
+  The app accepts `owner/repo` and refuses other sites’ addresses, local paths, and SSH
+  addresses. On the command line, `metab github.com/owner/repo` opens
+  `https://github.com/owner/repo` when nothing on disk has that name; a folder that does
+  is still served, so write the `https://` to open the repository whatever is on disk.
   `owner/repo` alone is still a path.
   See [the app’s guide](docs/macos-app.md#opening-github-links) and
   [What ROOT Names](docs/command-line.md#what-root-names).
@@ -1227,8 +1226,8 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
 - The macOS app needs `metab` 0.13.0 or later; 0.12.0 is too old.
   A `metab` change the app depends on ships in a new minor or major release, never a
   patch ([Choosing a Version](docs/publishing.md#choosing-a-version)). A source checkout
-  reports the next minor release as its development version, `0.13.0.devN`, and
-  `make install` or any `uv run` rebuilds that version after each new commit or tag.
+  reports the next minor release as its development version, and `make install` or any
+  `uv run` rebuilds that version after each new commit or tag.
 
 - `metab --doctor` checks the setup as well as the plugins: `metab` itself (version,
   Python, how it was installed, and whether the macOS app `--present` would open runs
@@ -1647,10 +1646,11 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   the app opens the repository’s mirror in its one window, cloning the repository or
   reusing its cache as `metab URL` does; a link `metab` refuses shows `metab`’s message,
   and what a burst of links could not open is said in one alert.
-  A link to a repository the cache does not hold asks first, with Cancel as the default,
-  while other links go on opening; one into a repository with a window starts its server
-  again on the link, so the window shows the revision the link names, and the app says
-  when GitHub has nothing the link names.
+  An incoming link asks before cloning a repository the cache does not hold.
+  Cancel is the default, and other links go on opening.
+  A link to a repository with an open window navigates that window to the revision it
+  names and keeps its server running.
+  The app says when GitHub has nothing the link names.
   Servers start on the canonical link `metab` hands back, never on the link as sent, so
   a token in a link reaches no server.
   A first clone is no longer stopped 60 seconds after its server started: the app waits
@@ -1666,11 +1666,8 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   sent to the app opens: `metab URL --present --dry-run --format json` checks it, and it
   opens in the repository’s mirror, never a checkout.
   A space or a letter outside ASCII in the path is sent encoded, as a browser sends it.
-  A URL it does not open keeps the panel open with the reason under the field: `metab`’s
-  message for a GitHub page it refuses, and the app’s own for a shorthand such as
-  `owner/repo`, which is not taken, or for anything but an `https` URL on GitHub.
-  While the app is still finding or rechecking its `metab`, the panel closes instead,
-  and a URL it does not open is reported in an alert once `metab` is ready.
+  The panel stays open while Metabrowser checks its runtime or resolves the URL, and
+  shows errors below the field.
   File > Open… is now Open Folder…. See
   [the app’s guide](docs/macos-app.md#opening-github-links).
 
@@ -1754,9 +1751,10 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   can move, that `--diff-check` can take more than a minute in a large repository, that
   a server’s address answers a moment after its `Serving` line, and that `--remote` is
   for the user’s own terminal, and it lists `/pull/<n>/files/<path>`. It says that it is
-  tested against the `metab` of its own commit, so the skill on `main` can need a source
-  checkout’s `metab` until the next release, and `tests/test_skill_commands.py` fails
-  when a flag, route, recipe, or field name in it drifts from that `metab`.
+  tested against the `metab` of its own commit.
+  Using an unreleased feature on `main` can require a source checkout’s `metab`. The
+  `tests/test_skill_commands.py` check fails when a flag, route, recipe, or field name
+  in it drifts from that `metab`.
 
 - A Pulls row now leads with its title, right after the state icon, on its first line,
   and puts the stack position, number, author, and age on the second; its author’s

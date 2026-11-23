@@ -240,8 +240,8 @@ asset reads and compression in a follow-up release comparison.
 
 A separate run measured the same control against
 `78e3cdb320a10151d4652076f3941be937284870`, the optional-font branch from
-[PR #731](https://github.com/jlevy/metabrowser/pull/731), using the same HTTP readiness
-check and Chrome settings.
+[sidebar font fix](https://github.com/jlevy/metabrowser/pull/731), using the same HTTP
+readiness check and Chrome settings.
 Its candidate wheel SHA-256 is
 `c07352fbfa209a1da389acaa471e6b2fec9cee8989b23bc09e13abf47fdd0acf`. All four admitted
 candidate captures passed every hard gate.
