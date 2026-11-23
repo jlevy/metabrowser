@@ -4884,19 +4884,24 @@ Its layers, bottom to top:
   enough draws one device pixel short, so the edge shows between neighbours
   (`treemap-paint.js`). Its colors come from probe cells styled as a cell is, so the
   palette, the ignored dimming, and the theme stay in the stylesheet.
+  Over its fill, a file too small for its name has its icon painted, in the color a
+  probe of the navigation’s icon resolves to.
 - **The marks canvas** holds copies of the marked cells’ pixels under the lift filter.
 - **The hover anchor** is a transparent cell over the cell under the pointer.
   It carries that cell’s shimmer and anchors its tooltip.
-- **The labels** are one element per labelled cell, and one per cell that shows its icon
-  alone, positioned in the map’s padding box.
+- **The labels** are one element per labelled cell, positioned in the map’s padding box.
 - **The focus proxy** is the map’s one focusable control.
 
 The map lays out to its padding box, and a label lies inside its cell and the map’s
 border; `tests/test_treemap_containment_chrome.py` measures it, with the canvas’s fill
-at each cell. A file or solid folder too small for its name shows its icon alone,
-centered, when the cell is at least `ICON_CELL_MIN_PX` (`treemap-map.js`) on each side;
-a smaller cell, or a framed or nested folder, shows nothing and names itself in its
-tooltip.
+at each cell. A file’s name always follows its icon, and a file with room for its name
+but not for both shows its icon alone, so cells of one size draw alike.
+The icon alone is centered and as large as fits, from the navigation’s icon box down to
+`ICON_MIN_PX` (`treemap-map.js`); a smaller cell shows nothing and names itself in its
+tooltip. The icons are painted, not elements: a folder of a few thousand small files
+would otherwise hold an element per file (the measurement is beside
+`ICON_IMAGE_CACHE_MAX`). A folder has no icon, as its row in the navigation has none
+([design-system-icons.md](design-system-icons.md)).
 
 The Files context above the map mounts the same reusable folder-rollup controls used by
 Overview. The metric control appears before Files and Ignored; the scope control appears
@@ -4999,14 +5004,15 @@ information; aggregate folders and remainder cells report the selected metric.
 Values use the shared byte and file-count formatters.
 A label or value that cannot fit is omitted rather than shrunk below its lower bound or
 allowed to overlap child cells.
-Visible folder labels end in `/`, while file labels carry the same file-identity icon as
-the navigation tree.
+Visible folder labels end in `/`, while file labels always carry the same file-identity
+icon as the navigation tree, as tall as the name’s line.
 The slash is a visual kind cue and is not added to the folder’s accessible name or path.
 The accessible name preserves the cell name, kind, and visible value.
-The tooltip names the cell as the navigation does: its icon, its complete path, which
-wraps inside the tooltip however long, then a folder’s file count and size or a file’s
-size, and its age, through the navigation columns’ own formatters, hues, and freshness
-classes (`mb.formatFileCount` and `mb.countClass`, `mb.sizeHtml`, and `mb.formatAge`).
+The tooltip names the cell as the navigation does: a file’s icon, its complete path,
+which wraps inside the tooltip however long, then a folder’s file count and size or a
+file’s size, and its age, through the navigation columns’ own formatters, hues, and
+freshness classes (`mb.formatFileCount` and `mb.countClass`, `mb.sizeHtml`, and
+`mb.formatAge`).
 
 Treemap navigation preserves the user’s spatial context.
 Activating a folder cell opens that folder with Treemap selected, and Backspace opens

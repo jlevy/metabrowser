@@ -111,16 +111,6 @@ const read = (selector) => `(async () => {
     const over = Math.max(past(box, own), past(box, inner));
     if (over > SLACK) escapes.push({ path: cell.path, over: Math.round(over * 100) / 100 });
   }
-  // A cell too small for its label shows its icon, an element per such cell, its glyph
-  // inside the cell.
-  const iconElements = [...viewport.querySelectorAll(".tm-icon-cell")];
-  let iconEscapes = 0;
-  for (const element of iconElements) {
-    const cell = map.cells[Number(element.dataset.tmCell)];
-    const glyph = element.querySelector("svg");
-    const own = { left: inner.left + cell.x, top: inner.top + cell.y, right: inner.left + cell.x + cell.w, bottom: inner.top + cell.y + cell.h };
-    if (!glyph || past(glyph.getBoundingClientRect(), own) > SLACK) iconEscapes += 1;
-  }
   // The paint canvas's pixel at each sampled cell's center, against the fill its probe
   // resolved, drawn once on a scratch canvas.
   const scratch = document.createElement("canvas");
@@ -137,13 +127,39 @@ const read = (selector) => `(async () => {
   const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   const covered = new Set(map.cells.map((c) => c.parent));
   const byCell = new Map(map.paint.filter((r) => r.tone === "fill").map((r) => [r.cell, r]));
+  // A cell too small for its name has its icon painted at its center (treemap-map.js,
+  // paintIcons): a glyph square, inside the cell's fill, holding pixels that are not the
+  // fill. Its center is the icon's, so the fill sample below leaves these cells out.
+  const iconAt = new Set(map.icons.map((icon) => icon.cell));
+  let iconsInked = 0;
+  let iconEscapes = 0;
+  for (const { cell: i, px } of map.icons) {
+    const rect = byCell.get(i);
+    const cell = map.cells[i];
+    const size = Math.max(1, Math.round(px * 0.875 * map.dpr));
+    const x0 = Math.round((cell.x + (cell.w - 1) / 2) * map.dpr - size / 2);
+    const y0 = Math.round((cell.y + (cell.h - 1) / 2) * map.dpr - size / 2);
+    if (!rect || x0 < rect.x || y0 < rect.y || x0 + size > rect.x + rect.w || y0 + size > rect.y + rect.h) {
+      iconEscapes += 1;
+      continue;
+    }
+    const want = rgb(map.styles[rect.style].fill);
+    let ink = 0;
+    for (let y = y0; y < y0 + size; y += 1) {
+      for (let x = x0; x < x0 + size; x += 1) {
+        const k = (y * canvas.width + x) * 4;
+        if ([pixels[k], pixels[k + 1], pixels[k + 2]].some((v, c) => Math.abs(v - want[c]) > 24)) ink += 1;
+      }
+    }
+    if (ink > 0) iconsInked += 1;
+  }
   let sampled = 0;
   let wrong = 0;
   const wrongSample = [];
   const fills = new Map();
   for (const [i, rect] of byCell) {
     const style = map.styles[rect.style];
-    if (covered.has(i) || rect.w < 3 || rect.h < 3 || !style || style.alpha !== 1) continue;
+    if (covered.has(i) || iconAt.has(i) || rect.w < 3 || rect.h < 3 || !style || style.alpha !== 1) continue;
     const cx = rect.x + Math.floor(rect.w / 2);
     const cy = rect.y + Math.floor(rect.h / 2);
     const k = (cy * canvas.width + cx) * 4;
@@ -179,8 +195,9 @@ const read = (selector) => `(async () => {
     deepest,
     labels: viewport.querySelectorAll(".tm-label-cell").length,
     icons: map.icons.length,
-    iconElements: iconElements.length,
+    iconsInked,
     iconEscapes,
+    iconElements: viewport.querySelectorAll(".tm-labels > :not(.tm-label-cell)").length,
     escapes: escapes.length,
     sample: escapes.slice(0, 8),
     sampled,

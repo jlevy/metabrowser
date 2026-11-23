@@ -260,20 +260,19 @@
   min-width: 0;
 }
 
+/* A file's icon is as tall as its name's line, and its glyph keeps the
+   navigation's proportion to its box (--icon-glyph to --icon-box). */
 .tm-cell-file-icon {
+  --tm-icon-size: calc(var(--tm-label-size) * 1.2);
   align-self: center;
+  width: var(--tm-icon-size);
+  height: var(--tm-icon-size);
+  flex: 0 0 var(--tm-icon-size);
 }
 
-/* A cell too small for its name shows its icon alone, centered in the cell
-   (ICON_CELL_MIN_PX, treemap-map.js), as the navigation draws it. */
-.tm-icon-cell {
-  position: absolute;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  pointer-events: none;
+.tm-cell-file-icon svg {
+  width: calc(var(--tm-icon-size) * 0.875);
+  height: calc(var(--tm-icon-size) * 0.875);
 }
 
 /* The tooltip's first line: the cell's icon, then its path, which wraps

@@ -333,7 +333,6 @@ async function main() {
       formatAge: () => ({ label: "then", className: "age-old" }),
       countClass: () => "",
       sizeHtml: (bytes) => `<span class="size">${bytes} B</span>`,
-      icons: { folder: '<svg class="folder"></svg>' },
       navigation: { open: (...args) => navigation.push(args) },
       sourceKind: () => "filesystem",
       tooltip: {
@@ -478,7 +477,6 @@ async function main() {
     // A relayout keeps the labels it can and appends the new ones, so the layer's order is
     // not the layout's; each label is placed by its own box.
     const indexes = layer.children
-      .filter((element) => !element.className.split(" ").includes("tm-icon-cell"))
       .map((element) => {
         const index = Number(element.dataset.tmCell);
         const cell = map.cells[index];
@@ -487,6 +485,12 @@ async function main() {
           "a label takes its cell's kind",
         );
         assert.deepEqual(styleBox(element), cellBox(cell), `${cell.path}'s label sits on its cell`);
+        if (cell.kind === "file") {
+          assert.ok(
+            element.innerHTML.includes("tm-cell-file-icon"),
+            `${cell.path}'s name follows its icon`,
+          );
+        }
         return index;
       })
       .sort((a, b) => a - b);
@@ -494,26 +498,27 @@ async function main() {
     return indexes.map((index) => map.cells[index].path);
   };
 
-  /** The cells too small for a label that show their icon alone, by path. */
+  /**
+   * The cells too small for a name that show their icon alone, painted on the canvas, by
+   * path and the icon's box: none of them labelled, and none an element.
+   */
   const iconsOnly = (page) => {
     const map = page.inspect();
-    const layer = page.viewport.find("tm-labels");
-    if (!map || !layer) {
+    if (!map) {
       return [];
     }
-    const indexes = layer.children
-      .filter((element) => element.className.split(" ").includes("tm-icon-cell"))
-      .map((element) => {
-        const index = Number(element.dataset.tmCell);
-        const cell = map.cells[index];
-        assert.deepEqual(styleBox(element), cellBox(cell), `${cell.path}'s icon sits on its cell`);
-        assert.ok(element.innerHTML.includes("file-identity-icon"), "it holds the cell's icon");
-        assert.ok(!map.labels.includes(index), `${cell.path} has no label too`);
-        return index;
-      })
-      .sort((a, b) => a - b);
-    assert.deepEqual(indexes, map.icons, "the label layer holds the icons the map reports");
-    return indexes.map((index) => map.cells[index].path);
+    const layer = page.viewport.find("tm-labels");
+    for (const { cell } of map.icons) {
+      assert.ok(!map.labels.includes(cell), `${map.cells[cell].path} has no label too`);
+    }
+    assert.ok(
+      (layer?.children ?? []).every(
+        (element) =>
+          !element.innerHTML.includes("<svg") || element.className.includes("tm-label-cell"),
+      ),
+      "the label layer holds labels alone",
+    );
+    return map.icons.map(({ cell, px }) => `${map.cells[cell].path} ${px}px`);
   };
 
   /** The focus proxy: the one control, over the focused cell, named for it. */
@@ -826,7 +831,10 @@ async function main() {
     bare: shown.cells
       .map((each) => each.split(" ")[1])
       .filter(
-        (each) => each !== "src" && !shown.labelled.includes(each) && !iconCells.includes(each),
+        (each) =>
+          each !== "src" &&
+          !shown.labelled.includes(each) &&
+          !iconCells.some((icon) => icon.startsWith(`${each} `)),
       ),
   });
   dwindling.handle.dispose();

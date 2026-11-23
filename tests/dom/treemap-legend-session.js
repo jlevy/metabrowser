@@ -545,7 +545,6 @@ function ownPointOf(cells, index) {
     // The age the SDK's formatter gives the fixtures' 2023-11-14 timestamps, fixed so the
     // session reads the same on any day.
     formatAge: () => ({ label: "3y ago", className: "age-old" }),
-    icons: { folder: '<svg class="folder"></svg>' },
     navigation: {
       open: async (target, options) => {
         navigation.push(options ? [target.path, options.viewId] : [target.path]);

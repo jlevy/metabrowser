@@ -16,7 +16,8 @@ the Treemap tab and reads it at a wide and a narrow window. This holds that:
 - the DOM stays small: one label per labelled cell, one focus proxy, no element per cell;
 - the pointer on a small unlabelled file hovers it, names it in the tooltip with its
   icon, size, and age in the navigation's classes, and a click opens it;
-- measured by bytes, files too small for their names show their icons, inside their cells;
+- measured by bytes, files too small for their names have their icons painted on the
+  canvas, inside their cells, and no element;
 - a name with no break in it wraps inside the tooltip;
 - the focus proxy is the one focusable element, named, and ArrowRight moves it.
 
@@ -101,8 +102,8 @@ def _contained(reading: dict[str, Any], label: str, *, small: bool) -> None:
     assert reading["tiny"] >= (50 if small else 0), (label, reading)
     assert reading["deepest"] >= 3, (label, reading)
     assert reading["escapes"] == 0, (label, reading)
-    assert reading["iconElements"] == reading["icons"], (label, reading)
-    assert reading["iconEscapes"] == 0, (label, reading)
+    assert reading["iconsInked"] == reading["icons"], (label, reading)
+    assert reading["iconEscapes"] == 0 and reading["iconElements"] == 0, (label, reading)
     assert reading["sampled"] >= 20, (label, reading)
     assert reading["wrongFill"] == 0, (label, reading)
     assert reading["distinct"] == reading["styles"] >= 2, (label, reading)
@@ -153,7 +154,7 @@ def test_treemap_paints_labels_and_answers_the_pointer_and_keys_in_chrome(
     assert measured["pointer"]["parts"] == {"icon": True, "size": True, "age": True}, measured
     by_bytes = measured["bytes"]
     assert by_bytes["icons"] >= _SIZED, by_bytes
-    assert by_bytes["iconElements"] == by_bytes["icons"] and by_bytes["iconEscapes"] == 0, by_bytes
+    _contained(by_bytes, "1280 by 900 by bytes", small=False)
     long_name = measured["longName"]
     assert long_name["found"] and long_name["shown"], long_name
     assert not long_name["overflows"] and long_name["lines"] >= 2, long_name

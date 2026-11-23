@@ -25,10 +25,10 @@ The arrow keys move the one focus proxy along the folder and file cells in layou
 Enter opens the cell it is on, and Backspace, with no enclosing folder for the compact
 map, is not taken. A change of measure or of Show ignored lays the map out again, and a
 layout under a still pointer points at the cell now under it.
-A file too small for its name shows its icon alone when it is large enough, and the
-smallest show neither.
-A refresh that fails keeps the map; a first rollup that fails shows that the map is
-unavailable and recovers on Retry.
+A file’s name always follows its icon; a file with no room for both shows its icon
+alone, painted on the canvas as large as fits down to a smallest size, and the smallest
+files show neither. A refresh that fails keeps the map; a first rollup that fails shows
+that the map is unavailable and recovers on Retry.
 The box is left out when the breakdown failed, the index stopped at its cap before
 finishing the folder, or the folder holds no files in the population shown.
 Disposal with the pointer on a cell releases every listener, the watch, the observer,
@@ -462,12 +462,12 @@ $ node tests/dom/treemap-compact-session.js
         "src/part3.md"
       ],
       "iconsOnly": [
-        "src/part4.md",
-        "src/part5.md"
+        "src/part4.md 16px",
+        "src/part5.md 16px",
+        "src/part6.md 9px",
+        "src/part7.md 8px"
       ],
       "bare": [
-        "src/part6.md",
-        "src/part7.md",
         "src/part8.md",
         "src/part9.md"
       ]
