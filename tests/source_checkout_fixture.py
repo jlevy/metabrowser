@@ -193,6 +193,18 @@ def admit_installed_git(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("metabrowser.checkout_revisions.require_acquisition_git", lambda: version)
 
 
+def read_refs_at_every_ask(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Have a served checkout read its refs at every page ask, as asks an interval apart do.
+
+    A test asks right after the Git command it is about, sooner than a page's timer
+    would, and inside the floor the server keeps between two readings
+    (``CHECKOUT_REFS_FLOOR_S`` in ``checkout_revisions.py``), which would answer it from
+    memory. That floor has its own test in ``tests/test_checkout_revisions.py``.
+    """
+
+    monkeypatch.setattr("metabrowser.checkout_revisions.CHECKOUT_REFS_FLOOR_S", 0.0)
+
+
 def snapshot(checkout: Path) -> dict[str, tuple[str, int, int, int, str]]:
     """Every entry under *checkout*, ``.git`` included, by its path relative to it.
 
@@ -243,6 +255,7 @@ def write_bodies(directory: Path) -> None:
         "pin-syntax.json": {"ref": "topic~1"},
         "pin-working-tree.json": {"working_tree": True},
         "pin-working-tree-and-ref.json": {"working_tree": True, "ref": "topic"},
+        "page-ask.json": {"for": "page"},
     }
     for name, body in bodies.items():
         (directory / name).write_text(json.dumps(body) + "\n", encoding="utf-8")

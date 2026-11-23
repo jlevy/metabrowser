@@ -55,10 +55,18 @@ redirect it cleared, a deadline and an output cap (`GH_API_TIMEOUT_S`,
 hangup kills it too.
 `gh_api` issues one REST request and returns status, headers, and body; `gh_graphql`
 runs only a read-only query document, checked by its structure; `gh_active_account`
-reads the active account, its token source, and its scopes, and `gh_version` the
-version.
-Nothing there paginates or caches, because `--paginate` and `--cache` would hide
-page caps, ETags, and rate-limit headers.
+reads the active account, its token source, and its scopes from `gh auth status`, and
+`gh_version` the version.
+`gh_account` is every job’s account check (`gh_lists.active_account`): a conditional
+`gh api user` carrying the ETag of this process’s last answer, which GitHub answers
+`304` without spending rate limit while the login is the same, where `gh auth status`
+spent one `core` call each time.
+When it finds no account it asks `gh auth status` why, so a failure still names a
+refused environment token or the sign-in command; when it cannot reach GitHub it takes
+the account `gh auth status` names from what gh has saved, so a switch of account is
+still seen offline. `gh_api` reads `user` and paths under `repos/` and nothing else.
+Nothing there paginates or caches, because `--paginate` and `--cache` would hide page
+caps, ETags, and rate-limit headers.
 `gh api` refuses every request while signed out, so every record is read by an account
 and names its reader as `gh:<login>`.
 
@@ -66,9 +74,39 @@ and names its reader as `gh:<login>`.
 resource every response carries, and holds every resource after a `rate_limited` refusal
 until its `reset_at`. Background work is admitted only while each resource it spends has
 more than `BACKGROUND_FLOOR` of its limit left and no hold applies; a reader’s own work
-is never asked. The observations belong to the account the last account check named, and
-another account forgets them; since `remaining` is the account’s, several servers on one
-account stop together.
+is never asked. Everything automatic asks: the catalog’s backfill and its periodic scan,
+the prefetch, the background walk that prepares cores, the periodic reads of stacks and
+of a files list, the label set, and Conversation’s timeline.
+Held, each waits and is asked for again, and none records a failure.
+Below the floor a visible page’s pull request and a visible list are still probed, and a
+change a probe or the catalog finds is still read in full, while the reads a clock alone
+asks for stop (`ServedPull.below_floor`); cores for rows on screen are read too, held
+only by a rate-limit hold and the process’s ceiling.
+The module’s docstring has the rule.
+The observations belong to the account the last account check named, and another account
+forgets them; since `remaining` is the account’s, several servers on one account stop
+together.
+
+The same module keeps a ceiling on the process’s own automatic work,
+`AUTOMATIC_CORE_PER_HOUR`, counted from what the process spends itself: one for each
+REST answer that is not `304` and each GraphQL query’s reported `rateLimit.cost`, over
+the last hour.
+The account’s `x-ratelimit-used` cannot count it, since every other client
+moves it. A reader’s own action is not counted: its route starts the job inside
+`readers_own`, and the job’s task inherits that.
+Past the ceiling background work is not admitted (`self_ceiling`), probes slow to
+`FULL_REFRESH_S`, and the full reads of what is visible to `CEILING_FULL_READ_S`, until
+the hour rolls. Speculative work, which nobody is looking at, has its own share of that
+ceiling, `SPECULATIVE_CORE_PER_HOUR`: the prefetch, the backfill past every reader’s
+prefix, the cores walk past the rows on screen, and the label set’s periodic read run
+inside `gh_budget.speculative`, which counts what they spend toward the share too, and
+are refused with `self_ceiling` once it is spent.
+Inside the share the prefetch goes first: the backfill and the cores walk, whose cost
+grows with the catalog, also stop at `CATALOG_SPECULATIVE_CORE_PER_HOUR`, the share less
+what the prefetch’s caps can spend, so they cannot take that part before the prefetch
+asks. What is on screen is never refused for the share, so it keeps the rest of the
+ceiling. `GET pulls-prefetch` reports the ceiling and the share and what the hour has
+used of each under `governor.ceiling`, beside the governor’s other state.
 
 ### The GitHub Status Check
 
@@ -212,10 +250,49 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   Within a server, these jobs and the mirror’s fetch take turns at the store
   (`StoreTurn` in `mirror_refresh.py`).
 - **What starts one:** a reader’s own action (`"retry": true`); a visible page whose
-  record is stale and not tried within the window; and a
-  [prefetch](#background-prefetch) that names it.
+  record is stale and not tried within the window; a probe that finds a change; a
+  visible record last read in full `FULL_REFRESH_S` ago, a read of the checks alone not
+  counting; and a [prefetch](#background-prefetch) that names it.
   A failed refresh is tried again after a window, and after `rate_limited` not before
   `reset_at`. A branch or tag pin never runs `gh`.
+- **Probes:** a visible page asks every `probe_every_s` (`ATTENDED_PROBE_S`), and for a
+  current record the server answers with a probe (`ServedPull.probe`), a conditional
+  read of the pull request’s issue (`pulls.probe_path`) that GitHub answers `304`
+  without spending its rate limit, and, while checks are pending, of their first pages
+  every `CHECKS_PROBE_S`. The issue’s `updated_at` is the pull request’s own, and its
+  ETag does not move with the repository as the pull’s does; `PROBE_RESOURCE` records
+  the measurement. It carries neither `mergeable` nor the head, which the full read a
+  change starts reads.
+  GitHub computes `mergeable` after the read that first asks, so while an open record
+  holds `unknown` the probe asks the pull too, for `MERGEABLE_SETTLE_S`, and an answer
+  reads the checks alone; past that time no probe vouches for the record.
+  An issue answer older than the record is one that lags, and starts nothing.
+  The page’s ask names the record it shows (`"held"`, its `record_revision`), and an
+  answer about that record says `record_held` in place of `record`, so the page keeps
+  the one it has under the verdict the answer brings; `refresh_answer_pull` in
+  `pull_route.py` records what the whole envelope cost at that cadence.
+  A page that no longer holds that record reads the route instead.
+  An unchanged probe vouches for the record (`verified_by: "probe"`) and keeps it
+  current until the full read `FULL_REFRESH_S` asks; a change starts a refresh at once,
+  a change to checks alone reads only them, and a failed probe waits a window.
+  Settling checks a probe cannot see (`checks_probe_paths`) leave the record to the
+  window, unvouched. However many pages ask, probes of one pull request are one at a time
+  and `PROBE_FLOOR_S` apart, and a rate-limit hold stops them all.
+  A server runs at most `MAX_PROBES_IN_FLIGHT` at once across its pull requests, each
+  one to four `gh` processes, and an ask past that answers `not_due`; one refused goes
+  ahead of those probed since, for `PROBE_TURN_S`, so askers take turns; the list’s
+  probe keeps its place for twice its own interval, since it asks half as often.
+  A probe is a coordinator job under the pull request’s key with `:probe`, taking no
+  network slot and no turn at the store, so shutdown cancels it.
+- **Below `BACKGROUND_FLOOR`:** probes go on, since a `304` is free, and a change one
+  finds, or the catalog reports, still starts its read.
+  The `FULL_REFRESH_S` read and an open record’s once-a-window checks read wait until
+  the budget is back above the floor, and meanwhile an unchanged probe keeps vouching
+  for a record whose full read is overdue, so the page keeps asking every
+  `probe_every_s`. What a probe cannot see is that much later below the floor.
+  The same ask keeps the repository’s list probed (see [The Catalog](#the-catalog)). The
+  [update cadence plan](../specs/active/plan-2026-11-22-pull-request-update-cadence.md)
+  records the measurements and the design.
 - **One-shot commands:** the CLI fetches a pull request only when it has no usable
   record or its commit URL names a commit only `refs/pull/<n>/head` can bring;
   `--no-serve` refreshes it.
@@ -225,8 +302,11 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
 `pull_route.py` builds the pull envelope from the cache and memory alone; its docstring
 lists the states. The envelope’s `pin` is the commit the server serves and can differ
 from the record’s head: a pull request opened from the list moves no pin, a commit URL
-inside the pull request pins that commit, and a refresh can find a newer head, which the
-page offers as `latest` rather than switching under a reader.
+inside the pull request pins that commit, and a refresh can find a newer head.
+A pin served under the pull request’s own `refs/pull/<n>/head` follows that head, as a
+branch’s pin follows its branch
+([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)), so
+the envelope names an earlier head only until the refresh job has observed the mirror.
 **Browse code** is a link to the served root when the pin is the record’s head, and
 otherwise a button that posts the head’s commit to `/api/source/pin`, naming the pull
 request’s `refs/pull/<n>/head` as the ref to serve it under, and then opens the root, so
@@ -254,8 +334,12 @@ names another head, **current** while the scan that published the row is recent,
 **checks** when an open record is past the window that its row still vouches for, since
 `updated_at` does not move for check runs, statuses, or mergeability, and **unverified**
 otherwise; the module docstring states each rule.
+A [list probe](#the-catalog) that found the catalog unchanged counts as a scan run when
+it asked, so the catalog vouches between scans.
 `verified_at` and `verified_by` say when and how the record was last known to describe
-GitHub. They move with every scan, so the entity tag leaves them out and
+GitHub: by the catalog’s scan or list probe, by its own fetch, or by a
+[probe](#serving-pull-requests) of the served pull request.
+They move with every scan and probe, so the entity tag leaves them out and
 `x-metabrowser-verified` carries them.
 `cli-github-pulls-prefetch.txt` pins each verdict.
 
@@ -285,6 +369,42 @@ GraphQL errors, including partial data with HTTP 200, never advance a checkpoint
 Each page commits its rows, counts, and cursor in one short transaction under the
 source-alias lock, a checkpoint revision rejects a superseded publisher, and no network
 work runs under the lock.
+
+**Probing.** `pull_list_probe.py` asks GitHub whether the catalog is behind with one
+conditional request for the issue or pull request updated last (`probe_path`), which
+GitHub answers `304` without spending its rate limit.
+It asks the issues list, which includes pull requests, because a pull request’s own row
+embeds its repositories and its ETag moves on every push; the measurements are beside
+`LIST_PROBE_S`. When an issue is the newest row, the one-row pulls page (`pulls_path`)
+says which pull request is.
+GitHub’s lists run behind a change, so that page is asked by every probe until one asks
+it `PULLS_LAG_S` after the issue’s update, and until then an unchanged probe vouches
+only for what GitHub had that long before it asked.
+A `200` is a hint: the newest pull request is compared with the catalog’s row of that
+number, and the catalog is behind only when it lacks that row as GitHub has it.
+An unchanged probe moves the probe’s `checked_at`, and for a freshness window the
+catalog vouches as a scan run then would, so the list stays `current` and its records
+[verified](#freshness-verdicts) between scans.
+A change starts the job with its delta scan first, once for each row; a row still
+missing after its scan, as when GraphQL lags REST, leaves the scan to the window.
+A visible Pulls tab asks every `probe_every_s` of the list’s envelope (`LIST_PROBE_S`),
+and a visible pull request page’s own ask does the same for its repository
+(`attend_list` in `pull_list_route.py`), so the list is probed while either is on
+screen. `refresh_wanted` decides each automatic ask: the catalog job when the list is
+absent, failed and due, or wanted for a reader’s prefix or the backfill; the delta scan
+once every `FULL_REFRESH_S` while probes vouch and once a freshness window otherwise;
+and else the probe, one at a time for a repository and `LIST_PROBE_FLOOR_S` apart
+however many tabs ask.
+A change a probe found is asked for before the periodic scan, so the job that scans for
+it is the one the probe is told of.
+Two asks that both found the probe due in their worker threads start one probe: the
+later finds it no longer due on the loop and starts nothing.
+A list probe counts toward the server’s `MAX_PROBES_IN_FLIGHT` with its pull requests’
+probes and is a coordinator job as theirs are.
+Probes that each pay for a `200` and find no pull request changed, as in a repository
+whose issues never rest, grow further apart, up to `MAX_PAID_PROBE_S`. The module
+docstring gives each outcome, `tests/test_github_pull_list_probe.py` pins them, and
+`cli-github-pulls-probe.txt` shows an ask answered by a probe.
 
 **Admission.** Reads open the database read-only and run neither Git nor `gh`. Readers
 and writers admit only the exact tables and index, and refuse a write-ahead-log database
@@ -380,6 +500,9 @@ rule. A local list from the record is current while the record names its exact
 comparison; a GitHub list, or a local list from a head and base branch, while the head
 and base branch it was read for are the newest known, and for the local one while the
 pull request is open.
+A GitHub list with no catalog row to check it against ages by `FULL_REFRESH_S`; one the
+row vouches for is not read again on a clock, since it is a function of the head and
+base it names and is read at once when either moves.
 When source admission refuses the cache, no stamp can be written, so the outcome
 `cache_unwritable` is kept in bounded memory and holds automatic retries without
 contacting GitHub or touching the refused cache; it does not survive a restart.
@@ -461,6 +584,55 @@ source with a message that images in diagrams from untrusted text are not loaded
 The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
 
+## Changes Follows the Head
+
+Changes shows the record’s comparison, so a record read at a newer head, or against a
+base that moved, replaces the diff on screen without the reader asking.
+The owner set this on 2026-11-22 (bead `mb-6a6w`), replacing the diff that stayed until
+**Show the newer changes**: with a visible page probed every few seconds, that offer
+appeared seconds after every push of a review.
+The served code follows the same head
+([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)).
+
+- **The decision:** `filesAction` in `pull-page.js` answers `follow` for a mounted diff
+  whose comparison is no longer the record’s. A refresh the reader asked for that finds
+  another head is followed too, not repaired first.
+- **The note:** the diff that was replaced is kept (`followedFrom`), and `followedNote`
+  says what the line above the new diff names: both heads, or, for the same head from
+  another merge base, that the comparison changed.
+  **Show the earlier changes** mounts the replaced diff from its own routes, which name
+  two immutable commits.
+  That diff is the reader’s choice, so `filesAction` answers `offer` for it and it stays
+  until **Show the newer changes**, also through a reload, since the history entry
+  remembers the choice (`chosenEarlier`); leaving Changes ends it.
+- **Across a reload:** on a repository URL the page reloads when the served pin follows
+  the head, because a page names its pin on every data request
+  ([Source Sessions and Pins](arch-source-sessions-and-pins.md)). So the history entry
+  remembers the comparison Changes last showed and the one its note named
+  (`rememberedChanges`), and whether the reader chose the earlier one, beside the
+  reader’s place. A page loaded again on an entry that showed another comparison says so
+  in the same line, and one whose reader chose the earlier diff shows it again with the
+  offer of the newer. An entry reached by Back after the head moved says it too.
+- **The reader’s place:** a place in Changes names its file (`PanePlace`), which the
+  mounted diff maps to a block and back, so the place held through a replacement, or
+  landed on after a reload, is in the same file, at the same offset, where the new diff
+  has that file. A file the new diff lacks puts the reader at the top of the block at the
+  place’s index, since the offset was a line of a file that is gone.
+  The place is held and written to the entry before the old diff is taken away, so the
+  emptied pane’s clamp to its top, which arrives as a scroll, writes nothing while the
+  new comparison is read, and a reload in that time lands on the reader’s file.
+  From the new diff’s arrival the hold is a landing’s: it lasts until the page is still
+  or the reader moves.
+
+`tests/dom/github-pull-page-session.js` pins the decision, the note, the entry’s memory,
+and the place; `tests/dom/github-pull-repair-lifecycle-behavior.js` and
+`tests/dom/github-pull-page-mount-behavior.js` drive them through the mounted page.
+`tests/dom/github-pull-changes-follow-behavior.js` drives the join: a mounted page with
+a history entry, whose diff view answers `sectionForPath` and `pathForSection` from its
+own sections, follows a head, keeps the place through the emptied pane, and is mounted
+again on the entry; `tests/dom/diff-file-jump-session.js` pins the two accessors of the
+production diff view.
+
 ## Conversation Timeline
 
 `POST pull-timeline` (`pull_timeline.py`) gives Conversation the order of commits,
@@ -470,8 +642,10 @@ in `<n>.timeline.json`, bound to the inputs it orders (`_discussion_revision`): 
 source, number, reader, base branch, head, and the discussion’s identifiers.
 An advance of the base branch keeps it usable; a retarget or a new head needs a new one.
 It answers `complete`, `partial` with a retryable verified prefix, or `unavailable`,
-asks for no patch or Git object, and runs only after the selected Conversation paints,
-in a provider slot of its own once any metadata refresh settles.
+retryable with `retry_after_s` when the budget held the read, which the page asks again
+after for as long as the budget holds it; it asks for no patch or Git object, and runs
+only after the selected Conversation paints, in a provider slot of its own once any
+metadata refresh settles.
 
 ## Native Stacks
 
@@ -484,6 +658,9 @@ name no reader; it never runs `gh stack view` or a checkout, sync, or tracking c
 The snapshot is bounded, a page past its bounds is omitted and marks it incomplete, and
 membership missing from a partial or unavailable snapshot never means a pull request is
 unstacked. A failure keeps the preceding snapshot.
+Nothing reports a stack’s change, so a snapshot that was read is read again
+`FULL_REFRESH_S` later while a view asks for it, one conditional page when nothing
+changed; a failed attempt waits `STACK_FRESHNESS_S`.
 
 ## Stack Change Lines
 
@@ -602,8 +779,9 @@ for that if no reader has yet.
 Those lists cost no GitHub request and go first; the rest alternate records and file
 lists from GitHub.
 The lane rereads each item from disk before it runs and stops when the
-governor refuses; the module docstring works out its caps, the GitHub points they cost,
-and the measurements behind the order.
+governor refuses, except for the lists the store gives, which cost GitHub nothing and
+are listed whatever the governor says; the module docstring works out its caps, the
+GitHub points they cost, and the measurements behind the order.
 A background job takes no network slot, waits behind every other job at a store turn and
 is cancelled when one starts waiting, and is joined and promoted by a reader’s request
 for the same pull request.
@@ -659,7 +837,8 @@ no store.
 
 - **Comparisons need a store.** Without one, the envelope withholds a record’s
   comparison as `no_store`. Opening **Changes** sends
-  `"retry": true, "comparison": true`, which acquires an overlay with the checkout as
+  `"retry": true, "comparison": true`, which asks core for the checkout’s store
+  (`acquire_checkout_store` in `checkout_store.py`), an overlay with the checkout as
   lender
   ([The Lending Checkout](arch-mirror-acquisition-and-refresh.md#the-lending-checkout))
   or reuses a healthy store, and leaves the served folder and its Commits tab unchanged.
@@ -675,7 +854,8 @@ no store.
   `MAX_ISSUED_COMPARISONS`), then runs the
   [object recovery](arch-mirror-acquisition-and-refresh.md#object-recovery).
   A successful repair remounts the same comparison once, and a failed one leaves it in
-  place.
+  place. A refresh that finds another head is followed instead
+  ([Changes Follows the Head](#changes-follows-the-head)).
 
 `GET` routes never acquire or fetch.
 What a reader sees for each failure name, and what to do, is in

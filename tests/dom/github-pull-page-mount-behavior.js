@@ -1252,6 +1252,9 @@ async function tabKeys(page) {
   /** What a header number asked for: a request the page sent, a tab it opened, a page it
    * navigated to. Read and emptied by `numberResult`. */
   const asked = [];
+  // Served with no `probe_every_s`, a current page asks for nothing by itself, so what a
+  // number asked for is the number's alone; the session pins the probe asks (`probing`).
+  const unprobed = () => ({ ...answer, probe_every_s: null });
   globalThis.fetch = async (route, init = {}) => {
     if (init.method === "POST") {
       asked.push(`POST ${route.split("?")[0]} ${init.body}`);
@@ -1261,7 +1264,7 @@ async function tabKeys(page) {
       return {
         status: 202,
         headers: { get: () => null },
-        json: async () => ({ refresh: "started", pull: answer }),
+        json: async () => ({ refresh: "started", pull: unprobed() }),
       };
     }
     if (!route.startsWith("/api/plugin/github/pull?")) {
@@ -1269,7 +1272,7 @@ async function tabKeys(page) {
     }
     return failing
       ? { status: 503, headers: { get: () => null } }
-      : { status: 200, headers: { get: () => null }, json: async () => answer };
+      : { status: 200, headers: { get: () => null }, json: async () => unprobed() };
   };
   globalThis.window.open = (url, target, features) => {
     asked.push(`window.open ${url} ${target} ${features}`);
@@ -1496,24 +1499,21 @@ async function tabKeys(page) {
   steps.push(`numbered after a refresh with no pin: ${numbered()}`);
   steps.push(await numberResult("1"));
   steps.push(await numberResult("2"));
-  // Served code behind the pull request's head offers to switch to it, on the status line,
-  // after the row of ages: its number follows Refresh's. While the refresh 2 asks for runs,
-  // Refresh waits, shown and disabled, and keeps 2, so the offer keeps 3, and a second 2
-  // asks nothing (B2 of review B on #506): hidden as it waited, it gave 2 to the offer.
-  const behind = structuredClone(recorded.current.body);
-  behind.pin = "1".repeat(40);
-  behind.pin_ref = "refs/pull/7/head";
-  answer = behind;
+  // While the refresh 2 asks for runs, Refresh waits, shown and disabled, and keeps 2, so a
+  // second 2 asks nothing (B2 of review B on #506): hidden as it waited, it gave its number
+  // to whatever followed it. Code on the pull request's own head offers nothing more: the
+  // server follows that head, so no switch to it is numbered.
+  answer = atHead;
   steps.push(await numberResult("1"));
-  steps.push(`numbered with the code behind the head: ${numbered()}`);
-  answer = { ...structuredClone(behind), refreshing: true };
+  steps.push(`numbered with the code on the head: ${numbered()}`);
+  answer = { ...structuredClone(atHead), refreshing: true };
   steps.push(await numberResult("2"));
   steps.push(`numbered while that refresh runs: ${numbered()}`);
   steps.push(await numberResult("2"));
-  // The refresh ends. On Changes Refresh is offered again, and the offer keeps 3; on
-  // Conversation nothing is left to refresh, so Refresh is not shown, and the offer takes 2
-  // (C2 of review C on #506, accepted: a Refresh waits only while its refresh runs).
-  answer = behind;
+  // The refresh ends. On Changes Refresh is offered again; on Conversation nothing is left
+  // to refresh, so Refresh is not shown (C2 of review C on #506, accepted: a Refresh waits
+  // only while its refresh runs).
+  answer = atHead;
   for (const callback of [...timers.values()]) {
     callback();
   }
@@ -1903,8 +1903,8 @@ async function headerShape(page) {
     merged: recorded.merged.body,
     stale: recorded.stale.body,
     "on its way": recorded.absent.body,
-    // Something to say: the last refresh failed, the code served is behind the pull
-    // request's head, or the checkout is at it. A rate limit's hold, and a server with no
+    // Something to say: the last refresh failed, or the checkout is at the pull request's
+    // head. Code served on that head followed it there, and says nothing. A rate limit's hold, and a server with no
     // GitHub repository, are said in the note's place.
     failed: recorded.failed.body,
     "held by a rate limit": (() => {
@@ -1918,7 +1918,7 @@ async function headerShape(page) {
       };
       return body;
     })(),
-    "behind the head": recorded.behind_head.body,
+    "followed to the head": recorded.followed_head.body,
     "a checkout at the head": (() => {
       const body = structuredClone(recorded.on_head.body);
       body.pin = null;
@@ -1943,8 +1943,6 @@ async function headerShape(page) {
   const STATUS = {
     failed:
       "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed outDetails",
-    "behind the head":
-      "This page’s code is f7c5a99, not the pull request’s head 85fcb2f. Switch to the head",
     "a checkout at the head":
       "This checkout’s HEAD is this pull request’s head. Browse the checkout",
     "on its way, its last refresh failed":
@@ -2908,8 +2906,9 @@ async function headerSummary(page) {
   unasked.handle.dispose();
 
   // On Changes the row waits on the mounted diff's read, not the record's comparison: a
-  // diff that read nothing leaves it empty while the record names a newer comparison no one
-  // reads yet, and the reader taking it starts that read.
+  // diff that read nothing leaves it empty, and a record that names a newer comparison is
+  // followed, which starts that one's read. The way back shows the earlier diff again, and
+  // offers the newer one.
   const moved = structuredClone(full);
   const newer = "9".repeat(40);
   moved.record.comparison.head = newer;
@@ -2922,12 +2921,24 @@ async function headerSummary(page) {
   offered.serve(moved);
   offered.idle();
   await settle();
-  const offer = offered.container.querySelector(".github-pull-newer");
-  assert.ok(offer, "a record with a moved head offers the newer changes");
-  tell("a record with a moved head lands, offering the newer changes", offered.row());
-  offer.events.get("click")();
-  tell("the reader takes them, their diff not yet read", offered.row());
+  assert.equal(offered.container.querySelector(".github-pull-newer"), null);
+  const followedNote = offered.container.querySelector(".github-pull-followed");
+  assert.ok(followedNote, "a record with a moved head is followed, and Changes says so");
+  assert.equal(
+    followedNote.textContent,
+    "The pull request’s head moved from 85fcb2f to 9999999. Show the earlier changes",
+  );
+  tell("a record with a moved head is followed: its diff reads the comparison", offered.row());
+  offered.container.querySelector(".github-pull-earlier").events.get("click")();
   await settle();
+  assert.equal(offered.container.querySelector(".github-pull-followed"), null);
+  const offer = offered.container.querySelector(".github-pull-newer");
+  assert.ok(offer, "the earlier diff offers the newer changes");
+  tell("the reader goes back: the earlier diff reads none again", offered.row());
+  offer.events.get("click")();
+  tell("the reader takes the newer changes, their diff not yet read", offered.row());
+  await settle();
+  assert.ok(offered.container.querySelector(".github-pull-followed"));
   tell("their diff reads the comparison", offered.row());
   offered.handle.dispose();
 
@@ -3527,7 +3538,9 @@ async function run() {
     assert.equal(mounted, 3, "a stale Retry cannot remount a disposed page");
   }
   for (const outcome of ["same", "moved", "failed"]) {
-    let current = structuredClone(initial.body);
+    // Without `probe_every_s` the current page asks nothing, so each `tick` fires the poll.
+    const unprobed = { ...initial, body: { ...initial.body, probe_every_s: null } };
+    let current = structuredClone(unprobed.body);
     let reply;
     const requests = [];
     const mounted = [];
@@ -3547,7 +3560,7 @@ async function run() {
       {
         number: 7,
         tab: "files",
-        reader: { initial, fetchAfterMs: 0 },
+        reader: { initial: unprobed, fetchAfterMs: 0 },
       },
       {
         perf,
@@ -3587,14 +3600,23 @@ async function run() {
     await settle();
     await handle.whenFilesReady();
     assert.equal(mounted.length, 1);
-    const displayed = { base: mounted[0].left, head: mounted[0].right };
+    const moved = /The pull request’s head moved from .+ to .+Show the earlier changes/;
     if (outcome === "moved") {
       current = structuredClone(current);
       current.record.comparison.head = "e".repeat(40);
       current.record.pull.head.sha = "e".repeat(40);
+      // Timers fire in the order they were set: the stacks reader's, then the poll.
       await tick();
-      assert.equal(mounted.length, 1, "a metadata-only head advance retains displayed changes");
+      assert.equal(mounted.length, 1, "nothing but a read of the record moves Changes");
+      await tick();
+      await handle.whenFilesReady();
+      assert.equal(mounted.length, 2, "Changes follows a head that advanced");
+      assert.equal(mounted[1].right, "e".repeat(40));
+      assert.match(container.textContent, moved);
     }
+    const opened = mounted.length;
+    const onScreen = mounted.at(-1);
+    const displayed = { base: onScreen.left, head: onScreen.right };
     const refresh = [...container.descendants()].find(
       (element) => element.tag === "button" && element.textContent === "Refresh",
     );
@@ -3604,12 +3626,12 @@ async function run() {
     refresh.events.get("click")();
     await settle();
     assert.deepEqual(requests, [{ number: 7, retry: true, recovery: displayed }]);
-    assert.equal(mounted.length, 1, "a pending POST cannot remount");
+    assert.equal(mounted.length, opened, "a pending POST cannot remount");
     current = { ...current, refreshing: true };
     reply({ status: 202, headers: { get: () => null }, json: async () => ({ pull: current }) });
     await settle();
     await tick();
-    assert.equal(mounted.length, 1, "waiting for a job cannot remount");
+    assert.equal(mounted.length, opened, "waiting for a job cannot remount");
     current = {
       ...current,
       refreshing: false,
@@ -3622,14 +3644,15 @@ async function run() {
     };
     await tick();
     await handle.whenFilesReady();
-    assert.equal(mounted.length, outcome === "failed" ? 1 : 2);
-    assert.equal(disposed, outcome === "failed" ? 0 : 1);
-    assert.deepEqual(mounted.at(-1), mounted[0], "repair never selects a newer head");
+    const repaired = outcome === "failed" ? opened : opened + 1;
+    assert.equal(mounted.length, repaired);
+    assert.equal(disposed, repaired - 1);
+    assert.deepEqual(mounted.at(-1), onScreen, "repair remounts the comparison on screen");
     if (outcome === "moved") {
-      assert.match(container.textContent, /Show the newer changes/);
+      assert.match(container.textContent, moved, "a repaired diff keeps its note");
     }
     await tick();
-    assert.equal(mounted.length, outcome === "failed" ? 1 : 2, "only one remount per repair");
+    assert.equal(mounted.length, repaired, "only one remount per repair");
     handle.dispose();
     refresh.events.get("click")();
     await settle();

@@ -30,8 +30,9 @@ The Markdown of each text is asked for one part at a time from
 longer shows is dropped.
 `browse` is what Browse code does: a link when the head is served, and otherwise, with
 nothing to warn about, it serves the head and then opens the root.
-Only a page served an older head of this pull request gets `headOffer`, the offer of the
-newer one.
+A page served an older head of this pull request offers nothing: the server follows the
+head, as it follows a branch, and the recording’s answer after such a refresh names the
+new head as its pin.
 
 This browserless session loads the production `builtin_plugins/github/pull-page.js` and
 plays the server’s side from `tests/fixtures/github-pull-page-responses.json`: what the
@@ -75,7 +76,14 @@ A place in the header goes no further than the first block, since a page opened 
 draws its header closed, and an open Diff summary made it far taller.
 It asserts, and so prints nothing for, that no pace of moves writes a place more often
 than Safari’s limit on `history.replaceState`, and that only a key that can move the
-pane ends a hold.
+pane ends a hold. In Changes a place names its file, so a diff that replaces the one
+being read, a newer head’s, holds the reader in that file wherever it now is, and at its
+index only when the new diff has no such file.
+`filesChanged` is what Changes does with the record’s comparison: it follows one that
+moved, and offers it instead to a reader who went back to the earlier diff.
+`changesFollowed` is the line Changes then says, the head it showed and the head it
+shows with the way back, on the page and after the reload a followed pin makes, where
+the history entry remembers what Changes showed.
 
 ```console
 $ node tests/dom/github-pull-page-session.js
@@ -103,7 +111,6 @@ $ node tests/dom/github-pull-page-session.js
         "checks": null,
         "notes": [],
         "browse": null,
-        "headOffer": null,
         "comparison": null
       },
       "markdown": []
@@ -130,7 +137,6 @@ $ node tests/dom/github-pull-page-session.js
         "checks": null,
         "notes": [],
         "browse": null,
-        "headOffer": null,
         "comparison": null
       },
       "markdown": []
@@ -151,6 +157,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -185,7 +192,6 @@ $ node tests/dom/github-pull-page-session.js
         },
         "notes": [],
         "browse": "switches to refs/pull/7/head",
-        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "repaint",
@@ -198,6 +204,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": []
     },
     {
@@ -208,6 +215,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": [],
       "waiting": {
         "inFlight": 2,
@@ -225,6 +233,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": [
         "body: <div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>",
         "issue_comment/3341937855: <div><div><p>Thanks. CI is green; one question inline.</p></div></div>",
@@ -237,6 +246,7 @@ $ node tests/dom/github-pull-page-session.js
       "requests": [],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": [
         "body: <div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
       ]
@@ -248,6 +258,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": []
     },
     {
@@ -257,6 +268,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -291,7 +303,6 @@ $ node tests/dom/github-pull-page-session.js
         },
         "notes": [],
         "browse": "switches to refs/pull/7/head",
-        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "keep",
@@ -304,6 +315,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "navigated": [
         "/view/"
       ],
@@ -316,6 +328,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -350,7 +363,6 @@ $ node tests/dom/github-pull-page-session.js
         },
         "notes": [],
         "browse": "link to the root",
-        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "repaint",
@@ -361,6 +373,7 @@ $ node tests/dom/github-pull-page-session.js
       "requests": [],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": []
     },
     {
@@ -368,6 +381,7 @@ $ node tests/dom/github-pull-page-session.js
       "requests": [],
       "timer": "slow",
       "paints": 1,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "tab": "files",
@@ -402,7 +416,6 @@ $ node tests/dom/github-pull-page-session.js
         },
         "notes": [],
         "browse": "link to the root",
-        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "markdown": []
@@ -412,6 +425,7 @@ $ node tests/dom/github-pull-page-session.js
       "requests": [],
       "timer": "slow",
       "paints": 1,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -446,7 +460,6 @@ $ node tests/dom/github-pull-page-session.js
         },
         "notes": [],
         "browse": "link to the root",
-        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "keep",
@@ -495,7 +508,6 @@ $ node tests/dom/github-pull-page-session.js
         },
         "notes": [],
         "browse": "link to the root",
-        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "keep",
@@ -504,7 +516,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "the reader stayed: the page asks for a refresh by itself",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -543,7 +555,6 @@ $ node tests/dom/github-pull-page-session.js
         },
         "notes": [],
         "browse": "link to the root",
-        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "keep",
@@ -565,6 +576,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "probeAskMs": 5000,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -599,7 +611,6 @@ $ node tests/dom/github-pull-page-session.js
         },
         "notes": [],
         "browse": "link to the root",
-        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "keep",
@@ -610,6 +621,7 @@ $ node tests/dom/github-pull-page-session.js
       "requests": [],
       "timer": "slow",
       "paints": 0,
+      "probeAskMs": 5000,
       "markdown": [
         "body: <div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
       ]
@@ -621,6 +633,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "probeAskMs": 5000,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -656,7 +669,6 @@ $ node tests/dom/github-pull-page-session.js
         },
         "notes": [],
         "browse": "link to the root",
-        "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "repaint",
@@ -669,6 +681,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "probeAskMs": 5000,
       "markdown": [
         "issue_comment/3341937856: <div><div><p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/badge.png\" alt=\"build badge\"> <span class=\"mb-image-fallback\">image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n</div></div>"
       ]
@@ -687,6 +700,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "probeAskMs": 5000,
       "markdown": []
     },
     {
@@ -709,8 +723,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": true,
         "freshness": "Fetched 5 min ago via GitHub CLI",
         "failure": null,
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "markdown": []
     },
@@ -729,15 +742,14 @@ $ node tests/dom/github-pull-page-session.js
         "freshness": "Fetched 5 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "markdown": []
     },
     {
       "step": "the reader stayed: it asks",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -748,8 +760,7 @@ $ node tests/dom/github-pull-page-session.js
         "freshness": "Fetched 5 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "markdown": []
     },
@@ -768,8 +779,7 @@ $ node tests/dom/github-pull-page-session.js
         "freshness": "Fetched 5 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "conversation": "repaint",
       "markdown": []
@@ -782,32 +792,22 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "served an older head, the page offers the newer one",
+      "step": "the served head followed the pull request, and nothing is offered",
       "requests": [
         "GET /api/plugin/github/pull?number=7"
       ],
       "timer": "slow",
       "paints": 2,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "message": null,
         "canRefresh": false,
         "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
-        "browse": "link to the root",
-        "headOffer": "refs/pull/7/head"
+        "browse": "link to the root"
       },
       "conversation": "repaint",
-      "markdown": []
-    },
-    {
-      "step": "taking the offer reloads",
-      "requests": [
-        "POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\"}"
-      ],
-      "timer": "slow",
-      "paints": 0,
-      "reloads": 1,
       "markdown": []
     },
     {
@@ -823,8 +823,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": true,
         "freshness": null,
         "failure": "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
-        "browse": null,
-        "headOffer": null
+        "browse": null
       },
       "markdown": []
     },
@@ -859,8 +858,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": true,
         "freshness": null,
         "failure": "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
-        "browse": null,
-        "headOffer": null
+        "browse": null
       },
       "markdown": []
     },
@@ -886,7 +884,6 @@ $ node tests/dom/github-pull-page-session.js
         "checks": null,
         "notes": [],
         "browse": null,
-        "headOffer": null,
         "comparison": null
       },
       "markdown": []
@@ -961,9 +958,20 @@ $ node tests/dom/github-pull-page-session.js
   "filesChanged": [
     "nothing open yet: mount",
     "open on the record's comparison: keep",
-    "open on an older head: offer",
+    "open on an older head: follow",
+    "open on an older head the reader went back to: offer",
     "no comparison in the record: unavailable"
-  ]
+  ],
+  "changesFollowed": {
+    "the first diff of a page": "no note",
+    "a newer head replaces the diff shown": "The pull request’s head moved from c691256 to 85fcb2f. [Show the earlier changes] -> f92fd71...c691256",
+    "the same diff mounted again keeps its note": "The pull request’s head moved from c691256 to 85fcb2f. [Show the earlier changes] -> f92fd71...c691256",
+    "a second head names the one before it": "The pull request’s head moved from 85fcb2f to ccccccc. [Show the earlier changes] -> f92fd71...85fcb2f",
+    "the same head from another base": "The comparison has changed. [Show the earlier changes] -> bbbbbbb...85fcb2f",
+    "the page loaded again on the newer head, its entry remembering the earlier diff": "The pull request’s head moved from c691256 to 85fcb2f. [Show the earlier changes] -> f92fd71...c691256",
+    "the page loaded again after it had followed": "The pull request’s head moved from c691256 to 85fcb2f. [Show the earlier changes] -> f92fd71...c691256",
+    "an entry that last showed this diff and no other": "no note"
+  }
 }
 ? 0
 ```
@@ -985,7 +993,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a page left open asks for its refresh",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -996,8 +1004,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "freshness": "Fetched 5 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "conversation": "repaint",
       "markdown": []
@@ -1009,14 +1016,14 @@ $ node tests/dom/github-pull-page-second-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "probeAskMs": 5000,
       "paint": {
         "status": "current",
         "message": null,
         "canRefresh": false,
         "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "conversation": "repaint",
       "markdown": []
@@ -1035,8 +1042,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "freshness": "Fetched 1 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "conversation": "keep",
       "markdown": []
@@ -1044,7 +1050,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "it asks for the next refresh at once",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1055,8 +1061,114 @@ $ node tests/dom/github-pull-page-second-session.js
         "freshness": "Fetched 1 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
+      },
+      "conversation": "keep",
+      "markdown": []
+    }
+  ],
+  "probing": [
+    {
+      "step": "a current page asks once the reader stays, and a probe answers",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "probeAskMs": 5000,
+      "markdown": []
+    },
+    {
+      "step": "its interval later it asks again, and the probe vouches",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "probeAskMs": 5000,
+      "markdown": []
+    },
+    {
+      "step": "the poll's own interval still reads, between probe asks",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "probeAskMs": 5000,
+      "markdown": []
+    },
+    {
+      "step": "a probe ask the server does not answer is reported",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "probeAskMs": 5000,
+      "paint": {
+        "status": "current",
+        "message": "The server did not answer.",
+        "canRefresh": false,
+        "freshness": "Fetched just now via GitHub CLI",
+        "failure": null,
+        "browse": "link to the root"
+      },
+      "conversation": "repaint",
+      "markdown": []
+    },
+    {
+      "step": "the next probe ask that answers clears it",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "probeAskMs": 5000,
+      "paint": {
+        "status": "current",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched just now via GitHub CLI",
+        "failure": null,
+        "browse": "link to the root"
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "an answer slower than the interval is followed by a short gap",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "probeAskMs": 1000,
+      "markdown": []
+    },
+    {
+      "step": "hidden, it asks nothing",
+      "requests": [],
+      "timer": null,
+      "paints": 0,
+      "markdown": []
+    },
+    {
+      "step": "shown again past its interval it asks at once, and a probe that found a change refreshes",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)",
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
+      ],
+      "timer": "fast",
+      "paints": 2,
+      "paint": {
+        "status": "current",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 6 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": null,
+        "browse": "link to the root"
       },
       "conversation": "keep",
       "markdown": []
@@ -1066,7 +1178,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a stale page asks once, and its refresh is not due",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":8}"
+        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1076,8 +1188,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "canRefresh": true,
         "freshness": "Fetched 24 min ago via GitHub CLI",
         "failure": "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
-        "browse": "switches to refs/pull/8/head",
-        "headOffer": null
+        "browse": "switches to refs/pull/8/head"
       },
       "conversation": "repaint",
       "markdown": []
@@ -1114,8 +1225,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "freshness": "Fetched 25 min ago via GitHub CLI",
         "revalidating": true,
         "failure": "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
-        "browse": "switches to refs/pull/8/head",
-        "headOffer": null
+        "browse": "switches to refs/pull/8/head"
       },
       "conversation": "keep",
       "markdown": []
@@ -1123,7 +1233,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "that ask is sent with no wait, and is not due",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":8}"
+        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1133,8 +1243,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "canRefresh": true,
         "freshness": "Fetched 25 min ago via GitHub CLI",
         "failure": "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
-        "browse": "switches to refs/pull/8/head",
-        "headOffer": null
+        "browse": "switches to refs/pull/8/head"
       },
       "conversation": "keep",
       "markdown": []
@@ -1153,8 +1262,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "freshness": "Fetched 25 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
-        "browse": "switches to refs/pull/8/head",
-        "headOffer": null
+        "browse": "switches to refs/pull/8/head"
       },
       "conversation": "keep",
       "markdown": []
@@ -1164,7 +1272,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a stale page asks for its refresh",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1175,8 +1283,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "freshness": "Fetched 5 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "conversation": "repaint",
       "markdown": []
@@ -1194,8 +1301,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "canRefresh": false,
         "freshness": "Fetched 5 min ago via GitHub CLI",
         "failure": "GitHub rate limit reached. Next attempt after 12:06 PM.",
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "conversation": "keep",
       "markdown": []
@@ -1213,8 +1319,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "canRefresh": false,
         "freshness": "Fetched 6 min ago via GitHub CLI",
         "failure": "GitHub rate limit reached. Next attempt after 12:06 PM.",
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "conversation": "keep",
       "markdown": []
@@ -1233,8 +1338,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "freshness": "Fetched 6 min ago via GitHub CLI",
         "revalidating": true,
         "failure": "GitHub rate limit reached. Next attempt after 12:06 PM.",
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "conversation": "keep",
       "markdown": []
@@ -1242,7 +1346,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "and sends that ask with no wait",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1253,8 +1357,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "freshness": "Fetched 6 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
-        "browse": "link to the root",
-        "headOffer": null
+        "browse": "link to the root"
       },
       "conversation": "keep",
       "markdown": []
@@ -1392,21 +1495,18 @@ $ node tests/dom/github-pull-page-second-session.js
   "checkout": {
     "HEAD is the pull request's head": {
       "browse": null,
-      "headOffer": null,
       "checkoutAtHead": "This checkout’s HEAD is this pull request’s head.",
       "comparison": null,
       "files": "Changes could not be fetched."
     },
     "HEAD is elsewhere": {
       "browse": null,
-      "headOffer": null,
       "checkoutAtHead": null,
       "comparison": null,
       "files": "Changes could not be fetched."
     },
     "no repository context": {
       "browse": null,
-      "headOffer": null,
       "checkoutAtHead": null,
       "comparison": null,
       "files": "Changes could not be fetched."
@@ -1615,6 +1715,13 @@ $ node tests/dom/github-pull-page-second-session.js
     "what is not a place is no place: {\"block\":\"1\",\"offset\":0,\"top\":0}": "pane at 0; entry {\"block\":\"1\",\"offset\":0,\"top\":0}; 0 written; nothing running",
     "what is not a place is no place: {\"block\":1}": "pane at 0; entry {\"block\":1}; 0 written; nothing running",
     "what is not a place is no place: \"nonsense\"": "pane at 0; entry \"nonsense\"; 0 written; nothing running",
+    "in Changes a place names its file": "pane at 460; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 1 written; nothing running",
+    "the diff is replaced: the place is held, and written for a reload": "pane at 0; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 1 written; holding",
+    "the emptied pane clamps to its top: the place stays written": "pane at 0; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 0 written; holding",
+    "the newer diff paints: the pane is in the same file, a block further on": "pane at 710; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 0 written; holding, settling",
+    "a file above it draws its lines: the pane is put back": "pane at 1310; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 0 written; holding, settling",
+    "loaded again on a diff without the file: the top of the block at its index": "pane at 370; entry {\"block\":1,\"offset\":40,\"top\":460,\"file\":\"b.py\"}; 0 written; holding, settling",
+    "a place whose file is not a name is no place": "pane at 0; entry {\"block\":1,\"offset\":5,\"top\":400,\"file\":7}; 0 written; nothing running",
     "dispose ends all of it": "pane at 900; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; nothing running",
     "a disposed keeper does nothing": "pane at 900; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; nothing running"
   },
@@ -1636,7 +1743,7 @@ $ node tests/dom/github-pull-page-second-session.js
   ],
   "diffTabs": [
     "guided: false",
-    "conversation: false",
+    "the front page: false",
     "conversation: false",
     "docs: true",
     "files: true",
@@ -1690,23 +1797,23 @@ opened on Changes, whose diff read through the same keep (mb-neg9). A read that 
 comparison the summary draws nothing for, a Changes diff that reads no comparison, a
 pull request that is not GitHub’s, a refresh that failed with nothing running, a record
 that names no comparison and has none coming, a core preview whose read prepares none,
-and a preparation that ended with none leave the row empty; so does a newer comparison
-on Changes until the reader takes it, and a Retry, the offer, or the page’s next paint
-after a read that failed starts the wait again; a record that then names no comparison
-takes Changes’ diff away, and its wait with it (`headerSummary`). A page mounted with no
-record in hand holds its header and tab column for the quiet period, the first header
-with a record lifts the hold, a record that lands while the header waits for the
-conversation’s held first paint keeps them unseen until that paint, and a page with its
-record in hand holds nothing; the cold header’s title is “Pull request #7” unless the
-Pulls tab’s row for it is in hand, when it has the record’s shape with the row’s state
-and title, and a number two repositories’ rows name titles none (`coldHold`). The
-header’s corner, right after the title from the cold header on, holds the View on GitHub
-button: one corner for the page’s life, and after each header paint the page asks the
-SDK for the button of the address it is at, the tab’s own address, and an SDK with no
-button leaves the corner empty (`counterpart`). The tabs answer to `C`, `G`, and `E`
-through the production shortcut registry and plugin shortcut facade, with or without
-Shift and never with Ctrl: a tab the address does not show opens through the route, as a
-click on its link does.
+and a preparation that ended with none leave the row empty; a newer comparison on
+Changes is followed, which starts its read, and the way back to the earlier diff and the
+offer of the newer one start theirs, as a Retry or the page’s next paint after a read
+that failed starts the wait again; a record that then names no comparison takes Changes’
+diff away, and its wait with it (`headerSummary`). A page mounted with no record in hand
+holds its header and tab column for the quiet period, the first header with a record
+lifts the hold, a record that lands while the header waits for the conversation’s held
+first paint keeps them unseen until that paint, and a page with its record in hand holds
+nothing; the cold header’s title is “Pull request #7” unless the Pulls tab’s row for it
+is in hand, when it has the record’s shape with the row’s state and title, and a number
+two repositories’ rows name titles none (`coldHold`). The header’s corner, right after
+the title from the cold header on, holds the View on GitHub button: one corner for the
+page’s life, and after each header paint the page asks the SDK for the button of the
+address it is at, the tab’s own address, and an SDK with no button leaves the corner
+empty (`counterpart`). The tabs answer to `C`, `G`, and `E` through the production
+shortcut registry and plugin shortcut facade, with or without Shift and never with Ctrl:
+a tab the address does not show opens through the route, as a click on its link does.
 `H` is the Commits tab’s, so it does nothing here.
 The header keeps the tab column unless its first read fails: while the record is on its
 way, and for an absent record nothing is fetching, such as a server with no GitHub
@@ -1720,14 +1827,14 @@ asked for: `1` asks to serve the head for Browse code, and on Changes `2` asks f
 refresh. A refresh that serves the head repaints Browse code as a link, and `1` then
 opens the code instead; one with no pin drops Browse code, Refresh moves up to `1`, and
 `2` reaches nothing.
-Code served behind the pull request’s head offers to switch to it on the status line,
-numbered after Refresh: while the refresh `2` asks for runs, Refresh waits, shown and
-disabled, and keeps `2`, so the offer keeps `3` and a second `2` asks nothing.
-Once the refresh ends Refresh is offered again on Changes, and the offer keeps `3`; on
-Conversation, where nothing is left to refresh, Refresh is not shown, and the offer
-takes `2`. The tab keys wait while the column is out of the page after a failed first
-read; they return when the header puts it back, badged at once while Shift is held, wait
-while the page is staged inert, and end with the page.
+Code served on the pull request’s head numbers no switch to it, since the server follows
+that head: while the refresh `2` asks for runs, Refresh waits, shown and disabled, and
+keeps `2`, so a second `2` asks nothing.
+Once the refresh ends Refresh is offered again on Changes; on Conversation, where
+nothing is left to refresh, Refresh is not shown.
+The tab keys wait while the column is out of the page after a failed first read; they
+return when the header puts it back, badged at once while Shift is held, wait while the
+page is staged inert, and end with the page.
 The failed first read here is followed on Changes, which holds no first paint, so it is
 paintHeader’s own retarget that badges the returning links.
 A text’s Mermaid blocks are drawn as github.com draws them, in the description and in a
@@ -1751,7 +1858,7 @@ to a minute after, and with no reporter the panel says the event log is not avai
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"widestNotes":{"Fetched just now via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Fetched 3 h ago via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Offline · fetched 12 d ago via GitHub CLI":"Offline · fetched 59 min ago via GitHub CLI","Description fetched 7 min ago via GitHub CLI":"Description fetched 59 min ago via GitHub CLI","Fetched at an unknown time via GitHub CLI":"Fetched at an unknown time via GitHub CLI"},"holdLifts":{"today":"2:05 PM","tomorrow":"9/18/26, 12:30 AM","next year":"1/2/27, 8:00 AM"},"headerSummary":["Conversation, the comparison not yet read: the pending placeholder","the comparison read: the summary","Changes: the summary","Checks, the comparison not yet read: the pending placeholder","Checks, the comparison read: the summary","the same pull request again in this document, before any idle: the summary","opened on Changes, from what its diff read: the summary","opened again on Conversation after Changes, before any idle: the summary","a read that will fail, not yet answered: the pending placeholder","the read fails: nothing","a repaint after it failed, its read asked again: the pending placeholder","that read fails too: nothing","a comparison the summary draws nothing for: nothing","opened on Changes, whose diff reads no comparison: nothing","the record on its way: the pending placeholder","a direct link's page before its first answer: the pending placeholder","its first answer: not cached, its own fetch to be sent: the pending placeholder","its fetch's core preview: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a direct link's first answer: not GitHub's: nothing","a direct link's first answer: a server with no store, its own fetch to be sent: nothing","a direct link's first answer: its refresh failed, nothing running: nothing","a direct link's first answer: a core, its refresh failed, nothing running: nothing","a record that names no comparison: nothing","a core preview whose read prepares its comparison: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a core preview whose read prepares no comparison: nothing","a prepared core, the page's own fetch still to be sent: the pending placeholder","a core whose read ended, the page's own fetch still to be sent: the pending placeholder","a record whose comparison the page asked to prepare: the pending placeholder","the preparation ends with no comparison: nothing","a record whose comparison nothing prepares: nothing","Changes, its diff reads no comparison: nothing","a record with a moved head lands, offering the newer changes: nothing","the reader takes them, their diff not yet read: the pending placeholder","their diff reads the comparison: the summary","Changes, its diff throws: nothing","Retry, the diff not yet read: the pending placeholder","the diff reads the comparison: the summary","Changes, its diff still reading: the pending placeholder","the record then names no comparison: nothing"],"summaryBrief":["a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads","its core preview, of the list's head and base branch: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","its record lands, the comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison read: the summary; 1 reads","a direct link's page, the list of an older head: the pending placeholder; 1 reads","its core preview, of a newer head: the pending placeholder; 1 reads","a record whose list was read for another base branch: the pending placeholder; 1 reads","a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads","its record lands, naming the same comparison: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a record whose comparison has another base than the local list's: the pending placeholder; 1 reads","a record of the list's head, its comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison's read fails: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","no list cached: the pending placeholder; 1 reads","opened from a Pulls row that drew its line: the brief line \"1 M · +12 −4\"; 0 reads","opened from a Pulls row whose line the lane marked out of date, read again: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a page that went before its read answered, its summary drawn: the summary; 1 reads"],"coldHold":["mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands, the conversation waiting for its Markdown: header shown, tab column shown","the conversation's first paint, at its bound: header shown, tab column shown","on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands: header shown, tab column shown","mounted with its record in hand: header shown, tab column shown","no Pulls row in hand, mounted with no record in hand: title \"Pull request #7\", plain","its Pulls row in hand, mounted with no record in hand: title \"Count to two in the app #7\", the record's shape","its Pulls row in hand, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","two repositories' rows for its number, mounted with no record in hand: title \"Pull request #7\", plain"],"counterpart":["mounted with no record in hand: the corner after the title \"Pull request #7\"; asked /pull/7","its record lands: the corner after the title \"Count to two in the app\", the same corner; asked /pull/7","a poll brings a new title: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7","the route shows Checks: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7/checks","an SDK with no button: the corner after the title \"Count to two in the app\"; asked for none"],"tabKeys":["before the record, the tab column in the page: Conversation C, Docs D, Changes G, Checks E; live conversation docs files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Docs D, Changes G, Checks E","live: conversation docs files checks","numbered: 1 Browse code","1: POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/\"}","C: showed Conversation","G: opened the files route","the route arrives: Changes","numbered on Changes: 1 Browse code, 2 Refresh","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh serves the head: 1 Browse code, 2 Refresh","1: navigation.open /view/","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh with no pin: 1 Refresh","1: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","2: not handled","1: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered with the code behind the head: 1 Browse code, 2 Refresh, 3 Switch to the head","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered while that refresh runs: 1 Browse code, 2 Refresh, 3 Switch to the head","2: nothing asked","numbered once the refresh ends: 1 Browse code, 2 Refresh, 3 Switch to the head","numbered on Conversation once the refresh ends: 1 Browse code, 2 Switch to the head","3: POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\"}","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Docs none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Docs D, Changes G, Checks E","the next read answers and paintHeader puts the column back: Conversation C, Docs D, Changes G, Checks E","live: conversation docs files checks","G: showed Changes","no block in the description: Conversation C, Docs D, Changes G, Checks E; live conversation docs files checks","R: not handled","a block in the description: Guided PR R, Conversation C, Docs D, Changes G, Checks E; live conversation docs files guided checks","R: opened the guided route","the route arrives: Guided PR","the block leaves while its tab is shown: Guided PR R, Conversation C, Docs D, Changes G, Checks E; Guided PR","back on Conversation: Conversation C, Docs D, Changes G, Checks E; R: not handled","the block returns while Shift is held: badges Guided PR R, Conversation C, Docs D, Changes G, Checks E","R: opened the guided route","an example of the block inside another fence: Guided PR R, Conversation C, Docs D, Changes G, Checks E","disposed: keys none"],"textRefusal":["refused past the deadline: plain, 1 notice right after it, a status: This text took longer than 5 seconds to render, so it is shown as plain text.","rebuilt for another state, its Markdown not yet answered: plain, 1 notice right after it, a status: This text took longer than 5 seconds to render, so it is shown as plain text., new element","a newer record, the same text refused again as unavailable: plain, 1 notice right after it, a status: The renderer could not start, so this text is shown as plain text. Reload to try again., new element","a newer record whose Markdown renders: rendered rendered A, no notice, same element"],"textDiagrams":["a description and a comment with no Mermaid block: 0 blocks, 0 in a figure; asked nothing; bindings none","the same with Mermaid blocks, on a folder's page: 2 blocks, 2 in a figure; asked markdown plugin, markdown plugin, kpress-diagrams, kpress-diagram-controls, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","a description and a comment each with a Mermaid block: 2 blocks, 2 in a figure; asked markdown plugin, markdown plugin, kpress-diagrams, kpress-diagram-controls, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","a poll of the same record: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","Changes and back to Conversation: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","the description edited, the comment not: 2 blocks, 2 in a figure; asked markdown plugin, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's","the description's block taken out: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's, disposed","a block whose text is replaced before the Markdown plugin arrives: 1 block, 1 in a figure; asked markdown plugin; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's, disposed","the page ends: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed"],"switchUnavailable":["the diff plugin's assets not loading: The switch request failed.; asked nothing","the switch module not loading: The switch request failed.; asked nothing"],"eventLogDetails":["mounted, the comparison not yet read: the pending placeholder; githubPull:diffSummary {\"number\":7} timed from its start running","still waiting at the late threshold: the late line \"The summary of changes has not arrived after 10 s. Details\"; githubPull:diffSummary {\"number\":7} timed from its start running","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","Details opened: expanded true; the panel says \"Still running: checkout._pull_job for 61.0 s\"","Details closed: expanded false; panel in the header false","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","the page left: panel in the header false; expanded false; githubPull:diffSummary {\"number\":7} timed from its start ended never_completed","another page, late: the late line \"The summary of changes has not arrived after 10 s. Details\"; githubPull:diffSummary {\"number\":7} timed from its start running","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","its comparison read, its Details open: the summary; githubPull:diffSummary {\"number\":7} timed from its start ended ok","the late line's Details: expanded false; panel in the header false","a page whose comparison is read at once: the summary; githubPull:diffSummary {\"number\":7} timed from its start ended ok","a failed refresh, ended 2026-09-17T12:30:00Z: \"The last refresh failed: GitHub could not be reached because the connection to api.github.com timed outDetails\"","Details asked for {\"client\":\"k3v9q2zx\",\"since\":\"2026-09-17T11:30:00Z\",\"until\":\"2026-09-17T12:31:00Z\"}, abortable true","no reporter: \"The event log is not available here.\""]}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"widestNotes":{"Fetched just now via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Fetched 3 h ago via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Offline · fetched 12 d ago via GitHub CLI":"Offline · fetched 59 min ago via GitHub CLI","Description fetched 7 min ago via GitHub CLI":"Description fetched 59 min ago via GitHub CLI","Fetched at an unknown time via GitHub CLI":"Fetched at an unknown time via GitHub CLI"},"holdLifts":{"today":"2:05 PM","tomorrow":"9/18/26, 12:30 AM","next year":"1/2/27, 8:00 AM"},"headerSummary":["Conversation, the comparison not yet read: the pending placeholder","the comparison read: the summary","Changes: the summary","Checks, the comparison not yet read: the pending placeholder","Checks, the comparison read: the summary","the same pull request again in this document, before any idle: the summary","opened on Changes, from what its diff read: the summary","opened again on Conversation after Changes, before any idle: the summary","a read that will fail, not yet answered: the pending placeholder","the read fails: nothing","a repaint after it failed, its read asked again: the pending placeholder","that read fails too: nothing","a comparison the summary draws nothing for: nothing","opened on Changes, whose diff reads no comparison: nothing","the record on its way: the pending placeholder","a direct link's page before its first answer: the pending placeholder","its first answer: not cached, its own fetch to be sent: the pending placeholder","its fetch's core preview: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a direct link's first answer: not GitHub's: nothing","a direct link's first answer: a server with no store, its own fetch to be sent: nothing","a direct link's first answer: its refresh failed, nothing running: nothing","a direct link's first answer: a core, its refresh failed, nothing running: nothing","a record that names no comparison: nothing","a core preview whose read prepares its comparison: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a core preview whose read prepares no comparison: nothing","a prepared core, the page's own fetch still to be sent: the pending placeholder","a core whose read ended, the page's own fetch still to be sent: the pending placeholder","a record whose comparison the page asked to prepare: the pending placeholder","the preparation ends with no comparison: nothing","a record whose comparison nothing prepares: nothing","Changes, its diff reads no comparison: nothing","a record with a moved head is followed: its diff reads the comparison: the summary","the reader goes back: the earlier diff reads none again: the summary","the reader takes the newer changes, their diff not yet read: the summary","their diff reads the comparison: the summary","Changes, its diff throws: nothing","Retry, the diff not yet read: the pending placeholder","the diff reads the comparison: the summary","Changes, its diff still reading: the pending placeholder","the record then names no comparison: nothing"],"summaryBrief":["a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads","its core preview, of the list's head and base branch: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","its record lands, the comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison read: the summary; 1 reads","a direct link's page, the list of an older head: the pending placeholder; 1 reads","its core preview, of a newer head: the pending placeholder; 1 reads","a record whose list was read for another base branch: the pending placeholder; 1 reads","a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads","its record lands, naming the same comparison: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a record whose comparison has another base than the local list's: the pending placeholder; 1 reads","a record of the list's head, its comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison's read fails: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","no list cached: the pending placeholder; 1 reads","opened from a Pulls row that drew its line: the brief line \"1 M · +12 −4\"; 0 reads","opened from a Pulls row whose line the lane marked out of date, read again: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a page that went before its read answered, its summary drawn: the summary; 1 reads"],"coldHold":["mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands, the conversation waiting for its Markdown: header shown, tab column shown","the conversation's first paint, at its bound: header shown, tab column shown","on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands: header shown, tab column shown","mounted with its record in hand: header shown, tab column shown","no Pulls row in hand, mounted with no record in hand: title \"Pull request #7\", plain","its Pulls row in hand, mounted with no record in hand: title \"Count to two in the app #7\", the record's shape","its Pulls row in hand, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","two repositories' rows for its number, mounted with no record in hand: title \"Pull request #7\", plain"],"counterpart":["mounted with no record in hand: the corner after the title \"Pull request #7\"; asked /pull/7","its record lands: the corner after the title \"Count to two in the app\", the same corner; asked /pull/7","a poll brings a new title: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7","the route shows Checks: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7/checks","an SDK with no button: the corner after the title \"Count to two in the app\"; asked for none"],"tabKeys":["before the record, the tab column in the page: Conversation C, Docs D, Changes G, Checks E; live conversation docs files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Docs D, Changes G, Checks E","live: conversation docs files checks","numbered: 1 Browse code","1: POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/\"}","C: showed Conversation","G: opened the files route","the route arrives: Changes","numbered on Changes: 1 Browse code, 2 Refresh","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh serves the head: 1 Browse code, 2 Refresh","1: navigation.open /view/","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh with no pin: 1 Refresh","1: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","2: not handled","1: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered with the code on the head: 1 Browse code, 2 Refresh","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered while that refresh runs: 1 Browse code, 2 Refresh","2: nothing asked","numbered once the refresh ends: 1 Browse code, 2 Refresh","numbered on Conversation once the refresh ends: 1 Browse code","3: not handled","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Docs none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Docs D, Changes G, Checks E","the next read answers and paintHeader puts the column back: Conversation C, Docs D, Changes G, Checks E","live: conversation docs files checks","G: showed Changes","no block in the description: Conversation C, Docs D, Changes G, Checks E; live conversation docs files checks","R: not handled","a block in the description: Guided PR R, Conversation C, Docs D, Changes G, Checks E; live conversation docs files guided checks","R: opened the guided route","the route arrives: Guided PR","the block leaves while its tab is shown: Guided PR R, Conversation C, Docs D, Changes G, Checks E; Guided PR","back on Conversation: Conversation C, Docs D, Changes G, Checks E; R: not handled","the block returns while Shift is held: badges Guided PR R, Conversation C, Docs D, Changes G, Checks E","R: opened the guided route","an example of the block inside another fence: Guided PR R, Conversation C, Docs D, Changes G, Checks E","disposed: keys none"],"textRefusal":["refused past the deadline: plain, 1 notice right after it, a status: This text took longer than 5 seconds to render, so it is shown as plain text.","rebuilt for another state, its Markdown not yet answered: plain, 1 notice right after it, a status: This text took longer than 5 seconds to render, so it is shown as plain text., new element","a newer record, the same text refused again as unavailable: plain, 1 notice right after it, a status: The renderer could not start, so this text is shown as plain text. Reload to try again., new element","a newer record whose Markdown renders: rendered rendered A, no notice, same element"],"textDiagrams":["a description and a comment with no Mermaid block: 0 blocks, 0 in a figure; asked nothing; bindings none","the same with Mermaid blocks, on a folder's page: 2 blocks, 2 in a figure; asked markdown plugin, markdown plugin, kpress-diagrams, kpress-diagram-controls, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","a description and a comment each with a Mermaid block: 2 blocks, 2 in a figure; asked markdown plugin, markdown plugin, kpress-diagrams, kpress-diagram-controls, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","a poll of the same record: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","Changes and back to Conversation: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","the description edited, the comment not: 2 blocks, 2 in a figure; asked markdown plugin, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's","the description's block taken out: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's, disposed","a block whose text is replaced before the Markdown plugin arrives: 1 block, 1 in a figure; asked markdown plugin; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's, disposed","the page ends: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed"],"switchUnavailable":["the diff plugin's assets not loading: The switch request failed.; asked nothing","the switch module not loading: The switch request failed.; asked nothing"],"eventLogDetails":["mounted, the comparison not yet read: the pending placeholder; githubPull:diffSummary {\"number\":7} timed from its start running","still waiting at the late threshold: the late line \"The summary of changes has not arrived after 10 s. Details\"; githubPull:diffSummary {\"number\":7} timed from its start running","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","Details opened: expanded true; the panel says \"Still running: checkout._pull_job for 61.0 s\"","Details closed: expanded false; panel in the header false","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","the page left: panel in the header false; expanded false; githubPull:diffSummary {\"number\":7} timed from its start ended never_completed","another page, late: the late line \"The summary of changes has not arrived after 10 s. Details\"; githubPull:diffSummary {\"number\":7} timed from its start running","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","its comparison read, its Details open: the summary; githubPull:diffSummary {\"number\":7} timed from its start ended ok","the late line's Details: expanded false; panel in the header false","a page whose comparison is read at once: the summary; githubPull:diffSummary {\"number\":7} timed from its start ended ok","a failed refresh, ended 2026-09-17T12:30:00Z: \"The last refresh failed: GitHub could not be reached because the connection to api.github.com timed outDetails\"","Details asked for {\"client\":\"k3v9q2zx\",\"since\":\"2026-09-17T11:30:00Z\",\"until\":\"2026-09-17T12:31:00Z\"}, abortable true","no reporter: \"The event log is not available here.\""]}
 ? 0
 ```
 

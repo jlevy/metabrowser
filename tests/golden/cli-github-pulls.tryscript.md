@@ -58,8 +58,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -136,8 +138,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "all",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -219,8 +223,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -335,8 +341,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -376,8 +384,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -456,8 +466,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "closed",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -576,8 +588,10 @@ status: 200
   "source": null,
   "list": "open",
   "fetched_at": null,
+  "checked_at": null,
   "reader": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "total": null,
@@ -633,6 +647,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": {
     "state": "ready",
     "complete": true,
@@ -688,6 +703,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": {
     "state": "ready",
     "complete": true,
@@ -730,6 +746,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": {
     "state": "ready",
     "complete": true,
@@ -775,6 +792,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": {
     "state": "ready",
     "complete": true,
@@ -801,6 +819,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": null,
   "refs": []
 }
@@ -871,8 +890,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:someone-else",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -907,8 +928,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -954,8 +977,10 @@ status: 200
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:someone-else",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "gh_failed",

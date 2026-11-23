@@ -30,7 +30,10 @@ import pytest
 from metabrowser.builtin_plugins.github import gh_lists, pull_files_refresh, pull_list, pull_record
 from metabrowser.builtin_plugins.github.gh import GhError, GhResponse
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError
-from metabrowser.builtin_plugins.github.pull_files_refresh import refresh_pull_files
+from metabrowser.builtin_plugins.github.pull_files_refresh import (
+    FallbackRefused,
+    refresh_pull_files,
+)
 from metabrowser.builtin_plugins.github.pull_files_route import (
     FilesRefreshRequest,
     FilesRequestError,
@@ -613,6 +616,54 @@ def test_a_comparison_git_cannot_list_falls_through_to_github(
     assert (listed.listed_from, len(listed.rows)) == ("github", 2)
 
 
+def test_a_fallback_the_caller_refuses_reads_nothing_and_keeps_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    """B1 of review B on #737: the prefetch lists what the store gives past its governor,
+    and asks it again only when Git cannot give the list after all."""
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    local = LocalComparison(tmp_path / "no-such-store.git", "b" * 40, "c" * 40)
+    asked: list[bool] = []
+
+    async def fallback(answer: bool) -> bool:
+        asked.append(answer)
+        return answer
+
+    with pytest.raises(FallbackRefused):
+        asyncio.run(
+            refresh_pull_files(
+                repository, TREE_PULL, local=local, slot=_free, fallback=partial(fallback, False)
+            )
+        )
+    assert asked == [False]
+    assert not Path(os.environ["FAKE_GH_LOG"]).exists(), "no account check and no list"
+    assert read_files_refresh(repository.home, repository.slug, TREE_PULL) is None
+    assert read_pull_files(repository.home, repository.slug, TREE_PULL) == "not_cached"
+    listed = asyncio.run(
+        refresh_pull_files(
+            repository, TREE_PULL, local=local, slot=_free, fallback=partial(fallback, True)
+        )
+    )
+    assert (listed.listed_from, len(listed.rows), asked) == ("github", 2, [False, True])
+
+
+def test_a_list_the_store_gives_never_asks_the_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    _answer(tmp_path, monkeypatch, {})
+    local = _comparison_for_limit_test(tmp_path)
+
+    async def fallback() -> bool:
+        raise AssertionError("the store gave the list")
+
+    listed = asyncio.run(
+        refresh_pull_files(repository, TREE_PULL, local=local, slot=_free, fallback=fallback)
+    )
+    assert listed.listed_from == "comparison" and listed.rows
+    assert not Path(os.environ["FAKE_GH_LOG"]).exists()
+
+
 @pytest.mark.parametrize("lender", ["lender_missing", "commits_unavailable"])
 def test_a_borrowed_store_that_can_no_longer_read_the_comparison_falls_through_to_github(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, lender: str
@@ -693,6 +744,31 @@ def test_a_force_push_makes_either_list_stale(
     assert pull_files_envelope(view, window)["state"] == "current"
     monkeypatch.setattr(route, lambda *_: facts("f" * 40, None))
     assert pull_files_envelope(view, window)["state"] == "stale"
+
+
+def test_a_list_nothing_vouches_for_is_read_again_every_full_refresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    """With no catalog row to say when the pull request changed, the clock decides, at
+    FULL_REFRESH_S; a list the row vouches for is current whatever its age."""
+
+    from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    _refresh(repository, TREE_PULL)
+    view = FilesView(TREE_PULL, repository, None, False, None)
+    window = FilesWindow(TREE_PULL, limit=0)
+    route = "metabrowser.builtin_plugins.github.pull_files_route._facts"
+    fetched = pull_list.parse_stamp(pull_files_envelope(view, window)["fetched_at"])  # pyright: ignore[reportArgumentType]
+
+    def at(seconds: float, updated_at: str | None) -> str:
+        monkeypatch.setattr(pull_list, "utc_now", lambda: fetched + timedelta(seconds=seconds))
+        monkeypatch.setattr(route, lambda *_: SimpleNamespace(updated_at=updated_at, record=None))
+        return pull_files_envelope(view, window)["state"]
+
+    assert at(FULL_REFRESH_S, None) == "current"
+    assert at(FULL_REFRESH_S + 1, None) == "stale"
+    assert at(24 * 3600, "2026-09-17T11:59:59Z") == "current"
 
 
 def test_local_list_retarget_and_unknown_old_base_are_stale(
@@ -1177,3 +1253,44 @@ def test_absent_file_cache_repairs_a_recent_success_but_preserves_failure_holds(
         outcome == "succeeded",
         None,
     )
+
+
+def test_an_aged_lists_automatic_read_waits_for_the_budget_and_a_readers_retry_does_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    from metabrowser.builtin_plugins.github import gh_budget
+    from metabrowser.builtin_plugins.github.pull_files_route import (
+        FilesRefreshRequest,
+        files_refresh_wanted,
+    )
+    from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    _refresh(repository, TREE_PULL)
+    view = FilesView(TREE_PULL, repository, None, False, None)
+    fetched = pull_list.parse_stamp(
+        pull_files_envelope(view, FilesWindow(TREE_PULL, limit=0))["fetched_at"]  # pyright: ignore[reportArgumentType]
+    )
+
+    def wanted(seconds: float, *, retry: bool = False) -> bool:
+        monkeypatch.setattr(pull_list, "utc_now", lambda: fetched + timedelta(seconds=seconds))
+        return files_refresh_wanted(view, FilesRefreshRequest(TREE_PULL, retry))[0]
+
+    assert not wanted(FULL_REFRESH_S)
+    assert wanted(FULL_REFRESH_S + 1)
+    low = {
+        "x-ratelimit-limit": "5000",
+        "x-ratelimit-remaining": "1000",
+        "x-ratelimit-reset": str(int((fetched + timedelta(minutes=30)).timestamp())),
+    }
+    try:
+        gh_budget.observe(low, resource="core")
+        assert not wanted(FULL_REFRESH_S + 1)
+        assert wanted(FULL_REFRESH_S + 1, retry=True)
+        gh_budget.forget()
+        # Past the process's own ceiling it is read five minutes after the last.
+        gh_budget.spent(gh_budget.AUTOMATIC_CORE_PER_HOUR, now=fetched)
+        assert not wanted(FULL_REFRESH_S + 1)
+        assert wanted(gh_budget.CEILING_FULL_READ_S + 1)
+    finally:
+        gh_budget.forget()

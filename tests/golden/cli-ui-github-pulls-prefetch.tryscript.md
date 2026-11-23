@@ -107,6 +107,7 @@ $ node tests/dom/github-pulls-prefetch-behavior.js
     "GET /api/plugin/github/pull?number=7"
   ],
   "scanningNextPolls": [
+    500,
     1000
   ],
   "scanPublishedChange": [
@@ -114,6 +115,7 @@ $ node tests/dom/github-pulls-prefetch-behavior.js
     "POST /api/plugin/github/pull-refresh"
   ],
   "afterScanPolls": [
+    5000,
     30000
   ],
   "pendingChecks": [

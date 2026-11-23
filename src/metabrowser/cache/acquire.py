@@ -54,6 +54,7 @@ from metabrowser.cache.layout import (
     read_layout,
 )
 from metabrowser.cache.lender import (
+    OVERLAY_FETCH_CONFIG,
     CheckoutRefusedError,
     Lender,
     LenderRefusal,
@@ -579,6 +580,7 @@ async def acquire_into_staging(
                     prune=False,
                     progress=on_progress is not None,
                     negotiation=negotiation,
+                    config=OVERLAY_FETCH_CONFIG if lender is not None else (),
                 ),
                 git_dir=git_dir,
                 on_progress=on_progress,

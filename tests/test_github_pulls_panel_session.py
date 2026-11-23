@@ -43,7 +43,11 @@ from metabrowser import server
 from metabrowser.builtin_plugins.github import gh, pull_list, pull_list_refresh, pulls
 from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import CATALOG_PROJECTION
-from metabrowser.builtin_plugins.github.pull_list import ListedRepository, write_list_refresh
+from metabrowser.builtin_plugins.github.pull_list import (
+    ListedRepository,
+    read_list_refresh,
+    write_list_refresh,
+)
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.cache.acquire import acquire_source
@@ -61,8 +65,10 @@ from tests.github_pull_fixture import (
     DEFAULT_BRANCH,
     FETCHED_AT,
     Origin,
+    catalog_entries,
     generated_item,
     install_fake_gh,
+    list_page,
     logged_gh_calls,
     scenario,
     seed_catalog,
@@ -250,6 +256,48 @@ def _record(
             provider_calls["due metadata refresh"] = logged_gh_calls(tmp_path)
             assert read() == recorded["refreshed"]
             provider_calls["fresh cached revisit"] = logged_gh_calls(tmp_path)
+
+            # The list probe, inside the window of that scan: an automatic ask that finds
+            # GitHub's newest pull request in the catalog starts nothing and moves
+            # `checked_at`, and one that finds a change starts the delta scan at once. The
+            # catalog, its stamp, and the clock are then put back for the stories that follow.
+            probed_catalog = home / "sources" / published.slug / "pulls" / "catalog.sqlite3"
+            before_probes = probed_catalog.read_bytes()
+            stamp_before = read_list_refresh(home, published.slug, "all")
+            assert stamp_before is not None
+            scanned_at = clock[0]
+            clock[0] = scanned_at + timedelta(seconds=10)
+            recorded["probe_unchanged"] = ask(state="all", target=500, background=True)
+            unchanged = recorded["probe_unchanged"]["body"]
+            assert (unchanged["refresh"], unchanged["pulls"]["checked_at"]) == (
+                "not_due",
+                utc_stamp(clock[0]),
+            )
+            clock[0] = scanned_at + timedelta(seconds=20)
+            listed = [
+                *online["api"][list_page("all")]["body"],
+                *online["api"][list_page("all", 2)]["body"],
+            ]
+            retitled = [
+                {**item, "title": "Retitled between scans", "updated_at": utc_stamp(clock[0])}
+                if item["number"] == 106
+                else item
+                for item in listed
+            ]
+            answering({**online, "api": {**online["api"], **catalog_entries(retitled)}})
+            recorded["probe_changed"] = ask(state="all", target=500, background=True)
+            assert recorded["probe_changed"]["body"]["refresh"] == "started"
+            settled()
+            recorded["probe_scanned"] = read()
+            recorded["probe_scanned_more"] = read(
+                after=str(recorded["probe_scanned"]["body"]["next_after"]), limit="2"
+            )
+            assert recorded["probe_scanned"]["body"]["rows"][0]["title"] == "Retitled between scans"
+            provider_calls["list probes"] = logged_gh_calls(tmp_path)
+            answering(online)
+            probed_catalog.write_bytes(before_probes)
+            write_list_refresh(home, published.slug, "all", stamp_before)
+            clock[0] = scanned_at
 
             # Two refusals the real worker reaches before asking GitHub anything: a catalog a
             # newer release wrote, and one whose versions cannot be read. Each is asked for

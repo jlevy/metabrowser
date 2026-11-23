@@ -156,7 +156,7 @@ $ node tests/dom/source-freshness-session.js
         "GET /api/source/status If-None-Match: \"s2\"",
         "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 1,
       "repaints": 1,
       "paint": {
@@ -173,7 +173,7 @@ $ node tests/dom/source-freshness-session.js
         "GET /api/source/status",
         "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/g1-R09ORS5tZA\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -193,7 +193,7 @@ $ node tests/dom/source-freshness-session.js
         "GET /api/source/status",
         "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 2,
       "paint": {
@@ -207,9 +207,9 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "a refused follow is not asked again on the next poll",
       "requests": [
-        "GET /api/source/status If-None-Match: \"s1\""
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 0,
       "paint": {
@@ -223,7 +223,7 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "the reload a refused follow offers",
       "requests": [],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 1,
       "repaints": 0,
       "paint": {
@@ -237,9 +237,9 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "another tab switched the pin",
       "requests": [
-        "GET /api/source/status If-None-Match: \"s1\""
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -253,7 +253,7 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "reload after a switch elsewhere",
       "requests": [],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 1,
       "repaints": 0,
       "paint": {
@@ -267,9 +267,10 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "switched before the first poll",
       "requests": [
-        "GET /api/source/status"
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -300,9 +301,10 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "the fetch brought the selection; the page goes to it",
       "requests": [
-        "GET /api/source/status"
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -319,9 +321,9 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "a page goes to a selection once",
       "requests": [
-        "GET /api/source/status If-None-Match: \"s2\""
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 0,
       "paint": {
@@ -335,9 +337,10 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "the address is not on the origin",
       "requests": [
-        "GET /api/source/status"
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -351,9 +354,10 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "the address could not be fetched",
       "requests": [
-        "GET /api/source/status"
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -383,7 +387,7 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "inside the freshness window a missing commit starts no fetch",
       "requests": [],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 0,
       "paint": {
@@ -454,7 +458,7 @@ $ node tests/dom/source-freshness-session.js
         "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}",
         "GET /api/git/commit/92b31b0785485bd9eaa9619d198a779c2699295d"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 2,
       "paint": {
@@ -476,7 +480,7 @@ $ node tests/dom/source-freshness-session.js
         "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}",
         "GET /api/git/commit/0123456789abcdef0123456789abcdef01234567"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 2,
       "paint": {
@@ -501,7 +505,7 @@ $ node tests/dom/source-freshness-session.js
         "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}",
         "GET /api/git/commit/92b31b0785485bd9eaa9619d198a779c2699295d"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 2,
       "paint": {
@@ -546,9 +550,10 @@ $ node tests/dom/source-freshness-session.js
       "step": "no fetch of the mirror ran, and the view does not say one did",
       "requests": [
         "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}",
         "GET /api/git/commit/0123456789abcdef0123456789abcdef01234567"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -595,7 +600,7 @@ $ node tests/dom/source-freshness-session.js
         "GET /api/source/status",
         "GET /api/git/commit/0123456789abcdef0123456789abcdef01234567"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -618,7 +623,7 @@ $ node tests/dom/source-freshness-session.js
       "requests": [
         "GET /api/source/status"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -663,9 +668,10 @@ $ node tests/dom/source-freshness-session.js
       "step": "the queue had no room for the pull request's refresh",
       "requests": [
         "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}",
         "GET /api/git/commit/0123456789abcdef0123456789abcdef01234567"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -709,9 +715,10 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "the origin no longer shows the repository",
       "requests": [
-        "GET /api/source/status"
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -725,9 +732,10 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "a refresh failed; the pin is still served",
       "requests": [
-        "GET /api/source/status"
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -759,9 +767,10 @@ $ node tests/dom/source-freshness-session.js
       "step": "a stale page whose refresh fails asks once",
       "requests": [
         "GET /api/source/status",
-        "GET /api/source/status If-None-Match: \"s2\""
+        "POST /api/source/refresh {\"for\":\"page\"}",
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -775,7 +784,7 @@ $ node tests/dom/source-freshness-session.js
     {
       "step": "shown again, a stale page asks again",
       "requests": [
-        "GET /api/source/status If-None-Match: \"s2\"",
+        "GET /api/source/status",
         "POST /api/source/refresh {}"
       ],
       "timer": "fast",
@@ -795,7 +804,7 @@ $ node tests/dom/source-freshness-session.js
         "GET /api/source/status",
         "POST /api/source/refresh {}"
       ],
-      "timer": "slow",
+      "timer": "ask",
       "reloads": 0,
       "repaints": 1,
       "paint": {
@@ -999,6 +1008,598 @@ $ node tests/dom/source-freshness-session.js
       "code": "history_stale",
       "initial": true,
       "means": "failed"
+    }
+  ]
+}
+? 0
+```
+
+## A Page’s Own Ask
+
+A page on one of the origin’s branches makes its own ask while it is visible,
+`POST /api/source/refresh` with `{"for": "page"}`, with its first status and then as
+often as the status’s `probe_every_s` says (`ask` in the `timer` column).
+The server asks the origin where the branch is and answers the status, so the ask is the
+page’s poll too; a hidden page sends none.
+A probe that finds a push starts the fetch at once, and the page polls quickly until it
+ends and then follows its branch.
+
+A fetch nobody asked for is quiet: the one the ask starts once a window, and the one a
+server runs by itself while no page asks.
+The status says so (`refresh_quiet`), and the row repaints nothing for it, so it keeps
+its words and its button and announces nothing.
+A server that refuses the ask is polled instead, one that stops answering is reported as
+a failed poll is, and a page on a commit opened by its ID sends no ask.
+A commit view that waits for the first status does not wait for the first ask, which the
+server may hold for as long as a probe takes (`answeredBeforeTheAsk`).
+
+```console
+$ node tests/dom/source-freshness-session.js asks
+{
+  "part": "asks",
+  "steps": [
+    {
+      "step": "a page on a branch asks with its first status",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "an unchanged branch: the ask is the poll, and nothing repaints",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a hidden page asks nothing",
+      "requests": [],
+      "timer": null,
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "shown again, the page asks at once",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the origin moved the branch: the fetch starts at once",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the fetch brought the push; the page follows its branch",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}"
+      ],
+      "timer": "ask",
+      "reloads": 1,
+      "repaints": 1,
+      "paint": {
+        "label": "Updating to topic…",
+        "tone": "refreshing",
+        "detail": "topic is now at 0d434c3, and this page follows it.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "once a window the mirror is fetched, and the row says nothing",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the quiet fetch ended, and the row still says nothing new",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a refused ask says nothing, and the page polls instead",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the poll after a refused ask",
+      "requests": [
+        "GET /api/source/status If-None-Match: \"s1\""
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the server stopped answering the page's asks",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": "The server did not answer."
+      }
+    },
+    {
+      "step": "a page on a commit sends no ask of its own",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a page on a commit polls slowly",
+      "requests": [
+        "GET /api/source/status If-None-Match: \"s1\""
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the server's own fetch says nothing on a page that is open",
+      "requests": [
+        "GET /api/source/status If-None-Match: \"s1\""
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a missing commit does not wait for the page's first ask",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": null,
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      },
+      "commit": {
+        "repaints": 1,
+        "state": "not_found",
+        "title": "Commit not found · fetched 5 min ago",
+        "detail": "This commit is not in the mirror as fetched 5 min ago.",
+        "offer": "[Retry]"
+      },
+      "answeredBeforeTheAsk": true
+    },
+    {
+      "step": "the page's first ask is answered afterwards",
+      "requests": [],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      },
+      "commit": {
+        "repaints": 0,
+        "state": "not_found",
+        "title": "Commit not found · fetched 5 min ago",
+        "detail": "This commit is not in the mirror as fetched 5 min ago.",
+        "offer": "[Retry]"
+      }
+    }
+  ]
+}
+? 0
+```
+
+A repository folder that keeps a store of its checkout’s origin has the row on every
+page, its working tree’s too.
+What is fetched there is Metabrowser’s store of the origin, never the checkout, and the
+row says so where a mirror’s says “mirror”.
+A page that shows nothing of the store, the working tree’s or one of the checkout’s own
+revisions, has a store grown old fetched by its own quiet ask, once: nothing on the page
+can change when that fetch ends, so the row does not say “Refreshing…” for it.
+The reader’s own Refresh does, and so does a page on one of the origin’s branches.
+A fetch that failed says the checkout is unchanged.
+The row offers no reload on a folder’s page: its ref selector does.
+The statuses are a real folder’s, recorded in
+`tests/fixtures/source-ref-selector-origin-responses.json` by
+`tests/test_source_ref_selector_origin_session.py`.
+
+```console
+$ node tests/dom/source-freshness-session.js folder
+{
+  "part": "folder",
+  "steps": [
+    {
+      "step": "the working tree's page, its origin's store grown old, asks quietly, once",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Origin fetched 6 d ago",
+        "tone": "quiet",
+        "detail": "Metabrowser's store of this checkout's origin was last fetched 6 d ago. The checkout itself is never fetched into.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the store was fetched; the row says when, and nothing reloads",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Origin fetched 5 d ago",
+        "tone": "quiet",
+        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the reader's own Refresh says so while it runs",
+      "requests": [
+        "POST /api/source/refresh {}"
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin into Metabrowser's store. It was last fetched 5 d ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a fetch that failed says the checkout is unchanged",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refresh failed · origin fetched 5 d ago",
+        "tone": "warning",
+        "detail": "The refresh failed. The origin's branches and tags are as last fetched, and the checkout is unchanged.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "an origin branch's page names the store, not a mirror",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Origin fetched 5 d ago",
+        "tone": "quiet",
+        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the server shows the working tree again: this row offers no reload",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Origin fetched 6 d ago",
+        "tone": "quiet",
+        "detail": "Metabrowser's store of this checkout's origin was last fetched 6 d ago. The checkout itself is never fetched into.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "an origin branch's page, its store grown old, asks loudly",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {}"
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin into Metabrowser's store. It was last fetched 5 d ago.",
+        "offer": null,
+        "error": null
+      }
+    }
+  ]
+}
+? 0
+```
+
+A repository folder’s page on one of the checkout’s own branches reads that branch, not
+one commit of it, as a mirror’s page on a branch does.
+Its status says how often to ask (`probe_every_s`), and the ask is the page’s own,
+`{"for": "page"}`: for it the server reads where the branch is in the checkout, fetching
+nothing, and serves the new commit when the reader’s commit or fetch moved it.
+The page then asks the pin route for its ref with its own address and reloads there.
+A folder with no store of an origin has nothing refreshable and so no row, and follows
+all the same: the row is drawn only while the page goes to the new commit, or to say
+that a follow was refused, which a press asks for again.
+A hidden page asks nothing.
+A branch the reader deletes while it is shown keeps its last commit served, and its
+status’s `latest` is null: a quiet row says the branch no longer exists in the checkout
+and the page shows its last commit, and with a store the store’s row says it too.
+The answers are a real folder’s, from the same recording.
+
+```console
+$ node tests/dom/source-freshness-session.js checkout-branch
+{
+  "part": "checkout-branch",
+  "steps": [
+    {
+      "step": "a page on the checkout's own branch asks where the branch is",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Origin fetched 5 d ago",
+        "tone": "quiet",
+        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the branch is where it was: nothing repaints, and it asks again",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Origin fetched 5 d ago",
+        "tone": "quiet",
+        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the reader committed on the branch; the page follows it",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}",
+        "POST /api/source/pin {\"ref\":\"refs/heads/trunk\",\"view\":\"/view/g1-bQ\"}"
+      ],
+      "timer": "ask",
+      "reloads": 1,
+      "repaints": 1,
+      "paint": {
+        "label": "Updating to trunk…",
+        "tone": "refreshing",
+        "detail": "trunk is now at 1667009, and this page follows it.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "with no store of an origin there is no row, and the page still asks",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": null
+    },
+    {
+      "step": "a follow the server refused says the branch moved, and why",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}",
+        "POST /api/source/pin {\"ref\":\"refs/heads/trunk\",\"view\":\"/view/g1-bQ\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 2,
+      "paint": {
+        "label": "trunk moved",
+        "tone": "warning",
+        "detail": "trunk is now at 732574d, and this page shows the commit before.",
+        "offer": null,
+        "error": "Could not follow trunk to its new commit."
+      }
+    },
+    {
+      "step": "pressed, the page asks again and follows",
+      "requests": [
+        "POST /api/source/pin {\"ref\":\"refs/heads/trunk\",\"view\":\"/view/g1-bQ\"}"
+      ],
+      "timer": "ask",
+      "reloads": 1,
+      "repaints": 1,
+      "paint": {
+        "label": "Updating to trunk…",
+        "tone": "refreshing",
+        "detail": "trunk is now at 732574d, and this page follows it.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a hidden page asks nothing",
+      "requests": [],
+      "timer": null,
+      "reloads": 0,
+      "repaints": 0,
+      "paint": null
+    },
+    {
+      "step": "the reader deleted the branch: the row says its last commit stays",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 2,
+      "paint": {
+        "label": "topic no longer exists",
+        "tone": "quiet",
+        "detail": "topic no longer exists in this checkout; this page shows its last commit, 732574d.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "with a store, the store's row says the branch is gone",
+      "paint": {
+        "label": "trunk no longer exists · origin fetched 5 d ago",
+        "tone": "quiet",
+        "detail": "trunk no longer exists in this checkout; this page shows its last commit, 0b51e01. Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into."
+      }
     }
   ]
 }

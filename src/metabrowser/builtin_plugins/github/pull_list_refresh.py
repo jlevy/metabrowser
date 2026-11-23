@@ -80,6 +80,7 @@ _COMMIT_ID: Final = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 # same cost of 1 (2026-11-11).
 _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
   viewer { login }
+  rateLimit { cost }
   repository(owner:$owner,name:$name) {
     id
     all:pullRequests(first:1) { totalCount }
@@ -299,11 +300,14 @@ def backfill_admitted() -> bool:
     """Whether GitHub's GraphQL budget admits the backfill past every reader's prefix.
 
     That backfill is background work, which :mod:`.gh_budget` admits only above its floor
-    and outside a rate hold. A reader's own pages, its filter's prefix and the scan that
-    keeps the list current, are never asked.
+    and outside a rate hold, and the catalog's speculative work, which it admits only within
+    its part of the share (``CATALOG_SPECULATIVE_CORE_PER_HOUR``). A reader's own pages, its
+    filter's prefix and the scan that keeps the list current, are never asked.
     """
 
-    return gh_budget.admission(("graphql",), now=pull_list.utc_now()).admitted
+    return gh_budget.admission(
+        ("graphql",), now=pull_list.utc_now(), speculative=True, catalog=True
+    ).admitted
 
 
 def _next_scan(
@@ -465,9 +469,20 @@ async def refresh_pull_list(
                         return state
                     # A delta scan vouches for what GitHub had when it asked for its first page.
                     asked_at = utc_stamp(pull_list.utc_now())
-                    page = await _read_page(
-                        repository, "all" if updated else scan, cursor, login=login, updated=updated
-                    )
+                    # A backfill page is one no reader asked for: the catalog's speculative
+                    # work, held at its part of the share (:mod:`.gh_budget`).
+                    with (
+                        gh_budget.speculative(catalog=True)
+                        if backfill
+                        else contextlib.nullcontext()
+                    ):
+                        page = await _read_page(
+                            repository,
+                            "all" if updated else scan,
+                            cursor,
+                            login=login,
+                            updated=updated,
+                        )
                     # The query's viewer identifies the reader of these rows. A settings
                     # switch after that response cannot relabel it; the next page must
                     # still match this job's reader before it can advance the checkpoint.

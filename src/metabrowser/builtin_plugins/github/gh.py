@@ -9,8 +9,10 @@ repository data or, for ``auth status``, the account's scopes.
 
 :func:`gh_api` issues one ``gh api --hostname github.com --include`` request and returns
 the status, headers, and body; :func:`gh_active_account` reads the active github.com
-account, with its token's source and scopes where gh reports them, and :func:`gh_account`
-its login. Each raises :class:`GhError` with a typed ``state`` a user can act on.
+account from ``gh auth status``, with its token's source and scopes where gh reports
+them, and :func:`gh_account` its login alone, from a conditional ``gh api user`` that
+GitHub does not count against the rate limit while the login is the same. Each raises
+:class:`GhError` with a typed ``state`` a user can act on.
 :func:`gh_version` reads the version; :mod:`.gh_status` combines them into the one
 status check that ``metab --doctor``, a route, and the checks before GitHub work read. Nothing here
 paginates, caches, or shares a read: callers name every page, as ``gh api --paginate``
@@ -80,7 +82,10 @@ _DROPPED_ENV: Final[tuple[str, ...]] = (
 )
 # gh's documented exit status when a command needs authentication.
 _GH_EXIT_AUTH: Final = 4
-_API_PATH = re.compile(r"^repos/[A-Za-z0-9._/-]+(?:\?[A-Za-z0-9_=&.-]*)?$")
+# The one path outside a repository that :func:`gh_api` reads: the account of the token
+# gh uses, for :func:`gh_account`.
+ACCOUNT_PATH: Final = "user"
+_API_PATH = re.compile(r"^(?:user|repos/[A-Za-z0-9._/-]+(?:\?[A-Za-z0-9_=&.-]*)?)$")
 _ETAG = re.compile(r'^(?:W/)?"[\x21\x23-\x7e]{1,256}"$')
 _LOGIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
 _STATUS_LINE = re.compile(rb"^HTTP/[0-9.]+ ([0-9]{3})(?: [^\r\n]*)?$")
@@ -718,14 +723,15 @@ def _server_message(body: bytes) -> str | None:
 async def gh_api(path: str, *, etag: str | None = None, now: datetime | None = None) -> GhResponse:
     """``GET`` one github.com API *path*; a ``304`` is returned, other failures raise.
 
-    *path* is built by the caller from validated parts and is checked again here, so no
-    user text reaches gh as an option. *etag*, when given, is sent as ``If-None-Match``.
+    *path* is a repository's, ``repos/…``, or :data:`ACCOUNT_PATH`, and nothing else. It
+    is built by the caller from validated parts and is checked again here, so no user text
+    reaches gh as an option. *etag*, when given, is sent as ``If-None-Match``.
     """
 
     if not _API_PATH.match(path) or any(
         part in {"", ".", ".."} for part in path.split("?", 1)[0].split("/")
     ):
-        raise ValueError("not a repository API path")
+        raise ValueError("not an API path Metabrowser reads")
     args = [
         "api",
         "--hostname",
@@ -747,6 +753,8 @@ async def gh_api(path: str, *, etag: str | None = None, now: datetime | None = N
         raise _failure_without_response(completed)
     moment = now or datetime.now(UTC)
     gh_budget.observe(response.headers, resource="core")
+    # GitHub counts every answer but a 304 against the rate limit, refusals included.
+    gh_budget.spent(0 if response.status == 304 else 1, now=moment)
     refused = _refusal(response, now=moment)
     if refused is not None:
         if refused.state == "rate_limited":
@@ -814,6 +822,27 @@ def _is_one_read_only_query(document: str) -> bool:
     return depth == 0 and starting and operations == ["query"]
 
 
+# The most one query is taken to have cost, whatever its answer says: GitHub's own limit
+# on a query is 500,000 nodes, 5,000 points at a hundred nodes a point.
+_MAX_GRAPHQL_COST: Final = 5000
+
+
+def _graphql_cost(payload: object) -> int:
+    """What GitHub says the query cost, ``rateLimit { cost }``, or one when it does not say.
+
+    *payload* is the answer already parsed, ``None`` for one that could not be: a catalog
+    page is the largest body the plugin reads, so it is parsed once (review A10 of #737).
+    Each of the plugin's queries asks for it, and each reported 1 on 2026-11-22: a catalog
+    page by either order, core batches of 8 and of 25, a timeline page, and one core
+    (cli/cli and jlevy/metabrowser, gh 2.98.0).
+    """
+
+    data = payload.get("data") if isinstance(payload, dict) else None
+    limit = data.get("rateLimit") if isinstance(data, dict) else None
+    cost = limit.get("cost") if isinstance(limit, dict) else None
+    return cost if type(cost) is int and 0 <= cost <= _MAX_GRAPHQL_COST else 1
+
+
 async def gh_graphql(
     query: str,
     variables: Mapping[str, str | int | bool | None],
@@ -848,10 +877,16 @@ async def gh_graphql(
     gh_budget.observe(response.headers, resource="graphql")
     refused = _refusal(response, now=moment)
     if refused is not None:
+        gh_budget.spent(1, now=moment)
         if refused.state == "rate_limited":
             gh_budget.hold(refused.reset_at, now=moment)
         raise refused
-    payload = response.json()
+    payload: object = None
+    try:
+        payload = response.json()
+    finally:
+        # Counted before anything below can refuse the answer: GitHub charged for it.
+        gh_budget.spent(_graphql_cost(payload), now=moment)
     if not isinstance(payload, dict):
         raise GhError("GitHub answered with an unreadable GraphQL response")
     errors = payload.get("errors")
@@ -1042,10 +1077,79 @@ async def gh_active_account(*, timeout_s: float = GH_TIMEOUT_S) -> GhAccount:
     raise _failure_without_response(completed)
 
 
-async def gh_account() -> str:
-    """The active github.com login, from ``gh auth status --active --json hosts``."""
+@dataclass(frozen=True, slots=True)
+class _KnownLogin:
+    """The login GitHub last named for a host's token, and that answer's ETag."""
 
-    return (await gh_active_account()).login
+    etag: str
+    login: str
+
+
+# By host, though github.com is the only one read: this process's last ``200`` from
+# ``gh api user``. A switch to another account sends its token with the old ETag. That
+# ETag names another account's body, so GitHub should answer ``200`` with the new login;
+# this follows from what an ETag is and was not measured, the machine that measured the
+# ``304`` having one account.
+_KNOWN_LOGINS: dict[str, _KnownLogin] = {}
+
+
+def forget_account() -> None:
+    """Forget the login GitHub last named, as a new process knows none; for tests."""
+
+    _KNOWN_LOGINS.clear()
+
+
+async def gh_account() -> str:
+    """The login of the github.com account gh is signed in to, from ``gh api user``.
+
+    The request carries the ETag of this process's last answer, and a ``304`` means the
+    same login. GitHub does not count a ``304`` against the rate limit, where
+    ``gh auth status`` spent one ``core`` call each time: on 2026-11-22 with gh 2.98.0 a
+    conditional ``gh api user`` answered ``304`` in 4 of 4 trials and moved the account's
+    ``used`` by 0 in 3 of them, the fourth by 1 with another client spending beside it,
+    and ``gh auth status`` moved it by 1 in 3 of 3
+    (docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md). Every
+    job's account check is this one; :func:`gh_active_account` is the status check's,
+    since only ``gh auth status`` reports the token's source and scopes.
+
+    Either answer names the account to :mod:`.gh_budget`. Two failures ask
+    ``gh auth status`` instead, so each ends as it did before this check was conditional.
+    When gh or GitHub says no account is signed in, it says why: a refused token in an
+    environment variable, or the sign-in command. When GitHub cannot be reached, it
+    names the account gh has saved, which needs no network, so a switch of account is
+    still seen offline; the read that follows then fails for the network itself.
+    """
+
+    known = _KNOWN_LOGINS.get(GH_HOSTNAME)
+    try:
+        response = await gh_api(ACCOUNT_PATH, etag=known.etag if known else None)
+    except GhError as exc:
+        if exc.state == "not_found_or_private":
+            raise GhError("GitHub would not name the account gh is signed in to") from exc
+        if exc.state not in {"not_logged_in", "network_error"}:
+            raise
+        account = await gh_active_account()
+        if exc.state == "network_error":
+            return account.login
+        if account.problem is not None:
+            raise account.problem from exc
+        raise
+    if response.status == 304:
+        if known is None:
+            raise GhError("GitHub answered 304 to a request that was not conditional")
+        login = known.login
+    else:
+        payload = response.json()
+        named: object = payload.get("login") if isinstance(payload, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        if not isinstance(named, str) or not _LOGIN.match(named):
+            raise GhError("GitHub named an account that is not a GitHub login")
+        login = named
+        if response.etag is not None:
+            _KNOWN_LOGINS[GH_HOSTNAME] = _KnownLogin(response.etag, login)
+        else:
+            _KNOWN_LOGINS.pop(GH_HOSTNAME, None)
+    gh_budget.note_account(login)
+    return login
 
 
 # ``gh --version`` prints ``gh version 2.98.0 (2026-08-20)`` and then a release link.
@@ -1069,6 +1173,7 @@ async def gh_version(*, timeout_s: float) -> str | None:
 
 
 __all__ = [
+    "ACCOUNT_PATH",
     "ENVIRONMENT_TOKENS",
     "GH_API_MAX_BYTES",
     "GH_API_TIMEOUT_S",
@@ -1083,6 +1188,7 @@ __all__ = [
     "GhServerError",
     "GhTokenRefusedError",
     "GhUnavailableError",
+    "forget_account",
     "gh_account",
     "gh_active_account",
     "gh_api",

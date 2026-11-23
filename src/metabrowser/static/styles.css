@@ -3163,6 +3163,12 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   border-radius: var(--radius-chrome);
   color: var(--muted);
 }
+/* Where the reader's own `origin/<branch>` is not where the origin's branch is: the same
+   outlined tag in a warning's ink, since it is a state to notice and not an error. */
+.source-ref-selector-own {
+  border-color: var(--status-warning-text);
+  color: var(--status-warning-text);
+}
 /* A ref's commit as every line names one: its short ID in the commit-ID face and gray
    (`.git-commit-sha`) beside the ref's name, then its age, whose tier sets its colour
    and weight (`.age-*`). Neither shrinks: the name gives way first. The age ends the row
@@ -3188,6 +3194,11 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 }
 .source-ref-selector-error {
   color: var(--status-error-text);
+}
+/* What a checkout's list says of the store its origin's refs are read from: a note, and
+   a warning's colour when the origin could not be fetched. */
+.source-ref-selector-origin[data-tone="warning"] {
+  color: var(--status-warning-text);
 }
 /* A checkout's working tree: a row like a ref's, above the lists and ruled off from
    them, since it is the one choice that is not a ref. The folder's path stands where a

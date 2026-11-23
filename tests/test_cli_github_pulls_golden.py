@@ -33,7 +33,7 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh, pull_list, pull_list_route, pulls
+from metabrowser.builtin_plugins.github import gh, gh_budget, pull_list, pull_list_route, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import CATALOG_PROJECTION, read_catalog
 from metabrowser.builtin_plugins.github.pull_record import (
     MAX_REFRESH_MESSAGE_CHARS,
@@ -46,6 +46,7 @@ from tests.github_pull_fixture import (
     ANOTHER_READER,
     CANONICAL,
     FETCHED_AT,
+    LIST_PROBE_PATH,
     Origin,
     account,
     catalog_entries,
@@ -79,6 +80,7 @@ PULLS = "/api/plugin/github/pulls"
 REFRESH = "/api/plugin/github/pulls-refresh"
 PREPARE = "/api/plugin/github/pull-cores-prepare"
 CLEAR = "/api/plugin/github/cache-clear"
+PROBE = LIST_PROBE_PATH
 
 
 class _Session:
@@ -187,6 +189,21 @@ def _watch_summary(result: Invocation) -> str:
         f"status: 200 {envelope['last_refresh']['outcome']}, "
         f"{envelope['fetched']} cached PRs\n"
     )
+
+
+def _request(tmp_path: Path, body: dict[str, Any]) -> str:
+    path = tmp_path / "request.json"
+    path.write_text(json.dumps(body) + "\n", encoding="utf-8")
+    return str(path)
+
+
+def _acknowledged(result: Invocation) -> str:
+    """A preparation's acknowledgement, without the envelope it ends with."""
+
+    _, status, rest = result.stdout.partition("status: 202\n")
+    assert status, result.stdout
+    ack, _ = json.JSONDecoder().raw_decode(rest)
+    return f"status: 202\n{json.dumps(ack)}\n"
 
 
 def _without_assets(result: Invocation) -> str:
@@ -465,6 +482,60 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
     }
     assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
 
+    session.say(
+        "GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter automatic work "
+        "leaves to the reader. A batch that would read GitHub is held, with no request; one "
+        "the cache covers is still answered."
+    )
+    gh_budget.observe(
+        {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "1000",
+            "x-ratelimit-reset": str(int((session.now + timedelta(hours=1)).timestamp())),
+        },
+        resource="graphql",
+    )
+    window = {"id": "held-8", "generation": current_catalog.generation("all")}
+    held_batch = session.post({"state": "all", "window": window, "numbers": [8]}, route=PREPARE)
+    assert held_batch.exit_code == 0, held_batch.stderr
+    assert held_batch.payload()["preparation"] == "held"
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
+    covered = session.post({"state": "all", "window": window, "numbers": [7]}, route=PREPARE)
+    assert covered.payload()["preparation"] == "ready"
+    session.say(
+        "The same batch for rows on screen is not held by the floor, which is a reserve for "
+        "the reader: what the reader is looking at is still read."
+    )
+    eighth = graph_core_data(pull_bodies(session.origin)[8]["pull"], reader=ANOTHER_READER)
+    eighth["repository"]["p0"] = eighth["repository"].pop("pull")
+    key8 = "graphql:visible-cores:8"
+    session.answer(
+        _api(_api(replacement, key, ok(key, {"data": data})), key8, ok(key8, {"data": eighth}))
+    )
+    gh_budget.observe(
+        {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "1000",
+            "x-ratelimit-reset": str(int((session.now + timedelta(hours=1)).timestamp())),
+        },
+        resource="graphql",
+    )
+    visible = {"state": "all", "window": window, "numbers": [8], "lane": "visible"}
+    on_screen = session._run(  # pyright: ignore[reportPrivateUsage]
+        CANONICAL,
+        "--api",
+        PREPARE,
+        "--data",
+        _request(tmp_path, visible),
+        project=_acknowledged,
+        body=[json.dumps(visible)],
+    )
+    assert on_screen.exit_code == 0, on_screen.stderr
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        "gh api graphql visible-cores numbers=8"
+    ]
+    gh_budget.forget()
+
     cached = session.local(f"/api/cache/source/{origin_identity(CANONICAL).slug}")
     assert cached.exit_code == 0, cached.stderr
 
@@ -635,7 +706,12 @@ def test_golden_pull_list_failures(
     refused_catalog = _after(refused)
     assert refused_catalog["last_refresh"]["outcome"] == "network_error"
     assert refused_catalog["fetched"] == baseline["fetched"]
-    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == ["gh auth status"]
+    # The account check cannot reach GitHub, and gh auth status cannot name the token's
+    # login without it.
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        "gh api user",
+        "gh auth status",
+    ]
 
     session.say("A reconnect can refresh metadata immediately once GitHub is reachable.")
     session.answer(online)
@@ -643,7 +719,7 @@ def test_golden_pull_list_failures(
     assert recovered.exit_code == 0
     assert _after(recovered)["last_refresh"]["outcome"] == "succeeded"
     assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
-        "gh auth status",
+        "gh api user",
         "gh api graphql catalog state=updated cursor=start",
     ]
 
@@ -732,11 +808,17 @@ def test_golden_pull_list_backfill_waits_for_the_budget_floor_and_pages_past_eve
 
     session.advance(61)
     session.say(
-        "The scan that keeps the list current observes 4,000 points left, and the backfill "
-        "resumes from the top to the oldest pull request in the same job."
+        "The scan that keeps the list current is automatic work too, and waits below the "
+        "floor: an ask a window later starts nothing."
     )
     session.answer(_budget(online, 4000))
-    resumed = session.post({"state": "closed", "target": 400}, summarize=True)
+    waiting = session.post({"state": "closed", "target": 400, "background": True})
+    assert json.loads(waiting.stdout.split("status: 200\n")[1])["refresh"] == "not_due"
+    session.say(
+        "A reader's Reload is never held. Its scan observes 4,000 points left, and the "
+        "backfill resumes from the top to the oldest pull request in the same job."
+    )
+    resumed = session.post({"state": "closed", "target": 400, "retry": True}, summarize=True)
     assert resumed.exit_code == 0, resumed.stderr
     calls = _graphql(session)
     assert calls[0] == "gh api graphql catalog state=updated cursor=start"
@@ -760,6 +842,68 @@ def test_golden_pull_list_backfill_waits_for_the_budget_floor_and_pages_past_eve
     rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     check_golden("cli-github-pulls-backfill.txt", rendered)
+
+
+def test_golden_pull_list_probe_answers_an_automatic_ask(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """An automatic ask inside the window probes the list, and scans only for a change.
+
+    Each command is its own process, so each probe here is a first one, sent with no ETag;
+    ``tests/test_github_pull_list_probe.py`` holds the ``304``, the ETag-only ``200``, and
+    the cadence one server keeps across asks.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    known = {
+        number: list_item(parts["pull"]) for number, parts in pull_bodies(session.origin).items()
+    }
+    items = [known[number] for number in (10, 9, 8, 7)]
+    online = scenario(session.origin)
+    online = {**online, "api": {**online["api"], **catalog_entries(items)}}
+    session.answer(online)
+    assert _after(session.post({}, summarize=True))["complete"]
+
+    session.advance(20)
+    session.say(
+        "An automatic ask finds nothing due and probes: one conditional read of the issue or "
+        "pull request updated last, with no account check. The catalog holds that row, so "
+        "nothing starts, and `checked_at` says when GitHub confirmed the list."
+    )
+    unchanged = session.post({"background": True})
+    assert unchanged.exit_code == 0, unchanged.stderr
+    answer = json.loads(unchanged.stdout.split("status: 200\n")[1])
+    assert (answer["refresh"], answer["pulls"]["state"]) == ("not_due", "current")
+    assert answer["pulls"]["checked_at"] == f"{session.now:%Y-%m-%dT%H:%M:%SZ}"
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [f"gh api {PROBE}"]
+
+    session.advance(10)
+    session.say(
+        "GitHub retitles #10. The next ask's probe finds a row the catalog lacks and starts "
+        "the delta scan at once, 30 s into a 60 s window."
+    )
+    changed = dict(
+        known[10], title="Retitled between scans", updated_at=f"{session.now:%Y-%m-%dT%H:%M:%SZ}"
+    )
+    moved_items = [changed if item["number"] == 10 else item for item in items]
+    session.answer({**online, "api": {**online["api"], **catalog_entries(moved_items)}})
+    scanned = session.post({"background": True}, summarize=True)
+    assert scanned.exit_code == 0, scanned.stderr
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        f"gh api {PROBE}",
+        "gh api user",
+        "gh api graphql catalog state=updated cursor=start",
+    ]
+    assert session.get("?state=all&limit=1").payload()["rows"][0]["title"] == changed["title"]
+
+    session.say("A reader's Reload never probes: it scans.")
+    reloaded = session.post({"retry": True}, summarize=True)
+    assert reloaded.exit_code == 0, reloaded.stderr
+    assert PROBE not in session.blocks[-1]
+
+    rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
+    assert str(tmp_path) not in rendered and str(session.home) not in rendered
+    check_golden("cli-github-pulls-probe.txt", rendered)
 
 
 def test_a_long_invalid_version_keeps_the_clear_command_in_the_persisted_refusal(

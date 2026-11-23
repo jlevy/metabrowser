@@ -38,7 +38,7 @@ from typing import Annotated, Final, Literal, Self, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StringConstraints, model_validator
 
-from metabrowser.builtin_plugins.github import pull_list
+from metabrowser.builtin_plugins.github import gh_budget, pull_list
 from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh import GhResponse, gh_api
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, as_dict, utc_stamp
@@ -327,7 +327,8 @@ def refresh_wanted(repository: ListedRepository, *, retry: bool = False) -> bool
     """Whether an ask reads the set from GitHub now. Blocking and bounded; never contacts GitHub.
 
     Wanted when nothing is cached, once the set's last refresh is :data:`LABEL_FRESHNESS_S`
-    old, or when a reader's own *retry* asks; never while GitHub's limit holds. Only
+    old and the budget admits automatic work (:func:`.gh_budget.admission`), or when a
+    reader's own *retry* asks; never while GitHub's limit holds. Only
     ``POST github/labels-refresh`` asks, which a page sends for a label named alone that
     its envelope has no entry for, so the set is read again at most once in that age, and
     only while something asks. A failure backs off for that age too.
@@ -335,8 +336,14 @@ def refresh_wanted(repository: ListedRepository, *, retry: bool = False) -> bool
 
     if _rate_hold(repository) is not None:
         return False
+    if retry:
+        return True
     stamp = last_refresh(repository.home, repository.source, _cached(repository))
-    return retry or remaining_freshness(stamp) == 0
+    # A page's own ask is automatic work, which the budget may hold: only chip colors wait.
+    return (
+        remaining_freshness(stamp) == 0
+        and gh_budget.admission(("core",), now=pull_list.utc_now(), speculative=True).admitted
+    )
 
 
 def publish_labels(

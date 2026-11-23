@@ -1,0 +1,1252 @@
+{
+  "views": {
+    "m": "/view/m"
+  },
+  "not_fetched_remotes": {
+    "status": 200,
+    "body": {
+      "kind": "remote",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "branch",
+        "tag",
+        "remote"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/trunk",
+        "head_name": "trunk",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": {
+        "state": "absent",
+        "reason": "not_fetched",
+        "detail": "Metabrowser has not fetched this repository's origin yet.",
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false
+      },
+      "pull_requests": {
+        "state": "absent",
+        "complete": false,
+        "refreshing": false
+      },
+      "refs": [
+        {
+          "name": "origin/trunk",
+          "ref": "refs/remotes/origin/trunk",
+          "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+          "committed_at": 1577836800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        }
+      ]
+    }
+  },
+  "refused_remotes": {
+    "status": 200,
+    "body": {
+      "kind": "remote",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "branch",
+        "tag",
+        "remote"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/trunk",
+        "head_name": "trunk",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": {
+        "state": "absent",
+        "reason": "not_found_or_private",
+        "detail": "The origin was not found, or it is private and Metabrowser has no credentials for it. Metabrowser never asks for a password.",
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false
+      },
+      "pull_requests": {
+        "state": "absent",
+        "complete": false,
+        "refreshing": false
+      },
+      "refs": [
+        {
+          "name": "origin/trunk",
+          "ref": "refs/remotes/origin/trunk",
+          "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+          "committed_at": 1577836800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        }
+      ]
+    }
+  },
+  "ask_refused": {
+    "status": 200,
+    "body": {
+      "refresh": "not_due",
+      "origin": {
+        "state": "absent",
+        "reason": "not_found_or_private",
+        "detail": "The origin was not found, or it is private and Metabrowser has no credentials for it. Metabrowser never asks for a password.",
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false
+      },
+      "status": {
+        "subject": "attached_filesystem",
+        "generation": 2,
+        "pin": null,
+        "ref": null,
+        "ref_name": null,
+        "name": null,
+        "origin": null,
+        "location": null,
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": false,
+        "latest": null,
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": null,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "acquiring_remotes": {
+    "status": 200,
+    "body": {
+      "kind": "remote",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "branch",
+        "tag",
+        "remote"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/trunk",
+        "head_name": "trunk",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": {
+        "state": "acquiring",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": true
+      },
+      "pull_requests": {
+        "state": "absent",
+        "complete": false,
+        "refreshing": false
+      },
+      "refs": [
+        {
+          "name": "origin/trunk",
+          "ref": "refs/remotes/origin/trunk",
+          "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+          "committed_at": 1577836800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        }
+      ]
+    }
+  },
+  "remotes": {
+    "status": 200,
+    "body": {
+      "kind": "remote",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "branch",
+        "tag",
+        "remote"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/trunk",
+        "head_name": "trunk",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        },
+        "refreshing": false
+      },
+      "pull_requests": {
+        "state": "absent",
+        "complete": false,
+        "refreshing": false
+      },
+      "refs": [
+        {
+          "name": "origin/trunk",
+          "ref": "refs/remotes/origin/trunk",
+          "commit": "38a3045250895d3802f69658b82e47479a65c64a",
+          "committed_at": 1577836800.0,
+          "default": true,
+          "checked_out": false,
+          "current": false,
+          "checkout": {
+            "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+            "committed_at": 1577836800.0
+          }
+        },
+        {
+          "name": "origin/feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
+          "committed_at": 1577836800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false,
+          "checkout": {
+            "commit": null,
+            "committed_at": null
+          }
+        }
+      ]
+    }
+  },
+  "branches": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "branch",
+        "tag",
+        "remote"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/trunk",
+        "head_name": "trunk",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        },
+        "refreshing": false
+      },
+      "pull_requests": {
+        "state": "absent",
+        "complete": false,
+        "refreshing": false
+      },
+      "refs": [
+        {
+          "name": "trunk",
+          "ref": "refs/heads/trunk",
+          "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+          "committed_at": 1577836800.0,
+          "default": false,
+          "checked_out": true,
+          "current": false
+        }
+      ]
+    }
+  },
+  "tags": {
+    "status": 200,
+    "body": {
+      "kind": "tag",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "branch",
+        "tag",
+        "remote"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/trunk",
+        "head_name": "trunk",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        },
+        "refreshing": false
+      },
+      "pull_requests": null,
+      "refs": [
+        {
+          "name": "local-only",
+          "ref": "refs/tags/local-only",
+          "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+          "committed_at": 1577836800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        },
+        {
+          "name": "v2",
+          "ref": "refs/tags/v2",
+          "commit": "fbc8399ff0140350e67bec06078d3bbf78200119",
+          "committed_at": 1577836800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        }
+      ]
+    }
+  },
+  "ask_fresh": {
+    "status": 200,
+    "body": {
+      "refresh": "not_due",
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        },
+        "refreshing": false
+      },
+      "status": {
+        "subject": "attached_filesystem",
+        "generation": 3,
+        "pin": null,
+        "ref": null,
+        "ref_name": null,
+        "name": null,
+        "origin": null,
+        "location": null,
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": false,
+        "latest": null,
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        },
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": null,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "status_working_tree": {
+    "subject": "attached_filesystem",
+    "generation": 3,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "moved": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+  "status_stale": {
+    "subject": "attached_filesystem",
+    "generation": 3,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": true,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "ask_started": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        },
+        "refreshing": true
+      },
+      "status": {
+        "subject": "attached_filesystem",
+        "generation": 3,
+        "pin": null,
+        "ref": null,
+        "ref_name": null,
+        "name": null,
+        "origin": null,
+        "location": null,
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": false,
+        "latest": null,
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        },
+        "refreshing": true,
+        "refresh_quiet": true,
+        "stale": true,
+        "probe_every_s": null,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "remotes_fetching": {
+    "status": 200,
+    "body": {
+      "kind": "remote",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "branch",
+        "tag",
+        "remote"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/trunk",
+        "head_name": "trunk",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        },
+        "refreshing": true
+      },
+      "pull_requests": {
+        "state": "absent",
+        "complete": false,
+        "refreshing": false
+      },
+      "refs": [
+        {
+          "name": "origin/trunk",
+          "ref": "refs/remotes/origin/trunk",
+          "commit": "38a3045250895d3802f69658b82e47479a65c64a",
+          "committed_at": 1577836800.0,
+          "default": true,
+          "checked_out": false,
+          "current": false,
+          "checkout": {
+            "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+            "committed_at": 1577836800.0
+          }
+        },
+        {
+          "name": "origin/feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
+          "committed_at": 1577836800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false,
+          "checkout": {
+            "commit": null,
+            "committed_at": null
+          }
+        }
+      ]
+    }
+  },
+  "remotes_fetched": {
+    "status": 200,
+    "body": {
+      "kind": "remote",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "branch",
+        "tag",
+        "remote"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": "refs/heads/trunk",
+        "head_name": "trunk",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": false
+      },
+      "pull_requests": {
+        "state": "absent",
+        "complete": false,
+        "refreshing": false
+      },
+      "refs": [
+        {
+          "name": "origin/trunk",
+          "ref": "refs/remotes/origin/trunk",
+          "commit": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+          "committed_at": 1577836800.0,
+          "default": true,
+          "checked_out": false,
+          "current": false,
+          "checkout": {
+            "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+            "committed_at": 1577836800.0
+          }
+        },
+        {
+          "name": "origin/feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
+          "committed_at": 1577836800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false,
+          "checkout": {
+            "commit": null,
+            "committed_at": null
+          }
+        }
+      ]
+    }
+  },
+  "refresh_started": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": true
+      },
+      "status": {
+        "subject": "attached_filesystem",
+        "generation": 3,
+        "pin": null,
+        "ref": null,
+        "ref_name": null,
+        "name": null,
+        "origin": null,
+        "location": null,
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": false,
+        "latest": null,
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": true,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": null,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "status_refreshed": {
+    "subject": "attached_filesystem",
+    "generation": 3,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": "2026-09-17T13:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-17T13:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "switch_origin_branch": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 4,
+        "pin": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref": "refs/remotes/origin/trunk",
+        "ref_name": "origin/trunk",
+        "name": "checkout",
+        "origin": null,
+        "location": "/sandbox/checkout",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 5.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "origin",
+      "view_href": "/view/g1-bQ"
+    }
+  },
+  "remotes_on_origin_branch": {
+    "status": 200,
+    "body": {
+      "kind": "remote",
+      "query": "",
+      "pin": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+      "ref": "refs/remotes/origin/trunk",
+      "kinds": [
+        "branch",
+        "tag",
+        "remote"
+      ],
+      "working_tree": {
+        "current": false,
+        "head": "refs/heads/trunk",
+        "head_name": "trunk",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": false
+      },
+      "pull_requests": {
+        "state": "absent",
+        "complete": false,
+        "refreshing": false
+      },
+      "refs": [
+        {
+          "name": "origin/trunk",
+          "ref": "refs/remotes/origin/trunk",
+          "commit": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+          "committed_at": 1577836800.0,
+          "default": true,
+          "checked_out": false,
+          "current": true,
+          "checkout": {
+            "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+            "committed_at": 1577836800.0
+          }
+        },
+        {
+          "name": "origin/feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
+          "committed_at": 1577836800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false,
+          "checkout": {
+            "commit": null,
+            "committed_at": null
+          }
+        }
+      ]
+    }
+  },
+  "status_origin_branch_stale": {
+    "subject": "git_revision",
+    "generation": 4,
+    "pin": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+    "ref": "refs/remotes/origin/trunk",
+    "ref_name": "origin/trunk",
+    "name": "checkout",
+    "origin": null,
+    "location": "/sandbox/checkout",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T13:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-17T13:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": true,
+    "probe_every_s": 5.0,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "origin_branch_refresh_started": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": true
+      },
+      "status": {
+        "subject": "git_revision",
+        "generation": 4,
+        "pin": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref": "refs/remotes/origin/trunk",
+        "ref_name": "origin/trunk",
+        "name": "checkout",
+        "origin": null,
+        "location": "/sandbox/checkout",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": true,
+        "refresh_quiet": false,
+        "stale": true,
+        "probe_every_s": 5.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "switch_local_branch": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 5,
+        "pin": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "checkout",
+        "origin": null,
+        "location": "/sandbox/checkout",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T14:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T14:00:00Z"
+        },
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout",
+      "view_href": "/view/g1-bQ"
+    }
+  },
+  "committed": "1667009ff139a77291c6126702df7e9c50b478cd",
+  "ask_local_moved": {
+    "status": 200,
+    "body": {
+      "refresh": "probed",
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T14:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T14:00:00Z"
+        },
+        "refreshing": false
+      },
+      "status": {
+        "subject": "git_revision",
+        "generation": 6,
+        "pin": "1667009ff139a77291c6126702df7e9c50b478cd",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "checkout",
+        "origin": null,
+        "location": "/sandbox/checkout",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "1667009ff139a77291c6126702df7e9c50b478cd",
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T14:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T14:00:00Z"
+        },
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "follow_local_branch": {
+    "status": 200,
+    "body": {
+      "changed": false,
+      "status": {
+        "subject": "git_revision",
+        "generation": 6,
+        "pin": "1667009ff139a77291c6126702df7e9c50b478cd",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "checkout",
+        "origin": null,
+        "location": "/sandbox/checkout",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "1667009ff139a77291c6126702df7e9c50b478cd",
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T14:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T14:00:00Z"
+        },
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout",
+      "view_href": "/view/g1-bQ"
+    }
+  },
+  "status_refresh_failed": {
+    "subject": "attached_filesystem",
+    "generation": 7,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": "2026-09-17T14:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "failed",
+      "at": "2026-09-17T14:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "plain_switch": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 9,
+        "pin": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout",
+      "view_href": "/view/g1-bQ"
+    }
+  },
+  "plain_ask": {
+    "status": 200,
+    "body": {
+      "refresh": "probed",
+      "status": {
+        "subject": "git_revision",
+        "generation": 9,
+        "pin": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "plain_ask_moved": {
+    "status": 200,
+    "body": {
+      "refresh": "probed",
+      "status": {
+        "subject": "git_revision",
+        "generation": 10,
+        "pin": "732574d6427eb28f5df07467792de539900a3648",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "732574d6427eb28f5df07467792de539900a3648",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "plain_follow": {
+    "status": 200,
+    "body": {
+      "changed": false,
+      "status": {
+        "subject": "git_revision",
+        "generation": 10,
+        "pin": "732574d6427eb28f5df07467792de539900a3648",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "732574d6427eb28f5df07467792de539900a3648",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout",
+      "view_href": "/view/g1-bQ"
+    }
+  },
+  "plain_follow_refused": {
+    "status": 404,
+    "body": {
+      "error": "no branch or tag with that name is in the checkout",
+      "code": "selection_not_found"
+    }
+  },
+  "plain_topic": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 11,
+        "pin": "732574d6427eb28f5df07467792de539900a3648",
+        "ref": "refs/heads/topic",
+        "ref_name": "topic",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "732574d6427eb28f5df07467792de539900a3648",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout"
+    }
+  },
+  "plain_ask_gone": {
+    "status": 200,
+    "body": {
+      "refresh": "probed",
+      "status": {
+        "subject": "git_revision",
+        "generation": 11,
+        "pin": "732574d6427eb28f5df07467792de539900a3648",
+        "ref": "refs/heads/topic",
+        "ref_name": "topic",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": null,
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  }
+}

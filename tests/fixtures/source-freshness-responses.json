@@ -21,7 +21,9 @@
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -50,7 +52,9 @@
         "at": "2026-09-17T12:00:05Z"
       },
       "refreshing": true,
+      "refresh_quiet": false,
       "stale": true,
+      "probe_every_s": 5.0,
       "pull_request": null,
       "selection_state": null,
       "selection_href": null
@@ -78,7 +82,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -107,7 +113,9 @@
         "at": "2026-09-23T12:00:00Z"
       },
       "refreshing": false,
+      "refresh_quiet": false,
       "stale": false,
+      "probe_every_s": 5.0,
       "pull_request": null,
       "selection_state": null,
       "selection_href": null
@@ -140,7 +148,9 @@
           "at": "2026-09-23T12:00:00Z"
         },
         "refreshing": false,
+        "refresh_quiet": false,
         "stale": false,
+        "probe_every_s": 5.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
@@ -179,7 +189,9 @@
         "at": "2026-09-23T12:00:00Z"
       },
       "refreshing": false,
+      "refresh_quiet": false,
       "stale": false,
+      "probe_every_s": 5.0,
       "pull_request": null,
       "selection_state": null,
       "selection_href": null
@@ -207,7 +219,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -252,7 +266,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -279,7 +295,9 @@
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -308,7 +326,9 @@
         "at": "2026-09-17T12:00:05Z"
       },
       "refreshing": true,
+      "refresh_quiet": false,
       "stale": true,
+      "probe_every_s": 5.0,
       "pull_request": null,
       "selection_state": null,
       "selection_href": null
@@ -336,7 +356,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -368,7 +390,9 @@
           "at": "2026-09-23T12:00:00Z"
         },
         "refreshing": true,
+        "refresh_quiet": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
@@ -397,7 +421,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -424,7 +450,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": "pending",
     "selection_href": null
@@ -453,7 +481,9 @@
         "at": "2026-09-23T12:00:00Z"
       },
       "refreshing": true,
+      "refresh_quiet": false,
       "stale": true,
+      "probe_every_s": 5.0,
       "pull_request": null,
       "selection_state": "pending",
       "selection_href": null
@@ -481,7 +511,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": "found",
     "selection_href": "/view/g1-UkVBRE1FLm1k#L1"
@@ -508,7 +540,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": "not_found",
     "selection_href": null
@@ -535,7 +569,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": "fetch_failed",
     "selection_href": null
@@ -564,7 +600,9 @@
         "at": "2026-09-23T12:00:00Z"
       },
       "refreshing": true,
+      "refresh_quiet": false,
       "stale": false,
+      "probe_every_s": 5.0,
       "pull_request": null,
       "selection_state": "pending",
       "selection_href": null
@@ -592,7 +630,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": 7,
     "selection_state": null,
     "selection_href": null
@@ -649,7 +689,9 @@
           "at": "2026-09-23T12:00:00Z"
         },
         "refreshing": false,
+        "refresh_quiet": false,
         "stale": false,
+        "probe_every_s": 5.0,
         "pull_request": 7,
         "selection_state": null,
         "selection_href": null
@@ -678,7 +720,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": 7,
     "selection_state": null,
     "selection_href": null
@@ -709,7 +753,9 @@
           "at": "2026-09-23T12:00:00Z"
         },
         "refreshing": true,
+        "refresh_quiet": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": 7,
         "selection_state": null,
         "selection_href": null
@@ -743,7 +789,9 @@
           "at": "2026-09-23T12:00:00Z"
         },
         "refreshing": true,
+        "refresh_quiet": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": 7,
         "selection_state": null,
         "selection_href": null
@@ -777,7 +825,9 @@
           "at": "2026-09-23T12:00:00Z"
         },
         "refreshing": true,
+        "refresh_quiet": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": 7,
         "selection_state": null,
         "selection_href": null
@@ -811,7 +861,9 @@
           "at": "2026-09-23T12:00:00Z"
         },
         "refreshing": true,
+        "refresh_quiet": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": 7,
         "selection_state": null,
         "selection_href": null
@@ -840,7 +892,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": 7,
     "selection_state": null,
     "selection_href": null
@@ -880,7 +934,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": 20,
     "selection_state": null,
     "selection_href": null
@@ -911,7 +967,9 @@
           "at": "2026-09-23T12:00:00Z"
         },
         "refreshing": false,
+        "refresh_quiet": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": 20,
         "selection_state": null,
         "selection_href": null
@@ -947,7 +1005,9 @@
           "at": "2026-09-23T12:00:00Z"
         },
         "refreshing": true,
+        "refresh_quiet": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": 20,
         "selection_state": null,
         "selection_href": null
@@ -976,7 +1036,9 @@
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": 20,
     "selection_state": null,
     "selection_href": null
@@ -989,7 +1051,7 @@
       "code": "commit_not_found"
     }
   },
-  "origin_not_shown": {
+  "probe_page": {
     "subject": "git_revision",
     "generation": 17,
     "pin": "92b31b0785485bd9eaa9619d198a779c2699295d",
@@ -1007,11 +1069,298 @@
     "last_fetch_at": "2026-09-23T12:00:00Z",
     "last_outcome": {
       "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": 5.0,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "probe_unchanged": {
+    "status": 200,
+    "body": {
+      "refresh": "probed",
+      "status": {
+        "subject": "git_revision",
+        "generation": 17,
+        "pin": "92b31b0785485bd9eaa9619d198a779c2699295d",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/repos/store-key-1/repository.git",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "92b31b0785485bd9eaa9619d198a779c2699295d",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 5.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "probe_moved": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "status": {
+        "subject": "git_revision",
+        "generation": 17,
+        "pin": "92b31b0785485bd9eaa9619d198a779c2699295d",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/repos/store-key-1/repository.git",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "92b31b0785485bd9eaa9619d198a779c2699295d",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 5.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "probe_followed": {
+    "subject": "git_revision",
+    "generation": 18,
+    "pin": "0d434c360a13f6fa6788fcd3409c440ed450d5dc",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/repos/store-key-1/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "0d434c360a13f6fa6788fcd3409c440ed450d5dc",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": 5.0,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "window_fetch": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "status": {
+        "subject": "git_revision",
+        "generation": 18,
+        "pin": "0d434c360a13f6fa6788fcd3409c440ed450d5dc",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/repos/store-key-1/repository.git",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "0d434c360a13f6fa6788fcd3409c440ed450d5dc",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": true,
+        "refresh_quiet": true,
+        "stale": true,
+        "probe_every_s": 5.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "window_fetched": {
+    "subject": "git_revision",
+    "generation": 18,
+    "pin": "0d434c360a13f6fa6788fcd3409c440ed450d5dc",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/repos/store-key-1/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "0d434c360a13f6fa6788fcd3409c440ed450d5dc",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": 5.0,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "commit_pin": {
+    "subject": "git_revision",
+    "generation": 19,
+    "pin": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "ref": null,
+    "ref_name": null,
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/repos/store-key-1/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "commit_pin_ask": {
+    "status": 200,
+    "body": {
+      "refresh": "not_due",
+      "status": {
+        "subject": "git_revision",
+        "generation": 19,
+        "pin": "92b31b0785485bd9eaa9619d198a779c2699295d",
+        "ref": null,
+        "ref_name": null,
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/repos/store-key-1/repository.git",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": false,
+        "latest": null,
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": null,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "idle_fetch": {
+    "subject": "git_revision",
+    "generation": 19,
+    "pin": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "ref": null,
+    "ref_name": null,
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/repos/store-key-1/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": true,
+    "refresh_quiet": true,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "origin_not_shown": {
+    "subject": "git_revision",
+    "generation": 21,
+    "pin": "0d434c360a13f6fa6788fcd3409c440ed450d5dc",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/repos/store-key-1/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "0d434c360a13f6fa6788fcd3409c440ed450d5dc",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
       "outcome": "not_found_or_private",
       "at": "2026-09-23T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -1034,7 +1383,9 @@
     "last_fetch_at": null,
     "last_outcome": null,
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null

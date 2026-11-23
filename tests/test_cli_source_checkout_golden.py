@@ -58,6 +58,9 @@ pytestmark = [
     needs_git,
 ]
 
+# A visible page's own ask, as ``--api`` posts it.
+_PAGE_ASK = ("--api", "/api/source/refresh", "--data", "page-ask.json")
+
 # Each section's words, then its commands: the arguments after ``metab`` and the exit
 # status each must have.
 _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
@@ -121,6 +124,19 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
         "--ref opens the folder on a branch: metab PATH --ref NAME starts on a revision where "
         "metab PATH starts on the working tree, by the switch the selector makes.",
         ((("checkout", "--ref", "feature", "--api", "/api/source/status"), 0),),
+    ),
+    (
+        "A revision of one of the checkout's own branches follows that branch: follows is "
+        "true, latest is the branch's commit as last read in the checkout, and "
+        "probe_every_s is how often a visible page asks where the branch is. That ask is "
+        "the page's own; for it the server reads the checkout's refs, fetches nothing, and "
+        "answers probed. A commit opened by its ID and the working tree never move, so the "
+        "ask is refused there as a folder's refresh is.",
+        (
+            (("checkout", "--ref", "feature", *_PAGE_ASK), 0),
+            (("checkout", "--ref", "fcb9d63c3c85", *_PAGE_ASK), 1),
+            (("checkout", *_PAGE_ASK), 1),
+        ),
     ),
     (
         "A revision's files are read by the routes a page reads them by. feature has "

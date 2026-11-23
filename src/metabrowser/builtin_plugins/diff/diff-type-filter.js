@@ -18,6 +18,8 @@
  * @typedef {{
  *   scrollToFile: (path: string) => unknown,
  *   fileForPath: (path: string) => unknown,
+ *   sectionForPath: (path: string) => unknown,
+ *   pathForSection: (section: Element) => unknown,
  *   currentFile: () => unknown,
  *   firstScreen: () => Promise<unknown>,
  *   onCurrentFile: (listener: (file: unknown) => void) => () => void,
@@ -282,6 +284,10 @@ export function createTypeFilter(deps) {
           availability: String(change.availability),
         };
       },
+      // A host keeps a reader's place in its file, whichever diff shows it (mb-owwk): it
+      // asks the diff mounted now where that file's section is, and whose a section is.
+      sectionForPath: (path) => current.sectionForPath(path),
+      pathForSection: (section) => current.pathForSection(section),
       currentFile: () => current.currentFile(),
       firstScreen: () => current.firstScreen(),
       onCurrentFile(listener) {

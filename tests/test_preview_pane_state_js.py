@@ -33,6 +33,8 @@ PULL_PAGE_FAILED = (
     "preview-empty preview-error: Could not load the pull-request page. "
     "Refresh the page to try again."
 )
+from tests.shell_request import shell_request
+
 NO_PULL_PLUGIN = "preview-empty: No plugin renders pull-request pages here."
 
 
@@ -45,17 +47,7 @@ def _function_source(js: str, name: str) -> str:
 
 
 def _render_index_html() -> str:
-    class _FakeQuery:
-        def get(self, key: str, default: str = "") -> str:
-            return default
-
-    class _FakeReq:
-        def __init__(self) -> None:
-            self.query_params = _FakeQuery()
-            self.headers: dict[str, str] = {}
-            self.cookies: dict[str, str] = {}
-
-    response = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
+    response = asyncio.run(proc_browser.index(shell_request()))
     body = response.body
     return body.decode() if isinstance(body, (bytes, bytearray)) else str(body)
 

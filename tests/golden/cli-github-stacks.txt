@@ -51,7 +51,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "reader": "gh:octo-reader",
   "fetched_at": "2026-09-17T12:00:00Z",
-  "fresh_for_s": 300.0,
+  "fresh_for_s": 90.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -92,10 +92,10 @@ status: 200
 {}
 --- gh ---
 gh stack --version
-gh auth status
+gh api user
 gh api repos/octo/demo/stacks?per_page=100&page=1
 gh api repos/octo/demo/stacks?per_page=100&page=2
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/stacks
 exit: 0
 --- stdout ---
@@ -107,7 +107,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "reader": "gh:octo-reader",
   "fetched_at": "2026-09-17T12:00:00Z",
-  "fresh_for_s": 300.0,
+  "fresh_for_s": 90.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -157,7 +157,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "reader": "gh:octo-reader",
   "fetched_at": "2026-09-17T12:00:00Z",
-  "fresh_for_s": 300.0,
+  "fresh_for_s": 90.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -208,7 +208,7 @@ status: 200
     "source": "https://github.com/octo/demo",
     "reader": "gh:octo-reader",
     "fetched_at": "2026-09-17T12:00:00Z",
-    "fresh_for_s": 300.0,
+    "fresh_for_s": 90.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "succeeded",
@@ -310,7 +310,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "reader": "gh:octo-reader",
   "fetched_at": "2026-09-17T12:05:01Z",
-  "fresh_for_s": 300.0,
+  "fresh_for_s": 90.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -351,10 +351,10 @@ status: 200
 {}
 --- gh ---
 gh stack --version
-gh auth status
+gh api user
 gh api repos/octo/demo/stacks?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/stacks?per_page=100&page=2 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 ## Removing optional tooling retains known membership and backs off.
 # metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
 exit: 1
@@ -369,7 +369,7 @@ status: 202
     "source": "https://github.com/octo/demo",
     "reader": "gh:octo-reader",
     "fetched_at": "2026-09-17T12:05:01Z",
-    "fresh_for_s": 300.0,
+    "fresh_for_s": 90.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",

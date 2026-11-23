@@ -23,8 +23,10 @@ included, before and after.
 
 **Where a revision is read from.** The checkout's own Git directory, in place. A linked
 worktree's objects and refs are its main repository's, so the directory read is the
-common one. The plan says when Metabrowser's cache would be read instead; nothing here
-does that yet.
+common one. One exception: the origin's branches and tags are listed and served from the
+store Metabrowser keeps beside the checkout, once it exists (``checkout_store.py``,
+:attr:`CheckoutRevisions.origin`), as Metabrowser last fetched them. That store borrows
+the checkout's objects and is read with no Git process in the checkout.
 
 **Which checkouts.** The chooser follows the open root: it is offered when the served
 root is a repository's root and Git itself accepts it, by the discovery the Commits tab
@@ -64,13 +66,16 @@ imported where a revision is first asked for, as a pin's other modules are.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
-from collections.abc import AsyncGenerator
+import sys
+import time
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Literal, cast
 
 from metabrowser.content_errors import ContentReadError
 from metabrowser.git.process import (
@@ -88,10 +93,16 @@ from metabrowser.git.process import (
 )
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
+    PROBED_REF_PREFIX,
+    CheckoutOwnRef,
+    FreshnessFields,
     MirrorRef,
+    MirrorSession,
     RefKind,
     SelectionError,
     SelectionRefMovedError,
+    follow_served_ref,
+    follows_moves,
 )
 from metabrowser.paths_safe import register_root_callback, tilde_path
 from metabrowser.repository_context import is_checkout_root
@@ -110,6 +121,7 @@ if TYPE_CHECKING:
     from metabrowser.git.process import RepositoryStoreTarget
     from metabrowser.git.tree_source import GitRevisionSubject
     from metabrowser.git.wire import GitHead
+    from metabrowser.source import RepositorySubject
 
 log = logging.getLogger(__name__)
 
@@ -158,6 +170,56 @@ def checkout_ref_name(ref: str | None) -> str | None:
     return ref
 
 
+# The refs of a checkout that a revision served under one follows when it moves: its own
+# branches, which the reader's commit moves, its remote-tracking branches, which the
+# reader's fetch moves, and its tags. Only a selection that names the ref, as ``ref`` or
+# as ``under``, follows it. A commit opened by its ID alone never moves: it is served
+# under no ref, or under the one last served while it is that ref's tip, so that the
+# selector still names the ref, and then too it stays. The working tree is no revision
+# (:meth:`CheckoutRevisions.observe`).
+FOLLOWED_CHECKOUT_REFS: Final = ("refs/heads/", "refs/remotes/", "refs/tags/")
+
+# How often a visible page on one of the checkout's own refs asks where that ref is
+# (``probe_every_s`` in its status; the ask is ``POST /api/source/refresh`` with
+# ``{"for": "page"}``). The ask names the checkout's ref state
+# (:func:`metabrowser.git.ref_state.ref_state`), one ``stat`` per ref file and no Git
+# process, and runs Git only when that state changed. A hidden page asks nothing, so a
+# folder nobody looks at costs nothing.
+#
+# Measured 2026-11-22 on macOS, Git 2.50.1, in process, at a load average of 320 to 350,
+# so the minimum is the figure nearest an idle machine's (median, minimum, in ms):
+#
+#   naming the ref state, 10 loose refs               1.5 to 3.1   0.35 to 0.78
+#   naming the ref state, 1,000 loose refs                  12.4           6.2
+#   one Git read of the ref (what a poll by Git costs)  43 to 46          14.5
+#   the whole ask, no ref moved (TestClient)                 6.8           2.8
+#   GET /api/source/status, for comparison                   2.5           0.8
+#   the whole ask when the branch moved: read, open, serve   313           164
+#
+# So one ask costs a few milliseconds, a tenth or less of one Git process, and what it
+# adds is a rate: a visible page sends one every interval in place of the status poll it
+# would send every ``SLOW_POLL_MS`` (``static/source-freshness.js``), many times as
+# often. At this interval that is about 0.1% of one processor for an ordinary
+# repository; at ``MAX_REF_ENTRIES`` loose refs the state takes about 75 ms
+# (``git/ref_state.py``), under 4% at this interval, and past it there is no state and
+# each ask is one Git read. Several visible pages read no more often than
+# :data:`CHECKOUT_REFS_FLOOR_S`. Two seconds is under the five of a probe of an origin
+# (``STORE_PROBE_S``), which costs a network round trip, and is the wait a reader has
+# between a commit in a terminal and the page that shows it.
+#
+# The alternative was the folder's watcher. It was not measured, because it cannot see a
+# ref move as it is: ``watchfiles.DefaultFilter`` drops everything under ``.git``
+# (``watch_backends.py``), so following by it means a second recursive watch, of the Git
+# directory, which for a linked worktree is outside the served root, kept open whether or
+# not a page shows a branch. The poll needs no new watch and stops with the page.
+CHECKOUT_REFS_POLL_S: Final = 2.0
+# The shortest gap the server keeps between two readings of the checkout's refs, however
+# many visible pages ask: an ask inside it is answered from memory, so several pages read
+# at most twice an interval between them. Half an interval, so one page's ask, which a
+# timer can send a little early, still reads, as ``STORE_PROBE_FLOOR_S`` is below
+# ``STORE_PROBE_S`` for a mirror's probe.
+CHECKOUT_REFS_FLOOR_S: Final = CHECKOUT_REFS_POLL_S / 2
+
 # The first release whose ``GIT_NO_LAZY_FETCH`` also has a partial clone's missing object
 # read as missing. From 2.45.0 Git turns ``fetch_if_missing`` off at setup when the
 # variable is set (environment.c; setup.c later). An admitted 2.43.7 or 2.44.4 has only
@@ -200,6 +262,12 @@ class CheckoutGitUnsupportedError(ContentReadError):
         )
         self.detected = detected
         self.required = required
+
+
+def _monotonic() -> float:
+    """The clock :data:`CHECKOUT_REFS_FLOOR_S` is kept on; a test moves it."""
+
+    return time.monotonic()
 
 
 def _admitted_git() -> tuple[int, int, int]:
@@ -297,18 +365,130 @@ class CheckoutRevisions:
         self._switching = asyncio.Lock()
         self._served: GitRevisionSubject | None = None
         # The ref last served, which a commit pinned by ID is opened under when it is still
-        # that ref's tip: View file on a commit's diff goes to the commit and back.
+        # that ref's tip: View file on a commit's diff goes to the commit and back, and the
+        # selector names the ref. Such a pin never follows it (``_by_id``).
         self._last_ref: str | None = None
         # Whether the checkout's history stops at a shallow boundary, read when a revision
         # is served so that the status route still reads nothing.
         self.shallow = False
+        # Where the revision served was read from, the store Metabrowser keeps of the
+        # origin or the checkout itself, and ``None`` on the working tree; and whether
+        # this checkout could have such a store, as of the last switch.
+        self.read_from: Literal["origin", "checkout"] | None = None
+        self.kept_store = False
         # The host's Git version once the floor admitted it; asked again until it does.
         self._git_version: tuple[int, int, int] | None = None
+        # The ref the revision of the checkout's own is served under and that ref's commit
+        # as last read, ``None`` for a ref that is gone; and the checkout's ref state when
+        # it was read, so asking again while no ref moved runs no Git (:meth:`observe`).
+        self._tip: tuple[str, str | None] | None = None
+        self._refs_state: str | None = None
+        # Whether the revision served was asked for by its commit ID alone, which never
+        # moves, even served under the ref whose tip it is.
+        self._by_id = False
+        # When the refs were last read, on :func:`_monotonic`, for
+        # :data:`CHECKOUT_REFS_FLOOR_S`; and whether the last reading of the served ref
+        # failed, so a failure that lasts is warned of once.
+        self._read_at: float | None = None
+        self._read_failing = False
 
     def serves(self, subject: object) -> bool:
-        """Whether *subject* is the revision this checkout attached."""
+        """Whether *subject* is a revision this checkout's server shows of its repository.
 
-        return subject is not None and subject is self._served
+        One it attached from the checkout's own Git directory, or one read from the store
+        Metabrowser keeps of the checkout's origin (:attr:`origin`).
+        """
+
+        if subject is None:
+            return False
+        if subject is self._served:
+            return True
+        origin = self.origin
+        if origin is None:
+            return False
+        pin = as_git_revision_subject(cast("RepositorySubject", subject))
+        return pin is not None and origin.owns(pin)
+
+    @property
+    def origin(self) -> MirrorSession | None:
+        """The session of Metabrowser's store of this checkout's origin, once it exists.
+
+        ``metabrowser/checkout_store.py`` makes it. With it, the origin's branches and
+        tags are listed and served from that store, as Metabrowser last fetched them, and
+        the checkout's own remote-tracking branches of the origin are not read.
+        """
+
+        held = _origin
+        return held[1] if held is not None and held[0] == self.root else None
+
+    async def _of_origin(
+        self, origin: MirrorSession, *, ref: str | None, oid: str | None, under: str | None
+    ) -> tuple[bool, str | None]:
+        """Whether a selection is read from the origin's store, and the ref to ask it for.
+
+        A full ref of one of the origin's branches is, and a tag the store holds, which
+        is the origin's; a tag only the checkout has is the checkout's. A commit named by
+        its ID is read where the page asking is: from the store while one of its
+        revisions is served, so the way to a commit's file and back stays in it.
+
+        A short name, as ``--ref`` gives one, is read in a checkout's order, a branch,
+        then a tag, then a remote-tracking branch, with the origin's taken from the
+        store: the checkout's own branch of that name wins, then a tag the store holds,
+        then a tag only the checkout has, then ``origin/<branch>`` as the store has it.
+        The second value is then the full ref the store is asked for. Anything else, a
+        commit ID or another remote's branch among them, is the checkout's.
+        """
+
+        from metabrowser.cache.resolve import is_valid_ref_name, ref_tips
+
+        named = under if oid is not None else ref
+        if named is None:
+            return oid is not None and origin.served() is not None, ref
+        if named.startswith(PROBED_REF_PREFIX):
+            return True, ref
+        if named.startswith("refs/tags/"):
+            return await origin.mirror.ref_tip(named) is not None, ref
+        if oid is not None or named.startswith("refs/") or named == "HEAD":
+            return False, ref
+        tag = f"refs/tags/{named}"
+        if not is_valid_ref_name(tag):
+            # Revision syntax, or no name at all: the checkout's resolver refuses it.
+            return False, ref
+        target, _head = await self._repository()
+        own_branch = f"refs/heads/{named}"
+        branch = (
+            PROBED_REF_PREFIX + named.removeprefix(_ORIGIN_NAME)
+            if named.startswith(_ORIGIN_NAME)
+            else None
+        )
+        # One read of each repository, at once, and the order applied to what they hold:
+        # this is on the pin route's path, before the switch resolves the name again.
+        own, stored = await asyncio.gather(
+            ref_tips(target, [own_branch, tag]),
+            origin.mirror.ref_tips([tag] if branch is None else [tag, branch]),
+        )
+        if own_branch in own:
+            return False, ref
+        if tag in stored:
+            return True, tag
+        if tag in own:
+            return False, ref
+        if branch is not None and branch in stored:
+            return True, branch
+        return False, ref
+
+    async def _open_origin(self) -> bool:
+        """Open the store of this checkout's origin, if it keeps one; whether it could have one.
+
+        ``checkout_store.py`` says how. A cached store is adopted with no network, so a
+        selection made as the application starts, ``--ref``'s, reads the origin's refs from
+        it. ``False`` for a checkout that keeps no store, and before any is set up.
+        """
+
+        held = _origin_opener
+        if held is None or held[0] != self.root:
+            return False
+        return await held[1]()
 
     async def _repository(self) -> tuple[RepositoryStoreTarget, GitHead]:
         """The checkout's Git directory as a read-only store target, and its ``HEAD``.
@@ -348,6 +528,9 @@ class CheckoutRevisions:
         Its branches, tags, or remote-tracking branches. Branches list the checked-out one
         first, marked as ``default`` is on a mirror. ``HEAD``'s ref is ``None`` when it is
         detached.
+
+        Once Metabrowser keeps a store of the checkout's origin (:attr:`origin`), the
+        origin's refs are read from it and not from the checkout (:func:`_with_origin`).
         """
 
         from metabrowser.cache.resolve import CHECKOUT_REFS, list_mirror_refs
@@ -359,6 +542,16 @@ class CheckoutRevisions:
             default_ref=head["ref"] if kind == "branch" else None,
             namespaces=CHECKOUT_REFS,
         )
+        origin = self.origin
+        if origin is not None and kind != "branch":
+            # The origin's own, as Metabrowser last fetched them into its store: its
+            # branches where the checkout lists remote-tracking ones, its default branch
+            # first and marked, and its tags.
+            theirs = await origin.mirror.list_refs(
+                "branch" if kind == "remote" else "tag",
+                default_ref=await origin.mirror.default_ref() if kind == "remote" else None,
+            )
+            listed = _with_origin(listed, theirs, kind)
         return head["ref"], listed
 
     async def switch_pin(
@@ -369,18 +562,42 @@ class CheckoutRevisions:
         The selection is resolved in the checkout's refs alone. Raises a
         :class:`~metabrowser.mirror_refresh.SelectionError` for one the checkout cannot
         serve; nothing is fetched for one it lacks.
+
+        A selection that names a ref, as *ref* or as *under*, follows it
+        (:meth:`observe`); one that names only a commit, *oid*, never moves, even when it
+        is served under the ref last served because it is that ref's tip. Asking for the
+        revision already served in the other way changes only that, and answers ``False``.
         """
 
-        from metabrowser.cache.repository_store import object_type
         from metabrowser.cache.resolve import CHECKOUT_REFS, resolve_pin
-        from metabrowser.git.tree_source import GitObjectUnavailableError, git_revision_subject
+        from metabrowser.git.ref_state import ref_state
 
-        async with self._switching:
+        self.kept_store = await self._open_origin()
+        origin = self.origin
+        from_store, asked = (
+            await self._of_origin(origin, ref=ref, oid=oid, under=under)
+            if origin is not None
+            else (False, ref)
+        )
+        if origin is not None and from_store:
+            async with self._switching:
+                # The store's session resolves, opens, and attaches it, as a mirror's does;
+                # the revision is the store's, so none of the checkout's is served now.
+                changed, session = await origin.switch_pin(ref=asked, oid=oid, under=under)
+                self._served = None
+                self._tip = None
+                self._by_id = False
+                self.read_from = "origin"
+                return changed, session
+        async with self._switching, self._origin_pin():
             target, head = await self._repository()
             current = self._current()
             if current is not None and current.ref is not None:
                 self._last_ref = current.ref
             kept = tuple(dict.fromkeys(r for r in (under, self._last_ref) if r is not None))
+            # Named before the ref is read, so a ref that moves between the two is read
+            # again at the next ask and never taken for unmoved.
+            state = await ref_state(GitLocation.filesystem(self.root))
             resolved = await resolve_pin(
                 target,
                 ref=ref,
@@ -391,33 +608,198 @@ class CheckoutRevisions:
             )
             if under is not None and resolved.ref != under:
                 raise SelectionRefMovedError(f"{under} is no longer at that commit")
+            by_id = oid is not None and under is None
             if (
                 current is not None
                 and current.commit_oid == resolved.commit_oid
                 and current.ref == resolved.ref
             ):
+                if current is self._served:
+                    # The same revision, asked for by its ref or by its ID: only whether
+                    # it follows changes.
+                    self._hold(resolved.ref, resolved.commit_oid, state, by_id=by_id)
                 return False, get_source_session()
-            if await object_type(target, resolved.commit_oid) != "commit":
-                raise GitObjectUnavailableError(resolved.commit_oid)
-            subject = await git_revision_subject(
-                target=target,
-                commit_oid=resolved.commit_oid,
-                store_identity=f"checkout:{target.git_dir}",
-                ref=resolved.ref,
-            )
+            subject = await _open_revision(target, resolved.commit_oid, resolved.ref)
             self.shallow = await asyncio.to_thread(_has_boundary, target.git_dir)
             self._served = subject
+            self.read_from = "checkout"
+            self._hold(resolved.ref, resolved.commit_oid, state, by_id=by_id)
             session = await replace_owned_subject(subject)
             return True, session
+
+    def _hold(self, ref: str | None, commit: str, state: str | None, *, by_id: bool) -> None:
+        """Record how the revision served was asked for, and its ref as just resolved.
+
+        The ref was resolved under *state*, named before, so the pin is that ref's tip as
+        of *state*. A pin asked for by its ID alone follows nothing, so no tip is kept.
+        """
+
+        self._by_id = by_id
+        self._tip = (ref, commit) if ref is not None and not by_id else None
+        self._refs_state = state
+        self._read_at = _monotonic()
+        self._read_failing = False
 
     async def serve_working_tree(self) -> tuple[bool, SourceSession]:
         """Serve the folder again; ``False`` when the working tree is already served."""
 
-        async with self._switching:
+        async with self._switching, self._origin_pin():
             if self._current() is None:
                 return False, get_source_session()
             self._served = None
+            self._tip = None
+            self._by_id = False
+            self.read_from = None
             return True, await restore_filesystem_subject(self.root)
+
+    # ── Following a branch ──────────────────────────────────────
+
+    def _follows(self, subject: GitRevisionSubject) -> bool:
+        """Whether *subject* is the checkout's own revision, asked for by a ref that follows."""
+
+        return (
+            subject is self._served
+            and not self._by_id
+            and follows_moves(subject.ref, FOLLOWED_CHECKOUT_REFS)
+        )
+
+    def _followed(self) -> GitRevisionSubject | None:
+        """The revision served that follows its ref (:meth:`_follows`), or ``None``."""
+
+        subject = self._current()
+        return subject if subject is not None and self._follows(subject) else None
+
+    def _unmoved(self, subject: GitRevisionSubject, state: str | None) -> bool:
+        """Whether *subject*'s ref was last read under *state*, so it has not moved since."""
+
+        seen = self._tip
+        return (
+            state is not None
+            and state == self._refs_state
+            and seen is not None
+            and seen[0] == subject.ref
+        )
+
+    def _serve(self, subject: GitRevisionSubject) -> None:
+        """Take *subject* as the revision served, before it is attached, as a switch does."""
+
+        self._served = subject
+
+    async def observe(self) -> bool | None:
+        """Read where the served ref is in the checkout, and follow it there.
+
+        A revision served under one of the checkout's own branches, remote-tracking
+        branches, or tags (:data:`FOLLOWED_CHECKOUT_REFS`), and asked for by that ref,
+        reads the ref, not one commit of it, as a mirror's pin does
+        (``arch-mirror-acquisition-and-refresh.md``, "Following a Branch"): when the
+        reader's commit or fetch moved it, its new tip is served in its place under a new
+        generation, by the step a mirror follows with
+        (:func:`~metabrowser.mirror_refresh.follow_served_ref`). Nothing is fetched and
+        nothing is written: the move is read from the checkout's refs.
+
+        The checkout's ref state is named first, with no Git process and without the
+        locks a switch takes, and the ref is read, with one Git process and under those
+        locks, only when that state is not the one it was last read under. A repository
+        with more loose refs than one state may walk has no state, and its ref is read at
+        every ask. An ask within :data:`CHECKOUT_REFS_FLOOR_S` of the last reading,
+        another visible page's, is answered from memory.
+
+        ``None`` when nothing that follows is served: the working tree, a commit opened by
+        its ID, or a revision read from the store of the origin, which that store's
+        session follows. ``False`` when it answered from memory: no ref moved since the
+        last reading, that reading is under the floor old, or it failed. ``True`` when the
+        ref was read again, moved or not.
+        """
+
+        from metabrowser.cache.resolve import ref_tip
+        from metabrowser.git.ref_state import ref_state
+
+        # Before the locks: an ask with nothing to read, or whose refs did not move, waits
+        # for no switch, and the store's probe that the same ask makes waits for none.
+        before = self._followed()
+        if before is None:
+            return None
+        at = _monotonic()
+        if self._read_at is not None and at - self._read_at < CHECKOUT_REFS_FLOOR_S:
+            return False
+        self._read_at = at
+        state = await ref_state(GitLocation.filesystem(self.root))
+        if self._unmoved(before, state):
+            return False
+        # Under the locks a switch is made under: a reader's switch that ran meanwhile
+        # is what is served now, and this follows only what it finds.
+        async with self._switching, self._origin_pin():
+            subject = self._followed()
+            if subject is None or subject.ref is None:
+                return None
+            if self._unmoved(subject, state):
+                # A switch, or another page's ask, read the ref under this state meanwhile.
+                return False
+            ref = subject.ref
+            target = subject.command_target
+            try:
+                tip = await ref_tip(target, ref)
+            except GitError as exc:
+                # Read again at the next ask; what is served stays. A failure that lasts,
+                # as when the checkout's Git directory is removed under an open page, is
+                # warned of once, and then at debug until a reading succeeds.
+                if self._read_failing:
+                    log.debug("the served ref still could not be read: %s", failure_detail(exc))
+                else:
+                    self._read_failing = True
+                    log.warning("the served ref could not be read: %s", failure_detail(exc))
+                return False
+            self._read_failing = False
+            self._tip = (ref, tip)
+            self._refs_state = state
+            if tip is None:
+                # The ref is gone: its last commit stays served, and status reports none.
+                return True
+            moved = await follow_served_ref(
+                subject,
+                self._tip,
+                follows=lambda name: follows_moves(name, FOLLOWED_CHECKOUT_REFS),
+                open_tip=lambda name: _open_revision(target, tip, name),
+                on_open=self._serve,
+            )
+            if moved is not None:
+                self.shallow = await asyncio.to_thread(_has_boundary, target.git_dir)
+            return True
+
+    def freshness_fields(
+        self, subject: GitRevisionSubject, store: FreshnessFields
+    ) -> FreshnessFields:
+        """The freshness half of the status of a revision read from the checkout itself.
+
+        *store* is what the store of the checkout's origin says of itself, or that there
+        is none: nothing is fetched into a checkout, so only that store is refreshable.
+        A revision that follows its ref (:meth:`_follows`) adds ``follows``, the ref's
+        commit as last read as ``latest``, ``None`` for a ref that is gone, and how often
+        a visible page asks where the ref is, ``probe_every_s``. A commit opened by its ID
+        adds nothing, under a ref or not. From memory alone.
+        """
+
+        if not self._follows(subject):
+            return store
+        tip = self._tip
+        latest = tip[1] if tip is not None and tip[0] == subject.ref else None
+        return {
+            **store,
+            "follows": True,
+            "latest": latest,
+            "probe_every_s": CHECKOUT_REFS_POLL_S,
+        }
+
+    def _origin_pin(self) -> contextlib.AbstractAsyncContextManager[object]:
+        """The origin store's own pin lock, held while this checkout switches what is served.
+
+        The store's session follows a served origin branch when a fetch moves it, under
+        that lock, and reads what is served there. Taken after this checkout's own
+        lock, as the switch to an origin branch takes them, so the two never cross.
+        """
+
+        origin = self.origin
+        return origin.pin_switch() if origin is not None else contextlib.nullcontext()
 
     def _current(self) -> GitRevisionSubject | None:
         """The revision of this checkout the session serves now, or ``None`` on the folder."""
@@ -434,6 +816,90 @@ class CheckoutRevisions:
         await self.serve_working_tree()
 
 
+def _with_origin(
+    mine: tuple[MirrorRef, ...], theirs: tuple[MirrorRef, ...], kind: RefKind
+) -> tuple[MirrorRef, ...]:
+    """A checkout's list of *kind* with its origin's refs taken from the origin's store.
+
+    *theirs* are the store's: the origin's branches for the list of remote-tracking
+    branches, each named ``origin/<branch>`` as the checkout names it, in place of the
+    checkout's own ``refs/remotes/origin/*``, which say only where the origin was when
+    the reader last fetched; and the origin's tags for the list of tags. The refs only
+    the checkout has stay: another remote's branches, and a tag the origin lacks. The
+    checkout's ``origin/*`` is not a second list. In one listing order
+    (``in_listing_order`` in ``cache/resolve.py``).
+
+    Each of the origin's branches says where the checkout's own ``origin/<branch>`` is
+    when that is another commit, or that the checkout has none
+    (:func:`_own_difference`), so a branch the reader has not fetched is visible.
+    """
+
+    from metabrowser.cache.resolve import in_listing_order
+
+    if kind == "remote":
+        # The checkout's own ``origin/*``, by the ref the store keeps the same branch
+        # under: a mirror's ref for its origin's branch is a checkout's for it too.
+        readers = {entry.ref: entry for entry in mine if entry.ref.startswith(PROBED_REF_PREFIX)}
+        origin = tuple(
+            MirrorRef(
+                name=f"origin/{entry.name}",
+                ref=entry.ref,
+                commit=entry.commit,
+                default=entry.default,
+                committed_at=entry.committed_at,
+                checkout=_own_difference(readers.get(entry.ref), entry.commit),
+            )
+            for entry in theirs
+        )
+        own = tuple(entry for entry in mine if entry.ref not in readers)
+    else:
+        origin = theirs
+        held = {entry.ref for entry in theirs}
+        own = tuple(entry for entry in mine if entry.ref not in held)
+    return in_listing_order((*origin, *own))
+
+
+def _own_difference(own: MirrorRef | None, commit: str) -> CheckoutOwnRef | None:
+    """Where the checkout's own remote-tracking branch is, when not at *commit*; else ``None``.
+
+    *own* is the checkout's ``refs/remotes/origin/<branch>`` and *commit* the same
+    branch's in the store of the origin, as Metabrowser last fetched it. That the two
+    differ is all this says, with the checkout's commit and its date. Which is ahead, and
+    by how many commits, is not said: it needs a walk of the history between the two for
+    each branch that differs, one Git process apiece with a cost the number of refs does
+    not bound, where the whole listing is otherwise one ``for-each-ref`` of each
+    repository, and the checkout's ref was already read by it. The two dates are in the
+    row, and the page says which commit is the later.
+    """
+
+    if own is None:
+        return CheckoutOwnRef(commit=None, committed_at=None)
+    if own.commit == commit:
+        return None
+    return CheckoutOwnRef(commit=own.commit, committed_at=own.committed_at)
+
+
+async def _open_revision(
+    target: RepositoryStoreTarget, commit_oid: str, ref: str | None
+) -> GitRevisionSubject:
+    """Open commit *commit_oid* of the checkout at *target*, to be served under *ref*.
+
+    Raises ``GitObjectUnavailableError`` when the checkout does not hold it as a commit.
+    """
+
+    from metabrowser.cache.repository_store import object_type
+    from metabrowser.git.tree_source import GitObjectUnavailableError, git_revision_subject
+
+    if await object_type(target, commit_oid) != "commit":
+        raise GitObjectUnavailableError(commit_oid)
+    return await git_revision_subject(
+        target=target,
+        commit_oid=commit_oid,
+        store_identity=f"checkout:{target.git_dir}",
+        ref=ref,
+    )
+
+
 def _has_boundary(git_dir: Path) -> bool:
     try:
         return (git_dir / "shallow").stat().st_size > 0
@@ -447,6 +913,39 @@ class _Held:
 
     root: Path
     revisions: CheckoutRevisions | None
+
+
+# The session of Metabrowser's store of a served checkout's origin, and the root it is of.
+# Set by ``checkout_store.py`` once the store exists, and dropped when a root is chosen.
+_origin: tuple[Path, MirrorSession] | None = None
+
+
+# How the store of a served checkout's origin is opened, and the root it is of: set by
+# ``checkout_store.py`` while an application runs. It answers whether the checkout
+# could have a store at all.
+_origin_opener: tuple[Path, Callable[[], Awaitable[bool]]] | None = None
+# A remote-tracking branch of the origin, as a reader names one.
+_ORIGIN_NAME: Final = "origin/"
+
+
+def set_origin_opener(root: Path, opener: Callable[[], Awaitable[bool]] | None) -> None:
+    """Say how the store of the origin of the checkout at *root* is opened, or forget it."""
+
+    global _origin_opener
+    if opener is not None:
+        _origin_opener = (root, opener)
+    elif _origin_opener is not None and _origin_opener[0] == root:
+        _origin_opener = None
+
+
+def set_origin_session(root: Path, session: MirrorSession | None) -> None:
+    """Say which session keeps the store of the origin of the checkout at *root*, or none."""
+
+    global _origin
+    if session is not None:
+        _origin = (root, session)
+    elif _origin is not None and _origin[0] == root:
+        _origin = None
 
 
 # What this process decided for its served root. One per process, as the source session
@@ -465,6 +964,9 @@ def _forget() -> _Held | None:
 
 def _forget_for_a_new_root() -> None:
     # Choosing a filesystem root is choosing to serve it, and its files.
+    global _origin, _origin_opener
+    _origin = None
+    _origin_opener = None
     _forget()
 
 
@@ -522,6 +1024,32 @@ def open_on_ref(ref: str | None) -> None:
     _open_on = ref
 
 
+def _say_where(checkout: CheckoutRevisions, ref: str) -> None:
+    """Say, on standard error, whether ``--ref`` read the origin's store or the checkout.
+
+    Only for a checkout that could have a store of its origin, and only for one of the
+    origin's refs: a ref read from the store, or a remote-tracking branch of the origin
+    or a tag read from the checkout because there is no store yet. One line, beside the
+    route's own output on standard output.
+    """
+
+    served = checkout._current()  # pyright: ignore[reportPrivateUsage]
+    if served is None or not checkout.kept_store:
+        return
+    name = _shown(ref)
+    if checkout.read_from == "origin":
+        print(
+            f"ref: {name} is read from Metabrowser's store of the origin, as last fetched",
+            file=sys.stderr,
+        )
+    elif served.ref is not None and served.ref.startswith((PROBED_REF_PREFIX, "refs/tags/")):
+        print(
+            f"ref: {name} is read from the checkout; Metabrowser has no store of the "
+            "origin with it",
+            file=sys.stderr,
+        )
+
+
 async def _open_named_ref(ref: str) -> None:
     """Serve *ref* of the served checkout, or fail the startup with a message to print."""
 
@@ -530,6 +1058,7 @@ async def _open_named_ref(ref: str) -> None:
         raise fail_subject_open(NOT_A_CHECKOUT)
     try:
         await checkout.switch_pin(ref=ref, oid=None)
+        _say_where(checkout, ref)
     except UnsupportedSourceCapabilityError:
         raise fail_subject_open(NOT_A_CHECKOUT) from None
     except SelectionError as exc:
@@ -569,6 +1098,8 @@ async def lifespan_checkout() -> AsyncGenerator[None]:
 
 
 __all__ = [
+    "CHECKOUT_REFS_POLL_S",
+    "FOLLOWED_CHECKOUT_REFS",
     "NOT_A_CHECKOUT",
     "PARTIAL_CLONE_GIT_MINIMUM",
     "CheckoutDisplay",
@@ -579,4 +1110,6 @@ __all__ = [
     "lifespan_checkout",
     "open_on_ref",
     "partial_clone_version_label",
+    "set_origin_opener",
+    "set_origin_session",
 ]

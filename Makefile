@@ -279,7 +279,10 @@ ADMITTED_GIT_TESTS := \
 	tests/test_pulls_nav.py \
 	tests/test_checkout_overlay.py \
 	tests/test_checkout_revisions.py \
+	tests/test_checkout_store.py \
+	tests/test_source_ref_selector_origin_session.py \
 	tests/test_cli_source_checkout_golden.py \
+	tests/test_cli_checkout_store_golden.py \
 	tests/test_github_checkout.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_cli_checkout_golden.py \
@@ -318,6 +321,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_github_pull_manifests.py \
 	tests/test_github_pull_record_swap.py \
 	tests/test_github_comparison_recovery.py \
+	tests/test_github_pull_route_probe.py \
 	tests/test_github_pull_snapshot.py \
 	tests/test_github_pull_publication.py \
 	tests/test_app_contract_golden.py \
@@ -358,6 +362,7 @@ GOLDEN_RECORDERS := \
 	tests/test_mirror_heading_session.py \
 	tests/test_source_freshness_session.py \
 	tests/test_source_ref_selector_session.py \
+	tests/test_source_ref_selector_origin_session.py \
 	tests/test_key_reveal_session.py \
 	tests/test_event_log_view_session.py \
 	tests/test_table_view_session.py \
@@ -400,6 +405,7 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_cli_source_checkout_golden.py \
+	tests/test_cli_checkout_store_golden.py \
 	tests/test_cli_present_golden.py \
 	tests/test_app_contract_golden.py \
 	tests/test_diff_comparison_cache.py \

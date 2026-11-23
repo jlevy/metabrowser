@@ -31,7 +31,9 @@ status: 200
       "at": "2026-09-17T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -71,7 +73,9 @@ status: 200
       "at": "2026-09-17T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -111,7 +115,9 @@ status: 200
       "at": "2026-09-17T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -151,7 +157,9 @@ status: 200
       "at": "2026-09-17T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -191,7 +199,9 @@ status: 200
       "at": "2026-09-17T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -231,7 +241,9 @@ status: 200
       "at": "2026-09-17T12:00:00Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -283,7 +295,9 @@ status: 202
       "at": "2026-09-17T12:00:00Z"
     },
     "refreshing": true,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -323,7 +337,9 @@ status: 200
       "at": "2026-09-17T12:01:20Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null

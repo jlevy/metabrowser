@@ -19,14 +19,14 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
-from metabrowser.builtin_plugins.github import pulls
+from metabrowser.builtin_plugins.github import gh_budget, pulls
 from metabrowser.builtin_plugins.github.gh import GhError, gh_graphql
 from metabrowser.builtin_plugins.github.gh_lists import READ_FAILURES, as_dict
 from metabrowser.builtin_plugins.github.pull_catalog import (
@@ -136,6 +136,7 @@ def _batch_query(count: int) -> str:
     return (
         f"query VisiblePullCores($owner:String!,$name:String!,{variables}) {{\n"
         "  viewer { login }\n"
+        "  rateLimit { cost }\n"
         "  repository(owner:$owner,name:$name) {\n"
         "    id nameWithOwner\n"
         f"{aliases}\n  }}\n}}"
@@ -597,6 +598,22 @@ async def request_preparation(
             if current is not None and current.ask == ask and current.failure is not None
             else "held"
         )
+    now = pulls.utc_now()
+    if ask.lane == "visible":
+        # Rows on screen: the floor is a reserve for the reader, and these are what the
+        # reader is looking at, so only a rate-limit hold and the process's own ceiling
+        # hold them (the owner's rule of 2026-11-22, in :mod:`.gh_budget`'s docstring).
+        held = gh_budget.held_until(now) is not None or gh_budget.over_ceiling(now)
+    else:
+        # The walk past them prepares rows a reader may open: the catalog's speculative
+        # work, held by the floor and at its part of speculative work's share of the
+        # ceiling as well, which leaves the prefetch its own (:mod:`.gh_budget`).
+        held = not gh_budget.admission(
+            ("graphql",), now=now, speculative=True, catalog=True
+        ).admitted
+    if held:
+        # What is cached was answered above, with no request.
+        return "held"
     current = pulls_set.core_window
     if current is not None and current.failure is not None:
         pulls_set.core_window = None
@@ -715,6 +732,9 @@ async def request_preparation(
             return "partial"
         eligible = (catalog, admitted)
     pulls_set.core_window = window
-    return coordinator.start(
-        key, partial(_prepare, pulls_set, window, running, eligible, carried), network=False
-    )
+    # The walk's batch is the catalog's speculative work, and its job copies the context it
+    # starts in.
+    with gh_budget.speculative(catalog=True) if ask.lane != "visible" else nullcontext():
+        return coordinator.start(
+            key, partial(_prepare, pulls_set, window, running, eligible, carried), network=False
+        )

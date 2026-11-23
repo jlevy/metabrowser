@@ -37,6 +37,7 @@ from metabrowser.cache import acquire
 from metabrowser.cache.atomic import RecordError
 from metabrowser.cache.lender import (
     LenderGoneError,
+    OverlayFetch,
     overlay_fetch_arguments,
     own_boundary,
 )
@@ -266,7 +267,7 @@ async def fetch_into_store(
         if removed:
             log.debug("removed files an interrupted fetch left in a store: %s", removed)
         target = _target(published)
-        negotiation = await _overlay_negotiation(published, target, lock)
+        overlay = await _overlay_preparation(published, target, lock)
         if deepen is not None:
             await finish_despite_cancel(asyncio.to_thread(own_boundary, published.git_dir))
         # On a case-insensitive filesystem the base branch can fold into a branch whose
@@ -275,12 +276,13 @@ async def fetch_into_store(
         written = await run_git(
             [
                 *origin_git_args(remote_url),
+                *overlay.config,
                 "fetch",
                 "--atomic",
                 "--porcelain",
                 "--no-tags",
                 "--no-write-fetch-head",
-                *negotiation,
+                *overlay.tips,
                 *([f"--deepen={deepen}"] if deepen is not None else []),
                 remote_url,
                 *specs,
@@ -299,21 +301,20 @@ async def fetch_into_store(
         lock.release()
 
 
-async def _overlay_negotiation(
+async def _overlay_preparation(
     published: PublishedSource, target: RepositoryStoreTarget, lock: CacheLock
-) -> tuple[str, ...]:
-    """An overlay's sweep and negotiation tips under the fetch lock; nothing for a full store.
+) -> OverlayFetch:
+    """An overlay's sweep and what its fetch passes, under the fetch lock; nothing for a full store.
 
     The sweep runs to the end even when cancelled.
     """
 
     default = published.default_remote_ref.removeprefix(BRANCH_MIRROR_PREFIX)
-    prepared = await finish_despite_cancel(
+    return await finish_despite_cancel(
         overlay_fetch_arguments(
             published.home, published.store_key, target, lock.descriptor, preferred=default
         )
     )
-    return prepared.tips
 
 
 async def _undo_a_fold(

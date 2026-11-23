@@ -167,6 +167,11 @@ export const LANDING_SETTLE_MS = 2000;
 // a press of Back takes and short beside the refresh it delays. The wait shows nothing: the
 // page is already painted refreshing.
 export const REFRESH_ASK_MS = 500;
+// The least a probe ask waits after the last one answered. Asks recur every
+// `probe_every_s` from when each was sent, so an answer slower than that interval would
+// otherwise be followed by the next ask at once, back to back for as long as answers are
+// slow. It is a choice: a second is short beside the interval and long beside a request.
+export const PROBE_ASK_GAP_MS = 1000;
 // The blocks a place is counted in: the conversation's cards and sections, and Files
 // changed's files, which keep their order for as long as the page shows one comparison.
 // A place is an index, so a refresh that adds a card above it while a landing holds puts the
@@ -185,6 +190,8 @@ const PANE_KEYS = new Set([
 ]);
 // The key of a place in `history.state`, which no other code of the shell writes into.
 const PLACE_KEY = "pullPlace";
+// The key of what an entry's Changes last showed (`rememberedChanges`), beside its place.
+const CHANGES_KEY = "pullChanges";
 
 // How long an idle browser may take before Files changed is fetched anyway. A page rendering
 // its conversation is not idle, and the comparison should not wait for all of it.
@@ -235,6 +242,9 @@ const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
 const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 // Give a transient queue or provider failure one chance to clear while the reader stays.
 export const TIMELINE_RETRY_MS = 1000;
+// The longest wait the server may name for a timeline its budget refused (`retry_after_s`,
+// HELD_RETRY_S in pull_timeline.py): the schema's own bound, an hour.
+const TIMELINE_HELD_MAX_S = 3600;
 // Guided PR leads, when the description carries a guide: it is the author's reading order.
 export const TABS = Object.freeze(["guided", "", "conversation", "docs", "files", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
@@ -398,10 +408,11 @@ const TRUNCATED = Object.freeze({
  *   pin_ref: string | null,
  *   fetched_at: string | null,
  *   verified_at?: string | null,
- *   verified_by?: "catalog" | "fetch" | null,
+ *   verified_by?: "catalog" | "fetch" | "probe" | null,
  *   head_moved?: boolean,
  *   checks_pending?: boolean,
  *   fresh_for_s: number,
+ *   probe_every_s: number | null,
  *   record_revision: string | null,
  *   refreshing: boolean,
  *   preparing_comparison?: true,
@@ -435,7 +446,7 @@ const TRUNCATED = Object.freeze({
 /**
  * @typedef {{kind: "commit", oid: string, subject: string, committed_at: string | null}} TimelineCommit
  * @typedef {{kind: "comment" | "review", id: string} | TimelineCommit} TimelineEvent
- * @typedef {{state: "complete" | "partial" | "unavailable", events: TimelineEvent[], retryable: boolean}} TimelineProjection
+ * @typedef {{state: "complete" | "partial" | "unavailable", events: TimelineEvent[], retryable: boolean, heldMs: number | null}} TimelineProjection
  */
 
 /**
@@ -518,14 +529,13 @@ const TRUNCATED = Object.freeze({
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   checkNotes: string[],
  *   notes: string[],
- *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, size_route?: string, headMoved: boolean, branch: {ref: string | null} | null} | null,
+ *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, size_route?: string, branch: {ref: string | null} | null} | null,
  *   comparisonComing: boolean,
  *   head: string | null,
  *   baseRef: string | null,
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
  *   changesPending: boolean,
- *   headOffer: {ref: string, head: string, pin: string} | null,
  *   checkoutAtHead: string | null,
  *   newCommits: string | null,
  * }} PullModel
@@ -922,7 +932,19 @@ function readTimelineProjection(value, revision) {
       events.push({ kind: event.kind, id: event.id });
     }
   }
-  return { state, events, retryable: state !== "complete" && answer.retryable === true };
+  const retryable = state !== "complete" && answer.retryable === true;
+  const wait = answer.retry_after_s;
+  // The budget refused the read: the server says how long to wait before asking again.
+  const heldMs =
+    retryable &&
+    state === "unavailable" &&
+    typeof wait === "number" &&
+    Number.isInteger(wait) &&
+    wait >= 1 &&
+    wait <= TIMELINE_HELD_MAX_S
+      ? wait * 1000
+      : null;
+  return { state, events, retryable, heldMs };
 }
 
 /** The exact PR's GitHub commit page, built from the held record's source. @param {string} source @param {number} number @param {string} oid */
@@ -1440,7 +1462,6 @@ export function describePull(envelope, page) {
     browse: null,
     filesUnavailable: filesUnavailableText(null),
     changesPending: false,
-    headOffer: null,
     checkoutAtHead: null,
     newCommits: null,
   };
@@ -1606,14 +1627,11 @@ export function describePull(envelope, page) {
   const canOpenHead = page.checkoutPin !== true || envelope.pin === head;
   if (canOpenHead && envelope.pin !== null && head !== "") {
     model.browse = { kind: "link", at: envelope.pin };
-    if (envelope.pin !== head && envelope.pin_ref === headRef) {
-      // Served from this pull request's head, and a refresh found a newer one: the ref
-      // moved, which the refresh fetched, so the page offers it rather than switching
-      // under the reader.
-      model.headOffer = { ref: headRef, head, pin: envelope.pin };
-    } else if (envelope.pin !== head) {
-      // Anything else, such as a branch, a tag, or another pull request. Nothing is wrong,
-      // so nothing is said: reading a pull request does not need its code served.
+    if (envelope.pin !== head) {
+      // A branch, a tag, or another pull request. Nothing is wrong, so nothing is said:
+      // reading a pull request does not need its code served. A pin on this pull request's
+      // own head is here only until the server has followed the head a refresh just read
+      // (`follows_moves` in mirror_refresh.py), and the page then reloads on it.
       model.browse = { kind: "switch", ref: headRef, head, at: head };
     }
   }
@@ -1646,17 +1664,13 @@ export function describePull(envelope, page) {
   if (comparison !== null) {
     // The Diff summary's head: the comparison's, which a record read at a newer head keeps.
     model.head = comparison.right;
-    const headMoved = model.headOffer !== null;
     model.comparison = {
       ...comparison,
-      // The page's code is the served pin; a record read at a newer head says so
-      // rather than moving what the reader sees.
-      headMoved,
       // What View on branch opens: the pull request's head, under its ref, when the diff
-      // shows that head. A diff of another commit has no branch it is on, and a page whose
-      // pin is an earlier head of this pull request offers the newer one first.
+      // shows that head. A diff of another commit has no branch it is on. A checkout can
+      // open only the head it serves, and then under no ref of its own.
       branch:
-        canOpenHead && !headMoved && head !== "" && comparison.right === head
+        canOpenHead && head !== "" && comparison.right === head
           ? { ref: page.checkoutPin === true ? null : headRef }
           : null,
     };
@@ -1988,7 +2002,7 @@ export function renderedTextsHeld() {
  * @typedef {{status: number, etag: string | null, body: unknown, verified?: string | null}} PullResponse
  * @typedef {{
  *   request(method: "GET" | "POST", route: string, options: {etag?: string | null, body?: unknown}): Promise<PullResponse>,
- *   schedule(callback: () => void, delayMs: number): unknown,
+ *   schedule(callback: () => void, delayMs: number, kind?: "ask"): unknown,
  *   cancel(handle: unknown): void,
  *   now(): number,
  *   isVisible(): boolean,
@@ -2002,7 +2016,6 @@ export function renderedTextsHeld() {
  *   textUnavailable?(part: string, text: string, note?: string | null): void,
  *   listed?(source: string | null, number: number): {state: import("./pull-state.js").PullState, updatedAt: string} | null,
  *   timelineStateChanged?(): void,
- *   reload(): void,
  *   switchPin(selection: {oid: string, under: string, view?: string}, wanted: () => boolean): Promise<{kind: "switched", href: string | null} | {kind: "busy"} | {kind: "abandoned"} | {kind: "refused", message: string}>,
  *   navigate(href: string): void,
  * }} PullDependencies
@@ -2047,18 +2060,32 @@ export function createPullController(deps, options) {
   let hasPolled = false;
   let inFlightRefreshes = 0;
   let disposed = false;
-  // When this page last sent a refresh of its own for a stale record, by `deps.now()`. It asks
-  // again once a freshness window has passed while the record is still or again stale, so a
-  // page left open keeps refreshing, and a stale page whose refresh cannot run does not ask
-  // on every poll; the server holds each number to one attempt a window as well.
+  // When this page last sent an automatic ask of its own, by `deps.now()`. While it shows a
+  // record it asks every `probe_every_s`, current or stale: the server probes the record, a
+  // free conditional read, or reads it in full when that is due, and holds each number to
+  // its own attempt windows, so a stale page whose refresh cannot run is not refreshed on
+  // every ask. Without `probe_every_s` it asks only for a stale record, once a window.
   /** @type {number | null} */
   let autoAskedAt = null;
+  /** When that ask was answered, or failed, by `deps.now()`. @type {number | null} */
+  let autoAnsweredAt = null;
+  // When the page last sent an automatic ask for a stale record. A stale record asks once
+  // a window from this, not from the last probe ask: a probed record goes stale when its
+  // full read comes due, a few seconds before the next probe ask would start that read,
+  // and waiting a window from that probe ask showed it stale for most of a minute.
+  /** @type {number | null} */
+  let staleAskedAt = null;
   /** That ask: none, scheduled (waiting in `askTimer`), or sent and not yet answered. */
   /** @type {"none" | "scheduled" | "sent"} */
   let autoAsk = "none";
+  // Whether that ask was for a stale record, which the age line shows as refreshing, or a
+  // probe of a current one, which changes nothing the page shows unless it finds a change.
+  let autoAskStale = false;
   // Once the repository's list of pull requests has vouched for this record, the page keeps
   // that list scanned while it is visible, so the record stays current without being read
   // again: when the check lapses it asks for the next scan, once a window, before it reads.
+  // While probes vouch for the record the envelope's check is theirs and never lapses, so
+  // a probing page asks for no scan (`catalogScanDue`).
   let catalogBacked = false;
   /** When the page last asked for the catalog's scan, by `deps.now()`. @type {number | null} */
   let catalogAskedAt = null;
@@ -2199,16 +2226,25 @@ export function createPullController(deps, options) {
   }
 
   /**
-   * Whether the page asks for its stale record's refresh now: visible, online, nothing on its
-   * way or running, not held, and not asked within a freshness window. A failure the reader
-   * must fix (no gh, an old gh, signed out) waits for the reader's Refresh after the first ask.
+   * How long until the page's next automatic ask, or null when none is due without another
+   * read: visible, online, nothing on its way or running, and not held. A stale record is
+   * asked for, and so is a current one while the envelope names `probe_every_s`; a later ask
+   * for a current record waits that long after the last, and one for a stale record a
+   * freshness window. A failure the
+   * reader must fix (no gh, an old gh, signed out) waits for the reader's Refresh after the
+   * first ask.
+   *
+   * @returns {number | null}
    */
-  function staleRefreshDue() {
+  function automaticAskWait() {
+    const probeIntervalMs =
+      typeof envelope?.probe_every_s === "number" ? envelope.probe_every_s * 1000 : null;
     if (
       disposed ||
       !deps.isVisible() ||
       !online() ||
-      envelope?.state !== "stale" ||
+      envelope === null ||
+      !(envelope.state === "stale" || (envelope.state === "current" && probeIntervalMs !== null)) ||
       envelope.refreshing ||
       fetching ||
       autoAsk !== "none" ||
@@ -2220,40 +2256,86 @@ export function createPullController(deps, options) {
             deps.ownsConversation?.() === true &&
             hasFreshComparisonMetadata())))
     ) {
-      return false;
+      return null;
     }
     if (autoAskedAt === null) {
-      return true;
+      return 0;
     }
     const outcome = envelope.last_refresh?.outcome ?? "";
-    return (
-      !["gh_missing", "gh_too_old", "not_logged_in"].includes(outcome) &&
-      deps.now() - autoAskedAt >= envelope.fresh_for_s * 1000
-    );
+    if (["gh_missing", "gh_too_old", "not_logged_in"].includes(outcome)) {
+      return null;
+    }
+    if (envelope.state === "current" && probeIntervalMs !== null) {
+      return Math.max(
+        0,
+        autoAskedAt + probeIntervalMs - deps.now(),
+        (autoAnsweredAt ?? autoAskedAt) + PROBE_ASK_GAP_MS - deps.now(),
+      );
+    }
+    // A stale record asks again once a window has passed since the last ask for a stale
+    // record (`staleAskedAt`), on the poll that finds it so: the server answers a probe ask
+    // that finds a change, or a record past its full-read interval, with a refresh at once,
+    // so a record still stale after such an ask is one whose refresh failed or was not due.
+    return staleAskedAt === null || deps.now() - staleAskedAt >= envelope.fresh_for_s * 1000
+      ? 0
+      : null;
   }
 
   /**
-   * Ask for the stale record's refresh when it is due. The first ask of a page waits for the
-   * reader to stay on it, as long as the Pulls tab's opening said (none for a click) or
-   * `REFRESH_ASK_MS` for an address, which holding Back walks through; a later one, on a
-   * page left open, asks at once. Any of them waits while a key that opened the page is held.
+   * Schedule the page's next automatic ask (`automaticAskWait`). The first ask of a page
+   * waits for the reader to stay on it, as long as the Pulls tab's opening said (none for a
+   * click) or `REFRESH_ASK_MS` for an address, which holding Back walks through; a later one,
+   * on a page left open, asks when its interval has passed, and each answer schedules the
+   * next. Any of them waits while a key that opened the page is held.
    */
   function askIfStale() {
-    if (!staleRefreshDue()) {
+    if (autoAsk === "scheduled" && !autoAskStale && envelope?.state === "stale") {
+      // A probe ask was waiting for a current record that has since gone stale: the stale
+      // record asks when its own wait says, which is at once on a page left open.
+      cancelAsk();
+    }
+    const waitMs = automaticAskWait();
+    if (waitMs === null) {
       return;
     }
-    const delayMs = autoAskedAt !== null ? 0 : (reader?.fetchAfterMs ?? REFRESH_ASK_MS);
+    const delayMs =
+      autoAskedAt !== null ? waitMs : Math.max(waitMs, reader?.fetchAfterMs ?? REFRESH_ASK_MS);
     autoAsk = "scheduled";
+    const forStale = envelope?.state === "stale";
+    autoAskStale = forStale;
     askAfter(async () => {
+      autoAsk = "none";
+      if (!forStale) {
+        // A probe ask recurs, and what it waited for may have changed meanwhile: a refresh
+        // started, the page fetched, or a limit took hold. Then it asks again when that is
+        // due, not now. An ask for a stale record is sent as it was scheduled.
+        const stillWaitMs = automaticAskWait();
+        if (stillWaitMs === null || stillWaitMs > 0) {
+          askIfStale();
+          return;
+        }
+      }
       autoAsk = "sent";
+      autoAskStale = envelope?.state === "stale";
       autoAskedAt = deps.now();
+      if (autoAskStale) {
+        staleAskedAt = autoAskedAt;
+      }
       try {
-        await askForRefresh({ number: options.number });
+        // The ask names the record the page shows, so an answer about that record comes
+        // without it (`withHeldRecord`).
+        const held = envelope?.record != null ? envelope.record_revision : null;
+        await askForRefresh(
+          { number: options.number, ...(held === null ? {} : { held }) },
+          { automatic: true },
+        );
       } finally {
         autoAsk = "none";
+        autoAnsweredAt = deps.now();
       }
       if (!disposed) {
         render();
+        askIfStale();
       }
     }, delayMs);
   }
@@ -2262,6 +2344,9 @@ export function createPullController(deps, options) {
    * Whether the page asks for the catalog's next scan before it reads: the catalog vouched
    * for this record before, its check is a window old, and none was asked within a window.
    * The server starts it only once a window, and a record it is scanning for stays current.
+   * The check is the envelope's newest, the catalog's or a probe's: while probes vouch for
+   * the record no scan is needed for it, and once they stop, the catalog's own older check
+   * is the one the envelope carries, and the next poll asks for a scan.
    */
   function catalogScanDue() {
     if (disposed || !catalogBacked || envelope === null || !deps.isVisible() || !online()) {
@@ -2283,11 +2368,11 @@ export function createPullController(deps, options) {
    * @param {string | null | undefined} value
    */
   function adoptVerified(value) {
-    const found = /^(catalog|fetch) (\S+)(?: scanning)?$/u.exec(value ?? "");
+    const found = /^(catalog|fetch|probe) (\S+)(?: scanning)?$/u.exec(value ?? "");
     if (envelope === null || envelope.record === null || found === null) {
       return;
     }
-    const by = /** @type {"catalog" | "fetch"} */ (found[1]);
+    const by = /** @type {"catalog" | "fetch" | "probe"} */ (found[1]);
     envelope = { ...envelope, verified_by: by, verified_at: found[2] };
     catalogBacked = catalogBacked || by === "catalog";
   }
@@ -2303,7 +2388,7 @@ export function createPullController(deps, options) {
       fetching: fetching || refreshPending,
       fetchQueued: fetchQueued(),
       refreshPending,
-      refreshDue: autoAsk !== "none",
+      refreshDue: autoAsk !== "none" && autoAskStale,
       online: online(),
       ...(deps.formatHold === undefined ? {} : { formatHold: deps.formatHold }),
       ownsChanges: walkSettling || ownsChanges(),
@@ -2364,6 +2449,15 @@ export function createPullController(deps, options) {
     }
   }
 
+  /**
+   * Whether an ask for a stale record is waiting, so a refresh may follow. A waiting probe
+   * ask, for a current record, is not one: it waits on every visible current page, and
+   * the probe it asks for is answered without a refresh unless GitHub changed.
+   */
+  function refreshAskWaiting() {
+    return askTimer !== null && autoAskStale;
+  }
+
   function cancelAsk() {
     if (askTimer !== null) {
       deps.cancel(askTimer);
@@ -2383,14 +2477,18 @@ export function createPullController(deps, options) {
    * @param {number} delayMs
    */
   function askAfter(ask, delayMs) {
-    askTimer = deps.schedule(() => {
-      if (!disposed && reader?.walking?.() === true) {
-        askAfter(ask, delayMs);
-        return;
-      }
-      askTimer = null;
-      ask();
-    }, delayMs);
+    askTimer = deps.schedule(
+      () => {
+        if (!disposed && reader?.walking?.() === true) {
+          askAfter(ask, delayMs);
+          return;
+        }
+        askTimer = null;
+        ask();
+      },
+      delayMs,
+      "ask",
+    );
   }
 
   function scheduleNext(fastDelay = FAST_POLL_MS) {
@@ -2500,6 +2598,40 @@ export function createPullController(deps, options) {
       ahead.clear();
     }
     return true;
+  }
+
+  /**
+   * The envelope a refresh answered, with the record the page holds put back where the
+   * answer left it out. An ask that names `held`, the revision of the record the page
+   * shows, is answered `record_held` in place of that record when the server's is the
+   * same one, which is nearly every answer of a page left open (`refresh_answer_pull` in
+   * pull_route.py records what the whole envelope cost each `probe_every_s`).
+   *
+   * The revision leaves out the record's `fetched_at`, which a read that found the same
+   * content moves, so the record takes the answer's: the envelope's `fetched_at` is its
+   * record's, and the age line is counted from the record.
+   *
+   * Null when the page no longer holds that record as the server has it: another revision
+   * since the ask, or a record whose comparison a server with no store drops (`no_store`),
+   * which shares its revision with the one a store keeps. The page then reads the route.
+   *
+   * @param {unknown} pull
+   * @returns {unknown} An envelope to check with `isEnvelope`, or null.
+   */
+  function withHeldRecord(pull) {
+    if (pull === null || typeof pull !== "object" || !("record_held" in pull)) {
+      return pull;
+    }
+    const { record_held: _held, ...rest } = /** @type {Record<string, unknown>} */ (pull);
+    if (
+      envelope === null ||
+      envelope.record === null ||
+      envelope.record_revision !== rest.record_revision ||
+      "no_store" in envelope !== "no_store" in rest
+    ) {
+      return null;
+    }
+    return { ...rest, record: { ...envelope.record, fetched_at: rest.fetched_at } };
   }
 
   /**
@@ -2733,9 +2865,15 @@ export function createPullController(deps, options) {
    * page's own request says nothing to the reader, whose page still shows what it did and
    * still offers Refresh.
    *
-   * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, prepare_comparison?: string, recovery?: {base: string, head: string}}} ask
+   * An automatic ask (*automatic*), a visible page's recurring probe or its ask for a stale
+   * record, restarts the poll only when it started a refresh or the poll should be fast and
+   * is not: the poll keeps its own interval, so a server that stops answering is reported
+   * by it, and by the failed ask itself.
+   *
+   * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, prepare_comparison?: string, recovery?: {base: string, head: string}, held?: string}} ask
+   * @param {{automatic?: boolean}} [how]
    */
-  async function askForRefresh(ask) {
+  async function askForRefresh(ask, { automatic = false } = {}) {
     const idle = ask.prepare_comparison !== undefined;
     if (!idle) {
       inFlightRefreshes += 1;
@@ -2751,24 +2889,41 @@ export function createPullController(deps, options) {
     const request = ++sent;
     // A bounded core wait must not shift the first ordinary poll by its response time.
     const fastSince = ask.wait_core === true ? deps.now() : null;
+    let started = false;
+    // The answer left out a record the page no longer holds: the route is read at once.
+    let reread = false;
     try {
       const response = await deps.request("POST", REFRESH_ROUTE, { body: ask });
       const body = /** @type {{pull?: unknown, error?: unknown} | null} */ (response.body);
+      const pull = body === null ? null : withHeldRecord(body.pull);
       if (
         (response.status === 202 || response.status === 200) &&
         body !== null &&
-        isEnvelope(body.pull)
+        pull === null &&
+        body.pull != null
       ) {
-        if (accept(body.pull, request)) {
+        etag = null;
+        reread = true;
+        if (!idle) {
+          error = null;
+          errorFromComparison = false;
+        }
+      } else if (
+        (response.status === 202 || response.status === 200) &&
+        body !== null &&
+        isEnvelope(pull)
+      ) {
+        if (accept(pull, request)) {
           waitForFull =
             response.status === 202 &&
             ask.wait_core === true &&
-            body.pull.record === null &&
-            body.pull.refreshing;
+            pull.record === null &&
+            pull.refreshing;
         }
         if (response.status === 202) {
           // The answer changed; the next poll must not be answered by a 304.
           etag = null;
+          started = true;
         }
         if (!idle) {
           error = null;
@@ -2783,6 +2938,11 @@ export function createPullController(deps, options) {
         }
       }
     } catch {
+      if (automatic) {
+        // As a failed poll is: the server did not answer this page's own ask.
+        error = "The server did not answer.";
+        errorFromComparison = false;
+      }
       if (ask.retry) {
         error = "The refresh request failed.";
         errorFromComparison = ask.comparison === true;
@@ -2800,11 +2960,20 @@ export function createPullController(deps, options) {
     if (!disposed) {
       fetchSelectedChanges();
       render();
-      scheduleNext(
-        fastSince === null
-          ? FAST_POLL_MS
-          : FAST_POLL_MS - (Math.max(0, deps.now() - fastSince) % FAST_POLL_MS),
-      );
+      if (reread) {
+        pollNow();
+      } else if (
+        !automatic ||
+        started ||
+        timer === null ||
+        (pollsFast() && timerDue - deps.now() > FAST_POLL_MS)
+      ) {
+        scheduleNext(
+          fastSince === null
+            ? FAST_POLL_MS
+            : FAST_POLL_MS - (Math.max(0, deps.now() - fastSince) % FAST_POLL_MS),
+        );
+      }
       deps.timelineStateChanged?.();
       fetchIdleChanges();
     }
@@ -2892,7 +3061,7 @@ export function createPullController(deps, options) {
       !hasPolled ||
       polling ||
       fetching ||
-      askTimer !== null ||
+      refreshAskWaiting() ||
       inFlightRefreshes > 0 ||
       error !== null ||
       envelope === null ||
@@ -2948,7 +3117,7 @@ export function createPullController(deps, options) {
    * after which the page stays as it was.
    *
    * @param {{head: string, ref: string}} at
-   * @param {string | null} view The `/view/` address the page goes to, or null for none.
+   * @param {string} view The `/view/` address the page goes to.
    * @param {(moved: string | null) => void} then Given where the server says *view* is on
    *   the head, when it says.
    */
@@ -2956,10 +3125,7 @@ export function createPullController(deps, options) {
     if (disposed) {
       return;
     }
-    const outcome = await deps.switchPin(
-      { oid: at.head, under: at.ref, ...(view === null ? {} : { view }) },
-      () => !disposed,
-    );
+    const outcome = await deps.switchPin({ oid: at.head, under: at.ref, view }, () => !disposed);
     if (disposed || outcome.kind === "busy" || outcome.kind === "abandoned") {
       return;
     }
@@ -2970,14 +3136,6 @@ export function createPullController(deps, options) {
     error = outcome.message;
     errorFromComparison = false;
     render();
-  }
-
-  /** The newer head the page offers: served, then reloaded so every view shows it. */
-  async function switchToHead() {
-    const offer = model().headOffer;
-    if (offer !== null) {
-      await serveHead(offer, null, deps.reload);
-    }
   }
 
   /**
@@ -3281,13 +3439,12 @@ export function createPullController(deps, options) {
     poll: () => poll(),
     timelineAllowed: () =>
       hasPolled &&
-      askTimer === null &&
+      !refreshAskWaiting() &&
       inFlightRefreshes === 0 &&
       (envelope?.refreshing === false || envelope?.preparing_comparison === true),
     fetchIdleChanges,
     requestRefresh,
     requestComparison,
-    switchToHead,
     browseCode,
     requestMarkdown,
     renderedFor,
@@ -3321,7 +3478,10 @@ export function createPullController(deps, options) {
  * does, and a page opened again renders only what is near where it lands. `block` is -1
  * above the first block, in the header, where `top`, the scroll offset, says where.
  *
- * @typedef {{block: number, offset: number, top: number}} PanePlace
+ * In Changes a block is a file, and `file` names it, so a place holds its file when the
+ * diff is another one: a pull request whose head moved shows other files above it.
+ *
+ * @typedef {{block: number, offset: number, top: number, file?: string}} PanePlace
  */
 
 /**
@@ -3349,17 +3509,29 @@ export function placeAt(tops, scrollTop) {
  * pixels of rows, and a page opened again draws it closed, so the same offset would land
  * that far into the page.
  *
+ * *fileBlock* is where the place's file is now, when the page can say: the place is in
+ * that block, whichever block it was. `-1` is a page that has no such file, a newer diff
+ * the file is not in: the place is the top of the block at its index, since the offset was
+ * a line of a file that is gone. Left out, the page cannot say, as before its diff has
+ * mounted, and the place is at its index as it was.
+ *
  * @param {PanePlace} place
  * @param {number[]} tops
+ * @param {number} [fileBlock]
  * @returns {number | null}
  */
-export function scrollTopOf(place, tops) {
+export function scrollTopOf(place, tops, fileBlock) {
   if (tops.length === 0) {
     return null;
   }
-  return place.block < 0
-    ? Math.min(place.top, tops[0])
-    : tops[Math.min(place.block, tops.length - 1)] + place.offset;
+  if (place.block < 0) {
+    return Math.min(place.top, tops[0]);
+  }
+  if (fileBlock !== undefined && fileBlock >= 0 && fileBlock < tops.length) {
+    return tops[fileBlock] + place.offset;
+  }
+  const top = tops[Math.min(place.block, tops.length - 1)];
+  return fileBlock === undefined ? top + place.offset : top;
 }
 
 /**
@@ -3373,7 +3545,8 @@ function isPanePlace(value) {
     place !== null &&
     Number.isInteger(place.block) &&
     Number.isFinite(place.offset) &&
-    Number.isFinite(place.top)
+    Number.isFinite(place.top) &&
+    (place.file === undefined || typeof place.file === "string")
   );
 }
 
@@ -3400,7 +3573,7 @@ export function keyMovesPane(key, target) {
  *   apply(place: PanePlace): boolean,
  *   anchored(): boolean,
  *   toTop(): void,
- *   schedule(callback: () => void, delayMs: number): unknown,
+ *   schedule(callback: () => void, delayMs: number, kind?: "ask"): unknown,
  *   cancel(handle: unknown): void,
  * }} ScrollKeeperDependencies
  */
@@ -3455,6 +3628,25 @@ export function createScrollKeeper(deps) {
     }, LANDING_SETTLE_MS);
   }
 
+  /**
+   * Hold a place the page chose for the reader, as a landing's is held: where they were in a
+   * diff that Changes is about to replace. Written at once, so a reload lands there too, and
+   * put when the page next changes height, which is the new diff arriving: the page is asked
+   * for nothing now, while it still shows the diff being replaced, and a scroll before then,
+   * the emptied pane's clamp to its top, is the hold's and writes nothing.
+   *
+   * @param {PanePlace} place
+   */
+  function holdAt(place) {
+    if (disposed) {
+      return;
+    }
+    cancelWrite();
+    cancelSettle();
+    holding = place;
+    deps.write(place);
+  }
+
   return Object.freeze({
     /** History arrived at an entry, or the page opened on one. */
     land() {
@@ -3475,6 +3667,30 @@ export function createScrollKeeper(deps) {
       } else {
         deps.toTop();
       }
+    },
+    /** Hold a place the page chose for the reader (`holdAt`). */
+    holdAt,
+    /**
+     * Hold the reader's place through a diff's replacement, as `holdAt`: where they are now,
+     * or, when the page has nothing to measure (*measurable* false, as while the diff being
+     * replaced is itself still being read), the place held, else the one the entry has, which
+     * a landing there would hold. Measured then, the emptied page says only that the pane is
+     * at its top. A second follow during the read finds the place still held, and a press of
+     * a button over the read, the followed note's, finds it in the entry: the press ended
+     * the hold first, as any input in the pane does (B1 of review B on #745).
+     *
+     * @param {boolean} measurable
+     */
+    holdThrough(measurable) {
+      if (disposed) {
+        return;
+      }
+      if (measurable) {
+        holdAt(deps.measure());
+        return;
+      }
+      const kept = holding ?? deps.read();
+      holdAt(isPanePlace(kept) ? kept : deps.measure());
     },
     /** The page changed height. */
     contentChanged() {
@@ -3569,27 +3785,150 @@ export function onPageRoute(pathname, number, tab) {
 }
 
 /**
- * What Files changed does with the record's comparison. Pure.
+ * @typedef {{left: string, right: string, route?: string, image_route?: string, rendered_route?: string, size_route?: string}} ShownComparison
+ */
+
+/**
+ * What Changes does with the record's comparison. Pure.
  *
- * The diff keeps the comparison it was opened on: a record read at a newer head offers
- * it rather than changing the diff under the reader.
+ * Changes follows the pull request, as its served code follows the head (`follows_moves`
+ * in mirror_refresh.py): a record read at a newer head, or against a base that moved,
+ * replaces the diff shown, and a note names both heads with the way back
+ * (`followedNote`). A reader who took the way back chose the earlier diff (*chosen*), so
+ * it stays, and the record's is offered.
  *
  * @param {{left: string, right: string, route?: string} | null} mounted The comparison the diff shows.
  * @param {{left: string, right: string, route?: string} | null} comparison The record's.
- * @returns {"unavailable" | "mount" | "keep" | "offer"}
+ * @param {boolean} [chosen] Whether the reader went back to the diff shown.
+ * @returns {"unavailable" | "mount" | "keep" | "follow" | "offer"}
  */
-export function filesAction(mounted, comparison) {
+export function filesAction(mounted, comparison, chosen = false) {
   if (comparison === null) {
     return "unavailable";
   }
   if (mounted === null) {
     return "mount";
   }
-  return mounted.left === comparison.left &&
+  if (
+    mounted.left === comparison.left &&
     mounted.right === comparison.right &&
     mounted.route === comparison.route
-    ? "keep"
-    : "offer";
+  ) {
+    return "keep";
+  }
+  return chosen ? "offer" : "follow";
+}
+
+/**
+ * The diff Changes replaced without the reader asking, which its note names, or null. Pure.
+ *
+ * *last* is the comparison Changes last showed, on this page or, for a page loaded again,
+ * as its history entry remembers it (`rememberedChanges`); a served head that moved
+ * reloads the page, so the entry is what carries the note across. A mount of other commits
+ * than *last* replaced it. A mount of the same commits keeps the diff its note already
+ * named (*from*), unless that is the one now shown.
+ *
+ * @param {ShownComparison | null} last
+ * @param {ShownComparison | null} from
+ * @param {{left: string, right: string}} next
+ * @returns {ShownComparison | null}
+ */
+export function followedFrom(last, from, next) {
+  const same = (/** @type {ShownComparison | null} */ other) =>
+    other !== null && other.left === next.left && other.right === next.right;
+  if (last !== null && !same(last)) {
+    return last;
+  }
+  return from !== null && !same(from) ? from : null;
+}
+
+/**
+ * What Changes says over a diff that replaced another, or null when it replaced none. Pure.
+ *
+ * `head` names the head it showed and the head it shows; `base` is the same head compared
+ * from another merge base, where the two commits to name would read the same.
+ *
+ * @param {{left: string, right: string} | null} from
+ * @param {{left: string, right: string}} to
+ * @returns {{kind: "head", from: string, to: string} | {kind: "base"} | null}
+ */
+export function followedNote(from, to) {
+  if (from === null || (from.left === to.left && from.right === to.right)) {
+    return null;
+  }
+  return from.right === to.right
+    ? { kind: "base" }
+    : { kind: "head", from: from.right, to: to.right };
+}
+
+/**
+ * What a history entry remembers of Changes, read back from `history.state`, or null for
+ * anything else: the comparison it showed, the one its note named, and whether the one
+ * shown is the earlier diff the reader went back to. Pure.
+ *
+ * @param {unknown} value
+ * @returns {{shown: ShownComparison, from: ShownComparison | null, chosen: boolean} | null}
+ */
+export function rememberedChanges(value) {
+  const memory = /** @type {{shown?: unknown, from?: unknown, chosen?: unknown} | null} */ (value);
+  if (typeof value !== "object" || memory === null) {
+    return null;
+  }
+  const shown = shownComparison(memory.shown);
+  return shown === null
+    ? null
+    : { shown, from: shownComparison(memory.from), chosen: memory.chosen === true };
+}
+
+/**
+ * The earlier diff a reader went back to, which a page loaded again on the entry shows in
+ * place of the record's, or null. Pure.
+ *
+ * The choice stays until the reader takes the newer changes, and on a repository URL every
+ * later push reloads the page, so the entry holds it. A record that names the remembered
+ * commits again has nothing earlier to show.
+ *
+ * @param {{shown: ShownComparison, chosen: boolean} | null} memory
+ * @param {{left: string, right: string}} comparison The record's.
+ * @returns {ShownComparison | null}
+ */
+export function chosenEarlier(memory, comparison) {
+  if (memory === null || !memory.chosen) {
+    return null;
+  }
+  const { shown } = memory;
+  return shown.left === comparison.left && shown.right === comparison.right ? null : shown;
+}
+
+/**
+ * A comparison as Changes mounts it, with nothing but its commits and routes. Pure.
+ *
+ * @param {unknown} value
+ * @returns {ShownComparison | null}
+ */
+export function shownComparison(value) {
+  const given = /** @type {Record<string, unknown> | null} */ (value);
+  if (typeof value !== "object" || given === null) {
+    return null;
+  }
+  const { left, right } = given;
+  if (typeof left !== "string" || typeof right !== "string") {
+    return null;
+  }
+  /** @type {ShownComparison} */
+  const shown = { left, right };
+  for (const route of /** @type {const} */ ([
+    "route",
+    "image_route",
+    "rendered_route",
+    "size_route",
+  ])) {
+    const address = given[route];
+    if (typeof address === "string") {
+      shown[route] = address;
+    }
+  }
+  return shown;
 }
 
 /**
@@ -4507,7 +4846,7 @@ export function mountPullPage(container, ctx, mb) {
   let guided = null;
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
-   *   settled: boolean, cacheMiss: boolean, retryPending: boolean,
+   *   settled: boolean, cacheMiss: boolean, retryPending: boolean, heldUntil: number | null,
    *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
   let commitTimeline = null;
   // The allowlist a text's Markdown passes through before it is inserted; a text stays
@@ -5873,29 +6212,6 @@ export function mountPullPage(container, ctx, mb) {
     // after it: the freshness text before them once moved an offer by 100 px.
     /** @type {Element[]} */
     const ending = [];
-    if (model.headOffer !== null) {
-      const { pin, head } = model.headOffer;
-      const switchNow = () => void controller.switchToHead();
-      const held = headerPart("switch offer", [pin, head], () => {
-        // A text action, as Refresh is: following it switches the served pin.
-        const button = h(
-          "button",
-          { type: "button", class: "github-pull-text-action github-pull-switch" },
-          ["Switch to the head"],
-        );
-        button.addEventListener("click", switchNow);
-        const sentence = [
-          "This page’s code is ",
-          commitId(pin),
-          ", not the pull request’s head ",
-          commitId(head),
-          ".",
-        ];
-        return { offer: offer(sentence, button), button };
-      });
-      numbered.set("switch", { element: held.button, run: switchNow });
-      ending.push(held.offer);
-    }
     const checkoutAtHead = model.checkoutAtHead;
     if (checkoutAtHead !== null) {
       const href = mb.navigation.href({ path: "" });
@@ -6471,6 +6787,18 @@ export function mountPullPage(container, ctx, mb) {
    * @type {{left: string, right: string, route?: string} | null}
    */
   let filesRefresh = null;
+  /** The comparison Changes last showed on this page, mounted or not (`followedFrom`).
+   * @type {ShownComparison | null}
+   */
+  let changesShown = null;
+  /** The diff that the one shown replaced by itself, which its note names.
+   * @type {ShownComparison | null}
+   */
+  let changesFrom = null;
+  /** Whether the reader went back to the diff shown, which then stays (`filesAction`). */
+  let changesChosen = false;
+  /** Whether the keeper holds the place of a diff the one mounting replaces. */
+  let keptThrough = false;
 
   function disposeDiff() {
     cancelCurrentFileBridge();
@@ -7126,7 +7454,97 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /** @param {{left: string, right: string, route?: string, image_route?: string, rendered_route?: string, branch?: {ref: string | null} | null}} comparison */
+  /** What this history entry remembers of Changes, for a page first mounting a diff on it. */
+  function entryMemory() {
+    // The entry's memory is kept with its place: by a page in the pane that scrolls.
+    return changesShown === null && pane !== null
+      ? rememberedChanges(window.history.state?.[CHANGES_KEY])
+      : null;
+  }
+
+  /**
+   * Hold the reader's place through a diff's replacement, in its file where the next diff
+   * has it. Held and written before the body is emptied: the pane then clamps to its top,
+   * which arrives as a scroll, and with nothing held that top would be written as the
+   * reader's place for as long as the next comparison takes to read, where the reload a
+   * followed pin makes would land on it (A3 of review A on #745). While no diff is mounted,
+   * as while the one being replaced is still read, the body has nothing to measure, and the
+   * place is the one already kept (`holdThrough`).
+   */
+  function keepPlaceThrough() {
+    if (place !== null) {
+      place.keeper.holdThrough(diffHandle !== null);
+      keptThrough = true;
+    }
+  }
+
+  /**
+   * Mount the record's comparison in Changes. One that replaces another diff, the one shown
+   * or the one this history entry showed when the page was last loaded, is noted
+   * (`followedNote`). *keep* holds the reader's place through the replacement.
+   *
+   * @param {NonNullable<PullModel["comparison"]>} comparison
+   * @param {boolean} keep
+   */
+  function showChanges(comparison, keep) {
+    const memory = entryMemory();
+    changesFrom = followedFrom(
+      changesShown ?? memory?.shown ?? null,
+      changesFrom ?? memory?.from ?? null,
+      comparison,
+    );
+    changesChosen = false;
+    if (keep) {
+      keepPlaceThrough();
+    }
+    diffMounted = mountDiff(comparison);
+  }
+
+  /** The way back a followed diff's note offers: the diff it replaced, which then stays. */
+  function showEarlier() {
+    const earlier = changesFrom;
+    if (earlier === null || listening.signal.aborted) {
+      return;
+    }
+    changesFrom = null;
+    changesChosen = true;
+    // An explicit choice of the earlier diff ends an older repair's hold on Changes.
+    filesRefresh = null;
+    keepPlaceThrough();
+    diffMounted = mountDiff(earlier);
+  }
+
+  /**
+   * On a page loaded again on its entry: the earlier diff the reader had gone back to,
+   * mounted in place of the record's, so the choice outlives the reload each later push
+   * makes on a repository URL (`chosenEarlier`). The landing holds the place.
+   *
+   * @param {NonNullable<PullModel["comparison"]>} comparison
+   */
+  function restoreChosen(comparison) {
+    const earlier = chosenEarlier(entryMemory(), comparison);
+    if (earlier !== null) {
+      changesFrom = null;
+      changesChosen = true;
+      diffMounted = mountDiff(earlier);
+    }
+  }
+
+  /** What this entry's Changes shows, for a page loaded again on it (`rememberedChanges`). */
+  function rememberChanges() {
+    // History can move on before this page is told, as for a place (`keepPlace`).
+    if (pane !== null && onPageRoute(window.location.pathname, number, "files")) {
+      window.history.replaceState(
+        {
+          ...window.history.state,
+          [CHANGES_KEY]: { shown: changesShown, from: changesFrom, chosen: changesChosen },
+        },
+        "",
+      );
+    }
+  }
+
+  /** @param {ShownComparison & {branch?: {ref: string | null} | null}} comparison */
   async function mountDiff(comparison, tab = shown?.tab ?? "files") {
     if (listening.signal.aborted) {
       return;
@@ -7135,6 +7553,8 @@ export function mountPullPage(container, ctx, mb) {
     const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
     diffHost = host;
     diffFor = comparison;
+    changesShown = shownComparison(comparison);
+    rememberChanges();
     // Docs is the comparison's documents alone, drawn whole: the whole comparison, which
     // the page's Diff summary describes, is read apart from it, as on Conversation.
     const docs = tab === "docs";
@@ -7256,7 +7676,16 @@ export function mountPullPage(container, ctx, mb) {
       watchCurrentFileAfterPaint(host, handle);
       // Landed before the wait, so the first screen the Markdown layer reports is the one the
       // reader lands on: a file the address names, not the top of the diff.
-      landFile();
+      if (landFile() === null) {
+        // A held place, a landing's or one kept through a replaced diff, can find its file
+        // now that the diff says where each one is.
+        place?.keeper.contentChanged();
+      } else if (keptThrough) {
+        // The file the reader asked for is where they are now: a place kept through the
+        // replaced diff gives way to it, as it did when it was held only from here.
+        place?.keeper.readerMoved();
+      }
+      keptThrough = false;
       const firstScreen = /** @type {{firstScreen?: () => Promise<void>} | null} */ (handle)
         ?.firstScreen;
       if (holds && typeof firstScreen === "function") {
@@ -7359,9 +7788,12 @@ export function mountPullPage(container, ctx, mb) {
         return;
       }
       filesRefresh = null;
+      // A refresh that found another head is followed below, not repaired first.
+      const follows = filesAction(displayed, model.comparison, changesChosen) === "follow";
       if (
-        diffFor === null ||
-        (model.failure === null && model.message === null && diffFor === displayed)
+        !follows &&
+        (diffFor === null ||
+          (model.failure === null && model.message === null && diffFor === displayed))
       ) {
         // Only an existing Files mount can supply the place this remount preserves.
         // A history arrival already owns its saved place; Conversation must not overwrite it.
@@ -7380,11 +7812,10 @@ export function mountPullPage(container, ctx, mb) {
       // Let the current route render normally instead of restoring the older repair.
     }
     const comparison = model.comparison;
-    // Changes and Docs are two drawings of one comparison: moving between them draws again.
-    const action =
-      comparison !== null && diffFor !== null && diffShows !== model.tab
-        ? "mount"
-        : filesAction(diffFor, comparison);
+    if (diffFor === null && comparison !== null) {
+      restoreChosen(comparison);
+    }
+    const action = filesAction(diffFor, comparison, changesChosen);
     if (comparison === null || action === "unavailable") {
       disposeDiff();
       // The header was painted while the diff was mounted: its summary waited on that read.
@@ -7422,9 +7853,14 @@ export function mountPullPage(container, ctx, mb) {
       body.replaceChildren(message);
       return;
     }
-    if (action === "mount") {
-      diffMounted = mountDiff(comparison);
-    } else if (action === "offer") {
+    if (action === "mount" || action === "follow") {
+      showChanges(comparison, action === "follow");
+    } else if (diffFor !== null && diffShows !== model.tab) {
+      // Changes and Docs are two drawings of one comparison: moving between them draws it
+      // again, the record's as it is now, or an earlier one the reader chose (mb-n9ra).
+      diffMounted = mountDiff(action === "offer" ? diffFor : comparison, model.tab);
+    }
+    if (action === "offer") {
       const offer = h("button", { type: "button", class: "btn github-pull-newer" }, [
         "Show the newer changes",
       ]);
@@ -7432,7 +7868,8 @@ export function mountPullPage(container, ctx, mb) {
         // A reader's explicit newer selection ends the older repair's UI ownership.
         filesRefresh = null;
         // What `whenFilesReady` waits for is the diff last asked for, this one included.
-        diffMounted = mountDiff(comparison);
+        showChanges(comparison, true);
+        paintFollowed();
       });
       body.querySelector(".github-pull-newer-offer")?.remove();
       const said = notice(null, [
@@ -7444,8 +7881,9 @@ export function mountPullPage(container, ctx, mb) {
       said.classList.add("github-pull-newer-offer");
       body.prepend(said);
     }
+    paintFollowed();
     // The repository's list says the head moved before the record was read again: the diff
-    // shown stays, and the offer above replaces this once the refresh brings the newer one.
+    // shown stays until the refresh brings the newer one, which Changes then follows.
     body.querySelector(".github-pull-new-commits")?.remove();
     if (model.newCommits !== null && action !== "offer") {
       const said = notice(null, [model.newCommits]);
@@ -7571,6 +8009,47 @@ export function mountPullPage(container, ctx, mb) {
         }
       },
     );
+  }
+
+  /**
+   * The note over a diff that replaced another by itself: both heads, and the way back.
+   * Kept as painted while it says the same, so focus on its button survives a repaint.
+   */
+  function paintFollowed() {
+    const note = diffFor === null || changesChosen ? null : followedNote(changesFrom, diffFor);
+    const key = JSON.stringify(note);
+    const painted = /** @type {HTMLElement | null} */ (body.querySelector(".github-pull-followed"));
+    if (painted !== null && painted.dataset.note === key) {
+      return;
+    }
+    painted?.remove();
+    if (note === null) {
+      return;
+    }
+    const back = h("button", { type: "button", class: "btn github-pull-earlier" }, [
+      "Show the earlier changes",
+    ]);
+    back.addEventListener("click", () => {
+      showEarlier();
+      if (shown !== null) {
+        paintFiles(shown);
+      }
+    });
+    const said = notice(null, [
+      ...(note.kind === "head"
+        ? [
+            "The pull request’s head moved from ",
+            commitId(note.from),
+            " to ",
+            commitId(note.to),
+            ". ",
+          ]
+        : ["The comparison has changed. "]),
+      back,
+    ]);
+    said.classList.add("github-pull-followed");
+    said.dataset.note = key;
+    body.prepend(said);
   }
 
   /** @param {PullModel} model */
@@ -7926,6 +8405,9 @@ export function mountPullPage(container, ctx, mb) {
               settled: false,
               cacheMiss: false,
               retryPending: false,
+              // When the wait the server named for a read its budget refused ends, in
+              // `Date.now()` time; null for a transient failure's one retry.
+              heldUntil: null,
               read: null,
             }
           : null;
@@ -7949,6 +8431,8 @@ export function mountPullPage(container, ctx, mb) {
     }
     cancelTimeline();
     const retrying = held.retryPending;
+    // A wait the server's budget asked for is not the transient failure's one retry.
+    const afterHold = retrying && held.heldUntil !== null;
     if (held.settled || (retrying && !providerAllowed)) {
       return;
     }
@@ -7971,8 +8455,10 @@ export function mountPullPage(container, ctx, mb) {
       }
       if (retrying) {
         // The retry budget is spent when the provider request starts, even if it is aborted.
+        // A read the server's budget held spent none: it is asked for until it is read.
         held.retryPending = false;
-        held.settled = true;
+        held.settled = held.heldUntil === null;
+        held.heldUntil = null;
       }
       // Commits join a conversation that is already shown, so the age line breathes for
       // them as for a refresh; nothing spins in the description card.
@@ -8035,7 +8521,14 @@ export function mountPullPage(container, ctx, mb) {
       if (cachedOnly && held.projection === null) {
         held.cacheMiss = true;
         followTimeline();
-      } else if (!cachedOnly && !retrying && projection?.retryable) {
+      } else if (!cachedOnly && projection?.retryable && projection.heldMs !== null) {
+        // The server's budget refused the read, at no cost to GitHub: ask again when it
+        // says, for as long as it refuses and this record's page stays.
+        held.settled = false;
+        held.retryPending = true;
+        held.heldUntil = Date.now() + projection.heldMs;
+        followTimeline();
+      } else if (!cachedOnly && (!retrying || afterHold) && projection?.retryable) {
         held.retryPending = true;
         followTimeline();
       } else {
@@ -8047,7 +8540,12 @@ export function mountPullPage(container, ctx, mb) {
       }
     };
     if (retrying) {
-      const timer = window.setTimeout(() => void load(), TIMELINE_RETRY_MS);
+      // A paint during a refresh ask cancels the wait (`timelineAllowed`), and the next one
+      // waits only what is left of it, so the server's minute is a period, not a minimum
+      // that each refresh ask starts again (review B3 of #737).
+      const delay =
+        held.heldUntil === null ? TIMELINE_RETRY_MS : Math.max(0, held.heldUntil - Date.now());
+      const timer = window.setTimeout(() => void load(), delay);
       read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
     } else if (typeof window.requestAnimationFrame === "function") {
       let frame = window.requestAnimationFrame(() => {
@@ -8164,7 +8662,6 @@ export function mountPullPage(container, ctx, mb) {
         mb.perf.measure("githubPull:render", () => paint(model), { number });
         painted(model);
       },
-      reload: () => window.location.reload(),
       // The diff plugin's one switch, which this page's Changes uses too, so a View on
       // branch and a Browse code never race, and both say a refusal in the same words. The
       // switch is in a module the diff plugin loads on demand, so the plugin's assets, or
@@ -8256,7 +8753,18 @@ export function mountPullPage(container, ctx, mb) {
     if (pane === null) {
       return;
     }
-    place = keepPlace(pane, body, () => addressShows(shown?.tab ?? ""));
+    place = keepPlace(pane, body, () => addressShows(shown?.tab ?? ""), {
+      pathOf: (block) =>
+        /** @type {{pathForSection?: (section: Element) => string | null} | null} */ (
+          diffHandle
+        )?.pathForSection?.(block) ?? null,
+      sectionOf(path) {
+        const section = /** @type {{sectionForPath?: (path: string) => Element | null} | null} */ (
+          diffHandle
+        )?.sectionForPath;
+        return typeof section === "function" ? section(path) : undefined;
+      },
+    });
     place.keeper.land();
   }
 
@@ -8439,14 +8947,24 @@ export function mountPullPage(container, ctx, mb) {
  * @param {HTMLElement} pane
  * @param {HTMLElement} body
  * @param {() => boolean} owns Whether the address still shows this page's tab.
+ * @param {{pathOf(block: Element): string | null, sectionOf(path: string): Element | null | undefined}} files
+ *   Which changed file a block of Changes is, and the block of a file, as the mounted diff
+ *   says, so a place there is its file's whichever diff shows it (`PanePlace`). *sectionOf*
+ *   answers null for a file the diff lacks and undefined while no diff can say.
  */
-function keepPlace(pane, body, owns) {
-  const tops = () => {
+function keepPlace(pane, body, owns, files) {
+  const blocks = () => Array.from(body.querySelectorAll(PLACE_BLOCKS));
+  /** @param {Element[]} [of] */
+  const tops = (of = blocks()) => {
     const viewTop = pane.getBoundingClientRect().top;
-    return Array.from(
-      body.querySelectorAll(PLACE_BLOCKS),
-      (block) => block.getBoundingClientRect().top - viewTop + pane.scrollTop,
-    );
+    return of.map((block) => block.getBoundingClientRect().top - viewTop + pane.scrollTop);
+  };
+  /** @returns {PanePlace} */
+  const measure = () => {
+    const of = blocks();
+    const at = placeAt(tops(of), pane.scrollTop);
+    const file = at.block < 0 ? null : files.pathOf(of[at.block]);
+    return file === null ? at : { ...at, file };
   };
   const keeper = createScrollKeeper({
     read: () => window.history.state?.[PLACE_KEY],
@@ -8457,9 +8975,15 @@ function keepPlace(pane, body, owns) {
         window.history.replaceState({ ...window.history.state, [PLACE_KEY]: place }, "");
       }
     },
-    measure: () => placeAt(tops(), pane.scrollTop),
+    measure,
     apply(place) {
-      const top = scrollTopOf(place, tops());
+      const of = blocks();
+      const section = place.file === undefined ? undefined : files.sectionOf(place.file);
+      const top = scrollTopOf(
+        place,
+        tops(of),
+        section === undefined ? undefined : section === null ? -1 : of.indexOf(section),
+      );
       if (top === null) {
         return false;
       }
@@ -8502,6 +9026,7 @@ function keepPlace(pane, body, owns) {
   heights.observe(body);
   return {
     keeper,
+    measure,
     dispose() {
       listening.abort();
       heights.disconnect();

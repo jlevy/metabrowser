@@ -3689,7 +3689,17 @@ declare global {
     last_fetch_at: string | null;
     last_outcome: { operation: string; outcome: string; at: string } | null;
     refreshing: boolean;
+    /**
+     * Whether all that is refreshing is a fetch of the mirror no reader asked for, the
+     * server's idle one or a visible page's once a window, which the row says nothing of.
+     */
+    refresh_quiet: boolean;
     stale: boolean;
+    /**
+     * How often, in seconds, a visible page of this pin makes its own ask, which has the
+     * server probe the served branch at its origin; null for a pin that is not probed.
+     */
+    probe_every_s: number | null;
     pull_request: number | null;
     selection_state: "pending" | "found" | "not_found" | "fetch_failed" | "superseded" | null;
     selection_href: string | null;
@@ -3835,6 +3845,7 @@ declare global {
       shown: MetabrowserSourcePage | null;
       timerPending: boolean;
       refreshAskedWhileVisible: boolean;
+      pageAskedWhileVisible: boolean;
       error: string | null;
     };
   }>;
@@ -3893,6 +3904,11 @@ declare global {
     pulls?: MetabrowserSourceRefPull[];
     /** How many pull requests the branch heads, of which `pulls` lists the first few. */
     pulls_total?: number;
+    /** On a row of the origin's branches read from Metabrowser's store, where the
+     * checkout's own remote-tracking branch is when that is not this row's commit: its
+     * commit and that commit's date, both null when the checkout has no such branch.
+     * Absent where the two agree, and on every other row. */
+    checkout?: { commit: string | null; committed_at: number | null };
   };
 
   /** A pull request as the ref list shows it: its state as the Pulls tab does. */
@@ -3932,7 +3948,26 @@ declare global {
     } | null;
     /** Null where no provider has pull requests for the subject, and for tags. */
     pull_requests: MetabrowserSourceRefPullRequests | null;
+    /** The store Metabrowser keeps of a checkout's origin, which its origin's branches and
+     * tags are listed from once it is ready. Null or absent on a mirror, and for a checkout
+     * that keeps none. */
+    origin?: MetabrowserSourceRefOrigin | null;
     refs: MetabrowserSourceRef[];
+  };
+
+  /** What a listing says of the store of a checkout's origin (`OriginStore` in
+   * metabrowser/checkout_store.py). */
+  type MetabrowserSourceRefOrigin = {
+    state: "ready" | "acquiring" | "absent";
+    /** Why there is no store, as a code, and as a sentence for the page. */
+    reason: string | null;
+    detail: string | null;
+    /** The origin as a page shows it. */
+    address: string | null;
+    last_fetch_at: string | null;
+    last_outcome: { operation: string; outcome: string; at: string } | null;
+    /** Whether a fetch of the store, or its first acquisition, runs now. */
+    refreshing: boolean;
   };
 
   /** What the ref selector holds; see static/source-ref-selector.js. */
@@ -3992,12 +4027,18 @@ declare global {
       current: boolean;
       /** The chip a row's name is drawn as. */
       chip: "local" | "remote" | "tag";
+      /** What the row says where the reader's own `origin/<branch>` is not where the
+       * origin's is: a short tag and the sentence its tooltip carries; else null. */
+      own: { text: string; tip: string } | null;
       /** The pull requests the branch is the head of, the first of which the row shows. */
       pulls: MetabrowserSourceRefPull[];
       /** How many it heads, of which `pulls` lists the first few. */
       pullsTotal: number;
     }>;
     note: string;
+    /** What the list says of the store a checkout's origin is listed from, and when that
+     * store was fetched, which the line shows as an age; null where no list reads one. */
+    origin: { text: string; fetchedAt: string | null; tone: "quiet" | "warning" } | null;
     error: string | null;
     /** What a checkout's page says once the server shows something else; else null. */
     stale: string | null;
@@ -4047,6 +4088,7 @@ declare global {
     /** As tall as every row together, so the list scrolls over all of them. */
     sizer: HTMLElement;
     note: HTMLElement;
+    origin: HTMLElement;
     error: HTMLElement;
     /** The rows the list shows now and which of them are drawn; see `drawWindow`. */
     rows: MetabrowserSourceRefSelectorRows;

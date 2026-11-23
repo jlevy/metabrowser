@@ -248,13 +248,9 @@ async function run() {
   updated.record.comparison.head = "c".repeat(40);
   updated.record.pull.head.sha = "c".repeat(40);
   updated.fetched_at = "2026-09-17T12:00:01Z";
+  // The record's newer head replaces the diff still mounting, as Changes follows it.
   newer.resolve(response(updated));
   await settle();
-  const offer = [...container.descendants()].find(
-    (element) => element.textContent === "Show the newer changes",
-  );
-  assert.ok(offer);
-  offer.events.get("click")();
   oldAssets.resolve();
   await settle();
   await sameVisit.whenFilesReady();
