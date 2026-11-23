@@ -400,6 +400,8 @@ const ABSENT_READ = `(() => {
     marked: corner ? corner.hasAttribute('data-counterpart') : null,
     children: corner ? corner.children.length : null,
     eyebrowRoom: eyebrow ? parseFloat(getComputedStyle(eyebrow).paddingInlineEnd) : null,
+    // The gutter at this window, which steps up in wider ones (styles.css).
+    gutter: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--content-padding-x')),
     titleRoom: (() => { const group = header && header.querySelector('.view-header-title-group'); return group ? parseFloat(getComputedStyle(group, '::before').width) || 0 : null; })(),
   };
 })()`;
@@ -425,6 +427,8 @@ const COMMIT_READ = `(() => {
   if (subject) range.selectNodeContents(subject);
   const pane = document.getElementById('preview-pane');
   return {
+    // The corner's end inset at this window: the gutter, which steps up in wider ones.
+    cornerInsetEnd: getComputedStyle(document.documentElement).getPropertyValue('--view-header-corner-inset-end').trim(),
     corners: corners.length,
     viewClass: view ? view.className : null,
     view: box(view),

@@ -366,9 +366,11 @@ def test_a_heading_is_nearer_its_section_than_what_precedes_it() -> None:
     inset = re.search(r"padding:\s*var\((--[\w-]+)\)", padding)
     assert inset is not None, padding
     shell = (PAGE_JS.parents[2] / "static" / "styles.css").read_text(encoding="utf-8")
+    # The pad steps up in wider windows (styles.css, after its root rule), so the narrowest
+    # of its values is the one that must hold.
     token = re.findall(rf"{inset.group(1)}:\s*(\d+)px;", shell)
-    assert len(token) == 1
-    assert int(token[0]) >= max(below.values())
+    assert token
+    assert min(int(value) for value in token) >= max(below.values())
 
 
 def test_a_wide_table_and_a_long_word_stay_reachable_in_a_card() -> None:
