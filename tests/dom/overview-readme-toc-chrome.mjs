@@ -241,6 +241,28 @@ const EDGES = `(() => {
     surfaces: [
       ...view.querySelectorAll(".folder-overview-panel-surface > .folder-overview-panel-body"),
     ].map(right),
+    legend: (() => {
+      const legend = view.querySelector(".file-overview-body .file-type-summary-legend");
+      const body = view.querySelector(".file-overview-body").getBoundingClientRect();
+      const toc = view.querySelector(".kpress-toc").getBoundingClientRect();
+      const items = [...legend.querySelectorAll(".file-type-summary-legend-item")].map(
+        (item) => item.getBoundingClientRect(),
+      );
+      const box = legend.getBoundingClientRect();
+      return {
+        rail: getComputedStyle(legend.parentElement).position === "absolute",
+        left: box.left,
+        width: box.width,
+        top: box.top,
+        bodyLeft: body.left,
+        bodyRight: body.right,
+        bodyTop: body.top,
+        tocLeft: toc.left,
+        tocWidth: toc.width,
+        items: items.length,
+        lines: new Set(items.map((item) => Math.round(item.top))).size,
+      };
+    })(),
   };
 })()`;
 
@@ -339,6 +361,33 @@ async function checkEdges(page, label, band) {
     ends.length >= 3 && ends.every((edge) => Math.abs(edge - edges.card) < TOLERANCE_PX),
     edges,
   );
+  // File Overview's legend: in the wide band, a rail where the README's table of contents
+  // is, from the section's top, one entry to a line; in every other band, inside the
+  // section's body under the bars, as it was.
+  const legend = edges.legend;
+  if (band === "wide") {
+    check(
+      `${label}: File Overview's legend is a rail on the table of contents' track`,
+      legend.rail &&
+        Math.abs(legend.left - legend.tocLeft) < TOLERANCE_PX &&
+        Math.abs(legend.width - legend.tocWidth) < TOLERANCE_PX &&
+        Math.abs(legend.top - legend.bodyTop) < TOLERANCE_PX &&
+        legend.items > 1 &&
+        legend.lines === legend.items,
+      legend,
+    );
+  } else {
+    check(
+      `${label}: File Overview's legend stays in its body, below the bars`,
+      !legend.rail &&
+        legend.left >= legend.bodyLeft - TOLERANCE_PX &&
+        legend.left + legend.width <= legend.bodyRight + TOLERANCE_PX &&
+        legend.top > legend.bodyTop &&
+        legend.items > 1 &&
+        legend.lines < legend.items,
+      legend,
+    );
+  }
 }
 
 async function checkProfile(label, anchorPrefix) {

@@ -72,6 +72,9 @@ export function mountFileOverviewPanel(
     container.append(note);
     return Object.freeze({ dispose() {} });
   }
+  // The body File Overview fills, which in the Overview's wide band holds the type legend
+  // in a rail beside it (overview.css, .file-overview-body).
+  container.classList.add("file-overview-body");
   const controls = document.createElement("div");
   const totalsContainer = document.createElement("div");
   const breakdownContainer = document.createElement("div");
