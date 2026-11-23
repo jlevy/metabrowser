@@ -270,6 +270,15 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
             "context": "Remote branch forker:topic/nested",
             "url": "https://github.com/forker/demo/tree/refs/heads/topic/nested",
             "actions": ["Copy Branch Name", "Open on GitHub"],
+            "focused": True,
+            "repeatClosed": True,
+        },
+        "repeatClick": {
+            "overlayHit": True,
+            "overlayOpened": True,
+            "overlayClosed": True,
+            "sourceHit": True,
+            "sourceClosed": True,
         },
     }
     from_menu = result["tagFromHistory"]

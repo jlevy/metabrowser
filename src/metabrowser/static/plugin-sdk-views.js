@@ -931,6 +931,9 @@
     return group;
   }
 
+  /** @type {WeakMap<HTMLButtonElement, Element>} */
+  const refMenuSourceChips = new WeakMap();
+
   /** Overlay full-chip menu buttons as siblings of clickable rows and picker buttons.
    * Read geometry on entry and remove its listeners when the controls are hidden or recycled.
    * @param {HTMLElement} primary
@@ -951,6 +954,7 @@
       const label = chip.getAttribute("data-tip-text") ?? "";
       configureRefTrigger(button, label);
       button.setAttribute("data-ref-menu", chip.getAttribute("data-ref-menu") ?? "");
+      refMenuSourceChips.set(button, chip);
       button.innerHTML = refCaret();
       layer.append(button);
       return button;
@@ -1305,14 +1309,19 @@
         : rect.top - menu.offsetHeight - margin,
     )}px`;
     items[last ? items.length - 1 : 0].focus({ preventScroll: true });
+    const sourceChip = refMenuSourceChips.get(trigger);
     const outside = (/** @type {PointerEvent | FocusEvent} */ event) => {
-      if (
-        event.target instanceof Node &&
-        !menu.contains(event.target) &&
-        !trigger.contains(event.target)
-      ) {
-        close(false);
+      const target = event.target;
+      if (!(target instanceof Node) || menu.contains(target) || trigger.contains(target)) {
+        return;
       }
+      if (event.type === "pointerdown" && sourceChip?.contains(target)) {
+        // A press can land on the source chip beneath its overlay. Keep focus
+        // from moving to the underlying row before it forwards the click.
+        event.preventDefault();
+        return;
+      }
+      close(false);
     };
     doc.addEventListener("pointerdown", outside, { capture: true, signal });
     doc.addEventListener("focusin", outside, { signal });

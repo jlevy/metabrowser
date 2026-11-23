@@ -3599,11 +3599,18 @@ def test_diff_text_and_reserved_geometry_use_the_dense_mono_token() -> None:
 
 
 def test_ref_menu_chevron_uses_neutral_ink_without_reserving_space() -> None:
-    rules = dict(_rules_of(STATIC / "styles.css"))
-    caret = rules[".git-ref-menu-caret"]
+    rules = list(_rules_of(STATIC / "styles.css"))
+    caret, reduced_motion = [
+        declarations for selector, declarations in rules if selector == ".git-ref-menu-caret"
+    ]
     assert caret["position"] == "absolute"
     assert caret["color"] == "var(--muted)"
-    assert rules[".git-ref-menu-caret > svg"]["transform"] == "rotate(90deg)"
+    background = _MIX_OVER_TRANSPARENT.fullmatch(caret["background"])
+    assert background is not None and background["token"] == "--viz-surface-raised"
+    assert 0 < float(background["percent"]) < 100
+    assert "opacity var(--transition-fast)" in caret["transition"]
+    assert reduced_motion["transition"] == "none"
+    assert dict(rules)[".git-ref-menu-caret > svg"]["transform"] == "rotate(90deg)"
 
 
 # ── The Shift reveal's paint ────────────────────────────────────────

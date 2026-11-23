@@ -8287,10 +8287,18 @@ pre.code-block.metabrowser-source-lines > code {
   place-items: center;
   width: var(--icon-box);
   max-width: 100%;
-  background: var(--viz-surface-raised);
+  background: color-mix(in srgb, var(--viz-surface-raised) 86%, transparent);
   color: var(--muted);
   opacity: 0;
   pointer-events: none;
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast);
+}
+@media (prefers-reduced-motion: reduce) {
+  .git-ref-menu-caret {
+    transition: none;
+  }
 }
 .git-ref-menu-caret > svg {
   width: min(12px, 100%);

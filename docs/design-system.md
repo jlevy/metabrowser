@@ -2049,8 +2049,11 @@ the merged purple.
 #### Action Menu
 
 Click a branch or tag chip to open its menu.
-A fixed down chevron overlays the trailing edge on hover, keyboard focus, and while the
-menu is open, so long names use the entire chip at rest.
+Click the same chip again to close it.
+A down chevron fades in over a translucent backdrop at the trailing edge on hover,
+keyboard focus, and while the menu is open.
+The transition uses `--transition-fast` and is skipped under reduced motion.
+Long names use the entire chip at rest.
 The chevron uses neutral ink like the folder details and **View on GitHub** chevrons.
 In a clickable history row or ref chooser, the chip’s menu trigger is a separate control
 above its visible chip.
