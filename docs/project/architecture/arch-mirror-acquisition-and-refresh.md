@@ -414,6 +414,9 @@ the served commit and offered the new one behind a **Switch** button (bead `mb-p
   reader’s refresh.
 - **A switch made in another tab** to another ref still only offers a reload: the reader
   did not ask for that ref.
+- **A repository folder’s own branches** follow by the same step and the same page code,
+  with the move read from the checkout’s refs in place of a fetch
+  ([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
 
 ## Source Routes
 

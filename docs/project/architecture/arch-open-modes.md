@@ -346,11 +346,14 @@ cost alone
   mirror’s is, from the store’s record of it.
 - **The freshness row** is on every page of a folder that keeps a store, its working
   tree’s too: the status of the working tree, and of one of the checkout’s own
-  revisions, has the store’s last fetch and is `refreshable`, with nothing followed or
-  probed (`MirrorSession.unpinned_fields`). The row says what was fetched is
-  Metabrowser’s store of the origin and never the checkout, asks for one refresh when
-  the store has grown old, as a mirror’s page does, and leaves the reload offer to the
-  ref selector (`describe` with `checkout` in `static/source-freshness.js`).
+  revisions, has the store’s last fetch and is `refreshable`, with nothing of the
+  store’s followed or probed (`MirrorSession.unpinned_fields`); one of the checkout’s
+  own branches follows the checkout’s ref, which is read and never fetched
+  ([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+  The row says what was fetched is Metabrowser’s store of the origin and never the
+  checkout, asks for one refresh when the store has grown old, as a mirror’s page does,
+  and leaves the reload offer to the ref selector (`describe` with `checkout` in
+  `static/source-freshness.js`).
 - **Refresh:** `POST /api/source/refresh` on a folder that keeps a store fetches the
   store, whatever the folder shows, and the listing reads the checkout’s refs again each
   time it is asked for.

@@ -478,9 +478,43 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   ([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)).
   `CheckoutRevisions.serves` answers for a revision of either, so the page of one is
   still the folder’s.
+- **Following a branch.** A revision served under one of the checkout’s own branches,
+  remote-tracking branches, or tags (`FOLLOWED_CHECKOUT_REFS` in
+  `checkout_revisions.py`) reads that ref, not one commit of it, as a mirror’s pin does
+  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)), so
+  it moves when the reader’s commit or the reader’s own fetch moves the ref.
+  A commit opened by its ID is served under no ref and stays, and the working tree is no
+  revision.
+  - **The move is read, never fetched.** A visible page makes its own ask,
+    `POST /api/source/refresh` with `{"for": "page"}`, as often as its status says in
+    `probe_every_s` (`CHECKOUT_REFS_POLL_S`), and `CheckoutRevisions.observe` answers
+    it: it names the checkout’s
+    [ref state](arch-git.md#answers-kept-under-the-refs-state), one `stat` per ref file
+    and no Git process, and reads the ref with Git only when that state is not the one
+    it was last read under.
+    The measurements that chose a poll by the page over a watch of the Git directory are
+    beside the constant.
+  - **The server follows** with the mirror’s own step, `follow_served_ref` in
+    `mirror_refresh.py`: under the locks a switch is made under, it opens the ref’s new
+    commit and serves it under a new generation.
+    A ref the reader deleted keeps its last commit served, and `latest` is then null.
+  - **The page follows** as a mirror’s does: `static/source-freshness.js` sees the ref
+    it was drawn for served at another commit, asks the pin route for that ref with its
+    own `/view/` address, and goes where `view_href` says, the same file or folder when
+    the new commit has it, or the root.
+    A hidden page asks nothing, so a branch nobody is looking at is read again when its
+    page is shown.
+  - **The status** of such a revision has `follows` true and `latest`, the ref’s commit
+    as last read in the checkout, whether or not the folder keeps a store; `refreshable`
+    and the fetch fields are still the store’s alone, since nothing is fetched into a
+    checkout. A folder that keeps no store answers the ask with `200` and `probed` while
+    such a revision is served, and `409` otherwise, as before.
+    Where it keeps one, the same ask is also the store’s, which fetches a store older
+    than `FRESHNESS_WINDOW_S`, quietly.
+  - **Never written.** `tests/test_checkout_revisions.py` compares every entry under the
+    checkout, `.git` included, across an ask, a follow, and the new commit’s files.
 - **Not yet.** A revision of a checkout has no Pulls tab, and its branch list shows no
-  pull requests; and one of the checkout’s own branches that moves while it is shown is
-  not followed.
+  pull requests.
 
 ## How a Mirror’s Page Names Itself
 

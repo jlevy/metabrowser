@@ -145,13 +145,21 @@ again or the server stops.
 `metab <folder>` starts on the working tree, and `metab <folder> --ref <name>` starts on
 that branch or tag
 ([the command line](command-line.md#a-branch-or-tag-of-a-local-checkout)). A tab left on
-the other one says so and offers **Reload**. Metabrowser fetches nothing into a
-checkout, so your own branches, and another remote’s, are only as new as your own Git
-commands left them, and one that moves while it is shown is shown at its new commit when
-you choose it again.
+the other one says so and offers **Reload**.
+
+A branch or tag you chose follows that branch or tag.
+Metabrowser fetches nothing into a checkout, so your own branches, and another remote’s,
+are only as new as your own Git commands left them; when you commit on the branch shown,
+or your own `git fetch` moves `origin/main`, the page goes to the new commit by itself
+within a few seconds, on the same file or folder when the new commit has it, or at the
+root when it does not.
+It reads the repository’s refs to find that out and never fetches.
 One of the origin’s branches follows the origin by itself, as a repository opened by its
-URL does. The button follows the folder you opened: it is there when that folder is a
-repository’s root, as the Commits tab is.
+URL does.
+A commit you opened by its ID stays that commit, and **Working tree** is always
+the files on disk.
+The button follows the folder you opened: it is there when that folder
+is a repository’s root, as the Commits tab is.
 
 Showing a branch or tag needs a Git as recent as cloning does
 ([installation](installation.md#git-and-github-setup)), and in a partial clone, one made
