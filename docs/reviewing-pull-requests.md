@@ -221,11 +221,19 @@ language, or only whitespace and line wrapping.
 A block whose destination, title, alt text, comment, attribute, or fence language
 changed is never folded away.
 
-These files open in **Source**:
+Raw HTML, such as `<br>`, `<details>`, or a centered `<p align="center">`, renders as
+the Document view renders it, through the same sanitizer; an HTML edit it does not show,
+such as a class or a style, is a change that only **Source** shows.
+A task list renders as the Document view renders an untrusted document, without its
+boxes, so ticking or unticking one is a change that only **Source** shows.
 
-- files with raw HTML other than comments, such as `<br>` or `<details>`
-- files with task lists (`- [ ]`) or footnotes
-- files too large for the rendered view
+A footnote’s reference shows its number where it is written, numbered as the Document
+view numbers it, and its note shows where its definition is written rather than at the
+end; an inline note shows after the paragraph that holds it.
+
+A file with bytes that are not UTF-8, a NUL, or lines that end at a carriage return
+alone renders as the Document view renders it, a byte it cannot read as `�`. Files too
+large for the rendered view open in **Source**.
 
 Rendered also shows math and Mermaid diagrams as their source text, and does not
 highlight code blocks.
@@ -260,11 +268,14 @@ The tree reads YAML 1.2, where `no`, `off`, and `y` are strings, so a change bet
 **Source** too. A value whose type changed and whose text did not, such as a date that
 became the string that spells it, or the key `1` that became `"1"`, is drawn unchanged,
 and the tree says above it that **Source** shows a change it draws as unchanged.
+JSON with a key twice in one object shows the key once, with its last value, as the file
+view’s tree does, and a change to a value the repeated key hides is one **Source**
+shows.
 
 These files open in **Source**:
 
 - YAML or JSON that does not parse
-- a file with a key twice in one mapping, which two programs may read differently
+- YAML with a key twice in one mapping
 - files too large, or too deeply nested, for the rendered view
 
 ## Find a Pull Request with Quick Search
@@ -304,13 +315,16 @@ missing or signed out, which waits for **Refresh**. The Pulls tab’s **Reload**
 a new check of the list.
 
 The page follows the pull request.
-When new commits are pushed, the conversation and checks update, and **Changes** shows
-the new head’s diff, with a line above it such as
+When new commits are pushed, the conversation and checks update, and **Changes** and
+**Docs** show the new head’s diff, with a line above it such as
 `The pull request’s head moved from 1a2b3c4 to 5d6e7f8.` You stay in the file you were
 reading, at the same place in it, when the new diff still has that file.
 **Show the earlier changes** on that line goes back to the diff you were reading, which
-then stays until you choose **Show the newer changes**. While the new commits are still
-being fetched, Changes says `New commits were pushed; updating.` over the diff it has.
+then stays, also when you move between Changes and Docs, until you choose **Show the
+newer changes** or leave both for another tab.
+The line and your choice outlast a reload of the page.
+While the new commits are still being fetched, both tabs say
+`New commits were pushed; updating.` over the diff they have.
 
 On a repository URL, code served on the pull request’s head follows it too, as a branch
 does, and the page reloads on the new head.

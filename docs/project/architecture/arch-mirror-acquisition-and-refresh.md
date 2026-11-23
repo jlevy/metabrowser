@@ -372,8 +372,9 @@ store a repository folder keeps of its checkout’s origin
   job holding the turn ahead of it, as a reader’s job arriving would have.
   One that joins after the fetch was told to stop, before the cancellation is delivered,
   has the fetch started again as its own once the stopped one has unwound
-  (`MirrorSession._join_running`). One that failed is tried again only after the whole
-  interval.
+  (`MirrorSession._join_running` asks `RefreshCoordinator.start_again_when_stopped`,
+  which restarts a prefetched pull request’s job the same way).
+  One that failed is tried again only after the whole interval.
 - **A commit the mirror lacks:** a page that opens a commit’s address asks for the fetch
   it waits on, which runs only when the mirror is stale, since a link in served content
   can lead to any address; a reader’s **Retry** always fetches.

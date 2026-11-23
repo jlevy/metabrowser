@@ -1,5 +1,6 @@
 // Production page, mounted in a pane with a history entry: Changes follows a moved head,
-// and what joins that to the reader's place and to the entry's memory.
+// and what joins that to the reader's place and to the entry's memory, and Docs, which
+// draws the same comparison, does the same.
 //
 // The pure halves are in github-pull-page-session.js: `filesAction`, `followedNote`,
 // `rememberedChanges`, and the keeper on a stage of names. This is the join (A4 of review A
@@ -11,7 +12,9 @@
 // (tests/dom/diff-file-jump-session.js holds those). What a browser does with `scrollTop` is
 // Chrome's; the pane here is a number.
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 const { pathToFileURL } = require("node:url");
 const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
 
@@ -98,21 +101,32 @@ async function run() {
   moved.comparison_route = moved.comparison_route.replace(/right=[0-9a-f]+/, `right=${NEWER}`);
   moved.fetched_at = "2026-09-17T12:00:01Z";
   let current = first;
-  globalThis.fetch = async (route) =>
-    String(route).startsWith("/api/plugin/github/pull?")
+  /** The bodies the page posted, as its refresh asks. */
+  const posts = [];
+  globalThis.fetch = async (route, options = {}) => {
+    if (options.method === "POST") {
+      posts.push(JSON.parse(options.body));
+    }
+    return String(route).startsWith("/api/plugin/github/pull?")
       ? { status: 200, headers: { get: () => null }, json: async () => structuredClone(current) }
       : { status: 304, headers: { get: () => null } };
+  };
+  vm.runInThisContext(
+    fs.readFileSync(path.join(root, "src/metabrowser/static/pull-route.js"), "utf8"),
+  );
   const page = await import(
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
   );
   const mounted = [];
+  /** Each comparison a diff was drawn with, as the view was given it. */
+  const drawn = [];
   /** A gate the next render waits at, for a comparison that takes a while to read. */
   let gate = null;
-  const mount = (body, files = FILES) => {
+  const mount = (body, tab = "files") => {
     const container = new Element("main");
     const handle = page.mountPullPage(
       container,
-      { number: 7, tab: "files", reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
+      { number: 7, tab, reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
       {
         perf,
         ensureAsset: async () => {},
@@ -121,12 +135,13 @@ async function run() {
         getRegisteredView: () => ({
           render: async (host, options) => {
             mounted.push(options.comparison.right);
+            drawn.push(options.comparison);
             if (gate !== null) {
               await gate;
             }
             const sections = new Map();
             let top = HEADER;
-            for (const [name, height] of files[
+            for (const [name, height] of FILES[
               options.comparison.right === earlier ? "earlier" : "newer"
             ]) {
               const section = new Element("section");
@@ -155,6 +170,33 @@ async function run() {
     );
     handle.activate();
     return { container, handle };
+  };
+  /**
+   * The production page host (static/pull-route.js) over this pane, mounting the record
+   * now served, with the shell's address writes as app.js makes them (`pullPageHostDeps`):
+   * `pushState(null, …)` and `replaceState(null, …)`. Only the entry the address is on is
+   * held here, so a push and a replacement both leave it with no state.
+   */
+  const hosted = () => {
+    let claims = 0;
+    let opened = null;
+    const leave = (href) => {
+      window.location.pathname = href;
+      window.history.state = null;
+    };
+    const host = window.MetabrowserPullRoute.createPullPageHost({
+      claim: () => ++claims,
+      isCurrent: (claim) => claim === claims,
+      mount: async (_claim, route) => {
+        opened = mount(current, route.tab);
+        return opened.handle;
+      },
+      mountList: async () => null,
+      pathname: () => window.location.pathname,
+      pushHref: leave,
+      replaceHref: leave,
+    });
+    return { ...host, opened: () => opened };
   };
   /** The pane scrolled and stayed still: the place's write timer fires. */
   const scrolledAndStill = () => {
@@ -374,6 +416,229 @@ async function run() {
   assert.equal(mounted.at(-1), earlier, "and Changes draws it again");
   assert.equal(entry().pullChanges.chosen, true, "the choice stays the reader's");
   handle.dispose();
+
+  // Where nothing was chosen, a move to Docs draws the record's comparison as it is now,
+  // not the one Changes mounted (C2 of review C on #745). The record is read again at the
+  // same commits after the pull request's head moved on, before its comparison was read:
+  // the diff is of a commit that is no longer the branch's tip, so it has no View on branch.
+  window.location.pathname = "/pull/7/files";
+  window.history.state = null;
+  pane.scrollTop = 0;
+  current = first;
+  ({ container, handle } = mount(first));
+  await painted(handle);
+  assert.deepEqual(drawn.at(-1).branch, { ref: "refs/pull/7/head" });
+  const draws = drawn.length;
+  const aheadOfDiff = structuredClone(first);
+  aheadOfDiff.record.pull.head.sha = NEWER;
+  aheadOfDiff.fetched_at = "2026-09-17T12:00:01Z";
+  current = aheadOfDiff;
+  fire("visibilitychange");
+  await settle();
+  await painted(handle);
+  assert.equal(drawn.length, draws, "Changes keeps the diff of the same commits");
+  window.location.pathname = "/pull/7/docs";
+  handle.setTab("docs");
+  await painted(handle);
+  assert.deepEqual(
+    [drawn.at(-1).right, drawn.at(-1).branch],
+    [earlier, null],
+    "Docs draws the record's comparison as it is now",
+  );
+  handle.dispose();
+
+  // Docs draws the same comparison and follows a moved head as Changes does, so its entry
+  // remembers what it shows as Changes's does (C1 of review C on #745): the reload a
+  // followed pin makes says the note and lands in the reader's file, and an earlier diff
+  // the reader chose there stays through a reload, with the newer offered.
+  window.location.pathname = "/pull/7/docs";
+  window.history.state = null;
+  pane.scrollTop = 0;
+  current = first;
+  ({ container, handle } = mount(first, "docs"));
+  await painted(handle);
+  pane.events.get("wheel")();
+  pane.scrollTop = inEarlier;
+  scrolledAndStill();
+  assert.deepEqual(entry().pullPlace, inC);
+  assert.equal(entry().pullChanges?.shown.right, earlier, "Docs's entry remembers what it shows");
+  current = moved;
+  fire("visibilitychange");
+  await settle();
+  await painted(handle);
+  assert.equal(mounted.at(-1), NEWER, "Docs follows the newer head");
+  assert.equal(said(container, ".github-pull-followed"), note);
+  assert.equal(pane.scrollTop, inNewer, "in the reader's file");
+  handle.dispose();
+  pane.scrollTop = 0;
+  ({ container, handle } = mount(moved, "docs"));
+  await painted(handle);
+  assert.equal(said(container, ".github-pull-followed"), note, "a reloaded Docs says it too");
+  assert.equal(pane.scrollTop, inNewer, "and lands in the reader's file");
+  pane.events.get("wheel")();
+  container.querySelector(".github-pull-earlier").events.get("click")();
+  await painted(handle);
+  assert.equal(mounted.at(-1), earlier);
+  assert.deepEqual([entry().pullChanges.shown.right, entry().pullChanges.chosen], [earlier, true]);
+  handle.dispose();
+  pane.scrollTop = 0;
+  ({ container, handle } = mount(moved, "docs"));
+  await painted(handle);
+  assert.equal(mounted.at(-1), earlier, "a reloaded Docs keeps the diff the reader went back to");
+  assert.equal(said(container, ".github-pull-followed"), null);
+  assert.equal(
+    said(container, ".github-pull-newer-offer"),
+    "The pull request now ends at 9999999. Show the newer changes",
+  );
+  assert.equal(pane.scrollTop, inEarlier);
+  handle.dispose();
+
+  // The host moves the address without mounting a diff: a key's walk of the Pulls tab's
+  // changed files that stops replaces the entry with the file's address and no state
+  // (pull-files-tree.js `settleWalk`, then pull-route.js `open`), and a click on a file
+  // pushes an entry with none. The page writes what its diff shows into the entry it lands
+  // on, so the reload the next push makes keeps the earlier diff the reader chose there,
+  // with the newer offered (mb-eg5f, A1 of review A on #758).
+  const offerNewest = "The pull request now ends at 8888888. Show the newer changes";
+  for (const [how, route] of [
+    ["walk", { number: 7, tab: "files", file: "b.py", replace: true, jumped: true }],
+    ["click", { number: 7, tab: "files", file: "b.py" }],
+  ]) {
+    window.location.pathname = "/pull/7/files";
+    window.history.state = null;
+    pane.scrollTop = 0;
+    current = first;
+    const host = hosted();
+    await host.show({ number: 7, tab: "files" });
+    ({ container, handle } = host.opened());
+    await painted(handle);
+    current = moved;
+    fire("visibilitychange");
+    await settle();
+    await painted(handle);
+    container.querySelector(".github-pull-earlier").events.get("click")();
+    await painted(handle);
+    assert.equal(entry().pullChanges.chosen, true);
+    await host.open(route);
+    await settle();
+    assert.equal(window.location.pathname, "/pull/7/files/b.py");
+    assert.deepEqual(
+      [entry().pullChanges?.shown.right, entry().pullChanges?.chosen],
+      [earlier, true],
+      `the entry the ${how} lands on remembers the reader's choice`,
+    );
+    current = newest;
+    fire("visibilitychange");
+    await settle();
+    await painted(handle);
+    assert.equal(said(container, ".github-pull-newer-offer"), offerNewest);
+    host.dispose();
+    pane.scrollTop = 0;
+    ({ container, handle } = mount(newest));
+    await painted(handle);
+    assert.equal(mounted.at(-1), earlier, `a reload after the ${how} keeps the earlier diff`);
+    assert.equal(said(container, ".github-pull-newer-offer"), offerNewest);
+    handle.dispose();
+  }
+
+  // Back lands the page on an entry it left, whose state is as the page last wrote it there,
+  // so the page writes what its diff shows now (`land`). Entry A follows the first push; a
+  // click on a file pushes entry B, where the second push is followed and the reader goes
+  // back to the diff entry A shows, now chosen. So A's memory differs from the page's in
+  // the diff its note names and in the choice, not in the diff shown (B1 of review B on
+  // #758).
+  {
+    window.location.pathname = "/pull/7/files";
+    window.history.state = null;
+    pane.scrollTop = 0;
+    current = first;
+    const host = hosted();
+    await host.show({ number: 7, tab: "files" });
+    ({ container, handle } = host.opened());
+    await painted(handle);
+    current = moved;
+    fire("visibilitychange");
+    await settle();
+    await painted(handle);
+    const entryA = structuredClone(window.history.state);
+    assert.deepEqual(
+      [entryA.pullChanges.shown.right, entryA.pullChanges.from?.right, entryA.pullChanges.chosen],
+      [NEWER, earlier, false],
+    );
+    await host.open({ number: 7, tab: "files", file: "b.py" });
+    await settle();
+    current = newest;
+    fire("visibilitychange");
+    await settle();
+    await painted(handle);
+    assert.equal(mounted.at(-1), NEWEST, "entry B follows the second push");
+    container.querySelector(".github-pull-earlier").events.get("click")();
+    await painted(handle);
+    assert.equal(mounted.at(-1), NEWER);
+    // Back to A in the same document: the browser restores A's state, and the host lands.
+    window.location.pathname = "/pull/7/files";
+    window.history.state = entryA;
+    host.onHistory(window.location.pathname, false);
+    await settle();
+    await painted(handle);
+    assert.deepEqual(
+      [entry().pullChanges.shown.right, entry().pullChanges.from, entry().pullChanges.chosen],
+      [NEWER, null, true],
+      "the entry Back lands on remembers the reader's choice",
+    );
+    // The reload a push makes on A, the record at the second push's head.
+    host.dispose();
+    pane.scrollTop = 0;
+    ({ container, handle } = mount(newest));
+    await painted(handle);
+    assert.equal(mounted.at(-1), NEWER, "a reload after Back keeps the diff the reader chose");
+    assert.equal(said(container, ".github-pull-followed"), null);
+    assert.equal(said(container, ".github-pull-newer-offer"), offerNewest);
+    handle.dispose();
+  }
+
+  // While the pull request's head has moved and its record is read again, both diff tabs
+  // say so over the diff they have, and Conversation does not (A2 of review A on #758).
+  const pushed = structuredClone(first);
+  pushed.head_moved = true;
+  pushed.state = "stale";
+  pushed.refreshing = true;
+  for (const [address, tab, line] of [
+    ["/pull/7/files", "files", "New commits were pushed; updating."],
+    ["/pull/7/docs", "docs", "New commits were pushed; updating."],
+    ["/pull/7", "", null],
+  ]) {
+    window.location.pathname = address;
+    window.history.state = null;
+    pane.scrollTop = 0;
+    current = pushed;
+    ({ container, handle } = mount(pushed, tab));
+    await painted(handle);
+    assert.equal(said(container, ".github-pull-new-commits"), line, `on ${address}`);
+    handle.dispose();
+  }
+
+  // On a server with no store to compare in, Docs asks for the comparison by itself, as
+  // Changes does, while the address is its own (`ownsChanges`), and a Docs page mounted
+  // after the address moved away asks nothing (A3 of review A on #758).
+  const unstored = structuredClone(first);
+  unstored.record.comparison = null;
+  unstored.comparison_route = null;
+  unstored.record.unavailable = { ...unstored.record.unavailable, comparison: "no_store" };
+  for (const [address, asked] of [
+    ["/pull/7/docs", [{ number: 7, retry: true, comparison: true }]],
+    ["/pull/7", []],
+  ]) {
+    window.location.pathname = address;
+    window.history.state = null;
+    current = unstored;
+    posts.length = 0;
+    ({ container, handle } = mount(unstored, "docs"));
+    fire("visibilitychange");
+    await settle();
+    assert.deepEqual(posts, asked, `Docs on ${address}`);
+    handle.dispose();
+  }
   assert.equal(resize.size, 0, "a disposed page left an observer");
   return {
     placeNamesItsFile: true,
@@ -385,6 +650,12 @@ async function run() {
     secondFollowDuringReadKeepsTheFile: true,
     followDuringReloadReadKeepsTheFile: true,
     wayBackDuringReadKeepsTheFile: true,
+    docsDrawsTheRecordsComparison: true,
+    docsRemembersWhatItShows: true,
+    walkAndClickKeepTheChoice: true,
+    backKeepsTheChoice: true,
+    newCommitsOnBothDiffTabs: true,
+    docsAsksForTheComparison: true,
   };
 }
 run()

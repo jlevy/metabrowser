@@ -46,9 +46,6 @@ const LOADING_DELAY_MS = 50;
 /** @type {Readonly<Record<string, string>>} */
 const REFUSALS = {
   no_changes: "This file's content did not change.",
-  task_list: "Rendered cannot show a file with a task list.",
-  raw_html: "Rendered cannot show a file with raw HTML.",
-  footnotes: "Rendered cannot show a file with footnotes.",
   nesting: "This file is nested too deeply to show rendered.",
   deadline: "Rendering this file took too long, so it was stopped. Reload to try again.",
   too_large: "This file is too large to show rendered.",
@@ -58,7 +55,7 @@ const REFUSALS = {
 const UNREADABLE = {
   markdown: "Rendered cannot match this file's changes to its Markdown.",
   yaml: "Rendered cannot show YAML that does not parse, or has a key twice in one mapping.",
-  json: "Rendered cannot show JSON that does not parse, or has a key twice in one mapping.",
+  json: "Rendered cannot show JSON that does not parse.",
 };
 
 /** @typedef {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} KpressAssetManifest */

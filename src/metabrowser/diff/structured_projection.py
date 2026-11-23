@@ -13,8 +13,14 @@ bounded parsers: strict JSON, then JSONC through ``json5``, and YAML through the
 loader (:mod:`metabrowser.frontmatter_yaml`), whose documents collapse as the tree view
 collapses a stream. That loader admits aliases and merge keys within a budget on the
 value written out, and refuses what the tree view's own loader expands without one
-(mb-7th1). A key that appears twice in one mapping is refused in JSON as in YAML, since
-two programs may read different values for it. Values are made JSON-safe as the loader
+(mb-7th1). A JSON object that holds a key twice reads as the tree view reads it, the last
+value at the key's first place, and so does a mapping two of whose keys are one text once
+made JSON-safe, such as two strings whose unpaired surrogates were replaced; the values
+they hide are compared, and a change to one is a change Source shows. YAML's loader
+refuses a key twice in one mapping, as the tree view's own loader does, which then shows
+its parse error. It also refuses two keys of one text and different types, such as ``1``
+and ``"1"``, which the tree view reads as two keys and draws as the last, since the
+structured route's answer then holds that key twice. Values are made JSON-safe as the loader
 makes them (:func:`~metabrowser.frontmatter_yaml.json_safe_scalar`): keys are strings, a
 date or time ISO-8601, binary base64, a set a sorted list, and a number JSON cannot hold
 its text. The structured route sends what its parser built and fails on a date, binary,
@@ -36,14 +42,15 @@ a pair of mappings or lists is compared entry by entry.
 ``source_only`` says Source shows a change the tree does not draw: the bytes differ and
 the tree shows no change, as when only a comment, a quote style or the order of a
 mapping's keys changed; or, beside changes it draws, two values differ only in what the
-tree does not show, such as a key's type, and are drawn unchanged.
+tree does not show, such as a key's type, and are drawn unchanged, or the values a key
+written twice hides differ.
 """
 
 from __future__ import annotations
 
 import json
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Final, Literal, NotRequired, TypedDict, cast
 
 from metabrowser.frontmatter_yaml import (
@@ -158,7 +165,8 @@ class StructuredDiffProjection(TypedDict):
 
 
 class _Unsupported(Exception):
-    """A side the tree view would not draw: malformed, or a key twice in one mapping."""
+    """A side the tree view would not draw: malformed, or YAML with a key twice in one
+    mapping, which the tree view's loader refuses too."""
 
 
 class _Unchanged(_Unsupported):
@@ -167,10 +175,6 @@ class _Unchanged(_Unsupported):
 
 class _OverBudget(Exception):
     """A pair past one of the projection's budgets."""
-
-
-class _DuplicateKey(ValueError):
-    """A JSON mapping holds one key twice."""
 
 
 _MISSING: Final = object()
@@ -182,13 +186,20 @@ class _Stream(list[object]):
     origin: str = "stream"
 
 
-def _unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """A JSON object's members, refusing a key it holds twice (``object_pairs_hook``)."""
+def _last_wins(hidden: list[str]) -> Callable[[Iterable[tuple[str, Any]]], dict[str, Any]]:
+    """An ``object_pairs_hook`` that builds a JSON object as ``json.loads`` does, the last
+    value at the key's first place, and appends each value a later one hides to *hidden*,
+    written as JSON, in the order the parser closes the objects."""
 
-    built = dict(pairs)
-    if len(built) != len(pairs):
-        raise _DuplicateKey("a key appears twice in one object")
-    return built
+    def build(pairs: Iterable[tuple[str, Any]]) -> dict[str, Any]:
+        built: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in built:
+                hidden.append(json.dumps([key, built[key]]))
+            built[key] = value
+        return built
+
+    return build
 
 
 class _Budget:
@@ -262,8 +273,20 @@ class _Projection:
         # Whether two values differ only in what the tree does not draw.
         self.hidden = False
 
-    def plain(self, value: object, depth: int = 0) -> Any:
-        """*value* as JSON-safe values, counted against the node budget and given identities."""
+    def side(self, data: bytes, fmt: Format, pair_bytes: int) -> tuple[Any, list[object]]:
+        """One side's tree, and the values in it that a key written again hides."""
+
+        written: list[str] = []
+        value = _parse(data, fmt, pair_bytes, written)
+        alike: list[object] = []
+        return self.plain(value, alike), [*written, *alike]
+
+    def plain(self, value: object, alike: list[object], depth: int = 0) -> Any:
+        """*value* as JSON-safe values, counted against the node budget and given identities.
+
+        A mapping two of whose keys are one text keeps the last value at the first key's
+        place, as the tree view's JSON does; each value it hides is appended to *alike*.
+        """
 
         if depth > _MAX_DEPTH:
             raise _OverBudget("structured nesting")
@@ -272,15 +295,16 @@ class _Projection:
             mapping: dict[str, Any] = {}
             for key, item in value.items():  # pyright: ignore[reportUnknownVariableType]
                 text = _key(key)
+                converted = self.plain(item, alike, depth + 1)
                 if text in mapping:
-                    # Two keys that one text spells, such as two strings whose unpaired
-                    # surrogates were replaced.
-                    raise _Unsupported("two keys are written alike")
-                mapping[text] = self.plain(item, depth + 1)
+                    # Two keys that are one text once made JSON-safe, such as two strings
+                    # whose unpaired surrogates were replaced: an answer holds one key.
+                    alike.append((str(text), self.values.of(mapping[text])))
+                mapping[text] = converted
             self.values.mapping(mapping)
             return mapping
         if isinstance(value, list):
-            sequence = [self.plain(item, depth + 1) for item in value]  # pyright: ignore[reportUnknownVariableType]
+            sequence = [self.plain(item, alike, depth + 1) for item in value]  # pyright: ignore[reportUnknownVariableType]
             self.values.sequence(sequence, _origin(value) or "list")
             return sequence
         safe = json_safe_scalar(value)
@@ -638,20 +662,23 @@ def _number_text(value: object) -> str | None:
     return None
 
 
-def _parse(data: bytes, fmt: Format, pair_bytes: int) -> object:
+def _parse(data: bytes, fmt: Format, pair_bytes: int, hidden: list[str]) -> object:
+    """One side as the tree view reads it; each JSON value a key written again hides is
+    appended to *hidden*."""
+
     text = decode_text(data)
     try:
         if fmt == "json":
             try:
-                return json.loads(text, object_pairs_hook=_unique)
+                return json.loads(text, object_pairs_hook=_last_wins(hidden))
             except json.JSONDecodeError:
-                pass
+                hidden.clear()
             if pair_bytes > JSONC_MAX_BYTES:
                 raise _OverBudget("JSONC input bytes")
             import json5
 
-            # JSONC, as the tree view reads it, but refusing a key it holds twice.
-            return json5.loads(text, allow_duplicate_keys=False)
+            # JSONC, as the tree view reads it.
+            return json5.loads(text, object_pairs_hook=_last_wins(hidden))
         if pair_bytes > SLOW_PARSE_MAX_BYTES:
             raise _OverBudget("YAML input bytes")
         documents = load_bounded_yaml_documents(
@@ -717,8 +744,11 @@ def _project(old: bytes | None, new: bytes | None, fmt: Format) -> StructuredDif
         # hunks, and the page says that the content did not change.
         raise _Unchanged("both sides are the same bytes")
     projection = _Projection()
-    before = _MISSING if old is None else projection.plain(_parse(old, fmt, pair_bytes))
-    after = _MISSING if new is None else projection.plain(_parse(new, fmt, pair_bytes))
+    before, old_hidden = (_MISSING, []) if old is None else projection.side(old, fmt, pair_bytes)
+    after, new_hidden = (_MISSING, []) if new is None else projection.side(new, fmt, pair_bytes)
+    if old_hidden != new_hidden:
+        # A value the tree does not draw, under a key written twice, changed.
+        projection.hidden = True
     root: list[StructuredDiffEntry] = []
     projection.merge(root, None, before, after)
     return {

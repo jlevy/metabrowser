@@ -287,8 +287,8 @@ async function main() {
   // sentence for a file it could not read as its format.
   const refused = (status, reason) => ({ status, ...(reason === undefined ? {} : { reason }) });
   assert.equal(
-    refusalReason(refused("unsupported", "task_list"), "markdown"),
-    "Rendered cannot show a file with a task list.",
+    refusalReason(refused("too_large", "nesting"), "markdown"),
+    "This file is nested too deeply to show rendered.",
   );
   assert.equal(
     refusalReason(refused("unsupported", "no_changes"), "yaml"),

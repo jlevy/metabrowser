@@ -3,17 +3,27 @@
 Each side is parsed once, by the MarkdownIt core KPress itself builds, so a block's
 source range is the map of the very token that renders it. Every top-level block is
 rendered from its own tokens, and the blocks pass KPress's post-processing, its
-sanitizer and :func:`metabrowser.inert_html.harden` together, separated by a character
-the source may not contain, so a rendered block is known to come from its range and
-heading anchors are numbered across the document exactly as the Document view numbers
-them. ``tests/test_markdown_diff_projection.py`` checks that the joined blocks equal
-KPress's own ``parse_markdown`` render, so a KPress release that changes this pipeline
-fails there rather than here. Features that change the block shape without a reliable
-range use the exact source diff.
+sanitizer and :func:`metabrowser.inert_html.harden` together, separated by markers of a
+character the render does not hold (:func:`_separator`), so a rendered block is known to
+come from its range and heading anchors are numbered across the document exactly as the
+Document view numbers them.
+Raw HTML renders as the Document view renders it: blocks that an element it opens holds
+together, whose markers land inside that element, are one block of all their lines
+(:func:`_units`). A footnote's note, which the Document view lists at the end, renders
+where its definition is written, numbered as the Document view numbers it
+(:func:`_footnotes_in_place`). ``tests/test_markdown_diff_projection.py`` checks that
+the joined blocks equal KPress's own ``parse_markdown`` render, notes compared by their
+numbers, so a KPress release that changes this pipeline fails there rather than here.
+
+Each side reads as the Document view reads it: a byte that is not UTF-8 is U+FFFD, and
+MarkdownIt itself makes a NUL U+FFFD. Git counts lines by line feeds and MarkdownIt also
+ends one at a carriage return no line feed follows, so a Git line that holds such a
+return is that many of the projection's lines, changed or unchanged as Git says the
+whole line is (:func:`_markdown_lines`).
 
 Whatever a block's source says that its render does not show -- a link or image
-destination, a title, alt text under a shown image, an HTML comment, an attribute or a
-fence's info string -- is its *hidden* signature. A changed block whose hidden signature
+destination, a title, alt text under a shown image, an HTML comment, an attribute,
+raw HTML the allowlist drops, or a fence's info string -- is its *hidden* signature. A changed block whose hidden signature
 differs from the other side's carries ``source_only``, and so does the whole projection
 when any source change has no visible counterpart, a whitespace-only or rewrap edit
 included. Both flags are metadata for the page: a flagged block is kept out of a fold of
@@ -23,14 +33,18 @@ visible counterpart shows only in the Source view.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import re
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
-from html import escape
+from functools import lru_cache
+from html import escape, unescape
 from html.parser import HTMLParser
+from itertools import pairwise
 from math import inf
 from typing import Any, Final, Literal, NotRequired, TypedDict, cast
 from urllib.parse import unquote
@@ -42,12 +56,20 @@ from kpress.format.markdown import (
     _postprocess_html,
 )
 from kpress.format.sanitize import sanitize_raw_html
+from markdown_it.rules_core import StateCore
 from markdown_it.token import Token
 from pygments.lexers import get_all_lexers
 
 from metabrowser.diff.format import FilePatch, Hunk, LineOp, LineRecord
 from metabrowser.frontmatter_yaml import FrontmatterError, load_frontmatter_yaml
-from metabrowser.inert_html import ALLOWED_TAGS, ANCHOR_PREFIX, harden, is_inside
+from metabrowser.inert_html import (
+    ALLOWED_TAGS,
+    ANCHOR_PREFIX,
+    DROPPED_WITH_CONTENT,
+    allowed_attributes,
+    harden,
+    is_inside,
+)
 
 MARKDOWN_DIFF_VERSION = "markdown-diff-v1"
 # Measured on the development Mac (Python 3.14, warm, minimum of three runs, load
@@ -128,12 +150,20 @@ _FENCE_LANGUAGES = frozenset(
 )
 # A line that opens or closes a container block (`:::`), after any quote or list marker.
 _CONTAINER_LINE = re.compile(rb"^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*:::", re.MULTILINE)
+# A carriage return that ends a line for MarkdownIt, as for KPress, and not for Git.
+_LONE_CR = re.compile(rb"\r(?!\n)")
+_LONE_CR_TEXT = re.compile(r"\r(?!\n)")
 _DEFINITION = re.compile(r"^\s*(?:(?:>|[-*+]|\d{1,9}[.)])\s*)*\[(?:[^\]\\]|\\.)+\]:")
 _WORDS = re.compile(r"\w+(?:[-’']\w+)*|[^\w\s]+|\s+")
 _SPACE = re.compile(r"\s+")
-# Separates rendered blocks through KPress's post-processing, sanitizer and the hardener.
-# A source containing it is refused, so every occurrence is the projection's own.
-_SPLIT = "\ue000"
+# The characters a render's blocks may be parted with through KPress's post-processing,
+# sanitizer and the hardener: private use, which no Markdown or HTML parser gives a
+# meaning, in the Basic Multilingual Plane and planes 15 and 16 (each but its last two
+# code points, which are not characters). Each render takes the first one its blocks
+# do not hold (_separator), so every occurrence is the projection's own. The boundary
+# after block `n` is written as the separator, `n`, and the separator again (_marker),
+# so where each boundary lands in the hardened tree says which blocks it parts.
+_SEPARATORS = (range(0xE000, 0xF900), range(0xF0000, 0xFFFFE), range(0x100000, 0x10FFFE))
 _REFERENCE = re.compile("\x00(\\d+)\x00")
 _SOURCE_MARK = "\x00src\x00"
 _INFO = "metabrowser_info"
@@ -146,6 +176,169 @@ _KPRESS = _markdown_it(trust_mode="sanitized", diagrams="off", math="off")
 _MAX_NESTING = 32
 _KPRESS.options["maxNesting"] = _MAX_NESTING
 _RewriteLocal = Callable[[str, bool], str | None]
+
+# ── Footnotes, each where its source is ─────────────────────────
+
+# The number a note's own list starts at (_note).
+_NOTE = "metabrowser_note"
+# Marks an inline note's list, which is part of the block before it (_slices).
+_ATTACHED = "metabrowser_attached"
+# A parse's env holds the lines of the source here when its notes are KPress's own, at
+# the end (_footnotes_in_place).
+_NOTES_AT_END = "metabrowser_notes_at_end"
+# The elements each footnote token renders once hardened: a reference's `sup` and
+# link, a note's list (KPress's `section` around it goes) and item, and a link back.
+_NOTE_ELEMENTS = {
+    "footnote_ref": 2,
+    "footnote_block_open": 1,
+    "footnote_open": 1,
+    "footnote_anchor": 1,
+}
+_FOOTNOTE_TAIL = next(
+    rule.fn for rule in _KPRESS.core.ruler.__rules__ if rule.name == "footnote_tail"
+)
+_KPRESS_NOTES_OPEN = cast(Any, _KPRESS.renderer).rules["footnote_block_open"]
+
+
+def _render_notes_open(tokens: list[Token], idx: int, options: Any, env: Any) -> str:
+    """KPress's list of notes, starting at its note's number when it holds one note."""
+
+    html = str(_KPRESS_NOTES_OPEN(tokens, idx, options, env))
+    number = tokens[idx].meta.get(_NOTE, 1)
+    return html if number == 1 else html.replace("<ol>", f'<ol start="{number}">', 1)
+
+
+def _note(identity: int, note: dict[str, Any], content: Sequence[Token], level: int) -> list[Token]:
+    """Note *identity* as KPress's footnote_tail writes it, in a list of its own that
+    starts at its number, at *level*."""
+
+    def token(kind: str, tag: str, nesting: Literal[-1, 0, 1], depth: int) -> Token:
+        made = Token(kind, tag, nesting)
+        made.level = depth
+        made.block = kind.startswith("paragraph")
+        return made
+
+    label = note.get("label")
+    body = list(content)
+    if "tokens" in note:
+        # An inline note (`^[...]`), whose text is a paragraph.
+        text = token("inline", "", 0, level + 2)
+        text.children = note["tokens"]
+        text.content = note["content"]
+        body = [token("paragraph_open", "p", 1, level + 1), text]
+        body.append(token("paragraph_close", "p", -1, level + 1))
+    last = body.pop() if body and body[-1].type == "paragraph_close" else None
+    # One link back for each reference, or one when nothing counts them.
+    anchors = [token("footnote_anchor", "", 0, level + 2) for _ in range(note.get("count") or 1)]
+    for sub, anchor in enumerate(anchors):
+        anchor.meta = {"id": identity, "subId": sub, "label": label}
+    opened, item = (
+        token("footnote_block_open", "", 1, level),
+        token("footnote_open", "", 1, level + 1),
+    )
+    opened.meta = {_NOTE: identity + 1}
+    item.meta = {"id": identity, "label": label}
+    closing = [
+        token("footnote_close", "", -1, level + 1),
+        token("footnote_block_close", "", -1, level),
+    ]
+    return [opened, item, *body, *anchors, *([last] if last else []), *closing]
+
+
+def _inline_notes(
+    tokens: Sequence[Token], notes: dict[int, dict[str, Any]], seen: set[int]
+) -> list[int]:
+    """The inline notes *tokens* refer to that are not in *seen*, which gains them."""
+
+    found: list[int] = []
+    for member in tokens:
+        identity = int(member.meta.get("id", -1)) if member.type == "footnote_ref" else -1
+        if "tokens" in notes.get(identity, {}) and identity not in seen:
+            seen.add(identity)
+            found.append(identity)
+    return found
+
+
+def _notes_at_end(state: StateCore) -> None:
+    """KPress's own notes, at the end, with the lines they and the rest are written on."""
+
+    maps = [token.map for token in state.tokens if token.map is not None]
+    state.env[_NOTES_AT_END] = (min(span[0] for span in maps), max(span[1] for span in maps))
+    _FOOTNOTE_TAIL(state)
+
+
+def _footnotes_in_place(state: StateCore) -> None:
+    """KPress's footnote_tail, with each note where its source is.
+
+    footnote_tail moves every note to one list at the end, numbered by its first
+    reference, and the Document view shows them there. Here each is a list of its own
+    that starts at that number, so a note is a block of its definition's lines, and an
+    inline note (`^[...]`), which has no lines of its own, is part of the top-level
+    block that holds it. As footnote_tail does, the last definition of a label is the
+    one that renders, and one that no reference names renders nothing. A definition
+    written inside another's, which footnote_tail sorts by no rule a block can follow,
+    and an inline note held only by a definition that renders nothing leave the notes
+    KPress's own, at the end, and the side renders as one block (_render).
+    """
+
+    data = cast(dict[str, Any] | None, state.env.get("footnotes"))
+    if not data:
+        return
+    notes = cast(dict[int, dict[str, Any]], data["list"])
+    refs = cast(dict[str, int], data["refs"])
+    tokens = state.tokens
+    last: dict[str, int] = {}
+    inside = False
+    for index, token in enumerate(tokens):
+        if token.type == "footnote_reference_open":
+            if inside:
+                _notes_at_end(state)
+                return
+            inside = True
+            last[token.meta["label"]] = index
+        elif token.type == "footnote_reference_close":
+            inside = False
+    flow: list[Token] = []
+    placed: set[int] = set()
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token.type != "footnote_reference_open":
+            flow.append(token)
+            index += 1
+            continue
+        close = index + 1
+        while tokens[close].type != "footnote_reference_close":
+            close += 1
+        identity = refs.get(":" + token.meta["label"], -1)
+        if last[token.meta["label"]] == index and identity >= 0:
+            written = _note(identity, notes[identity], tokens[index + 1 : close], token.level)
+            written[0].map = token.map
+            flow.extend(written)
+            placed.add(identity)
+        index = close + 1
+    result: list[Token] = []
+    waiting: list[int] = []
+    for token in flow:
+        result.append(token)
+        if token.type == "inline":
+            waiting.extend(_inline_notes(token.children or (), notes, placed))
+        if token.level == 0 and token.nesting <= 0:
+            # The end of a top-level block, which the inline notes it holds follow.
+            while waiting:
+                identity = waiting.pop(0)
+                written = _note(identity, notes[identity], (), 0)
+                written[0].meta[_ATTACHED] = True
+                result.extend(written)
+                waiting.extend(_inline_notes(notes[identity]["tokens"], notes, placed))
+    if waiting or placed != notes.keys():
+        _notes_at_end(state)
+        return
+    state.tokens = result
+
+
+_KPRESS.core.ruler.at("footnote_tail", _footnotes_in_place)
+cast(Any, _KPRESS.renderer).rules["footnote_block_open"] = _render_notes_open
 
 
 class MarkdownDiffBlock(TypedDict):
@@ -176,9 +369,7 @@ class FrontmatterDiff(TypedDict):
 # reader in each one's own sentence (`REFUSALS` in builtin_plugins/diff/diff-markdown.js).
 # ``no_changes`` is the route's, for a file whose content did not change, and ``deadline``
 # the worker's, for a projection it stopped.
-type MarkdownRefusal = Literal[
-    "raw_html", "task_list", "footnotes", "nesting", "deadline", "no_changes"
-]
+type MarkdownRefusal = Literal["nesting", "deadline", "no_changes"]
 
 
 class MarkdownDiffProjection(TypedDict):
@@ -363,6 +554,105 @@ class _Hidden:
     links: tuple[tuple[str, str], ...]
 
 
+# The elements HTML writes without an end tag, which open nothing.
+_HTML_VOID = frozenset(
+    {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track"}
+    | {"wbr", "param", "keygen"}
+)
+# The attributes the allowlist keeps that the render shows as layout, as a Markdown table's
+# alignment is: every other attribute it keeps, a destination or an alt text, is shown
+# nowhere or only on hover, as a Markdown link's is.
+_RAW_DESTINATIONS = frozenset({"href", "src", "alt"})
+
+
+class _RawMarkup(HTMLParser):
+    """What raw HTML says that its render does not show.
+
+    The allowlist decides it as it decides the render (:func:`allowed_attributes`): an
+    attribute it drops, an element it drops with its content and that content, and a
+    comment or declaration are shown nowhere, and make the block *concealed*. A
+    destination or an alt text it keeps is shown only on hover or under its image, as a
+    Markdown link's or image's is. The text and layout the render shows are compared
+    through the render itself, so they are not part of the signature.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.entries: list[tuple[str, ...]] = []
+        self.concealed = self.alt = False
+        # Depth inside an element dropped with its content.
+        self.dropped = 0
+
+    def _hide(self, *entry: str) -> None:
+        self.entries.append(entry)
+        self.concealed = True
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        written = [f"{name}={value or ''}" for name, value in attrs]
+        if self.dropped or tag in DROPPED_WITH_CONTENT:
+            if tag not in _HTML_VOID:
+                self.dropped += 1
+            self._hide("dropped", tag, *written)
+            return
+        if tag not in ALLOWED_TAGS and tag != "img":
+            # The element goes and its content stays: its name changes nothing the page
+            # draws, and its attributes are shown nowhere.
+            self.entries.append(("element", tag))
+            if attrs:
+                self._hide(tag, *written)
+            return
+        values = dict(attrs)
+        kept = {name for name, _ in allowed_attributes(tag, values, None)}
+        shown = [f"{name}={value or ''}" for name, value in attrs if name in _RAW_DESTINATIONS]
+        if shown:
+            self.entries.append((tag, *shown))
+        # An empty alt text, which the allowlist does not write, says the image has none.
+        if dropped := [
+            f"{name}={value or ''}"
+            for name, value in attrs
+            if name not in kept and (name != "alt" or value)
+        ]:
+            self._hide(tag, *dropped)
+        if tag == "img" and (values.get("alt") or "").strip():
+            self.alt = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.dropped and tag not in _HTML_VOID:
+            self.dropped -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self.dropped and data.strip():
+            self._hide("dropped", data)
+
+    def handle_comment(self, data: str) -> None:
+        self._hide("comment", data)
+
+    def handle_decl(self, decl: str) -> None:
+        self._hide("declaration", decl)
+
+    def unknown_decl(self, data: str) -> None:
+        self._hide("declaration", data)
+
+    def handle_pi(self, data: str) -> None:
+        self._hide("declaration", data)
+
+
+@lru_cache(maxsize=1024)
+def _raw_markup(content: str) -> tuple[tuple[tuple[str, ...], ...], bool, bool]:
+    """Raw HTML's hidden entries, whether it conceals anything, and whether it holds alt
+    text under an image. Inline HTML repeats a handful of tags, such as `<br>`, so each is
+    read once."""
+
+    parser = _RawMarkup()
+    parser.feed(content)
+    if parser.rawdata.startswith("<"):
+        # A tag the content does not finish, which a browser drops with what it holds, and
+        # which in the document reads on into what follows.
+        parser._hide("unfinished", parser.rawdata)  # pyright: ignore[reportPrivateUsage]
+    parser.close()
+    return tuple(parser.entries), parser.concealed, parser.alt
+
+
 def _hidden(tokens: Sequence[Token]) -> _Hidden:
     """What these tokens' source says that their render does not show.
 
@@ -378,8 +668,10 @@ def _hidden(tokens: Sequence[Token]) -> _Hidden:
         open_links: list[tuple[str, list[str]]] = []
         for member in (token, *(token.children or ())):
             if member.type in {"html_block", "html_inline"}:
-                found.append(("comment", member.content.strip()))
-                concealed = True
+                entries, conceals, holds_alt = _raw_markup(member.content)
+                found.extend(entries)
+                concealed |= conceals
+                alt |= holds_alt
             attrs = {
                 name: str(value)
                 for name, value in (member.attrs or {}).items()
@@ -462,12 +754,27 @@ def _slices(tokens: Sequence[Token], start: int, stop: int, level: int) -> list[
             index += 1
             continue
         end = _close(tokens, index)
-        # KPress removes comments in inert output. They have no rendered range, so a
-        # changed one reaches the projection's notice as an unmapped source line.
-        if token.type != "html_block":
+        # An inline note's list is part of the block that holds the note. KPress removes
+        # comments in inert output: they have no rendered range, so a changed one reaches
+        # the projection's notice as an unmapped source line.
+        if token.meta.get(_ATTACHED) and slices:
+            slices[-1] = (slices[-1][0], end)
+        elif not _is_comment(token):
             slices.append((index, end))
         index = end
     return slices
+
+
+def _is_comment(token: Token) -> bool:
+    return token.type == "html_block" and bool(_COMMENT.fullmatch(token.content.strip()))
+
+
+def _is_raw(token: Token) -> bool:
+    """Raw HTML that renders, as opposed to a comment."""
+
+    if token.type == "html_inline":
+        return not _COMMENT.fullmatch(token.content.strip())
+    return token.type == "html_block" and not _is_comment(token)
 
 
 def _map(token: Token, offset: int, after: int) -> tuple[int, int]:
@@ -477,31 +784,190 @@ def _map(token: Token, offset: int, after: int) -> tuple[int, int]:
     return span[0] + offset, span[1] + offset
 
 
-def _segments(root: _Element, count: int) -> list[_Element]:
-    """Split the hardened document at the separators between blocks."""
+def _separator(text: str) -> str | None:
+    """The first of _SEPARATORS that *text* does not hold, or None when it holds them
+    all."""
+
+    if "\ue000" not in text:
+        return "\ue000"
+    held = set(text)
+    return next(
+        (chr(point) for points in _SEPARATORS for point in points if chr(point) not in held),
+        None,
+    )
+
+
+@lru_cache(maxsize=8)
+def _markers(split: str) -> re.Pattern[str]:
+    """The boundaries a render parted by *split* carries."""
+
+    return re.compile(f"{split}(\\d+){split}")
+
+
+def _marker(index: int, split: str) -> str:
+    """The boundary after block *index*, as the render carries it."""
+
+    return f"{split}{index}{split}"
+
+
+def _hardened(html: str, budget: float) -> _Html:
+    """*html* through KPress's post-processing and sanitizer and the inert-HTML hardener,
+    as the Document view renders a document, read as a tree."""
+
+    sanitized, _ = sanitize_raw_html(_postprocess_html(html), "sanitized")
+    return _Html(harden(sanitized), budget)
+
+
+def _trimmed(nodes: Sequence[_Element | str]) -> list[_Element | str]:
+    """*nodes* without the whitespace around them, which no render shows at the top level."""
+
+    start, stop = 0, len(nodes)
+    while start < stop and isinstance(nodes[start], str) and not str(nodes[start]).strip():
+        start += 1
+    while stop > start and isinstance(nodes[stop - 1], str) and not str(nodes[stop - 1]).strip():
+        stop -= 1
+    return list(nodes[start:stop])
+
+
+def _joined_nodes(parts: Sequence[Sequence[_Element | str]]) -> list[_Element | str]:
+    """Consecutive parts of the top level as one, their text joined where a marker was."""
+
+    nodes: list[_Element | str] = []
+    for part in parts:
+        for node in part:
+            if isinstance(node, str) and nodes and isinstance(nodes[-1], str):
+                nodes[-1] += node
+            else:
+                nodes.append(node)
+    return _trimmed(nodes)
+
+
+def _unmarked(node: _Element, split: str) -> bool:
+    """Remove the boundary markers inside *node*: a boundary inside an element parts
+    nothing, so the blocks on either side render as one. False when a separator is left
+    anywhere else, such as in an attribute."""
+
+    whole = all(split not in value for _, value in node.attrs)
+    children: list[_Element | str] = []
+    for child in node.children:
+        if isinstance(child, _Element):
+            whole &= _unmarked(child, split)
+            children.append(child)
+            continue
+        text = _markers(split).sub("", child)
+        whole &= split not in text
+        if text and children and isinstance(children[-1], str):
+            children[-1] += text
+        elif text:
+            children.append(text)
+    node.children = children
+    return whole
+
+
+@dataclass(slots=True)
+class _Unit:
+    """Consecutive top-level blocks, *first* to *last*, and what they render together."""
+
+    first: int
+    last: int
+    nodes: list[_Element | str]
+
+
+def _units(root: _Element, count: int, split: str) -> list[_Unit] | None:
+    """The blocks the hardened render parts at its top level, and what each part renders,
+    or None when it does not keep its boundaries in order.
+
+    A boundary the render carries at its top level parts the blocks on either side. One
+    that lands inside an element, which raw HTML opened in one block and closed in a
+    later one, or that the render drops with what held it, parts nothing, so those
+    blocks render as one: a `<div>` around Markdown, or a `<details>` whose summary is in
+    one block and whose body is the next.
+    """
 
     if count == 0:
-        if root.children and any(
-            not isinstance(child, str) or child.strip() for child in root.children
-        ):
-            raise _Unsupported("render without a block")
-        return []
+        return [] if not _trimmed(root.children) else None
     parts: list[list[_Element | str]] = [[]]
+    ends: list[int] = []
     for child in root.children:
-        if isinstance(child, str):
-            for index, piece in enumerate(child.split(_SPLIT)):
-                if index:
-                    parts.append([])
-                if piece.strip():
-                    parts[-1].append(piece)
-        else:
+        if isinstance(child, _Element):
+            if not _unmarked(child, split):
+                return None
             parts[-1].append(child)
-    if len(parts) != count:
-        raise _Unsupported("rendered blocks differ from source blocks")
-    return [
-        nodes[0] if len(nodes) == 1 and isinstance(nodes[0], _Element) else _Element("", (), nodes)
-        for nodes in parts
-    ]
+            continue
+        position = 0
+        for match in _markers(split).finditer(child):
+            parts[-1].append(child[position : match.start()])
+            ends.append(int(match.group(1)))
+            parts.append([])
+            position = match.end()
+        parts[-1].append(child[position:])
+    if any(split in node for part in parts for node in part if isinstance(node, str)):
+        return None
+    if any(later <= earlier for earlier, later in pairwise(ends)) or (
+        ends and ends[-1] >= count - 1
+    ):
+        return None
+    units: list[_Unit] = []
+    first = 0
+    for last, part in zip([*ends, count - 1], parts, strict=True):
+        units.append(_Unit(first, last, _joined_nodes([part])))
+        first = last + 1
+    return units
+
+
+def _skeleton(nodes: Sequence[_Element | str]) -> list[object]:
+    """Each element, its attributes but an id, and its text without whitespace: what two
+    renders of the same source must agree on when neither moved a block's content into
+    the other's. A parser moves whitespace a table holds out ahead of it, which shows
+    nothing either way."""
+
+    skeleton: list[object] = []
+    for node in nodes:
+        if isinstance(node, _Element):
+            attrs = tuple(pair for pair in node.attrs if pair[0] != "id")
+            skeleton.append((node.tag, attrs, _skeleton(node.children)))
+        elif text := "".join(node.split()):
+            if skeleton and isinstance(skeleton[-1], str):
+                skeleton[-1] += text
+            else:
+                skeleton.append(text)
+    return skeleton
+
+
+def _alone(unit: _Unit, pieces: Sequence[str], budget: float) -> bool:
+    """Whether *unit* renders by itself as it does in its document."""
+
+    alone = _hardened("".join(pieces[unit.first : unit.last + 1]), budget).root.children
+    return _skeleton(alone) == _skeleton(unit.nodes)
+
+
+def _trusted(
+    units: list[_Unit], root: _Element, raw: Sequence[bool], pieces: Sequence[str], budget: float
+) -> list[_Unit] | None:
+    """*units*, the parts from the first one that does not render alone as it does here
+    held together as one, or None when even they do not.
+
+    A boundary the render carries at its top level is where every element the blocks
+    before it opened is closed, with one exception: a table the parser holds open moves
+    the text after it, a marker included, out ahead of the table, to where the table
+    sits. KPress wraps every table it sees in a `<div>`, so such a marker lands in the
+    wrapper and parts nothing; only a table KPress's own parser reads as text, and the
+    sanitizer's as a table, sits at the top level, as one in an SVG's `<style>` does.
+    Only then is each part that holds raw HTML rendered on its own to find the first one
+    whose content moved: 600 raw HTML blocks took 31 ms to project and 378 ms with every
+    part rendered alone (Apple M1 Pro, Python 3.14, load average 106-164, 2026-11-23).
+    """
+
+    if not any(isinstance(child, _Element) and child.tag == "table" for child in root.children):
+        return units
+    for position, unit in enumerate(units):
+        if not any(raw[unit.first : unit.last + 1]) or _alone(unit, pieces, budget):
+            continue
+        rest = _Unit(
+            unit.first, len(pieces) - 1, _joined_nodes([later.nodes for later in units[position:]])
+        )
+        return [*units[:position], rest] if _alone(rest, pieces, budget) else None
+    return units
 
 
 def _elements(node: _Element) -> list[_Element] | None:
@@ -514,25 +980,36 @@ def _elements(node: _Element) -> list[_Element] | None:
 
 def _block(
     tokens: Sequence[Token],
-    span: tuple[int, int],
+    spans: Sequence[tuple[int, int]],
     node: _Element,
     lines: Sequence[str],
     offset: int,
     after: int,
     *,
     descend: bool,
+    bounds: tuple[int, int] | None = None,
 ) -> _Block:
-    first, stop = span
-    start, end = _map(tokens[first], offset, after)
+    """A block of one top-level slice of tokens, or of several that render as one, or
+    of all of them on the lines *bounds* names."""
+
+    first, stop = spans[0][0], spans[-1][1]
+    if bounds is not None:
+        start, end = bounds
+    else:
+        start, end = _map(tokens[first], offset, after)
+    if len(spans) > 1:
+        end = _map(tokens[spans[-1][0]], offset, start)[1]
     signature = _hidden(tokens[first:stop])
     hidden, concealed = signature.entries, signature.concealed
-    if tokens[first].type in _HOLDERS:
+    merged = len(spans) > 1 or bounds is not None
+    if merged or tokens[first].type in _HOLDERS:
         # A link reference definition inside a quote or a list renders nothing where it
         # is written, and one that repeats a label renders nothing at all, title
         # included. It is a line no block inside the container covers: a fence's or a
-        # paragraph's own lines are what they render.
+        # paragraph's own lines are what they render. Between the blocks raw HTML holds
+        # together, one renders nothing there either.
         covered: set[int] = set()
-        for token in tokens[first + 1 : stop - 1]:
+        for token in tokens[first:stop] if merged else tokens[first + 1 : stop - 1]:
             if token.map is not None and token.nesting >= 0 and token.type not in _HOLDERS:
                 covered.update(range(token.map[0] + offset, token.map[1] + offset))
         definitions = tuple(
@@ -543,7 +1020,7 @@ def _block(
         if definitions:
             hidden, concealed = (*hidden, *definitions), True
     children: tuple[_Block, ...] | None = None
-    if descend and tokens[first].type in _CONTAINERS:
+    if descend and not merged and node.tag and tokens[first].type in _CONTAINERS:
         inner = _slices(tokens, first + 1, stop - 1, tokens[first].level + 1)
         elements = _elements(node)
         if elements is not None and len(elements) == len(inner):
@@ -552,7 +1029,7 @@ def _block(
                 items.append(
                     _block(
                         tokens,
-                        child_span,
+                        [child_span],
                         child,
                         lines,
                         offset,
@@ -586,11 +1063,11 @@ class _Side:
     elements: int
     # The YAML between the front matter's fences, when the source opens with them.
     frontmatter: str | None = None
-
-
-# The checkbox KPress's task list plugin writes for `- [ ]`: raw HTML to MarkdownIt, and
-# a state the inert render drops, so a ticked box would show as nothing changed.
-_TASK_CHECKBOX = re.compile(r'<input class="task-list-item-checkbox"[^>]*>')
+    # Whether a top-level slice holds raw HTML that renders (_is_raw), by slice.
+    raw: tuple[bool, ...] = ()
+    # The lines of a source whose notes are KPress's own, at the end, which then
+    # renders as one block (_footnotes_in_place).
+    whole: tuple[int, int] | None = None
 
 
 def _parse(text: str, token_budget: float = inf) -> _Side:
@@ -601,8 +1078,6 @@ def _parse(text: str, token_budget: float = inf) -> _Side:
         frontmatter, body_start, _ = fmf_split_frontmatter(source, strict=False)
         offset = source.count("\n", 0, body_start)
         source = source[body_start:]
-    if _SPLIT in source:
-        raise _Unsupported("source contains the block separator")
     env: dict[str, object] = {}
     tokens = _KPRESS.parse(source, env)
     if sum(1 + len(token.children or ()) for token in tokens) > token_budget:
@@ -618,15 +1093,12 @@ def _parse(text: str, token_budget: float = inf) -> _Side:
     elements = 0
     for token in tokens:
         for member in (token, *(token.children or ())):
-            if member.type.startswith("footnote"):
-                raise _Unsupported("footnotes render away from their source", "footnotes")
-            # Raw markup is outside the versioned Markdown block contract.
-            if member.type in {"html_block", "html_inline"} and not _COMMENT.fullmatch(
-                member.content.strip()
-            ):
-                if _TASK_CHECKBOX.fullmatch(member.content):
-                    raise _Unsupported("a task list's checkbox has no projection", "task_list")
-                raise _Unsupported("raw HTML has no reliable Markdown projection", "raw_html")
+            if member.type in _NOTE_ELEMENTS:
+                elements += _NOTE_ELEMENTS[member.type]
+                continue
+            # Raw HTML renders what the sanitizer and the allowlist keep of it, which may
+            # be nothing, so it adds no element the render must hold; the render tree's
+            # own budget bounds what it does add (_Html).
             if (
                 member.nesting == 1
                 and not member.hidden
@@ -637,7 +1109,17 @@ def _parse(text: str, token_budget: float = inf) -> _Side:
             elif member.type in {"fence", "code_block"}:
                 # `pre` and `code`.
                 elements += 2
-    return _Side(source, offset, tokens, _slices(tokens, 0, len(tokens), 0), elements, frontmatter)
+    blocks = _slices(tokens, 0, len(tokens), 0)
+    raw = tuple(
+        any(
+            _is_raw(member)
+            for token in tokens[start:stop]
+            for member in (token, *(token.children or ()))
+        )
+        for start, stop in blocks
+    )
+    whole = cast(tuple[int, int] | None, env.get(_NOTES_AT_END))
+    return _Side(source, offset, tokens, blocks, elements, frontmatter, raw, whole)
 
 
 def _render(side: _Side, budget: float) -> tuple[list[_Block], int]:
@@ -650,30 +1132,72 @@ def _render(side: _Side, budget: float) -> tuple[list[_Block], int]:
             # the info string stays in the block's hidden signature.
             token.meta[_INFO] = token.info
             token.info = ""
+    lines = side.source.split("\n")
+    if side.whole is not None:
+        # Notes KPress places by no rule a block can follow: the side is one block, the
+        # document's own render.
+        tree = _hardened(_KPRESS.renderer.render(tokens, _KPRESS.options, {}), budget)
+        nodes = _trimmed(tree.root.children)
+        start, end = side.whole
+        whole = _block(
+            tokens,
+            [(0, len(tokens))],
+            _Element("", (), nodes),
+            lines,
+            side.offset,
+            0,
+            descend=False,
+            bounds=(start + side.offset, end + side.offset),
+        )
+        return ([whole] if nodes else []), tree.nodes
     pieces = [
         _KPRESS.renderer.render(tokens[start:stop], _KPRESS.options, {})
         for start, stop in side.blocks
     ]
-    sanitized, _ = sanitize_raw_html(_postprocess_html(_SPLIT.join(pieces)), "sanitized")
-    hardened = harden(sanitized)
-    if hardened.count(_SPLIT) != max(len(pieces) - 1, 0):
-        raise _Unsupported("a block separator moved inside a block")
-    tree = _Html(hardened, budget)
+    # A character the render holds, written or as a reference, cannot part its blocks.
+    split = _separator(unescape("".join(pieces)))
+    units: list[_Unit] | None = None
+    nodes = 0
+    if split is not None:
+        tree = _hardened(
+            "".join(
+                piece + (_marker(index, split) if index < len(pieces) - 1 else "")
+                for index, piece in enumerate(pieces)
+            ),
+            budget,
+        )
+        units = _units(tree.root, len(pieces), split)
+        if units is not None and any(side.raw):
+            units = _trusted(units, tree.root, side.raw, pieces, budget)
+        nodes = tree.nodes
+    if units is None:
+        # No part of the render can be trusted to be its own blocks', or it holds every
+        # separator, so the side is one block: the document's own render, which is never
+        # refused for its shape.
+        tree = _hardened("".join(pieces), budget)
+        units = [_Unit(0, len(pieces) - 1, _trimmed(tree.root.children))] if pieces else []
+        nodes = tree.nodes
     blocks: list[_Block] = []
-    lines = side.source.split("\n")
-    for span, node in zip(side.blocks, _segments(tree.root, len(side.blocks)), strict=True):
+    for unit in units:
+        if not unit.nodes:
+            # Raw HTML the render drops whole, such as a script: like a comment, it has no
+            # rendered range, and a changed one reaches the notice as unmapped lines.
+            continue
+        only = unit.nodes[0]
         blocks.append(
             _block(
                 tokens,
-                span,
-                node,
+                side.blocks[unit.first : unit.last + 1],
+                only
+                if len(unit.nodes) == 1 and isinstance(only, _Element)
+                else _Element("", (), unit.nodes),
                 lines,
                 side.offset,
                 blocks[-1].end if blocks else 0,
                 descend=True,
             )
         )
-    return blocks, tree.nodes
+    return blocks, nodes
 
 
 def _lines(data: bytes | None) -> list[bytes]:
@@ -685,11 +1209,49 @@ def _lines(data: bytes | None) -> list[bytes]:
     return [line + b"\n" for line in result[:-1]] + (result[-1:] if result[-1] else [])
 
 
+def _markdown_lines(lines: Sequence[bytes]) -> tuple[list[bytes], list[range]]:
+    """*lines*, Git's, split where MarkdownIt also ends a line, and each Git line's range
+    of the lines that makes: a carriage return no line feed follows ends one."""
+
+    split: list[bytes] = []
+    ranges: list[range] = []
+    for line in lines:
+        start, cut = len(split), 0
+        for found in _LONE_CR.finditer(line):
+            split.append(line[cut : found.end()])
+            cut = found.end()
+        if cut < len(line):
+            split.append(line[cut:])
+        ranges.append(range(start, len(split)))
+    return split, ranges
+
+
+def _decoded(data: bytes) -> str:
+    """*data* as the Document view reads it: a byte that is not UTF-8 is U+FFFD, and a
+    carriage return no line feed follows is a line feed, so the text's lines are the
+    projection's (:func:`_markdown_lines`).
+
+    A CRLF stays, where the file view's read makes it a line feed too
+    (:func:`metabrowser.structured_text.decode_text`), since MarkdownIt reads both alike."""
+
+    text = data.decode("utf-8", errors="replace")
+    return _LONE_CR_TEXT.sub("\n", text) if "\r" in text else text
+
+
 def _verify_line(record: LineRecord, lines: Sequence[bytes], index: int) -> None:
-    if record.text_b64 is not None or index >= len(lines):
+    if index >= len(lines):
         raise _Unsupported("patch does not match the snapshot")
-    expected = record.text.encode() + (b"" if record.no_newline else b"\n")
-    if lines[index] != expected:
+    try:
+        # A line that is not UTF-8 carries its exact bytes; a text no file holds, such as
+        # an unpaired surrogate, or bytes that are not base64, match no snapshot.
+        body = (
+            record.text.encode()
+            if record.text_b64 is None
+            else base64.b64decode(record.text_b64, validate=True)
+        )
+    except (UnicodeEncodeError, binascii.Error) as error:
+        raise _Unsupported("patch does not match the snapshot") from error
+    if lines[index] != body + (b"" if record.no_newline else b"\n"):
         raise _Unsupported("patch does not match the snapshot")
 
 
@@ -1383,8 +1945,8 @@ class _Projector:
         inline = _inline_change(
             old.node,
             new.node,
-            b"".join(self.old_lines[line] for line in old_changed).decode(),
-            b"".join(self.new_lines[line] for line in new_changed).decode(),
+            _decoded(b"".join(self.old_lines[line] for line in old_changed)),
+            _decoded(b"".join(self.new_lines[line] for line in new_changed)),
             _MAX_INLINE_WORK - self.work,
         )
         if inline is None or not self.spend(inline.nodes):
@@ -1509,20 +2071,35 @@ def _project(
         raise _OverBudget("Markdown input bytes")
     if max(before.count(b"["), after.count(b"[")) > limits.link_openers:
         raise _OverBudget("Markdown link-label work")
+    split = [_LONE_CR.search(data) is not None for data in (before, after)]
     if (
         limits.container_lines != inf
-        and max(len(_CONTAINER_LINE.findall(data)) for data in (before, after))
+        and max(
+            # Counted where MarkdownIt starts a line, a lone carriage return's included.
+            len(_CONTAINER_LINE.findall(_LONE_CR.sub(b"\n", data) if lone else data))
+            for data, lone in zip((before, after), split, strict=True)
+        )
         > limits.container_lines
     ):
         raise _OverBudget("Markdown container lines")
     old_lines, new_lines = _lines(old), _lines(new)
-    if patch.truncated or any(
-        b"\0" in data or b"\r" in data.replace(b"\r\n", b"") for data in (before, after)
-    ):
-        raise _Unsupported("unmapped Markdown source")
+    if patch.truncated:
+        # No adapter cuts one file's patch today; a cut one cannot vouch for its lines.
+        raise _Unsupported("truncated patch")
     unchanged, removed, added = _correspondence(old_lines, new_lines, patch)
-    old_side = _parse(before.decode(), limits.tokens)
-    new_side = _parse(after.decode(), limits.tokens)
+    if any(split):
+        old_lines, old_at = _markdown_lines(old_lines)
+        new_lines, new_at = _markdown_lines(new_lines)
+        # An unchanged Git line is the same bytes on both sides, so the same lines.
+        unchanged = {
+            left: right
+            for old_line, new_line in unchanged.items()
+            for left, right in zip(old_at[old_line], new_at[new_line], strict=True)
+        }
+        removed = {line for git in removed for line in old_at[git]}
+        added = {line for git in added for line in new_at[git]}
+    old_side = _parse(_decoded(before), limits.tokens)
+    new_side = _parse(_decoded(after), limits.tokens)
     shown = _frontmatter_diff(old_side.frontmatter, new_side.frontmatter)
     frontmatter = shown.diff
     if old_side.elements + new_side.elements > limits.nodes:
@@ -1617,8 +2194,6 @@ def prepare_markdown_diff(
         return unavailable_markdown_diff("too_large", refused.reason)
     except _Unsupported as refused:
         return unavailable_markdown_diff("unsupported", refused.reason)
-    except UnicodeError:
-        return unavailable_markdown_diff("unsupported")
 
 
 def bind_markdown_diff(

@@ -74,16 +74,14 @@ extension NSMenuItem {
     ///
     /// AppKit wraps a subtitle at about 300 points, or at the title's width where that is
     /// wider (measured on macOS 26.5: 57 characters of a path fit under a short title, 92
-    /// under a 64-character one), so the fit is measured under the title: set it first. An
-    /// Option alternate, whose title is longer, passes its primary's as `fittedUnder`, so
-    /// the two show the same subtitle.
+    /// under a 64-character one). Set the title before measuring the subtitle's fit.
     ///
     /// The check mark of a `TitleLineMenuItem` follows its subtitle, on the title's line
     /// with one, and the item still reports itself checked to accessibility. Any other
     /// item's check stays AppKit's, centered on the item, since a custom `onStateImage`
     /// drops the item's `AXMenuItemMarkChar` (checked on macOS 26.5).
-    func setMark(_ mark: RootMark, subtitle: String? = nil, fittedUnder title: String? = nil) {
-        let shown = subtitle.map { SubtitleFit.oneLine($0, under: title ?? self.title) }
+    func setMark(_ mark: RootMark, subtitle: String? = nil) {
+        let shown = subtitle.map { SubtitleFit.oneLine($0, under: title) }
         self.subtitle = shown
         if let subtitle, shown != subtitle { toolTip = subtitle }
         image = (shown ?? "").isEmpty ? mark.image : mark.titleLineImage

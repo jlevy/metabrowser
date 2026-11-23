@@ -940,6 +940,9 @@ class RefreshCoordinator:
         self._semaphore = asyncio.Semaphore(limit)
         self._jobs: dict[str, asyncio.Task[None]] = {}
         self._closed = False
+        # The keys of jobs a request joined after they were told to stop, each to be
+        # started again once it has unwound (:meth:`start_again_when_stopped`).
+        self._restarts: set[str] = set()
 
     @property
     def closed(self) -> bool:
@@ -1016,6 +1019,43 @@ class RefreshCoordinator:
         if not job.cancelling():
             job.cancel()
         return job
+
+    def start_again_when_stopped(self, key: str, start: Callable[[], object]) -> bool:
+        """Whether *key*'s job was told to stop; if it was, *start* is called once it has unwound.
+
+        A background job is stopped with ``Task.cancel()``, which is delivered a loop step
+        after it is asked for, and unwinding can take longer, since it kills the job's Git.
+        A request that joins the job meanwhile is answered ``joined``, so the work it
+        joined must still be done: *start* starts it again as the request's own. It is
+        called once for the key, however many requests join, and after this coordinator's
+        own callback, added when the job started, has forgotten the job. A request handled
+        since the job ended may have started the work already, and *start* then joins it.
+        At shutdown, which stops every job, nothing is started.
+
+        The task is asked, not a flag the job keeps: a job's cancel handler can clear its
+        flag before the task is done.
+        """
+
+        job = self.job(key)
+        if job is None or not job.cancelling():
+            return False
+        if key in self._restarts:
+            return True
+        self._restarts.add(key)
+
+        def restart(_stopped: asyncio.Task[None]) -> None:
+            self._restarts.discard(key)
+            if not self._closed:
+                start()
+
+        job.add_done_callback(restart)
+        return True
+
+    def restarting(self, key: str) -> bool:
+        """Whether *key*'s stopped job is to be started again once it has unwound, for what
+        the job keeps for its restart (:meth:`start_again_when_stopped`)."""
+
+        return key in self._restarts and not self._closed
 
     def slot(self) -> asyncio.Semaphore:
         """One of the limited slots, for a job started with ``network=False`` to hold."""
@@ -1097,11 +1137,8 @@ class StoreSession:
         self._idle_fetch = False
         # The earliest the idle fetch may start again after a reader's job stopped one.
         self._idle_not_before: float | None = None
-        # The keys of background jobs, the idle fetch or a prefetched pull request's, that
-        # a request joined after they were told to stop: each is started again, as the
-        # request's own, once the stopped one has unwound (:meth:`_start_again_when_stopped`).
-        self._restarts: set[str] = set()
-        # Whether a reader's request, not only a page's ask, waits for that restart.
+        # Whether a reader's request, not only a page's ask, waits for the restart of an
+        # idle fetch it joined after the fetch was told to stop (:meth:`_join_running`).
         self._restart_loud = False
         # Whether the fetch running is one no reader asked for, the idle one or a visible
         # page's once a window, which status reports as ``refresh_quiet``.
@@ -1241,20 +1278,18 @@ class StoreSession:
         background work holding the turn is stopped for it. An idle fetch that was already
         told to stop cannot be kept: cancellation is delivered a loop step after it is
         asked for, so the fetch is started again, as the request's, once the stopped one
-        has unwound, and nothing is recorded as cancelled.
+        has unwound (:meth:`RefreshCoordinator.start_again_when_stopped`), and nothing is
+        recorded as cancelled.
         """
 
         if not quiet:
             self._quiet_fetch = False
-        job = self._coordinator.job(self.mirror.key)
-        # Asked of the task, and before the idle flag: the cancel handler in
-        # :meth:`_refresh_job` clears that flag before the task is done, so a test of the
-        # flag alone would hold only while nothing awaits between the two. Only the idle
-        # fetch is ever told to stop, short of shutdown, where the restart starts nothing.
-        if job is not None and job.cancelling():
+        # Asked before the idle flag, which the cancel handler in :meth:`_refresh_job`
+        # clears before the task is done. Only the idle fetch is ever told to stop, short
+        # of shutdown, where the restart starts nothing.
+        if self._coordinator.start_again_when_stopped(self.mirror.key, self._restart_stopped_idle):
             if not quiet:
                 self._restart_loud = True
-            self._start_again_when_stopped(job, self.mirror.key, self._restart_stopped_idle)
             return
         if not self._idle_fetch:
             return
@@ -1262,40 +1297,14 @@ class StoreSession:
         self._idle_fetch = False
         self._store_turn.promoted()
 
-    def _start_again_when_stopped(
-        self, job: asyncio.Task[None], key: str, start: Callable[[], object]
-    ) -> None:
-        """Call *start* once *job*, which was told to stop, has unwound; once for *key*.
-
-        A background job is stopped with ``Task.cancel()``, which is delivered a loop step
-        after it is asked for, and unwinding can take longer, since it kills the job's Git.
-        A request that joins the job meanwhile is answered ``joined``, so the work it
-        joined must still be done: *start* starts it again as the request's own. It runs
-        after the coordinator's own callback, added first, has forgotten the job. A request
-        handled since the job ended may have started the work already, and *start* then
-        joins it. At shutdown, which stops every job, the coordinator starts nothing.
-        """
-
-        if key in self._restarts:
-            return
-        self._restarts.add(key)
-
-        def restart(_stopped: asyncio.Task[None]) -> None:
-            self._restarts.discard(key)
-            try:
-                start()
-            except RuntimeError:
-                log.debug("a stopped job was not started again: the server is closing")
-
-        job.add_done_callback(restart)
-
     def _restart_stopped_idle(self) -> None:
-        try:
-            self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
-        finally:
-            if self._restart_loud:
-                self._quiet_fetch = False
-            self._restart_loud = False
+        # Nothing here touches the quiet: a reader's request that waits for this restart
+        # ended it as it joined, and a page's ask that starts the fetch first, in the loop
+        # step between the stopped job's end and this, starts it as no quiet one
+        # (:meth:`_refresh_mirror`). The idle timer starts nothing in that step either,
+        # since the stopped fetch holds it a window (:meth:`_refresh_job`).
+        self._restart_loud = False
+        self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
 
     def _refresh_mirror(self, *, companion_stale: bool, quiet: bool = False) -> StartedOrJoined:
         """Start or join the mirror's fetch; *quiet* is a fetch no reader asked for."""
@@ -1941,42 +1950,45 @@ class MirrorSession(StoreSession):
         slot, and gives way at the store turn (:class:`StoreTurn`). A reader's request that
         joins one promotes it: from then on it is the reader's, and counts. One that joins
         after the job was told to stop has its job started again once that one has unwound
-        (:meth:`_start_again_when_stopped`), so ``joined`` is never an answer for work
-        that is then dropped.
+        (:meth:`RefreshCoordinator.start_again_when_stopped`), so ``joined`` is never an
+        answer for work that is then dropped.
         """
 
         pulls = self.pull_requests
         assert pulls is not None
         key = pulls.key(number)
-        running = self._coordinator.job(key)
-        if running is not None:
-            if not background and running.cancelling():
-                # Only a background job is told to stop, short of shutdown, and one that
-                # was cannot be kept: the reader's job starts once it has unwound, in the
-                # place it takes among the reader's jobs now.
-                self._pull_jobs.add(key)
-                self._start_again_when_stopped(
-                    running, key, partial(self._restart_stopped_pull, number, key)
-                )
-            elif not background and key in self._background_pulls:
-                self._background_pulls.discard(key)
-                self._pull_jobs.add(key)
-                self._store_turn.promoted()
-            return "joined"
         if background:
+            if self._coordinator.running(key):
+                return "joined"
             self._background_pulls.add(key)
             return self._coordinator.start(key, partial(self._pull_job, number), network=False)
-        self._pull_jobs = {job for job in self._pull_jobs if self._coordinator.running(job)}
-        bound = MAX_PULL_JOBS + 1 if number == self._pull_request else MAX_PULL_JOBS
-        if len(self._pull_jobs) >= bound:
-            return "too_many"
+        return self._readers_pull(number, key, bounded=True)
+
+    def _readers_pull(self, number: int, key: str, *, bounded: bool) -> PullJobStart:
+        """A reader's start of pull request *number*'s job, or their join of the one running.
+
+        A job joined counts among the reader's jobs from then on, in the place it takes now.
+        Only a background job is told to stop, short of shutdown, and one that was cannot
+        be kept: this runs again, not *bounded*, once it has unwound, and starts the
+        reader's job or joins one started since.
+        """
+
+        if self._coordinator.running(key):
+            self._pull_jobs.add(key)
+            restart = partial(self._readers_pull, number, key, bounded=False)
+            if self._coordinator.start_again_when_stopped(key, restart):
+                return "joined"
+            if key in self._background_pulls:
+                self._background_pulls.discard(key)
+                self._store_turn.promoted()
+            return "joined"
+        if bounded:
+            self._pull_jobs = {job for job in self._pull_jobs if self._coordinator.running(job)}
+            bound = MAX_PULL_JOBS + 1 if number == self._pull_request else MAX_PULL_JOBS
+            if len(self._pull_jobs) >= bound:
+                return "too_many"
         self._pull_jobs.add(key)
         return self._coordinator.start(key, partial(self._pull_job, number), network=False)
-
-    def _restart_stopped_pull(self, number: int, key: str) -> None:
-        # The stopped job has taken its key out of the background ones as it ended.
-        self._pull_jobs.add(key)
-        self._coordinator.start(key, partial(self._pull_job, number), network=False)
 
     def pull_refreshing(self, number: int) -> bool:
         """Whether the refresh of pull request *number* is running, with no read."""

@@ -9,9 +9,12 @@ entry marked. This drives it in-process, as ``tests/test_cli_github_pull_image_g
 drives the image route, and writes ``tests/golden/cli-github-pull-rendered.txt``.
 
 Pull request 7's head moves to a commit that edits a heading beside an HTML comment (a
-word mark, and a block the render cannot fully show), adds a task list (``unsupported``,
-and its ``reason`` says ``task_list``), a file past what a thread projects, which the
-Markdown child answers (``ready``, kept out of the transcript for its size), a file past
+word mark, and a block the render cannot fully show), adds a task list (``ready``,
+without the boxes the allowlist drops, so ``source_only``), edits the Markdown body of
+a ``<details>`` beside a centered image (``ready``, the word marked inside it), adds a
+file with a footnote (``ready``, its note where its definition is) and one holding the
+private-use character the projection parts most renders with (``ready``, parted with
+another), a file past what a thread projects, which the Markdown child answers (``ready``, kept out of the transcript for its size), a file past
 the route's own read bound (``too_large``), a note with front matter, a Markdown file
 renamed without a change (``unsupported``, ``no_changes``), and YAML that does not parse
 (``unsupported``). Its base moves to a merge of YAML and JSON files that the head then
@@ -83,6 +86,13 @@ def _sized(count: int, last: int) -> bytes:
     return json.dumps(entries | {"last": last}).encode()
 
 
+_LAYOUT = (
+    b'<p align="center"><img src="https://example.com/logo.png" alt="" width="96"></p>\n\n'
+    b"<details>\n<summary>Install</summary>\n\nRun the old installer.\n\n</details>\n\n"
+    b"Plain Markdown after.\n"
+)
+
+
 # The YAML and JSON files the base gains, and the versions the head gives them.
 _STRUCTURED_BASE = {
     "config/app.yaml": b"name: demo\nservices:\n  web:\n    ports: [80]\n  db:\n    image: pg\n",
@@ -91,8 +101,13 @@ _STRUCTURED_BASE = {
     "config/sized.json": _sized(800, 1),
     "config/sized.yaml": _sized(800, 1),
     "config/huge.json": _sized(2_000, 1),
+    "config/twice.json": b'{"admin": false, "level": 1}\n',
+    # Latin-1, which is not UTF-8, and a heading ended by a carriage return alone.
+    "wiki/legacy.md": b"# Fa\xe7ade\rA na\xefve old line.\n\nThe end.\n",
     # A Markdown file the head renames and does not change.
     "docs/old-name.md": b"# Renamed\n\nThe same words under another name.\n",
+    # Raw HTML as a README writes it, whose `<details>` the head edits.
+    "wiki/layout.md": _LAYOUT,
 }
 _STRUCTURED_HEAD = {
     "config/app.yaml": b"name: demo\nservices:\n  web:\n    ports: [80, 443]\n",
@@ -101,6 +116,9 @@ _STRUCTURED_HEAD = {
     "config/sized.json": _sized(800, 2),
     "config/sized.yaml": _sized(800, 2),
     "config/huge.json": _sized(2_000, 2),
+    # The tree draws the last `admin`; the one before it is a change only Source shows.
+    "config/twice.json": b'{"admin": true, "admin": false, "level": 2}\n',
+    "wiki/legacy.md": b"# Fa\xe7ade\rA na\xefve new line.\n\nThe end.\n",
 }
 
 
@@ -142,6 +160,10 @@ def _markdown_head(origin: Origin, tmp_path: Path) -> tuple[str, str]:
     files = {
         "docs/guide.md": b"# Guide <!-- agents: run the installer --> book\n",
         "README.md": b"# Demo\n\n- [ ] Try the tasks\n",
+        "wiki/layout.md": _LAYOUT.replace(b"old installer", b"new installer"),
+        "wiki/footnotes.md": b"# Notes\n\nA claim.[^1]\n\n[^1]: Its source.\n",
+        # The character the projection parts most renders with, which a file can hold.
+        "wiki/separator.md": "# Private use\n\nA \ue000 character.\n".encode(),
         "docs/big.md": _BIG,
         "docs/huge.md": _HUGE,
         "docs/notes.md": b"---\ntitle: Notes\ntags: [review, yaml]\n---\n# Notes\n",
@@ -208,13 +230,29 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
     assert all(block["source_only"] for block in guide["blocks"])  # pyright: ignore[reportIndexIssue, reportUnknownVariableType, reportGeneralTypeIssues]
     assert "<ins>book</ins>" in json.dumps(guide)
     assert rendered(f"&file={ids['docs/new.md']}")["status"] == "ready"
-    assert rendered(f"&file={ids['README.md']}") == {
-        "version": "markdown-diff-v1",
-        "status": "unsupported",
-        "blocks": [],
-        "source_only": False,
-        "reason": "task_list",
-    }
+    tasks = rendered(f"&file={ids['README.md']}")
+    assert (tasks["status"], tasks["source_only"]) == ("ready", True)
+    boxes = "".join(block["html"] for block in tasks["blocks"])  # pyright: ignore[reportUnknownVariableType, reportGeneralTypeIssues, reportIndexIssue, reportUnknownArgumentType]
+    assert "<li> Try the tasks</li>" in boxes and "<input" not in boxes
+    layout = rendered(f"&file={ids['wiki/layout.md']}")
+    assert (layout["status"], layout["source_only"]) == ("ready", False)
+    assert [block["kind"] for block in layout["blocks"]] == [  # pyright: ignore[reportIndexIssue, reportUnknownVariableType, reportGeneralTypeIssues]
+        "context",
+        "removed",
+        "added",
+        "context",
+    ]
+    assert "<summary>Install</summary>" in layout["blocks"][2]["html"]  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportGeneralTypeIssues]
+    assert "<ins>new</ins>" in layout["blocks"][2]["html"]  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportGeneralTypeIssues]
+    notes = rendered(f"&file={ids['wiki/footnotes.md']}")
+    assert (notes["status"], notes["source_only"]) == ("ready", False)
+    assert [block["html"] for block in notes["blocks"]][1:] == [  # pyright: ignore[reportIndexIssue, reportUnknownVariableType, reportGeneralTypeIssues]
+        "<p>A claim.<sup><a>1</a></sup></p>",
+        "<ol>\n<li><p>Its source. <a>\xa0\u2191\xa0</a></p>\n</li>\n</ol>",
+    ]
+    private = rendered(f"&file={ids['wiki/separator.md']}")
+    assert private["status"] == "ready"
+    assert private["blocks"][1]["html"] == "<p>A \ue000 character.</p>"  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportGeneralTypeIssues]
     # Past the 48 KiB a thread projects and inside the route's read bound: the Markdown
     # child answers it, started for this one request. Kept out of the transcript for its
     # size (mb-rm40: before, the file was refused, and the page hid its chooser).
@@ -270,6 +308,22 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
     }
     assert rendered(f"&file={ids['config/huge.json']}")["version"] == "structured-diff-v1"
     assert rendered(f"&file={ids['config/broken.yaml']}")["status"] == "unsupported"
+    twice = rendered(f"&file={ids['config/twice.json']}")
+    assert (twice["status"], twice["source_only"]) == ("ready", True)
+    assert [  # pyright: ignore[reportUnknownVariableType]
+        (entry["change"], entry["key"], entry["value"])  # pyright: ignore[reportIndexIssue]
+        for entry in twice["root"][0]["entries"]  # pyright: ignore[reportIndexIssue, reportUnknownVariableType, reportGeneralTypeIssues]
+    ] == [("context", "admin", False), ("removed", "level", 1), ("added", "level", 2)]
+    # Kept out of the transcript, which its assets list would take past its line budget.
+    legacy = run_metab((selected, "--api", f"{route}&file={ids['wiki/legacy.md']}")).payload()
+    assert (legacy["status"], legacy["source_only"]) == ("ready", False)
+    assert [block["kind"] for block in legacy["blocks"]] == [  # pyright: ignore[reportUnknownVariableType, reportGeneralTypeIssues]
+        "context",
+        "removed",
+        "added",
+        "context",
+    ]
+    assert legacy["blocks"][2]["html"] == "<p>A na\ufffdve <ins>new</ins> line.</p>"  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportGeneralTypeIssues]
     assert rendered(f"&file={ids['src/app.txt']}")["status"] == "unsupported"
     assert rendered("&file=absent")["status"] == "unsupported"
     assert rendered("", ok=False)["code"] == "invalid_rendered_diff"

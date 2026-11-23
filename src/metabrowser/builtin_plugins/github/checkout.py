@@ -414,26 +414,35 @@ def start_pull_refresh(
     same pull request, which fetches and compares, is promoted and joined instead. Every
     other start is a reader's, and ends the optional job: one for the same pull request
     promotes it, and cancels its idle phase when it asks for metadata; one for another
-    cancels it.
+    cancels it while it is still optional, and otherwise leaves the promoted job to run
+    on as the reader's it now is.
 
     A *background* start, a prefetch's, is a metadata refresh that counts toward no bound,
     takes no network slot, and gives way at the checkout's turn (:class:`StoreTurn`); it
-    is ``not_due`` while the optional comparison job runs. A reader's start that joins it
-    promotes it to the reader's, and from then on it counts.
+    is ``not_due`` while the optional comparison job runs and is still optional, and starts
+    beside one a reader's start has promoted, as beside any reader's job. A reader's start
+    that joins it promotes it to the reader's, and from then on it counts, and a background
+    job holding the turn it waits for is stopped, as on a mirror.
+
+    A reader's start that joins a job already told to stop, a prefetch's that gave way at
+    the turn or the optional job another reader's start ended, has the reader's job
+    started once that one has unwound (:func:`_start_again_when_stopped`), so ``joined``
+    is never an answer for work that is then dropped.
     """
 
     key = checkout_job_key(repository, number)
     state = _checkout_state(repository)
-    eager = state.eager
-    if eager is not None and not coordinator.running(checkout_job_key(repository, eager.number)):
-        state.eager = eager = None
+    eager = _live_eager(coordinator, repository, state)
     if eager_revision is not None:
         _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
         if key in state.background and coordinator.running(key):
             # The open pull request's own prefetch. With a store its read fetches and
-            # compares, so it is promoted to the reader's, which nothing preempts.
+            # compares, so it is promoted to the reader's, which nothing preempts, and
+            # which stops a background job holding the turn it waits for.
             state.background.discard(key)
+            state.turn.promoted()
             _PULL_JOBS.add(key)
+            _start_again_when_stopped(coordinator, repository, number, key)
             return "joined"
         if (
             eager is not None
@@ -451,12 +460,42 @@ def start_pull_refresh(
     if background:
         if coordinator.running(key):
             return "joined"
-        if eager is not None:
+        if eager is not None and eager.mode == "idle":
             return "not_due"
         state.background.add(key)
         return coordinator.start(
             key, partial(_pull_job, coordinator, repository, number, key), network=False
         )
+    return _readers_start(coordinator, repository, number, comparison=comparison, bounded=True)
+
+
+def _live_eager(
+    coordinator: RefreshCoordinator, repository: CheckoutRepository, state: _CheckoutPulls
+) -> _EagerComparison | None:
+    """The checkout's optional comparison job, forgotten once it has ended."""
+    eager = state.eager
+    if eager is not None and not coordinator.running(checkout_job_key(repository, eager.number)):
+        state.eager = eager = None
+    return eager
+
+
+def _readers_start(
+    coordinator: RefreshCoordinator,
+    repository: CheckoutRepository,
+    number: int,
+    *,
+    comparison: bool,
+    bounded: bool,
+) -> PullJobStart:
+    """A reader's start of pull request *number*'s job, or their join of the one running.
+
+    A job joined counts among the reader's jobs from then on, in the place it takes now.
+    Only *bounded* starts count against :data:`MAX_PULL_JOBS`: a restart of a job the
+    reader joined took its place when they joined it.
+    """
+    key = checkout_job_key(repository, number)
+    state = _checkout_state(repository)
+    eager = _live_eager(coordinator, repository, state)
     if eager is not None:
         if eager.number == number:
             eager.mode = "foreground"
@@ -465,24 +504,52 @@ def start_pull_refresh(
                 # phase would only delay it.
                 eager.work.cancel()
         else:
-            coordinator.cancel(checkout_job_key(repository, eager.number))
+            # Ended only while it is still optional: once a reader's start promoted it, it
+            # is that reader's job, which was answered ``joined``, and it runs on as any
+            # reader's does. Either way it is no longer the checkout's optional job.
+            if eager.mode == "idle":
+                coordinator.cancel(checkout_job_key(repository, eager.number))
             state.eager = None
     if coordinator.running(key):
+        # A prefetch's job counts from here, and stops a background job holding the turn
+        # it waits for (:meth:`StoreTurn.promoted`). The optional one, the other a reader
+        # can find stopping, has counted since it started.
         if key in state.background:
             state.background.discard(key)
+            state.turn.promoted()
             _PULL_JOBS.add(key)
         if comparison:
             _COMPARISON_WANTED.add(key)
+        _start_again_when_stopped(coordinator, repository, number, key)
         return "joined"
-    _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
-    if len(_PULL_JOBS) >= MAX_PULL_JOBS:
-        return "too_many"
+    if bounded:
+        _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
+        if len(_PULL_JOBS) >= MAX_PULL_JOBS:
+            return "too_many"
     _PULL_JOBS.add(key)
     if comparison:
         _COMPARISON_WANTED.add(key)
     return coordinator.start(
         key, partial(_pull_job, coordinator, repository, number, key), network=False
     )
+
+
+def _start_again_when_stopped(
+    coordinator: RefreshCoordinator, repository: CheckoutRepository, number: int, key: str
+) -> None:
+    """Start the reader's job for *number* once its job, if it was told to stop, has unwound.
+
+    Cancellation is delivered a loop step after it is asked for, so a job a reader joins
+    can already be stopping (:meth:`RefreshCoordinator.start_again_when_stopped`). The
+    reader's job then starts as their own start would have, in the place it took when
+    they joined. A comparison any start that joined asked for is kept for it in
+    ``_COMPARISON_WANTED``, which the stopped job leaves as it ends (:func:`_pull_job`).
+    """
+
+    def restart() -> None:
+        _readers_start(coordinator, repository, number, comparison=False, bounded=False)
+
+    coordinator.start_again_when_stopped(key, restart)
 
 
 async def _wait_for_cold_open(repository: CheckoutRepository) -> None:
@@ -727,7 +794,9 @@ ATTACH_WAIT_S: Final = 30.0
 
 async def attach_store_for_lists(repository: CheckoutRepository) -> PublishedSource | None:
     """The checkout's store, attached now if it has none, for the prefetch to list changed
-    files from (:mod:`.pull_prefetch`); ``None`` when it could not be attached.
+    files from (:mod:`.pull_prefetch`); ``None`` when it could not be attached, or when no
+    store of the checkout's origin is to be kept
+    (:func:`~metabrowser.checkout_store.origin_store_wanted`).
 
     The caller holds the checkout's store turn (:func:`checkout_store_turn`), as a reader's
     comparison does when it attaches the same store (:func:`_attach_store`), so the two
@@ -735,7 +804,13 @@ async def attach_store_for_lists(repository: CheckoutRepository) -> PublishedSou
     after :data:`ATTACH_WAIT_S`, and a failure is only logged, since each list then goes to
     GitHub as it would have, and a reader's comparison reports its own.
     """
+    from metabrowser.checkout_store import origin_store_wanted
 
+    if not origin_store_wanted():
+        # Nothing a reader asked for: the prefetch neither makes the store nor fetches the
+        # pull requests' heads into one a reader's comparison made, and each list goes to
+        # GitHub. The reader's comparison is the one thing that still makes the store.
+        return None
     state = _checkout_state(repository)
     if state.pulls.git_dir is None:
         try:
@@ -872,7 +947,9 @@ async def _pull_job(
             finally:
                 state.pulls.active = None
     finally:
-        _COMPARISON_WANTED.discard(key)
+        # A comparison a reader asked for after the job was told to stop is the restart's.
+        if not coordinator.restarting(key):
+            _COMPARISON_WANTED.discard(key)
         state.background.discard(key)
         if eager is not None and state.eager is eager:
             state.eager = None

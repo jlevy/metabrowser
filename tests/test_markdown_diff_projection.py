@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import difflib
 import random
 import time
@@ -21,16 +22,31 @@ from metabrowser.diff.markdown_projection import (
 )
 
 
+def _git_lines(data: bytes | None) -> list[bytes]:
+    """*data*'s lines as Git counts them, each ending at a line feed."""
+
+    pieces = (data or b"").split(b"\n")
+    return [piece + b"\n" for piece in pieces[:-1]] + ([pieces[-1]] if pieces[-1] else [])
+
+
+def _record(line: bytes, op: LineOp) -> LineRecord:
+    """A patch line as the patch adapters write it: text, and the bytes of one that is not
+    UTF-8 (`_display` in `diff/adapters/patch_file.py`)."""
+
+    body = line.removesuffix(b"\n")
+    try:
+        text, exact = body.decode(), None
+    except UnicodeDecodeError:
+        text, exact = body.decode(errors="replace"), base64.b64encode(body).decode()
+    return LineRecord(op=op, text=text, text_b64=exact, no_newline=not line.endswith(b"\n"))
+
+
 def _patch(old: bytes | None, new: bytes | None, context: int = 3) -> FilePatch:
-    before = (old or b"").decode().splitlines(keepends=True)
-    after = (new or b"").decode().splitlines(keepends=True)
+    before, after = _git_lines(old), _git_lines(new)
     hunks: list[Hunk] = []
 
-    def records(part: Sequence[str], op: LineOp) -> list[LineRecord]:
-        return [
-            LineRecord(op=op, text=line.removesuffix("\n"), no_newline=not line.endswith("\n"))
-            for line in part
-        ]
+    def records(part: Sequence[bytes], op: LineOp) -> list[LineRecord]:
+        return [_record(line, op) for line in part]
 
     for group in difflib.SequenceMatcher(None, before, after, autojunk=False).get_grouped_opcodes(
         context
@@ -178,27 +194,6 @@ def test_ambiguous_inline_runs_keep_whole_changed_blocks() -> None:
         "<p>Repeat repeat repeat.</p>",
         "<p>Repeat repeat.</p>",
     ]
-
-
-@pytest.mark.parametrize(
-    ("text", "reason"),
-    [
-        (b"<script>alert('unsafe')</script>\n", "raw_html"),
-        (b"A line<br>broken.\n", "raw_html"),
-        (b"note[^n]\n\n[^n]: Note text\n", "footnotes"),
-        # KPress writes a task list's checkbox as raw HTML, and the inert render drops it.
-        (b"- [ ] Try the tasks\n- [x] Done\n", "task_list"),
-    ],
-)
-def test_unverified_render_shapes_fall_back_without_partial_html(text: bytes, reason: str) -> None:
-    result = _project(None, text)
-    assert result == {
-        "version": "markdown-diff-v1",
-        "status": "unsupported",
-        "blocks": [],
-        "source_only": False,
-        "reason": reason,
-    }
 
 
 def test_mismatched_patch_never_labels_a_different_snapshot() -> None:
@@ -783,6 +778,206 @@ def test_list_items_change_alone_and_keep_their_numbers() -> None:
     ]
 
 
+# ── Task lists ──────────────────────────────────────────────────
+
+_TASKS = b"# Tasks\n\n- [ ] Write the plan\n- [x] Review it\n- [ ] Ship it\n"
+
+
+def test_a_task_list_renders_without_the_boxes_the_allowlist_drops() -> None:
+    """KPress's task list plugin writes each box as raw HTML, which the allowlist drops as
+    it drops it from the Document view of an untrusted document, so the list renders
+    without its boxes; the box and the plugin's classes are in the hidden signature.
+    The boxes show once KPress draws them from a token of its own (mb-rm6u)."""
+
+    result = _project(_TASKS, _TASKS + b"\nDone.\n")
+    assert result["status"] == "ready"
+    assert [(block["kind"], block["html"]) for block in result["blocks"]][1:] == [
+        (
+            "context",
+            "<ul>\n<li> Write the plan</li>\n<li> Review it</li>\n<li> Ship it</li>\n</ul>",
+        ),
+        ("added", "<p>Done.</p>"),
+    ]
+    assert result["source_only"] is False
+
+
+def test_ticking_a_box_the_render_does_not_show_is_a_change_only_source_shows() -> None:
+    result = _project(_TASKS, _TASKS.replace(b"- [ ] Ship it", b"- [x] Ship it"))
+    assert result["status"] == "ready"
+    assert result["source_only"] is True
+    assert [(block["kind"], block["source_only"]) for block in result["blocks"]] == [
+        ("context", False),
+        ("context", True),
+    ]
+
+
+# ── Raw HTML ────────────────────────────────────────────────────
+
+_README = (
+    b'<p align="center"><img src="https://example.com/logo.png" width="120"></p>\n\n'
+    b'<h1 align="center">Project</h1>\n\n'
+    b"Press <kbd>Ctrl</kbd> and <kbd>C</kbd>,<br>then paste.\n\n"
+    b"<details>\n<summary>More</summary>\n\nThe old body.\n\n</details>\n\n"
+    b'<div align="center">\n\nA centered paragraph.\n\n</div>\n\n'
+    b"After.\n"
+)
+_README_BLOCKS = [
+    '<p align="center"><img loading="lazy" referrerpolicy="no-referrer" '
+    'src="https://example.com/logo.png" width="120"></p>',
+    '<h1 id="user-content-61be40c20e6762ac06ffd013-new-project" align="center">Project</h1>',
+    "<p>Press <kbd>Ctrl</kbd> and <kbd>C</kbd>,<br>then paste.</p>",
+    "<details>\n<summary>More</summary>\n<p>The old body.</p>\n</details>",
+    '<div align="center">\n<p>A centered paragraph.</p>\n</div>',
+    "<p>After.</p>",
+]
+
+
+def test_raw_html_renders_as_the_document_view_shows_it() -> None:
+    """What KPress's sanitizer and the allowlist keep of raw HTML, as the Document view
+    renders it: a `<details>` or a `<div>` around Markdown is one block of its lines."""
+
+    for old, new, kind in ((None, _README, "added"), (_README, None, "removed")):
+        result = _project(old, new)
+        assert result["status"] == "ready"
+        assert result["source_only"] is False
+        blocks = result["blocks"]
+        assert {(block["kind"], block["source_only"]) for block in blocks} == {(kind, False)}
+        html = [block["html"] for block in blocks]
+        if kind == "added":
+            assert html == _README_BLOCKS
+        else:
+            # A removed image is its alt text, as a Markdown one is, and a removed
+            # heading's anchor is the old side's.
+            assert html[0] == '<p align="center">image</p>'
+            assert html[2:] == _README_BLOCKS[2:]
+    unchanged = _project(_README, _README + b"\nOne more.\n")
+    assert [block["kind"] for block in unchanged["blocks"]] == ["context"] * 6 + ["added"]
+    assert unchanged["source_only"] is False
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "removed", "added"),
+    [
+        pytest.param(
+            b"The old body.",
+            b"The new body.",
+            "<details>\n<summary>More</summary>\n<p>The <del>old</del> body.</p>\n</details>",
+            "<details>\n<summary>More</summary>\n<p>The <ins>new</ins> body.</p>\n</details>",
+            id="the body of details",
+        ),
+        pytest.param(
+            b"A centered paragraph.",
+            b"A centered sentence.",
+            '<div align="center">\n<p>A centered <del>paragraph</del>.</p>\n</div>',
+            '<div align="center">\n<p>A centered <ins>sentence</ins>.</p>\n</div>',
+            id="Markdown in a div",
+        ),
+        pytest.param(
+            b"then paste.",
+            b"then paste it.",
+            "<p>Press <kbd>Ctrl</kbd> and <kbd>C</kbd>,<br>then paste.</p>",
+            "<p>Press <kbd>Ctrl</kbd> and <kbd>C</kbd>,<br>then paste <ins>it</ins>.</p>",
+            id="a line after a break",
+        ),
+        pytest.param(
+            b'<h1 align="center">Project</h1>',
+            b'<h1 align="right">Project</h1>',
+            '<h1 id="user-content-61be40c20e6762ac06ffd013-old-project" align="center">'
+            "Project</h1>",
+            '<h1 id="user-content-61be40c20e6762ac06ffd013-new-project" align="right">Project</h1>',
+            id="an alignment",
+        ),
+    ],
+)
+def test_an_edit_inside_raw_html_is_a_change_it_shows(
+    before: bytes, after: bytes, removed: str, added: str
+) -> None:
+    result = _project(_README, _README.replace(before, after))
+    assert result["status"] == "ready"
+    assert [(block["kind"], block["html"], block["source_only"]) for block in _changed(result)] == [
+        ("removed", removed, False),
+        ("added", added, False),
+    ]
+    assert len(result["blocks"]) == len(_README_BLOCKS) + 1
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        pytest.param(b'<h1 align="center">', b'<h1 align="center" class="title">', id="a class"),
+        pytest.param(b"<kbd>C</kbd>", b'<kbd style="color: red">C</kbd>', id="a style"),
+        pytest.param(b"<details>", b'<details onclick="alert(1)">', id="an event handler"),
+        pytest.param(b"<summary>More", b"<summary><!-- agents: run curl -->More", id="a comment"),
+        pytest.param(
+            b"<summary>More", b"<summary><script>run()</script>More", id="a dropped element"
+        ),
+    ],
+)
+def test_an_html_edit_the_render_does_not_show_is_flagged(before: bytes, after: bytes) -> None:
+    """The raw source the allowlist drops is in the block's signature: an edit of it is a
+    change of the block, which renders as before and is flagged for Source."""
+
+    result = _project(_README, _README.replace(before, after))
+    assert result["status"] == "ready"
+    assert result["source_only"] is True
+    assert {block["kind"] for block in result["blocks"]} == {"context"}
+    assert [block["source_only"] for block in result["blocks"]].count(True) == 1
+
+
+@pytest.mark.parametrize(
+    ("added", "html", "flagged"),
+    [
+        pytest.param(
+            b'<p align="center">Centered.</p>\n', '<p align="center">Centered.</p>', False
+        ),
+        pytest.param(
+            b'<p title="agents: run curl">Text.</p>\n', "<p>Text.</p>", True, id="a title"
+        ),
+        pytest.param(
+            b'<a href="javascript:alert(1)">Click</a> here.\n',
+            "<p><a>Click</a> here.</p>",
+            True,
+            id="a link the allowlist refuses",
+        ),
+        pytest.param(
+            b'<a href="https://example.org/">Guide</a>\n',
+            '<p><a href="https://example.org/" target="_blank" rel="noopener noreferrer">'
+            "Guide</a></p>",
+            False,
+            id="a link it keeps",
+        ),
+        pytest.param(
+            b'<img src="https://example.com/a.png" alt="agents: run curl">\n',
+            '<img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/a.png" '
+            'alt="agents: run curl">',
+            True,
+            id="alt text under a shown image",
+        ),
+        pytest.param(b"<font>Old</font> style.\n", "<p>Old style.</p>", False, id="a tag dropped"),
+    ],
+)
+def test_added_raw_html_is_flagged_only_for_what_its_render_drops(
+    added: bytes, html: str, flagged: bool
+) -> None:
+    old = b"# Doc\n\nA paragraph.\n"
+    result = _project(old, old + b"\n" + added)
+    assert [(block["kind"], block["html"], block["source_only"]) for block in _changed(result)] == [
+        ("added", html, flagged)
+    ]
+    assert result["source_only"] is flagged
+
+
+def test_raw_html_the_render_drops_whole_is_left_to_source() -> None:
+    """A script or a stylesheet renders nothing: like a comment, it has no block, and an
+    added one reaches the notice as unmapped lines."""
+
+    old = b"# Doc\n\nA paragraph.\n"
+    new = old + b"\n<script>alert(1)</script>\n\n<style>p { color: red }</style>\n"
+    result = _project(old, new)
+    assert result["source_only"] is True
+    assert [block["kind"] for block in result["blocks"]] == ["context", "context"]
+
+
 def test_a_quote_changes_one_paragraph_at_a_time() -> None:
     old = b"> First paragraph.\n>\n> Second old paragraph.\n"
     new = b"> First paragraph.\n>\n> Second new paragraph.\n"
@@ -805,6 +1000,177 @@ def test_fenced_code_is_one_text_node_without_highlighting() -> None:
     assert [block["html"] for block in result["blocks"]] == [
         "<pre><code>def f():\n    return 1\n</code></pre>"
     ]
+
+
+# ── Footnotes ───────────────────────────────────────────────────
+
+_NOTES = (
+    b"# Notes\n\nA claim.[^a] Another.[^b] The first again.[^a]\n\n"
+    b"[^a]: The first note.\n\n[^b]: The second note.\n"
+)
+# A note's links back to its references, live and on a removed side.
+_BACK, _GONE = "<a>\xa0\u2191\xa0</a>", "<span>\xa0\u2191\xa0</span>"
+_FIRST = f"<ol>\n<li><p>The first note. {_BACK} {_BACK}</p>\n</li>\n</ol>"
+_SECOND = f'<ol start="2">\n<li><p>The second note. {_BACK}</p>\n</li>\n</ol>'
+_THIRD = b"\nMore.[^c]\n\n[^c]: A third note.\n"
+
+
+def test_notes_render_where_they_are_written() -> None:
+    """A reference renders in place as the Document view numbers it, and a note is a block
+    of its definition's lines: a list of its own that starts at its number, with a link
+    back for each reference."""
+
+    result = _project(_NOTES, _NOTES + b"\nDone.\n")
+    assert result["status"] == "ready"
+    assert [(block["kind"], block["html"]) for block in result["blocks"]][1:] == [
+        (
+            "context",
+            "<p>A claim.<sup><a>1</a></sup> Another.<sup><a>2</a></sup> "
+            "The first again.<sup><a>1</a></sup></p>",
+        ),
+        ("context", _FIRST),
+        ("context", _SECOND),
+        ("added", "<p>Done.</p>"),
+    ]
+    assert result["source_only"] is False
+
+
+def test_an_edited_note_marks_its_words() -> None:
+    new = _NOTES.replace(b"The second note.", b"The second, longer note.")
+    assert _changed(_project(_NOTES, new)) == [
+        {
+            "kind": "removed",
+            "side": "old",
+            "html": f'<ol start="2">\n<li><p>The second note. {_GONE}</p>\n</li>\n</ol>',
+            "source_only": False,
+        },
+        {
+            "kind": "added",
+            "side": "new",
+            "html": f'<ol start="2">\n<li><p>The second<ins>, longer</ins> note. {_BACK}</p>'
+            "\n</li>\n</ol>",
+            "source_only": False,
+        },
+    ]
+
+
+@pytest.mark.parametrize("added", [True, False])
+def test_an_added_or_removed_note_shows_with_its_reference(added: bool) -> None:
+    longer = _NOTES + _THIRD
+    old, new = (_NOTES, longer) if added else (longer, _NOTES)
+    back = _BACK if added else _GONE
+    reference = "<a>3</a>" if added else "<span>3</span>"
+    result = _project(old, new)
+    assert _changed(result) == [
+        {
+            "kind": "added" if added else "removed",
+            "side": "new" if added else "old",
+            "html": html,
+            "source_only": False,
+        }
+        for html in (
+            f"<p>More.<sup>{reference}</sup></p>",
+            f'<ol start="3">\n<li><p>A third note. {back}</p>\n</li>\n</ol>',
+        )
+    ]
+    assert result["source_only"] is False
+
+
+def test_a_reference_added_ahead_renumbers_what_follows() -> None:
+    old = b"One.[^a] Two.[^b]\n\n[^a]: A.\n\n[^b]: B.\n"
+    new = b"Zero.[^z] One.[^a] Two.[^b]\n\n[^z]: Z.\n\n[^a]: A.\n\n[^b]: B.\n"
+    shown = [(block["kind"], block["html"]) for block in _project(old, new)["blocks"]]
+    assert ("added", f'<ol start="2">\n<li><p>A. {_BACK}</p>\n</li>\n</ol>') in shown
+    assert ("removed", f"<ol>\n<li><p>A. {_GONE}</p>\n</li>\n</ol>") in shown
+    assert ("added", f'<ol start="3">\n<li><p>B. {_BACK}</p>\n</li>\n</ol>') in shown
+
+
+def test_an_inline_note_is_part_of_the_block_that_holds_it() -> None:
+    """An inline note has no lines of its own, so it follows the top-level block whose
+    lines hold it, and an edit to it marks the words in the note."""
+
+    old = b"Text with^[an old aside] in it.\n\nAfter.\n"
+    result = _project(old, old.replace(b"an old", b"a new"))
+    assert [(block["kind"], block["html"]) for block in result["blocks"]] == [
+        (
+            "removed",
+            "<p>Text with<sup><span>1</span></sup> in it.</p>\n\n"
+            f"<ol>\n<li><p><del>an old</del> aside {_GONE}</p>\n</li>\n</ol>",
+        ),
+        (
+            "added",
+            "<p>Text with<sup><a>1</a></sup> in it.</p>\n\n"
+            f"<ol>\n<li><p><ins>a new</ins> aside {_BACK}</p>\n</li>\n</ol>",
+        ),
+        ("context", "<p>After.</p>"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        pytest.param(
+            b"A claim.[^a]\n\n[^a]: Used.\n\n[^z]: Unused old.\n",
+            b"A claim.[^a]\n\n[^a]: Used.\n\n[^z]: Unused new.\n",
+            id="a definition no reference names",
+        ),
+        pytest.param(
+            b"A claim.[^a]\n\n[^a]: Used.\n",
+            b"A claim.[^note]\n\n[^note]: Used.\n",
+            id="a renamed label",
+        ),
+        pytest.param(
+            b"A claim.[^a]\n\n[^a]: First old.\n\n[^a]: Second.\n",
+            b"A claim.[^a]\n\n[^a]: First new.\n\n[^a]: Second.\n",
+            id="a definition a later one of its label replaces",
+        ),
+    ],
+)
+def test_a_note_edit_the_render_does_not_show_is_left_to_source(old: bytes, new: bytes) -> None:
+    """A definition that renders nothing, as KPress's footnote_tail leaves one no reference
+    names and every one but the last of a label, and a label, which renders as its number,
+    show only in Source."""
+
+    result = _project(old, new)
+    assert result["status"] == "ready"
+    assert {block["kind"] for block in result["blocks"]} == {"context"}
+    assert result["source_only"] is True
+
+
+def test_a_link_in_a_note_is_flagged_where_it_points_elsewhere() -> None:
+    old = b"A claim.[^a]\n\n[^a]: See [the source](https://example.com/old).\n"
+    result = _project(old, old.replace(b"/old", b"/new"))
+    assert [(block["kind"], block["source_only"]) for block in result["blocks"]] == [
+        ("context", False),
+        ("removed", True),
+        ("added", True),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("source", "word"),
+    [
+        pytest.param(
+            b"Ref[^a] and[^b].\n\n[^a]: Outer one.\n\n    [^b]: Inner.\n\n    Outer old.\n\nAfter.\n",
+            b"Outer old",
+            id="a definition inside another",
+        ),
+        pytest.param(
+            b"A claim.[^a] More.\n\n[^a]: Used.\n\n[^u]: Unused ^[an old orphan].\n",
+            b"More",
+            id="an inline note only a definition that renders nothing holds",
+        ),
+    ],
+)
+def test_notes_no_source_line_places_leave_the_side_one_block(source: bytes, word: bytes) -> None:
+    """footnote_tail sorts a definition written inside another's by no rule a block can
+    follow, and renders an inline note that no rendered block holds: the notes are then
+    KPress's own, at the end, and the side is one block of all its lines, its edits marked
+    in it."""
+
+    result = _project(source, source.replace(word, word + b" edited"))
+    assert [block["kind"] for block in result["blocks"]] == ["removed", "added"]
+    assert "<ins>edited</ins>" in result["blocks"][1]["html"]
 
 
 # ── Budgets ─────────────────────────────────────────────────────
@@ -913,37 +1279,242 @@ def test_the_route_refuses_html_past_its_cap() -> None:
     assert size < pull_rendered_diff._MAX_HTML_BYTES  # pyright: ignore[reportPrivateUsage]
 
 
-def test_sources_holding_the_block_separator_are_refused() -> None:
-    assert _project(None, "Text  here.\n".encode())["status"] == "unsupported"
+@pytest.mark.parametrize(
+    ("source", "shown"),
+    [
+        pytest.param("Text \ue000 here.", "Text \ue000 here.", id="written"),
+        pytest.param("Text &#xe000; here.", "Text \ue000 here.", id="a Markdown reference"),
+        pytest.param(
+            "<p>Text &#57344; here.</p>", "Text \ue000 here.", id="a reference in raw HTML"
+        ),
+    ],
+)
+def test_a_source_holding_a_separator_parts_its_blocks_with_another(
+    source: str, shown: str
+) -> None:
+    """The projection parts each render with a private-use character the render does
+    not hold, so a source that holds one, written or as a reference, keeps its blocks."""
+
+    old = f"# Title\n\n{source}\n\nThe old end.\n".encode()
+    result = _project(old, old.replace(b"old", b"new"))
+    assert result["status"] == "ready"
+    assert [block["kind"] for block in result["blocks"]] == [
+        "context",
+        "context",
+        "removed",
+        "added",
+    ]
+    assert result["blocks"][1]["html"] == f"<p>{shown}</p>"
+
+
+def test_a_render_holding_the_first_plane_of_separators_takes_the_next() -> None:
+    every = "".join(chr(point) for point in range(0xE000, 0xF900))
+    old = f"{every}\n\nThe old end.\n".encode()
+    result = _project(old, old.replace(b"old", b"new"))
+    assert [block["kind"] for block in result["blocks"]] == ["context", "removed", "added"]
+    assert markdown_projection._separator(every) == "\U000f0000"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_render_holding_every_separator_is_one_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(markdown_projection, "_SEPARATORS", (range(0xE000, 0xE001),))
+    old = b"# Title\n\nText \xee\x80\x80 here.\n\nThe old end.\n"
+    result = _project(old, old.replace(b"old", b"new"))
+    assert [block["kind"] for block in result["blocks"]] == ["removed", "added"]
+    assert "<ins>new</ins>" in result["blocks"][1]["html"]
+
+
+# ── Sources as the Document view reads them ─────────────────────
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "kinds", "shown"),
+    [
+        pytest.param(
+            b"# Title\rA paragraph.\n\nThe old end.\n",
+            b"# Title\rA paragraph.\n\nThe new end.\n",
+            ["context", "context", "removed", "added"],
+            "<p>A paragraph.</p>",
+            id="a return inside a line Git counts",
+        ),
+        pytest.param(
+            b"# Title\rA paragraph.\n\nThe end.\n",
+            b"# Title\rA new paragraph.\n\nThe end.\n",
+            ["context", "removed", "added", "context"],
+            "<p>A <ins>new</ins> paragraph.</p>",
+            id="an edit to one of the lines a Git line holds",
+        ),
+        pytest.param(
+            b"# Title\r\rOne old line.\r\rThe end.\r",
+            b"# Title\r\rOne new line.\r\rThe end.\r",
+            ["context", "removed", "added", "context"],
+            "<p>One <ins>new</ins> line.</p>",
+            id="a file of returns alone, one line to Git",
+        ),
+    ],
+)
+def test_a_carriage_return_alone_ends_a_line_as_the_document_view_reads_it(
+    old: bytes, new: bytes, kinds: list[str], shown: str
+) -> None:
+    """MarkdownIt ends a line at a carriage return no line feed follows, and Git does not:
+    a Git line holding one is that many lines, changed or unchanged as Git says it is, and
+    a block on one of them that kept its bytes is unchanged."""
+
+    result = _project(old, new)
+    assert result["status"] == "ready"
+    assert [block["kind"] for block in result["blocks"]] == kinds
+    assert shown in [block["html"] for block in result["blocks"]]
+    assert result["source_only"] is False
+
+
+def test_a_side_with_carriage_returns_alone_joins_to_kpress() -> None:
+    from kpress.format import parse_markdown
+
+    raw = "# Title\rA paragraph.\r\r- One\r- Two\r\r> Quoted\r> on.\r\rThe end.\n"
+    text = markdown_projection._decoded(raw.encode())  # pyright: ignore[reportPrivateUsage]
+
+    def render(source: str) -> str:
+        return parse_markdown(
+            source, title="", trust_mode="sanitized", diagrams="off", math="off"
+        ).html
+
+    # MarkdownIt reads a return alone as the line feed the projection's text writes.
+    assert render(raw) == render(text)
+    assert _joins_to_kpress(text) == [(0, 1), (1, 2), (3, 6), (6, 8), (9, 10)]
+
+
+def test_container_lines_a_carriage_return_alone_starts_count_toward_their_bound() -> None:
+    lines = b"\r".join([b":::"] * (markdown_projection._MAX_CONTAINER_LINES + 1)) + b"\n"  # pyright: ignore[reportPrivateUsage]
+    assert _project(None, lines)["status"] == "too_large"
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        pytest.param(b"\0", id="written"),
+        pytest.param(b"&#0;", id="a reference"),
+        pytest.param(b"<b>&#0;</b>", id="a reference in raw HTML"),
+    ],
+)
+def test_a_nul_renders_as_the_document_view_renders_it(written: bytes) -> None:
+    """MarkdownIt makes a NUL, and a reference to one, U+FFFD, so a source cannot write
+    the projection's own `\\0<n>\\0` reference markers."""
+
+    old = b"# Title\n\nA " + written + b"0" + written + b" here.\n\nThe old end.\n"
+    result = _project(old, old.replace(b"old", b"new"))
+    assert result["status"] == "ready"
+    assert [block["kind"] for block in result["blocks"]] == [
+        "context",
+        "context",
+        "removed",
+        "added",
+    ]
+    shown = result["blocks"][1]["html"]
+    assert "\x00" not in shown
+    assert shown.count("\ufffd") == 2
+
+
+def test_bytes_that_are_not_utf8_render_as_the_document_view_reads_them() -> None:
+    old = b"# Fa\xe7ade\n\nA na\xefve old line.\n\nThe end.\n"
+    result = _project(old, old.replace(b"old", b"new"))
+    assert result["status"] == "ready"
+    assert [block["kind"] for block in result["blocks"]] == [
+        "context",
+        "removed",
+        "added",
+        "context",
+    ]
+    assert result["blocks"][0]["html"].endswith(">Fa\ufffdade</h1>")
+    assert result["blocks"][2]["html"] == "<p>A na\ufffdve <ins>new</ins> line.</p>"
+
+
+def test_a_patch_is_checked_against_the_exact_bytes_of_a_line_that_is_not_utf8() -> None:
+    old, new = b"A na\xefve old line.\n", b"A na\xefve new line.\n"
+    # Both sides' lines read as the same text; only their bytes differ.
+    other = old.replace(b"\xef", b"\xf0")
+    result = project_markdown_diff(
+        old=other,
+        new=new,
+        patch=_patch(old, new),
+        namespace="comparison/file",
+        rewrite_local=lambda href, _image: href,
+    )
+    assert result["status"] == "unsupported"
 
 
 # ── The pipeline is KPress's own ────────────────────────────────
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "docs/browsing-files.md",
-        "docs/reviewing-pull-requests.md",
-        "docs/large-content-rendering.md",
-    ],
-)
-def test_projected_blocks_join_to_kpress_parse_markdown(
-    path: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A KPress release that changes its pipeline fails here, not in a reader's diff."""
+def _solid(nodes: Sequence[object]) -> list[object]:
+    """*nodes* without the text that is only whitespace, which a parser may move between
+    two block elements, outside preformatted text."""
+
+    from metabrowser.diff.markdown_projection import (
+        _Element,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    solid: list[object] = []
+    for node in nodes:
+        if isinstance(node, _Element):
+            children = node.children if node.tag == "pre" else _solid(node.children)
+            solid.append((node.tag, node.attrs, children))
+        elif isinstance(node, str) and node.strip():
+            solid.append(node)
+    return solid
+
+
+def _notes_apart(nodes: Sequence[object], notes: dict[int, list[object]]) -> list[object]:
+    """*nodes* without the lists that hold footnotes, each note in *notes* by the number
+    its list gives it: a list whose every item links back to a reference."""
+
+    from metabrowser.diff.markdown_projection import (
+        _Element,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    def backlinks(node: _Element) -> bool:
+        return any(
+            (
+                child.tag == "a"
+                and dict(child.attrs).get("href", "").startswith("#user-content-fnref-")
+            )
+            or backlinks(child)
+            for child in node.children
+            if isinstance(child, _Element)
+        )
+
+    kept: list[object] = []
+    for node in nodes:
+        if not isinstance(node, _Element):
+            kept.append(node)
+            continue
+        items = [child for child in node.children if isinstance(child, _Element)]
+        if node.tag == "ol" and items and all(backlinks(item) for item in items):
+            start = int(dict(node.attrs).get("start") or "1")
+            for number, item in enumerate(items, start):
+                assert number not in notes, number
+                notes[number] = _solid([item])
+            continue
+        kept.append(_Element(node.tag, node.attrs, _notes_apart(node.children, notes)))  # pyright: ignore[reportArgumentType]
+    return kept
+
+
+def _joins_to_kpress(source: str) -> list[tuple[int, int]]:
+    """Assert that *source*'s projected blocks join to KPress's own render of it, and
+    answer each block's source lines.
+
+    Blocks that raw HTML holds together are rendered with the markers that part the rest
+    between them, which a table's parser moves out ahead of it with the whitespace beside
+    them; whitespace between two block elements shows nothing, so it is not compared.
+    KPress lists every note at the end and the projection each where it is written, so
+    the notes are compared by their numbers, and the rest in its order.
+    """
 
     import re
-    from pathlib import Path
 
     from kpress.format import parse_markdown
 
     from metabrowser.diff import markdown_projection
     from metabrowser.inert_html import harden
 
-    for name in ("MARKDOWN_DIFF_MAX_BYTES", "_MAX_LINK_OPENERS", "_MAX_TOKENS", "_MAX_NODES"):
-        monkeypatch.setattr(markdown_projection, name, 10**9)
-    source = (Path(__file__).parent.parent / path).read_text(encoding="utf-8")
     # KPress highlights fenced code by its info string and the hardener drops the
     # classes; without info strings both sides render the same plain code.
     plain = re.sub(r"^(\s*(?:`{3,}|~{3,}))[^\n`]*$", r"\1", source, flags=re.MULTILINE)
@@ -960,7 +1531,165 @@ def test_projected_blocks_join_to_kpress_parse_markdown(
         for block in blocks
         for child in (block.node.children if not block.node.tag else [block.node])
     ]
-    assert flattened == [child for child in expected if not isinstance(child, str) or child.strip()]
+    notes: dict[int, list[object]] = {}
+    expected_notes: dict[int, list[object]] = {}
+    assert _solid(_notes_apart(flattened, notes)) == _solid(_notes_apart(expected, expected_notes))
+    assert notes == expected_notes
+    return [(block.start, block.end) for block in blocks]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "docs/browsing-files.md",
+        "docs/reviewing-pull-requests.md",
+        "docs/large-content-rendering.md",
+        # Raw HTML: a centered logo and title, aligned and sized images, a table written
+        # in HTML, links and lists in HTML, and markup the allowlist drops.
+        "README.md",
+        "docs/design-system.md",
+        "tests/fixtures/github-layout/README.md",
+        "tests/fixtures/github-markdown-repo/README.md",
+        "tests/fixtures/untrusted-markdown/README.md",
+    ],
+)
+def test_projected_blocks_join_to_kpress_parse_markdown(
+    path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A KPress release that changes its pipeline fails here, not in a reader's diff."""
+
+    from pathlib import Path
+
+    from metabrowser.diff import markdown_projection
+
+    for name in ("MARKDOWN_DIFF_MAX_BYTES", "_MAX_LINK_OPENERS", "_MAX_TOKENS", "_MAX_NODES"):
+        monkeypatch.setattr(markdown_projection, name, 10**9)
+    source = (Path(__file__).parent.parent / path).read_text(encoding="utf-8")
+    spans = _joins_to_kpress(source)
+    # None of these wraps Markdown in raw HTML, so every top-level block is its own.
+    side = markdown_projection._parse(source)  # pyright: ignore[reportPrivateUsage]
+    assert len(spans) == len(side.blocks)
+
+
+_FOOTNOTED = (
+    "# Notes[^h]\n\n"
+    "A claim.[^a] Another^[an *inline* aside with [a link](https://example.com)].[^b]\n\n"
+    "> Quoted.[^q]\n>\n> [^q]: A note in a quote.\n\n"
+    "- An item.^[an aside in a list]\n- Again.[^a]\n\n"
+    "| A | B |\n| - | - |\n| cell[^b] | two |\n\n"
+    "[^a]: The first note.\n\n"
+    "[^b]: A note of two paragraphs,\n    wrapped.\n\n    The second.\n\n"
+    "[^h]: In a heading.\n\n"
+    "[^unused]: Named by nothing.\n\n"
+    "[^a]: The first note, again: the last of a label renders.\n\n"
+    "[^empty]:\n\nAfter[^empty].\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("source", "spans"),
+    [
+        pytest.param(
+            _FOOTNOTED,
+            # The first `[^a]` (lines 15-16) and `[^unused]` (24-25) render nothing, so
+            # they have no block; each inline note is part of its paragraph's or list's.
+            [
+                (0, 1),
+                (2, 3),
+                (4, 7),
+                (8, 11),
+                (11, 14),
+                (17, 22),
+                (22, 24),
+                (26, 28),
+                (28, 30),
+                (30, 31),
+            ],
+            id="references, notes, inline notes, a note in a quote, a table, labels",
+        ),
+        pytest.param(
+            "Ref[^a] and[^b].\n\n[^a]: Outer.\n\n    [^b]: Inner.\n\n    Outer two.\n\nAfter.\n",
+            [(0, 9)],
+            id="a definition inside another",
+        ),
+    ],
+)
+def test_notes_join_to_kpress_where_they_are_written(
+    source: str, spans: list[tuple[int, int]]
+) -> None:
+    """Each note renders as the Document view renders it, numbered alike, on its
+    definition's lines, or with the block that holds it when it is inline; a side whose
+    notes follow no source line is one block, KPress's own render."""
+
+    assert _joins_to_kpress(source) == spans
+
+
+@pytest.mark.parametrize(
+    ("source", "spans"),
+    [
+        pytest.param(
+            '<div align="center">\n\n# Title\n\nA paragraph.\n\n</div>\n\nAfter.\n',
+            [(0, 7), (8, 9)],
+            id="a div around Markdown",
+        ),
+        pytest.param(
+            "<details>\n<summary>More</summary>\n\nThe **body**.\n\n</details>\n\nAfter.\n",
+            [(0, 6), (7, 8)],
+            id="details with a Markdown body",
+        ),
+        pytest.param(
+            "<table>\n\n<tr><td>x</td></tr>\n\n</table>\n\nAfter.\n",
+            [(0, 5), (6, 7)],
+            id="a table written across blank lines",
+        ),
+        pytest.param(
+            "<table>\n<tr><td>\n\nA *cell*.\n\n</td></tr>\n</table>\n\nAfter.\n",
+            [(0, 7), (8, 9)],
+            id="Markdown in a table cell",
+        ),
+        pytest.param(
+            "Before.\n\n<p>\n\nText\n\nMore.\n",
+            [(0, 1), (2, 5), (6, 7)],
+            id="an unclosed paragraph closed by the next",
+        ),
+        pytest.param(
+            "Before.\n\n<script>alert(1)</script>\n\n<style>p{}</style>\n\nAfter.\n",
+            [(0, 1), (6, 7)],
+            id="HTML the allowlist drops whole",
+        ),
+        pytest.param(
+            "Intro.\n\n<svg><style><table></style></svg>\n\nB.\n\nC.\n",
+            [(0, 1), (2, 7)],
+            id="a table KPress's wrapper does not see",
+        ),
+    ],
+)
+def test_raw_html_holds_together_only_the_blocks_it_wraps(
+    source: str, spans: list[tuple[int, int]]
+) -> None:
+    """A boundary inside an element raw HTML opened parts nothing, and the blocks it
+    wraps render as one; every other block keeps its own lines.
+
+    KPress wraps each table it sees in a `<div>`, so the text the parser moves out ahead
+    of a table stays inside the wrapper. KPress reads an SVG's `<style>` as text, as
+    HTML's own, where the sanitizer's parser reads a `<table>` in it as a table: the
+    parser then moves the blocks after it out ahead of it, and the projection finds that
+    by rendering each part that holds raw HTML on its own, and shows the rest of the
+    document as one block."""
+
+    assert _joins_to_kpress(source) == spans
+
+
+def test_a_render_no_part_of_which_can_be_trusted_is_one_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from metabrowser.diff import markdown_projection
+
+    monkeypatch.setattr(markdown_projection, "_alone", lambda *_args: False)
+    source = "<svg><style><table></style></svg>\n\n# Title\n\nText.\n"
+    assert _joins_to_kpress(source) == [(0, 5)]
+    old, new = source.encode(), source.replace("Text.", "Words.").encode()
+    assert [block["kind"] for block in _project(old, new)["blocks"]] == ["removed", "added"]
 
 
 # ── The hostile corpus ──────────────────────────────────────────
@@ -1034,9 +1763,8 @@ def test_hostile_markdown_projects_only_allowlisted_snapshot_markup(
             namespace="comparison/file",
             rewrite_local=lambda href, image: snapshot.reference(source, href, image),
         )
-        if result["status"] != "ready":
-            assert result["blocks"] == [], name
-            continue
+        # Raw HTML renders, as the Document view renders it, through the same allowlist.
+        assert result["status"] == "ready", name
         for block in result["blocks"]:
             assert _snapshot_violations(block["html"]) == [], (name, block)
             assert "\x00" not in block["html"], (name, block)

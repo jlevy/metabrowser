@@ -252,17 +252,48 @@ hardening. `tests/test_markdown_diff_projection.py` checks the joined blocks aga
 KPress’s own render.
 Changed words are marked by a bounded word diff.
 
-- **Fallback:** a side with raw HTML other than comments, a task list, footnotes, or
-  nesting past what MarkdownIt keeps is refused with that `reason`, and the file shows
-  Source with its Rendered chip unavailable and saying why.
+- **Fallback:** a side nested past what MarkdownIt keeps is refused with that `reason`,
+  and the file shows Source with its Rendered chip unavailable and saying why.
   The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement, bound only a
   projection in a thread, which nothing can stop; past them the pair goes to the
   Markdown child, whose deadline bounds it (`markdown_projection_worker.py`), and the
   pull request route reads a pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
   `builtin_plugins/github/pull_rendered_diff.py` (mb-rm40). The projection renders with
   math and diagrams off and without code highlighting.
+  The rest of its refusals guard what it checks rather than what a file holds: a patch
+  that does not match the two sides’ bytes or cover their differences, and a hardened
+  render it cannot read back as one tree; no file of this repository, added, edited or
+  cut, reaches one (mb-ueqx).
+- **Source text:** each side reads as the Document view reads it.
+  A byte that is not UTF-8 is U+FFFD, and a patch line that is not carries its exact
+  bytes, which the projection checks; MarkdownIt makes a NUL U+FFFD. MarkdownIt also
+  ends a line at a carriage return no line feed follows, which Git does not, so a Git
+  line holding one is that many lines, changed or unchanged as Git says the whole line
+  is (`_markdown_lines`).
+- **Raw HTML:** renders as the Document view renders it, through the same sanitizer and
+  allowlist. The blocks are rendered together with a numbered marker at each boundary,
+  written with a private-use character the render does not hold (`_separator`), and a
+  boundary whose marker the render does not carry at its top level, inside a `<div>` or
+  a `<details>` that raw HTML opened in one block and closed in a later one, parts
+  nothing, so those blocks are one block of all their lines (`_units`). Raw HTML the
+  render drops whole, such as a script, has no block, as a comment has none.
+  `_trusted` says when a top-level boundary can still be misplaced, and how the
+  projection then finds it.
+  A task list’s box is raw HTML that KPress’s task list plugin writes and the allowlist
+  drops, so a task list renders without its boxes and a tick is in the hidden signature
+  only, until KPress draws the box from a token of its own (mb-rm6u).
+- **Footnotes:** a reference renders in place, numbered as the Document view numbers it,
+  and each note is a block of its definition’s lines, a list of its own that starts at
+  its number: `_footnotes_in_place` takes the place of KPress’s `footnote_tail`, which
+  moves every note to one list at the end, in the projection’s parser.
+  An inline note follows the top-level block that holds it, as part of that block.
+  A definition that renders nothing, one no reference names or one a later definition of
+  its label replaces, has no block.
+  When notes follow no source line, as a definition written inside another’s does, the
+  side is one block of KPress’s own render.
 - **Hidden signature:** whatever a block’s source says that its render does not show,
-  such as a link destination, a title, alt text, or a fence’s info string.
+  such as a link destination, a title, alt text, a fence’s info string, or raw HTML the
+  allowlist drops (an attribute, an element with its content, a comment).
   A changed block whose hidden signature differs is flagged `source_only`, as is a file
   whose source changes include one with no visible counterpart.
   A flagged block never folds, and the page draws no note for it: Source is how a reader
@@ -311,10 +342,15 @@ a “more” row, and leaving unchanged ones closed with the tree view’s previ
 Rows are keyed by position, not key text, and a click redraws only the rows under the
 row it changes.
 
-- **Fallback:** a side that does not parse, a key twice in one mapping, or a pair past
-  the byte, node, nesting, and entry budgets beside each constant is refused, and the
-  file shows Source; a refusal of the route itself answers in the same format.
-  Aliases and merge keys load within the loader’s budget on the value written out.
+- **Fallback:** a side that does not parse, YAML with a key twice in one mapping, or a
+  pair past the byte, node, nesting, and entry budgets beside each constant is refused,
+  and the file shows Source; a refusal of the route itself answers in the same format.
+  The tree view refuses both of the first two as well, and shows its parse error.
+  The YAML loader also refuses two keys one text spells, such as `1` and `"1"`, which
+  the tree view reads as two keys and draws as the last.
+  JSON with a key twice in one object reads as the tree view reads it, the last value at
+  the key’s first place, and a change to a value it hides is `source_only`. Aliases and
+  merge keys load within the loader’s budget on the value written out.
   [The structured diff measurement](../../../explorations/structured-diff/README.md)
   records the budgets over this repository’s history and the worst shapes.
 - **Source only:** the projection reads no patch.

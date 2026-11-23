@@ -278,17 +278,12 @@ def test_jsonc_parses_as_the_tree_view_parses_it() -> None:
     [
         (b"a: [1\n", b"a: 1\n", "yaml"),
         (b"{", b"{}", "json"),
+        # The tree view's loader refuses a key twice in YAML too, and shows its error.
         (b"a: 1\na: 2\n", b"a: 1\n", "yaml"),
-        (b'{"admin": false}', b'{"admin": true, "admin": false}', "json"),
-        (b'{"a": 1,}', b'{"a": 1, "a": 2,}', "json"),
+        # The loader keys a mapping by its keys' text, so `1` and `"1"` are a key twice.
+        (b"1: a\n'1': b\n", b"1: a\n", "yaml"),
     ],
-    ids=[
-        "malformed-yaml",
-        "malformed-json",
-        "yaml-duplicate-key",
-        "json-duplicate-key",
-        "jsonc-duplicate-key",
-    ],
+    ids=["malformed-yaml", "malformed-json", "yaml-duplicate-key", "yaml-keys-of-one-text"],
 )
 def test_a_side_the_tree_view_would_not_draw_is_unsupported(
     old: bytes, new: bytes, fmt: structured_projection.Format
@@ -300,6 +295,73 @@ def test_a_side_the_tree_view_would_not_draw_is_unsupported(
         "root": [],
         "source_only": False,
     }
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "shape", "source_only"),
+    [
+        pytest.param(
+            b'{"admin": false, "x": 1}',
+            b'{"admin": true, "admin": false, "x": 1}',
+            ['context - {"admin": false, "x": 1}'],
+            True,
+            id="a key written again hides an added value",
+        ),
+        pytest.param(
+            b'{"admin": true, "admin": false, "x": 1}',
+            b'{"admin": false, "admin": false, "x": 2}',
+            [["modified -", ["context admin false", "removed x 1", "added x 2"]]],
+            True,
+            id="a hidden value changed beside a drawn change",
+        ),
+        pytest.param(
+            b'{"a": 1, "a": 2, "x": 1}',
+            b'{"a": 1, "a": 3, "x": 1}',
+            [["modified -", ["removed a 2", "added a 3", "context x 1"]]],
+            False,
+            id="the last value changed",
+        ),
+        pytest.param(
+            b'{"a": 1, "a": 2, "x": 1}',
+            b'{"a": 1, "a": 2, "x": 2}',
+            [["modified -", ["context a 2", "removed x 1", "added x 2"]]],
+            False,
+            id="the hidden value stayed",
+        ),
+        pytest.param(
+            b'{"a": 1,}',
+            b'{"a": 1, "a": 2,}',
+            [["modified -", ["removed a 1", "added a 2"]]],
+            True,
+            id="JSONC",
+        ),
+        pytest.param(
+            b'{"a": {"b": 1, "b": 2}}',
+            b'{"a": {"b": 3, "b": 2}}',
+            ['context - {"a": {"b": 2}}'],
+            True,
+            id="a hidden value in a nested object",
+        ),
+        pytest.param(
+            b'{"\\ud800": 1, "\\udc00": 2}',
+            b'{"\\ud800": 3, "\\udc00": 2}',
+            ['context - {"\\ufffd": 2}'],
+            True,
+            id="keys one text once their unpaired surrogates are replaced",
+        ),
+    ],
+)
+def test_json_with_a_key_twice_shows_the_last_value_at_its_first_place(
+    old: bytes, new: bytes, shape: list[object], source_only: bool
+) -> None:
+    """As the tree view reads it (`json.loads`, or json5 for JSONC), and a change to a
+    value the tree does not draw is one Source shows."""
+
+    answer = project_structured_diff(old=old, new=new, fmt="json")
+    assert answer["status"] == "ready"
+    assert _shape(answer["root"]) == shape
+    assert answer["source_only"] is source_only
+    assert _sendable(answer)
 
 
 def test_a_pair_of_the_same_bytes_says_its_content_did_not_change() -> None:

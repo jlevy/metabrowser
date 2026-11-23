@@ -190,7 +190,8 @@ const PANE_KEYS = new Set([
 ]);
 // The key of a place in `history.state`, which no other code of the shell writes into.
 const PLACE_KEY = "pullPlace";
-// The key of what an entry's Changes last showed (`rememberedChanges`), beside its place.
+// The key of what an entry's diff, on Changes or Docs, last showed (`rememberedChanges`),
+// beside its place.
 const CHANGES_KEY = "pullChanges";
 
 // How long an idle browser may take before Files changed is fetched anyway. A page rendering
@@ -3838,9 +3839,9 @@ export function followedNote(from, to) {
 }
 
 /**
- * What a history entry remembers of Changes, read back from `history.state`, or null for
- * anything else: the comparison it showed, the one its note named, and whether the one
- * shown is the earlier diff the reader went back to. Pure.
+ * What a history entry remembers of its diff, on Changes or Docs, read back from
+ * `history.state`, or null for anything else: the comparison it showed, the one its note
+ * named, and whether the one shown is the earlier diff the reader went back to. Pure.
  *
  * @param {unknown} value
  * @returns {{shown: ShownComparison, from: ShownComparison | null, chosen: boolean} | null}
@@ -4814,6 +4815,7 @@ export function mountPullPage(container, ctx, mb) {
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
    *   settled: boolean, cacheMiss: boolean, retryPending: boolean, heldUntil: number | null,
+   *   heldMs: number,
    *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
   let commitTimeline = null;
   // The allowlist a text's Markdown passes through before it is inserted; a text stays
@@ -7453,7 +7455,7 @@ export function mountPullPage(container, ctx, mb) {
       );
   }
 
-  /** What this history entry remembers of Changes, for a page first mounting a diff on it. */
+  /** What this history entry remembers of its diff, for a page first mounting one on it. */
   function entryMemory() {
     // The entry's memory is kept with its place: by a page in the pane that scrolls.
     return changesShown === null && pane !== null
@@ -7478,8 +7480,8 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * Mount the record's comparison in Changes. One that replaces another diff, the one shown
-   * or the one this history entry showed when the page was last loaded, is noted
+   * Mount the record's comparison in Changes or Docs. One that replaces another diff, the
+   * one shown or the one this history entry showed when the page was last loaded, is noted
    * (`followedNote`). *keep* holds the reader's place through the replacement.
    *
    * @param {NonNullable<PullModel["comparison"]>} comparison
@@ -7529,17 +7531,40 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /** What this entry's Changes shows, for a page loaded again on it (`rememberedChanges`). */
+  /** Whether the address is this page's entry on a tab that shows the diff (`diffTab`). */
+  function onDiffRoute() {
+    return TABS.some((tab) => diffTab(tab) && onPageRoute(window.location.pathname, number, tab));
+  }
+
+  /**
+   * What this entry's diff shows, for a page loaded again on it (`rememberedChanges`).
+   * Changes and Docs draw one comparison and both follow a moved head, so an entry on
+   * either remembers it, the diff its note names, and the reader's choice (mb-mzcj).
+   */
   function rememberChanges() {
     // History can move on before this page is told, as for a place (`keepPlace`).
-    if (pane !== null && onPageRoute(window.location.pathname, number, "files")) {
-      window.history.replaceState(
-        {
-          ...window.history.state,
-          [CHANGES_KEY]: { shown: changesShown, from: changesFrom, chosen: changesChosen },
-        },
-        "",
-      );
+    if (pane === null || !onDiffRoute()) {
+      return;
+    }
+    const memory = { shown: changesShown, from: changesFrom, chosen: changesChosen };
+    // An entry that already holds it is not written again: the host lands the page more
+    // often than the memory changes, and Safari limits how often `replaceState` may run.
+    if (JSON.stringify(window.history.state?.[CHANGES_KEY]) !== JSON.stringify(memory)) {
+      window.history.replaceState({ ...window.history.state, [CHANGES_KEY]: memory }, "");
+    }
+  }
+
+  /**
+   * The host landed this page on an address of its own without mounting a diff, where the
+   * memory is otherwise written. A key's walk of the Pulls tab's changed files replaces the
+   * entry once it stops, and a click on a file or a tab pushes one, each with no state, so
+   * the reload a followed pin makes there would lose the note and the reader's choice
+   * (mb-eg5f). The diff mounted is what the entry remembers; with none mounted yet, the
+   * mount writes it.
+   */
+  function rememberLanded() {
+    if (diffFor !== null) {
+      rememberChanges();
     }
   }
 
@@ -7863,7 +7888,7 @@ export function mountPullPage(container, ctx, mb) {
       showChanges(comparison, action === "follow");
     } else if (diffFor !== null && diffShows !== model.tab) {
       // Changes and Docs are two drawings of one comparison: moving between them draws it
-      // again, the record's as it is now, or an earlier one the reader chose (mb-n9ra).
+      // again, the record's as it is now, or an earlier one the reader chose (mb-825n).
       diffMounted = mountDiff(action === "offer" ? diffFor : comparison, model.tab);
     }
     if (action === "offer") {
@@ -8281,8 +8306,10 @@ export function mountPullPage(container, ctx, mb) {
               cacheMiss: false,
               retryPending: false,
               // When the wait the server named for a read its budget refused ends, in
-              // `Date.now()` time; null for a transient failure's one retry.
+              // `Date.now()` time; null for a transient failure's one retry. The wait
+              // itself, which bounds what is left of it when the clock steps back.
               heldUntil: null,
+              heldMs: 0,
               read: null,
             }
           : null;
@@ -8404,6 +8431,7 @@ export function mountPullPage(container, ctx, mb) {
         // says, for as long as it refuses and this record's page stays.
         held.settled = false;
         held.retryPending = true;
+        held.heldMs = projection.heldMs;
         held.heldUntil = Date.now() + projection.heldMs;
         followTimeline();
       } else if (!cachedOnly && (!retrying || afterHold) && projection?.retryable) {
@@ -8420,9 +8448,12 @@ export function mountPullPage(container, ctx, mb) {
     if (retrying) {
       // A paint during a refresh ask cancels the wait (`timelineAllowed`), and the next one
       // waits only what is left of it, so the server's minute is a period, not a minimum
-      // that each refresh ask starts again (review B3 of #737).
+      // that each refresh ask starts again (review B3 of #737), and never more than the
+      // server asked when the clock steps back (review D4).
       const delay =
-        held.heldUntil === null ? TIMELINE_RETRY_MS : Math.max(0, held.heldUntil - Date.now());
+        held.heldUntil === null
+          ? TIMELINE_RETRY_MS
+          : Math.min(held.heldMs, Math.max(0, held.heldUntil - Date.now()));
       const timer = window.setTimeout(() => void load(), delay);
       read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
     } else if (typeof window.requestAnimationFrame === "function") {
@@ -8524,9 +8555,7 @@ export function mountPullPage(container, ctx, mb) {
       isOnline: () => navigator.onLine !== false,
       // A hold's lift time as the reader's clock says it, short (`holdLiftText`).
       formatHold: (liftMs, nowMs) => holdLiftText(liftMs, nowMs),
-      ownsChanges: () =>
-        onPageRoute(window.location.pathname, number, "files") ||
-        onPageRoute(window.location.pathname, number, "docs"),
+      ownsChanges: () => onDiffRoute(),
       ownsConversation: () =>
         active &&
         mb.sourceKind() === "filesystem" &&
@@ -8731,6 +8760,7 @@ export function mountPullPage(container, ctx, mb) {
       if (changed) {
         place?.keeper.land();
       }
+      rememberLanded();
     },
     /**
      * History arrived at this route. Its saved position takes priority over a file start,
@@ -8742,6 +8772,7 @@ export function mountPullPage(container, ctx, mb) {
       place?.keeper.land();
       wantedFile = place?.keeper.snapshot().holding ? null : (route.file ?? null);
       landFile();
+      rememberLanded();
     },
     /** History is about to leave this entry: write its place now. */
     flush() {
@@ -8779,6 +8810,10 @@ export function mountPullPage(container, ctx, mb) {
         controller.setTab("files", { settling });
       }
       wantedFile = path;
+      // A walk's key moves no address: the walk lands the page once it stops (`setTab`).
+      if (!settling) {
+        rememberLanded();
+      }
       // Still on Docs, its diff holds the documents alone: the file lands once Changes
       // has mounted the whole comparison.
       return (diffShows === "docs" ? null : landFile()) ?? { kind: "no_diff", path };
