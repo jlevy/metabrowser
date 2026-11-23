@@ -216,7 +216,6 @@ from metabrowser.root_identity import (
     canonical_repository_url,
     identity_kind_tip,
     root_identity,
-    served_repository_context,
 )
 from metabrowser.server_utils import ipv6_literal, wildcard_host
 from metabrowser.settings import (
@@ -1724,12 +1723,19 @@ async def index(
     # the registry is a startup script every page pays for under a gated budget, and a page
     # draws one of the three, which only the server knows (source_kind_marks.py).
     #
-    # The sentence's repository is the route's: `served_repository_context`. A revision of
-    # the served checkout has no mirror session, so the page's own `repository_context`
-    # above is empty for it, and the route still reads the checkout's `origin`.
+    # A revision of the served checkout has no mirror but belongs to its checkout's
+    # repository. Keep the checkout's HEAD context for ref actions. The page's
+    # repository context names the pinned commit.
     tip_context = repository_context
     if pin is not None and checkout is not None and checkout.serves(pin):
-        tip_context = await served_repository_context(mirror, checkout)
+        tip_context = await asyncio.to_thread(discover_repository_context, checkout.root)
+        if tip_context is not None:
+            repository_context = {
+                **tip_context,
+                "revision": pin.commit_oid,
+                "branch": None,
+                "branch_on_origin": False,
+            }
     root_kind = identity["kind"]
     root_kind_svg = source_kind_svg(root_kind)
     root_kind_tip = html_escape(identity_kind_tip(identity, tip_context), quote=True)
@@ -1886,10 +1892,9 @@ async def index(
             f"{_source_ref_label_html(pin, checkout=checkout is not None)}</span>"
             '<span class="chip-menu-caret" aria-hidden="true"></span></button></span></div>'
         )
-    # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
-    # hosted repository, or a checkout, a subdirectory of one too, whose `origin` is on
-    # github.com. It costs a plain folder nothing, not even a script in a bundle, and a page
-    # that has it draws it at first paint, so the tabs never shift when it arrives.
+    # The Pulls tab follows a hosted mirror or a GitHub checkout, including a
+    # checkout's revisions and subdirectories. It costs a plain folder nothing,
+    # and a page with the tab draws it at first paint so the tabs never shift.
     pulls_tab = repository_context is not None
     pulls_in_front = pulls_tab and (pull_page or pull_list)
     # Commits is drawn here when the served root is a repository's root, the one root Git
@@ -2440,22 +2445,28 @@ async def index(
     # core does not special-case plugin names.
     plugin_asset_config = _build_plugin_asset_config_block(plugin_prefixes)
 
-    # Reuse KPress's vendored reader faces for the whole UI. Link KPress's
-    # style-tokens.css (the @font-face source of truth) and preload the chrome's
-    # always-present Source Sans face, using the SAME stamped URLs the
-    # embedded document requests so the woff2 downloads exactly once and is
-    # served from the immutable cache (see kpress_static_asset). Preloading
-    # only the chrome face avoids an "unused preload" warning on tree-only views;
-    # PT Serif (embedded prose) rides the same immutable cache + font-display:
-    # block on first document open.
-    _sans_url = kpress_adapter.kpress_static_url(
+    # The sidebar uses an optional-display alias of KPress's stamped Source Sans
+    # faces so a late response cannot move its tabs, filter bar, or root menu.
+    # The rest of the app uses KPress's original faces and the same font bytes.
+    sans_url = kpress_adapter.kpress_static_url(
         "fonts/source-sans-3-latin-wght-normal.woff2", prefix=kpress_prefix
     )
-    _tokens_url = kpress_adapter.kpress_static_url("css/style-tokens.css", prefix=kpress_prefix)
-    kpress_font_head = (
-        f'<link rel="preload" as="font" type="font/woff2" crossorigin href="{_sans_url}">\n'
-        f'  <link rel="stylesheet" href="{_tokens_url}">'
+    italic_sans_url = kpress_adapter.kpress_static_url(
+        "fonts/source-sans-3-latin-wght-italic.woff2", prefix=kpress_prefix
     )
+    tokens_url = kpress_adapter.kpress_static_url("css/style-tokens.css", prefix=kpress_prefix)
+    sidebar_sans_faces = _json.dumps((("normal", sans_url), ("italic", italic_sans_url)))
+    kpress_font_head = f"""<link rel="preload" as="font" type="font/woff2" crossorigin href="{sans_url}">
+  <link rel="stylesheet" href="{tokens_url}">
+  <script>
+    if (typeof FontFace === "function" && document.fonts) {{
+      for (const [style, url] of {sidebar_sans_faces}) {{
+        document.fonts.add(new FontFace("Metabrowser Sidebar Sans", 'url("' + url + '")', {{
+          style, weight: "200 900", display: "optional",
+        }}));
+      }}
+    }}
+  </script>"""
 
     html = f"""<!DOCTYPE html>
 <html lang="en" style="--doc-max-chars: {DOC_MAX_CHARS_DEFAULT}">
@@ -2464,10 +2475,7 @@ async def index(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
   <title>{page_title}</title>
-  <!-- Reader fonts: preload the chrome's Source Sans face + link KPress's
-       @font-face source of truth, version-keyed so chrome and the embedded
-       document share one download. Built in kpress_font_head above from the
-       required KPress package. No flash of unstyled text on first paint. -->
+  <!-- Preload the shared Source Sans bytes and register the sidebar face before layout. -->
   {kpress_font_head}
   {client_settings_block}
   <script>{_DOCUMENT_WIDTH_SCRIPT}</script>

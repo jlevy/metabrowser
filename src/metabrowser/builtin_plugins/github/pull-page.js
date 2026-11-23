@@ -446,7 +446,7 @@ const TRUNCATED = Object.freeze({
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   checkNotes: string[],
  *   notes: string[],
- *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, size_route?: string, headMoved: boolean, branch: {ref: string} | null} | null,
+ *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, size_route?: string, headMoved: boolean, branch: {ref: string | null} | null} | null,
  *   comparisonComing: boolean,
  *   head: string | null,
  *   baseRef: string | null,
@@ -1300,6 +1300,7 @@ export function rateLimitLifts(envelope) {
  *
  * @param {PullEnvelope | null} envelope
  * *checkoutHead* is the served checkout's `HEAD`, on a folder, which has no pin.
+ * *checkoutPin* marks a checkout's revision, which can open files at its own commit.
  *
  * The controller says what it will send. *fetchQueued* is a selected fetch not asked
  * for yet that the page will send once it is visible or the reader stops; *ownsChanges*
@@ -1333,7 +1334,7 @@ export function rateLimitLifts(envelope) {
  * comparison's, else the record's or the core's, and null before either; `baseRef` is the
  * record's or the core's base branch.
  *
- * @param {{number: number, tab: string, nowMs: number, error?: string | null, errorFromComparison?: boolean, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatHold?: (liftMs: number, nowMs: number) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, errorFromComparison?: boolean, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatHold?: (liftMs: number, nowMs: number) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, checkoutPin?: boolean, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
  * @returns {PullModel}
  */
 export function describePull(envelope, page) {
@@ -1528,7 +1529,10 @@ export function describePull(envelope, page) {
   model.head = head || null;
   model.baseRef = text(pull.base?.ref) || null;
   const headRef = `refs/pull/${pull.number}/head`;
-  if (envelope.pin !== null && head !== "") {
+  // The PR's head ref belongs to a mirror. A checkout can link to a PR
+  // head that it is already serving.
+  const canOpenHead = page.checkoutPin !== true || envelope.pin === head;
+  if (canOpenHead && envelope.pin !== null && head !== "") {
     model.browse = { kind: "link", at: envelope.pin };
     if (envelope.pin !== head && envelope.pin_ref === headRef) {
       // Served from this pull request's head, and a refresh found a newer one: the ref
@@ -1579,7 +1583,10 @@ export function describePull(envelope, page) {
       // What View on branch opens: the pull request's head, under its ref, when the diff
       // shows that head. A diff of another commit has no branch it is on, and a page whose
       // pin is an earlier head of this pull request offers the newer one first.
-      branch: !headMoved && head !== "" && comparison.right === head ? { ref: headRef } : null,
+      branch:
+        canOpenHead && !headMoved && head !== "" && comparison.right === head
+          ? { ref: page.checkoutPin === true ? null : headRef }
+          : null,
     };
   }
   model.comparisonComing =
@@ -1944,6 +1951,7 @@ export function renderedTextsHeld() {
  *     walking?: () => boolean,
  *   } | null,
  *   checkoutHead?: string | null,
+ *   checkoutPin?: boolean,
  * }} options
  */
 export function createPullController(deps, options) {
@@ -2292,6 +2300,7 @@ export function createPullController(deps, options) {
       comparisonRefusal,
       waitForReader: reader !== null && !readerAsked && envelope?.reason !== "not_github",
       checkoutHead: options.checkoutHead ?? null,
+      checkoutPin: options.checkoutPin === true,
       listed: deps.listed?.(envelope?.source ?? null, options.number) ?? null,
     };
   }
@@ -4308,11 +4317,11 @@ const CHECKS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
  */
 export function mountPullPage(container, ctx, mb) {
   const number = typeof ctx.number === "number" ? ctx.number : 0;
+  const checkoutPin = window.METABROWSER_SOURCE_CHECKOUT?.working_tree === false;
   const open = typeof ctx.open === "function" ? ctx.open : () => {};
   container.classList.add("github-pull");
-  // A page header, as a commit's summary is (docs/design-system.md, "Page Headers"): the
-  // title, then lines at the body size, 6 px apart, the author's first and the Diff summary
-  // last, in the order a commit's page has the parts the two share.
+  // The shared page header's lines start with state and ages beneath the title and end
+  // with the Diff summary (docs/design-system.md, "Page Headers").
   const header = h("div", { class: "github-pull-header page-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
   // The header's box is decided at first paint: every row is there in every state, at one
@@ -4402,7 +4411,7 @@ export function mountPullPage(container, ctx, mb) {
   // (docs/design-system.md, "Change Size Line"): "2 commits · 36 files changed · 1.8 MB
   // compressed (6.2 MB raw diff)". It is there whenever the summary's row is, holding the
   // same pending placeholder while the summary waits, so neither row moves the tabs.
-  const sizeRow = h("div", { class: "github-pull-size page-header-line" });
+  const sizeRow = h("div", { class: "github-pull-size page-header-line page-header-size" });
   const sizePending = h("span", { class: "mb-delayed-loading github-pull-size-pending" }, [
     h("span", { class: "tally-pending", "aria-hidden": "true" }),
   ]);
@@ -5098,7 +5107,7 @@ export function mountPullPage(container, ctx, mb) {
    */
   function fileLink(path, line, browse) {
     const wire = mb.sourceKind() === "git_revision" && path !== "" ? gitPathWire(path) : null;
-    if (wire === null) {
+    if (wire === null || (checkoutPin && browse === null)) {
       return h("span", { class: "github-pull-file" }, [path]);
     }
     const target = { path: wire, ...(line === null ? {} : { fragment: `L${line}` }) };
@@ -5733,9 +5742,8 @@ export function mountPullPage(container, ctx, mb) {
         });
       }
       placeChildren(openedRow, [stateBadge, opened.row, refresh]);
-      children.push(title, counterpartCorner, paintStateRow(pull), branchesRow, openedRow);
-      // A pull request with no labels has no labels row, and no gap for it: the next row
-      // shown follows the row of ages as the next metadata line (mb-2u08). Its labels come
+      children.push(title, counterpartCorner, openedRow, paintStateRow(pull), branchesRow);
+      // The labels follow the branches and take no row or gap if absent. They come
       // with its record or core, so the row is decided with the record's first paint; a
       // label's color and tooltip, which the repository's set may bring later, change no
       // chip's box.
@@ -5782,7 +5790,7 @@ export function mountPullPage(container, ctx, mb) {
           refresh,
         ]);
         placeChildren(labelList, []);
-        children.push(stateRow, branchesRow, openedRow, labelsRow);
+        children.push(openedRow, stateRow, branchesRow, labelsRow);
       }
     }
     status.dataset.status = model.status;
@@ -7076,7 +7084,7 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /** @param {{left: string, right: string, route?: string, image_route?: string, rendered_route?: string, branch?: {ref: string} | null}} comparison */
+  /** @param {{left: string, right: string, route?: string, image_route?: string, rendered_route?: string, branch?: {ref: string | null} | null}} comparison */
   async function mountDiff(comparison) {
     if (listening.signal.aborted) {
       return;
@@ -7988,6 +7996,7 @@ export function mountPullPage(container, ctx, mb) {
       tab: typeof ctx.tab === "string" ? ctx.tab : "",
       reader: ctx.reader ?? null,
       checkoutHead: mb.sourceKind() === "filesystem" ? (mb.repository?.revision ?? null) : null,
+      checkoutPin,
     },
   );
   document.addEventListener(
