@@ -3,9 +3,9 @@ type: is
 id: is-01m82vvzskcz4ey2fk0nzbc47b
 title: "PR #696 + #709 (merge): pull request update cadence plan and Phase 1a probes"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 delegate: claude-code@spud10
 labels: []
@@ -17,6 +17,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-23T00:11:07.439Z
-updated_at: 2026-11-23T00:47:43.831Z
+updated_at: 2026-11-23T13:47:00.878Z
 started_at: 2026-11-23T00:11:15.885Z
+closed_at: 2026-11-23T13:47:00.877Z
+close_reason: "Merged to main in stack #710 (b68cc9571)"
+resolution: null
+duplicate_of: null
 ---

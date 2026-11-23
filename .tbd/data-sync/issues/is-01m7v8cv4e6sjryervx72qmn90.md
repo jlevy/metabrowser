@@ -3,9 +3,9 @@ type: is
 id: is-01m7v8cv4e6sjryervx72qmn90
 title: "Folder mode: a revision of a checkout's branch follows that branch when the checkout's refs move; the working tree stays the working tree"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,8 +13,13 @@ parent_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:16:07.181Z
-updated_at: 2026-11-23T06:55:05.401Z
+updated_at: 2026-11-23T08:07:07.994Z
 started_at: 2026-11-23T06:55:05.398Z
+closed_at: 2026-11-23T08:07:07.993Z
+close_reason: |
+  Built on claude/folder-branch-follow, stacked on #740 (commits 10f3bb20b, 52f1a248a, 4f52555d6, 2941ae6d8, a40474759). A revision served under one of the checkout's own branches, remote-tracking branches, or tags follows that ref: a visible page asks every CHECKOUT_REFS_POLL_S (POST /api/source/refresh {"for":"page"}), CheckoutRevisions.observe names the ref state with no Git process and reads the ref only when it changed, and the mirror's follow step (follow_served_ref) serves the new commit. Nothing is fetched or written. A commit ID and the working tree never move. Left open: a page whose file is gone from the new commit lands at the root, as a mirror's does (view_on_pin), not at the nearest ancestor that exists.
+resolution: null
+duplicate_of: null
 ---
 In a repository folder, the working tree is live through the watcher. A branch chosen in the Files chooser (a local branch, or a remote-tracking branch such as origin/main) shows that branch's last commit and should follow it when it moves: the reader commits, or a fetch moves origin/main. Today arch-source-sessions-and-pins.md, Revisions of a Checkout, lists this under Not yet ("a branch that moves while it is shown is not followed").
 

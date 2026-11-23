@@ -3,9 +3,9 @@ type: is
 id: is-01m8398hsz2wtpdd8ybjpczec2
 title: "T4: Expose the File type menu builders through window.metabrowser"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 delegate: claude-code@spud10
 labels:
@@ -17,8 +17,12 @@ parent_id: is-01m83968ry3rs287s3mgg0r93y
 hold: null
 hold_until: null
 created_at: 2026-11-23T04:05:10.589Z
-updated_at: 2026-11-23T06:07:56.785Z
+updated_at: 2026-11-23T10:38:17.920Z
 started_at: 2026-11-23T06:07:56.784Z
+closed_at: 2026-11-23T10:38:17.919Z
+close_reason: "Merged in https://github.com/jlevy/metabrowser/pull/738 (stack #735, merged 2026-11-23 as 72b7173)"
+resolution: null
+duplicate_of: null
 ---
 The Files tab builds the chooser's rows in private `app.js` globals (`filterTypeOptions`,
 `filterTypePresets`, `filterTypeFamilies`, `filterTypePresetSections`, reading

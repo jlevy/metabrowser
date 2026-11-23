@@ -3,9 +3,9 @@ type: is
 id: is-01m82j9mkc8hxbezzc94rn8ndc
 title: "Pull request head follows new pushes: the served code moves to the new head, and Changes follows with a note naming the old and new head and a way back"
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 2
+version: 3
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
 hold: null
 hold_until: null
 created_at: 2026-11-22T21:23:48.935Z
-updated_at: 2026-11-23T06:37:51.362Z
+updated_at: 2026-11-23T07:52:31.496Z
 started_at: 2026-11-23T06:37:51.328Z
+closed_at: 2026-11-23T07:52:31.470Z
+close_reason: "Done on claude/pull-head-follows (6a5e9ef6d, 5a5e632cf): a pin under refs/pull/<n>/head follows when the pull request's refresh moves it (follows_moves); Switch to the head and the freshness row's Switch offer are gone; Changes follows the record's comparison with a note naming both heads and Show the earlier changes, remembered in the history entry across the follow's reload; a place in Changes names its file. Docs, changelog fragment, goldens, and parity rows updated."
+resolution: null
+duplicate_of: null
 ---
 Decided by the owner 2026-11-22 (mb-qp3s, "Take both" in chat): under branch-follow, a pull request's head follows new pushes like a branch.
 

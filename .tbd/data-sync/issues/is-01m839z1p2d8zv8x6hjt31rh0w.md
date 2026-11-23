@@ -3,17 +3,25 @@ type: is
 id: is-01m839z1p2d8zv8x6hjt31rh0w
 title: "T9: A Docs tab on the pull request page: its documents, rendered and expanded"
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 1
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
+delegate: claude-code@spud10
 labels:
   - diff
   - github
 dependencies: []
 parent_id: is-01m83968ry3rs287s3mgg0r93y
+hold: null
+hold_until: null
 created_at: 2026-11-23T04:17:27.694Z
-updated_at: 2026-11-23T04:17:27.694Z
+updated_at: 2026-11-23T10:38:19.700Z
+started_at: 2026-11-23T07:53:37.929Z
+closed_at: 2026-11-23T10:38:19.699Z
+close_reason: "Merged in https://github.com/jlevy/metabrowser/pull/751 (stack #735, merged 2026-11-23 as 72b7173)"
+resolution: null
+duplicate_of: null
 ---
 Requested by the user 2026-11-22. A shortcut built on the diff File type filter: a new
 second tab on the pull request page, **Docs**, between Conversation and Changes
@@ -45,3 +53,9 @@ request's documents so a reader can read them quickly.
   and the parity registry; changelog fragment.
 - **Delivery:** its own pull request, stacked on the diff File type filter's stack once
   the basic chooser works.
+
+## Notes
+
+Decision taken unattended (2026-11-22, user said not to ask): the Docs tab is always shown, keyed D, with an empty state linking to Changes when the PR has no documents, so the tab set and its keys stay stable from PR to PR. Revisit in the morning if the user prefers hiding it.
+
+2026-11-23: PR https://github.com/jlevy/metabrowser/pull/751 (stacked on #744, linked into stack #735). Membership is group=type:docs on the comparison route (cli-api-diff-type-filter golden). Verified in a real browser on a live repository: Docs showed 3 of a PR's 12 files, Changes kept all 12, D switches, a 643-line added document opened with its fold expanded. Prefetch is not joined: follow-up mb-plzs.

@@ -3,9 +3,9 @@ type: is
 id: is-01m82h0qrnw9vg6vrj597asgpv
 title: "Live GitHub updates: what is on screen updates within seconds, everything else every minute or two, inside the rate limit"
 kind: epic
-status: in_progress
+status: closed
 priority: 1
-version: 24
+version: 39
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 refs:
   - kind: pr
@@ -37,8 +37,26 @@ child_order_hints:
   - is-01m83g99cgya820tjjvtjny5ha
   - is-01m83g99y25eh6aegb8gpf5wnx
   - is-01m83g9aj1r65x7qjk68w971qf
+  - is-01m83kesy0bwjqpe4nwf0ykpha
+  - is-01m83kez288a4cxagyj1tyht3h
+  - is-01m83kf3rsy7tc0g1tawd18a4v
+  - is-01m83qna533s9rh2z5jh200yc1
+  - is-01m83qnbdf3kswkegs0q63gtpm
+  - is-01m83qnctc1z0ky04cxdjmr0md
+  - is-01m83qnf0r556qas7pn6vwdfat
+  - is-01m83qp8kr3hm0t08y7av1p56f
+  - is-01m83z9hk4cvwb4vnnhkt17t1b
+  - is-01m83zhd3kfcv0c4tgvgd43h4p
+  - is-01m84gfbk5cbef8e6yendxw6z9
+  - is-01m84ht1zmc4vptskz3e6vdp71
+  - is-01m84jp3n8fvsryvh03cwc4388
+  - is-01m84jpbs7staabvpby1qp2bnr
 created_at: 2026-11-22T21:01:28.721Z
-updated_at: 2026-11-23T06:07:55.968Z
+updated_at: 2026-11-23T16:09:14.790Z
+closed_at: 2026-11-23T13:47:01.557Z
+close_reason: "All agreed phases and follow-ups merged in stack #710 (PRs #696-#747, main b68cc9571). Open follow-ups: mb-pgru, mb-m3gp, mb-mg37."
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 0c7789d9-960d-4814-a23b-d2a26e474369

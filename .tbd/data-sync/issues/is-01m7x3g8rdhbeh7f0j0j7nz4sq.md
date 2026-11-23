@@ -5,7 +5,7 @@ title: "Guided PR walkthroughs (PR #599, outside contributor): bring current wit
 kind: feature
 status: closed
 priority: 2
-version: 10
+version: 22
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/599
@@ -21,10 +21,23 @@ labels:
 dependencies:
   - type: blocks
     target: is-01m7x558325az7xdj1wm3k2hbm
+child_order_hints:
+  - is-01m84g9na5er77rzn9r092n4mn
+  - is-01m84g9r2amdr10qzmpdsgcc1q
+  - is-01m84g9v64jbhs7f8qvayqwct3
+  - is-01m84g9wsvvha2tdrh2mpv2vkr
+  - is-01m84g9zrrj4805kbq94xch6vs
+  - is-01m84gbk5har7k3mm1q125cym7
+  - is-01m84gbmjndnzw4q7zv27m7h5b
+  - is-01m84gc3ds49nh02t0hx7wmq21
+  - is-01m84geezvx0ydtz7hhkg2ta3v
+  - is-01m84gf2pk6kv6whk2ths7cnft
+  - is-01m84h65fwhv8t9hnx44bnhq3c
+  - is-01m84h7czgy6yrj10dt058b600
 hold: null
 hold_until: null
 created_at: 2026-11-20T18:29:05.420Z
-updated_at: 2026-11-20T22:53:20.341Z
+updated_at: 2026-11-23T15:43:35.907Z
 started_at: 2026-11-20T18:32:15.781Z
 closed_at: 2026-11-20T22:53:20.340Z
 close_reason: "Guided PR implementation and review fixes recovered in draft #677. Tab, D shortcut, and lazy-mount coverage landed on the draft branch, and all applicable checks passed on run 44831509620. The draft awaits the owner’s merge decision."

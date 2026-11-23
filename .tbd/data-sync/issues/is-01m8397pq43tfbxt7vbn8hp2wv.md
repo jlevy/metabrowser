@@ -3,9 +3,9 @@ type: is
 id: is-01m8397pq43tfbxt7vbn8hp2wv
 title: "T1: One file-type matcher shared by the Files tree and diff narrowing"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 delegate: claude-code@spud10
 labels:
@@ -19,8 +19,12 @@ parent_id: is-01m83968ry3rs287s3mgg0r93y
 hold: null
 hold_until: null
 created_at: 2026-11-23T04:04:42.850Z
-updated_at: 2026-11-23T04:10:31.343Z
+updated_at: 2026-11-23T10:38:16.632Z
 started_at: 2026-11-23T04:10:31.314Z
+closed_at: 2026-11-23T10:38:16.630Z
+close_reason: "Merged in https://github.com/jlevy/metabrowser/pull/732 (stack #735, merged 2026-11-23 as 72b7173)"
+resolution: null
+duplicate_of: null
 ---
 Move `_matches_types`, `_semantic_extension_tokens`, and the basename/tail-extension
 helpers they use out of `git/content_routes.py` into a shared module (beside
