@@ -29,7 +29,7 @@ writes. The diff attaches it once, through the SDK’s shortcut surface, on the 
 would select, and moves it to the new chip after each draw.
 A host that fixes the layout, as a pull request’s Docs tab fixes **Unified**, gets it at
 every width under any stored choice, with no layout control and no `L`, reads and writes
-no preference, and draws no toolbar when nothing else is in it.
+no layout preference, and draws no toolbar when nothing else is in it.
 
 This browserless session loads the production `builtin_plugins/diff/diff-view.js` and
 mounts a document of the conformance corpus into a small element tree.

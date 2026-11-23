@@ -111,6 +111,10 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Map<string, ShowControl>} showControls Each bar's Diff | Current chooser, by
  *   the key its chips carry.
  * @property {(() => void) | null} unbindShow
+ * @property {Map<HTMLElement, ShowControl>} showBySection Each chooser by its file's section.
+ * @property {MetabrowserPublicPluginShortcutHandle | null} showKey `N`, on the chip it would
+ *   select in the chooser of the file at the pane's top (`attachShowKey`).
+ * @property {ShowControl | null} showKeyEntry The chooser `N`'s badge sits on.
  */
 
 /**
@@ -1542,6 +1546,7 @@ function addShowControl(view, section, bar, end, id) {
   }
   const entry = { control: el("div", "diff-show-control"), key: `diff-show:${id}`, section };
   view.showControls.set(entry.key, entry);
+  view.showBySection.set(section, entry);
   bar.classList.add("diff-file-bar-chooser");
   end.append(entry.control);
   paintShowControl(view, entry);
@@ -1607,9 +1612,21 @@ function bindShowControls(view) {
 }
 
 /**
- * The reader's choice of what the diff shows: draw it. The file whose chooser was used keeps
- * its place on the screen (*anchor*); with none given, the file at the pane's top does.
- * Choosing what is shown changes nothing.
+ * What the diff shows when it opens: the reader's last choice, stored as `diff.show`, or
+ * Diff, today's view, for a reader who never chose or a stored value that is not a choice.
+ *
+ * @param {DiffViewApi | undefined} api
+ * @returns {Shown}
+ */
+export function readShowPreference(api) {
+  const value = api?.prefs?.get("diff.show", /** @type {unknown} */ ("diff"));
+  return value === "current" ? "current" : "diff";
+}
+
+/**
+ * The reader's choice of what the diff shows: store it, so every diff opens in it, and draw
+ * it. The file whose chooser was used keeps its place on the screen (*anchor*); with none
+ * given, as for `N`, the file at the pane's top does.
  *
  * @param {MountedDiffState} view
  * @param {string} value
@@ -1625,7 +1642,103 @@ export function setShow(view, value, anchor) {
   }
   const place = anchor !== undefined ? anchor : view.pinned === null ? placeOfTopFile(view) : null;
   view.show = show;
+  view.api?.prefs?.set("diff.show", show);
   drawShow(view, place);
+}
+
+/**
+ * `N`: switch the diff between Diff and Current, exactly as clicking the other chip does.
+ *
+ * @param {MountedDiffState} view
+ */
+export function toggleShow(view) {
+  setShow(view, view.show === "current" ? "diff" : "current");
+}
+
+/**
+ * The chooser `N`'s badge sits on: the one in the bar of the file at or after *section*, the
+ * file at the pane's top, whose bar is sticky and so in view, or before it where no later
+ * file has one; the first chooser when no file is at the top.
+ *
+ * @param {MountedDiffState} view
+ * @param {HTMLElement | null} section
+ * @returns {ShowControl | null}
+ */
+function showKeyEntryFor(view, section) {
+  const at = section === null ? 0 : Math.max(0, view.sections.indexOf(section));
+  for (let index = at; index < view.sections.length; index += 1) {
+    const entry = view.showBySection.get(view.sections[index]);
+    if (entry !== undefined) {
+      return entry;
+    }
+  }
+  for (let index = at - 1; index >= 0; index -= 1) {
+    const entry = view.showBySection.get(view.sections[index]);
+    if (entry !== undefined) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+/**
+ * The chip `N` would select, the one not checked, in the chooser its badge sits on.
+ *
+ * @param {MountedDiffState} view
+ * @returns {HTMLElement | null}
+ */
+function showKeyOption(view) {
+  const other = view.show === "current" ? "diff" : "current";
+  return /** @type {HTMLElement | null} */ (
+    view.showKeyEntry?.control.querySelector(`[data-chip-value="${other}"]`) ?? null
+  );
+}
+
+/**
+ * Give the diff its `N`, once, on the chooser of the file at the pane's top. The chips are
+ * the shared chip family's buttons, drawn before this runs.
+ *
+ * @param {MountedDiffState} view
+ */
+function attachShowKey(view) {
+  const shortcuts = view.api?.shortcuts;
+  if (typeof shortcuts?.attach !== "function" || view.showControls.size === 0) {
+    return;
+  }
+  view.showKeyEntry = showKeyEntryFor(view, placeOfTopFile(view)?.section ?? null);
+  const option = showKeyOption(view);
+  if (option === null) {
+    return;
+  }
+  view.showKey = shortcuts.attach(option, {
+    activate: () => toggleShow(view),
+    copy: {
+      action: "Toggle Diff or Current",
+      description: "Switch the diff between what changed and the new version alone.",
+      hint: "Current",
+    },
+    group: "controls",
+    id: "diff.show",
+    key: "n",
+    order: 41,
+  });
+}
+
+/**
+ * Move `N`'s badge to the chip it would select in the chooser of the file now at the pane's
+ * top: the file changed, or its chooser was drawn again.
+ *
+ * @param {MountedDiffState} view
+ */
+function retargetShowKey(view) {
+  if (view.showKey === null) {
+    return;
+  }
+  view.showKeyEntry = showKeyEntryFor(view, placeOfTopFile(view)?.section ?? null);
+  const option = showKeyOption(view);
+  if (option !== null) {
+    view.showKey.retarget(option);
+  }
 }
 
 /**
@@ -1650,6 +1763,8 @@ function drawShow(view, anchor) {
   for (const entry of view.showControls.values()) {
     paintShowControl(view, entry);
   }
+  // The markup is new, so `N`'s badge moves to the new chip it would select.
+  retargetShowKey(view);
   renderLayoutControl(view);
   view.markdown?.controller.show(view.show === "current");
   if (view.awaitingWidth) {
@@ -3651,9 +3766,12 @@ export function mountDiffView(container, document_, api, options = {}) {
     changedFiles: options.changedFiles ?? null,
     openFile: options.openFile ?? null,
     unfold: options.unfold === true,
-    show: "diff",
+    show: readShowPreference(api),
     showControls: new Map(),
     unbindShow: null,
+    showBySection: new Map(),
+    showKey: null,
+    showKeyEntry: null,
   };
   view.hydration = createHydrationScheduler(hydrationHost(view));
   if (
@@ -3779,6 +3897,9 @@ export function mountDiffView(container, document_, api, options = {}) {
   measureProjection(api, "diffMount:attach", () => container.append(root), {
     file_count: manifest.files.length,
   });
+  // Once the diff is in its pane, so the file at the pane's top is known; each later draw of
+  // the choosers, and each new file at the top, retargets it, and dispose() detaches it.
+  attachShowKey(view);
   observeHydration(view);
   if (view.markdown !== null) {
     const pane = scrollerOf(view);
@@ -3908,6 +4029,10 @@ export function mountDiffView(container, document_, api, options = {}) {
     passive: true,
     signal: currentController.signal,
   });
+  // `N`'s badge follows the file at the pane's top, reported as the host's listeners are.
+  if (view.showKey !== null) {
+    currentListeners.set(() => retargetShowKey(view), null);
+  }
 
   function cancelPendingWork() {
     view.generation += 1;
@@ -4011,6 +4136,8 @@ export function mountDiffView(container, document_, api, options = {}) {
       view.layoutKey = null;
       view.unbindShow?.();
       view.unbindShow = null;
+      view.showKey?.detach();
+      view.showKey = null;
       unbind();
       removeSelectionGate();
       root.remove();

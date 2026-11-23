@@ -1705,12 +1705,19 @@ async function main() {
       ),
     JSON.stringify(layoutInCurrent),
   );
+  check(
+    "the choice is stored for every diff",
+    JSON.stringify(preferenceWrites.slice(writesBefore)) ===
+      JSON.stringify([{ key: "diff.show", value: "current" }]),
+    JSON.stringify(preferenceWrites.slice(writesBefore)),
+  );
+  const writesInCurrent = preferenceWrites.length;
   currentLayoutChange("diff-layout", "unified", "one");
   check(
     "choosing a layout in Current changes nothing and stores nothing",
     currentRoot.dataset.layout === "split" &&
       currentHost.find("diff-hunk-current").length === 1 &&
-      preferenceWrites.length === writesBefore,
+      preferenceWrites.length === writesInCurrent,
   );
   showChange(showSpec.key, "diff", "one");
   await Promise.resolve();

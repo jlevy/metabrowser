@@ -205,11 +205,13 @@ rule the browser draws by, which
 [CLI and Functional UI Parity](../../../development.md#cli-and-functional-ui-parity)
 rules out. It is an interaction row of the
 [parity registry](../../architecture/arch-parity-registry.md), `diff.show-current`,
-whose session `tests/dom/diff-current-session.js` mounts conformance documents and
+whose session `tests/dom/diff-current-session.js` mounts a comparison of six files and
 recorded rendered answers through the production `diff-view.js`, `diff-markdown.js`, and
 `diff-structured.js`, and whose golden `tests/golden/cli-ui-diff-current.tryscript.md`
 prints, for each step, what each file draws, the chooser, the layout control, `N`, and
-what was stored. The stored choice is browser state, `local-only` as `diff.layout` is.
+what was stored.
+Its data input is the rendered route its recorded answers come from; the
+stored choice is browser state, as `diff.layout` is.
 That the end group’s two choosers share a line at the bar’s end is layout, a
 paint-exempt row with a headless Chrome check.
 
@@ -224,10 +226,10 @@ One stack on #759, one commit per bead:
 - [x] `mb-256j`: Rendered Current for YAML and JSON.
 - [x] `mb-ubs0`: the chooser on every bar with a text diff, and the layout control while
   Current is chosen.
-- [ ] `mb-yt73`: `diff.show`, `N`, the browserless session and its golden, and the
-  parity row.
+- [x] `mb-yt73`: `diff.show`, `N` and its row in the keyboard reference, the browserless
+  session and its golden, and the parity row.
 - [ ] `mb-o8gd`: the design system’s file bar and chooser vocabulary, the pull request
-  review guide, the keyboard reference, and the Chrome check of the end group.
+  review guide, and the Chrome check of the end group.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

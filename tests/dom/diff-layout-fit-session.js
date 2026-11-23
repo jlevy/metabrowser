@@ -245,7 +245,11 @@ async function main() {
       isLargeTextPreview: () => true,
       langForPath: () => "",
       prefs: {
-        get(_key, fallback) {
+        // The stored layout; Diff | Current's own `diff.show` has its own session.
+        get(key, fallback) {
+          if (key !== "diff.layout") {
+            return fallback;
+          }
           reads += 1;
           return preference ?? fallback;
         },
