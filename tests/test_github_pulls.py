@@ -1116,9 +1116,10 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
         plain_code=True,
     )
     assert "<symbol" in str(raw["html"])
-    html = client.get(
-        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
-    ).json()["html"]
+    answered = client.get("/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"})
+    # A refusal names its code in the body; indexing it would say only that a key is missing.
+    assert answered.status_code == 200, answered.text
+    html = answered.json()["html"]
     for gone in ("<svg", "<symbol", "<use"):
         assert gone not in html, gone
 
@@ -1138,9 +1139,10 @@ def test_the_markdown_route_keeps_a_mermaid_block_for_the_page_to_draw(
         stand.published.slug,
         record.model_copy(update={"pull": record.pull.model_copy(update={"body": text})}),
     )
-    html = client.get(
-        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
-    ).json()["html"]
+    answered = client.get("/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"})
+    # A refusal names its code in the body; indexing it would say only that a key is missing.
+    assert answered.status_code == 200, answered.text
+    html = answered.json()["html"]
     assert '<pre lang="mermaid"><code>flowchart LR\n  A --&gt; B\n</code></pre>' in html
     assert (html.count("<pre"), html.count("lang=")) == (2, 1)
 
@@ -1151,9 +1153,9 @@ def test_the_markdown_route_names_only_kpress_stylesheets_and_the_same_ones_for_
     """A page sets a text in KPress's stylesheets; a comment must not choose what it loads."""
 
     _stand, client = pinned_pull
-    answer = client.get(
-        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
-    ).json()
+    answered = client.get("/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"})
+    assert answered.status_code == 200, answered.text
+    answer = answered.json()
     assets = answer["assets"]["assets"]
     assert {asset["id"] for asset in assets} >= {"css/document.css", "css/components.css"}
     assert {asset["loading"] for asset in assets} == {"stylesheet"}
