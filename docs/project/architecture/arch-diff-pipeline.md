@@ -142,6 +142,10 @@ A change matches when either of its sides does, so a rename from `.txt` to `.md`
 both. The bound then counts kept files, the totals are the kept files’, and `truncated`
 still says the listing stopped at its own bound.
 A narrowed answer is cached apart from the whole one, whose key and tag are unchanged.
+`&view=types` answers the comparison’s File type counts instead of a document, for the
+diff view’s File type menu: the rows the Files tab’s menu reads, over every listed
+change whatever `types` and `file` say, counted by `file_type_match.type_tally`, which
+the Files tree on a revision counts with too.
 `cli-api-diff-type-filter.tryscript.md` pins the answers.
 
 **In the page**, `builtin_plugins/diff/diff-view.js` keeps every file’s bar in the page

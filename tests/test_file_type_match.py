@@ -14,11 +14,15 @@ from metabrowser.diff.format import (
     FileChange,
     FileMode,
 )
+from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.file_type_match import (
     change_matches_types,
+    change_sides,
     name_matches_types,
     semantic_extension_tokens,
+    type_tally,
 )
+from metabrowser.fs_paths import derive_ext
 from metabrowser.tree_filter import parse_types
 
 
@@ -104,3 +108,43 @@ def _change(kind: ChangeKind, *, old: str | None = None, new: str | None = None)
 )
 def test_change_matches_types(change: FileChange, raw: str, expected: bool) -> None:
     assert change_matches_types(change, parse_types([raw])) is expected
+
+
+def _rows(rows: list[list[object]]) -> dict[object, object]:
+    return {row[0]: row[1] for row in rows}
+
+
+def test_type_tally_counts_a_file_once_under_each_type_either_side_has() -> None:
+    changes = [
+        _change(ChangeKind.modified, old="README.md", new="README.md"),
+        _change(ChangeKind.renamed, old="notes.txt", new="notes.md"),
+        _change(ChangeKind.added, new="src/app.py"),
+        _change(ChangeKind.added, new="build/Makefile"),
+    ]
+    tally = type_tally(change_sides(change) for change in changes)
+    # README.md once (its two sides are one name), and the rename under both types.
+    assert _rows(tally["extensions"]) == {".md": 2, ".txt": 1, ".py": 1}
+    assert all(row[2] == 0 for row in tally["extensions"])
+    families = _rows(tally["type_families"])
+    assert families["markdown"] == 2
+    assert families["plain-text"] == 1
+    presets = _rows(tally["type_presets"])
+    # Every preset has a row, in the menu's order, counted or not.
+    assert [row[0] for row in tally["type_presets"]] == [p["id"] for p in FILTER_TYPE_PRESETS]
+    # The documentation group holds the Markdown, the rename, and nothing else.
+    assert presets["docs"] == 2
+
+
+def test_type_tally_ranks_by_count_then_key_and_honors_its_limit() -> None:
+    names = ["a.py", "b.py", "c.md", "d.rs", "e.rs", "f.rs"]
+    tally = type_tally(((name, derive_ext(name)),) for name in names)
+    assert tally["extensions"] == [[".rs", 3, 0], [".py", 2, 0], [".md", 1, 0]]
+    limited = type_tally((((name, derive_ext(name)),) for name in names), limit=1)
+    assert limited["extensions"] == [[".rs", 3, 0]]
+
+
+def test_type_tally_of_nothing_still_lists_every_preset() -> None:
+    tally = type_tally([])
+    assert tally["extensions"] == []
+    assert tally["type_families"] == []
+    assert len(tally["type_presets"]) == len(FILTER_TYPE_PRESETS)

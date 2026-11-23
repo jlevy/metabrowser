@@ -79,7 +79,7 @@ import time
 from array import array
 from bisect import bisect_left, bisect_right
 from collections import Counter
-from collections.abc import Awaitable, Callable, Iterator, Mapping
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from itertools import compress
@@ -108,7 +108,7 @@ from metabrowser.file_extensions import (
 from metabrowser.file_kinds import classify_by_ext
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.file_type_legend import build_file_type_legend
-from metabrowser.file_type_match import name_matches_types, semantic_extension_tokens
+from metabrowser.file_type_match import name_matches_types, semantic_extension_tokens, type_tally
 from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.folder_discovery import choose_readme_name
 from metabrowser.fs_paths import derive_ext
@@ -170,8 +170,6 @@ log = logging.getLogger(__name__)
 
 _NOT_FOUND = {"error": "Not found"}
 _PATCH_EXTS = (".patch", ".diff")
-# Same cap as ``PythonInventoryStore.navigation_tallies``.
-_GIT_FILTER_TALLY_LIMIT = 200
 
 
 def _git_path_from_query(request: Request) -> GitPath:
@@ -1395,11 +1393,6 @@ def _git_extension_counts(exts: tuple[str, ...]) -> Counter[str]:
     return counts
 
 
-def _ranked_tally_rows(counts: Mapping[str, int]) -> list[list[object]]:
-    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-    return [[key, count, 0] for key, count in ranked[:_GIT_FILTER_TALLY_LIMIT]]
-
-
 def _git_tree_summary(index: GitBlobIndex | None) -> dict[str, int] | None:
     """Whole-tree tracked/ignored split. Omit when sizes are incomplete."""
 
@@ -1439,43 +1432,12 @@ def _git_tree_index_chrome(
     payload["type_presets"] = preset_rows
     if index is None:
         return payload
-    registry = load_file_type_registry()
-    extension_counts: Counter[str] = Counter()
-    canonical_counts: Counter[str] = Counter()
-    family_counts: Counter[str] = Counter()
-    preset_counts: Counter[str] = Counter({preset["id"]: 0 for preset in FILTER_TYPE_PRESETS})
-    normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
-    for preset in FILTER_TYPE_PRESETS:
-        extensions: set[str] = set()
-        names: set[str] = set()
-        for value in preset["values"]:
-            normalized = ascii_casefold(value)
-            (extensions if normalized.startswith(".") else names).add(normalized)
-        normalized_presets.append((preset["id"], frozenset(extensions), frozenset(names)))
-    for (rel, _oid), ext in zip(index.blobs, exts, strict=True):
-        name = ascii_casefold(_blob_display_name(rel))
-        classification = registry.classify(name, ext)
-        if ext:
-            extension_counts[ext] += 1
-            canonical_counts[classification.canonical_extension or ext] += 1
-            if classification.family_id is not None:
-                family_counts[classification.family_id] += 1
-        semantic_category = classification.group_id
-        for preset_id, preset_extensions, preset_names in normalized_presets:
-            if preset_id == semantic_category or ext in preset_extensions or name in preset_names:
-                preset_counts[preset_id] += 1
-    payload["extensions"] = _ranked_tally_rows(extension_counts)
-    payload["canonical_extensions"] = _ranked_tally_rows(canonical_counts)
-    payload["type_families"] = [
-        [family_id, count, 0]
-        for family_id, count in sorted(
-            family_counts.items(),
-            key=lambda item: (-item[1], item[0]),
+    payload.update(
+        type_tally(
+            ((_blob_display_name(rel), ext),)
+            for (rel, _oid), ext in zip(index.blobs, exts, strict=True)
         )
-    ]
-    payload["type_presets"] = [
-        [preset["id"], preset_counts[preset["id"]], 0] for preset in FILTER_TYPE_PRESETS
-    ]
+    )
     return payload
 
 

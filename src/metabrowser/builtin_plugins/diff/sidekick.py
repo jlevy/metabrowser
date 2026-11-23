@@ -66,7 +66,12 @@ from metabrowser.diff.format import (
     Totals,
     dump_document,
 )
-from metabrowser.file_type_match import change_matches_types, semantic_extension_tokens
+from metabrowser.file_type_match import (
+    change_matches_types,
+    change_sides,
+    semantic_extension_tokens,
+    type_tally,
+)
 from metabrowser.git.process import (
     GitError,
     GitLocation,
@@ -111,6 +116,10 @@ MAX_HYDRATED_FILES = 50
 
 # A revision compares against its first parent; only two endpoints choose a base.
 _TWO_ENDPOINT_POLICIES = frozenset({BasePolicy.direct.value, BasePolicy.merge_base.value})
+
+# What a comparison request may answer instead of its document: "" is the document, and
+# "types" the File type counts the diff view's menu reads.
+_COMPARISON_VIEWS = frozenset({"", "types"})
 
 # A commit ID in full: SHA-1 or SHA-256. Anything else names what it names now.
 _FULL_COMMIT_ID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
@@ -337,6 +346,10 @@ async def comparison_at(
     is applied, so the hydrated files are the first matching ones. Totals are then the
     kept files'; ``truncated`` still says the listing stopped at its own bound, past
     which a matching file may exist.
+    ``&view=types`` answers the comparison's File type counts instead of a document
+    (``_type_tally_answer``), for the diff view's File type menu: the rows the Files
+    tab's menu reads, over every listed change whatever ``types`` and ``file`` say, so
+    the menu does not shrink as the reader narrows.
     On a pinned revision, ``HEAD`` is that object id.
 
     A request naming two commit IDs on a store sends an entity tag that names the build
@@ -354,6 +367,14 @@ async def comparison_at(
     right = request.query_params.get("right", "").strip()
     base_policy = request.query_params.get("base_policy", "").strip()
     types = parse_types(request.query_params.getlist("types"))
+    view = request.query_params.get("view", "")
+    if view not in _COMPARISON_VIEWS:
+        return _error(
+            "diff_comparison",
+            "view is types, or absent for the comparison itself.",
+            400,
+            path=revision or f"{left}..{right}",
+        )
     if base_policy and (revision or base_policy not in _TWO_ENDPOINT_POLICIES):
         return _error(
             "diff_comparison",
@@ -388,12 +409,17 @@ async def comparison_at(
     revalidate = False
     if kept_key is not None:
         # A narrowed answer is kept apart from the whole one. With no types the key is the
-        # one it was, so a whole comparison's tag does not move.
+        # one it was, so a whole comparison's tag does not move. The counts depend on the
+        # listing alone, so every request for them shares one key.
         answer_key = (
-            *kept_key,
-            wanted_file,
-            str(max_initial_files),
-            *((",".join(types),) if types else ()),
+            (*kept_key, "", "view=types")
+            if view == "types"
+            else (
+                *kept_key,
+                wanted_file,
+                str(max_initial_files),
+                *((",".join(types),) if types else ()),
+            )
         )
         # The body identity includes the initial hydration count: callers share the
         # manifest, but a PR page and a generic comparison can draw different prefixes.
@@ -449,6 +475,11 @@ async def comparison_at(
             else await shared_comparison_manifest(kept_key, listed)
         )
         resolved, manifest = comparison.resolved, comparison.manifest
+        if view == "types":
+            tally = await asyncio.to_thread(_type_tally_answer, resolved, manifest)
+            return await _send_body(
+                request, bytes(JSONResponse(tally).body), answer_key, headers, body_generation
+            )
         projected: list[FileChange] = []
         hydrate_ids: list[str] = []
         semantic = semantic_extension_tokens(types)
@@ -522,11 +553,38 @@ async def comparison_at(
     # A large answer is seconds of serializing and compressing, so neither is done on the
     # event loop: 29 MB took 712 ms to serialize, measured in explorations/performance-loop.
     body = await asyncio.to_thread(_json_body, document)
+    return await _send_body(request, body, answer_key, headers, body_generation)
+
+
+async def _send_body(
+    request: Request,
+    body: bytes,
+    answer_key: tuple[str, ...] | None,
+    headers: dict[str, str],
+    generation: object,
+) -> Response:
+    """Send *body*, kept under *answer_key* when the comparison is one that is kept."""
+
     if answer_key is None:
         return Response(body, media_type="application/json")
     encoded = await asyncio.to_thread(encode_body, body)
-    _COMPARISONS.remember_body(answer_key, encoded, generation=body_generation)
+    _COMPARISONS.remember_body(answer_key, encoded, generation=generation)
     return await _encoded_response(request, encoded, headers)
+
+
+def _type_tally_answer(
+    resolved: ResolvedComparison, manifest: ChangeSetManifest
+) -> dict[str, object]:
+    """A comparison's File type counts: every listed change, once under each type either
+    of its sides has (``file_type_match.type_tally``). ``truncated`` says the listing
+    stopped at its bound, so the counts are of the listed files."""
+
+    return {
+        "comparison_id": resolved.comparison_id,
+        "files": len(manifest.files),
+        "truncated": manifest.truncated,
+        **type_tally(change_sides(change) for change in manifest.files),
+    }
 
 
 def _listed_totals(changes: list[FileChange]) -> Totals:

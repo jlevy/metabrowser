@@ -446,3 +446,151 @@ status: 404
 Error: /api/plugin/diff/comparison?revision=HEAD&types=.md&file=src/app.py returned HTTP 404
 ? 1
 ```
+
+## Test: `view=types` answers the comparison’s File type counts
+
+The rows the Files tab’s File type menu reads, over every listed change: the diff view’s
+menu lists only the types its comparison has, with these counts.
+A change counts once under each type either side has, so the rename counts under `.md`
+and `.txt`. Neither side of a comparison has gitignored files, so the third column is 0.
+
+```console
+$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&view=types'
+api: /api/plugin/diff/comparison?revision=HEAD&view=types
+status: 200
+{
+  "comparison_id": "git:bd4f1215f4c76ca6",
+  "files": 4,
+  "truncated": false,
+  "extensions": [
+    [
+      ".md",
+      2,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".md",
+      2,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "markdown",
+      2,
+      0
+    ],
+    [
+      "images",
+      1,
+      0
+    ],
+    [
+      "plain-text",
+      1,
+      0
+    ],
+    [
+      "python",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "docs",
+      2,
+      0
+    ],
+    [
+      "code",
+      1,
+      0
+    ],
+    [
+      "data",
+      0,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      1,
+      0
+    ]
+  ]
+}
+? 0
+```
+
+## Test: the counts do not narrow with the selection
+
+The menu keeps every type while the reader narrows, so `types=` and `file=` change
+nothing here: the answer below its address line is the whole comparison’s.
+
+```console
+$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&view=types' > whole.txt
+? 0
+```
+
+```console
+$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&view=types&types=.md&file=README.md' > narrowed.txt
+? 0
+```
+
+```console
+$ tail -n +2 whole.txt > whole-body.txt && tail -n +2 narrowed.txt | cmp - whole-body.txt && echo same
+same
+? 0
+```
+
+## Test: an unknown view is refused
+
+```console
+$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&view=tally'
+api: /api/plugin/diff/comparison?revision=HEAD&view=tally
+status: 400
+{
+  "error": "diff_comparison",
+  "message": "view is types, or absent for the comparison itself.",
+  "path": "HEAD"
+}
+Error: /api/plugin/diff/comparison?revision=HEAD&view=tally returned HTTP 400
+? 1
+```

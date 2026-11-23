@@ -502,6 +502,89 @@ status: 200
 ? 0
 ```
 
+## Test: a pull request’s File type counts
+
+`view` passes through as `types` does, so the Changes tab’s File type menu counts a pull
+request’s files from the same route its diff comes from.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&view=types'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&view=types
+status: 200
+{
+  "comparison_id": "git:9479019c56eedd23",
+  "files": 2,
+  "truncated": false,
+  "extensions": [
+    [
+      ".md",
+      1,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".md",
+      1,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "markdown",
+      1,
+      0
+    ],
+    [
+      "plain-text",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "docs",
+      2,
+      0
+    ],
+    [
+      "code",
+      0,
+      0
+    ],
+    [
+      "data",
+      0,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      0,
+      0
+    ]
+  ]
+}
+? 0
+```
+
 ## Test: a merged pull request compares from its base.sha
 
 ```console
