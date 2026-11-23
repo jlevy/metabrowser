@@ -148,6 +148,7 @@ async def pull_handler(request: Request) -> Response:
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
         envelope_etag,
+        follow_adopted_head,
         note_full_record,
         pull_answer,
         pull_host,
@@ -216,6 +217,7 @@ async def pull_handler(request: Request) -> Response:
         _drop_core_preview(envelope)
     if envelope["record"] is not None:
         note_full_record(view)
+        follow_adopted_head(view, envelope)
     if view.kept is not None:
         view.kept.saw_record(
             envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
@@ -454,6 +456,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     )
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
+        follow_adopted_head,
         note_full_record,
         pull_answer,
         pull_host,
@@ -499,6 +502,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
         _drop_core_preview(envelope)
     if envelope["record"] is not None:
         note_full_record(view)
+        follow_adopted_head(view, envelope)
     if view.kept is not None:
         view.kept.saw_record(
             envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness

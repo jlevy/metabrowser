@@ -408,8 +408,12 @@ and on 2026-11-22 for a pull request’s head (bead `mb-6a6w`).
 - **The server follows:** `MirrorSession.observe`, which runs after every refresh job
   and after following another process’s, opens the ref’s new tip under the pin lock and
   serves it under a new generation.
-  So the server never serves a branch behind where the mirror has it, a page or none
-  open, and Files and the Commits tab, which walks the default branch, agree.
+  A pull request’s record that another process published reaches this server only when
+  its pull route reads it, so a read whose record names another head than a pin on that
+  pull request’s head starts one observation (`follow_adopted_head` in
+  `builtin_plugins/github/pull_route.py`, `MirrorSession.observe_pull_head`). So the
+  server never serves a branch behind where the mirror has it, a page or none open, and
+  Files and the Commits tab, which walks the default branch, agree.
   A ref the origin deleted is not followed; its last commit stays served, and the row
   says the ref is gone.
 - **The page follows:** `static/source-freshness.js` sees on its next poll that the ref

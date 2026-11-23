@@ -1939,6 +1939,41 @@ def test_a_commit_pinned_by_its_id_stays_when_the_pull_request_it_heads_moves(
         git_repo.clear_repo_cache()
 
 
+def test_a_record_another_process_published_moves_the_pin_on_that_pull_requests_head(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two servers on one store: the one that only reads the other's record follows too.
+
+    The other process's refresh fetched the newer head into the shared store and wrote the
+    record. This server ran no job, so nothing observed the mirror; the read that adopts
+    the record asks for that (A7 of review A on #745).
+    """
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    monkeypatch.setattr(pulls, "utc_now", lambda: datetime.now(UTC).replace(microsecond=0))
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    _move_pull_head(stand, earlier)
+    stand.answer(_answering_head(stand, earlier))
+    try:
+        result = _serve(f"{CANONICAL}/pull/7")
+        assert result.exit_code == 0, result.output
+        with TestClient(app) as client:
+            assert settle(client)["pin"] == earlier
+            _move_pull_head(stand, head)
+            stand.answer(scenario(stand.origin))
+            time.sleep(1.1)  # A record's time has one-second resolution; this one is newer.
+            assert stand.refresh(7).pull.head.sha == head
+            assert client.get("/api/source/status").json()["pin"] == earlier
+            assert _read(client, 7).json()["record"]["pull"]["head"]["sha"] == head
+            deadline = time.monotonic() + 30
+            while client.get("/api/source/status").json()["pin"] != head:
+                assert time.monotonic() < deadline, "the pin did not follow the adopted head"
+                time.sleep(0.01)
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+
+
 def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:

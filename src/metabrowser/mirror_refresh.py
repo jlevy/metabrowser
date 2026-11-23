@@ -1584,6 +1584,9 @@ class MirrorSession(StoreSession):
         # (:meth:`_follows`) and attends no pull request. A request that names the ref, by
         # name or as ``under``, follows it. The owner decided this (mb-cww9).
         self._by_id = False
+        # The pull request head last observed for, on a record another process published
+        # (:meth:`observe_pull_head`), so each such record starts one observation.
+        self._head_observed: tuple[int, str] | None = None
         self._pin_lock = asyncio.Lock()
         # The keys of the pull-request jobs started, some of which may have ended.
         self._pull_jobs: set[str] = set()
@@ -1669,6 +1672,34 @@ class MirrorSession(StoreSession):
         """Whether the served pin moves with its ref: a ref that follows, asked for by name."""
 
         return follows_moves(subject.ref) and not self._by_id
+
+    def observe_pull_head(self, number: int, head: str) -> None:
+        """A record read from disk names *head* for pull request *number*; follow it.
+
+        This server's own pull job observes the mirror when it ends. A record another
+        process published was fetched into the same store by that process, and nothing
+        here observed it, so a pin on that pull request's head stayed on the earlier one
+        until this server's next job of any kind. One observation is started for each
+        such head, off the request that read the record; it finds the ref where the other
+        process left it and follows. A pin that does not follow, or is at *head*, asks
+        for nothing.
+        """
+
+        subject = self.served()
+        if (
+            subject is None
+            or subject.ref != f"refs/pull/{number}/head"
+            or subject.commit_oid == head
+            or not self._follows(subject)
+            or self._head_observed == (number, head)
+            or self.pull_refreshing(number)
+        ):
+            return
+        self._head_observed = (number, head)
+        try:
+            self._coordinator.start(f"{self.mirror.key}:observe", self.observe, network=False)
+        except RuntimeError:
+            log.debug("not observing an adopted head: the server is closing")
 
     async def _follow_ref(self) -> None:
         # Under the pin lock, as a switch is: a reader's switch that ran meanwhile is the
