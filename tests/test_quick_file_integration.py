@@ -335,9 +335,10 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     sdk = (proc_browser.STATIC_DIR / "plugin-sdk.js").read_text()
     composition = (proc_browser.STATIC_DIR / "view-composition.js").read_text()
     types = (proc_browser.STATIC_DIR / "types.d.ts").read_text()
-    treemap = (
-        proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder" / "treemap.js"
-    ).read_text()
+    folder = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    treemap = (folder / "treemap.js").read_text()
+    treemap_map = (folder / "treemap-map.js").read_text()
+    compact = (folder / "treemap-compact.js").read_text()
 
     assert "navigation: global.MetabrowserNavigationRoute.navigation" in sdk
     assert "function openPath(" not in sdk
@@ -357,8 +358,10 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     assert "options.views.find((view) => view.id === options.preferredViewId)" in composition
     assert "options.views.find((view) => view.default)" in composition
 
-    assert 'const TREEMAP_VIEW_ID = "treemap";' in treemap
+    assert 'export const TREEMAP_VIEW_ID = "treemap";' in treemap_map
     assert "mb.navigation.open({ path: cell.path }, { viewId: TREEMAP_VIEW_ID })" in treemap
+    # A compact map's cell opens the Treemap view at its folder.
+    assert "{ viewId: TREEMAP_VIEW_ID }" in compact
 
 
 def test_local_quick_file_modules_define_no_search_endpoint() -> None:
