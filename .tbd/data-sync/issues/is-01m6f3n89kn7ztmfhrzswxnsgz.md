@@ -3,9 +3,9 @@ type: is
 id: is-01m6f3n89kn7ztmfhrzswxnsgz
 title: "Review pull requests well on large repositories: fresh mirror and existing checkout"
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 120
+version: 123
 delegate: codex@spud10
 labels:
   - linear
@@ -96,10 +96,11 @@ child_order_hints:
   - is-01m7ey9zd5446r5ag56emsanha
   - is-01m7pn8phe80x1yskgq3v2kk6c
   - is-01m859498cg0bxa4ytprh2sy0y
+  - is-01m85b7xtjnda2ebxpvm9ptbmq
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-23T22:41:40.011Z
+updated_at: 2026-11-23T23:33:21.089Z
 started_at: 2026-11-07T05:39:51.585Z
 extensions:
   linear:
@@ -211,3 +212,5 @@ Scoped Unicode, reconnect, Treemap, QA document and SDK fixes delivered. PR/Git 
 2026-11-14 audit: stacks #302 and #339 are in v0.12.0; no activity on this epic or its open children since 2026-11-09, so back to open.
 
 2026-11-20 audit: Large-repository PR review shipped across the 0.12 line. Open: measured prefetching (mb-4ifm), quiet-machine timings (mb-jwfx), the Files workflow for working trees (mb-itzy moved to mb-1tvg), and the owner walk-through of real PRs (mb-i9ll). The eleven #527 follow-ups moved to mb-p9i5; mb-fu5b and mb-z849 were added.
+
+2026-11-23: first clones bounded by the cache volume's free space instead of a fixed size (mb-ckto), PR https://github.com/jlevy/metabrowser/pull/768.
