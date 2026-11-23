@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from typing import Any, cast
@@ -421,16 +422,119 @@ def test_zero_weight_tree_expands_level_by_level() -> None:
     assert nodes["a/x"]["children"] is None
 
 
+@pytest.mark.parametrize(
+    ("top", "max_nodes"),
+    [(0, 1_200), (1, 1_200), (7, 1_200), (200, 1_200), (200, 90), (6_000, 100_000)],
+)
+def test_selected_children_and_rest_match_a_full_sort(top: int, max_nodes: int) -> None:
+    """Selecting the leading children equals sorting every child, on a large directory.
+
+    The reference below sorts both rankings in full, interleaves them, emits up to the
+    limit, and sums every omitted child into ``rest``, as emission did before it selected.
+    Sizes repeat so that path breaks ties; heavy symlinks lead both rankings, so the
+    selection has to reach past them; some folders outweigh every file, so folders are
+    emitted beside a ``rest``; and some files and folders are ignored.
+    """
+
+    rng = random.Random(20261122)
+    probes: list[_RollupProbe] = [_dir("")]
+    for i in range(3_000):
+        probes.append(_file(f"f{i:04d}.py", rng.choice((0, 1, 2, 3, 5, 8, 13)), ignored=i % 7 == 0))
+    for i in range(400):
+        folder = f"d{i:03d}"
+        probes.append(_dir(folder, ignored=i % 5 == 0))
+        probes.extend(
+            _file(f"{folder}/g{j}.md", rng.choice((1, 2, 3, 40)), ignored=j == 0 and i % 3 == 0)
+            for j in range(rng.randint(0, 4))
+        )
+    for i in range(40):
+        probes.append(_file(f"s{i:02d}", 1_000_000, kind="symlink", ignored=i % 2 == 0))
+    entries = _probes(*probes)
+
+    root = _rollup_root(entries, depth=1, top=top, max_nodes=max_nodes)
+
+    children = [probe for probe in entries.values() if probe.parent == "" and probe.path]
+    expected_paths, expected_rest = _full_sort_reference(entries, children, min(top, max_nodes - 1))
+    assert [child["path"] for child in root["children"]] == expected_paths
+    assert root.get("rest") == expected_rest
+    # The fixture reaches the case it is for: folders emitted beside a rest.
+    if top == 200 and max_nodes == 1_200:
+        assert any(child["type"] == "dir" for child in root["children"]) and expected_rest
+        assert 0 < expected_rest["dirs"] < 400
+
+
+def _full_sort_reference(
+    entries: dict[str, _RollupProbe],
+    children: list[_RollupProbe],
+    emit_limit: int,
+) -> tuple[list[str], dict[str, int] | None]:
+    # Totals of each folder's files: (files, bytes, unignored files, unignored bytes).
+    subtree: dict[str, list[int]] = {
+        child.path: [0, 0, 0, 0] for child in children if child.type == "dir"
+    }
+    for probe in entries.values():
+        totals = subtree.get(probe.parent)
+        if totals is None or probe.type != "file":
+            continue
+        totals[0] += 1
+        totals[1] += probe.size
+        if not (entries[probe.parent].gitignored or probe.gitignored):
+            totals[2] += 1
+            totals[3] += probe.size
+
+    def all_weight(child: _RollupProbe) -> int:
+        return subtree[child.path][1] if child.type == "dir" else child.size
+
+    def visible_weight(child: _RollupProbe) -> int:
+        if child.type == "dir":
+            return subtree[child.path][3]
+        return 0 if child.gitignored else child.size
+
+    all_ranked = sorted(children, key=lambda child: (-all_weight(child), child.path))
+    visible_ranked = sorted(children, key=lambda child: (-visible_weight(child), child.path))
+    ordered: list[_RollupProbe] = []
+    seen: set[str] = set()
+    for pair in zip(all_ranked, visible_ranked, strict=True):
+        for child in pair:
+            if child.path not in seen:
+                seen.add(child.path)
+                ordered.append(child)
+    emitted: list[str] = []
+    omitted: list[_RollupProbe] = []
+    for child in ordered:
+        if len(emitted) >= emit_limit:
+            omitted.append(child)
+        elif child.type in ("dir", "file"):
+            emitted.append(child.path)
+    if not omitted:
+        return emitted, None
+    rest = {"dirs": 0, "files": 0, "size": 0, "unignored_files": 0, "unignored_size": 0}
+    for child in omitted:
+        if child.type == "dir":
+            files, size, visible_files, visible_size = subtree[child.path]
+            rest["dirs"] += 1
+        elif child.type == "file":
+            files, size = 1, child.size
+            visible_files, visible_size = (0, 0) if child.gitignored else (1, child.size)
+        else:
+            continue
+        rest["files"] += files
+        rest["size"] += size
+        rest["unignored_files"] += visible_files
+        rest["unignored_size"] += visible_size
+    return emitted, rest
+
+
 def _dir(path: str, *, ignored: bool = False) -> _RollupProbe:
     parent, _, name = path.rpartition("/")
     return _RollupProbe(path, parent, name or "root", "dir", "", 0, 1, ignored, 1)
 
 
-def _file(path: str, size: int = 1, *, ignored: bool = False) -> _RollupProbe:
+def _file(path: str, size: int = 1, *, ignored: bool = False, kind: str = "file") -> _RollupProbe:
     parent, _, name = path.rpartition("/")
     dot = name.rfind(".")
     ext = name[dot:] if dot > 0 else ""
-    return _RollupProbe(path, parent, name, "file", ext, size, 1, ignored, None)
+    return _RollupProbe(path, parent, name, kind, ext, size, 1, ignored, None)
 
 
 def _probes(*probes: _RollupProbe) -> dict[str, _RollupProbe]:

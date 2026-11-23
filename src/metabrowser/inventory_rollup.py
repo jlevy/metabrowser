@@ -320,17 +320,32 @@ def _ordered_children(
     children: Sequence[RollupEntry],
     aggregates: Mapping[str, _SubtreeAggregate],
     parent_ignored: bool,
+    emit_limit: int,
 ) -> list[RollupEntry]:
-    """Interleave all-file and visible-file rankings with stable path ties."""
+    """Return a prefix of the children in rollup order that holds *emit_limit* to emit.
 
-    all_ranked = sorted(children, key=lambda child: (-_all_weight(child, aggregates), child.path))
-    visible_ranked = sorted(
+    The order interleaves the all-file and visible-file rankings, with ties broken by path.
+    Interleaving the first ``m`` of each ranking gives a prefix of that order at least
+    ``m`` long. Only files and directories are emitted, so with ``m`` set to *emit_limit*
+    plus the number of other children (symlinks), the prefix holds *emit_limit* files and
+    directories or is every child. ``heapq.nsmallest`` selects each ranking's first ``m``
+    in the order a full sort gives, in O(n log m) rather than O(n log n); the measurement
+    is beside ``ROLLUP_MAX_DEPTH`` in ``settings.py``.
+    """
+
+    other_types = sum(1 for child in children if child.type not in ("dir", "file"))
+    span = min(len(children), emit_limit + other_types)
+    all_ranked = heapq.nsmallest(
+        span, children, key=lambda child: (-_all_weight(child, aggregates), child.path)
+    )
+    visible_ranked = heapq.nsmallest(
+        span,
         children,
         key=lambda child: (-_unignored_weight(child, aggregates, parent_ignored), child.path),
     )
     ordered: list[RollupEntry] = []
     seen: set[str] = set()
-    for index in range(len(children)):
+    for index in range(span):
         for ranked in (all_ranked, visible_ranked):
             child = ranked[index]
             if child.path not in seen:
@@ -384,22 +399,23 @@ def _emit_bounded_tree(
             node["children"] = None
             continue
 
-        children = _ordered_children(
-            children_by_parent.get(entry.path, ()),
-            aggregates,
-            ignored,
-        )
+        children = children_by_parent.get(entry.path, ())
+        emit_limit = min(options.top, remaining_nodes)
         emitted: list[dict[str, Any]] = []
-        omitted: list[RollupEntry] = []
-        for child in children:
-            if len(emitted) >= options.top or remaining_nodes <= 0:
-                omitted.append(child)
-                continue
+        emitted_entries: list[RollupEntry] = []
+        # Children emitted, or passed over as neither file nor directory, before the
+        # limit; every child after them folds into ``rest``.
+        placed = 0
+        for child in _ordered_children(children, aggregates, ignored, emit_limit):
+            if len(emitted) >= emit_limit:
+                break
+            placed += 1
             child_ignored = ignored or child.gitignored
             if child.type == "dir":
                 child_aggregate = aggregates[child.path]
                 child_node = _directory_node(child, child_aggregate, child_ignored, options)
                 emitted.append(child_node)
+                emitted_entries.append(child)
                 sequence += 1
                 heapq.heappush(
                     pending,
@@ -416,39 +432,51 @@ def _emit_bounded_tree(
                 remaining_nodes -= 1
             elif child.type == "file":
                 emitted.append(_file_node(child, ignored, options))
+                emitted_entries.append(child)
                 remaining_nodes -= 1
         node["children"] = emitted
-        if omitted:
-            node["rest"] = _rest_bucket(omitted, aggregates, ignored)
+        if placed < len(children):
+            node["rest"] = _rest_bucket(
+                aggregates[entry.path], children, emitted_entries, aggregates, ignored
+            )
     return root_node
 
 
 def _rest_bucket(
+    aggregate: _SubtreeAggregate,
     children: Sequence[RollupEntry],
+    emitted: Sequence[RollupEntry],
     aggregates: Mapping[str, _SubtreeAggregate],
     parent_ignored: bool,
 ) -> dict[str, int]:
+    """Total the children that were not emitted, as the directory's aggregate less those.
+
+    ``_aggregate_subtree`` makes a directory's aggregate the sum of its children, so
+    subtracting the emitted ones costs O(top) where summing the omitted ones walked them
+    all. Only the directory count reads every child, one type check each.
+    """
+
     rest = {
-        "dirs": 0,
-        "files": 0,
-        "size": 0,
-        "unignored_files": 0,
-        "unignored_size": 0,
+        "dirs": sum(1 for child in children if child.type == "dir"),
+        "files": aggregate.files_all,
+        "size": aggregate.size_all,
+        "unignored_files": aggregate.files_unignored,
+        "unignored_size": aggregate.size_unignored,
     }
-    for child in children:
+    for child in emitted:
         if child.type == "dir":
-            aggregate = aggregates[child.path]
-            rest["dirs"] += 1
-            rest["files"] += aggregate.files_all
-            rest["size"] += aggregate.size_all
-            rest["unignored_files"] += aggregate.files_unignored
-            rest["unignored_size"] += aggregate.size_unignored
-        elif child.type == "file":
-            rest["files"] += 1
-            rest["size"] += child.size
+            child_aggregate = aggregates[child.path]
+            rest["dirs"] -= 1
+            rest["files"] -= child_aggregate.files_all
+            rest["size"] -= child_aggregate.size_all
+            rest["unignored_files"] -= child_aggregate.files_unignored
+            rest["unignored_size"] -= child_aggregate.size_unignored
+        else:
+            rest["files"] -= 1
+            rest["size"] -= child.size
             if not (parent_ignored or child.gitignored):
-                rest["unignored_files"] += 1
-                rest["unignored_size"] += child.size
+                rest["unignored_files"] -= 1
+                rest["unignored_size"] -= child.size
     return rest
 
 

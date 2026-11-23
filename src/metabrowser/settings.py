@@ -268,6 +268,17 @@ TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
 # the same node budget, on the folders that hold the most. Twelve
 # levels is deeper than a treemap can draw (each nested level insets
 # its children by a few pixels).
+#
+# What depth does add is reach: a deep request can expand a large
+# directory far down, and expanding a directory visits every child.
+# Emission selects the leading ``top`` children rather than sorting
+# them all (``_ordered_children`` in inventory_rollup.py). Measured on
+# 2026-11-22 for a 100k-file directory at level 10, with warm
+# aggregates, depth 12 and top 200: a build_rollup took a median of
+# 0.36 s CPU when it sorted every child and 0.09 s when it selected,
+# with byte-identical output (11 interleaved runs each). The host was
+# heavily loaded (load average 245-295 on 10 CPUs), so the wall-clock
+# medians, 6.9 s and 1.5 s, measure the scheduler more than the work.
 ROLLUP_DEFAULT_DEPTH = 3
 ROLLUP_MAX_DEPTH = 12
 ROLLUP_DEFAULT_TOP = 40
