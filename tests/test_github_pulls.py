@@ -23,7 +23,7 @@ from dataclasses import field as dataclass_field
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, cast
 from unittest.mock import patch
 
 import pytest
@@ -6518,7 +6518,10 @@ def test_a_probe_of_unknown_mergeability_asks_the_pull_and_sees_github_answer(
         [(ISSUE_PATH, seen.etag if seen else None), (pull_path, record.etags[pull_path])]
     )
     # The repository moved and GitHub is still computing: the new ETag is kept.
-    base = {**computing["base"], "repo": {"pushed_at": "2026-09-17T11:59:00Z"}}
+    base = {
+        **cast("dict[str, Any]", computing["base"]),
+        "repo": {"pushed_at": "2026-09-17T11:59:00Z"},
+    }
     moved = ok(pull_path, {**computing, "base": base})
     stand.answer(_api(answers, pull_path, moved))
     still = _probe(stand, record, checks=False, seen=seen, mergeability=True)
