@@ -275,6 +275,13 @@ async function press(key, code, keyCode) {
 const listed = (heights) => chrome.evaluate(listedScript(heights));
 
 try {
+  // A headless page is not focused, so it fires no focus events, and the Files toolbar's
+  // own redraws, which take the selector out of the page and put it back
+  // (`keepAcrossRefills`), would not know which control to give focus back to. One that
+  // comes between a row's focus and a key, as the filter tallies' does when the root's
+  // summary arrives, puts focus in the filter box, and the key goes there. A reader's page
+  // has focus whenever they focus a row, so this page has it from the start (mb-gsz5).
+  await chrome.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await chrome.send("Page.navigate", { url: `${server.base}/view/` });
   await chrome.waitFor(
     `${MOUNTED} && document.querySelectorAll("#tree-content .tree-item").length > 0`,
@@ -397,10 +404,6 @@ try {
     await chrome.waitFor(`window.__asks > ${asks} && ${SETTLED}`, 15000);
     await chrome.evaluate(FRAMES);
   };
-  // A headless page is not focused, so it fires no focus events, and the Files toolbar's
-  // own redraws, which take the selector out of the page and put it back
-  // (`keepAcrossRefills`), would not know which control to give focus back to.
-  await chrome.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await openFilling();
   result.fillingBefore = await chrome.evaluate(VIEW_STATE);
   await chrome.evaluate(`(async () => {

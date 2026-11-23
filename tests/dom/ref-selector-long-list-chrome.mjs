@@ -182,6 +182,11 @@ async function press(key, code, keyCode) {
 }
 
 try {
+  // A headless page is not focused, so it fires no focus events, and a Files toolbar
+  // refill (`keepAcrossRefills`) between a row's focus and a key would put focus in the
+  // filter box, where the key would go. A reader's page has focus whenever they focus a
+  // row, so this page has it from the start (mb-gsz5).
+  await chrome.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await chrome.send("Page.navigate", { url: `${server.base}/view/` });
   await chrome.waitFor(
     `${MOUNTED} && document.querySelectorAll("#tree-content .tree-item").length > 0`,
