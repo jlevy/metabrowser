@@ -8,6 +8,10 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
 
 ## 0.13.0
 
+- Keep the navigation steady when its font arrives after the first paint.
+  On a slow load, the sidebar keeps the system font for that page so the tabs, filter
+  bar, and folder menu stay in place.
+
 - Center rendered Markdown, YAML, and JSON inside the diff box, with change markers
   along the left edge.
   Source follows the selected split or unified layout.
