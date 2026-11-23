@@ -9,7 +9,7 @@ exclude-newer-span = "P14D"
 [options.exclude-newer-package]
 flowmark-rs = "2026-07-16T00:00:00Z"
 softschema = "2026-09-11T06:03:53Z"
-kpress = "2026-11-17T03:00:00Z"
+kpress = "2026-11-23T01:00:00Z"
 
 [[package]]
 name = "annotated-doc"
@@ -284,8 +284,8 @@ wheels = [
 
 [[package]]
 name = "kpress"
-version = "0.3.9.dev8+5a8e9ae"
-source = { git = "https://github.com/jlevy/kpress?rev=5a8e9aed12d804cb0a9a2e65ffb350279ae469a8#5a8e9aed12d804cb0a9a2e65ffb350279ae469a8" }
+version = "0.3.9"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "frontmatter-format" },
     { name = "jinja2" },
@@ -295,6 +295,10 @@ dependencies = [
     { name = "nh3" },
     { name = "pygments" },
     { name = "strif" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f3/c2/cc65e1fe1884566faca04e1fa24b4e1dfb850ad386a589e52f656b803b9d/kpress-0.3.9.tar.gz", hash = "sha256:b15c3e42233859d563ee045075c224376ea53ddf4fbd1e38bde5becea30d09f1", size = 1788212, upload-time = "2026-11-23T00:48:12.638Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8e/88/240e2268645676fc63bfab37a3fb253870e0be884ac10db0e30528035e9c/kpress-0.3.9-py3-none-any.whl", hash = "sha256:d3d4cc33743ad5a18dabbdbeb1d20ed09697157cd4b6745c5dc4c244e7ef23f2", size = 1163100, upload-time = "2026-11-23T00:48:11.195Z" },
 ]
 
 [[package]]
@@ -453,7 +457,7 @@ requires-dist = [
     { name = "funlog", specifier = ">=0.2.1" },
     { name = "json5", specifier = ">=0.15.0" },
     { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "kpress", git = "https://github.com/jlevy/kpress?rev=5a8e9aed12d804cb0a9a2e65ffb350279ae469a8" },
+    { name = "kpress", specifier = "==0.3.9" },
     { name = "markdown-it-py", specifier = "==4.2.0" },
     { name = "pathspec", specifier = ">=1.1.1" },
     { name = "prettyfmt", specifier = ">=0.4.1" },

@@ -1,12 +1,9 @@
 import AppKit
 import ShellCore
 
-/// File > Open URL…: a panel with one field for a GitHub URL. What it takes, what it says,
-/// and when it closes are `OpenURLPanel`'s; this window shows that state and passes on
-/// the user's edits, Open, and Cancel. The app asks `metab` about a link Open accepted
-/// (`onOpen`), and answers with `answered(_:for:metab:)` or `handOff()`; an edit, Cancel,
-/// or closing the panel while it awaits that answer tells the app to stop asking
-/// (`onDrop`).
+/// File > Open URL… displays the submission's progress and errors under the field.
+/// It stays open until the app presents the repository's window. Editing or closing
+/// drops the current submission.
 ///
 /// A panel, so it never becomes the main window: the File and View items aimed at a
 /// folder's window still reach the window behind it.
@@ -15,19 +12,18 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
     private let field = NSTextField()
     private let message = NSTextField(wrappingLabelWithString: "")
     private let spinner = NSProgressIndicator()
+    private let progressLabel = NSTextField(labelWithString: "")
     private let openButton = NSButton(title: "Open", target: nil, action: nil)
     private let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
     private let content = NSStackView()
-    /// Open accepted the text: the app asks `metab` about the link.
-    private let onOpen: (URL) -> Void
-    /// The panel no longer awaits the answer about this link: the app stops its dry run.
-    private let onDrop: (URL) -> Void
+    private let onOpen: (OpenURLPanel.Request) -> Void
+    private let onDrop: (OpenURLPanel.Request) -> Void
 
     /// The panel's width, in points: a pull request's URL shows whole.
     private static let width: CGFloat = 520
     private static let margin: CGFloat = 20
 
-    init(onOpen: @escaping (URL) -> Void, onDrop: @escaping (URL) -> Void) {
+    init(onOpen: @escaping (OpenURLPanel.Request) -> Void, onDrop: @escaping (OpenURLPanel.Request) -> Void) {
         self.onOpen = onOpen
         self.onDrop = onDrop
         let window = NSPanel(
@@ -73,6 +69,9 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
+        spinner.setAccessibilityElement(false)  // the status text describes the work
+        progressLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        progressLabel.textColor = .secondaryLabelColor
         cancelButton.target = self
         cancelButton.action = #selector(cancelPanel(_:))
         cancelButton.keyEquivalent = "\u{1b}"
@@ -81,7 +80,9 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
         openButton.keyEquivalent = "\r"
         let buttons = NSStackView()
         buttons.orientation = .horizontal
+        buttons.alignment = .centerY
         buttons.addView(spinner, in: .leading)
+        buttons.addView(progressLabel, in: .leading)
         buttons.addView(cancelButton, in: .trailing)
         buttons.addView(openButton, in: .trailing)
         buttons.widthAnchor.constraint(equalToConstant: inner).isActive = true
@@ -111,27 +112,33 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
         window.makeFirstResponder(field)
     }
 
-    /// `metab` answered about `link`: the plan to open, which closes the panel, or nil,
-    /// with the panel saying why under the field.
-    func answered(_ answer: PresentAnswer, for link: URL, metab: String) -> PresentPlan? {
-        let plan = panel.answered(answer, for: link, metab: metab)
-        if plan != nil { window?.close() } else { render() }
+    func answered(_ answer: PresentAnswer, for request: OpenURLPanel.Request, metab: String) -> PresentPlan? {
+        let plan = panel.answered(answer, for: request, metab: metab)
+        render()
         return plan
     }
 
-    /// The link being checked, which goes to the link queue instead; the panel closes.
-    func handOff() -> URL? {
-        let link = panel.handOff()
-        if link != nil { window?.close() }
-        return link
+    func setWaitingForRuntime(_ waiting: Bool, for request: OpenURLPanel.Request) -> Bool {
+        guard panel.setWaitingForRuntime(waiting, for: request) else { return false }
+        render()
+        return true
+    }
+
+    func failed(_ reason: String, for request: OpenURLPanel.Request) {
+        panel.failed(reason, for: request)
+        render()
+    }
+
+    func presented(for request: OpenURLPanel.Request) {
+        if panel.presented(for: request) { window?.close() }
     }
 
     @objc private func openLink(_ sender: Any?) {
-        let link = panel.open()
+        let request = panel.open()
         // Open writes a GitHub URL typed without its scheme in full: the field shows it.
         if field.stringValue != panel.text { field.stringValue = panel.text }
         render()
-        if let link { onOpen(link) }
+        if let request { onOpen(request) }
     }
 
     @objc private func cancelPanel(_ sender: Any?) {
@@ -139,8 +146,13 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
     }
 
     private func render() {
+        field.isEnabled = panel.canEdit
         openButton.isEnabled = panel.canOpen
-        if panel.isChecking { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+        let progress = panel.progress
+        progressLabel.stringValue = progress ?? ""
+        progressLabel.isHidden = progress == nil
+        spinner.isHidden = progress == nil
+        if progress != nil { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
         message.stringValue = panel.message ?? ""
         message.isHidden = panel.message == nil
         fit()

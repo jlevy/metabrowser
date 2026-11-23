@@ -726,7 +726,8 @@
      a broad container such as .tree-pane. */
   --toggle-user-select: none;
 
-  /* Content spacing */
+  /* Content spacing: the main view's gutter and its block pad, here a narrow window's,
+     which wider windows step up (the rules after this block). */
   --content-padding-x: 24px;
   --content-padding-y: 16px;
   /* The room between a bordered box's edge and the prose in it, each side
@@ -1473,6 +1474,42 @@
   --git-ref-bg: oklch(95% 0.005 240);
 }
 
+/* The main view's gutter and block pad step up with the window, so a wide window's page is
+   not cramped against the navigation and the window's edge, and a narrow one keeps the
+   tight 24 px. Measured 2026-11-22 in Chrome 152 before these steps: the gutter was 24 px
+   at every window, 1.9% of a 1280 px window and 0.9% of a 2560 px one. Each step holds it
+   near 2% on the 8 px grid, 32 px at 1440 (2.2%), 40 at 1920 (2.1%), and 48 at 2560
+   (1.9%), and the block pad two thirds of it, rounded down to 4 px.
+
+   The window, not the main view, decides, so hiding or showing the navigation pane, which
+   changes the main view's width, never moves the gutter mid-toggle; the chevron
+   (`.nav-collapse-toggle`) stays centered in it. Every token made from these follows, as
+   the view header's top pad and corner inset do. A view header's narrow container
+   condition (`width < 680px`) is computed from the narrow gutter; a main view that
+   narrow in a stepped window comes only from dragging the navigation pane past the
+   window's width less 680 px, and there a title's first line beside the corner is up to
+   twice the step shorter than `--view-header-title-room`. */
+@media (min-width: 1440px) {
+  :root {
+    --content-padding-x: 32px;
+    --content-padding-y: 20px;
+  }
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --content-padding-x: 40px;
+    --content-padding-y: 24px;
+  }
+}
+
+@media (min-width: 2560px) {
+  :root {
+    --content-padding-x: 48px;
+    --content-padding-y: 32px;
+  }
+}
+
 [data-theme="dark"] {
   color-scheme: dark;
 
@@ -1755,10 +1792,8 @@ body {
    mixed-case, sans-serif at the tree-row size. It is Home: a click shows
    the folder's home view as a fresh load does (docs/design-system.md,
    "Home"). So it is a link in the navigation's vocabulary, a folder
-   crumb's: the hover surface under the name and the link-colored ring on
-   keyboard focus. The box is the name's own, never the row's, so the hover
-   and the tooltip under it belong to the name, and its inline padding is
-   given back by the margin, so the name starts where it always has. */
+   crumb's: the hover and focus surfaces wrap the mark and name. The
+   negative margins give the inline padding back to the row. */
 .header-path {
   font-weight: var(--weight-bold);
   letter-spacing: 0;
@@ -1769,10 +1804,14 @@ body {
   padding: 2px 4px;
   margin-inline: -4px;
   border-radius: var(--radius-chrome);
-  /* Truncates exactly as .file-header-path does, so both headers shorten
-     the same way when the panes are resized; it does not grow past the
-     name, and the menu keeps the far end. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex: 0 1 auto;
+  min-width: 0;
+}
+/* Shorten the name as the file heading does and keep the adjacent menu visible. */
+.header-home-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1786,11 +1825,8 @@ body {
    folder with Git's branch for a checkout, a folder with a dot for a plain folder
    (docs/design-system-icons.md, "Source Kinds"). The server writes its glyph into the
    markup (source_kind_marks.py), so it is there from the first paint with no script. It is a
-   glyph-only mark, not a control: its sentence is its tooltip and its accessible name, and
-   it sits outside the name's link, so the name's hover surface, focus ring, and tooltip
-   stay the name's own. The glyph size is --icon-glyph and its ink the muted one a folder's
-   header glyph takes, so the name stays the heading. The end margin takes 2px from the row's
-   gap, which the name's own padding adds to: the name starts 6px after the glyph. */
+   glyph-only mark within Home: its sentence is its tooltip and accessible name. It
+   uses the icon size and muted ink of a folder's header glyph. */
 .header-root-kind {
   flex: none;
   display: inline-flex;
@@ -1798,7 +1834,6 @@ body {
   justify-content: center;
   width: var(--icon-glyph);
   height: var(--icon-glyph);
-  margin-inline-end: -2px;
   color: var(--muted);
 }
 .header-root-kind > svg {
@@ -1822,11 +1857,11 @@ body {
 /* The commit is the identity and must stay visible, so on a narrow column the
    ref is what gives way. Its own rule: an engine without :has() drops a whole
    selector list, and then the heading simply truncates as before. */
-.header-path:has(> .header-revision) {
+.header-home-name:has(> .header-revision) {
   display: flex;
   align-items: baseline;
 }
-.header-path:has(> .header-revision) > .path {
+.header-home-name:has(> .header-revision) > .path {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1835,6 +1870,10 @@ body {
 .root-details {
   margin-inline-start: -4px;
   flex: none;
+  color: var(--text);
+  font-weight: var(--weight-normal);
+  letter-spacing: normal;
+  text-transform: none;
 }
 .root-details-trigger {
   list-style: none;
@@ -1858,10 +1897,16 @@ body {
   inset-inline: 8px;
   max-height: min(60vh, 28rem);
   overflow: auto;
-  color: var(--text);
-  font-weight: var(--weight-normal);
-  letter-spacing: normal;
-  text-transform: none;
+}
+.root-details-ref-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.root-details-branch {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 .root-details:not([open]) > .root-details-panel,
 .root-details-panel [hidden],
@@ -1888,7 +1933,7 @@ body {
 .root-details-links {
   border-top: 1px solid var(--border);
 }
-.app-header .root-details-panel a.menu-item {
+.app-header .root-details a.menu-item {
   color: var(--text);
 }
 /* ── Text buttons — shared labelled action primitive ─────────────
@@ -3322,6 +3367,31 @@ html.theme-anim .menu {
     transition: none;
   }
 }
+/* A reading column, centered while the pane is hidden (docs/design-system.md, "Hiding the
+   Navigation Pane"). The frame then has the window, and a capped column at the gutter
+   left the rest of it empty at its end: a 1,031 px document and its table of contents
+   left 876 px at 1920 px and 1,516 px at 2560 (Chrome 152, 2026-11-22). A view whose body
+   is such a column says how wide it is, gutters excluded, as `--reading-unit` on the main
+   view's children (`.preview-pane > *`), where `@container kpress-doc` reaches; the
+   Markdown and folder plugins do, in the wide band. `--reading-inset` is then what puts
+   the unit in the middle of the pane's content box, the scrollbar's gutter outside it,
+   beyond the gutter every view keeps; the header's rows, the tab bar, and the body add it
+   to their start, so the title, the tabs, and the column keep one edge, and the header's
+   corner stays at the frame's end. A view with no unit, source and tables among them,
+   gets 0, and so does every view while the pane is in the layout.
+
+   It is a registered length: computed on the main view's children, where `cqi` is the
+   pane's, it is pixels from there down, so a document's wide table reads the same value,
+   and static/nav-collapse.js reads it back to glide the content by its change as the
+   frame slides, rather than let the content jump as the layout changes. */
+@property --reading-inset {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+.container[data-nav-collapsed] .preview-pane > * {
+  --reading-inset: max(0px, (100cqi - var(--reading-unit, 100cqi)) / 2 - var(--content-padding-x));
+}
 
 .resizing {
   cursor: col-resize;
@@ -3862,7 +3932,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   flex-shrink: 0;
-  padding-left: var(--content-padding-x);
+  padding-left: calc(var(--content-padding-x) + var(--reading-inset, 0px));
 }
 .tab-btn {
   padding: var(--file-tab-padding-top) var(--file-tab-padding-x) var(--file-tab-padding-bottom);
@@ -4784,7 +4854,8 @@ a.tab-btn {
   gap: 6px;
   min-width: 0;
   height: var(--pane-header-row-height);
-  padding-inline: var(--content-padding-x);
+  padding-inline: calc(var(--content-padding-x) + var(--reading-inset, 0px))
+    var(--content-padding-x);
   border-bottom: 1px solid var(--border);
   font-size: var(--nav-font-size);
 }
@@ -4829,6 +4900,7 @@ a.tab-btn {
   gap: 8px;
   min-width: 0;
   padding: var(--view-header-padding-top) var(--content-padding-x) 0;
+  padding-inline-start: calc(var(--content-padding-x) + var(--reading-inset, 0px));
 }
 /* The icon a navigation row draws for the item, at the title's size, as a pull
    request's state icon is in its title. */
@@ -5377,6 +5449,7 @@ a.tab-btn {
 .content-body {
   flex: 1;
   padding: var(--content-padding-y) var(--content-padding-x);
+  padding-inline-start: calc(var(--content-padding-x) + var(--reading-inset, 0px));
 }
 .metabrowser-kpress-host {
   background: var(--bg);
@@ -5473,8 +5546,9 @@ a.tab-btn {
 }
 /* A page's header, a commit's summary and a pull request's (docs/design-system.md, "Page
    Headers"): its title, then its lines, the first `--page-title-gap` under the title, as a
-   view header's metadata line is after its title, and each after it 6 px under the one
-   before. The title is as tall as its lines: a commit's subject held two lines, so the
+   view header's metadata line is after its title. The remaining rows use the line gap.
+   A size line can use additional margin on both sides, drawn from the end padding.
+   The title is as tall as its lines: a commit's subject held two lines, so the
    diff under a one-line subject started where it starts under a two-line one, and the
    held line stood between the subject and its author, 34 px of space where a two-line
    subject had 4 (mb-wcbc). Every line under the title is a `.page-header-line` at the body
@@ -5485,6 +5559,8 @@ a.tab-btn {
    takes the line's, as a short commit ID does everywhere (Short Commit IDs). */
 .page-header {
   --page-header-line-gap: 6px;
+  --page-header-size-margin: 0px;
+  --page-header-end-padding: calc(var(--content-padding-y) - 2 * var(--page-header-size-margin));
   display: flex;
   flex-direction: column;
   gap: var(--page-header-line-gap);
@@ -5495,6 +5571,9 @@ a.tab-btn {
 .page-header-line {
   min-height: 1lh;
   font-size: var(--body-font-size);
+}
+.page-header > .page-header-size {
+  margin-block: var(--page-header-size-margin);
 }
 
 /* Reading width: the one bridge from --doc-measure (the app's resolved reading
@@ -7926,11 +8005,8 @@ pre.code-block.metabrowser-source-lines > code {
   --icon-btn-size: 20px;
 }
 
-/* The page's lines under its subject, each a page header's line at the body size
-   (`.page-header-line`), in a pull request's header's order (docs/design-system.md, "Page
-   Headers"): the author, as the shell's identity; the revision and its refs, where a pull
-   request has its branches, which wrap under it when there are many; and the age, muted,
-   "Committed 3d ago", where a pull request has its row of ages. */
+/* The author, revision and refs, and committed age each use the shared page-header
+   line at the body size (docs/design-system.md, "Page Headers"). */
 .git-commit-byline,
 .git-commit-revision-line,
 .git-commit-ages {
@@ -8289,10 +8365,18 @@ pre.code-block.metabrowser-source-lines > code {
   place-items: center;
   width: var(--icon-box);
   max-width: 100%;
-  background: var(--viz-surface-raised);
+  background: color-mix(in srgb, var(--viz-surface-raised) 86%, transparent);
   color: var(--muted);
   opacity: 0;
   pointer-events: none;
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast);
+}
+@media (prefers-reduced-motion: reduce) {
+  .git-ref-menu-caret {
+    transition: none;
+  }
 }
 .git-ref-menu-caret > svg {
   width: min(12px, 100%);

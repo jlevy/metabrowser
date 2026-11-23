@@ -185,6 +185,42 @@ else
   fail "a stale macOS requirement stopped write_cask for another reason: $(cat "$work/out")"
 fi
 
+# slices_of and require_slices, on what the real lipo prints for binaries compiled here:
+# the image's name is taken from it. lipo ends a list of several with a space
+# ("x86_64 arm64 "), which normalize_arches reads as it reads ARCHES.
+echo 'int main(void) { return 0; }' >"$work/main.c"
+if xcrun clang -arch arm64 -o "$work/thin" "$work/main.c" 2>"$work/out" &&
+  xcrun clang -arch x86_64 -arch arm64 -o "$work/fat" "$work/main.c" 2>>"$work/out"; then
+  if [[ "$(slices_of "$work/thin")" == "arm64" && "$(slices_of "$work/fat")" == "arm64 x86_64" &&
+    "$(arch_label_for "$(lipo -archs "$work/fat")")" == universal ]]; then
+    pass "slices_of reads lipo's list for an arm64 binary and a universal one, in the canonical order"
+  else
+    fail "slices_of read '$(slices_of "$work/thin")' and '$(slices_of "$work/fat")' from lipo's '$(lipo -archs "$work/thin")' and '$(lipo -archs "$work/fat")'"
+  fi
+  if stops require_slices "$work/thin" "arm64 " && stops require_slices "$work/fat" "x86_64 arm64"; then
+    pass "a binary with the slices asked for passes, however the request is written"
+  else
+    fail "require_slices refused the slices asked for: $(cat "$work/out")"
+  fi
+  if stops require_slices "$work/thin" "arm64 x86_64"; then
+    fail "an arm64 binary passed as the universal one asked for"
+  elif grep -q "has the slices 'arm64', but 'arm64 x86_64' was asked for" "$work/out"; then
+    pass "an arm64 binary where a universal one was asked for stops the build"
+  else
+    fail "an arm64 binary stopped require_slices for another reason: $(cat "$work/out")"
+  fi
+else
+  fail "clang could not compile the slice fixtures: $(cat "$work/out")"
+fi
+# A system binary's arm64e slice is one no release of the app has.
+if stops slices_of /usr/bin/true; then
+  fail "slices_of accepted /usr/bin/true's slices: $(cat "$work/out")"
+elif grep -q "which is not a supported architecture" "$work/out"; then
+  pass "a slice outside the supported architectures stops, by name"
+else
+  fail "/usr/bin/true stopped slices_of for another reason: $(cat "$work/out")"
+fi
+
 # build-icon.sh --check:
 # On a copy of the reject fixtures with one more, sorted last, that the renderer accepts:
 # every real fixture is refused for its reason, the accepted one stops the check, and

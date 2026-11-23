@@ -1200,7 +1200,7 @@ async function run() {
   assertContains(
     "detail: the size line above the Diff summary says the file count",
     previewHtml,
-    '<div class="git-commit-size page-header-line"><span class="change-size-line">' +
+    '<div class="git-commit-size page-header-line page-header-size"><span class="change-size-line">' +
       '<span class="summary-number">2</span> files changed',
   );
   assertTrue(

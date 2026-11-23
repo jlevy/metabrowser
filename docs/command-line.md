@@ -108,6 +108,9 @@ until Ctrl-C.
   [security policy](../SECURITY.md).
   The bound name is allowed by the server’s Host-header check, and
   `METABROWSER_ALLOWED_HOSTS` adds others.
+  An IPv6 address works too, bare or in brackets: `--host ::1` serves at
+  `http://[::1]:<port>/view/`. A wildcard, `0.0.0.0` or `::`, prints a loopback address,
+  and `::` accepts IPv4 connections as well as IPv6.
 - **Content trust:** `--untrusted`, `--no-active-content`, and `--allow-edits` set how
   far served content is trusted; see [Content Trust](#content-trust).
 - **`--plugins-dir DIR`:** load the plugins in `DIR` too; see [plugins](plugins.md).

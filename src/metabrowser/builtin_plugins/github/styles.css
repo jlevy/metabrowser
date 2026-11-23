@@ -25,9 +25,9 @@
   padding: 0;
   color: var(--text);
 }
-/* A page header (`.page-header`, static/styles.css): the title, then its lines, the first
-   `--page-title-gap` under the title and the rest 6 px apart. Its top pad is a view
-   header's, the corner's inset (below), so the title's first line is the corner's line.
+/* The state and ages sit `--page-title-gap` below the title. The shared page header
+   spaces the remaining lines, with extra room around the size line. The top pad aligns
+   the title's first line with the corner control.
 
    The header's box is decided at first paint: each row is one line in every state and on
    every tab, and the title its own one or two, so the tab bar under it never moves between
@@ -35,15 +35,16 @@
    controls they hold, not pixels measured in one engine. Measured in Chrome 152 before
    this: the header ranged from 137.6 to 202.6 px, and the tab bar moved on 26 of 26
    switches between PRs. A record's title held two lines too, and its held second line
-   stood between a one-line title and the author's line, 36.5 px of space where a two-line
-   title had 6 (mb-wcbc); the title cut short at two lines is a page title's height, one
-   line or two, and the author's line `--page-title-gap` under it (`.page-header`). So a
-   switch between pull requests whose titles take different lines moves the tab bar by the
-   difference, as their content differs. The title while the record is on its way is the
+   stood between a one-line title and the first metadata line, 36.5 px of space where a
+   two-line title had 6 (mb-wcbc). One- and two-line titles take their own height, so
+   switching between them moves the tab bar by one line. The title while the record is on its way is the
    Pulls tab's row's, or holds two lines that a record seen landing keeps (below), so a
    record lands moving nothing. */
 .github-pull-header {
-  padding: var(--view-header-padding-top) var(--content-padding-x) var(--content-padding-y);
+  padding: var(--view-header-padding-top) var(--content-padding-x) var(--page-header-end-padding);
+}
+.github-pull-header:has(> .page-header-size) {
+  --page-header-size-margin: calc(var(--page-header-line-gap) / 2);
 }
 /* A cold header seen with its title "Pull request #7", held at two lines (below) for want
    of the Pulls tab's row to title it with, has the record's title keep the two lines for
@@ -231,15 +232,12 @@
   min-width: 0;
   min-height: var(--ui-row-height);
 }
-/* The size line above the Diff summary (docs/design-system.md, "Change Size Line"): a row as
-   tall as the summary's, whether it holds the pending placeholder or the line, so the line
-   arriving moves nothing; one line, cut short at the row's end in a narrow pane, as the
-   summary's breakdown is, so it never wraps under the tabs' feet. */
+/* The shared page-header line holds either the change sizes or their placeholder.
+   The size text is cut short in a narrow pane without wrapping under the tabs. */
 .github-pull-size {
   display: flex;
   align-items: center;
   min-width: 0;
-  min-height: var(--ui-row-height);
 }
 .github-pull-size > .change-size-line {
   min-width: 0;
@@ -286,7 +284,7 @@
   display: flex;
   align-self: stretch;
   align-items: center;
-  min-height: var(--ui-row-height);
+  min-height: inherit;
   font-size: var(--body-font-size);
 }
 .github-pull-summary-pending > .tally-pending {

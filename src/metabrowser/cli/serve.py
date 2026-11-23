@@ -40,7 +40,11 @@ from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.git.process import stop_process_groups
-from metabrowser.server_utils import listen_on_available_local_port, port_search_range
+from metabrowser.server_utils import (
+    listen_on_available_local_port,
+    port_search_range,
+    url_host,
+)
 from metabrowser.source import subject_open_failure
 from metabrowser.view_routes import format_view_href
 
@@ -430,12 +434,12 @@ def _serve_on(
     # the Host-validation boundary. Wildcard binds accept every interface,
     # so the printed URL, readiness probe, and auto-open use loopback
     # (which the allowlist always permits) instead of an unroutable
-    # 0.0.0.0-style name.
+    # 0.0.0.0-style name, and an IPv6 literal is bracketed (`url_host`).
     server._register_allowed_host(host)
     delivery.serve_locally(
         local_client and delivery.loopback_host(host) and not delivery.remote_session(os.environ)
     )
-    display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
+    display_host = url_host(host, listener)
     url = f"http://{display_host}:{actual_port}{view_href}"
 
     # Recorded once the root is attached and a port is found, so a root that cannot be

@@ -14,14 +14,15 @@
 // (docs/design-system.md, "Source Kind Marks"):
 //
 // - the box is in the page from its markup, `--icon-glyph` square, before the name and
-//   outside its link, centered on the name's line, and its glyph arrives in that box
+//   in the same Home link, centered on the name's line, and its glyph arrives in that box
 //   without moving the name;
 // - the glyph is the one the server wrote for the kind (static/source-kind-glyphs.json), drawn
 //   in `--muted`, and the three kinds draw three shapes, none of them the ordinary folder's;
 // - the main pane's header for the root leads with that same glyph, and the header of a folder
 //   inside the root with the ordinary folder's, so a root is never drawn as an ordinary folder;
 // - its tooltip shows over it, and is its accessible name; and
-// - the adjacent disclosure opens details for the source and dismisses with Escape.
+// - the mark and name open Home; the adjacent chevron opens details and dismisses on a
+//   repeated click, an outside click, or Escape.
 //
 // It saves one screenshot of the navigation's top for each kind in each theme. Each step
 // writes `phase <name> <ms since start>` to stderr, so a slow run says where.
@@ -68,7 +69,7 @@ const check = (label, ok, detail = "") => {
 // kind. A glyph is compared as the browser serializes it, not as the file spells it.
 const READ = `(() => {
   const mark = document.getElementById("header-root-kind");
-  const name = document.querySelector(".header-path");
+  const name = document.querySelector(".header-home-name");
   const rect = (element) => {
     const box = element.getBoundingClientRect();
     return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height };
@@ -97,7 +98,7 @@ const READ = `(() => {
     label: mark.getAttribute("aria-label"),
     tip: mark.dataset.tipText,
     focusable: mark.tabIndex >= 0,
-    inLink: name.contains(mark),
+    inLink: name.closest("#header-home").contains(mark),
     box: rect(mark),
     name: rect(name),
     glyphPx: parseFloat(root.getPropertyValue("--icon-glyph")),
@@ -136,12 +137,147 @@ async function open(url) {
   );
 }
 
-async function hover(selector) {
-  const point = await browser.evaluate(`(() => {
+async function pointFor(selector) {
+  return browser.evaluate(`(() => {
     const box = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
     return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
   })()`);
-  await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
+}
+
+async function hover(selector) {
+  await browser.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    ...(await pointFor(selector)),
+  });
+}
+
+async function click(selector, button = "left") {
+  const point = await pointFor(selector);
+  await browser.send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    ...point,
+    button,
+    clickCount: 1,
+  });
+  await browser.send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    ...point,
+    button,
+    clickCount: 1,
+  });
+}
+
+const TRIGGER = "#root-details > summary";
+const MENU_OPEN = 'document.getElementById("root-details").open';
+
+async function checkCheckoutDetails() {
+  const chip = "#root-details .root-details-branch button";
+  const revisionCopy = "#root-details .git-commit-revision-copy";
+  const menu = "#root-details > [data-ref-action-menu]";
+  const state = await browser.evaluate(`(() => {
+    const chip = document.querySelector(${JSON.stringify(chip)});
+    const id = document.querySelector("#root-details .git-commit-sha");
+    const copy = document.querySelector(${JSON.stringify(revisionCopy)});
+    const { branch, revision } = window.METABROWSER_REPOSITORY_CONTEXT;
+    return {
+      chip: chip.matches(".git-ref-local.git-ref-head"),
+      branch, revision,
+      text: id.textContent,
+      shortRevision: window.metabrowser.shortCommit(revision),
+      font: getComputedStyle(id).fontFamily,
+      ariaLabel: copy.getAttribute("aria-label"),
+      owned: window.MetabrowserPluginHost.isOwnedDelegate(copy),
+    };
+  })()`);
+  check(
+    "checkout details show the shared local branch chip and short monospace commit",
+    state.chip &&
+      state.text === state.shortRevision &&
+      state.font.includes("monospace") &&
+      state.ariaLabel === "Copy revision" &&
+      state.owned,
+    JSON.stringify(state),
+  );
+  const narrow = await browser.evaluate(`(() => {
+    const pane = document.getElementById("tree-pane");
+    const width = pane.style.width;
+    pane.style.width = "180px";
+    const chip = document.querySelector(${JSON.stringify(chip)});
+    const label = chip.querySelector(".git-ref-label");
+    const panel = chip.closest(".root-details-panel");
+    const fits = chip.getBoundingClientRect().right <= panel.getBoundingClientRect().right;
+    const clipped = label.scrollWidth > label.clientWidth;
+    pane.style.width = width;
+    return fits && clipped;
+  })()`);
+  check("a long branch stays inside the narrow folder details", narrow);
+  await hover("#root-details .git-commit-sha");
+  await browser.waitFor(
+    `getComputedStyle(document.querySelector(${JSON.stringify(revisionCopy)})).opacity === "1"`,
+    STEP_MS,
+  );
+  await browser.evaluate(`Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async (text) => { window.rootDetailsClipboard = text; } },
+  })`);
+  await click(revisionCopy);
+  check(
+    "the commit copy button copies the full revision and leaves the menu open",
+    (await browser.evaluate("window.rootDetailsClipboard")) === state.revision &&
+      (await browser.evaluate(MENU_OPEN)),
+  );
+  await click(chip);
+  await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) !== null`, STEP_MS);
+  const menuState = await browser.evaluate(`(() => {
+    const root = document.getElementById("root-details");
+    const menu = document.querySelector(${JSON.stringify(menu)});
+    return {
+      open: root.open && menu.contains(document.activeElement),
+      label: menu.getAttribute("aria-label"),
+      labels: [...menu.querySelectorAll(".menu-item")].map(item => item.textContent),
+      url: menu.querySelector("a")?.href,
+    };
+  })()`);
+  check(
+    "the nested branch menu has its context, focus, and shared actions",
+    menuState.open &&
+      menuState.label === `Local branch ${state.branch}` &&
+      menuState.labels.join("|") === "Copy Branch Name|View This Branch|Open on GitHub" &&
+      menuState.url === `https://github.com/Octo/Demo/tree/refs/heads/${state.branch}`,
+    JSON.stringify(menuState),
+  );
+  await click(`${menu} button`);
+  check(
+    "copying the branch from the nested menu keeps the root details open",
+    (await browser.evaluate("window.rootDetailsClipboard")) === state.branch &&
+      (await browser.evaluate(MENU_OPEN)),
+  );
+  const escaped = await browser.evaluate(`(() => {
+    document.activeElement.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape", bubbles: true, cancelable: true,
+    }));
+    return ${MENU_OPEN} && document.activeElement.matches(${JSON.stringify(chip)}) &&
+      document.querySelector(${JSON.stringify(menu)}) === null;
+  })()`);
+  check("the first Escape closes only the branch menu and restores chip focus", escaped);
+  await click(chip);
+  await click(chip);
+  check(
+    "clicking the same branch chip closes only its menu",
+    await browser.evaluate(
+      `${MENU_OPEN} && document.querySelector(${JSON.stringify(menu)}) === null`,
+    ),
+  );
+  await click(chip);
+  await click(TRIGGER);
+  await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) === null`, STEP_MS);
+  check(
+    "closing folder details clears the nested menu and its expanded state",
+    await browser.evaluate(`!(${MENU_OPEN}) &&
+      document.querySelector(${JSON.stringify(chip)}).getAttribute("aria-expanded") === "false"`),
+  );
+  await browser.evaluate("delete navigator.clipboard");
+  await click(TRIGGER);
 }
 
 const TOOLTIP = `(() => {
@@ -182,8 +318,8 @@ for (const theme of ["light", "dark"]) {
       JSON.stringify({ role: at.role, label: at.label, tip: at.tip, focusable: at.focusable }),
     );
     check(
-      `${where}: the mark is a box of its own, not inside the name's link`,
-      !at.inLink && at.box.right <= at.name.left + TOLERANCE_PX,
+      `${where}: the mark is before the name in the same Home link`,
+      at.inLink && at.box.right <= at.name.left + TOLERANCE_PX,
       JSON.stringify({ box: at.box, name: at.name }),
     );
     check(
@@ -240,18 +376,57 @@ for (const theme of ["light", "dark"]) {
     );
     await screenshot(`root-kind-${kind}-${theme}-tooltip.png`);
 
-    await hover(".header-path");
+    await hover(".header-home-name");
     await browser.waitFor(`(${TOOLTIP}) === null`, STEP_MS);
+    const closedRotation = await browser.evaluate(
+      'getComputedStyle(document.querySelector("#root-details summary svg")).rotate',
+    );
+    await click(TRIGGER);
+    if (kind === "folder" && theme === "light") {
+      check("the chevron opens the menu", await browser.evaluate(MENU_OPEN));
+      await click(TRIGGER);
+      check("clicking the same chevron closes the menu", !(await browser.evaluate(MENU_OPEN)));
+      await click(TRIGGER);
+      await browser.evaluate(`(() => {
+        const outside = document.getElementById("settings-btn");
+        outside.addEventListener("pointerdown", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }, { once: true });
+        outside.addEventListener("click", (event) => event.stopPropagation(), { once: true });
+      })()`);
+      await click("#settings-btn");
+      check(
+        "a click on another control closes the menu despite stopped propagation",
+        !(await browser.evaluate(MENU_OPEN)),
+      );
+      // Clear the newly opened Settings menu and return to the closed root menu.
+      await click("#settings-btn");
+      await browser.evaluate(`(() => {
+        const outside = document.getElementById("settings-btn");
+        outside.addEventListener("pointerdown", (event) => event.preventDefault());
+        outside.addEventListener("contextmenu", (event) => event.preventDefault(), { once: true });
+      })()`);
+      for (const button of ["middle", "right"]) {
+        await browser.evaluate(`document.getElementById("root-details").open = false`);
+        await click(TRIGGER);
+        check(
+          `an outside ${button} click starts with the menu open`,
+          await browser.evaluate(MENU_OPEN),
+        );
+        await click("#settings-btn", button);
+        check(`an outside ${button} click closes the menu`, !(await browser.evaluate(MENU_OPEN)));
+      }
+      await browser.evaluate(`document.getElementById("root-details").open = false`);
+      await click(TRIGGER);
+    }
     const details = await browser.evaluate(`(() => {
       const root = document.getElementById("root-details");
       const summary = root.querySelector("summary");
       const caret = summary.querySelector("svg");
-      const closedRotation = getComputedStyle(caret).rotate;
-      summary.focus();
-      summary.click();
       return {
         open: root.open,
-        closedRotation,
+        closedRotation: ${JSON.stringify(closedRotation)},
         openRotation: getComputedStyle(caret).rotate,
         local: root.querySelector(".root-details-local").innerText,
         source: root.querySelector(".root-details-source").innerText,
@@ -286,13 +461,14 @@ for (const theme of ["light", "dark"]) {
       );
       const links = await browser.evaluate(`(async () => {
         const panel = document.querySelector(".root-details-panel");
-        const copy = panel.querySelector("button");
-        const link = panel.querySelector("a");
+        const copy = panel.querySelector(".root-details-actions button");
+        const link = panel.querySelector(".root-details-actions a");
         let copied;
         Object.defineProperty(navigator, "clipboard", {
           configurable: true,
           value: { writeText: async (text) => { copied = text; } },
         });
+        copy.focus();
         copy.click();
         await Promise.resolve();
         delete navigator.clipboard;
@@ -303,6 +479,7 @@ for (const theme of ["light", "dark"]) {
           labels: [copy.innerText, link.innerText],
           glyphs: [copy, link].map(item => item.querySelector(".menu-item-icon svg") !== null),
           owner: [copy, link].every(window.MetabrowserPluginHost.isOwnedDelegate),
+          focusedInside: panel.closest("details").open && document.activeElement === copy,
           result: panel.querySelector('[role="status"]').textContent,
         };
       })()`);
@@ -314,9 +491,13 @@ for (const theme of ["light", "dark"]) {
           links.labels.join("|") === "Copy Link|Open in Browser" &&
           links.glyphs.every(Boolean) &&
           links.owner &&
+          links.focusedInside &&
           links.result === "Link copied",
         JSON.stringify(links),
       );
+      if (theme === "light") {
+        await checkCheckoutDetails();
+      }
     } else {
       const hasActions = await browser.evaluate(
         'document.querySelector("#root-details").hasAttribute("data-repository-url")',
@@ -354,6 +535,50 @@ check(
   "a folder inside the root leads its header with the ordinary folder's glyph",
   inside.headerGlyph === inside.folderGlyph && inside.headerGlyph !== inside.drawn,
   JSON.stringify({ header: inside.headerGlyph, ordinary: inside.folderGlyph }),
+);
+
+for (const selector of ["#header-root-kind", ".header-home-name"]) {
+  await open(`${pages.folder}docs`);
+  const startingPath = await browser.evaluate("location.pathname");
+  await click(TRIGGER);
+  const afterMenu = await browser.evaluate(`({ path: location.pathname, open: ${MENU_OPEN} })`);
+  check(
+    `the chevron opens details without navigating before clicking ${selector}`,
+    afterMenu.open && startingPath !== "/view/" && afterMenu.path === startingPath,
+    JSON.stringify({ startingPath, afterMenu }),
+  );
+  await click(selector);
+  await browser.waitFor('location.pathname === "/view/"', STEP_MS);
+  check(`${selector} navigates Home and dismisses details`, !(await browser.evaluate(MENU_OPEN)));
+}
+
+// An HTML preview has its own browsing context and its clicks do not reach the shell.
+await browser.send("Page.enable");
+await browser.send("Page.addScriptToEvaluateOnNewDocument", {
+  source: `window.addEventListener("message", (event) => {
+    const frame = document.querySelector("iframe.file-html-preview");
+    if (event.data === "root-kind-preview-ready" && event.source === frame?.contentWindow) {
+      frame.dataset.loaded = "true";
+    }
+  });`,
+});
+await open(`${pages.folder}preview.html`);
+await browser.waitFor(
+  `(() => {
+    const frame = document.querySelector("iframe.file-html-preview[data-loaded]");
+    if (!frame) return false;
+    const box = frame.getBoundingClientRect();
+    return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === frame;
+  })()`,
+  STEP_MS,
+);
+await click(TRIGGER);
+check("the chevron opens beside a sandboxed HTML preview", await browser.evaluate(MENU_OPEN));
+await click("iframe.file-html-preview");
+await browser.waitFor('document.activeElement.matches("iframe.file-html-preview")', STEP_MS);
+check(
+  "a click in the preview dismisses the menu and leaves focus in the preview",
+  !(await browser.evaluate(MENU_OPEN)),
 );
 
 // The three kinds are three shapes, and none is the ordinary folder's.

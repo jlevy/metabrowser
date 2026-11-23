@@ -41,7 +41,7 @@ has not finished. This judges the record:
   the title's baseline (mb-tatf), at its tokens' end inset and height, inside the room the
   title's first line leaves it from first paint; in a main view too narrow for that room
   beside a title, on the eyebrow's row instead, centered on its line, inside the room the
-  eyebrow's end leaves it; its link and its menu's Open in Browser the item's page on github.com at the checkout's commit, through
+  eyebrow's end leaves it; its link and its menu’s Open in Browser use the item’s GitHub page through
   the hooks the macOS app reads, in the text ink with a muted chevron in a joined chip
   group's frame, at a chip's size rather than the title's; its menu, opened with a click
   and walked with the arrow keys, Home, End, Escape, and Tab, every item on top where it
@@ -151,13 +151,14 @@ def _served(root: Path) -> tuple[Path, str]:
     (notes / "arch-views-models-routes.md").write_text("# Routes\n", encoding="utf-8")
     (root / "CONTRIBUTING.md").write_text("# Contributing\n", encoding="utf-8")
     (root / "README.md").write_text("# Served\n", encoding="utf-8")
-    _git(root, "init", "-q", "--initial-branch=main", ".")
+    _git(root, "init", "-q", "--initial-branch=trunk", ".")
     _git(root, "remote", "add", "origin", "https://github.com/octo/demo.git")
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "Serve a long note")
     # Origin has the commit, as a fetch would have it, so every committed page has a
     # counterpart (src/metabrowser/counterpart.py).
     _git(root, "update-ref", "refs/remotes/origin/trunk", "HEAD")
+    _git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
     commit = _git(root, "rev-parse", "HEAD")
     # A file the checkout does not track, which has none.
     (notes / "draft.txt").write_text("Not committed.\n", encoding="utf-8")
@@ -217,8 +218,12 @@ def test_the_corner_leaves_a_narrow_title_its_row() -> None:
     assert heading is not None
     gap = re.search(r"\bgap: ([\d.]+)px;", heading.group(1))
     assert gap is not None
+    # The narrow gutter, the root rule's: wider windows step it up (styles.css), and a main
+    # view this narrow is a narrow window's unless the navigation pane is dragged wide.
+    root = re.search(r"(?m)^:root \{([^}]*)\}", css)
+    assert root is not None
     want = (
-        2 * _token_px(css, "--content-padding-x")
+        2 * _token_px(root.group(1), "--content-padding-x")
         + _token_px(css, "--page-title-font-size")
         + float(gap.group(1))
         + _token_px(css, "--view-header-corner-room")
@@ -228,13 +233,13 @@ def test_the_corner_leaves_a_narrow_title_its_row() -> None:
 
 
 def _links(commit: str) -> dict[str, str]:
-    """Each page's counterpart: the item's tree or blob at the checkout's commit."""
+    """Each page's counterpart at the origin's default branch or an explicit commit."""
 
     return {
-        "file": f"{_REPOSITORY}/blob/{commit}/docs/notes/a-long-name-for-a-view-header-title.md",
-        "folder": f"{_REPOSITORY}/tree/{commit}/docs/notes",
-        "root": f"{_REPOSITORY}/tree/{commit}",
-        "wrapped": f"{_REPOSITORY}/blob/{commit}/docs/notes/{_WRAPPED}",
+        "file": f"{_REPOSITORY}/blob/trunk/docs/notes/a-long-name-for-a-view-header-title.md",
+        "folder": f"{_REPOSITORY}/tree/trunk/docs/notes",
+        "root": _REPOSITORY,
+        "wrapped": f"{_REPOSITORY}/blob/trunk/docs/notes/{_WRAPPED}",
         "commit": f"{_REPOSITORY}/commit/{commit}",
     }
 
@@ -641,7 +646,8 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert absent["answered"] and absent["marked"], f"{name}: {absent}"
         assert absent["children"] == 0, f"{name}: {absent}"
         assert absent["titleRoom"] == _px(first_tokens["--view-header-corner-room"]), absent
-        assert absent["eyebrowRoom"] == _px(first_tokens["--content-padding-x"]), absent
+        # The gutter steps with the window, so the one where the page was measured.
+        assert absent["eyebrowRoom"] == absent["gutter"], absent
 
     # A name the heading row's whole width holds is one line whatever the main view's width:
     # below the container width the corner is on the eyebrow's row and the title has the
@@ -695,10 +701,9 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         # page, whatever the subject's lines (mb-wcbc).
         title_gap = page["firstLine"]["top"] - page["subject"]["bottom"]
         assert title_gap == _px(tokens["--page-title-gap"]), f"{name}: {title_gap}"
-        assert (
-            abs(view["right"] - button["right"] - _px(tokens["--view-header-corner-inset-end"]))
-            <= TOLERANCE_PX
-        ), f"{name}: {button} {view}"
+        assert abs(view["right"] - button["right"] - _px(page["cornerInsetEnd"])) <= TOLERANCE_PX, (
+            f"{name}: {button} {view}"
+        )
         assert abs(button["height"] - _px(tokens["--view-header-corner-height"])) <= TOLERANCE_PX
         if page["pane"] >= 1180:
             assert page["subjectRoom"] == 0, f"{name}: the subject keeps its width"

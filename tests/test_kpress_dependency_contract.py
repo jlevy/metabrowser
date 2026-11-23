@@ -152,7 +152,8 @@ def test_markdown_uses_the_kpress_toc_only_when_the_document_has_one(
     assert table["min-width"] == "100%"
     assert (
         " ".join(table["max-width"].split())
-        == "calc(100cqw - 2 * (var(--content-padding-x) + var(--kpress-column-inset)))"
+        == "calc( 100cqw - 2 * (var(--content-padding-x) + var(--kpress-column-inset)) -"
+        " var(--reading-inset, 0px) )"
     )
 
 

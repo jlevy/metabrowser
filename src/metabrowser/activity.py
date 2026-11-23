@@ -9,6 +9,7 @@ the provider contract and publishes the resulting state through the sparse overl
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
@@ -37,27 +38,24 @@ class FileActivityTracker:
         # path -> (last fingerprint, monotonic time of the last observed change)
         self._state: dict[str, tuple[tuple[int, int], float]] = {}
 
-    def poll_observations(self, paths: list[Path]) -> ActivityPoll:
-        """Re-stat *paths* and report activity plus actual metadata transitions.
+    def poll_observations(self, paths: Iterable[str]) -> ActivityPoll:
+        """Re-stat the absolute *paths* and report activity plus metadata transitions.
 
-        First observations establish a baseline and do not count as writes. Paths no
-        longer supplied are pruned, while a supplied path that vanished is reported so
-        the inventory provider can verify the deletion.
+        A path's first observation establishes its baseline and does not count as a
+        write. The baseline is kept until :meth:`forget` drops it, so a caller may ask
+        about a different subset on every poll and a later poll still sees what changed
+        in between. A supplied path that vanished is reported so the inventory provider
+        can verify the deletion.
         """
 
         now = monotonic()
-        requested = {str(path) for path in paths}
-        for stale in self._state.keys() - requested:
-            del self._state[stale]
-
         active: list[str] = []
         observed: list[tuple[str, int, int]] = []
         modified: list[tuple[str, int, int]] = []
         missing: list[str] = []
-        for path in paths:
-            key = str(path)
+        for key in paths:
             try:
-                stat_result = path.stat()
+                stat_result = os.stat(key)
             except OSError:
                 self._state.pop(key, None)
                 missing.append(key)
@@ -82,6 +80,12 @@ class FileActivityTracker:
             modified=tuple(modified),
             missing=tuple(missing),
         )
+
+    def forget(self, paths: Iterable[str]) -> None:
+        """Drop the baselines of *paths* that are no longer candidates."""
+
+        for key in paths:
+            self._state.pop(key, None)
 
     @staticmethod
     def check_pid_alive(pid_path: Path) -> bool:

@@ -73,6 +73,10 @@ const MOTION_REVEAL = /^\s*--motion-reveal:\s*([^;]+);/m.exec(
 )[1];
 // The navigation pane's width in the stand-in, which lays nothing out: the slide runs it.
 const NAV_PANE_WIDTH = 300;
+// A centered reading column's inset with the pane hidden, `--reading-inset` in styles.css,
+// which the stand-in, laying nothing out, sets as the stylesheet would: the content's glide
+// runs it.
+const READING_INSET = 415;
 const liftApp = (name) => {
   const match = appSource.match(new RegExp(`\\nfunction ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`));
   if (!match) {
@@ -215,6 +219,13 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     if (node === frame) {
       return Object.assign(Object.create(style), { transform: frameTransform() });
     }
+    if (node === column) {
+      const inset = app.hasAttribute("data-nav-collapsed") ? READING_INSET : 0;
+      return Object.assign(Object.create(style), {
+        getPropertyValue: (name) => (name === "--reading-inset" ? `${inset}px` : ""),
+        transform: glideTransform(),
+      });
+    }
     if (!node.hasAttribute?.("aria-keyshortcuts")) {
       return style;
     }
@@ -228,6 +239,11 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       },
       get direction() {
         return style.direction;
+      },
+      // A toggle reads where a box in the main view is laid out and drawn.
+      getPropertyValue: (name) => style.getPropertyValue(name),
+      get transform() {
+        return style.transform;
       },
     };
   };
@@ -337,12 +353,12 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       document,
       "a",
       {
-        "aria-labelledby": "header-home-label header-home",
+        "aria-labelledby": "header-home-label header-home-name",
         class: "header-path",
         href: "/view/",
         id: "header-home",
       },
-      "squares",
+      element(document, "span", { class: "header-home-name", id: "header-home-name" }, "squares"),
     ),
     element(document, "span", { hidden: "", id: "header-home-label" }, "Home:"),
   );
@@ -368,6 +384,10 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     id: "nav-collapse-toggle",
     type: "button",
   });
+  // A reading column in the main view's body, which the stylesheet centers with the pane
+  // hidden, and which static/nav-collapse.js finds by its place in the main view.
+  const column = element(document, "article", { class: "kpress-doc" });
+  preview.append(element(document, "div", { class: "content-body" }, column));
   const frame = element(document, "div", { class: "preview-frame" }, preview, navToggleButton);
   const app = element(document, "div", { class: "app" }, navPane, selectorHost, frame);
   document.body.append(app);
@@ -379,7 +399,12 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   const slides = [];
   const offsetOf = (keyframe) =>
     Number.parseFloat(/translate3d\((-?[\d.]+)px/.exec(keyframe.transform)?.[1] ?? "0");
-  frame.animate = (keyframes, timing) => {
+  /**
+   * Web Animations' `animate`, held at the share of its way the session sets.
+   *
+   * @param {any[]} list
+   */
+  const animator = (list) => (keyframes, timing) => {
     let resolve = () => {};
     let reject = () => {};
     const slide = {
@@ -387,6 +412,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       to: offsetOf(keyframes.at(-1)),
       duration: timing.duration,
       easing: timing.easing,
+      fill: timing.fill ?? "none",
       progress: 0,
       state: "running",
       finished: new Promise((onFinish, onCancel) => {
@@ -405,15 +431,30 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
         resolve(slide);
       },
     };
-    slides.push(slide);
+    // Web Animations marks a cancelled animation's `finished` promise handled, so cancelling
+    // one that nothing awaits, as a glide is, raises nothing.
+    slide.finished.catch(() => {});
+    list.push(slide);
     return slide;
   };
+  frame.animate = animator(slides);
+  // The column's glide beside the frame's slide, which static/nav-collapse.js runs on what
+  // app.js names as the content a centered column moves.
+  /** @type {any[]} */
+  const glides = [];
+  column.animate = animator(glides);
   const runningSlide = () => slides.find((slide) => slide.state === "running") ?? null;
-  function frameTransform() {
-    const slide = runningSlide();
-    return slide
-      ? `matrix(1, 0, 0, 1, ${slide.from + (slide.to - slide.from) * slide.progress}, 0)`
+  const runningGlide = () => glides.find((glide) => glide.state === "running") ?? null;
+  /** @param {any} animation */
+  const matrixAt = (animation) =>
+    animation
+      ? `matrix(1, 0, 0, 1, ${animation.from + (animation.to - animation.from) * animation.progress}, 0)`
       : "none";
+  function frameTransform() {
+    return matrixAt(runningSlide());
+  }
+  function glideTransform() {
+    return matrixAt(runningGlide());
   }
   const navCollapse = context.MetabrowserNavCollapse.create({
     button: navToggleButton,
@@ -429,9 +470,10 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     },
     pane: navPane,
   });
-  /** The slide running now, as its ends and timing, or null. */
+  /** The slide running now, as its ends and timing, and the column's glide, or null. */
   function slide() {
     const running = runningSlide();
+    const glide = runningGlide();
     return (
       running && {
         from: running.from,
@@ -439,19 +481,27 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
         duration: running.duration,
         easing: running.easing,
         cancelled: slides.filter((each) => each.state === "cancelled").length,
+        glide: glide && {
+          from: glide.from,
+          to: glide.to,
+          duration: glide.duration,
+          fill: glide.fill,
+          cancelled: glides.filter((each) => each.state === "cancelled").length,
+        },
       }
     );
   }
-  /** Move the running slide to a share of its way. */
+  /** Move the running slide and glide to a share of their way. */
   function slideTo(progress) {
-    const running = runningSlide();
-    if (running) {
-      running.progress = progress;
+    for (const running of [runningSlide(), runningGlide()]) {
+      if (running) {
+        running.progress = progress;
+      }
     }
   }
-  /** End every running slide, as the time passing would, and let it settle. */
+  /** End every running slide and glide, as the time passing would, and let them settle. */
   async function finishSlides() {
-    for (const running of slides.filter((each) => each.state === "running")) {
+    for (const running of [...slides, ...glides].filter((each) => each.state === "running")) {
       running.finish();
     }
     await settle();
@@ -609,6 +659,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       );
     }
     staging.append(bar);
+    // The file's body, which holds the page's reading column.
+    staging.append(element(document, "div", { class: "content-body" }, column));
     preview.append(staging);
     return {
       commit() {

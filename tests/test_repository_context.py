@@ -123,8 +123,8 @@ def test_index_exposes_only_public_repository_identity(tmp_path: Path) -> None:
     assert str(tmp_path) not in match.group(1)
 
 
-def test_says_whether_origin_has_the_branch(tmp_path: Path) -> None:
-    """A link to the branch on github.com exists only where origin has the branch."""
+def test_recognizes_the_current_branch_on_origin(tmp_path: Path) -> None:
+    """Origin needs a matching tip or an explicit tracking relationship."""
 
     revision = "e" * 40
     _write_repository(
@@ -135,5 +135,15 @@ def test_says_whether_origin_has_the_branch(tmp_path: Path) -> None:
     remote = tmp_path / ".git" / "refs" / "remotes" / "origin"
     remote.mkdir(parents=True)
     (remote / "topic").write_text(f"{revision}\n")
+    context = discover_repository_context(tmp_path)
+    assert context is not None and context["branch_on_origin"] is True
+
+    (remote / "topic").write_text(f"{'a' * 40}\n")
+    context = discover_repository_context(tmp_path)
+    assert context is not None and context["branch_on_origin"] is False
+
+    config = tmp_path / ".git" / "config"
+    with config.open("a") as file:
+        file.write('[branch "topic"]\n\tremote = origin\n\tmerge = refs/heads/topic\n')
     context = discover_repository_context(tmp_path)
     assert context is not None and context["branch_on_origin"] is True

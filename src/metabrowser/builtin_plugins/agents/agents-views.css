@@ -113,6 +113,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  color: var(--muted);
 }
 
 /* A session's link: the design's Link, in every view that draws one (docs/design-system.md,

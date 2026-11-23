@@ -50,6 +50,26 @@
   /* KPress's desktop TOC uses a 15rem rail and a 3rem gap. Swap the
      grid tracks and keep its sticky navigation and narrow drawer. */
   @container kpress-doc (min-width: 75rem) {
+    /* A rendered document is a reading column, which the shell centers while the
+       navigation pane is hidden (`--reading-unit`, static/styles.css): the card, its text
+       at the measure inside the band's 2.5rem inset, and with a table of contents the
+       rail's gap and track beside it, the grid below. Only in this band: narrower, the
+       card is all the pane has room for, and KPress's floating TOC toggle keeps the
+       trailing gutter. */
+    .preview-pane:has(> .metabrowser-markdown-document[data-active-view="true"]) > * {
+      --reading-unit: calc(var(--doc-measure) + 2 * 2.5rem);
+    }
+
+    .preview-pane:has(
+        > .metabrowser-markdown-document[data-active-view="true"]
+          > .kpress-doc
+          > .kpress-doc-layout
+          > .kpress-toc
+      )
+      > * {
+      --reading-unit: calc(var(--doc-measure) + 2 * 2.5rem + 3rem + 15rem);
+    }
+
     .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout:has(> .kpress-toc) {
       grid-template-areas: "prose toc";
       grid-template-columns:
@@ -77,13 +97,19 @@
       grid-area: thumbnail;
     }
 
-    /* A wide table can use the trailing space in a single-column document.
+    /* A wide table can use the trailing space in a single-column document, up to the
+       card's inset from the pane's end, wherever a centered column starts.
        With a TOC it scrolls inside the card to leave the rail available. */
     .metabrowser-markdown-document > .kpress-doc
       .kpress-table-wrap[data-kpress-table-scale="wide"] {
       left: 0;
       margin-inline: 0;
-      max-width: calc(100cqw - 2 * (var(--content-padding-x) + var(--kpress-column-inset)));
+      max-width: calc(
+        100cqw -
+        2 *
+        (var(--content-padding-x) + var(--kpress-column-inset)) -
+        var(--reading-inset, 0px)
+      );
       min-width: 100%;
       transform: none;
       width: max-content;

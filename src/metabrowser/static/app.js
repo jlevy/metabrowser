@@ -252,20 +252,15 @@ function pathBaseName(path) {
 }
 
 /**
- * Settle the navigation heading once the tree has loaded. A folder shows the
- * served root's name from the tree payload. A pinned revision keeps the heading
- * the server rendered from its session, its name, or a pin with no mirror's ref
- * and short commit: the tree's root there is the empty GitPath, which has no name
- * to show.
+ * Update the folder name from the tree payload. A pinned revision keeps the
+ * server-rendered heading because its GitPath root is empty.
  */
 function renderServedRootHeading(pathEl, root) {
   if (!pathEl || isGitRevisionSource()) {
     return;
   }
-  // Home draws the tree again, and with it this; rewriting the same name under a pointer
-  // resting on it would replace the nodes it is over for nothing. The name's text is
-  // compared, not markup: `esc` writes a quote as an entity, and the element's own
-  // serialization does not, so a name with one never compared equal.
+  // Keep the name's nodes under the pointer on Home redraws. Compare text
+  // because the browser and esc() serialize quoted names differently.
   if (pathEl.textContent !== pathBaseName(root)) {
     pathEl.innerHTML = pathBaseHtml(root);
   }
@@ -1144,7 +1139,7 @@ async function loadTree(options = {}) {
       observeFileAges(data.ages);
       knownFileCatalog?.observeInitialTree(data.tree);
       var pathEl = queryHtml(".header-path");
-      renderServedRootHeading(pathEl, data.root);
+      renderServedRootHeading(queryHtml("#header-home-name"), data.root);
       var rootTally = rootTallyFromTopLevel(data.tree);
       var newestMtime = rootTally.newestMtime;
       var summaryFiles = rootTally.files;
@@ -2230,10 +2225,20 @@ function initRootDetails() {
     location.textContent = mirrorLocation;
   }
   const actions = details.querySelector(".root-details-actions");
-  document.addEventListener("pointerdown", (event) => {
-    if (details.open && event.target instanceof Node && !details.contains(event.target)) {
-      details.open = false;
-    }
+  const branch = details.querySelector(".root-details-branch");
+  const revision = details.querySelector(".git-commit-revision[data-revision]");
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (details.open && !event.composedPath().includes(details)) {
+        details.open = false;
+      }
+    },
+    true,
+  );
+  // Clicking the HTML preview frame blurs the window.
+  window.addEventListener("blur", () => {
+    details.open = false;
   });
   details.addEventListener("keydown", (event) => {
     if (event.altKey || event.ctrlKey || event.metaKey) {
@@ -2267,12 +2272,42 @@ function initRootDetails() {
       status.textContent = "";
       return;
     }
-    if (!url || !actions || actions.childElementCount) {
+    if (
+      !(url && actions && !actions.childElementCount) &&
+      !revision?.hasAttribute("data-revision")
+    ) {
       return;
     }
     try {
       await window.MetabrowserAssets?.ensureAsset("sdk-views");
-      if (actions.childElementCount) {
+      if (!details.open) {
+        return;
+      }
+      if (branch?.textContent && !branch.firstElementChild) {
+        const name = branch.textContent;
+        branch.replaceChildren(
+          window.metabrowser.refChip(name, {
+            ref: `refs/heads/${name}`,
+            head: true,
+            trunk: branch.hasAttribute("data-trunk"),
+          }),
+        );
+      }
+      const commit = revision?.getAttribute("data-revision");
+      if (revision && commit) {
+        const copy = document.createElement("button");
+        copy.className = "icon-btn icon-btn-reveal git-commit-revision-copy";
+        copy.type = "button";
+        copy.dataset.mbCopy = "text";
+        copy.dataset.mbCopyText = commit;
+        copy.dataset.mbCopyLabel = copy.dataset.tipText = "Copy revision";
+        copy.setAttribute("aria-label", "Copy revision");
+        copy.innerHTML = ICONS.copy ?? "";
+        window.metabrowser.ownDelegate(copy);
+        revision.append(copy);
+        revision.removeAttribute("data-revision");
+      }
+      if (!url || !actions || actions.childElementCount) {
         return;
       }
       const items = window.metabrowser.externalLinkMenuItems(url, {
@@ -6672,6 +6707,7 @@ async function selectFile(path, preferredViewId) {
         // Chunk growth is per file: a fresh selection starts small again so
         // opening a file never inherits the last file's appetite.
         resetTextChunkGrowth();
+        awaitedPreviewView = null;
         currentPath = path;
         if (selectFileAbortController) {
           selectFileAbortController.abort();
@@ -6952,63 +6988,13 @@ function viewMetaAttrs(view) {
   return attrs;
 }
 
-// The preview's print state, which the print stylesheet reads: the active view prints
-// when it is printable, and otherwise the page prints a line saying it is not. Printing
-// itself is the browser's: Command-P (Control-P elsewhere), the app's File > Print, and a
-// rendered document's print button (builtin_plugins/markdown/print-indicator.js) all print
-// through it, so no shell control or command stands in front of it.
-function setActivePreviewView(tabId, preview) {
-  preview = preview || document.getElementById("preview-pane");
-  if (!preview) {
-    return;
-  }
-  preview = /** @type {HTMLElement} */ (preview);
-  /** @type {HTMLElement | null} */
-  var active = null;
-  var tabContents = queryHtmlAll("[data-tab-content]", preview);
-  for (var i = 0; i < tabContents.length; i++) {
-    var c = tabContents[i];
-    var isActive = !!tabId && c.dataset.tabContent === tabId;
-    if (window.MetabrowserViewState) {
-      window.MetabrowserViewState.setActive(c, isActive);
-    } else {
-      c.dataset.activeView = isActive ? "true" : "false";
-    }
-    if (isActive) {
-      active = c;
-    }
-  }
-  if (!active) {
-    delete preview.dataset.activeView;
-    preview.dataset.printable = "false";
-    preview.dataset.printProfile = "plain";
-    delete preview.dataset.renderRuntime;
-    delete preview.dataset.kpressEnabled;
-    return;
-  }
-  var printable = boolData(active.dataset.printable);
-  preview.dataset.activeView = tabId;
-  preview.dataset.printable = printable ? "true" : "false";
-  preview.dataset.printProfile = active.dataset.printProfile || "plain";
-  if (active.dataset.renderRuntime) {
-    preview.dataset.renderRuntime = active.dataset.renderRuntime;
-  } else {
-    delete preview.dataset.renderRuntime;
-  }
-  if (active.dataset.kpressEnabled) {
-    preview.dataset.kpressEnabled = active.dataset.kpressEnabled;
-  } else {
-    delete preview.dataset.kpressEnabled;
-  }
-}
-
 // The partial-content notice's Load more runs the shell's text loader by name.
 window.MetabrowserPluginHost?.registerLoadMoreAction?.("loadMoreCurrentText", loadMoreCurrentText);
 
 document.addEventListener("metabrowser:view-print-state", () => {
   var preview = document.getElementById("preview-pane");
   if (preview?.dataset.activeView) {
-    setActivePreviewView(preview.dataset.activeView, preview);
+    window.MetabrowserViewComposition.setActiveView(preview, preview.dataset.activeView);
   }
 });
 
@@ -7134,7 +7120,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
       var composition = await viewComposition.composition.prepare({
         kind: compositionKind,
         views: Array.isArray(data.views) ? data.views : [],
-        preferredViewId: preferredViewId,
+        preferredViewId: takeAwaitedPreviewView(data.path || "") ?? preferredViewId,
         ensureKindAssets(kind) {
           return _perf.measureAsync(
             "fileNavigation:assets",
@@ -7293,16 +7279,14 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         if (counterpartCorner) {
           void window.metabrowser?.mountCounterpart?.(counterpartCorner, location.pathname);
         }
-        if (initialActiveView) {
-          setActivePreviewView(initialActiveView.id, stage);
-        } else {
-          setActivePreviewView(null, stage);
-        }
+        viewComposition.composition.setActiveView(stage, initialActiveView?.id ?? null);
 
         // The stage is connected so renderers can measure layout, but remains
         // transparent and inert while the prior useful surface stays visible.
         // The active renderer and its optional readiness promise settle before
         // the shell transfers the stage's children into the preview.
+        /** @type {(() => Promise<unknown>) | null} */
+        let mountInitialView = null;
         if (pluginRenders?.length) {
           var ctx = {
             path: data.path,
@@ -7330,11 +7314,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
                 })
             )(container, pr.view);
             if (initialActiveView && pr.tabId === initialActiveView.id) {
-              await _perf.measureAsync(
-                "fileNavigation:activeView",
-                mount,
-                filePerfMeta(data, { view: pr.tabId }),
-              );
+              mountInitialView = mount;
             } else {
               container._metabrowserMount = () => {
                 void mount();
@@ -7343,7 +7323,20 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           }
         }
 
-        _perf.measure("initTabs", () => initTabs(stage), filePerfMeta(data));
+        // The staged bar takes a choice before the first view holds the paint: a tab
+        // chosen in the hold is the one the commit brings to the front (mb-s588).
+        _perf.measure(
+          "initTabs",
+          () => viewComposition.composition.bindTabs(stage),
+          filePerfMeta(data),
+        );
+        if (mountInitialView && initialActiveView) {
+          await _perf.measureAsync(
+            "fileNavigation:activeView",
+            mountInitialView,
+            filePerfMeta(data, { view: initialActiveView.id }),
+          );
+        }
         const arrivalContent =
           stage.querySelector('[data-active-view="true"]') ?? stage.querySelector(".content-body");
         // Shown once the faces its text is set in land (view-composition.js#settleFaces).
@@ -7354,6 +7347,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         if (!renderIsCurrent()) {
           return false;
         }
+        const frontViewId = stage.dataset.activeView || null;
         const replacementNodes = Array.from(stage.childNodes);
         stopFolderHeaderSubscription();
         if (
@@ -7375,17 +7369,15 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           pendingFilePreviewStageCleanup = null;
         }
         preview.dataset.renderedPath = data.path || "";
-        if (initialActiveView) {
-          setActivePreviewView(initialActiveView.id, preview);
-        } else {
-          setActivePreviewView(null, preview);
-        }
+        viewComposition.composition.setActiveView(preview, frontViewId);
         if (data.kind === "folder") {
           startFolderHeaderSubscription(data.path);
         }
         scheduleHighlightCode(preview);
-        if (arrivalContent instanceof HTMLElement) {
-          animatePreviewContentArrival(arrivalContent);
+        const arrived =
+          preview.querySelector(':scope > [data-active-view="true"]') ?? arrivalContent;
+        if (arrived instanceof HTMLElement) {
+          animatePreviewContentArrival(arrived);
         }
         await measureNextPaint("fileNavigation:paintReady", filePerfMeta(data));
         return true;
@@ -7448,74 +7440,58 @@ document.addEventListener("click", onHeaderNavigationClick);
 
 // ── Tab switching ───────────────────────────────────────────────
 
+// A view asked for by name while its file was loading, before it had a tab bar. The
+// render that stages the file opens in it, and the next selection forgets it.
+/** @type {{path: string, viewId: string} | null} */
+var awaitedPreviewView = null;
+
+/** @param {string} path */
+function takeAwaitedPreviewView(path) {
+  var awaited = awaitedPreviewView;
+  awaitedPreviewView = null;
+  return awaited?.path === path ? awaited.viewId : undefined;
+}
+
 /**
- * Select a tab of the file the preview pane shows, as a click on it does, unless it is
- * already selected. A file still loading, or a view it lacks, has no tab to select.
+ * Select a tab of the file the preview pane shows or is staging, as a click on it does,
+ * unless it is already selected (view-composition.js#selectTab). A view the file lacks
+ * has no tab to select.
  *
  * @param {string} path
  * @param {string | null} tabId
  */
 function showPreviewTab(path, tabId) {
   var preview = document.getElementById("preview-pane");
-  if (!tabId || !preview || preview.dataset.renderedPath !== path) {
+  if (!tabId || !preview) {
     return;
   }
-  var button = queryHtml(`#preview-pane > .tab-bar > .tab-btn[data-tab="${tabId}"]`);
-  var bar = button?.parentElement;
-  if (button && bar && !button.classList.contains("active")) {
-    selectPreviewTab(bar, tabId);
+  var shown = preview.dataset.renderedPath === path ? preview : null;
+  var staged = window.MetabrowserViewComposition?.stagedFile(preview, path) ?? null;
+  if (!shown && !staged) {
+    var held = previewPane.snapshot();
+    if (held.phase === "loading" && held.path === path) {
+      awaitedPreviewView = { path, viewId: tabId };
+    }
+    return;
+  }
+  // The pane's own bar first: selecting there selects in a stage of the same file.
+  for (const host of [shown, staged]) {
+    var button = host && queryHtml(`:scope > .tab-bar > .tab-btn[data-tab="${tabId}"]`, host);
+    var bar = button?.parentElement;
+    if (button && bar && !button.classList.contains("active")) {
+      selectPreviewTab(bar, tabId);
+    }
   }
 }
 
 /**
- * Select one tab of a view tab bar: mark its button, show its content, mount a view
- * not shown before, and tell the shell which view is active. The tab's click, its
- * letter key, and showPreviewTab share this path, and none of them moves focus.
- * Reports whether the bar has that tab.
+ * Select one tab of a view tab bar, as its click and its letter key do.
  *
  * @param {HTMLElement} bar
  * @param {string} tabId
  */
 function selectPreviewTab(bar, tabId) {
-  var container = bar.parentElement;
-  /** @type {HTMLElement | null} */
-  var selected = null;
-  queryHtmlAll(".tab-btn", bar).forEach((b) => {
-    var on = b.dataset.tab === tabId;
-    b.classList.toggle("active", on);
-    b.setAttribute("aria-selected", on ? "true" : "false");
-    if (on) {
-      selected = b;
-    }
-  });
-  if (!container || !selected) {
-    return false;
-  }
-  queryHtmlAll("[data-tab-content]", container).forEach((c) => {
-    c.style.display = c.dataset.tabContent === tabId ? "" : "none";
-  });
-  if (container.id === "preview-pane") {
-    setActivePreviewView(tabId, container);
-  }
-  var activeContent = container.querySelector(`[data-tab-content="${tabId}"]`);
-  if (activeContent && typeof activeContent._metabrowserMount === "function") {
-    var mount = activeContent._metabrowserMount;
-    activeContent._metabrowserMount = null;
-    mount();
-  }
-  return true;
-}
-
-/** @param {ParentNode} [root] */
-function initTabs(root = document) {
-  queryHtmlAll(".tab-btn", root).forEach((btn) => {
-    btn.addEventListener("click", () => {
-      var bar = /** @type {HTMLElement | null} */ (btn.closest(".tab-bar"));
-      if (bar && btn.dataset.tab) {
-        selectPreviewTab(bar, btn.dataset.tab);
-      }
-    });
-  });
+  return window.MetabrowserViewComposition.selectTab(bar, tabId);
 }
 
 // ── Pane resizing ───────────────────────────────────────────────

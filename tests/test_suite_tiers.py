@@ -10,12 +10,12 @@ import random
 import re
 import subprocess
 import sys
-from collections import Counter
 from pathlib import Path
 
 import pytest
 
 from devtools.check_goldens import makefile_list, recipe
+from devtools.shard_weights import FILES, TESTS, fallback, load
 from tests.required_tools import require_chrome
 from tests.suite_gates import (
     admitted_git_tests,
@@ -25,17 +25,20 @@ from tests.suite_gates import (
 )
 from tests.suite_tiers import (
     BY_FILE,
+    BY_TEST,
     CHROME_FIXTURE,
     CHROME_MARKER,
     CHROME_TIER,
     PARALLEL_TIER,
     SERIAL_MARKER,
     SERIAL_TIER,
+    SLOW_TEST_S,
     TIERS,
     Shard,
     dealt,
     empty_by_selection,
     parse_shard,
+    slow,
 )
 from tests.suite_workers import encodable
 from tests.test_suite_gates import MAX_INNER_BOUND_S
@@ -60,34 +63,37 @@ def test_a_shard_outside_1_through_n_is_refused(value: str) -> None:
         parse_shard(value)
 
 
+def _kept(nodeids: list[str], shard: Shard, by: str, seconds: dict[str, float]) -> set[str]:
+    kept = dealt(nodeids, shard, by, seconds)
+    return {nodeid for nodeid, keep in zip(nodeids, kept, strict=True) if keep}
+
+
 @pytest.mark.parametrize("count", [1, 2, 3, 4, 5])
 def test_the_shards_of_any_selection_are_disjoint_and_cover_it(count: int) -> None:
-    """Every size from none to several rounds of *count*, in any order it is collected."""
+    """Every size from none to several rounds of *count*, in any order it is collected,
+    with some tests measured, one of them long, and some not."""
 
     for size in range(4 * count + 3):
+        rng = random.Random(size)
         nodeids = [f"tests/test_m{index % 3}.py::test_{index}" for index in range(size)]
-        shuffled = random.Random(size).sample(nodeids, len(nodeids))
-        parts: list[set[str]] = []
-        for index in range(1, count + 1):
-            shard = Shard(index, count)
-            kept = {
-                nodeid for nodeid, keep in zip(nodeids, dealt(nodeids, shard), strict=True) if keep
-            }
-            # Membership depends on the node IDs, not on the order they arrive in.
-            assert kept == {
-                nodeid
-                for nodeid, keep in zip(shuffled, dealt(shuffled, shard), strict=True)
-                if keep
-            }
-            parts.append(kept)
+        seconds = {nodeid: rng.choice([0.5, 3.0, 94.0]) for nodeid in nodeids[::2]}
+        shuffled = rng.sample(nodeids, len(nodeids))
+        shards = [Shard(index, count) for index in range(1, count + 1)]
+        parts = [_kept(nodeids, shard, BY_TEST, seconds) for shard in shards]
+        # Membership depends on the node IDs and their seconds, not on the order they
+        # arrive in.
+        assert parts == [_kept(shuffled, shard, BY_TEST, seconds) for shard in shards]
         assert sum(len(part) for part in parts) == size
         assert set().union(*parts) == set(nodeids)
-        assert max(map(len, parts)) - min(map(len, parts)) <= 1
+        # An unmeasured test weighs what the measured ones' median does.
+        weights = dict.fromkeys(nodeids, fallback(nodeids, seconds)) | seconds
+        loads = [sum(weights[nodeid] for nodeid in part) for part in parts]
+        assert max(loads) <= sum(loads) / count + max(weights.values(), default=0.0) + 1e-9
 
 
 @pytest.mark.parametrize("count", [1, 2, 3, 4, 5])
 def test_the_shards_by_file_are_disjoint_whole_files_and_cover_the_selection(count: int) -> None:
-    """Each file in one part, whatever the order; the parts balanced to a file's size."""
+    """Each file in one part, whatever the order; the parts balanced to a file's time."""
 
     rng = random.Random(count)
     nodeids = [
@@ -95,27 +101,92 @@ def test_the_shards_by_file_are_disjoint_whole_files_and_cover_the_selection(cou
         for module in range(17)
         for index in range(rng.randint(1, 9))
     ]
-    sizes = Counter(nodeid.split("::")[0] for nodeid in nodeids)
+    files = sorted({nodeid.split("::")[0] for nodeid in nodeids})
+    # A file's time is not its count of tests: the weights say, and two files have none.
+    seconds = {name: rng.choice([0.2, 5.0, 51.0]) for name in files[2:]}
     shuffled = rng.sample(nodeids, len(nodeids))
-    parts: list[set[str]] = []
-    for index in range(1, count + 1):
-        shard = Shard(index, count)
-        kept = {
-            nodeid
-            for nodeid, keep in zip(nodeids, dealt(nodeids, shard, BY_FILE), strict=True)
-            if keep
-        }
-        assert kept == {
-            nodeid
-            for nodeid, keep in zip(shuffled, dealt(shuffled, shard, BY_FILE), strict=True)
-            if keep
-        }
-        parts.append(kept)
+    shards = [Shard(index, count) for index in range(1, count + 1)]
+    parts = [_kept(nodeids, shard, BY_FILE, seconds) for shard in shards]
+    assert parts == [_kept(shuffled, shard, BY_FILE, seconds) for shard in shards]
     assert sum(len(part) for part in parts) == len(nodeids)
     assert set().union(*parts) == set(nodeids)
-    for name in sizes:
+    for name in files:
         assert sum(any(nodeid.startswith(f"{name}::") for nodeid in part) for part in parts) == 1
-    assert max(map(len, parts)) - min(map(len, parts)) <= max(sizes.values())
+    weights = dict.fromkeys(files, fallback(files, seconds)) | seconds
+    loads = [
+        sum(weights[name] for name in {nodeid.split("::")[0] for nodeid in part}) for part in parts
+    ]
+    assert max(loads) <= sum(loads) / count + max(weights.values()) + 1e-9
+
+
+def test_a_tier_is_dealt_by_the_seconds_measured_for_its_tests_and_files() -> None:
+    """With no seconds passed, the committed weights: the tests table, or by file the files."""
+
+    tests, files = load(TESTS), load(FILES)
+    longest = max(tests, key=lambda nodeid: tests[nodeid])
+    nodeids = sorted(tests)
+    alone = _kept(nodeids, Shard(1, 4), BY_TEST, tests)
+    assert longest in alone
+    assert [dealt(nodeids, Shard(index, 4)) for index in (1, 2, 3, 4)] == [
+        dealt(nodeids, Shard(index, 4), BY_TEST, tests) for index in (1, 2, 3, 4)
+    ]
+    modules = [f"{name}::test_it" for name in sorted(files)]
+    assert dealt(modules, Shard(2, 2), BY_FILE) == dealt(modules, Shard(2, 2), BY_FILE, files)
+    assert dealt(modules, Shard(2, 2), BY_FILE) != dealt(modules, Shard(2, 2), BY_FILE, {})
+
+
+# ── --skip-slow ────────────────────────────────────────────────────────────────
+
+
+def test_a_test_is_slow_only_by_its_measured_seconds() -> None:
+    seconds = {"t::at": SLOW_TEST_S, "t::over": SLOW_TEST_S + 70, "t::under": SLOW_TEST_S - 0.01}
+
+    # A test with no measurement yet is not slow, so a new test runs on its pull request.
+    assert slow(["t::at", "t::over", "t::under", "t::new"], seconds) == [True, True, False, False]
+
+
+def test_the_committed_weights_leave_a_pull_request_most_chrome_tests_and_under_half_the_time() -> (
+    None
+):
+    """What ``SLOW_TEST_S`` is set by: the slow tests are few and hold most of the time."""
+
+    seconds = {
+        nodeid: time for nodeid, time in load(TESTS).items() if "_chrome" in nodeid.split("::")[0]
+    }
+    slow_s = sum(
+        time for time, is_slow in zip(seconds.values(), slow(list(seconds)), strict=True) if is_slow
+    )
+    count = sum(slow(list(seconds)))
+
+    assert 0 < count < len(seconds) / 3
+    assert slow_s > sum(seconds.values()) / 2
+
+
+def test_skip_slow_drops_the_slow_tests_before_the_shards_are_dealt(
+    tmp_path: Path, tiers: dict[str, set[str]]
+) -> None:
+    """In a session: with no probe measured, ``--skip-slow`` drops none of them, and the
+    parts are dealt from what is left."""
+
+    whole = _collected(tmp_path, "-m", CHROME_TIER, "--skip-slow")
+    assert whole == tiers[CHROME_TIER]
+    parts = [
+        _collected(tmp_path, "-m", CHROME_TIER, "--skip-slow", f"--shard={index}/2")
+        for index in (1, 2)
+    ]
+    assert parts[0] | parts[1] == whole and not parts[0] & parts[1]
+
+
+def test_what_skip_slow_leaves_is_dealt_into_parts_that_cover_it() -> None:
+    """The hook's own arithmetic, on the committed weights: fast tests only, each once."""
+
+    nodeids = sorted(load(TESTS))
+    fast = [nodeid for nodeid, is_slow in zip(nodeids, slow(nodeids), strict=True) if not is_slow]
+    parts = [_kept(fast, Shard(index, 4), BY_TEST, load(TESTS)) for index in (1, 2, 3, 4)]
+
+    assert set().union(*parts) == set(fast)
+    assert sum(len(part) for part in parts) == len(fast)
+    assert all(load(TESTS)[nodeid] < SLOW_TEST_S for part in parts for nodeid in part)
 
 
 # ── The tier markers' meaning, as pure judgements ──────────────────────────────
@@ -263,7 +334,8 @@ def test_the_shards_of_a_tier_partition_it(tmp_path: Path, tiers: dict[str, set[
 
     tier = CHROME_TIER
     parts = [_collected(tmp_path, "-m", tier, f"--shard={index}/3") for index in (1, 2, 3)]
-    assert [len(part) for part in parts] == [2, 1, 1]
+    assert sorted(len(part) for part in parts) == [1, 1, 2]
+    assert sum(len(part) for part in parts) == len(tiers[tier])
     assert set().union(*parts) == tiers[tier]
 
 
@@ -319,6 +391,7 @@ def test_make_test_runs_each_tier_by_its_expression_and_the_parallel_ones_on_wor
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     targets = ("test-parallel", "test-serial", "test-chrome", "test-goldens")
 
+    # `make test`, the release gate, runs the whole Chrome tier, slow tests included.
     prerequisites = re.search(r"^test: (.*)$", makefile, re.MULTILINE)
     assert prerequisites is not None and prerequisites.group(1).split() == list(targets)
     names = ("PARALLEL_TIER", "SERIAL_TIER", "CHROME_TIER")
@@ -327,15 +400,23 @@ def test_make_test_runs_each_tier_by_its_expression_and_the_parallel_ones_on_wor
     assert recipe(makefile, "test-parallel") == (
         f'\t$(PYTEST) -m "$(PARALLEL_TIER)" {workers} --shard-by=file'
     )
-    assert recipe(makefile, "test-serial") == '\t$(PYTEST) -m "$(SERIAL_TIER)"'
-    assert recipe(makefile, "test-chrome") == '\t$(PYTEST) -m "$(CHROME_TIER)"'
+    assert recipe(makefile, "test-serial") == '\t$(PYTEST) $(EVERY_TEST) -m "$(SERIAL_TIER)"'
+    assert recipe(makefile, "test-chrome") == '\t$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)"'
+    # A pull request's Chrome tier is the same recipe without the slow tests.
+    assert recipe(makefile, "test-chrome-fast") == (
+        '\t$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)" --skip-slow'
+    )
     assert workers in recipe(makefile, "test-admitted-git")
+    assert "$(if $(SHARD),--shard=$(SHARD) --shard-by=file)" in recipe(
+        makefile, "test-admitted-git"
+    )
     assert "$(if $(SHARD),--shard=$(SHARD))" in " ".join(makefile_list(makefile, "PYTEST"))
     # A CI job calls each target directly, so each installs first and is phony.
     order_only = re.search(r"^([\w -]+): \| install$", makefile, re.MULTILINE)
     phony = re.search(r"^\.PHONY: (.*)$", makefile, re.MULTILINE)
     assert order_only is not None and phony is not None
-    assert set(targets) <= set(order_only.group(1).split()) & set(phony.group(1).split())
+    called = {*targets, "test-chrome-fast"}
+    assert called <= set(order_only.group(1).split()) & set(phony.group(1).split())
 
 
 def test_a_report_s_strings_are_made_encodable_and_nothing_else_changes() -> None:

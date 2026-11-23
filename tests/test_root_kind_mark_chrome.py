@@ -8,8 +8,8 @@ sentence are ``/api/identity``'s, pinned by ``cli-api-shell.tryscript.md``, and 
 writing the same into its first paint is ``tests/test_root_identity.py``'s. What only a
 browser tells is the mark itself, so this serves a plain folder, a checkout, and a mirror
 with ``metab`` and reads each page's mark in one Chrome (``tests/dom/root-kind-mark-chrome.mjs``):
-its box, its place before the name and outside its link, its glyph and ink, its tooltip and
-the name's own, in both themes.
+its box, its place with the name inside the Home link, its glyph and ink, and its tooltip,
+in both themes. It also exercises the Home link and adjacent details chevron with real clicks.
 
 Without Chrome or Node this skips (``require_chrome``, ``require_node``), and a mirror
 needs Git. The test owns everything it starts: each server stops when its stdin closes, and
@@ -31,6 +31,7 @@ import pytest
 
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import needs_git, require_chrome, require_git, require_node
+from tests.source_checkout_fixture import git
 from tests.test_nav_metadata_chrome import (
     _BANNER_BUDGET_S,
     _SERVER_STOP_S,
@@ -121,16 +122,22 @@ def test_each_kind_of_root_draws_its_mark_before_its_name_in_chrome(
     plain = tmp_path / "plain"
     (plain / "docs").mkdir(parents=True)
     (plain / "README.md").write_text("# A plain folder\n", encoding="utf-8")
-    # A checkout whose `origin` is on github.com, written as Git writes one, so its tooltip
-    # names the repository.
-    checkout = tmp_path / "checkout"
-    (checkout / ".git" / "refs" / "heads").mkdir(parents=True)
-    (checkout / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
-    (checkout / ".git" / "refs" / "heads" / "main").write_text("1" * 40 + "\n", encoding="utf-8")
-    (checkout / ".git" / "config").write_text(
-        '[remote "origin"]\n\turl = git@github.com:Octo/Demo.git\n', encoding="utf-8"
+    (plain / "preview.html").write_text(
+        "<!doctype html><html><body><p>Preview content</p>"
+        "<script>parent.postMessage('root-kind-preview-ready', '*')</script>"
+        "</body></html>\n",
+        encoding="utf-8",
     )
+    # A real checkout lets the branch chip offer a local pin without contacting GitHub.
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    branch = "topic/a-branch-name-that-stays-readable-when-the-nav-gets-narrow"
+    git(checkout, "init", "-q", "--template=", "-b", branch)
     (checkout / "README.md").write_text("# A checkout\n", encoding="utf-8")
+    git(checkout, "add", "README.md")
+    git(checkout, "commit", "-q", "-m", "Checkout for the root details menu")
+    git(checkout, "remote", "add", "origin", "git@github.com:Octo/Demo.git")
+    git(checkout, "update-ref", f"refs/remotes/origin/{branch}", "HEAD")
     # A mirror that the cache already holds: a cache hit needs no clone, as the source golden's.
     mirror_home = tmp_path / "mirror"
     mirror_home.mkdir()

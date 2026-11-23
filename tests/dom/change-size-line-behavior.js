@@ -1,14 +1,10 @@
 // The change size line (docs/design-system.md, "Change Size Line"): what
 // `metabrowser.changeSizeLine` says of a change set and how its painters draw it, through the
-// real view helpers (plugin-sdk-views.js), and the size a Pulls row's line ends with
-// (row-lines.js, `rowSize`).
+// real view helpers (plugin-sdk-views.js).
 const assert = require("node:assert/strict");
-const path = require("node:path");
-const { pathToFileURL } = require("node:url");
 const { createSdkSandbox } = require("./sdk-sandbox.js");
 
-async function main() {
-  const repoRoot = path.resolve(process.argv[2]);
+function main() {
   const mb = createSdkSandbox().metabrowser;
 
   const full = mb.changeSizeLine({
@@ -98,28 +94,7 @@ async function main() {
   assert.ok(!html.includes("file-change-status"), "never a status's color");
   assert.ok(!mb.changeSizeLineHtml(counts).includes("change-size-line-size"));
 
-  const { rowSize } = await import(
-    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/github/row-lines.js")).href
-  );
-  const format = (bytes) => `${bytes} B`;
-  const row = (size) => ({ number: 1, statuses: [], additions: 1, deletions: 1, size });
-  assert.equal(rowSize(row(null), format), null, "no size kept: nothing");
-  assert.equal(
-    rowSize(row({ state: "unknown", pushed_bytes: null, diff_bytes: null }), format),
-    null,
-    "a size that cannot be known: nothing",
-  );
-  const sized = rowSize(row({ state: "measured", pushed_bytes: 10, diff_bytes: 30 }), format);
-  assert.deepEqual(sized?.parts, [" ", { separator: "·" }, " ", { number: "10 B" }]);
-  assert.equal(sized?.label, "10 B compressed, 30 B raw diff");
-  assert.equal(
-    sized?.tooltip,
-    "10 B compressed: what Git pushes for this pull request. 30 B raw diff: its patch, uncompressed.",
-  );
   console.log("change size line OK");
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main();

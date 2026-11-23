@@ -27,7 +27,8 @@
 #      Gatekeeper's check of a browser download is the owner's, O8;
 #   7. runs NOTARIZE=1 scripts/check-dmg.sh on it, with EXPECTED_TEAM_ID, and requires
 #      the app to be the release variant, the tag's version, and built from the tag's
-#      commit (EXPECTED_VERSION, EXPECTED_COMMIT);
+#      commit (EXPECTED_VERSION, EXPECTED_COMMIT), with the slices the image's name says
+#      (EXPECTED_ARCHES, from ARCHES as the release was built with);
 #   8. with LAUNCH=1, at the Mac and never in CI, launches the downloaded app
 #      translocated, relaunches it, and moves it (scripts/launch-release.sh).
 #
@@ -100,7 +101,7 @@ esac
 echo "quarantine: $quarantine"
 
 # 7. The image, as a downloader meets it, and the app in it, as the tag names it.
-NOTARIZE=1 EXPECTED_TEAM_ID="$team" EXPECTED_VERSION="$version" EXPECTED_COMMIT="$commit" \
+NOTARIZE=1 EXPECTED_TEAM_ID="$team" EXPECTED_VERSION="$version" EXPECTED_COMMIT="$commit" EXPECTED_ARCHES="$arches" \
   scripts/check-dmg.sh "$work/download/$image"
 
 echo
@@ -108,7 +109,7 @@ echo "Checked $tag (BUILT=$built), as downloaded:"
 echo "  checksum and digest: sha256:$(cut -d' ' -f1 "$work/download/$sums")"
 echo "  $build_provenance"
 echo "  $release_provenance"
-echo "  check-dmg.sh with NOTARIZE=1: passed, team $team, the release variant $version from $commit"
+echo "  check-dmg.sh with NOTARIZE=1: passed, team $team, the release variant $version from $commit, slices '$arches'"
 echo "  quarantine: $quarantine; Gatekeeper's check of a browser download is O8's"
 
 # 8. The launch.

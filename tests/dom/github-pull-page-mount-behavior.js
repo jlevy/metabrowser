@@ -2083,7 +2083,7 @@ async function headerShape(page) {
       assert.equal(
         rows(container).join(" "),
         [
-          "title meta branches opened",
+          "title opened meta branches",
           ...(labelled ? ["labels"] : []),
           ...(name in STATUS ? ["status"] : []),
           // The size line, then the Diff summary under it (docs/design-system.md, "Change
@@ -2099,10 +2099,10 @@ async function headerShape(page) {
   assert.deepEqual(
     new Set(Object.values(shapes)),
     new Set([
-      "title meta branches opened labels size summary",
-      "title meta branches opened size summary",
-      "title meta branches opened labels status size summary",
-      "title meta branches opened status size summary",
+      "title opened meta branches labels size summary",
+      "title opened meta branches size summary",
+      "title opened meta branches labels status size summary",
+      "title opened meta branches status size summary",
     ]),
     JSON.stringify(shapes, null, 2),
   );
@@ -3392,14 +3392,13 @@ async function run() {
     assert.ok(number.classes.has("github-pull-number"));
     assert.equal(title.textContent.endsWith("Count to two in the app #7"), true);
     const meta = container.querySelector(".github-pull-meta");
-    // The header's corner, for the View on GitHub button, follows the title (mb-4wqh), and
-    // the author's row the corner.
-    const corner = title.parentNode.children[title.parentNode.children.indexOf(title) + 1];
+    // The corner stays out of the rows' flow. State and ages lead the metadata.
+    const opened = container.querySelector(".github-pull-opened");
+    const titleIndex = title.parentNode.children.indexOf(title);
+    const corner = title.parentNode.children[titleIndex + 1];
     assert.ok(corner.classes.has("view-header-end"));
-    assert.equal(
-      title.parentNode.children.indexOf(meta),
-      title.parentNode.children.indexOf(title) + 2,
-    );
+    assert.equal(title.parentNode.children[titleIndex + 2], opened);
+    assert.equal(title.parentNode.children[titleIndex + 3], meta);
     // The author's row is its lead, the details then the freshness note (mb-ne91), then the
     // stack's slot at its end (mb-cf0l), which holds a strut while no stack is known: a late
     // chip lands in the row's empty end.
@@ -3412,12 +3411,7 @@ async function run() {
     assert.ok(stackSlot.classes.has("github-pull-stacks"));
     assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
     assert.equal(meta.children.length, 2);
-    // The state's badge leads the row of ages, under the branches (mb-4ydo).
-    const opened = container.querySelector(".github-pull-opened");
-    assert.equal(
-      title.parentNode.children.indexOf(opened),
-      title.parentNode.children.indexOf(meta) + 2,
-    );
+    // The state's badge leads the first metadata row.
     const [stateBadgeSlot, ages, refreshSlot] = opened.children;
     assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
     assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));

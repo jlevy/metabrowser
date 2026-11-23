@@ -472,9 +472,12 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   one of its own at the foot of the pane, where every tab shows it: the Pulls tab’s
   requests and a comparison’s are refused as the Files tab’s are, and the selector is in
   the Files toolbar, which the other tabs hide.
-- **Not yet.** A revision of a checkout has no Pulls tab, and its branch list shows no
-  pull requests; a branch that moves while it is shown is not followed; and a revision
-  is read in place, never through a store that borrows the checkout’s objects.
+- **Pull requests.** A GitHub checkout’s Pulls tab and branch list use the same
+  repository catalog on the working tree and its pinned revisions.
+  Opening a pull request leaves the Files pin in place.
+- **Revision reads.** The checkout serves the pinned commit directly from its own Git
+  objects. If the branch moves, the page keeps that commit until the reader selects a
+  revision.
 
 ## How a Mirror’s Page Names Itself
 

@@ -154,10 +154,11 @@ jobs:
           source scripts/common.sh
           variant_settings release
           # The rehearsal is built from this checkout, so it must be its version and commit,
-          # as scripts/check-release.sh requires of a release and its tag.
-          EXPECTED_VERSION="$version" EXPECTED_COMMIT="$(git rev-parse HEAD)" scripts/check-dmg.sh "$dmg"
+          # as scripts/check-release.sh requires of a release and its tag, with the slices
+          # its name says.
+          EXPECTED_ARCHES="$arches" EXPECTED_VERSION="$version" EXPECTED_COMMIT="$(git rev-parse HEAD)" scripts/check-dmg.sh "$dmg"
           variant_settings dev
-          scripts/check-dmg.sh "$dmg"
+          EXPECTED_ARCHES="$arches" scripts/check-dmg.sh "$dmg"
           # ditto keeps the bundle's symlinks, modes, and signature, which a plain upload
           # would not.
           zip="build/$artifact_label-$version-$arch_label.app.zip"

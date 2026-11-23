@@ -216,8 +216,8 @@ from metabrowser.root_identity import (
     canonical_repository_url,
     identity_kind_tip,
     root_identity,
-    served_repository_context,
 )
+from metabrowser.server_utils import ipv6_literal, wildcard_host
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -800,12 +800,10 @@ def _clear_browser_caches() -> None:
 
 
 # Concrete bind hosts registered by the CLI (``--host``). Wildcard binds
-# never land here; loopback names are always permitted by the middleware.
+# (``server_utils.wildcard_host``) never land here: they accept connections on
+# every interface and are not meaningful Host-header names. Loopback names are
+# always permitted by the middleware.
 _EXTRA_ALLOWED_HOSTS: set[str] = set()
-
-# Bind values that accept connections on every interface. They are not
-# meaningful Host-header names, so they are never added to the allowlist.
-_WILDCARD_BIND_HOSTS: frozenset[str] = frozenset({"", "0.0.0.0", "::", "[::]"})
 
 
 def _register_allowed_host(bind_host: str) -> None:
@@ -815,14 +813,20 @@ def _register_allowed_host(bind_host: str) -> None:
     browser would send, and allowing everything would defeat the
     DNS-rebinding check. Operators reaching a wildcard bind through a
     concrete name allow it explicitly with ``METABROWSER_ALLOWED_HOSTS``.
+
+    An IPv6 literal is registered in brackets, as a ``Host`` header carries
+    it, in the spelling given (the printed URL's) and in the compressed one
+    a browser rewrites it to.
     """
     raw = bind_host.strip().lower()
-    if raw in _WILDCARD_BIND_HOSTS:
-        # Check before normalizing: the Host-header port-strip heuristic
-        # would mangle a bare IPv6 wildcard ("::" -> ":").
+    if wildcard_host(raw):
+        return
+    address = ipv6_literal(raw)
+    if address is not None:
+        _EXTRA_ALLOWED_HOSTS.update({f"[{raw.strip('[]')}]", f"[{address.compressed}]"})
         return
     hostname = _HostValidationMiddleware._hostname(raw)
-    if hostname and hostname != ":" and hostname not in _WILDCARD_BIND_HOSTS:
+    if hostname and not wildcard_host(hostname):
         _EXTRA_ALLOWED_HOSTS.add(hostname)
 
 
@@ -1719,12 +1723,19 @@ async def index(
     # the registry is a startup script every page pays for under a gated budget, and a page
     # draws one of the three, which only the server knows (source_kind_marks.py).
     #
-    # The sentence's repository is the route's: `served_repository_context`. A revision of
-    # the served checkout has no mirror session, so the page's own `repository_context`
-    # above is empty for it, and the route still reads the checkout's `origin`.
+    # A revision of the served checkout has no mirror but belongs to its checkout's
+    # repository. Keep the checkout's HEAD context for ref actions. The page's
+    # repository context names the pinned commit.
     tip_context = repository_context
     if pin is not None and checkout is not None and checkout.serves(pin):
-        tip_context = await served_repository_context(mirror, checkout)
+        tip_context = await asyncio.to_thread(discover_repository_context, checkout.root)
+        if tip_context is not None:
+            repository_context = {
+                **tip_context,
+                "revision": pin.commit_oid,
+                "branch": None,
+                "branch_on_origin": False,
+            }
     root_kind = identity["kind"]
     root_kind_svg = source_kind_svg(root_kind)
     root_kind_tip = html_escape(identity_kind_tip(identity, tip_context), quote=True)
@@ -1749,9 +1760,19 @@ async def index(
     if root_kind == "git" and pin is None and tip_context is not None:
         branch = tip_context["branch"]
         if branch is not None:
-            root_checkout_meta += f"<div>Branch: {html_escape(branch)}</div>"
-        revision = html_escape(short_commit(tip_context["revision"]))
-        root_checkout_meta += f"<div>Commit: <code>{revision}</code></div>"
+            from metabrowser.git.log import is_trunk_ref
+
+            trunk = " data-trunk" if is_trunk_ref(branch, "local") else ""
+            root_checkout_meta += (
+                '<div class="root-details-ref-row"><span>Branch:</span>'
+                f'<span class="root-details-branch"{trunk}>{html_escape(branch)}</span></div>'
+            )
+        revision = tip_context["revision"]
+        root_checkout_meta += (
+            '<div>Commit: <span class="git-commit-revision"'
+            f' data-revision="{html_escape(revision, quote=True)}">'
+            f'<span class="git-commit-sha">{html_escape(short_commit(revision))}</span></span></div>'
+        )
     version_line = html_escape(display_version_line("metab", __version__))
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset-loader.js")
@@ -1871,10 +1892,9 @@ async def index(
             f"{_source_ref_label_html(pin, checkout=checkout is not None)}</span>"
             '<span class="chip-menu-caret" aria-hidden="true"></span></button></span></div>'
         )
-    # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
-    # hosted repository, or a checkout, a subdirectory of one too, whose `origin` is on
-    # github.com. It costs a plain folder nothing, not even a script in a bundle, and a page
-    # that has it draws it at first paint, so the tabs never shift when it arrives.
+    # The Pulls tab follows a hosted mirror or a GitHub checkout, including a
+    # checkout's revisions and subdirectories. It costs a plain folder nothing,
+    # and a page with the tab draws it at first paint so the tabs never shift.
     pulls_tab = repository_context is not None
     pulls_in_front = pulls_tab and (pull_page or pull_list)
     # Commits is drawn here when the served root is a repository's root, the one root Git
@@ -2471,24 +2491,21 @@ async def index(
              the two headers cannot disagree about what the root is. The
              details disclosure uses it for the root's address.
 
-             The folder's name is Home (docs/design-system.md, "Home"): app.js keeps a
-             plain activation in the page and shows the folder's home view as a fresh load
-             of this address does, every tab at its first, and `0` does the same. Its
-             accessible name is "Home:" and then the name it shows, read from its own
-             content, so a pin with no mirror's ref and commit, which stand as its name,
-             stay in it. The header anchors the key's badge, which sits beside the name
-             because the name clips. -->
-        <!-- Which kind of root this is: a glyph-only mark, so its sentence is its tooltip and
-             its accessible name, and it is no control. Its glyph is the server's, one of
-             three (source_kind_marks.py), so the mark is there from the first paint. -->
-        <span class="header-root-kind" id="header-root-kind" role="img"
-              data-root-kind="{root_kind}" data-tip-text="{root_kind_tip}"
-              aria-label="{root_kind_tip}">{root_kind_svg}</span>
+             The folder's icon and name link Home (docs/design-system.md, "Home"). A
+             plain activation in app.js and the `0` shortcut return to the fresh-load
+             view. The accessible name uses just the heading text after "Home:", so a
+             pin's ref and commit count as the name. The header anchors the key badge
+             beside the heading because the name clips. -->
         <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
-           aria-labelledby="header-home-label header-home"
-           data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
+           aria-labelledby="header-home-label header-home-name"
+           data-served-root="{initial_root}"{mirror_attrs}>
+          <span class="header-root-kind" id="header-root-kind" role="img"
+                data-root-kind="{root_kind}" data-tip-text="{root_kind_tip}"
+                aria-label="{root_kind_tip}">{root_kind_svg}</span>
+          <span class="header-home-name" id="header-home-name">{initial_path}</span>
+        </a>
         <span id="header-home-label" hidden>Home:</span>
-        <details id="root-details" class="root-details"{root_repository_attr}>
+        <details id="root-details" class="root-details" data-ref-menu-container{root_repository_attr}>
           <summary class="icon-btn root-details-trigger disclosure-toggle" aria-label="{root_kind_label} details"></summary>
           <div class="menu root-details-panel">
             <div class="root-details-info">

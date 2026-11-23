@@ -262,14 +262,16 @@ and `tests/suite_tiers.py` holds what each means:
 
 The three `-m` expressions in `TIERS` there, the parallel, serial, and Chrome tiers,
 cover each combination of the two markers once, so they partition the suite whatever is
-marked.
-`--shard=I/N` keeps the Ith of N disjoint parts of what a selection leaves, dealt
-by node ID, so that one tier can be split across machines.
-`--shard-by=file` deals whole files instead, so that a module runs in one part, its
-tests in order; `make test-parallel` passes it, since its files run that way on their
-workers (`tests/suite_tiers.py`). A tier or a shard that selects no test passes, with a
-line that says so; a `-m` that is not one of `TIERS`, or a run that collected nothing,
-still fails when nothing is left.
+marked. `--shard=I/N` keeps the Ith of N disjoint parts of what a selection leaves, so
+that one tier can be split across machines.
+The parts are dealt by the seconds CI measured for each test, heaviest first, each to
+the part with the least so far, so they take about the same time
+(`devtools/shard_weights.py`). `--shard-by=file` deals whole files instead, by each
+file’s measured seconds, so that a module runs in one part, its tests in order;
+`make test-parallel` passes it, since its files run that way on their workers
+(`tests/suite_tiers.py`). A tier or a shard that selects no test passes, with a line
+that says so; a `-m` that is not one of `TIERS`, or a run that collected nothing, still
+fails when nothing is left.
 
 `make test` runs the default tier as four targets, in this order, and each also runs
 alone, as a CI job can call it:
@@ -321,16 +323,40 @@ says why each check runs where it does.
 
 | Job | Runs | On |
 | --- | --- | --- |
-| `plan` | `devtools/ci_plan.sh`: reads `main`’s state, and decides the Chrome tier’s interpreters and whether `stack-integration` has anything to check | every run; its summary says what it decided and from what |
-| `unit` | `make test-parallel`, in parts by `SHARD` | each supported Python and the free-threaded build |
-| `goldens and serial` | `make test-goldens`, then `make test-serial`, each in parts by `SHARD` | the same interpreters |
-| `chrome` | `make test-chrome`, in parts by `SHARD` | `PR_CHROME_PYTHON` for a pull request while `main` is green; every interpreter for a push to `main`, and for a pull request while `main` is red |
-| `admitted-git` | `make test-admitted-git` | the three admitted Git releases |
+| `plan` | `devtools/ci_plan.sh`: reads `main`’s state, and decides the run’s path, each tier’s interpreters and parts, whether the Chrome tier runs, the admitted Gits, and whether `stack-integration` has anything to check | every run; its summary says what it decided and from what |
+| `unit` | `make test-parallel`, in parts by `SHARD` | the plan’s interpreters and parts |
+| `goldens and serial` | `make test-goldens`, then `make test-serial`, each in parts by `SHARD` | the same |
+| `chrome` | the plan’s target, in parts by `SHARD`: `make test-chrome` on the main path; on the pull-request path `make test-chrome-fast`, or nothing when the change touches no browser path | the same |
+| `admitted-git` | `make test-admitted-git`, in parts by `SHARD` | the plan’s Git releases: all three on the main path, the lowest on the pull-request path |
 | `stack-integration` | `make lint-check` and the four tiers, on the head merged with `main` | a stacked pull request whose tested commit lacks `main`’s head and whose merge with `main` changes the tree: in practice an informal chain, since a formal GitHub stack’s merge commit already holds `main` |
 | `ci-ok` | `devtools/ci_verdict.sh`: fails unless every other job succeeded, and says why it accepted a skipped `stack-integration` | every run |
 
+**The two paths.** A push to `main`, and a pull request while `main` is red, take the
+*main path*: every tier whole, on each supported Python and the free-threaded build, and
+`admitted-git` on all three releases.
+A pull request while `main` is green takes the *pull-request path*, which the owner
+asked on 2026-11-22 to finish in about three minutes:
+
+- one interpreter, `PR_CHROME_PYTHON`, for every tier, in more and shorter parts;
+- the Chrome tier without its slow tests (`make test-chrome-fast`): those measured at
+  `SLOW_TEST_S` or more in `devtools/shard_weights.json` (`tests/suite_tiers.py`). A
+  test is slow by its measurement, never by a marker, and one with no measurement yet
+  runs;
+- no Chrome job at all when the change touches no path a Chrome test can observe.
+  `BROWSER_PATHS` in `devtools/ci_plan.sh` is the list, each entry with its reason, and
+  the `plan` job’s summary names the paths that decided it.
+  A change to the backend alone can still break a Chrome test, since each drives a real
+  server: the push to `main` that follows runs the whole tier and is where that shows;
+- `admitted-git` on the lowest admitted release, which is the security floor.
+
+Every Chrome test, slow or not, runs on every push to `main`, in the nightly soak, and
+in `make test` and `make verify`. `devtools/ci_plan.sh` holds the parts each path deals
+a tier into, with the measurements that set them, and `tests/test_ci_plan.py` holds that
+the main path narrows nothing.
+
 `ci-ok` is the one check to require.
-While `main` is red it also writes a `main-red` verdict line, which
+It accepts a skipped `chrome` only when the `plan` job decided `chrome=none`, and says
+so. While `main` is red it also writes a `main-red` verdict line, which
 [Git](../AGENTS.md#git) merges by, read from the `ci-ok` job’s own log.
 The `plan` job reads `main`’s state for a pull request to `main` and for any pull
 request whose tested commit contains `main`’s head, a formal stack’s layers among them.
@@ -341,18 +367,28 @@ failed, and the legs that passed stay as evidence.
 **Time limits and shards.** Each job’s `timeout-minutes` is about 1.5 times its measured
 90th percentile, with the measurement in a comment beside it.
 A limit that trips means a tier grew by half: split its job further, or make its slowest
-tests cheaper.
-To add a shard, raise `N` in the job’s `SHARD=${{ matrix.shard }}/N`, list
-`1` through `N` in its `shard` matrix, and deal the matching `stack-integration` parts
-the same way.
-`devtools/check_ci.py`, part of `make lint-check`, fails an edit that drops
-a check and still goes green: a sharded job whose shards are not `1` through `N`, a
-fixed `SHARD`, a matrix `include` or `exclude`, a tier or required job no step runs, a
-step or job skipped or allowed to fail, a `make` option or variable on a tier, a `ci-ok`
-step other than `devtools/ci_verdict.sh` on every job’s result, an interpreter list that
-differs from `pyproject.toml`’s classifiers and the free-threaded build, and a lost
-trigger. It also fails a permission, trigger, or expression that widens what a pull
-request can reach. Its docstring lists every rule.
+tests cheaper. A job that nears its limit while its sibling parts do not is uneven, not
+grown: the parts are dealt by the measured seconds in `devtools/shard_weights.json`, and
+`make shard-weights` rewrites that file from the newest green run of `main` as `gh`
+reads its job logs. Run it when `make ci-report CI_REPORT_FLAGS=--check` names a sharded
+job, and after a change that moves a tier’s time between tests, such as a new slow test;
+commit the result, whose diff is the units whose time changed.
+A test, file, or golden the file does not list is dealt as a typical one, so nothing has
+to be refreshed for a new test to run.
+`devtools/refresh_shard_weights.py` says what it reads and how it combines interpreters.
+
+To add a shard, raise the tier’s count for its path in `devtools/ci_plan.sh`, and on the
+main path deal the matching `stack-integration` parts the same way.
+A job’s limit is set by its longer path, the main one.
+`devtools/check_ci.py`, part of `make lint-check`, fails an edit that drops a check and
+still goes green: a tier whose interpreters or parts are not the `plan` job’s, a fixed
+`SHARD`, a Chrome job with another target or condition, a matrix `include` or `exclude`,
+a tier or required job no step runs, a step or job skipped or allowed to fail, a `make`
+option or variable on a tier, a `ci-ok` step other than `devtools/ci_verdict.sh` on
+every job’s result, an interpreter list that differs from `pyproject.toml`’s classifiers
+and the free-threaded build, and a lost trigger.
+It also fails a permission, trigger, or expression that widens what a pull request can
+reach. Its docstring lists every rule.
 
 **The nightly soak.** `.github/workflows/nightly.yml` repeats the serial and Chrome
 tiers on the interpreter a pull request draws the Chrome tier on, so that a flake is
@@ -363,9 +399,11 @@ the coverage.
 ### Skips
 
 `make test` runs pytest with `-rs`, which prints each skipped test with its reason, and
-with `--durations` and `--file-durations`, which list the slowest tests and test files.
-In CI it also sets `METABROWSER_STRICT_SKIPS`, and a skip has to belong to an outer tier
-or the test fails:
+with `--durations` and `--file-durations`, which list the slowest tests and every test
+file; the serial and Chrome tiers list every test, since `make shard-weights` reads
+them.
+In CI it also sets `METABROWSER_STRICT_SKIPS`, and a skip has to belong to an outer
+tier or the test fails:
 
 - macOS tier: a test with the `macos_tier` marker.
   Its reasons are `extended ACLs are inspected only on macOS`,
@@ -402,6 +440,8 @@ Strict mode is off on a developer machine, which can add these:
   admitted-git job does not select that module;
 - `the macOS filesystem rejects undecodable byte names`, on a Mac; CI runs that test;
 - `root is never denied by modes`, when the suite runs as root;
+- `this machine has no IPv6 loopback`, where `::1` cannot be bound, for the tests that
+  serve on an IPv6 host (`tests/ipv6_loopback.py`); CI’s runners have one and run them;
 - `symlinks are unavailable`, where the platform or the account cannot create one;
 - a POSIX-only reason, on a platform without POSIX modes, locks, signals, or FIFOs, and
   `could not import 'fcntl'` for the lock and atomic-write modules there;

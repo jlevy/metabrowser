@@ -6,7 +6,8 @@ names, the tooltip it shows, and when the hover is put away run browserlessly in
 ``tests/dom/treemap-legend-session.js`` (``cli-ui-treemap-legend.tryscript.md``). What only a
 browser can say is held here: ``tests/dom/treemap-legend-hover-chrome.mjs`` serves a folder of
 seven families with a folder of Python files and an ignored build folder, opens the
-Treemap tab, and moves Chrome's pointer onto the Python entry, off the legend, and onto a
+Treemap tab while the folder's first view still holds its first paint, and moves Chrome's
+pointer onto the Python entry, off the legend, and onto a
 Python file's cell. This holds that:
 
 - the legend is File Overview's, under the tally bars, on a row one line tall, the line it
@@ -149,6 +150,12 @@ def test_the_treemap_legend_hovers_its_familys_cells_in_chrome(
     # Shown with a failure: every reading, and each phase's time.
     print(result.stdout, result.stderr)
     measured: dict[str, Any] = json.loads(result.stdout.strip().splitlines()[-1])
+
+    # The Treemap was chosen on the staged bar, before the Overview had its data and before
+    # any bar was committed to the pane, and it is the tab in front at the commit (mb-s588;
+    # the orders a choice can arrive in run in tests/dom/view-tab-hold-session.js).
+    assert measured["earlyChoice"] == {"staged": True, "committedTabs": 0, "front": "overview"}
+    assert measured["frontAtCommit"] == "Treemap", measured
 
     rest = measured["atRest"]
     _nothing(rest, "at rest")

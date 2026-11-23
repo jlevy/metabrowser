@@ -1,0 +1,1 @@
+- New macOS folder windows open at 92% of the screen’s usable height.

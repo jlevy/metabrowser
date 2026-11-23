@@ -105,13 +105,11 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   GitHub URL for a pull request, commit, file, or folder.
   A space or a letter outside ASCII in the path is sent encoded, as a browser sends it,
   so a file named `Design Notes.md` opens as it does with `metab URL`. Open checks the
-  URL with `metab`, and a URL it accepts opens as a sent link does, below.
-  A URL it does not open keeps the panel open with the reason under the field: the app’s
-  own for anything but an `https` URL on GitHub, and `metab`’s for a GitHub page it does
-  not open, such as an issues page.
-  One exception: while Metabrowser is still finding its `metab`, or checking it again
-  after it changed, the panel closes at once, the URL is checked once `metab` is ready,
-  and a URL it does not open is reported in an alert.
+  URL with `metab`. The panel shows progress until the repository window or tab opens.
+  If Metabrowser is still finding or checking its server runtime, the panel waits for
+  it. If the URL check fails, no server runtime is available, or Metabrowser cannot open
+  the repository window, the panel keeps your text and shows the reason under the field.
+  Server startup progress and errors appear in the repository window.
 - **Always the mirror:** a link opens Metabrowser’s own copy of the repository, its
   mirror in `metab`’s cache, never a checkout of it that you have open
   ([Open Modes](project/architecture/arch-open-modes.md)).
@@ -125,15 +123,18 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   The checkout’s own tab keeps showing your working tree.
   A checkout whose window is minimized, or whose server has not started yet, is passed
   over, and the mirror opens as any new folder does.
-- **Asked once before a clone:** a link to a repository the cache does not hold yet asks
-  first, naming the repository: opening it clones the repository into the cache and
-  reads it, and its pull requests, with your `gh` sign-in.
+- **External links ask before a first clone.** A link sent by Terminal or another app
+  asks before it clones a repository the cache does not hold.
+  The dialog names the repository and says that Metabrowser will read it and its pull
+  requests with your `gh` sign-in.
   Cancel is the default button.
   Other links go on opening while the question waits, and more links into the same
   repository wait for your one answer, which opens the newest.
   After Cancel, links into that repository sent in the same burst are not opened, and
   the app says how many; a link sent later asks again.
   A repository the cache holds opens without asking.
+  Submitting Open URL… or choosing a repository from a native recent menu or the folder
+  chooser gives permission for that open, so Metabrowser skips the clone dialog.
 - **One window per repository:** a repository opens in one window, on its default
   branch, whatever link opened it, and every link into the repository opens in that
   window: a second pull request goes to its page in the same window, and a link to a

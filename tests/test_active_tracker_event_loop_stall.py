@@ -39,7 +39,7 @@ import threading
 import time
 import types
 from collections import Counter
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -94,22 +94,37 @@ _BLOCKING_PRIMITIVES: dict[int, str] = {
 type _CallSite = tuple[str, str, str]
 
 
-def _make_workload(root: Path) -> None:
-    """Fabricate ``N_TRACKABLE`` .logs/foo_<i>.jsonl files with sibling .pid files.
+def _make_workload(root: Path) -> list[Path]:
+    """Fabricate ``N_TRACKABLE`` run folders, each a ``.logs`` of one log and one pid file.
 
     Even-numbered pid files name this process and odd-numbered ones name pid 1,
     which an unprivileged process cannot signal, so both liveness answers are on
-    disk. Which pid file labels a given log is the tracker's choice, so the tests
-    assert only that every log got a label.
+    disk. A folder of its own for each log means each needs its own pid lookup:
+    the tracker looks a folder's process up once however many logs it holds.
     """
-    logs_dir = root / "runs" / "x" / ".logs"
-    logs_dir.mkdir(parents=True)
+    logs: list[Path] = []
     self_pid = os.getpid()
     for i in range(N_TRACKABLE):
-        (logs_dir / f"foo_{i}.jsonl").write_text('{"event":"start"}\n')
+        logs_dir = root / "runs" / f"x_{i}" / ".logs"
+        logs_dir.mkdir(parents=True)
+        log = logs_dir / "foo.jsonl"
+        log.write_text('{"event":"start"}\n')
+        logs.append(log)
         # A neighboring .pid file forces _tick into the glob + read path.
         pid_target = self_pid if i % 2 == 0 else 1
-        (logs_dir / f"foo_{i}.pid").write_text(f"{pid_target}\n")
+        (logs_dir / "foo.pid").write_text(f"{pid_target}\n")
+    return logs
+
+
+def _append_to(logs: list[Path]) -> None:
+    """Write every log again, so the next tick finds each one active.
+
+    The tracker looks a process up only for an active log, so a tick over quiet
+    logs would leave the pid probes unexercised.
+    """
+    for log in logs:
+        with log.open("a") as handle:
+            handle.write('{"event":"step"}\n')
 
 
 @contextmanager
@@ -178,7 +193,7 @@ class _RendezvousTracker(FileActivityTracker):
         super().__init__()
         self._rendezvous = rendezvous
 
-    def poll_observations(self, paths: list[Path]) -> ActivityPoll:
+    def poll_observations(self, paths: Iterable[str]) -> ActivityPoll:
         poll = super().poll_observations(paths)
         self._rendezvous.check("poll_observations")
         return poll
@@ -188,16 +203,24 @@ def test_the_probe_detector_sees_every_tick_probe(tmp_path: Path) -> None:
     """The detector would see the tick's probes if they ran on its thread.
 
     The tick runs here with its thread hops made inline, so whatever probes it
-    really makes, through whichever helpers, land on the hooked thread. Each hop
-    must show at least one detected call per log. Without this, a probe
-    rewritten onto a primitive the detector does not know would pass the real
-    test vacuously.
+    really makes, through whichever helpers, land on the hooked thread. Each
+    probing hop must show at least one detected call per log. Without this, a
+    probe rewritten onto a primitive the detector does not know would pass the
+    real test vacuously.
     """
-    _make_workload(tmp_path)
+    logs = _make_workload(tmp_path)
     hop_calls: Counter[str] = Counter()
 
     async def run() -> Counter[_CallSite]:
         async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
+            state = _TrackerState()
+            tracker = FileActivityTracker()
+            # The first tick sets every log's baseline, so the observed one finds
+            # each log written since and runs the pid probes too.
+            await _tick(
+                harness.runtime.coordinator, tmp_path, harness.runtime.config, state, tracker
+            )
+            _append_to(logs)
             with _blocking_calls_on_this_thread() as calls:
 
                 async def inline[T](
@@ -219,13 +242,13 @@ def test_the_probe_detector_sees_every_tick_probe(tmp_path: Path) -> None:
                         harness.runtime.coordinator,
                         tmp_path,
                         harness.runtime.config,
-                        _TrackerState(),
-                        FileActivityTracker(),
+                        state,
+                        tracker,
                     )
             return calls
 
     calls = asyncio.run(run())
-    assert hop_calls, "the tick handed no work off the loop"
+    assert set(hop_calls) == {"_poll_candidates", "_compute_updates"}, hop_calls
     for hop, count in hop_calls.items():
         assert count >= N_TRACKABLE, (
             f"the detector saw {count} blocking call(s) while {hop} probed {N_TRACKABLE} "
@@ -239,7 +262,7 @@ def test_tick_does_not_block_event_loop(tmp_path: Path, monkeypatch: pytest.Monk
     Failure means user-visible ``/api/file`` latency will spike for the
     duration of the probes on every tick.
     """
-    _make_workload(tmp_path)
+    logs = _make_workload(tmp_path)
 
     async def _run() -> tuple[Counter[_CallSite], _LoopRendezvous, dict[str, str | None]]:
         rendezvous = _LoopRendezvous()
@@ -258,9 +281,10 @@ def test_tick_does_not_block_event_loop(tmp_path: Path, monkeypatch: pytest.Monk
             state = _TrackerState()
             tracker = _RendezvousTracker(rendezvous)
             with _blocking_calls_on_this_thread() as loop_calls:
-                # Two ticks: the first seeds the fingerprint table; the
-                # second is the steady-state cost the user pays every 5 s.
+                # Two ticks: the first seeds the fingerprint table; the second
+                # finds every log written since, the most a tick does for each.
                 await _tick(coordinator, tmp_path, runtime_config, state, tracker)
+                await asyncio.to_thread(_append_to, logs)
                 await _tick(coordinator, tmp_path, runtime_config, state, tracker)
             records, decorations = await _read_candidates(
                 coordinator,

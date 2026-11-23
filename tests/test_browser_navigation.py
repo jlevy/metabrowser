@@ -203,7 +203,7 @@ def test_header_root_link_is_named_home_and_the_folder(tmp_path: Path) -> None:
     anchor = response.text[response.text.index('class="header-path"') :]
     anchor = anchor[: anchor.index(">")]
     assert 'id="header-home"' in anchor
-    assert 'aria-labelledby="header-home-label header-home"' in anchor
+    assert 'aria-labelledby="header-home-label header-home-name"' in anchor
     assert "aria-label=" not in anchor
     assert "aria-describedby=" not in anchor
     assert '<span id="header-home-label" hidden>Home:</span>' in response.text
@@ -233,7 +233,8 @@ def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Pa
     assert '<span class="path-dir">' not in response.text
     assert f'data-served-root="{root}"' in response.text
     # One tooltip mechanism on this element, and it is app.js's own.
-    header_anchor = response.text[response.text.index('class="header-path"') :][:400]
+    header_anchor = response.text[response.text.index('class="header-path"') :]
+    header_anchor = header_anchor[: header_anchor.index(">")]
     assert "data-tip-text=" not in header_anchor
     assert "title=" not in header_anchor
 

@@ -103,6 +103,8 @@ const MEASURE = `(() => {
   const card = view.querySelector(".folder-overview-panel-document .kpress-doc");
   return {
     paneX: pane.getBoundingClientRect().x,
+    // The main view's gutter at this window, which steps up in wider ones (styles.css).
+    gutter: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--content-padding-x")),
     band: paneRem < 48 ? "narrow" : paneRem < 75 ? "regular" : "wide",
     tab: { name: tab.textContent.trim(), x: textX(tab) },
     labels,
@@ -204,17 +206,17 @@ try {
         );
         checks += 1;
       }
-      offsets.push({ at, offset: m.labels[0].x - m.paneX });
+      offsets.push({ at, offset: m.labels[0].x - m.paneX - m.gutter });
     });
   }
-  // The indent from the pane is one value at every width, not one per band.
+  // The indent past the window's gutter is one value at every width, not one per band.
   for (const band of BANDS) {
     assert.ok(bands.has(band), `no width put the pane in the ${band} band: ${[...bands]}`);
   }
   for (const { at, offset } of offsets) {
     assert.ok(
       Math.abs(offset - offsets[0].offset) < TOLERANCE_PX,
-      `the labels sit ${offset}px into the pane at ${at}, ${offsets[0].offset}px at ${offsets[0].at}`,
+      `the labels sit ${offset}px past the gutter at ${at}, ${offsets[0].offset}px at ${offsets[0].at}`,
     );
     checks += 1;
   }
