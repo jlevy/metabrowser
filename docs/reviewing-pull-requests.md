@@ -129,6 +129,8 @@ A cached page shows at once and refreshes in the background; the
 
 ### Tabs
 
+The page has up to five tabs:
+
 - **Guided PR** (`R`), the first tab when the description includes a guide: the
   description as the guide’s introduction, then ordered review steps with commentary
   above selected diff excerpts.
@@ -146,7 +148,9 @@ A cached page shows at once and refreshes in the background; the
   Markdown, plain text, reStructuredText, and the rest), each in its rendered view with
   nothing folded, so you can read what the pull request says in its docs without the
   code around it. A document with no rendered view shows its text diff, also unfolded.
-  A pull request that changes no document says so, with a link to Changes.
+  The tab shows only when the pull request changes a document: it appears at once and
+  goes when the comparison’s File type counts say no document changed.
+  An address on Docs still opens it, and says so, with a link to Changes.
 - **Changes** (`G`): the diff from the merge base to the head, **Split** or **Unified**
   (`L` switches). Markdown files open as rendered changes, as the next section describes.
   The changed-file list on the Pulls tab moves through this diff, and the selected file

@@ -928,7 +928,7 @@ def test_file_history_restores_place_and_fresh_selection_wins() -> None:
     }
 
 
-@pytest.mark.parametrize("scenario", ["history", "poll-order", "docs"])
+@pytest.mark.parametrize("scenario", ["history", "poll-order", "docs", "docs-offered"])
 def test_explicit_repair_preserves_route_and_response_ownership(scenario: str) -> None:
     assert run_session("github-pull-repair-lifecycle-behavior.js", "--case", scenario) == {
         "case": scenario,
