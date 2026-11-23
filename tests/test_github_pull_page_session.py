@@ -342,10 +342,14 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
 
             # Ten seconds on, the page's own ask for the current record is a probe: GitHub
             # answers its conditional read 304, so nothing is refreshed, and the record is
-            # vouched for by the probe.
+            # vouched for by the probe. The ask names the record the page shows, so the
+            # answer leaves it out.
             clock[0] = FETCHED_AT + timedelta(minutes=6, seconds=10)
-            recorded["probed"] = _answer(client.post(_REFRESH, json=read_7, headers=JSON_BODY))
+            held_7 = {**read_7, "held": recorded["refreshed"]["body"]["record_revision"]}
+            recorded["probed"] = _answer(client.post(_REFRESH, json=held_7, headers=JSON_BODY))
             assert recorded["probed"]["body"]["refresh"] == "not_due"
+            probed = recorded["probed"]["body"]["pull"]
+            assert probed["record_held"] is True and "record" not in probed
             recorded["probed_current"] = _answer(client.get(_PULL, params=read_7))
             assert recorded["probed_current"]["body"]["verified_by"] == "probe"
             clock[0] = FETCHED_AT + timedelta(minutes=6)

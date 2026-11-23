@@ -258,6 +258,11 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   holds `unknown` the probe asks the pull too, for `MERGEABLE_SETTLE_S`, and an answer
   reads the checks alone; past that time no probe vouches for the record.
   An issue answer older than the record is one that lags, and starts nothing.
+  The page’s ask names the record it shows (`"held"`, its `record_revision`), and an
+  answer about that record says `record_held` in place of `record`, so the page keeps
+  the one it has under the verdict the answer brings; `refresh_answer_pull` in
+  `pull_route.py` records what the whole envelope cost at that cadence.
+  A page that no longer holds that record reads the route instead.
   An unchanged probe vouches for the record (`verified_by: "probe"`) and keeps it
   current until the full read `FULL_REFRESH_S` asks; a change starts a refresh at once,
   a change to checks alone reads only them, and a failed probe waits a window.

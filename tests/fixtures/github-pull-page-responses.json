@@ -997,12 +997,10 @@
         "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
         "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
         "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
-        "record": {
-          "same_as": "refreshed"
-        },
         "core_preview": null,
         "repository_labels": [],
-        "labels_pending": false
+        "labels_pending": false,
+        "record_held": true
       },
       "status_route": "/api/plugin/github/pull?number=7"
     }

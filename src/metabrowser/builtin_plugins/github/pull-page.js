@@ -2224,7 +2224,13 @@ export function createPullController(deps, options) {
         staleAskedAt = autoAskedAt;
       }
       try {
-        await askForRefresh({ number: options.number }, { automatic: true });
+        // The ask names the record the page shows, so an answer about that record comes
+        // without it (`withHeldRecord`).
+        const held = envelope?.record != null ? envelope.record_revision : null;
+        await askForRefresh(
+          { number: options.number, ...(held === null ? {} : { held }) },
+          { automatic: true },
+        );
       } finally {
         autoAsk = "none";
         autoAnsweredAt = deps.now();
@@ -2496,6 +2502,37 @@ export function createPullController(deps, options) {
   }
 
   /**
+   * The envelope a refresh answered, with the record the page holds put back where the
+   * answer left it out. An ask that names `held`, the revision of the record the page
+   * shows, is answered `record_held` in place of that record when the server's is the
+   * same one, which is nearly every answer of a page left open: the whole envelope each
+   * `probe_every_s` cost 1.7 ms of the server's event loop and 344 KiB for the largest
+   * record measured (`refresh_answer_pull` in pull_route.py).
+   *
+   * Null when the page no longer holds that record as the server has it: another revision
+   * since the ask, or a record whose comparison a server with no store drops (`no_store`),
+   * which shares its revision with the one a store keeps. The page then reads the route.
+   *
+   * @param {unknown} pull
+   * @returns {unknown} An envelope to check with `isEnvelope`, or null.
+   */
+  function withHeldRecord(pull) {
+    if (pull === null || typeof pull !== "object" || !("record_held" in pull)) {
+      return pull;
+    }
+    const { record_held: _held, ...rest } = /** @type {Record<string, unknown>} */ (pull);
+    if (
+      envelope === null ||
+      envelope.record === null ||
+      envelope.record_revision !== rest.record_revision ||
+      "no_store" in envelope !== "no_store" in rest
+    ) {
+      return null;
+    }
+    return { ...rest, record: envelope.record };
+  }
+
+  /**
    * Read the pull route. A hidden page does not poll; *first* is the page's own first
    * read, which a page opened in the background needs as much as a visible one.
    *
@@ -2731,7 +2768,7 @@ export function createPullController(deps, options) {
    * is not: the poll keeps its own interval, so a server that stops answering is reported
    * by it, and by the failed ask itself.
    *
-   * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, prepare_comparison?: string, recovery?: {base: string, head: string}}} ask
+   * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, prepare_comparison?: string, recovery?: {base: string, head: string}, held?: string}} ask
    * @param {{automatic?: boolean}} [how]
    */
   async function askForRefresh(ask, { automatic = false } = {}) {
@@ -2751,20 +2788,35 @@ export function createPullController(deps, options) {
     // A bounded core wait must not shift the first ordinary poll by its response time.
     const fastSince = ask.wait_core === true ? deps.now() : null;
     let started = false;
+    // The answer left out a record the page no longer holds: the route is read at once.
+    let reread = false;
     try {
       const response = await deps.request("POST", REFRESH_ROUTE, { body: ask });
       const body = /** @type {{pull?: unknown, error?: unknown} | null} */ (response.body);
+      const pull = body === null ? null : withHeldRecord(body.pull);
       if (
         (response.status === 202 || response.status === 200) &&
         body !== null &&
-        isEnvelope(body.pull)
+        pull === null &&
+        body.pull != null
       ) {
-        if (accept(body.pull, request)) {
+        etag = null;
+        reread = true;
+        if (!idle) {
+          error = null;
+          errorFromComparison = false;
+        }
+      } else if (
+        (response.status === 202 || response.status === 200) &&
+        body !== null &&
+        isEnvelope(pull)
+      ) {
+        if (accept(pull, request)) {
           waitForFull =
             response.status === 202 &&
             ask.wait_core === true &&
-            body.pull.record === null &&
-            body.pull.refreshing;
+            pull.record === null &&
+            pull.refreshing;
         }
         if (response.status === 202) {
           // The answer changed; the next poll must not be answered by a 304.
@@ -2806,7 +2858,9 @@ export function createPullController(deps, options) {
     if (!disposed) {
       fetchSelectedChanges();
       render();
-      if (
+      if (reread) {
+        pollNow();
+      } else if (
         !automatic ||
         started ||
         timer === null ||

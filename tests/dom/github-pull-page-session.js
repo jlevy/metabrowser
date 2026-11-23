@@ -265,6 +265,8 @@ function createPage(runtime, options) {
   let nextTimer = 1;
   let visible = true;
   let paints = [];
+  // The model last painted, in any step, for an invariant the brief summary leaves out.
+  let lastModel = null;
   let rendered = [];
   let reloads = 0;
   let navigations = [];
@@ -319,6 +321,7 @@ function createPage(runtime, options) {
     formatHold: (liftMs, nowMs) => runtime.holdLiftText(liftMs, nowMs, "en-US", "UTC"),
     render(model) {
       paints.push(model);
+      lastModel = model;
     },
     renderMarkdown(part, body) {
       rendered.push({ part, html: body.html });
@@ -426,6 +429,7 @@ function createPage(runtime, options) {
       timer.callback();
     },
     timersLeft: () => timers.size,
+    lastModel: () => lastModel,
     /** The waiting ask's delay, or null with none waiting. */
     askDelay: () => [...timers.values()].find(isAsk)?.delayMs ?? null,
     /** The poll's timer, to tell a poll left waiting from one armed again. */
@@ -1082,6 +1086,25 @@ async function main() {
       firstAsk.paint?.revalidating !== true,
     `a probed page does not ask again after probe_every_s: ${JSON.stringify(firstAsk)}`,
   );
+  // The ask named the record the page shows, and the answer came without it (mb-jd08: the
+  // whole envelope every interval was 344 KiB for the largest record measured). The page
+  // still shows that record, under the verdict the answer brought.
+  const heldAsk = `POST /api/plugin/github/pull-refresh ${JSON.stringify({
+    number: 7,
+    held: recorded.refreshed.body.record_revision,
+  })}`;
+  assert(
+    recorded.probed.body.pull.record_held === true &&
+      !("record" in recorded.probed.body.pull) &&
+      JSON.stringify(firstAsk.requests) === JSON.stringify([heldAsk]),
+    `a page that shows a record did not ask naming it: ${JSON.stringify(firstAsk.requests)}`,
+  );
+  assert(
+    probing.lastModel().status === "current" &&
+      probing.lastModel().recordRevision === recorded.refreshed.body.record_revision &&
+      probing.lastModel().pull?.title === recorded.refreshed.body.record.pull.title,
+    `an answer without the record took the page's record: ${JSON.stringify(firstAsk)}`,
+  );
   probing.clock.now += recorded.refreshed.body.probe_every_s * 1000;
   probing.server.pull = recorded.probed_current;
   probing.server.refresh.push(recorded.probed);
@@ -1175,13 +1198,39 @@ async function main() {
   });
   const fullRead = await probing.step("its full read starts", async () => probing.fireAsk(0));
   assert(
-    JSON.stringify(fullRead.requests) ===
-      JSON.stringify(['POST /api/plugin/github/pull-refresh {"number":7}']) &&
-      fullRead.timer === "fast",
+    JSON.stringify(fullRead.requests) === JSON.stringify([heldAsk]) && fullRead.timer === "fast",
     `an overdue record's ask did not start its full read: ${JSON.stringify(fullRead)}`,
   );
   probing.server.pull = recorded.probed_current;
   await probing.step("the full read ends and the record is current", async () => probing.fire());
+  // An answer that leaves out a record the page does not hold is not shown: the server's
+  // moved on between the ask and its answer, or it has no store and so drops the
+  // comparison of a record with the same revision. The page reads the route at once,
+  // unconditionally, and shows what that read brings. Asserted rather than printed, as
+  // the steps above are.
+  for (const differs of [{ record_revision: "0".repeat(64) }, { no_store: true }]) {
+    probing.clock.now += interval;
+    probing.server.refresh.push({
+      ...recorded.probed,
+      body: { ...recorded.probed.body, pull: { ...recorded.probed.body.pull, ...differs } },
+    });
+    const unheld = await probing.step("an answer about a record the page lacks", async () =>
+      probing.fireAsk(interval),
+    );
+    assert(
+      JSON.stringify(unheld.requests) === JSON.stringify([heldAsk]) && unheld.timer === 0,
+      `an answer about another record did not make a read due: ${JSON.stringify(unheld)}`,
+    );
+    const reread = await probing.step("which the page reads at once", async () => probing.fire());
+    assert(
+      JSON.stringify(reread.requests) ===
+        JSON.stringify(["GET /api/plugin/github/pull?number=7"]) &&
+        probing.lastModel().status === "current" &&
+        !probing.lastModel().message &&
+        probing.lastModel().recordRevision === recorded.refreshed.body.record_revision,
+      `an answer about another record was not followed by a whole read: ${JSON.stringify(reread)}`,
+    );
+  }
   probing.setVisible(false);
   await probing.controller.onVisibilityChange();
   probingStory.push(

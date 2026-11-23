@@ -516,7 +516,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "the reader stayed: the page asks for a refresh by itself",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -754,7 +754,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "the reader stayed: it asks",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1004,7 +1004,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a page left open asks for its refresh",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1064,7 +1064,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "it asks for the next refresh at once",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1086,7 +1086,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a current page asks once the reader stays, and a probe answers",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
       ],
       "timer": "slow",
       "paints": 0,
@@ -1096,7 +1096,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "its interval later it asks again, and the probe vouches",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
       ],
       "timer": "slow",
       "paints": 0,
@@ -1116,7 +1116,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a probe ask the server does not answer is reported",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1136,7 +1136,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "the next probe ask that answers clears it",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1156,7 +1156,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "an answer slower than the interval is followed by a short gap",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
       ],
       "timer": "slow",
       "paints": 0,
@@ -1174,7 +1174,7 @@ $ node tests/dom/github-pull-page-second-session.js
       "step": "shown again past its interval it asks at once, and a probe that found a change refreshes",
       "requests": [
         "GET /api/plugin/github/pull?number=7 (If-None-Match)",
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"582fab3059ef946c580b6d665726b7cd0072175616a0a4eded448d06c83c011a\"}"
       ],
       "timer": "fast",
       "paints": 2,
@@ -1196,7 +1196,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a stale page asks once, and its refresh is not due",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":8}"
+        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1253,7 +1253,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "that ask is sent with no wait, and is not due",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":8}"
+        "POST /api/plugin/github/pull-refresh {\"number\":8,\"held\":\"6ceee0aed2478da7996fe0a4188bf097437bda8dc70e1f0e897043f9c3dbcbc5\"}"
       ],
       "timer": "slow",
       "paints": 1,
@@ -1294,7 +1294,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "a stale page asks for its refresh",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -1372,7 +1372,7 @@ $ node tests/dom/github-pull-page-second-session.js
     {
       "step": "and sends that ask with no wait",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"held\":\"07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b\"}"
       ],
       "timer": "fast",
       "paints": 1,

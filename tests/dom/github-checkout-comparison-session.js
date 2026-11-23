@@ -535,7 +535,8 @@ async function run() {
     }
     await run.fire(page.REFRESH_ASK_MS);
     assert.deepEqual(run.posts(), [
-      `POST /api/plugin/github/pull-refresh ${JSON.stringify({ number: 10 })}`,
+      // The page's own ask names the record it shows, for an answer without it.
+      `POST /api/plugin/github/pull-refresh ${JSON.stringify({ number: 10, held: stale.record_revision })}`,
     ]);
     if (owned) {
       run.controller.setTab("files");
