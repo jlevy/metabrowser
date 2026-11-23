@@ -15,7 +15,8 @@ motion. This holds that:
   Files, Ignored, and Total, and its Details row while Details is open, and nothing else,
   grown twice over on the axis that carries no data;
 - the entry marks its family's cells in the compact treemap under the breakdown, and only
-  those, lifted and not grown, every cell inside the map and none moved;
+  those, their pixels copied onto the marks canvas, which lifts and does not grow, every
+  cell inside the map and none moved;
 - the entry is marked: its dot lifted, its name in its family's ink at 4.5:1 or better on
   both pages, and every other entry at rest;
 - each marked bar and the entry's dot shimmer, by opacity alone, entered together in step;
@@ -171,7 +172,7 @@ def _map_marked(reading: dict[str, Any], rest: dict[str, Any], label: str) -> No
     inside the map, and not moved."""
 
     shown = reading["map"]
-    assert shown["cells"] > 0, (label, reading)
+    assert shown["cells"] > 0 and shown["sampled"] > 0, (label, reading)
     assert shown["marked"] and shown["marked"] == shown["family"], (label, reading)
     assert shown["liftedNotGrown"] and shown["othersAtRest"], (label, reading)
     assert shown["inside"], (label, reading)

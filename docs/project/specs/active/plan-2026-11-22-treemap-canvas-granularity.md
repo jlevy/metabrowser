@@ -397,21 +397,25 @@ grafts are needed at all.
 
 ### Phase 1: Canvas Cells (layer 4, `claude/treemap-canvas`)
 
-- [ ] Measure the budget curve on the main checkout with the review’s replay (it reuses
+- [x] Measure the budget curve on the main checkout with the review’s replay (it reuses
   the production `build_rollup`), and record it in the research document.
-- [ ] Layout: `paintMinPx`, `maxPaintCells`, depth-thinned frames, the paint list, the
+- [x] Layout: `paintMinPx`, `maxPaintCells`, depth-thinned frames, the paint list, the
   label set, the focus order, with vm tests: every cell inside its parent, labelled
   cells are the largest, bounds respected, zero-size cells counted.
-- [ ] `treemap-hit.js` with its invariants.
-- [ ] `treemap-paint.js`: backing store, probes, fills, edges, mark ops.
-- [ ] `treemap-map.js`: layers, label reconciliation, routing, the hover anchor, the
+- [x] `treemap-hit.js` with its invariants.
+- [x] `treemap-paint.js`: backing store, probes, fills, edges, mark ops.
+- [x] `treemap-map.js`: layers, label reconciliation, routing, the hover anchor, the
   focus proxy, re-hit-testing after layout; disposal of canvases (zeroed), listeners,
   probes, the theme and resolution listeners, and pending frames; placeholders that
   leave the layers in place.
-- [ ] A treemap case in the WebKit gate; profile the layout; set the layer’s bounds.
-- [ ] Extend the containment Chrome test to every cell, sampling pixels at cell centers
+- [x] Set the layer’s bounds in Chrome: `PAINT_MAX_CELLS` in `treemap-map.js`, with its
+  measurement. The WebKit gate’s treemap case moves to Phase 2 (mb-72rg): the rollup’s
+  4,000-node budget keeps this layer’s map near 4k cells, which Chrome paints in 7 ms
+  and WebKit fills at well under a frame (the research benchmark: 5 to 9 ms for 10k
+  rectangles), so `PAINT_MAX_CELLS` first binds once Phase 2 raises the budget.
+- [x] Extend the containment Chrome test to every cell, sampling pixels at cell centers
   against the probe colors; keyboard reach over every actionable cell.
-- [ ] Sessions and goldens (`cli-ui-treemap-compact`, `cli-ui-treemap-legend`,
+- [x] Sessions and goldens (`cli-ui-treemap-compact`, `cli-ui-treemap-legend`,
   `cli-ui-treemap-not-indexed`), driven by pointer coordinates at a pinned pixel ratio;
   parity rows; `docs/design-system.md` “Folder Treemap”; a changelog fragment.
 
@@ -421,6 +425,8 @@ grafts are needed at all.
   tests and a golden for each through `metab --api`.
 - [ ] The Treemap view asks for them and decodes in the folder plugin.
 - [ ] Set `ROLLUP_MAX_NODES`, `top`, and the body cache bound from the measurement.
+- [ ] A treemap case in the WebKit gate at the raised budget; profile the layout; set
+  `PAINT_MAX_CELLS` from both engines (mb-72rg).
 - [ ] Parity rows, docs, a changelog fragment; a follow-up bead for grafts only if the
   measurement asks for one.
 

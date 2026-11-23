@@ -309,11 +309,14 @@ FOLDER_DISCOVERY_MAX_ENTRIES = 4_096
 #
 # and a synthetic 138,001-file repository-like tree, unignored nodes
 # 796 / 1,734 / 2,728 / 3,724 at the same budgets, 12 to 28 ms CPU.
-# Most nodes are files too small to draw, which fold into their
-# folder's remainder cell, so the budget sits well above the map's cell
-# cap (maxCells, treemap-layout.js): at 1,200 the Overview's compact map drew 118 cells on
-# this repository and left 136 folders unexpanded. 4,000 reaches the
-# depth the larger budgets reach for about 25 ms of server CPU.
+# Most nodes were files too small for the map of the time, an element
+# per cell, which fold into their folder's remainder cell: at 1,200 the
+# Overview's compact map drew 118 cells on this repository and left 136
+# folders unexpanded. 4,000 reaches the depth the larger budgets reach
+# for about 25 ms of server CPU. The canvas map paints up to
+# PAINT_MAX_CELLS (treemap-map.js), so this budget, not the map, now
+# bounds how much of the tree is drawn
+# (docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md).
 ROLLUP_MAX_NODES = 4_000
 
 # Trailing debounce for treemap refresh after inventory change events;

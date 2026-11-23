@@ -143,6 +143,9 @@ const DETAILS_HEADINGS = `(() => {
   };
 })()`;
 
+// The module the view loaded, whose inspectTreemap reads the map it mounted.
+const MAP_MODULE = `performance.getEntriesByType("resource").map((e) => e.name).find((n) => n.endsWith("/treemap-map.js"))`;
+
 const READ = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const tip = document.querySelector(".custom-tooltip");
@@ -172,11 +175,47 @@ const READ = `(async () => {
   };
   // The compact treemap under the breakdown joins the section's hover; its cells are read
   // apart from the bars and the legend, as the map's own marks.
-  const hovered = [...document.querySelectorAll("[data-hovered]")];
-  const marked = hovered.filter((element) => element.dataset.tmPath === undefined);
+  // The map paints its cells on a canvas, so its own reading, inspectTreemap
+  // (treemap-map.js), names them, and the canvases' pixels say what is drawn.
+  const marked = [...document.querySelectorAll("[data-hovered]")].filter((element) => !element.classList.contains("tm-hover-anchor"));
   const mapViewport = document.querySelector(".tm-viewport-compact");
-  const mapCells = mapViewport ? [...mapViewport.querySelectorAll(".tm-cell")] : [];
-  const mapMarked = hovered.filter((element) => element.dataset.tmPath !== undefined);
+  const { inspectTreemap } = await import(${MAP_MODULE});
+  const map = mapViewport ? inspectTreemap(mapViewport) : null;
+  const mapCells = map?.cells ?? [];
+  const mapMarked = map?.marked ?? [];
+  // A cell's family is the first part of its paint style's key (treemap-map.js, cellStyleKey).
+  const familyOf = new Map((map?.paint ?? []).filter((r) => r.tone === "fill").map((r) => [r.cell, r.style.split("|")[0]]));
+  // Each painted cell's own pixel on the marks canvas: a leaf's fill centre, a nesting
+  // folder's frame's left column where one is drawn. A marked cell's is a copy of the
+  // paint canvas's; any other cell's is clear.
+  const lift = (() => {
+    if (!map) return { lifted: true, clear: true, sampled: 0 };
+    const pixels = (selector) => {
+      const c = mapViewport.querySelector(selector);
+      return c.getContext("2d").getImageData(0, 0, c.width, c.height);
+    };
+    const paint = pixels(".tm-paint");
+    const marks = pixels(".tm-marks");
+    const at = (image, x, y) => [...image.data.slice((y * image.width + x) * 4, (y * image.width + x) * 4 + 4)];
+    const markedSet = new Set(mapMarked);
+    const out = { lifted: true, clear: true, sampled: 0 };
+    for (const rect of map.paint.filter((r) => r.tone === "fill")) {
+      let own = [rect.x + (rect.w >> 1), rect.y + (rect.h >> 1)];
+      if (mapCells[rect.cell].nested) {
+        const inner = map.paint.find((r) => r.cell === rect.cell && r.tone === "edge");
+        if (!inner || inner.x <= rect.x) continue;
+        own = [rect.x, rect.y + (rect.h >> 1)];
+      }
+      out.sampled += 1;
+      const on = at(marks, ...own);
+      if (markedSet.has(rect.cell)) {
+        out.lifted &&= on[3] > 0 && JSON.stringify(on) === JSON.stringify(at(paint, ...own));
+      } else {
+        out.clear &&= on[3] === 0;
+      }
+    }
+    return out;
+  })();
   const bars = marked.filter((element) => element.classList.contains("file-type-summary-fill"));
   const style = (element) => {
     const computed = getComputedStyle(element);
@@ -266,29 +305,32 @@ const READ = `(async () => {
   const hoveredEntry = document.querySelector(".file-type-summary-legend-item:hover");
   const pointedSegment = bars.find((bar) => bar.matches(":hover"));
   const handle = hoveredEntry ?? pointedSegment;
-  const colorOf = (cell) => cell.style.getPropertyValue("--mb-distribution-color-light");
-  const mapBox = mapViewport?.getBoundingClientRect();
+  const marksLayer = mapViewport?.querySelector(".tm-marks");
   return {
     marked: marked.map(nameOf),
     map: {
       cells: mapCells.length,
-      marked: mapMarked.map((cell) => cell.dataset.tmPath + " (" + cell.dataset.hovered + ")"),
-      // Every cell painted the color of the first marked cell: the cells of one family.
+      sampled: lift.sampled,
+      marked: mapMarked.map((i) => mapCells[i].path + " (family)"),
+      // Every cell of the first marked cell's family.
       family: mapMarked.length
-        ? mapCells.filter((cell) => colorOf(cell) === colorOf(mapMarked[0])).map((cell) => cell.dataset.tmPath + " (family)")
+        ? mapCells.flatMap((cell, i) => (familyOf.get(i) === familyOf.get(mapMarked[0]) ? [cell.path + " (family)"] : []))
         : [],
-      liftedNotGrown: mapMarked.every((cell) => {
-        const { scaleY, scaleX, filter } = style(cell);
-        return scaleY === 1 && scaleX === 1 && filter !== "none";
-      }),
-      othersAtRest: mapCells.filter((cell) => !mapMarked.includes(cell)).every((cell) => getComputedStyle(cell).filter === "none"),
-      inside: mapCells.every((cell) => {
-        const r = cell.getBoundingClientRect();
-        const left = mapBox.left + mapViewport.clientLeft;
-        const top = mapBox.top + mapViewport.clientTop;
-        return r.left >= left - 0.05 && r.top >= top - 0.05 && r.right <= left + mapViewport.clientWidth + 0.05 && r.bottom <= top + mapViewport.clientHeight + 0.05;
-      }),
-      layout: mapCells.map(box),
+      // The marked cells' pixels copied to the marks canvas, which lifts and does not grow.
+      liftedNotGrown:
+        lift.lifted &&
+        (() => {
+          const { scaleY, scaleX, filter } = style(marksLayer);
+          return scaleY === 1 && scaleX === 1 && filter !== "none";
+        })(),
+      othersAtRest: lift.clear,
+      inside: mapCells.every(
+        (cell) => cell.x >= -0.05 && cell.y >= -0.05 && cell.x + cell.w <= mapViewport.clientWidth + 0.05 && cell.y + cell.h <= mapViewport.clientHeight + 0.05,
+      ),
+      layout: [
+        ...mapCells.map((cell) => [cell.x, cell.y, cell.w, cell.h].map(round).join(",")),
+        ...[...mapViewport.querySelectorAll(".tm-paint, .tm-marks, .tm-label-cell")].map(box),
+      ],
     },
     barStyle: bars.map(style),
     // Every other bar, and every bar outside the tally rows and an open Details, at rest.
@@ -343,7 +385,7 @@ try {
   await chrome.send("Page.enable");
   await chrome.send("Page.navigate", { url: `${base}/view/` });
   await chrome.waitFor(
-    `document.querySelectorAll(".file-type-summary-legend-item").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-ignored-row [data-segment-key]").length > 0 && document.querySelectorAll(".tm-viewport-compact .tm-cell").length > 0`,
+    `document.querySelectorAll(".file-type-summary-legend-item").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-ignored-row [data-segment-key]").length > 0 && document.querySelectorAll(".tm-viewport-compact .tm-paint").length > 0 && ${MAP_MODULE} !== undefined`,
     30000,
   );
   phase("loaded");

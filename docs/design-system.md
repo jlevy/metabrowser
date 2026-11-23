@@ -4849,14 +4849,32 @@ than draining into the first folder drawn (`treemap-layout.js`). A folder with r
 its label is labelled, and nests under its label strip when it is tall enough for a row
 of children too; only a folder too small for a label nests inside a thin frame, with no
 label, and its files are still drawn.
-A framed folder is its own keyboard control, since it has no label to carry one.
-A folder whose children all fold into its remainder stays one solid cell.
+Frames thin with depth, and a folder too small for one draws its children edge to edge,
+so deep levels keep their area for cells (`frameDecay` in `treemap-layout.js`). A folder
+whose children all fold into its remainder stays one solid cell.
 Every cell lies inside its parent’s cell and inside the map’s border.
-The map lays out to its padding box, the box absolutely placed cells are positioned in,
-and a cell draws at exactly its rectangle: its edge is an inset shadow that takes no
-room, and a cell with no label has no padding, which would otherwise set a floor on its
-size (`styles.css`, `.tm-cell`); `tests/test_treemap_containment_chrome.py` measures it.
-A cell too small for any text, a framed folder’s included, names itself in its tooltip.
+
+The map paints its cells on a canvas rather than drawing an element for each, so it
+draws cells down to a device pixel, up to `PAINT_MAX_CELLS` (`treemap-map.js`, with its
+measurement), where an element per cell cost too much to build and tear down.
+Its layers, bottom to top:
+
+- **The paint canvas** holds every cell, snapped to device pixels so neighbours share an
+  edge. A nesting folder paints its interior in its edge tone, and each child large
+  enough draws one device pixel short, so the edge shows between neighbours
+  (`treemap-paint.js`). Its colors come from probe cells styled as a cell is, so the
+  palette, the ignored dimming, and the theme stay in the stylesheet.
+- **The marks canvas** holds copies of the marked cells’ pixels under the lift filter.
+- **The hover anchor** is a transparent cell over the cell under the pointer.
+  It carries that cell’s shimmer and anchors its tooltip.
+- **The labels** are text alone, one element per labelled cell, positioned in the map’s
+  padding box.
+- **The focus proxy** is the map’s one focusable control.
+
+The map lays out to its padding box, and a label lies inside its cell and the map’s
+border; `tests/test_treemap_containment_chrome.py` measures it, with the canvas’s fill
+at each cell. A cell too small for any text, a framed folder’s included, names itself in
+its tooltip.
 
 The Files context above the map mounts the same reusable folder-rollup controls used by
 Overview. The metric control appears before Files and Ignored; the scope control appears
@@ -4885,10 +4903,11 @@ a second cell-color vocabulary.
 Treemap derives a theme-aware surface wash and stronger border from that shared base
 color so labels retain contrast; the Overview’s data bars keep the full-strength swatch.
 Hover brightens the composed cell, including its type-derived surface and border, so
-their contrast and hue relationship remain intact.
+their contrast and hue relationship remain intact: the marks canvas copies the marked
+cells’ painted pixels, and the lift filter applies to the copy.
 There is no separate label hover surface.
-It never changes stacking or display: nested folder containers and their descendant
-rectangles are flattened siblings, so raising a container would cover its children.
+It never raises or grows a cell: a folder is painted under its children, so raising it
+would cover them.
 
 Under the tally bars the Treemap shows File Overview’s legend, from the same builder
 (`distribution-legend.js` and `buildFileTypeLegendModel`), on a row one line tall that
@@ -4905,22 +4924,27 @@ tooltip. Pointing at a cell or a segment marks it and its family’s entry, and 
 keeps its own tooltip.
 Every marked cell lifts, and none grows
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
-Only the cell under the pointer also shimmers, its sheen under its label: a family can
-hold every cell the map draws, and each shimmering cell is a layer and an animation of
-its own, so a family’s cells take the lift alone while the bars and the entry’s dot
-shimmer. The cost at the map’s cell limit is measured beside the rule in the folder
-plugin’s stylesheet.
+Only the file or remainder under the pointer also shimmers, on the hover anchor, which
+lies under the labels, so its sheen does too.
+A family’s cells take the lift alone while the bars and the entry’s dot shimmer: a
+family can hold every cell the map draws, and a shimmer per cell is an animation each.
+The cost is measured beside the rule in the folder plugin’s stylesheet.
+A nesting folder lifts without the shimmer, which would cover its children.
 A layout replaces the cells: it lets go of a cell’s hover, which the browser enters
 again on the new cell, and draws an entry’s hover again on the new cells.
 `tests/test_treemap_legend_hover_chrome.py` measures it.
 
 The complete visible rectangle of every folder or file is its pointer target, including
-the uncovered header, gutter, and background of a nested folder.
-When rectangles are nested, the deepest rectangle under the pointer wins; an inert
-remainder cell does not fall through to its parent.
-The nested parent remains an ARIA group and its label remains the keyboard control, so
-full-cell pointer handling never creates an invalid button containing descendant
-buttons.
+the uncovered header, gutter, and frame of a nested folder.
+A canvas says nothing about what is painted on it, so the map answers the pointer from
+the layout: a grid of buckets over the map lists the cells over each, and the deepest
+cell under the pointer wins (`treemap-hit.js`). An inert remainder cell does not fall
+through to its parent.
+The keyboard reaches every folder and file cell through the focus proxy, which the arrow
+keys move in layout order and which takes the cell’s accessible name, with the folder’s
+remainder named when it has one; Enter or Space opens it.
+One control rather than one per cell keeps the page’s focus order short and never makes
+a button inside another.
 
 Cell typography grows continuously with usable rectangle geometry.
 The scale combines the short side with the square root of area, which lets a genuinely

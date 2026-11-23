@@ -20,13 +20,72 @@ function check(name, cond, detail) {
 }
 
 // ── Minimal DOM stub ────────────────────────────────────────────
-function makeElement() {
+// The treemap map builds its layers with createElement and appendChild, paints on a
+// canvas, and puts a hover anchor in the viewport, so an element keeps its children; markup
+// written to innerHTML replaces them, as a placeholder replaces the map's layers.
+/** Every canvas context the map asked for, which records what it filled and in what. */
+const canvasContexts = [];
+function makeCanvasContext() {
+  const ctx = {
+    fillStyle: "",
+    globalAlpha: 1,
+    fills: [],
+    setTransform() {},
+    clearRect() {},
+    drawImage() {},
+    fillRect(x, y, w, h) {
+      ctx.fills.push({ fillStyle: ctx.fillStyle, x, y, w, h });
+    },
+  };
+  canvasContexts.push(ctx);
+  return ctx;
+}
+function makeElement(tag = "div") {
+  let markup = "";
   const el = {
-    innerHTML: "",
+    tagName: String(tag).toUpperCase(),
+    get innerHTML() {
+      return markup;
+    },
+    set innerHTML(value) {
+      markup = String(value);
+      for (const child of el.children) {
+        child.parentNode = null;
+      }
+      el.children = [];
+    },
+    parentNode: null,
+    className: "",
+    hidden: false,
     listeners: {},
     attributes: {},
     dataset: {},
     style: {},
+    appendChild(child) {
+      child.remove?.();
+      child.parentNode = el;
+      el.children.push(child);
+      return child;
+    },
+    insertBefore(child, reference) {
+      child.remove?.();
+      child.parentNode = el;
+      const at = el.children.indexOf(reference);
+      el.children.splice(at === -1 ? el.children.length : at, 0, child);
+      return child;
+    },
+    remove() {
+      if (el.parentNode) {
+        el.parentNode.children = el.parentNode.children.filter((child) => child !== el);
+        el.parentNode = null;
+      }
+    },
+    getAttribute(k) {
+      return k in el.attributes ? el.attributes[k] : null;
+    },
+    removeAttribute(k) {
+      delete el.attributes[k];
+    },
     addEventListener(type, fn) {
       el.listeners[type] = el.listeners[type] || [];
       el.listeners[type].push(fn);
@@ -70,12 +129,19 @@ function makeElement() {
     querySelectorAll() {
       return [];
     },
-    getBoundingClientRect: () => ({ width: 800, height: 600, top: 120 }),
+    getBoundingClientRect: () => ({ width: 800, height: 600, top: 120, left: 0 }),
     setAttribute(k, v) {
       el.attributes[k] = v;
     },
     classList: { add() {}, remove() {}, contains: () => false },
   };
+  if (el.tagName === "CANVAS") {
+    // One context a canvas, as a browser keeps.
+    el.getContext = () => {
+      el.context ??= makeCanvasContext();
+      return el.context;
+    };
+  }
   return el;
 }
 
@@ -134,13 +200,23 @@ const sandbox = {
   location: { origin: "http://127.0.0.1:8411" },
   document: {
     addEventListener() {},
-    createElement: () => ({ appendChild() {} }),
+    createElement: (tag) => makeElement(tag),
     querySelector: () => null,
     querySelectorAll: () => [],
   },
 };
 let pendingTimers = [];
 sandbox.window = sandbox;
+// One device pixel per CSS pixel, so the map paints the same on every host.
+sandbox.devicePixelRatio = 1;
+// The map reads each paint style from a probe element styled as a cell of that style.
+// This cascade resolves an element's background to its inline style, so what a canvas
+// fills names the palette style its probe was given.
+const probedClasses = [];
+sandbox.getComputedStyle = (element) => {
+  probedClasses.push(element.className);
+  return { backgroundColor: element.getAttribute?.("style") ?? "", opacity: "1" };
+};
 // The shell's tooltip, recording what each hide is given: the map's disposal puts away only
 // its own tooltip, never another surface's (mb-alff).
 const tooltipHides = [];
@@ -261,12 +337,14 @@ for (const relative of [
 }
 // In dependency order, since each runs in the one sandbox with its imports taken out:
 // folder-totals.js and the treemap import the hover they share, the treemap the legend, and
-// the map component the layout.
+// the map component the layout, the hit grid, and the paint list.
 const moduleSources = [
   "src/metabrowser/builtin_plugins/folder/distribution-hover.js",
   "src/metabrowser/builtin_plugins/folder/distribution-legend.js",
   "src/metabrowser/builtin_plugins/folder/folder-totals.js",
   "src/metabrowser/builtin_plugins/folder/treemap-layout.js",
+  "src/metabrowser/builtin_plugins/folder/treemap-hit.js",
+  "src/metabrowser/builtin_plugins/folder/treemap-paint.js",
   "src/metabrowser/builtin_plugins/folder/treemap-map.js",
   "src/metabrowser/builtin_plugins/folder/treemap-model.js",
   "src/metabrowser/builtin_plugins/folder/rollup-controls.js",
@@ -513,53 +591,117 @@ sandbox.MetabrowserNavigationRoute.attachController({
       palette: !!container.totals.compositionPalette,
     }),
   );
+  // The map paints its cells on a canvas and keeps labels, a focus proxy, and a hover
+  // anchor in the DOM; what it drew is read through its inspection (treemap-map.js).
+  const drawnMap = (pane = container) => sandbox.inspectTreemap(pane.viewport);
+  const layerOf = (pane, className) =>
+    pane.viewport.children.find((child) => child.className === className) ?? null;
+  /** The index of the drawn folder or file cell at `cellPath`, or -1. */
+  const cellIndexOf = (pane, cellPath) =>
+    (drawnMap(pane)?.cells ?? []).findIndex(
+      (cell) => cell.path === cellPath && cell.kind !== "rest",
+    );
+  /** The label element over the drawn cell at `cellPath`, or null. */
+  const labelFor = (pane, cellPath) => {
+    const index = cellIndexOf(pane, cellPath);
+    return (
+      layerOf(pane, "tm-labels")?.children.find(
+        (element) => Number(element.dataset.tmCell) === index,
+      ) ?? null
+    );
+  };
+  const labelsMarkup = (pane) =>
+    (layerOf(pane, "tm-labels")?.children ?? [])
+      .map(
+        (element) => `${element.className} ${element.getAttribute("style")} ${element.innerHTML}`,
+      )
+      .join("\n");
+  /** The client coordinates of a point in cell `index`, its center unless `at` names one. */
+  const clientAt = (pane, index, at) => {
+    const cell = drawnMap(pane).cells[index];
+    const point = at ?? { x: cell.x + cell.w / 2, y: cell.y + cell.h / 2 };
+    const rect = pane.viewport.getBoundingClientRect();
+    return { clientX: rect.left + point.x, clientY: rect.top + point.y };
+  };
+  /** What the browser sends the viewport, which takes every pointer and key event itself. */
+  const dispatch = (pane, type, init = {}) => {
+    const event = {
+      type,
+      target: pane.viewport,
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+      ...init,
+    };
+    for (const fn of [...(pane.viewport.listeners[type] || [])]) {
+      fn(event);
+    }
+    return event;
+  };
+  const geometry = (pane) =>
+    JSON.stringify(
+      (drawnMap(pane)?.cells ?? []).map((cell) => [cell.path, cell.x, cell.y, cell.w, cell.h]),
+    );
+
   check(
     "cells rendered",
-    container.viewport.innerHTML.includes("tm-cell") &&
-      container.viewport.innerHTML.includes("a.py"),
-    container.viewport.innerHTML.slice(0, 200),
+    drawnMap()?.cells.some((cell) => cell.path === "a.py") === true &&
+      drawnMap().paint.length > 0 &&
+      ["tm-paint", "tm-marks", "tm-labels", "tm-focus"].every((name) => layerOf(container, name)),
+    JSON.stringify(container.viewport.children.map((child) => child.className)),
   );
   {
     // The map lays out to the viewport's padding box (clientWidth and
     // clientHeight, inside its border), not to its bounding box, which is
     // larger by the border: laying out to that pushed the right- and
-    // bottom-edge cells under the border.
+    // bottom-edge cells under the border. What is painted is the paint list,
+    // in device pixels, one a CSS pixel here.
     container.viewport.clientWidth = 798;
     container.viewport.clientHeight = 598;
     sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
-    const boxes = [
-      ...container.viewport.innerHTML.matchAll(
-        /left:([\d.]+)px;top:([\d.]+)px;width:([\d.]+)px;height:([\d.]+)px/g,
-      ),
-    ].map((m) => m.slice(1).map(Number));
-    const reach = boxes.reduce(
-      (most, [left, top, width, height]) => [
-        Math.max(most[0], left + width),
-        Math.max(most[1], top + height),
-      ],
+    const rects = drawnMap().paint;
+    const reach = rects.reduce(
+      (most, rect) => [Math.max(most[0], rect.x + rect.w), Math.max(most[1], rect.y + rect.h)],
       [0, 0],
     );
     check(
       "cells lay out inside the viewport's client box, not its bounding box",
-      boxes.length > 0 && reach[0] <= 798 && reach[1] <= 598 && reach[0] > 790,
-      JSON.stringify({ cells: boxes.length, reach }),
+      rects.length > 0 && reach[0] <= 798 && reach[1] <= 598 && reach[0] > 790,
+      JSON.stringify({ rects: rects.length, reach }),
     );
     delete container.viewport.clientWidth;
     delete container.viewport.clientHeight;
     sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
   }
-  check(
-    "folder labels carry a trailing slash without changing the accessible name",
-    container.viewport.innerHTML.includes('<span class="tm-cell-label">docs/</span>') &&
-      container.viewport.innerHTML.includes('aria-label="docs (folder,'),
-    container.viewport.innerHTML,
-  );
+  {
+    // A folder's accessible name is the focus proxy's while it is on the folder.
+    const docsIndex = cellIndexOf(container, "docs");
+    for (let step = 0; step < drawnMap().focusOrder.length; step += 1) {
+      if (drawnMap().focused === docsIndex) {
+        break;
+      }
+      dispatch(container, "keydown", { key: "ArrowRight" });
+    }
+    const proxy = layerOf(container, "tm-focus");
+    check(
+      "folder labels carry a trailing slash without changing the accessible name",
+      (labelFor(container, "docs")?.innerHTML ?? "").includes(
+        '<span class="tm-cell-label">docs/</span>',
+      ) &&
+        drawnMap().focused === docsIndex &&
+        String(proxy?.getAttribute("aria-label")).startsWith("docs (folder,"),
+      `${labelsMarkup(container)}\n${proxy?.getAttribute("aria-label")}`,
+    );
+  }
   check(
     "file cells use the shared file identity icon",
-    container.viewport.innerHTML.includes("file-identity-icon tm-cell-file-icon ft-code") &&
-      container.viewport.innerHTML.includes('data-file-icon="a.py"') &&
+    (labelFor(container, "a.py")?.innerHTML ?? "").includes(
+      "file-identity-icon tm-cell-file-icon ft-code",
+    ) &&
+      labelFor(container, "a.py").innerHTML.includes('data-file-icon="a.py"') &&
       fileIconCalls.includes("a.py"),
-    container.viewport.innerHTML,
+    labelsMarkup(container),
   );
   check(
     "Treemap hover is one whole-cell treatment",
@@ -568,37 +710,111 @@ sandbox.MetabrowserNavigationRoute.attachController({
       treemapStyles.includes("filter: var(--viz-data-mark-hover-filter)"),
     treemapStyles,
   );
-  check(
-    "actionable cells expose a whole-rectangle pointer target",
-    container.viewport.innerHTML.includes("tm-cell tm-dir tm-type-fill") &&
-      container.viewport.innerHTML.includes("tm-actionable") &&
-      treemapStyles.includes(".tm-actionable {") &&
-      !treemapStyles.includes(".tm-nested {\n  cursor: default;"),
-    container.viewport.innerHTML,
-  );
-  check(
-    "type fill always uses the shared palette",
-    container.viewport.innerHTML.includes("tm-type-fill") &&
-      container.viewport.innerHTML.includes("--mb-distribution-color-light:python;") &&
-      container.viewport.innerHTML.includes("--mb-distribution-color-light:markdown;"),
-    container.viewport.innerHTML,
-  );
+  {
+    // The whole rectangle of a folder or file cell is its pointer target, from corner to
+    // corner, and the viewport shows the pointer cursor over it; a remainder cell, which
+    // opens nothing, shows none.
+    const pointerOver = [];
+    for (const cellPath of ["docs", "a.py"]) {
+      const index = cellIndexOf(container, cellPath);
+      const cell = drawnMap().cells[index];
+      for (const at of [
+        { x: cell.x + 0.5, y: cell.y + 0.5 },
+        { x: cell.x + cell.w / 2, y: cell.y + cell.h / 2 },
+        { x: cell.x + cell.w - 0.5, y: cell.y + cell.h - 0.5 },
+      ]) {
+        dispatch(container, "mousemove", clientAt(container, index, at));
+        pointerOver.push(
+          `${cellPath} ${drawnMap().hovered === index ? "hovered" : "missed"} ${container.viewport.style.cursor || "no cursor"}`,
+        );
+      }
+    }
+    dispatch(container, "mouseleave");
+    pointerOver.push(`left ${container.viewport.style.cursor || "no cursor"}`);
+
+    rollupOverride = {
+      ok: true,
+      json: async () => {
+        const body = JSON.parse(JSON.stringify(envelope));
+        body.node.rest = { files: 2, size: 200, unignored_files: 2, unignored_size: 200 };
+        return body;
+      },
+    };
+    const restPane = makeElement();
+    restPane.viewport = makeElement();
+    restPane.status = makeElement();
+    restPane.totals = makeElement();
+    restPane.rollupControls = makeElement();
+    sandbox.MetabrowserViewState.setActive(restPane, true);
+    const restShown = view.render(restPane, { path: "", kind: "folder", raw: {} });
+    await new Promise((resolve) => setImmediate(resolve));
+    rollupOverride = null;
+    const restIndex = (drawnMap(restPane)?.cells ?? []).findIndex((cell) => cell.kind === "rest");
+    const navigationsBeforeRest = navigationCalls.length;
+    if (restIndex >= 0) {
+      dispatch(restPane, "mousemove", clientAt(restPane, restIndex));
+      pointerOver.push(
+        `the remainder ${drawnMap(restPane).hovered === restIndex ? "hovered" : "missed"} ${restPane.viewport.style.cursor || "no cursor"}`,
+      );
+      dispatch(restPane, "click", clientAt(restPane, restIndex));
+    }
+    restShown.dispose();
+    check(
+      "actionable cells expose a whole-rectangle pointer target",
+      JSON.stringify(pointerOver) ===
+        JSON.stringify([
+          "docs hovered pointer",
+          "docs hovered pointer",
+          "docs hovered pointer",
+          "a.py hovered pointer",
+          "a.py hovered pointer",
+          "a.py hovered pointer",
+          "left no cursor",
+          "the remainder hovered no cursor",
+        ]) && navigationCalls.length === navigationsBeforeRest,
+      JSON.stringify({ pointerOver, opened: navigationCalls.slice(navigationsBeforeRest) }),
+    );
+  }
+  {
+    // Each cell is painted in the style its probe resolves to, a probe styled with the
+    // shared palette's class and style for the cell's family.
+    const paintContext = layerOf(container, "tm-paint")?.context;
+    const filledAs = (cellPath) => {
+      const index = cellIndexOf(container, cellPath);
+      const rect = drawnMap().paint.find((each) => each.cell === index && each.tone === "fill");
+      const fill = (paintContext?.fills ?? []).findLast(
+        (each) =>
+          rect && each.x === rect.x && each.y === rect.y && each.w === rect.w && each.h === rect.h,
+      );
+      return fill?.fillStyle ?? null;
+    };
+    const fills = { "a.py": filledAs("a.py"), "c.md": filledAs("c.md") };
+    check(
+      "type fill always uses the shared palette",
+      fills["a.py"] === "--mb-distribution-color-light:python;" &&
+        fills["c.md"] === "--mb-distribution-color-light:markdown;" &&
+        probedClasses.some(
+          (name) => name.includes("tm-type-fill") && name.includes("mb-distribution-mark"),
+        ),
+      JSON.stringify({ fills, probedClasses: [...new Set(probedClasses)] }),
+    );
+  }
   check(
     "cell values use the common byte formatter",
-    container.viewport.innerHTML.includes("600 B"),
-    container.viewport.innerHTML,
+    (labelFor(container, "a.py")?.innerHTML ?? "").includes("600 B"),
+    labelsMarkup(container),
   );
   check(
     "cell typography is data-driven",
-    container.viewport.innerHTML.includes("--tm-label-size:") &&
-      container.viewport.innerHTML.includes("--tm-value-size:"),
-    container.viewport.innerHTML.slice(0, 300),
+    String(labelFor(container, "a.py")?.getAttribute("style")).includes("--tm-label-size:") &&
+      labelFor(container, "a.py").getAttribute("style").includes("--tm-value-size:"),
+    labelsMarkup(container),
   );
   check(
     "obsolete age coloring is absent",
-    !container.viewport.innerHTML.includes("tm-cell-age") &&
-      !container.viewport.innerHTML.includes("tm-age-"),
-    container.viewport.innerHTML,
+    !labelsMarkup(container).includes("tm-cell-age") &&
+      !labelsMarkup(container).includes("tm-age-"),
+    labelsMarkup(container),
   );
   check(
     "steady-state footer is empty",
@@ -625,7 +841,8 @@ sandbox.MetabrowserNavigationRoute.attachController({
   check(
     "in-progress snapshots render one quiet loading block without partial cells",
     container.viewport.innerHTML.includes("tm-loading mb-delayed-loading") &&
-      !container.viewport.innerHTML.includes("data-tm-cell"),
+      drawnMap().cells.length === 0 &&
+      layerOf(container, "tm-labels") === null,
     container.viewport.innerHTML,
   );
   envelope.index_status = "done";
@@ -633,41 +850,33 @@ sandbox.MetabrowserNavigationRoute.attachController({
   check(
     "completed snapshots replace loading atomically",
     !container.viewport.innerHTML.includes("tm-loading") &&
-      container.viewport.innerHTML.includes("data-tm-cell"),
+      drawnMap().cells.length > 0 &&
+      layerOf(container, "tm-labels") !== null,
     container.viewport.innerHTML,
   );
 
-  const folderCellMatch = container.viewport.innerHTML.match(
-    /data-tm-cell="(\d+)" data-tm-kind="dir" data-tm-path="docs"/,
-  );
-  const fileCellMatch = container.viewport.innerHTML.match(
-    /data-tm-cell="(\d+)" data-tm-kind="file" data-tm-path="a.py"/,
-  );
-  check("folder cell is actionable", !!folderCellMatch, container.viewport.innerHTML);
-  check("file cell is actionable", !!fileCellMatch, container.viewport.innerHTML);
-  // The outer box is the view's own folder: drawn and labelled, but it opens nothing.
-  const outerBoxClasses = container.viewport.innerHTML.match(
-    /class="([^"]*)"[^>]*data-tm-kind="dir" data-tm-path=""/,
-  )?.[1];
+  const folderIndex = cellIndexOf(container, "docs");
+  const fileIndex = cellIndexOf(container, "a.py");
   check(
-    "the view's outer box is drawn and is no button",
-    outerBoxClasses !== undefined && !outerBoxClasses.includes("tm-actionable"),
-    container.viewport.innerHTML.slice(0, 400),
+    "folder cell is actionable",
+    folderIndex >= 0 &&
+      drawnMap().cells[folderIndex].kind === "dir" &&
+      drawnMap().focusOrder.includes(folderIndex),
+    geometry(container),
+  );
+  check(
+    "file cell is actionable",
+    fileIndex >= 0 &&
+      drawnMap().cells[fileIndex].kind === "file" &&
+      drawnMap().focusOrder.includes(fileIndex),
+    geometry(container),
   );
   const cellClick = container.viewport.listeners.click?.[0];
   check("cell click handler bound", typeof cellClick === "function");
-  const cellTarget = (index) => {
-    const target = {
-      dataset: { tmCell: index },
-      closest(selector) {
-        return selector === "[data-tm-cell]" ? target : null;
-      },
-    };
-    return target;
-  };
-  if (cellClick && folderCellMatch && fileCellMatch) {
-    const folderTarget = cellTarget(folderCellMatch[1]);
-    cellClick({ target: folderTarget });
+  if (cellClick && folderIndex >= 0 && fileIndex >= 0) {
+    // A click is hit-tested against the layout at its coordinates: anywhere in a cell,
+    // over its label or not, takes the same route.
+    dispatch(container, "click", clientAt(container, folderIndex));
     check(
       "folder background keeps Treemap active",
       navigationCalls.length === 1 &&
@@ -676,27 +885,21 @@ sandbox.MetabrowserNavigationRoute.attachController({
       JSON.stringify(navigationCalls),
     );
 
-    const folderLabel = {
-      closest(selector) {
-        return selector === "[data-tm-cell]" ? folderTarget : null;
-      },
-    };
-    cellClick({ target: folderLabel });
+    const folder = drawnMap().cells[folderIndex];
+    dispatch(
+      container,
+      "click",
+      clientAt(container, folderIndex, { x: folder.x + 4, y: folder.y + 4 }),
+    );
     check(
       "folder label uses the same whole-cell route",
       navigationCalls.length === 2 && navigationCalls[1].target.path === "docs",
       JSON.stringify(navigationCalls),
     );
 
-    const childTarget = cellTarget(fileCellMatch[1]);
-    const childLabel = {
-      closest(selector) {
-        return selector === "[data-tm-cell]" ? childTarget : null;
-      },
-    };
-    cellClick({ target: childLabel });
+    dispatch(container, "click", clientAt(container, fileIndex));
     check(
-      "the deepest clicked cell wins without ancestor activation",
+      "a file cell opens the file outside the Treemap",
       navigationCalls.length === 3 &&
         navigationCalls[2].target.path === "a.py" &&
         navigationCalls[2].options?.viewId === undefined,
@@ -747,6 +950,10 @@ sandbox.MetabrowserNavigationRoute.attachController({
       navigationCalls.length === navigationsBefore,
       JSON.stringify(navigationCalls.slice(navigationsBefore)),
     );
+    // Unmodified, the keys work the focus proxy, the map's one control: an arrow moves it
+    // to the next folder or file cell in layout order, and Enter opens the cell it is on.
+    const order = drawnMap().focusOrder;
+    const focusedBefore = drawnMap().focused;
     const plain = {
       key: "ArrowRight",
       defaultPrevented: false,
@@ -755,7 +962,35 @@ sandbox.MetabrowserNavigationRoute.attachController({
       },
     };
     cellKeydown(plain);
-    check("a plain arrow still moves within the map", plain.defaultPrevented);
+    const proxy = layerOf(container, "tm-focus");
+    const focusedCell = drawnMap().cells[drawnMap().focused];
+    check(
+      "a plain arrow still moves within the map",
+      plain.defaultPrevented &&
+        drawnMap().focused === order[order.indexOf(focusedBefore) + 1] &&
+        proxy?.getAttribute("role") === "button" &&
+        proxy.getAttribute("tabindex") === "0" &&
+        !proxy.hidden &&
+        String(proxy.getAttribute("aria-label")).startsWith(`${focusedCell?.name} (`),
+      JSON.stringify({
+        order,
+        focusedBefore,
+        focused: drawnMap().focused,
+        label: proxy?.getAttribute("aria-label"),
+      }),
+    );
+    const enter = dispatch(container, "keydown", { key: "Enter" });
+    const opened = navigationCalls.at(-1);
+    check(
+      "Enter opens the cell the focus proxy is on",
+      enter.defaultPrevented &&
+        navigationCalls.length === navigationsBefore + 1 &&
+        opened.target.path === focusedCell?.path &&
+        (focusedCell?.kind === "dir"
+          ? opened.options?.viewId === "treemap"
+          : !opened.options?.viewId),
+      JSON.stringify({ focused: focusedCell?.path, opened }),
+    );
   }
 
   // Viewport height is measured, not the CSS calc: innerHeight 1000
@@ -797,7 +1032,7 @@ sandbox.MetabrowserNavigationRoute.attachController({
 
   // Metric and ignored-scope changes relayout without refetching.
   const before = fetchCalls.length;
-  const filesMetricHtml = container.viewport.innerHTML;
+  const filesMetricGeometry = geometry(container);
   const toolbarClick = container.rollupControls.listeners.click?.[0];
   check("toolbar click handler bound", typeof toolbarClick === "function");
   const clickMetric = (value) => {
@@ -846,8 +1081,8 @@ sandbox.MetabrowserNavigationRoute.attachController({
     );
     check(
       "metric toggle changes cell geometry",
-      container.viewport.innerHTML !== filesMetricHtml,
-      "Bytes and Files produced identical markup",
+      geometry(container) !== filesMetricGeometry,
+      "Bytes and Files produced identical cells",
     );
     check(
       "metric chooser reflects the active metric",
@@ -862,9 +1097,9 @@ sandbox.MetabrowserNavigationRoute.attachController({
       container.rollupControls.innerHTML.includes(
         'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
       ) &&
-        container.viewport.innerHTML.includes("600 B") &&
+        (labelFor(container, "a.py")?.innerHTML ?? "").includes("600 B") &&
         container.status.textContent === "",
-      container.viewport.innerHTML,
+      labelsMarkup(container),
     );
   }
 
@@ -883,8 +1118,10 @@ sandbox.MetabrowserNavigationRoute.attachController({
     });
     check(
       "unchecked ignored scope hides ignored cells without a footer summary",
-      !container.viewport.innerHTML.includes("c.md") && container.status.textContent === "",
-      container.viewport.innerHTML,
+      cellIndexOf(container, "c.md") === -1 &&
+        !labelsMarkup(container).includes("c.md") &&
+        container.status.textContent === "",
+      geometry(container),
     );
     check("ignored scope change no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
     check(
@@ -903,16 +1140,29 @@ sandbox.MetabrowserNavigationRoute.attachController({
     });
     check(
       "rechecking ignored scope restores ignored cells",
-      container.viewport.innerHTML.includes("c.md") && container.status.textContent === "",
-      container.viewport.innerHTML,
+      cellIndexOf(container, "c.md") >= 0 &&
+        labelsMarkup(container).includes("c.md") &&
+        container.status.textContent === "",
+      geometry(container),
     );
   }
 
   // Dispose detaches the inventory-change and window-resize listeners.
   const listenerCount = (windowListeners["metabrowser:inventory-change"] || []).length;
   const resizeCount = (windowListeners.resize || []).length;
+  // On a cell when the map goes, so its anchor is in the viewport to take back.
+  const disposeLeaf = drawnMap().cells.findIndex((cell) => cell.kind === "file");
+  dispatch(container, "mousemove", clientAt(container, disposeLeaf));
   const hidesBeforeDispose = tooltipHides.length;
+  const anchoredBeforeDispose = container.viewport.children.some((child) =>
+    String(child.className).includes("tm-hover-anchor"),
+  );
   mounted.dispose();
+  check(
+    "dispose takes back every element the map put in the viewport",
+    anchoredBeforeDispose && container.viewport.children.length === 0,
+    JSON.stringify(container.viewport.children.map((child) => child.className)),
+  );
   const afterDispose = (windowListeners["metabrowser:inventory-change"] || []).length;
   check("dispose detaches listener", afterDispose === listenerCount - 1, `${afterDispose}`);
   const resizeAfter = (windowListeners.resize || []).length;
@@ -921,6 +1171,12 @@ sandbox.MetabrowserNavigationRoute.attachController({
     "dispose hides only the map's own tooltip",
     tooltipHides.length === hidesBeforeDispose + 1 && tooltipHides.at(-1) === container,
     `${tooltipHides.length - hidesBeforeDispose}`,
+  );
+  check(
+    "dispose releases the map's pointer and key listeners",
+    Object.values(container.viewport.listeners).every((listeners) => listeners.length === 0) &&
+      drawnMap() === null,
+    JSON.stringify(Object.keys(container.viewport.listeners)),
   );
 
   // A nested Treemap identifies its enclosing folder and navigates to
@@ -967,6 +1223,17 @@ sandbox.MetabrowserNavigationRoute.attachController({
       JSON.stringify(call),
     );
   }
+  // Backspace on the map asks for the same enclosing folder.
+  const navigationsBeforeBackspace = navigationCalls.length;
+  const backspace = dispatch(nestedContainer, "keydown", { key: "Backspace" });
+  check(
+    "Backspace on the map opens the enclosing folder's Treemap",
+    backspace.defaultPrevented &&
+      navigationCalls.length === navigationsBeforeBackspace + 1 &&
+      navigationCalls.at(-1).target.path === "src" &&
+      navigationCalls.at(-1).options?.viewId === "treemap",
+    JSON.stringify(navigationCalls.slice(navigationsBeforeBackspace)),
+  );
   const parentClickListeners = nestedContainer.parentNav.listeners.click?.length || 0;
   const hidesBeforeNestedDispose = tooltipHides.length;
   nestedMounted.dispose();
@@ -1187,7 +1454,7 @@ sandbox.MetabrowserNavigationRoute.attachController({
             ? markup.includes("tm-loading")
             : viewport === "unavailable"
               ? markup.includes("Treemap unavailable.")
-              : markup.includes("data-tm-cell"),
+              : (drawnMap(steppedPane)?.cells.length ?? 0) > 0 && !markup.includes("tm-loading"),
           markup,
         );
         check(

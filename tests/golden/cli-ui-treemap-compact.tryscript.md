@@ -10,17 +10,27 @@ The production compact treemap under File Overview’s type breakdown follows th
 breakdown’s answers.
 While the index scans it keeps its box with a skeleton and does not ask for the deep
 tree; once the index has finished it asks for the deepest, widest tree the server
-returns, the same request the Treemap view makes, and draws every folder and file inside
-the map’s border, within an outer box for the folder itself.
-The section’s legend hover marks the family’s cells, a cell opens the Treemap view at
-its folder, the outer box opens it at the folder itself, and a change of measure or of
-Show ignored lays the map out again.
+returns, the same request the Treemap view makes, and paints every folder and file
+inside the map’s border, within an outer box for the folder itself.
+The map paints on a canvas, which has no context here, so each step reads the layout,
+the paint list, the labels, the focus proxy, and the hover anchor through
+`inspectTreemap` and the elements the map keeps in the viewport.
+The section’s legend hover marks the family’s cells.
+The pointer, sent to the viewport at a cell’s coordinates, gives the cell under it an
+anchor of its own that carries the tooltip and the shimmer, and the cell’s hover marks
+it; moving on to another cell gives that one a new anchor, and leaving the map takes it
+away. A click opens the Treemap view at the folder of the cell under it, and the outer
+box opens it at the folder itself.
+The arrow keys move the one focus proxy along the folder and file cells in layout order,
+Enter opens the cell it is on, and Backspace, with no enclosing folder for the compact
+map, is not taken. A change of measure or of Show ignored lays the map out again, and a
+layout under a still pointer points at the cell now under it.
 A refresh that fails keeps the map; a first rollup that fails shows that the map is
 unavailable and recovers on Retry.
 The box is left out when the breakdown failed, the index stopped at its cap before
 finishing the folder, or the folder holds no files in the population shown.
-Disposal releases every listener, the watch, and the observer, and puts away only the
-map’s own tooltip.
+Disposal with the pointer on a cell releases every listener, the watch, the observer,
+and the cell’s hover, and puts away only the map’s own tooltip.
 
 ```console
 $ node tests/dom/treemap-compact-session.js
@@ -32,7 +42,8 @@ $ node tests/dom/treemap-compact-session.js
       "skeleton": true,
       "unavailable": false,
       "asked": false,
-      "cells": []
+      "cells": [],
+      "labelled": []
     },
     {
       "step": "the breakdown says the index is still scanning",
@@ -40,7 +51,8 @@ $ node tests/dom/treemap-compact-session.js
       "skeleton": true,
       "unavailable": false,
       "asked": false,
-      "cells": []
+      "cells": [],
+      "labelled": []
     },
     {
       "step": "the breakdown says the index has finished",
@@ -53,26 +65,58 @@ $ node tests/dom/treemap-compact-session.js
       "skeleton": true,
       "unavailable": false,
       "asked": true,
-      "cells": []
+      "cells": [],
+      "labelled": []
     },
     {
       "step": "the map's tree arrives",
       "insideBorder": true,
+      "layers": [
+        "canvas.tm-paint",
+        "canvas.tm-marks",
+        "div.tm-labels",
+        "div.tm-focus",
+        "div.tm-probes"
+      ],
+      "paint": {
+        "rects": 13,
+        "empty": 0,
+        "dpr": 1
+      },
+      "focus": {
+        "role": "button",
+        "tabindex": "0",
+        "hidden": false,
+        "on": "src",
+        "label": "src (folder, 27000 B)"
+      },
       "hidden": false,
       "skeleton": false,
       "unavailable": false,
       "asked": true,
       "cells": [
-        "dir src 599x217",
-        "dir src/lib 242x188",
-        "file src/cache.md 198x188",
-        "dir src/docs 154x121",
-        "file src/README.md 154x67",
-        "file src/lib/app.py 129x162",
-        "file src/lib/util.py 108x97",
-        "file src/lib/cli.py 108x64",
-        "file src/docs/guide.md 99x98",
-        "file src/docs/notes.md 49x98"
+        "dir src 600x218",
+        "dir src/lib 243x189",
+        "file src/cache.md 199x189",
+        "dir src/docs 155x122",
+        "file src/README.md 155x68",
+        "file src/lib/app.py 130x163",
+        "file src/lib/util.py 109x98",
+        "file src/lib/cli.py 109x65",
+        "file src/docs/guide.md 100x99",
+        "file src/docs/notes.md 50x99"
+      ],
+      "labelled": [
+        "src",
+        "src/lib",
+        "src/cache.md",
+        "src/docs",
+        "src/README.md",
+        "src/lib/app.py",
+        "src/lib/util.py",
+        "src/lib/cli.py",
+        "src/docs/guide.md",
+        "src/docs/notes.md"
       ]
     },
     {
@@ -82,11 +126,64 @@ $ node tests/dom/treemap-compact-session.js
         "src/lib/app.py",
         "src/lib/util.py",
         "src/lib/cli.py"
+      ],
+      "markOps": [
+        "copy src/lib"
       ]
     },
     {
-      "step": "activating two file cells and a folder cell opens the Treemap at their folders",
+      "step": "the pointer on the app.py cell",
+      "pointer": {
+        "on": "src/lib/app.py",
+        "anchor": "tm-cell tm-hover-anchor tm-file",
+        "shimmers": true,
+        "tooltip": "src/lib/app.py / 1 files · 6000 B / modified then",
+        "marked": [
+          "src/lib/app.py"
+        ],
+        "cursor": "pointer"
+      }
+    },
+    {
+      "step": "the pointer moves on to the README.md cell",
+      "pointer": {
+        "on": "src/README.md",
+        "anchor": "tm-cell tm-hover-anchor tm-file",
+        "shimmers": true,
+        "tooltip": "src/README.md / 1 files · 2500 B / modified then",
+        "marked": [
+          "src/README.md"
+        ],
+        "cursor": "pointer"
+      }
+    },
+    {
+      "step": "the pointer leaves the map",
+      "pointer": {
+        "on": null,
+        "anchor": null,
+        "cursor": ""
+      }
+    },
+    {
+      "step": "clicking two file cells and a folder cell opens the Treemap at their folders",
       "navigation": [
+        [
+          {
+            "path": "src/lib"
+          },
+          {
+            "viewId": "treemap"
+          }
+        ],
+        [
+          {
+            "path": "src/docs"
+          },
+          {
+            "viewId": "treemap"
+          }
+        ],
         [
           {
             "path": "src"
@@ -98,7 +195,7 @@ $ node tests/dom/treemap-compact-session.js
       ]
     },
     {
-      "step": "activating the outer box opens the Treemap at the folder",
+      "step": "clicking the outer box opens the Treemap at the folder",
       "outerBox": "labelled, around the tree",
       "navigation": [
         [
@@ -112,22 +209,90 @@ $ node tests/dom/treemap-compact-session.js
       ]
     },
     {
-      "step": "the measure switches to Files",
+      "step": "the keyboard",
+      "focusOrder": [
+        "src",
+        "src/lib",
+        "src/cache.md",
+        "src/docs",
+        "src/README.md",
+        "src/lib/app.py",
+        "src/lib/util.py",
+        "src/lib/cli.py",
+        "src/docs/guide.md",
+        "src/docs/notes.md"
+      ],
+      "keys": [
+        "ArrowRight -> lib (folder, 11000 B)",
+        "ArrowRight -> cache.md (file, 9000 B)",
+        "ArrowLeft -> lib (folder, 11000 B)"
+      ],
+      "enter": {
+        "taken": true,
+        "navigation": [
+          [
+            {
+              "path": "src/lib"
+            },
+            {
+              "viewId": "treemap"
+            }
+          ]
+        ]
+      },
+      "backspace": {
+        "taken": false
+      }
+    },
+    {
+      "step": "the measure switches to Files under a still pointer",
+      "pointerBefore": {
+        "on": "src/cache.md",
+        "anchor": "tm-cell tm-hover-anchor tm-file",
+        "shimmers": true,
+        "tooltip": "src/cache.md / 1 files · 9000 B / modified then / gitignored",
+        "marked": [
+          "src/cache.md"
+        ],
+        "cursor": "pointer"
+      },
+      "pointerAfter": {
+        "on": "src/docs/notes.md",
+        "anchor": "tm-cell tm-hover-anchor tm-file",
+        "shimmers": true,
+        "tooltip": "src/docs/notes.md / 1 files · 1500 B / modified then",
+        "marked": [
+          "src/docs/notes.md"
+        ],
+        "cursor": "pointer"
+      },
       "hidden": false,
       "skeleton": false,
       "unavailable": false,
       "asked": true,
       "cells": [
-        "dir src 599x217",
-        "dir src/lib 254x188",
-        "dir src/docs 169x188",
-        "file src/README.md 169x94",
-        "file src/cache.md 169x94",
-        "file src/lib/app.py 83x162",
-        "file src/lib/util.py 83x162",
-        "file src/lib/cli.py 83x162",
-        "file src/docs/guide.md 82x164",
-        "file src/docs/notes.md 82x164"
+        "dir src 600x218",
+        "dir src/lib 255x189",
+        "dir src/docs 170x189",
+        "file src/README.md 170x95",
+        "file src/cache.md 170x95",
+        "file src/lib/app.py 84x163",
+        "file src/lib/util.py 84x163",
+        "file src/lib/cli.py 84x163",
+        "file src/docs/guide.md 83x165",
+        "file src/docs/notes.md 83x165"
+      ],
+      "labelled": [
+        "src",
+        "src/lib",
+        "src/docs",
+        "src/README.md",
+        "src/cache.md",
+        "src/lib/app.py",
+        "src/lib/util.py",
+        "src/lib/cli.py",
+        "src/docs/guide.md",
+        "src/docs/notes.md"
       ]
     },
     {
@@ -137,15 +302,26 @@ $ node tests/dom/treemap-compact-session.js
       "unavailable": false,
       "asked": true,
       "cells": [
-        "dir src 599x217",
-        "dir src/lib 297x188",
-        "dir src/docs 198x188",
-        "file src/README.md 98x188",
-        "file src/lib/app.py 97x162",
-        "file src/lib/util.py 97x162",
-        "file src/lib/cli.py 97x162",
-        "file src/docs/guide.md 96x163",
-        "file src/docs/notes.md 96x163"
+        "dir src 600x218",
+        "dir src/lib 298x189",
+        "dir src/docs 199x189",
+        "file src/README.md 99x189",
+        "file src/lib/app.py 98x163",
+        "file src/lib/util.py 98x163",
+        "file src/lib/cli.py 98x163",
+        "file src/docs/guide.md 97x164",
+        "file src/docs/notes.md 97x164"
+      ],
+      "labelled": [
+        "src",
+        "src/lib",
+        "src/docs",
+        "src/README.md",
+        "src/lib/app.py",
+        "src/lib/util.py",
+        "src/lib/cli.py",
+        "src/docs/guide.md",
+        "src/docs/notes.md"
       ]
     },
     {
@@ -159,24 +335,37 @@ $ node tests/dom/treemap-compact-session.js
       "unavailable": false,
       "asked": true,
       "cells": [
-        "dir src 599x217",
-        "dir src/lib 297x188",
-        "dir src/docs 198x188",
-        "file src/README.md 98x188",
-        "file src/lib/app.py 97x162",
-        "file src/lib/util.py 97x162",
-        "file src/lib/cli.py 97x162",
-        "file src/docs/guide.md 96x163",
-        "file src/docs/notes.md 96x163"
+        "dir src 600x218",
+        "dir src/lib 298x189",
+        "dir src/docs 199x189",
+        "file src/README.md 99x189",
+        "file src/lib/app.py 98x163",
+        "file src/lib/util.py 98x163",
+        "file src/lib/cli.py 98x163",
+        "file src/docs/guide.md 97x164",
+        "file src/docs/notes.md 97x164"
+      ],
+      "labelled": [
+        "src",
+        "src/lib",
+        "src/docs",
+        "src/README.md",
+        "src/lib/app.py",
+        "src/lib/util.py",
+        "src/lib/cli.py",
+        "src/docs/guide.md",
+        "src/docs/notes.md"
       ]
     },
     {
-      "step": "disposed",
+      "step": "disposed with the pointer on a cell",
       "viewportListeners": [],
       "controlListeners": 0,
       "activeListeners": 0,
       "watchDisposed": true,
       "observerDisconnected": true,
+      "hoverReleased": true,
+      "inspectable": false,
       "tooltipHides": 1,
       "hidOwnTooltipOnly": true
     },
@@ -186,7 +375,8 @@ $ node tests/dom/treemap-compact-session.js
       "skeleton": false,
       "unavailable": false,
       "asked": false,
-      "cells": []
+      "cells": [],
+      "labelled": []
     },
     {
       "step": "Retry: the breakdown answers, and the map follows",
@@ -199,7 +389,8 @@ $ node tests/dom/treemap-compact-session.js
       "skeleton": false,
       "unavailable": true,
       "asked": true,
-      "cells": []
+      "cells": [],
+      "labelled": []
     },
     {
       "step": "Retry: the map asks again, and its tree arrives",
@@ -213,7 +404,8 @@ $ node tests/dom/treemap-compact-session.js
       "skeleton": false,
       "unavailable": false,
       "asked": false,
-      "cells": []
+      "cells": [],
+      "labelled": []
     },
     {
       "step": "the folder is empty",
@@ -221,7 +413,8 @@ $ node tests/dom/treemap-compact-session.js
       "skeleton": false,
       "unavailable": false,
       "asked": false,
-      "cells": []
+      "cells": [],
+      "labelled": []
     },
     {
       "step": "every file is ignored, and Show ignored is off",
@@ -229,7 +422,8 @@ $ node tests/dom/treemap-compact-session.js
       "skeleton": false,
       "unavailable": false,
       "asked": false,
-      "cells": []
+      "cells": [],
+      "labelled": []
     },
     {
       "step": "Show ignored is turned on",
@@ -237,7 +431,8 @@ $ node tests/dom/treemap-compact-session.js
       "skeleton": true,
       "unavailable": false,
       "asked": true,
-      "cells": []
+      "cells": [],
+      "labelled": []
     },
     {
       "step": "the box is too narrow to draw in",
@@ -245,7 +440,8 @@ $ node tests/dom/treemap-compact-session.js
       "skeleton": true,
       "unavailable": false,
       "asked": true,
-      "cells": []
+      "cells": [],
+      "labelled": []
     },
     {
       "step": "the pane widens",

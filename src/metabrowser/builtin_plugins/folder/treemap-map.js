@@ -13,7 +13,9 @@
 // value lines, and smaller label thresholds, since its cells are small and
 // the tooltip carries every name.
 
+import { buildHitGrid } from "./treemap-hit.js";
 import { layoutTree } from "./treemap-layout.js";
+import { applyMarkOps, markOps, paintCells, paintList } from "./treemap-paint.js";
 
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} TreemapPalette */
 /** @typedef {{metric: "size" | "files", includeIgnored: boolean}} TreemapState */
@@ -25,9 +27,29 @@ import { layoutTree } from "./treemap-layout.js";
  * label bounds are paint thresholds, since type size itself comes from cell
  * geometry.
  */
+/**
+ * The most cells a map lays out and paints. Measured in the app's browser pane
+ * (Chrome) on 2026-11-23 with these modules on a synthetic tree of 120k files
+ * at 1100 by 560 and a pixel ratio of 2, best of five, on a host at a load
+ * average above 400: layout, paint list, paint, and hit grid together took
+ * 11 ms at 5,000 cells, 19 ms at 10,000, 38 ms at 25,000, and 66 ms at 50,000,
+ * the layout and the paint each about half. This repository's rollup, 4,000
+ * nodes, lays out as 3,714 cells in 7 ms. 25,000 keeps a relayout near two
+ * frames on a loaded host.
+ */
+export const PAINT_MAX_CELLS = 25_000;
+
+/**
+ * The most pixels one canvas holds: 4096 x 4096, the area WebKit allows a
+ * canvas on iOS, its smallest; a viewport larger at its pixel ratio paints at
+ * a lower ratio. A platform limit, not a cost: a full pane at twice its pixels
+ * is near 8 million.
+ */
+const MAX_BACKING_PIXELS = 4096 * 4096;
+
 const SIZE_PRESETS = Object.freeze({
   full: Object.freeze({
-    layout: Object.freeze({}),
+    layout: Object.freeze({ maxCells: PAINT_MAX_CELLS }),
     labelMinW: 56,
     labelMinH: 16,
     values: true,
@@ -35,16 +57,13 @@ const SIZE_PRESETS = Object.freeze({
   }),
   // The same cell cap: the smaller box already culls by geometry, and a
   // lower cap only turned files that had room into remainder cells. A
-  // folder's label is smaller here, so the label bounds are lower, and a
-  // frame may be a little smaller, since its cells are drawn small anyway.
+  // folder's label is smaller here, so the label bounds are lower.
   // The compact cell's label is the full map's 12 px type with 1 px of padding
   // (styles.css): measured in Chrome, its title box is 13.6 to 14.5 px tall and
   // its ink ends inside 14 px, and 44 px leaves 36 px of text, about five
-  // characters before the ellipsis. A 12 px frame leaves an 8 px interior, room
-  // for a child twice minCellPx on each side, where the full map's 14 px asks
-  // for more room than most of the compact map's small folders have.
+  // characters before the ellipsis.
   compact: Object.freeze({
-    layout: Object.freeze({ frameNestMinPx: 12 }),
+    layout: Object.freeze({ maxCells: PAINT_MAX_CELLS }),
     labelMinW: 44,
     labelMinH: 14,
     values: false,
@@ -136,7 +155,45 @@ export function withOuterBox(node) {
  */
 
 /**
- * Mount a treemap map on `viewport`, which the map fills with cells.
+ * What a mounted map shows, for the browserless sessions, which have no canvas
+ * to read: the layout, what is painted, labelled, focused, and marked.
+ * @typedef {object} TreemapInspection
+ * @property {ReadonlyArray<Record<string, any>>} cells
+ * @property {ReadonlyArray<import("./treemap-paint.js").PaintRect>} paint
+ * @property {number} empty  cells whose snapped rectangle is empty, painted nowhere
+ * @property {ReadonlyArray<number>} labels  indexes of the labelled cells
+ * @property {ReadonlyArray<number>} focusOrder  indexes the focus proxy walks
+ * @property {number} focused  index of the cell the focus proxy is on, or -1
+ * @property {number} hovered  index of the cell under the pointer, or -1
+ * @property {ReadonlyArray<number>} marked  indexes the hover marks
+ * @property {ReadonlyArray<import("./treemap-paint.js").MarkOp>} markOps
+ * @property {number} dpr
+ */
+
+/** @type {WeakMap<HTMLElement, () => TreemapInspection>} */
+const INSPECTORS = new WeakMap();
+
+/**
+ * What the map mounted on `viewport` shows, or null when none is. A read, for the
+ * sessions; nothing in the app calls it.
+ * @param {HTMLElement} viewport
+ * @returns {TreemapInspection | null}
+ */
+export function inspectTreemap(viewport) {
+  return INSPECTORS.get(viewport)?.() ?? null;
+}
+
+/**
+ * Mount a treemap map on `viewport`, which the map fills with its layers.
+ *
+ * Layers, bottom to top (docs/design-system.md, "Folder Treemap"): the paint
+ * canvas, every cell's fill and edge; the hover canvas, copies of the marked
+ * cells' pixels under the lift filter; the hover anchor, a transparent cell
+ * over the cell under the pointer, which carries the shimmer and anchors the
+ * tooltip; the labels, text only; and the focus proxy, the one focusable control,
+ * which the arrow keys move over every folder and file cell. The viewport takes
+ * every pointer event and asks the hit grid which cell is under it, since a
+ * canvas says nothing about what is painted on it.
  *
  * @param {MetabrowserPublicSdk} mb
  * @param {TreemapPalette} palette
@@ -146,17 +203,111 @@ export function withOuterBox(node) {
 export function createTreemapMap(mb, palette, viewport, options) {
   const preset = SIZE_PRESETS[options.size ?? "full"];
   const hover = options.hover ?? null;
+  const doc = viewport.ownerDocument ?? document;
+  const win = doc.defaultView ?? (typeof window === "undefined" ? null : window);
   /** @type {Record<string, any>[]} */
   let cells = [];
+  /** @type {import("./treemap-paint.js").PaintRect[]} */
+  let paintRects = [];
+  let emptyCells = 0;
   /** @type {number[]} */
   let actionableIndexes = [];
+  /** @type {Map<number, string>} the remainder phrase a folder's name carries */
+  let remainderNotes = new Map();
   let focusPos = 0;
   let disposed = false;
+  /** @type {import("./treemap-hit.js").HitGrid | null} */
+  let hitGrid = null;
+  /** @type {{w: number, h: number}} */
+  let laidOutBox = { w: 0, h: 0 };
+  let dpr = devicePixelRatio();
+  /** The last node and content drawn, which a pixel-ratio or theme change draws again. */
+  /** @type {{node: Record<string, any> | null, content: {placeholderHtml?: string, emptyHtml?: string}} | null} */
+  let lastRender = null;
+  /** The pointer's position in the viewport's padding box, while it is over the map. */
+  /** @type {{x: number, y: number} | null} */
+  let pointer = null;
+  let pointerFrame = 0;
+  let hoveredIndex = -1;
+  /** @type {number[]} */
+  let markedIndexes = [];
+  /** @type {import("./treemap-paint.js").MarkOp[]} */
+  let currentMarkOps = [];
   /** The hover the cell under the pointer entered, until the pointer leaves the cell. */
   /** @type {DistributionHoverTarget | null} */
   let cellHover = null;
-  /** @type {Array<HTMLElement>} */
-  let hoveredCells = [];
+  /** @type {Map<string, PaintStyle>} */
+  const styleCache = new Map();
+
+  /** @typedef {import("./treemap-paint.js").PaintStyle} PaintStyle */
+
+  /** @returns {number} */
+  function devicePixelRatio() {
+    const ratio = Number(win?.devicePixelRatio);
+    return Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
+  }
+
+  // ---- Layers ----------------------------------------------------------------
+
+  /** @type {Record<string, any> | null} */
+  let layers = null;
+
+  /** The layers, made once and put back whenever a placeholder replaced them. */
+  function ensureLayers() {
+    if (layers && viewport.contains(layers.paint)) {
+      return layers;
+    }
+    viewport.innerHTML = "";
+    const paint = doc.createElement("canvas");
+    paint.className = "tm-paint";
+    paint.setAttribute("aria-hidden", "true");
+    const marks = doc.createElement("canvas");
+    marks.className = "tm-marks";
+    marks.setAttribute("aria-hidden", "true");
+    const labels = doc.createElement("div");
+    labels.className = "tm-labels";
+    labels.setAttribute("aria-hidden", "true");
+    const focus = doc.createElement("div");
+    focus.className = "tm-focus";
+    focus.setAttribute("role", "button");
+    focus.setAttribute("tabindex", "0");
+    focus.hidden = true;
+    const probes = doc.createElement("div");
+    probes.className = "tm-probes";
+    probes.setAttribute("aria-hidden", "true");
+    for (const element of [paint, marks, labels, focus, probes]) {
+      viewport.appendChild(element);
+    }
+    layers = {
+      paint,
+      marks,
+      labels,
+      focus,
+      probes,
+      /** @type {HTMLElement | null} */
+      anchor: null,
+      /** @type {Map<string, HTMLElement>} */
+      labelElements: new Map(),
+    };
+    return layers;
+  }
+
+  /** Let go of the layers, as a placeholder takes the viewport. */
+  function dropLayers() {
+    if (layers) {
+      zeroCanvas(layers.paint);
+      zeroCanvas(layers.marks);
+    }
+    layers = null;
+  }
+
+  /** @param {HTMLCanvasElement} canvas */
+  function zeroCanvas(canvas) {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+
+  // ---- Cells -----------------------------------------------------------------
 
   /**
    * The distribution key for a cell: the family behind a file's extension, and
@@ -180,36 +331,67 @@ export function createTreemapMap(mb, palette, viewport, options) {
   }
 
   /**
+   * The style a cell paints in: its family, and whether it is dimmed as
+   * ignored, scanning, or the remainder. Cells that share one share a probe.
    * @param {Record<string, any>} cell
-   * @param {TreemapState} state
-   * @param {boolean} bare  the cell draws no label, so it has no padding
+   * @returns {string}
    */
-  function cellClasses(cell, state, bare) {
-    const cls = [
+  function cellStyleKey(cell) {
+    const state = options.getState();
+    const ignored = cell.gitignored && state.includeIgnored ? 1 : 0;
+    const pending = cell.state === "pending" ? 1 : 0;
+    return `${cellPaletteKey(cell)}|${cell.kind === "rest" ? "rest" : "cell"}|${ignored}|${pending}`;
+  }
+
+  /**
+   * The colors a style key paints in, read from a probe element styled as a
+   * cell of that style would be, so the canvas follows the stylesheet and the
+   * palette the bars and legend use, in either theme.
+   * @param {string} key
+   * @returns {PaintStyle}
+   */
+  function resolveStyle(key) {
+    const cached = styleCache.get(key);
+    if (cached) {
+      return cached;
+    }
+    const [paletteKey, kind, ignored, pending] = key.split("|");
+    const probe = doc.createElement("div");
+    probe.className = [
       "tm-cell",
-      `tm-${cell.kind}`,
       "tm-type-fill",
-      palette.classFor(cellPaletteKey(cell)),
-    ];
-    if (cellIsActionable(cell)) {
-      cls.push("tm-actionable");
+      kind === "rest" ? "tm-rest" : "tm-file",
+      palette.classFor(paletteKey),
+      ignored === "1" ? "tm-ignored" : "",
+      pending === "1" ? "tm-pending-still" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const styleText = palette.styleFor(paletteKey);
+    if (styleText) {
+      probe.setAttribute("style", styleText);
     }
-    if (cell.gitignored && state.includeIgnored) {
-      cls.push("tm-ignored");
-    }
-    if (cell.state === "pending") {
-      cls.push("tm-pending");
-    }
-    if (cell.nested) {
-      cls.push("tm-nested");
-    }
-    if (cell.framed) {
-      cls.push("tm-framed");
-    }
-    if (bare) {
-      cls.push("tm-bare");
-    }
-    return cls.join(" ");
+    const edge = doc.createElement("div");
+    edge.className = "tm-probe-edge";
+    probe.appendChild(edge);
+    const host = ensureLayers().probes;
+    host.appendChild(probe);
+    const computed = win?.getComputedStyle?.(probe);
+    const edgeComputed = win?.getComputedStyle?.(edge);
+    const alpha = Number.parseFloat(computed?.opacity ?? "1");
+    const style = Object.freeze({
+      fill: computed?.backgroundColor || "transparent",
+      edge: edgeComputed?.backgroundColor || computed?.backgroundColor || "transparent",
+      alpha: Number.isFinite(alpha) ? alpha : 1,
+    });
+    probe.remove();
+    styleCache.set(key, style);
+    return style;
+  }
+
+  /** The surface under every cell, the viewport's own: what shows between top-level cells. */
+  function surfaceColor() {
+    return win?.getComputedStyle?.(viewport)?.backgroundColor || "transparent";
   }
 
   /**
@@ -233,28 +415,25 @@ export function createTreemapMap(mb, palette, viewport, options) {
   }
 
   /**
-   * @param {Record<string, any>} cell
+   * The focus proxy's name for a cell. A folder's names what its remainder
+   * holds, since the remainder has no control of its own.
+   * @param {number} index
    * @param {TreemapState} state
    * @returns {string}
    */
-  function cellAriaLabel(cell, state) {
-    if (cell.kind === "rest") {
-      return `${mb.formatFileCount(cell.files || 0)} represented by the remainder, ${cellValueText(cell, state)}`;
-    }
+  function cellAriaLabel(index, state) {
+    const cell = cells[index];
     const what = cell.kind === "dir" ? "folder" : "file";
-    return `${cell.name} (${what}, ${cellValueText(cell, state)})`;
+    const note = remainderNotes.get(index);
+    return `${cell.name} (${what}, ${cellValueText(cell, state)}${note ? `, ${note}` : ""})`;
   }
 
   /**
+   * Whether a cell draws its label, and which lines: the thresholds the DOM
+   * cells used, unchanged.
    * @param {Record<string, any>} cell
-   * @param {TreemapState} state
-   * @param {number} index
    */
-  function cellHtml(cell, state, index) {
-    const style =
-      `left:${cell.x.toFixed(1)}px;top:${cell.y.toFixed(1)}px;` +
-      `width:${Math.max(0, cell.w - 1).toFixed(1)}px;height:${Math.max(0, cell.h - 1).toFixed(1)}px;` +
-      `--tm-label-size:${cell.labelPx}px;--tm-value-size:${cell.valuePx}px;`;
+  function labelPlan(cell) {
     const labelLineHeight = cell.labelPx * 1.2;
     const valueLineHeight = cell.valuePx * 1.2;
     // A framed folder's children cover its whole interior, so it has no
@@ -266,47 +445,111 @@ export function createTreemapMap(mb, palette, viewport, options) {
       cell.h >= Math.max(preset.labelMinH, labelLineHeight + 2);
     // Nested parents suppress the sublabel: the reserved header strip
     // is one line tall, and a second line would overlap child cells.
-    const showStackedSub =
+    const stacked =
       preset.values &&
       showLabel &&
       cell.h >= labelLineHeight + valueLineHeight + 6 &&
       cell.kind !== "rest" &&
       !cell.nested;
-    const showInlineSub =
+    const inline =
       preset.values && showLabel && cell.nested && cell.kind === "dir" && cell.w >= 140;
+    return { showLabel, stacked, inline };
+  }
+
+  /**
+   * A labelled cell's text, the markup the DOM cells drew inside themselves.
+   * @param {Record<string, any>} cell
+   * @param {TreemapState} state
+   * @param {{stacked: boolean, inline: boolean}} plan
+   */
+  function labelInnerHtml(cell, state, plan) {
     const sub = cellValueText(cell, state);
-    const aria = mb.escapeHtml(cellAriaLabel(cell, state));
-    const actionable = cellIsActionable(cell);
-    // A nested directory cell contains its children's cells, so the
-    // cell itself stays a group and its label is the keyboard control.
-    // Pointer routing uses the deepest outer cell instead, avoiding a
-    // nested button tree without shrinking the hit target to the label.
-    // A framed folder has no label, so its own cell stays the control.
-    const titleInteractive = actionable && cell.nested && showLabel;
-    const titleAttrs = titleInteractive
-      ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
-      : "";
     const visibleName = cell.kind === "dir" ? `${cell.name}/` : cell.name;
-    const fileIcon = showLabel && cell.kind === "file" ? mb.fileTypeIcon(cell.name) : null;
+    const fileIcon = cell.kind === "file" ? mb.fileTypeIcon(cell.name) : null;
     const fileIconHtml = fileIcon?.svg
       ? `<span class="file-identity-icon tm-cell-file-icon ${mb.escapeHtml(fileIcon.className)}" aria-hidden="true">${fileIcon.svg}</span>`
       : "";
-    const label = showLabel
-      ? `<span class="tm-cell-title"${titleAttrs}>${fileIconHtml}<span class="tm-cell-label">${mb.escapeHtml(visibleName)}</span>${
-          showInlineSub
-            ? `<span class="tm-cell-sub tm-cell-sub-inline">${mb.escapeHtml(sub)}</span>`
-            : ""
-        }</span>${showStackedSub ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : ""}`
-      : "";
-    const outerInteractive = actionable && !titleInteractive;
-    const outerAttrs = outerInteractive
-      ? ` role="button" tabindex="-1" data-tm-index="${index}" aria-label="${aria}"`
-      : ` role="group" aria-label="${aria}"`;
+    return `<span class="tm-cell-title">${fileIconHtml}<span class="tm-cell-label">${mb.escapeHtml(visibleName)}</span>${
+      plan.inline ? `<span class="tm-cell-sub tm-cell-sub-inline">${mb.escapeHtml(sub)}</span>` : ""
+    }</span>${plan.stacked ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : ""}`;
+  }
+
+  /**
+   * Classes a labelled cell's text element takes: the cell's own, so type and
+   * color follow the rules the cells always had, without its fill.
+   * @param {Record<string, any>} cell
+   * @param {TreemapState} state
+   */
+  function labelClasses(cell, state) {
+    const cls = ["tm-cell", "tm-label-cell", `tm-${cell.kind}`];
+    if (cell.gitignored && state.includeIgnored) {
+      cls.push("tm-ignored");
+    }
+    if (cell.nested) {
+      cls.push("tm-nested");
+    }
+    return cls.join(" ");
+  }
+
+  /** @param {Readonly<Record<string, any>>} rect  x, y, w, and h in CSS pixels */
+  function boxStyle(rect) {
     return (
-      `<div class="${cellClasses(cell, state, !showLabel)}"${outerAttrs}` +
-      ` data-tm-cell="${index}" data-tm-kind="${cell.kind}" data-tm-path="${mb.escapeHtml(cell.path)}"` +
-      ` style="${style}${palette.styleFor(cellPaletteKey(cell))}">${label}</div>`
+      `left:${rect.x.toFixed(1)}px;top:${rect.y.toFixed(1)}px;` +
+      `width:${Math.max(0, rect.w - 1).toFixed(1)}px;height:${Math.max(0, rect.h - 1).toFixed(1)}px;`
     );
+  }
+
+  /**
+   * Bring the label layer to the layout: keep, move, and retext the labels of
+   * cells still labelled, add the new ones, and remove the rest, keyed by kind
+   * and path, since a remainder shares its folder's path. Removing many
+   * elements at once is slow in WebKit (research-2026-11-22-dense-treemap-rendering.md),
+   * so a relayout touches only what changed.
+   * @param {TreemapState} state
+   * @returns {number[]} indexes of the labelled cells
+   */
+  function reconcileLabels(state) {
+    const { labels, labelElements } = ensureLayers();
+    /** @type {number[]} */
+    const labelled = [];
+    const seen = new Set();
+    for (let i = 0; i < cells.length; i += 1) {
+      const cell = cells[i];
+      const plan = labelPlan(cell);
+      if (!plan.showLabel) {
+        continue;
+      }
+      labelled.push(i);
+      const key = `${cell.kind}\u0000${cell.path}`;
+      seen.add(key);
+      let element = labelElements.get(key);
+      if (!element) {
+        element = doc.createElement("div");
+        labels.appendChild(element);
+        labelElements.set(key, element);
+      }
+      const className = labelClasses(cell, state);
+      if (element.className !== className) {
+        element.className = className;
+      }
+      const style = `${boxStyle(cell)}--tm-label-size:${cell.labelPx}px;--tm-value-size:${cell.valuePx}px;`;
+      if (element.getAttribute("style") !== style) {
+        element.setAttribute("style", style);
+      }
+      const html = labelInnerHtml(cell, state, plan);
+      if (element.dataset.tmHtml !== html) {
+        element.innerHTML = html;
+        element.dataset.tmHtml = html;
+      }
+      element.dataset.tmCell = String(i);
+    }
+    for (const [key, element] of labelElements) {
+      if (!seen.has(key)) {
+        element.remove();
+        labelElements.delete(key);
+      }
+    }
+    return labelled;
   }
 
   /**
@@ -341,7 +584,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
 
   /**
    * The box cells are laid out in: the viewport's padding box, inside its
-   * border, which is what absolutely positioned cells are placed against.
+   * border, which is what absolutely positioned layers are placed against.
    * The border box is larger by the border, and laying out to it pushed
    * every right- and bottom-edge cell under the viewport's clipping edge.
    * A host without layout metrics (the vm harness) falls back to the
@@ -361,49 +604,92 @@ export function createTreemapMap(mb, palette, viewport, options) {
     };
   }
 
+  // ---- Painting --------------------------------------------------------------
+
+  /**
+   * Size a canvas to the box in device pixels and return its 2D context, or
+   * null where there is none (the vm harness).
+   * @param {HTMLCanvasElement} canvas
+   * @param {{w: number, h: number}} box
+   * @returns {CanvasRenderingContext2D | null}
+   */
+  function sizeCanvas(canvas, box) {
+    const width = Math.round(box.w * dpr);
+    const height = Math.round(box.h * dpr);
+    if (canvas.width !== width) {
+      canvas.width = width;
+    }
+    if (canvas.height !== height) {
+      canvas.height = height;
+    }
+    canvas.style.width = `${box.w}px`;
+    canvas.style.height = `${box.h}px`;
+    return typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
+  }
+
+  function paintMap() {
+    const { paint } = ensureLayers();
+    const ctx = sizeCanvas(paint, laidOutBox);
+    if (!ctx) {
+      return;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    // An opaque surface first, so a translucent cell's pixels are what a mark copies.
+    ctx.fillStyle = surfaceColor();
+    ctx.fillRect(0, 0, paint.width, paint.height);
+    paintCells(ctx, paintRects, resolveStyle);
+  }
+
+  // ---- Hover -----------------------------------------------------------------
+
   /**
    * Draw the hover on the map's cells: a legend entry's hover marks every cell of its
    * family, the files of its types and the folders it is the dominant type of, the cells
    * it colors, as `family`; a cell's own hover marks that cell as `self`. The legend
    * marks its entry and the tally bars their segments (distribution-legend.js,
    * folder-totals.js). Every marked cell lifts, and none grows, since a cell's area is
-   * its value; only the cell under the pointer shimmers, because a family can hold
-   * every cell the map draws and each shimmering cell is a layer of its own
+   * its value; only the cell under the pointer shimmers, on its hover anchor
    * (styles.css, beside the rule; docs/design-system.md, "Folder Treemap").
    */
   function drawCellHover() {
-    for (const element of hoveredCells) {
-      delete element.dataset.hovered;
-    }
-    hoveredCells = [];
     const target = hover?.current();
-    // A map with no cells drawn yet has nothing to mark.
-    if (!target || cells.length === 0) {
+    /** @type {(index: number) => boolean} */
+    let marked = () => false;
+    if (target && cells.length > 0) {
+      if (target.marks === "self") {
+        const anchor = layers?.anchor ?? null;
+        if (anchor && target.anchor === anchor && hoveredIndex >= 0) {
+          const own = hoveredIndex;
+          marked = (index) => index === own;
+        }
+      } else {
+        const keys = cells.map(cellPaletteKey);
+        marked = (index) => keys[index] === target.key;
+      }
+    }
+    markedIndexes = [];
+    for (let i = 0; i < cells.length; i += 1) {
+      if (marked(i)) {
+        markedIndexes.push(i);
+      }
+    }
+    currentMarkOps = markOps(cells, marked, dpr);
+    if (!layers) {
       return;
     }
-    if (target.marks === "self") {
-      const own = cellElementFor(target.anchor);
-      if (own === target.anchor && viewport.contains(own)) {
-        own.dataset.hovered = "self";
-        hoveredCells.push(own);
-      }
-      return;
-    }
-    for (const element of /** @type {NodeListOf<HTMLElement>} */ (
-      viewport.querySelectorAll("[data-tm-cell]")
-    )) {
-      const cell = cells[Number(element.dataset.tmCell)];
-      if (cell && cellPaletteKey(cell) === target.key) {
-        element.dataset.hovered = "family";
-        hoveredCells.push(element);
-      }
+    const ctx = sizeCanvas(layers.marks, laidOutBox);
+    if (ctx) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, layers.marks.width, layers.marks.height);
+      applyMarkOps(ctx, layers.paint, currentMarkOps);
     }
   }
   const unsubscribeCellHover = hover ? hover.subscribe(drawCellHover) : () => {};
 
   /**
    * Let go of the hover the cell under the pointer entered, as a layout replaces the
-   * cell or the pointer leaves it: a removed element never hears the pointer leave it.
+   * cell or the pointer leaves it.
    */
   function releaseCellHover() {
     if (cellHover && hover) {
@@ -412,27 +698,137 @@ export function createTreemapMap(mb, palette, viewport, options) {
     cellHover = null;
   }
 
-  /**
-   * The cell element under `el`, which is what a tooltip anchors to.
-   * Every cell carries data-tm-cell.
-   * @param {Element | null} el
-   */
-  function cellElementFor(el) {
-    return el ? /** @type {HTMLElement | null} */ (el.closest("[data-tm-cell]")) : null;
+  /** Take the hover anchor away, with the tooltip and the hover it carried. */
+  function clearPointerCell() {
+    if (hoveredIndex < 0 && !layers?.anchor) {
+      return;
+    }
+    mb.tooltip.hide();
+    releaseCellHover();
+    hoveredIndex = -1;
+    viewport.style.cursor = "";
+    if (layers?.anchor) {
+      layers.anchor.remove();
+      layers.anchor = null;
+    }
   }
 
   /**
-   * Cell record for hover/tooltip lookup.
-   * @param {Element | null} el
-   * @returns {Record<string, any> | null}
+   * Point at cell `index`: a new anchor element for it, so the tooltip and the
+   * shared hover, which both key on the anchor, see a new cell; the tooltip; and
+   * the cell's own hover.
+   * @param {number} index
    */
-  function cellForElement(el) {
-    const host = cellElementFor(el);
-    if (!host) {
+  function pointAt(index) {
+    if (index === hoveredIndex) {
+      return;
+    }
+    clearPointerCell();
+    if (index < 0) {
+      return;
+    }
+    const cell = cells[index];
+    const anchor = doc.createElement("div");
+    // A nesting folder's anchor would shimmer over its children, so a folder
+    // lifts without the shimmer.
+    anchor.className = `tm-cell tm-hover-anchor tm-${cell.kind}`;
+    anchor.setAttribute("style", boxStyle(cell));
+    anchor.setAttribute("aria-hidden", "true");
+    if (!cell.nested) {
+      anchor.dataset.hovered = "self";
+    }
+    anchor.dataset.tmCell = String(index);
+    const own = ensureLayers();
+    // Under the labels, so its shimmer is too and a label keeps its contrast.
+    viewport.insertBefore(anchor, own.labels);
+    own.anchor = anchor;
+    viewport.style.cursor = cellIsActionable(cell) ? "pointer" : "";
+    hoveredIndex = index;
+    const state = options.getState();
+    mb.tooltip.show(tooltipHtml(cell, state), anchor);
+    if (hover) {
+      /** @type {DistributionHoverTarget} */
+      const target = Object.freeze({
+        population: state.includeIgnored ? "all" : "files",
+        key: cellPaletteKey(cell),
+        anchor,
+        marks: /** @type {const} */ ("self"),
+      });
+      cellHover = target;
+      hover.enter(target);
+    }
+  }
+
+  /** Hit-test the pointer's last position and point at the cell under it. */
+  function trackPointer() {
+    pointerFrame = 0;
+    if (disposed || !pointer || !hitGrid) {
+      return;
+    }
+    pointAt(hitGrid.lookup(pointer.x, pointer.y));
+  }
+
+  /**
+   * The pointer's position in the viewport's padding box.
+   * @param {MouseEvent} e
+   * @returns {{x: number, y: number} | null}
+   */
+  function pointerPosition(e) {
+    if (typeof viewport.getBoundingClientRect !== "function") {
       return null;
     }
-    const idx = Number(host.dataset.tmCell);
-    return Number.isInteger(idx) && idx >= 0 && idx < cells.length ? cells[idx] : null;
+    const rect = viewport.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left - (Number(viewport.clientLeft) || 0),
+      y: e.clientY - rect.top - (Number(viewport.clientTop) || 0),
+    };
+  }
+
+  /** @param {MouseEvent} e */
+  function onMouseMove(e) {
+    pointer = pointerPosition(e);
+    // One lookup a frame: mousemove can fire several times between frames.
+    if (!pointerFrame) {
+      pointerFrame = win?.requestAnimationFrame ? win.requestAnimationFrame(trackPointer) : 0;
+      if (!pointerFrame) {
+        trackPointer();
+      }
+    }
+  }
+
+  function onMouseLeave() {
+    pointer = null;
+    clearPointerCell();
+  }
+
+  /** @param {MouseEvent} e */
+  function onClick(e) {
+    const at = pointerPosition(e);
+    const index = at && hitGrid ? hitGrid.lookup(at.x, at.y) : -1;
+    const cell = index >= 0 ? cells[index] : null;
+    if (cell && cellIsActionable(cell)) {
+      options.onActivate(cell);
+    }
+  }
+
+  // ---- Keyboard ----------------------------------------------------------------
+
+  /** Put the focus proxy over the focused cell, with its name. */
+  function placeFocus() {
+    if (!layers) {
+      return;
+    }
+    const { focus } = layers;
+    const index = actionableIndexes[focusPos];
+    if (index === undefined) {
+      focus.hidden = true;
+      focus.removeAttribute("aria-label");
+      return;
+    }
+    focus.hidden = false;
+    focus.setAttribute("style", boxStyle(cells[index]));
+    focus.setAttribute("aria-label", cellAriaLabel(index, options.getState()));
+    focus.dataset.tmCell = String(index);
   }
 
   /** @param {number} nextPos position within actionableIndexes */
@@ -440,66 +836,10 @@ export function createTreemapMap(mb, palette, viewport, options) {
     if (nextPos < 0 || nextPos >= actionableIndexes.length) {
       return;
     }
-    const prev = viewport.querySelector(`[data-tm-index="${actionableIndexes[focusPos]}"]`);
-    if (prev) {
-      prev.setAttribute("tabindex", "-1");
-    }
     focusPos = nextPos;
-    const next = /** @type {HTMLElement | null} */ (
-      viewport.querySelector(`[data-tm-index="${actionableIndexes[focusPos]}"]`)
-    );
-    if (next) {
-      next.setAttribute("tabindex", "0");
-      next.focus();
-    }
+    placeFocus();
   }
 
-  /** @param {Event} e */
-  function onClick(e) {
-    const cell = cellForElement(/** @type {Element} */ (e.target));
-    if (cell && cellIsActionable(cell)) {
-      options.onActivate(cell);
-    }
-  }
-  // One delegated pair for the whole map. mouseover fires again for every
-  // descendant the pointer crosses inside a cell, so the tooltip is anchored
-  // to the cell's own element: re-announcing the same anchor holds it still,
-  // and crossing into a different cell replaces it.
-  //
-  // The cell also says where the pointer is to the hover the map shares with its bars
-  // and legend, once per cell: crossing a cell's own label is not leaving it.
-  /** @param {Event} e */
-  function onMouseOver(e) {
-    const host = cellElementFor(/** @type {Element} */ (e.target));
-    const cell = cellForElement(/** @type {Element} */ (e.target));
-    if (!host || !cell) {
-      return;
-    }
-    const state = options.getState();
-    mb.tooltip.show(tooltipHtml(cell, state), host);
-    if (hover && cellHover?.anchor !== host) {
-      releaseCellHover();
-      /** @type {DistributionHoverTarget} */
-      const target = Object.freeze({
-        population: state.includeIgnored ? "all" : "files",
-        key: cellPaletteKey(cell),
-        anchor: host,
-        marks: /** @type {const} */ ("self"),
-      });
-      cellHover = target;
-      hover.enter(target);
-    }
-  }
-  /** @param {MouseEvent} e */
-  function onMouseOut(e) {
-    mb.tooltip.hide();
-    if (
-      cellHover &&
-      cellElementFor(/** @type {Element | null} */ (e.relatedTarget)) !== cellHover.anchor
-    ) {
-      releaseCellHover();
-    }
-  }
   /** @param {KeyboardEvent} e */
   function onKeyDown(e) {
     // A key held with Command, Control, or Option is the browser's: Command-R
@@ -525,13 +865,48 @@ export function createTreemapMap(mb, palette, viewport, options) {
       e.preventDefault();
     }
   }
-  viewport.addEventListener("click", onClick);
-  viewport.addEventListener("mouseover", onMouseOver);
-  viewport.addEventListener("mouseout", /** @type {EventListener} */ (onMouseOut));
+
+  viewport.addEventListener("mousemove", /** @type {EventListener} */ (onMouseMove));
+  viewport.addEventListener("mouseleave", onMouseLeave);
+  viewport.addEventListener("click", /** @type {EventListener} */ (onClick));
   viewport.addEventListener("keydown", /** @type {EventListener} */ (onKeyDown));
 
+  // ---- Theme and pixel ratio -------------------------------------------------
+
+  /** Colors and pixels changed under the same layout: paint it again. */
+  function repaint() {
+    styleCache.clear();
+    if (lastRender && !disposed) {
+      render(lastRender.node, lastRender.content);
+    }
+  }
+  // The shell resolves its theme into data-theme on the root element (app.js).
+  const themeObserver =
+    typeof MutationObserver === "function" && doc.documentElement
+      ? new MutationObserver(repaint)
+      : null;
+  themeObserver?.observe(doc.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+  /** @type {MediaQueryList | null} */
+  let resolutionQuery = null;
+  function watchResolution() {
+    resolutionQuery?.removeEventListener?.("change", onResolutionChange);
+    resolutionQuery = win?.matchMedia?.(`(resolution: ${dpr}dppx)`) ?? null;
+    resolutionQuery?.addEventListener?.("change", onResolutionChange);
+  }
+  function onResolutionChange() {
+    dpr = devicePixelRatio();
+    watchResolution();
+    repaint();
+  }
+  watchResolution();
+
+  // ---- Rendering ----------------------------------------------------------------
+
   /**
-   * Replace the viewport's content with cells for `node`, or with
+   * Replace the map's content with cells for `node`, or with
    * `placeholderHtml` when there is no tree to draw.
    * @param {Record<string, any> | null} node
    * @param {{placeholderHtml?: string, emptyHtml?: string}} [content]
@@ -541,14 +916,16 @@ export function createTreemapMap(mb, palette, viewport, options) {
     if (disposed) {
       return 0;
     }
-    // The cells are replaced below, and with them the one a cell's hover was entered
-    // from; the browser enters its replacement under a pointer that has not moved. A
-    // legend entry outlives the layout, so its hover is drawn again on the new cells.
-    releaseCellHover();
+    lastRender = { node, content: content ?? {} };
     try {
       return renderCells(node, content ?? {});
     } finally {
       drawCellHover();
+      // A canvas raises no mouseover when what is under a still pointer changes,
+      // so the map asks itself which cell the pointer is on now.
+      if (pointer && hitGrid) {
+        pointAt(hitGrid.lookup(pointer.x, pointer.y));
+      }
     }
   }
 
@@ -558,51 +935,113 @@ export function createTreemapMap(mb, palette, viewport, options) {
    */
   function renderCells(node, content) {
     const box = drawableBox();
-    if (!node || box.w < 10 || box.h < 10) {
+    const state = options.getState();
+    dpr = Math.min(devicePixelRatio(), Math.sqrt(MAX_BACKING_PIXELS / Math.max(1, box.w * box.h)));
+    const laidOut =
+      node && box.w >= 10 && box.h >= 10
+        ? layoutTree(node, box, {
+            ...preset.layout,
+            minCellPx: 1 / dpr,
+            labelMinW: preset.labelMinW,
+            labelMinH: preset.labelMinH,
+            metric: state.metric,
+            includeIgnored: state.includeIgnored,
+          })
+        : [];
+    clearPointerCell();
+    if (laidOut.length === 0) {
       cells = [];
+      paintRects = [];
+      emptyCells = 0;
       actionableIndexes = [];
-      viewport.innerHTML = content.placeholderHtml ?? "";
+      remainderNotes = new Map();
+      hitGrid = null;
+      dropLayers();
+      viewport.innerHTML =
+        node && box.w >= 10 && box.h >= 10
+          ? (content.emptyHtml ?? "")
+          : (content.placeholderHtml ?? "");
       return 0;
     }
-    const state = options.getState();
-    cells = layoutTree(node, box, {
-      ...preset.layout,
-      labelMinW: preset.labelMinW,
-      labelMinH: preset.labelMinH,
-      metric: state.metric,
-      includeIgnored: state.includeIgnored,
-    });
-    const html = cells.map((cell, i) => cellHtml(cell, state, i)).join("");
-    viewport.innerHTML = html || (content.emptyHtml ?? "");
-    // Roving tabindex over actionable cells only (dir/file); remainder
-    // cells are descriptive groups outside the focus order.
+    cells = laidOut;
+    laidOutBox = box;
+    ensureLayers();
+    const listed = paintList(cells, cellStyleKey, dpr);
+    paintRects = listed.rects;
+    emptyCells = listed.empty;
+    hitGrid = buildHitGrid(cells, box);
+    paintMap();
+    reconcileLabels(state);
+    // The focus proxy walks every folder and file cell in layout order;
+    // remainder cells are named by their folder instead.
     actionableIndexes = [];
+    remainderNotes = new Map();
     cells.forEach((cell, i) => {
       if (cellIsActionable(cell)) {
         actionableIndexes.push(i);
+      } else if (cell.kind === "rest" && cell.parent >= 0) {
+        remainderNotes.set(
+          cell.parent,
+          `${mb.formatFileCount(cell.files || 0)} more in the remainder`,
+        );
       }
     });
     focusPos = 0;
-    const first = /** @type {HTMLElement | null} */ (
-      viewport.querySelector(`[data-tm-index="${actionableIndexes[0] ?? -1}"]`)
-    );
-    if (first) {
-      first.setAttribute("tabindex", "0");
-    }
+    placeFocus();
     return cells.length;
   }
+
+  INSPECTORS.set(viewport, () =>
+    Object.freeze({
+      cells,
+      paint: paintRects,
+      empty: emptyCells,
+      labels: cells.flatMap((cell, i) => (labelPlan(cell).showLabel ? [i] : [])),
+      focusOrder: actionableIndexes,
+      focused: actionableIndexes[focusPos] ?? -1,
+      hovered: hoveredIndex,
+      marked: markedIndexes,
+      markOps: currentMarkOps,
+      dpr,
+    }),
+  );
 
   function dispose() {
     if (disposed) {
       return;
     }
     disposed = true;
+    if (pointerFrame && win?.cancelAnimationFrame) {
+      win.cancelAnimationFrame(pointerFrame);
+    }
+    pointerFrame = 0;
+    pointer = null;
     releaseCellHover();
     unsubscribeCellHover();
-    viewport.removeEventListener("click", onClick);
-    viewport.removeEventListener("mouseover", onMouseOver);
-    viewport.removeEventListener("mouseout", /** @type {EventListener} */ (onMouseOut));
+    themeObserver?.disconnect();
+    resolutionQuery?.removeEventListener?.("change", onResolutionChange);
+    viewport.removeEventListener("mousemove", /** @type {EventListener} */ (onMouseMove));
+    viewport.removeEventListener("mouseleave", onMouseLeave);
+    viewport.removeEventListener("click", /** @type {EventListener} */ (onClick));
     viewport.removeEventListener("keydown", /** @type {EventListener} */ (onKeyDown));
+    // Take back every element the map put in the viewport: a left anchor would
+    // still be marked and shimmering, and a left focus proxy still focusable.
+    if (layers) {
+      for (const element of [
+        layers.paint,
+        layers.marks,
+        layers.labels,
+        layers.focus,
+        layers.probes,
+        layers.anchor,
+      ]) {
+        element?.remove();
+      }
+    }
+    viewport.style.cursor = "";
+    hoveredIndex = -1;
+    dropLayers();
+    INSPECTORS.delete(viewport);
     // The host puts away the tooltip, its own and the map's at once, since it
     // may own other tooltips around the map (mb-alff).
   }

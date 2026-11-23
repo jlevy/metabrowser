@@ -338,18 +338,59 @@ function fileNode(name, pathStr, size, extras) {
     framedChild && Math.abs(framedChild[1].y - framedChild[0].y) < framedChild[0].headerPx,
     JSON.stringify(framedChild),
   );
-  const padPx = 2;
+  // The frame thins with depth, ceil(padPx * frameDecay^depth), and a folder
+  // smaller than frameNestMinPx on a side has none: its children tile it.
+  const { padPx, frameDecay, frameNestMinPx } = layout.LAYOUT_DEFAULTS;
   const offsets = framed.map((f) => {
     const inside = cells.filter(
       (c) => c.path.startsWith(`${f.path}/`) || (c.kind === "rest" && c.path === f.path),
     );
-    return [Math.min(...inside.map((c) => c.x)) - f.x, Math.min(...inside.map((c) => c.y)) - f.y];
+    const expected =
+      Math.min(f.w, f.h) >= frameNestMinPx ? Math.ceil(padPx * frameDecay ** f.depth) : 0;
+    return [
+      Math.min(...inside.map((c) => c.x)) - f.x,
+      Math.min(...inside.map((c) => c.y)) - f.y,
+      expected,
+    ];
   });
   check(
-    "a framed folder's children start exactly one pad inside its frame",
-    offsets.every(([dx, dy]) => Math.abs(dx - padPx) < eps && Math.abs(dy - padPx) < eps),
+    "a framed folder's children start exactly one frame width inside it",
+    offsets.every(([dx, dy, want]) => Math.abs(dx - want) < eps && Math.abs(dy - want) < eps),
     JSON.stringify(offsets.slice(0, 4)),
   );
+  check(
+    "frames thin with depth",
+    framed.some((f) => f.depth >= 3 && Math.min(f.w, f.h) >= frameNestMinPx)
+      ? offsets.every(([dx, , want], k) => framed[k].depth < 3 || dx <= 1 + eps || want === 0)
+      : true,
+    JSON.stringify(offsets.filter((_, k) => framed[k].depth >= 3).slice(0, 4)),
+  );
+
+  // Each cell names its parent's index, the folder whose interior holds it, which
+  // hit testing and hover marks walk.
+  const parentIndexes = cells.every((c, i) => {
+    if (c.parent === -1) {
+      return c.depth === 0;
+    }
+    const p = cells[c.parent];
+    return (
+      c.parent < i &&
+      p.kind === "dir" &&
+      p.depth === c.depth - 1 &&
+      (c.kind === "rest" ? c.path === p.path : c.path.startsWith(`${p.path}/`))
+    );
+  });
+  check("every cell names its parent's index", parentIndexes);
+  const interiors = cells.every(
+    (c) =>
+      !c.nested ||
+      (c.inner &&
+        c.inner.x >= c.x - eps &&
+        c.inner.y >= c.y - eps &&
+        c.inner.x + c.inner.w <= c.x + c.w + eps &&
+        c.inner.y + c.inner.h <= c.y + c.h + eps),
+  );
+  check("a nesting folder records the interior its children tile", interiors);
   // A folder the map would label is labelled, not framed: framing it hid the
   // names of folders that had room for them.
   const labelMin = { w: 56, h: 16 };

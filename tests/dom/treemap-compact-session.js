@@ -5,12 +5,17 @@
 // files in the population shown; and drawn once the index has settled and the map's own
 // rollup answers, inside an outer box for the folder itself. It follows the section's legend
 // hover, measure, Show ignored, and the tab's activation; a cell opens the Treemap view at its
-// folder, and the outer box at the folder itself; a failed rollup keeps the
-// box and recovers on Retry. Disposal releases every listener, the watch, and the observer,
-// and puts away only the map's own tooltip.
+// folder, and the outer box at the folder itself, by pointer or by the focus proxy's keys; a
+// layout under a still pointer points at the cell under it now; a failed rollup keeps the
+// box and recovers on Retry. Disposal releases every listener, the watch, the observer, and
+// the hover, and puts away only the map's own tooltip.
 //
-// The DOM is a stand-in for the calls the map makes. A cell element is parsed back out
-// of the HTML the map writes, so what the session reads is what the map drew.
+// The DOM is a stand-in for the calls the map makes: elements it creates and appends, and
+// a viewport with a measured box and a 1 px border. The map paints on a canvas, which has
+// no context here, so the session reads what the map drew through `inspectTreemap`, the
+// layout, paint list, labels, focus, pointer, and marks, and the elements it keeps in the
+// DOM: the label layer, the focus proxy, and the hover anchor. Pointer events go to the
+// viewport at a cell's coordinates, as the browser sends them.
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -26,50 +31,75 @@ process.emitWarning = (warning, ...rest) => {
 const folder = (name) =>
   pathToFileURL(path.resolve(__dirname, "../../src/metabrowser/builtin_plugins/folder", name));
 
-/** A drawn cell, parsed from the map's HTML. */
-class FakeCell {
-  constructor(index, kind, pathName, classes, box) {
-    this.dataset = { tmCell: String(index), tmKind: kind, tmPath: pathName };
-    this.classes = classes;
-    this.box = box;
-  }
-  closest(selector) {
-    return selector === "[data-tm-cell]" ? this : null;
-  }
-}
-
 class FakeElement {
   constructor(tag) {
-    this.tag = tag;
+    this.tagName = tag.toUpperCase();
     this.children = [];
+    this.parentNode = null;
     this.listeners = new Map();
     this.attributes = {};
+    this.dataset = {};
+    this.style = {};
     this.hidden = false;
     this.className = "";
     this.classList = { add: (name) => (this.className = `${this.className} ${name}`.trim()) };
     this._html = "";
-    this.cells = [];
     this.clientWidth = 0;
     this.clientHeight = 0;
+    this.clientLeft = 0;
+    this.clientTop = 0;
   }
+  /** Markup replaces the children; the session reads placeholders back as text. */
   set innerHTML(html) {
-    this._html = html;
-    this.cells = [];
-    const pattern =
-      /<div class="([^"]*)"[^>]*data-tm-cell="(\d+)" data-tm-kind="(\w+)" data-tm-path="([^"]*)" style="left:([\d.]+)px;top:([\d.]+)px;width:([\d.]+)px;height:([\d.]+)px/g;
-    for (const match of html.matchAll(pattern)) {
-      const box = match.slice(5, 9).map(Number);
-      this.cells.push(new FakeCell(Number(match[2]), match[3], match[4], match[1].split(" "), box));
+    for (const child of this.children) {
+      child.parentNode = null;
     }
+    this.children = [];
+    this._html = String(html);
   }
   get innerHTML() {
     return this._html;
   }
+  appendChild(node) {
+    node.remove();
+    node.parentNode = this;
+    this.children.push(node);
+    return node;
+  }
+  insertBefore(node, reference) {
+    node.remove();
+    const at = this.children.indexOf(reference);
+    node.parentNode = this;
+    this.children.splice(at === -1 ? this.children.length : at, 0, node);
+    return node;
+  }
   append(...nodes) {
-    this.children.push(...nodes);
+    for (const node of nodes) {
+      this.appendChild(node);
+    }
+  }
+  remove() {
+    if (this.parentNode) {
+      this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+      this.parentNode = null;
+    }
+  }
+  contains(node) {
+    for (let each = node; each; each = each.parentNode) {
+      if (each === this) {
+        return true;
+      }
+    }
+    return false;
   }
   setAttribute(name, value) {
     this.attributes[name] = String(value);
+  }
+  getAttribute(name) {
+    return name in this.attributes ? this.attributes[name] : null;
+  }
+  removeAttribute(name) {
+    delete this.attributes[name];
   }
   addEventListener(type, listener) {
     this.listeners.set(type, listener);
@@ -79,25 +109,64 @@ class FakeElement {
       this.listeners.delete(type);
     }
   }
+  /** What the browser dispatches on this element; returns the event, to read defaultPrevented. */
+  dispatch(type, init = {}) {
+    const event = {
+      type,
+      target: this,
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+      ...init,
+    };
+    this.listeners.get(type)?.(event);
+    return event;
+  }
+  /** The border box: the client box and a border of clientLeft and clientTop on each side. */
   getBoundingClientRect() {
-    return { width: this.clientWidth + 2, height: this.clientHeight + 2, top: 0, left: 0 };
-  }
-  querySelector() {
-    return null;
-  }
-  querySelectorAll(selector) {
-    assert.equal(selector, "[data-tm-cell]");
-    return this.cells;
-  }
-  contains(node) {
-    return this.cells.includes(node);
+    return {
+      width: this.clientWidth + 2 * this.clientLeft,
+      height: this.clientHeight + 2 * this.clientTop,
+      top: 0,
+      left: 0,
+    };
   }
   closest() {
+    return null;
+  }
+  /** The first descendant carrying `className`. */
+  find(className) {
+    for (const child of this.children) {
+      if (child.className.split(" ").includes(className)) {
+        return child;
+      }
+      const deeper = child.find(className);
+      if (deeper) {
+        return deeper;
+      }
+    }
     return null;
   }
 }
 
 const EXTENSION_FAMILIES = { ".py": "python", ".md": "markdown" };
+
+// As the shell's hideTooltipWithin (static/app.js): a hide within any element puts away a
+// tooltip whose anchor has left the page, since nothing else would.
+function connected(node, within) {
+  const rootOf = (each) => {
+    let top = each;
+    while (top.parentNode) {
+      top = top.parentNode;
+    }
+    return top;
+  };
+  return !node || rootOf(node) === rootOf(within);
+}
 
 function file(name, filePath, size, ext, gitignored = false) {
   return { name, path: filePath, type: "file", size, ext, gitignored, mtime: 1 };
@@ -155,14 +224,64 @@ const breakdownAnswer = (indexStatus, tree, nodeState = "complete") => ({
   node: { ...tree, children: null, state: nodeState },
 });
 
+/** The deepest cell containing (x, y): of the cells containing a point, the last emitted. */
+function deepestAt(cells, x, y) {
+  for (let i = cells.length - 1; i >= 0; i -= 1) {
+    const cell = cells[i];
+    if (x >= cell.x && x < cell.x + cell.w && y >= cell.y && y < cell.y + cell.h) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * A point in cell `index`'s own area, outside its children: its center when no child
+ * covers it, else the first pixel center, row by row, that none does.
+ */
+function ownPointOf(cells, index) {
+  const cell = cells[index];
+  const center = { x: cell.x + cell.w / 2, y: cell.y + cell.h / 2 };
+  if (deepestAt(cells, center.x, center.y) === index) {
+    return center;
+  }
+  for (let y = Math.floor(cell.y) + 0.5; y < cell.y + cell.h; y += 1) {
+    for (let x = Math.floor(cell.x) + 0.5; x < cell.x + cell.w; x += 1) {
+      if (deepestAt(cells, x, y) === index) {
+        return { x, y };
+      }
+    }
+  }
+  throw new Error(`no point of ${cell.path} is its own`);
+}
+
+/** The box a layer element is placed in, from its inline style, as the map writes it. */
+function styleBox(element) {
+  const match =
+    /left:([\d.]+)px;top:([\d.]+)px;width:([\d.]+)px;height:([\d.]+)px/.exec(
+      element.getAttribute("style") ?? "",
+    ) ?? [];
+  return match.slice(1, 5).map(Number);
+}
+
+/** The box the map places a cell's layer elements in: its rectangle, one pixel short. */
+function cellBox(cell) {
+  return [cell.x, cell.y, Math.max(0, cell.w - 1), Math.max(0, cell.h - 1)].map((value) =>
+    Number(value.toFixed(1)),
+  );
+}
+
 async function main() {
   // A failed rollup is logged; the session reports those lines as data instead.
   const warnings = [];
   console.warn = (message) => warnings.push(String(message));
   const { createDistributionHover } = await import(folder("distribution-hover.js"));
   const { mountCompactTreemap } = await import(folder("treemap-compact.js"));
+  // The module the map is, so its inspection reads the mounted map.
+  const { inspectTreemap } = await import(folder("treemap-map.js"));
 
-  global.window = {};
+  // One device pixel per CSS pixel, so the paint list is the same on every host.
+  global.window = { devicePixelRatio: 1 };
   global.document = { createElement: (tag) => new FakeElement(tag) };
   const observers = [];
   global.ResizeObserver = class {
@@ -184,6 +303,10 @@ async function main() {
   function mount({ width = 600 } = {}) {
     const navigation = [];
     const tooltipHides = [];
+    const tooltipShows = [];
+    // The page's one tooltip: what it shows and its anchor, until a hide puts it away. A
+    // hide within an element puts away only a tooltip anchored there.
+    const tooltip = { html: null, anchor: null };
     const watch = { options: null, apply: null, disposed: false, refreshes: 0, stale: false };
     let controlsState = { metric: "size", includeIgnored: true };
     const controlListeners = new Set();
@@ -198,7 +321,20 @@ async function main() {
       formatTimestamp: () => "then",
       navigation: { open: (...args) => navigation.push(args) },
       sourceKind: () => "filesystem",
-      tooltip: { show() {}, hide: (within) => tooltipHides.push(within) },
+      tooltip: {
+        show(html, anchor) {
+          tooltipShows.push(anchor);
+          tooltip.html = html;
+          tooltip.anchor = anchor;
+        },
+        hide(within) {
+          tooltipHides.push(within);
+          if (!within || !connected(tooltip.anchor, within) || within.contains(tooltip.anchor)) {
+            tooltip.html = null;
+            tooltip.anchor = null;
+          }
+        },
+      },
       viewState: {
         isActive: () => true,
         subscribeActive(_element, listener) {
@@ -232,13 +368,15 @@ async function main() {
     const palette = { classFor: (key) => `c-${key}`, styleFor: () => "", paint() {} };
     const hover = createDistributionHover();
     const container = new FakeElement("div");
-    // The box the stylesheet gives the compact map, inside its border; set before the
+    // The box the stylesheet gives the compact map, inside its 1 px border; set before the
     // mount, as the stylesheet sizes it before the first paint.
     const created = document.createElement;
     document.createElement = (tag) => {
       const element = created(tag);
       element.clientWidth = width;
       element.clientHeight = 218;
+      element.clientLeft = 1;
+      element.clientTop = 1;
       return element;
     };
     const handle = mountCompactTreemap(container, { path: "src" }, mb, palette, controls, {
@@ -246,16 +384,19 @@ async function main() {
     });
     document.createElement = created;
     const viewport = container.children[0];
-    return {
+    const page = {
       handle,
       container,
       viewport,
       hover,
       watch,
       navigation,
+      tooltip,
+      tooltipShows,
       tooltipHides,
       controlListeners,
       activeListeners,
+      inspect: () => inspectTreemap(viewport),
       setControls(next) {
         controlsState = next;
         for (const listener of [...controlListeners]) {
@@ -267,27 +408,138 @@ async function main() {
           listener(true);
         }
       },
-      resize(width) {
-        viewport.clientWidth = width;
+      resize(nextWidth) {
+        viewport.clientWidth = nextWidth;
         for (const observer of observers) {
           if (observer.observed.includes(viewport)) {
             observer.callback();
           }
         }
       },
+      /** The index of the drawn folder or file cell at `cellPath`. */
+      cellAt(cellPath) {
+        const index = page
+          .inspect()
+          .cells.findIndex((cell) => cell.path === cellPath && cell.kind !== "rest");
+        assert.ok(index >= 0, `${cellPath} is drawn`);
+        return index;
+      },
+      /** The client coordinates of a point in the viewport's padding box. */
+      client({ x, y }) {
+        const rect = viewport.getBoundingClientRect();
+        return {
+          clientX: rect.left + viewport.clientLeft + x,
+          clientY: rect.top + viewport.clientTop + y,
+        };
+      },
+      /** Move the pointer onto a point of the cell at `cellPath` that is its own. */
+      pointAt(cellPath, at) {
+        const index = page.cellAt(cellPath);
+        const point = at ?? ownPointOf(page.inspect().cells, index);
+        viewport.dispatch("mousemove", page.client(point));
+        assert.equal(page.inspect().hovered, index, `the pointer is on ${cellPath}`);
+        return point;
+      },
+      clickAt(cellPath) {
+        viewport.dispatch(
+          "click",
+          page.client(ownPointOf(page.inspect().cells, page.cellAt(cellPath))),
+        );
+      },
+      key(key) {
+        return viewport.dispatch("keydown", { key });
+      },
     };
+    return page;
   }
 
-  const summary = (page) => ({
-    hidden: page.container.hidden,
-    skeleton: page.viewport.innerHTML.includes("tm-loading"),
-    unavailable: page.viewport.innerHTML.includes("Treemap unavailable."),
-    asked: page.watch.options !== null,
-    cells: page.viewport.cells.map(
-      (cell) =>
-        `${cell.dataset.tmKind} ${cell.dataset.tmPath} ${cell.box[2].toFixed(0)}x${cell.box[3].toFixed(0)}`,
-    ),
-  });
+  /** The label layer's elements, by the path of the cell each labels. */
+  const labelled = (page) => {
+    const map = page.inspect();
+    const layer = page.viewport.find("tm-labels");
+    if (!map || !layer) {
+      return [];
+    }
+    // A relayout keeps the labels it can and appends the new ones, so the layer's order is
+    // not the layout's; each label is placed by its own box.
+    const indexes = layer.children
+      .map((element) => {
+        const index = Number(element.dataset.tmCell);
+        const cell = map.cells[index];
+        assert.ok(
+          element.className.split(" ").includes(`tm-${cell.kind}`),
+          "a label takes its cell's kind",
+        );
+        assert.deepEqual(styleBox(element), cellBox(cell), `${cell.path}'s label sits on its cell`);
+        return index;
+      })
+      .sort((a, b) => a - b);
+    assert.deepEqual(indexes, map.labels, "the label layer holds the labels the map reports");
+    return indexes.map((index) => map.cells[index].path);
+  };
+
+  /** The focus proxy: the one control, over the focused cell, named for it. */
+  const focusProxy = (page) => {
+    const map = page.inspect();
+    const proxy = page.viewport.find("tm-focus");
+    if (!map || !proxy) {
+      return null;
+    }
+    if (map.focused >= 0) {
+      assert.equal(Number(proxy.dataset.tmCell), map.focused, "the proxy is on the focused cell");
+      assert.deepEqual(styleBox(proxy), cellBox(map.cells[map.focused]), "the proxy covers it");
+    }
+    return {
+      role: proxy.getAttribute("role"),
+      tabindex: proxy.getAttribute("tabindex"),
+      hidden: proxy.hidden,
+      on: map.focused >= 0 ? map.cells[map.focused].path : null,
+      label: proxy.getAttribute("aria-label"),
+    };
+  };
+
+  /** The hover anchor: at most one, over the cell under the pointer, and the tooltip's anchor. */
+  const pointer = (page) => {
+    const map = page.inspect();
+    const anchors = page.viewport.children.filter((element) =>
+      element.className.split(" ").includes("tm-hover-anchor"),
+    );
+    assert.ok(anchors.length <= 1, "one hover anchor at most");
+    const anchor = anchors[0] ?? null;
+    assert.equal(anchor !== null, (map?.hovered ?? -1) >= 0, "an anchor while a cell is hovered");
+    if (!anchor) {
+      return { on: null, anchor: null, cursor: page.viewport.style.cursor || "" };
+    }
+    const cell = map.cells[map.hovered];
+    assert.equal(Number(anchor.dataset.tmCell), map.hovered, "the anchor is the hovered cell's");
+    assert.deepEqual(styleBox(anchor), cellBox(cell), "the anchor covers its cell");
+    return {
+      on: cell.path,
+      anchor: anchor.className,
+      shimmers: anchor.dataset.hovered === "self",
+      tooltip:
+        page.tooltip.anchor === anchor
+          ? page.tooltip.html.replace(/<br>/g, " / ").replace(/<[^>]*>/g, "")
+          : null,
+      marked: map.marked.map((index) => map.cells[index].path),
+      cursor: page.viewport.style.cursor,
+    };
+  };
+
+  const summary = (page) => {
+    const map = page.inspect();
+    return {
+      hidden: page.container.hidden,
+      skeleton: page.viewport.innerHTML.includes("tm-loading"),
+      unavailable: page.viewport.innerHTML.includes("Treemap unavailable."),
+      asked: page.watch.options !== null,
+      cells: (map?.cells ?? []).map(
+        (cell) => `${cell.kind} ${cell.path} ${cell.w.toFixed(0)}x${cell.h.toFixed(0)}`,
+      ),
+      labelled: labelled(page),
+    };
+  };
+  const drawn = (page) => (page.inspect()?.cells.length ?? 0) > 0;
   const steps = [];
 
   // ── a folder whose index settles ──────────────────────────────
@@ -309,60 +561,129 @@ async function main() {
   });
 
   page.watch.apply({ index_status: "done", node: TREE });
-  // Every cell fits inside the border: the map lays out to the client box, not to the
-  // bounding box, which is larger by the border and pushed edge cells under it.
-  const insideBorder = page.viewport.cells.every(
-    ({ box: [left, top, width, height] }) =>
-      left + width <= page.viewport.clientWidth && top + height <= page.viewport.clientHeight,
+  // Every cell is painted inside the border: the map lays out to the client box, not to the
+  // bounding box, which is larger by the border and pushed edge cells under it. What is
+  // painted is the paint list, in device pixels, which reaches the client box's edge.
+  const arrived = page.inspect();
+  const deviceBox = [page.viewport.clientWidth, page.viewport.clientHeight].map((side) =>
+    Math.round(side * arrived.dpr),
   );
-  steps.push({ step: "the map's tree arrives", insideBorder, ...summary(page) });
+  const reach = arrived.paint.reduce(
+    (most, rect) => [Math.max(most[0], rect.x + rect.w), Math.max(most[1], rect.y + rect.h)],
+    [0, 0],
+  );
+  const insideBorder =
+    reach[0] <= deviceBox[0] && reach[1] <= deviceBox[1] && reach[0] >= deviceBox[0] - 1;
+  steps.push({
+    step: "the map's tree arrives",
+    insideBorder,
+    layers: page.viewport.children.map(
+      (element) => `${element.tagName.toLowerCase()}.${element.className}`,
+    ),
+    paint: { rects: arrived.paint.length, empty: arrived.empty, dpr: arrived.dpr },
+    focus: focusProxy(page),
+    ...summary(page),
+  });
 
   const entry = { tag: "legend-entry" };
   page.hover.enter({ population: "all", key: "python", anchor: entry, marks: "family" });
+  const onEntry = page.inspect();
   steps.push({
     step: "pointing at the Python legend entry",
-    marked: page.viewport.cells
-      .filter((cell) => cell.dataset.hovered === "family")
-      .map((cell) => cell.dataset.tmPath),
+    marked: onEntry.marked.map((index) => onEntry.cells[index].path),
+    markOps: onEntry.markOps.map((op) => `${op.op} ${onEntry.cells[op.cell].path}`),
   });
   page.hover.leave({ population: "all", key: "python", anchor: entry, marks: "family" });
-  assert.equal(
-    page.viewport.cells.filter((cell) => cell.dataset.hovered).length,
-    0,
-    "leaving the entry clears the marks",
-  );
+  assert.equal(page.inspect().marked.length, 0, "leaving the entry clears the marks");
 
-  const click = page.viewport.listeners.get("click");
+  // The pointer over a cell: an anchor of its own carries the tooltip and the shimmer, and
+  // the cell's hover marks it. Moving within the cell changes nothing; moving on to another
+  // cell gives that one a new anchor; leaving the map takes it all away.
+  page.pointAt("src/lib/app.py");
+  const appAnchor = page.tooltip.anchor;
+  steps.push({ step: "the pointer on the app.py cell", pointer: pointer(page) });
+  const appCell = arrived.cells[page.cellAt("src/lib/app.py")];
+  page.pointAt("src/lib/app.py", { x: appCell.x + 2, y: appCell.y + 2 });
+  assert.equal(page.tooltip.anchor, appAnchor, "moving within a cell keeps its anchor");
+  assert.equal(page.tooltipShows.length, 1, "and shows no tooltip again");
+  page.pointAt("src/README.md");
+  assert.ok(!page.viewport.contains(appAnchor), "the last cell's anchor is gone");
+  assert.notEqual(page.tooltip.anchor, appAnchor, "the tooltip has a new anchor");
+  steps.push({ step: "the pointer moves on to the README.md cell", pointer: pointer(page) });
+  page.viewport.dispatch("mouseleave");
+  assert.equal(page.tooltip.anchor, null, "leaving the map puts the tooltip away");
+  assert.equal(page.hover.current(), null, "and lets go of the cell's hover");
+  steps.push({ step: "the pointer leaves the map", pointer: pointer(page) });
+
   for (const target of ["src/lib/app.py", "src/docs", "src/README.md"]) {
-    const cell = page.viewport.cells.find((c) => c.dataset.tmPath === target);
-    if (cell) {
-      click({ target: cell });
-    }
+    page.clickAt(target);
   }
   steps.push({
-    step: "activating two file cells and a folder cell opens the Treemap at their folders",
-    navigation: page.navigation,
+    step: "clicking two file cells and a folder cell opens the Treemap at their folders",
+    navigation: [...page.navigation],
   });
 
   // The folder's own cell is the outer box around the rest, and opens the Treemap at it.
-  const outer = page.viewport.cells[0];
-  const [left, top, width, height] = outer.box;
-  assert.equal(outer.dataset.tmPath, "src");
+  const outer = arrived.cells[0];
+  assert.equal(outer.path, "src");
   assert.ok(
-    left <= 1 && top <= 1 && width >= page.viewport.clientWidth - 2,
+    outer.x <= 1 && outer.y <= 1 && outer.w >= page.viewport.clientWidth - 2,
     "the box spans the map",
   );
-  assert.ok(height >= page.viewport.clientHeight - 2, "the box spans the map's height");
+  assert.ok(outer.h >= page.viewport.clientHeight - 2, "the box spans the map's height");
   page.navigation.length = 0;
-  click({ target: outer });
+  page.clickAt("src");
   steps.push({
-    step: "activating the outer box opens the Treemap at the folder",
-    outerBox: outer.classes.includes("tm-nested") ? "labelled, around the tree" : "solid",
-    navigation: page.navigation,
+    step: "clicking the outer box opens the Treemap at the folder",
+    outerBox: outer.nested ? "labelled, around the tree" : "solid",
+    navigation: [...page.navigation],
   });
 
+  // The keyboard: one focus proxy, which the arrows move over every folder and file cell in
+  // layout order, and Enter activates. The compact map has no enclosing folder to go to.
+  page.navigation.length = 0;
+  const keys = [];
+  for (const key of ["ArrowRight", "ArrowRight", "ArrowLeft"]) {
+    const before = page.inspect();
+    const at = before.focusOrder.indexOf(before.focused);
+    const event = page.key(key);
+    const after = page.inspect();
+    assert.equal(
+      after.focused,
+      before.focusOrder[at + (key === "ArrowLeft" ? -1 : 1)],
+      `${key} moves the focus along the order`,
+    );
+    keys.push(`${key}${event.defaultPrevented ? "" : " (not taken)"} -> ${focusProxy(page).label}`);
+  }
+  const enter = page.key("Enter");
+  const backspace = page.key("Backspace");
+  const focusOrder = page.inspect();
+  steps.push({
+    step: "the keyboard",
+    focusOrder: focusOrder.focusOrder.map((index) => focusOrder.cells[index].path),
+    keys,
+    enter: { taken: enter.defaultPrevented, navigation: [...page.navigation] },
+    backspace: { taken: backspace.defaultPrevented },
+  });
+
+  // A canvas raises no mouseover when what is under a still pointer changes, so a layout
+  // asks which cell is under the pointer and points at it, with a new anchor.
+  const still = page.pointAt("src/cache.md");
+  const stillAnchor = page.tooltip.anchor;
+  const before = pointer(page);
   page.setControls({ metric: "files", includeIgnored: true });
-  steps.push({ step: "the measure switches to Files", ...summary(page) });
+  const relaid = page.inspect();
+  const under = deepestAt(relaid.cells, still.x, still.y);
+  assert.equal(relaid.hovered, under, "the layout points at the cell under the pointer");
+  assert.notEqual(relaid.cells[under].path, before.on, "a different cell than before");
+  assert.ok(!page.viewport.contains(stillAnchor), "the old cell's anchor is gone");
+  steps.push({
+    step: "the measure switches to Files under a still pointer",
+    pointerBefore: before,
+    pointerAfter: pointer(page),
+    ...summary(page),
+  });
+  page.viewport.dispatch("mouseleave");
 
   page.setControls({ metric: "files", includeIgnored: false });
   steps.push({ step: "Show ignored is turned off", ...summary(page) });
@@ -374,23 +695,30 @@ async function main() {
     refreshes: page.watch.refreshes,
   });
 
-  const drawn = page.viewport.innerHTML;
+  const drawnCells = page.inspect().cells;
+  const drawnLayers = [...page.viewport.children];
   page.watch.options.onError(new Error("refresh failed"));
-  assert.equal(page.viewport.innerHTML, drawn, "a failed refresh keeps the map");
+  assert.equal(page.inspect().cells, drawnCells, "a failed refresh keeps the map's layout");
+  assert.deepEqual(page.viewport.children, drawnLayers, "and its layers");
   steps.push({ step: "a refresh fails after a complete answer", ...summary(page) });
 
-  const before = page.tooltipHides.length;
+  // Disposal with the pointer on a cell: the cell's hover is let go of, and the map's own
+  // tooltip, anchored inside the map, is the one put away.
+  page.pointAt("src/lib/util.py");
+  const before2 = page.tooltipHides.length;
   page.handle.dispose();
   page.handle.dispose();
   steps.push({
-    step: "disposed",
+    step: "disposed with the pointer on a cell",
     viewportListeners: [...page.viewport.listeners.keys()],
     controlListeners: page.controlListeners.size,
     activeListeners: page.activeListeners.size,
     watchDisposed: page.watch.disposed,
     observerDisconnected: observers[0].disconnected,
-    tooltipHides: page.tooltipHides.length - before,
-    hidOwnTooltipOnly: page.tooltipHides.at(-1) === page.container,
+    hoverReleased: page.hover.current() === null,
+    inspectable: page.inspect() !== null,
+    tooltipHides: page.tooltipHides.length - before2,
+    hidOwnTooltipOnly: page.tooltipHides.at(-1) === page.container && page.tooltip.anchor === null,
   });
 
   // ── the breakdown's request fails, and Retry recovers ─────────
@@ -403,7 +731,7 @@ async function main() {
   steps.push({
     step: "Retry: the breakdown answers, and the map follows",
     hidden: retried.container.hidden,
-    drawn: retried.viewport.cells.length > 0,
+    drawn: drawn(retried),
   });
   retried.handle.dispose();
 
@@ -418,7 +746,7 @@ async function main() {
     step: "Retry: the map asks again, and its tree arrives",
     refreshes: failing.watch.refreshes,
     hidden: failing.container.hidden,
-    drawn: failing.viewport.cells.length > 0,
+    drawn: drawn(failing),
   });
   failing.handle.dispose();
 
@@ -451,7 +779,7 @@ async function main() {
   steps.push({
     step: "the pane widens",
     hidden: narrow.container.hidden,
-    drawn: narrow.viewport.cells.length > 0,
+    drawn: drawn(narrow),
   });
   narrow.handle.dispose();
 

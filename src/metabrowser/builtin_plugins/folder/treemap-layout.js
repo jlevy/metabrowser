@@ -13,8 +13,9 @@
 // remaining cell budget proportional to its area, so the budget spreads
 // across the whole map instead of draining into the first folder drawn.
 // Folders large enough for a label nest under a header strip; smaller
-// ones nest inside a thin frame with no label, and the tooltip names
-// them. Bounds: cells below `minCellPx` in either dimension merge into
+// ones nest with no label, inside a frame that thins with depth or, when
+// too small for a frame, edge to edge, and the tooltip names them. Each
+// cell records its parent's index, which hit testing and hover marks use. Bounds: cells below `minCellPx` in either dimension merge into
 // their parent's rest cell, and nesting stops once `maxCells` cells
 // exist, so pathological trees cannot flood the DOM.
 
@@ -54,14 +55,22 @@ const LAYOUT_DEFAULTS = {
    */
   nestMinH: 40,
   /**
-   * A folder too small for its label nests, in a frame `padPx` wide with no
-   * header, when it is at least this size on both sides: its files are drawn,
-   * and the tooltip names the folder. Below it a folder is one solid cell.
-   * 14 px leaves an interior of 10 px, room for a child of more than twice
-   * minCellPx on each side; a smaller frame draws mostly frame.
+   * A folder too small for its label nests with no header: inside a frame
+   * when it is at least this size on both sides, WinDirStat's threshold for
+   * drawing a folder's frame, and edge to edge below it, so its files are
+   * drawn however small it is and the tooltip names the folder. A frame on a
+   * smaller folder draws mostly frame.
    */
-  frameNestMinPx: 14,
-  /** Inner padding between a directory cell border and its children (px). */
+  frameNestMinPx: 5,
+  /**
+   * A frame's width at depth `l` (the root's children are depth 0) is
+   * ceil(padPx * frameDecay^l), the squarified paper's frames that thin with
+   * depth (Bruls, Huizing & van Wijk 2000, section 4), so a deep tree spends
+   * its pixels on files rather than on borders. 2 px at depths 0 to 2, 1 px
+   * below.
+   */
+  frameDecay: 0.75,
+  /** Inner padding between a labelled directory cell's border and its children (px). */
   padPx: 2,
   /**
    * Fewest cells a nesting folder is offered, however small its share of the
@@ -82,6 +91,13 @@ const TYPOGRAPHY_DEFAULTS = Object.freeze({
   headerMinPx: 16,
   basisMinPx: 24,
   basisMaxPx: 360,
+});
+
+/** The type sizes a cell too small for a label carries: the smallest, never drawn. */
+const NO_LABEL = Object.freeze({
+  labelPx: TYPOGRAPHY_DEFAULTS.labelMinPx,
+  valuePx: TYPOGRAPHY_DEFAULTS.valueMinPx,
+  headerPx: TYPOGRAPHY_DEFAULTS.headerMinPx,
 });
 
 /**
@@ -374,7 +390,7 @@ function layoutTree(rootNode, viewport, options) {
   }
   const excludeIgnored = opts.includeIgnored === false;
 
-  /** @typedef {{cell: Record<string, any>, node: Record<string, any>, inner: Rect, framed: boolean, area: number}} PendingNest */
+  /** @typedef {{cell: Record<string, any>, index: number, node: Record<string, any>, inner: Rect, framed: boolean, area: number}} PendingNest */
   /** @type {PendingNest[]} */
   const pending = [];
   let pendingArea = 0;
@@ -384,9 +400,10 @@ function layoutTree(rootNode, viewport, options) {
    * the remaining depth allow it: under a labelled header when it is large
    * enough, otherwise inside a thin frame.
    * @param {Record<string, any>} cell
+   * @param {number} index  the cell's index in `cells`
    * @param {Record<string, any>} node
    */
-  function considerNesting(cell, node) {
+  function considerNesting(cell, index, node) {
     // A folder whose children all fold into its remainder (the rollup's node
     // budget ran out at it) has nothing to show inside but one inert
     // remainder cell, so it stays a solid cell, named by its own tooltip.
@@ -396,22 +413,28 @@ function layoutTree(rootNode, viewport, options) {
     }
     const labelFits = cell.w >= opts.labelMinW && cell.h >= opts.labelMinH;
     const labelled = labelFits && cell.h >= opts.nestMinH;
-    const framed = !labelFits && cell.w >= opts.frameNestMinPx && cell.h >= opts.frameNestMinPx;
-    if (!labelled && !framed) {
+    // A folder with room for its label but too short to nest under it stays a
+    // solid, labelled cell; every other folder nests without a header.
+    if (labelFits && !labelled) {
       return;
     }
-    const top = labelled ? cell.headerPx : opts.padPx;
+    const inset = labelled
+      ? opts.padPx
+      : Math.min(cell.w, cell.h) >= opts.frameNestMinPx
+        ? Math.ceil(opts.padPx * opts.frameDecay ** cell.depth)
+        : 0;
+    const top = labelled ? cell.headerPx : inset;
     const inner = {
-      x: cell.x + opts.padPx,
+      x: cell.x + inset,
       y: cell.y + top,
-      w: cell.w - 2 * opts.padPx,
-      h: cell.h - top - opts.padPx,
+      w: cell.w - 2 * inset,
+      h: cell.h - top - inset,
     };
     if (inner.w < opts.minCellPx || inner.h < opts.minCellPx) {
       return;
     }
     const area = inner.w * inner.h;
-    pending.push({ cell, node, inner, framed, area });
+    pending.push({ cell, index, node, inner, framed: !labelled, area });
     pendingArea += area;
   }
 
@@ -421,9 +444,10 @@ function layoutTree(rootNode, viewport, options) {
    * @param {Rect} rect
    * @param {number} depth
    * @param {number} capacity
+   * @param {number} parent  the index of the folder's own cell, or -1 for the root
    * @returns {number} cells emitted
    */
-  function emitLevel(dirNode, rect, depth, capacity) {
+  function emitLevel(dirNode, rect, depth, capacity, parent) {
     const children = Array.isArray(dirNode.children) ? dirNode.children : [];
     /** @type {WeightedItem[]} */
     const items = [];
@@ -459,7 +483,7 @@ function layoutTree(rootNode, viewport, options) {
     const packed = packLevel(items, rect, capacity, opts.minCellPx);
     for (const p of packed.placed) {
       const node = p.item.node;
-      const typography = cellTypography(p);
+      const typography = typographyFor(p);
       const cell = {
         kind: node.type,
         name: node.name,
@@ -483,13 +507,14 @@ function layoutTree(rootNode, viewport, options) {
         ext: node.type === "dir" ? node.dominant_ext : node.ext,
         gitignored: !!node.gitignored,
         state: node.state,
+        parent,
         ...typography,
       };
       cells.push(cell);
-      considerNesting(cell, node);
+      considerNesting(cell, cells.length - 1, node);
     }
     if (packed.remainder) {
-      const typography = cellTypography(packed.remainder);
+      const typography = typographyFor(packed.remainder);
       cells.push({
         kind: "rest",
         name: "…",
@@ -502,13 +527,23 @@ function layoutTree(rootNode, viewport, options) {
         value: packed.remainder.value,
         files: packed.remainder.count,
         bytes: packed.remainder.bytes,
+        parent,
         ...typography,
       });
     }
     return cells.length - before;
   }
 
-  emitLevel(rootNode, { x: 0, y: 0, w: viewport.w, h: viewport.h }, 0, opts.maxCells);
+  /**
+   * Type sizes for a cell with room for its label; a smaller cell is never
+   * labelled, and most cells of a dense map are smaller.
+   * @param {{w: number, h: number}} rect
+   */
+  function typographyFor(rect) {
+    return rect.w >= opts.labelMinW && rect.h >= opts.labelMinH ? cellTypography(rect) : NO_LABEL;
+  }
+
+  emitLevel(rootNode, { x: 0, y: 0, w: viewport.w, h: viewport.h }, 0, opts.maxCells, -1);
 
   // Largest pending folder first, so the budget reaches every large
   // region of the map before it is spent on small ones.
@@ -528,8 +563,11 @@ function layoutTree(rootNode, viewport, options) {
       Math.max(opts.minNestShare, Math.ceil((remaining * entry.area) / Math.max(pendingArea, 1))),
     );
     pendingArea -= entry.area;
-    if (emitLevel(entry.node, entry.inner, entry.cell.depth + 1, share) > 0) {
+    if (emitLevel(entry.node, entry.inner, entry.cell.depth + 1, share, entry.index) > 0) {
       entry.cell.nested = true;
+      // The rectangle the children tile, which the paint list fills in the
+      // folder's edge tone before them (treemap-paint.js).
+      entry.cell.inner = entry.inner;
       if (entry.framed) {
         entry.cell.framed = true;
       }

@@ -1,6 +1,6 @@
-// Whether every cell the Treemap draws, in its view and in the Overview's compact map, lies
-// inside its parent folder's cell and inside the map's border, as Chrome lays the cells out: a served folder, the shell's page, and
-// headless Chrome.
+// What Chrome draws of the Treemap, in its view and in the Overview's compact map: the
+// cells the canvas paints, the labels over them, and the pointer and keyboard on them, from
+// a served folder, the shell's page, and headless Chrome.
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
 //     node tests/dom/treemap-containment-chrome.mjs METAB ROOT PORT STATE_DIR
@@ -9,10 +9,13 @@
 // STATE_DIR, runs this in a process group of its own, which Chrome and the server join,
 // and judges what it prints: one JSON line of readings.
 //
-// The layout's rectangles are contained by construction, and
-// tests/dom/treemap-layout-behavior.js holds that. What only a browser can say is what the
-// stylesheet makes of them: a cell's padding and edge set a floor on the box it draws, and
-// a cell drawn larger than its rectangle spills over its neighbours and past its folder.
+// The layout's rectangles are contained by construction, and the paint list, mark ops, and
+// hit grid follow from them (tests/dom/treemap-layout-behavior.js,
+// tests/dom/treemap-paint-hit-behavior.js). What only a browser can say is what it draws of
+// them: the pixels the canvas holds at each cell, the boxes the stylesheet gives the
+// labels, and what the pointer and the keys reach. The map's own reading,
+// inspectTreemap (treemap-map.js), names the cells; the page's pixels and elements are
+// checked against it.
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
@@ -73,12 +76,19 @@ async function serve() {
 const FULL = ".tm-viewport:not(.tm-viewport-compact)";
 const COMPACT = ".tm-viewport-compact";
 
-// Every drawn cell against its parent folder's drawn cell (a remainder carries its folder's
-// own path) and against the viewport's padding box, the box cells are placed in. A cell
-// may meet an edge; past it by more than a rounding step is an escape.
-const read = (selector) => `(() => {
-  const SLACK = 0.05;
+// The module the view loaded, whose inspectTreemap reads the map it mounted.
+const MAP_MODULE = `performance.getEntriesByType("resource").map((e) => e.name).find((n) => n.endsWith("/treemap-map.js"))`;
+
+// Every painted cell's pixels and every label's box, against the map's own reading. A label
+// may meet its cell's edge; past it, or past the viewport's padding box, by more than its
+// rounding is an escape. A cell's center pixel is its fill: sampled for every cell at
+// least 6 device pixels on a side, whose center no child covers.
+const read = (selector) => `(async () => {
+  // A label's left and width are written to a tenth of a pixel, each rounding by up to 0.05.
+  const SLACK = 0.1 + 1e-6;
+  const { inspectTreemap } = await import(${MAP_MODULE});
   const viewport = document.querySelector(${JSON.stringify(selector)});
+  const map = inspectTreemap(viewport);
   const outer = viewport.getBoundingClientRect();
   const inner = {
     left: outer.left + viewport.clientLeft,
@@ -86,57 +96,93 @@ const read = (selector) => `(() => {
     right: outer.left + viewport.clientLeft + viewport.clientWidth,
     bottom: outer.top + viewport.clientTop + viewport.clientHeight,
   };
-  const cells = [...viewport.querySelectorAll(".tm-cell")];
-  const folders = new Map(
-    cells.filter((cell) => cell.dataset.tmKind === "dir").map((cell) => [cell.dataset.tmPath, cell]),
-  );
   const past = (box, within) =>
     Math.max(within.left - box.left, box.right - within.right, within.top - box.top, box.bottom - within.bottom);
   const escapes = [];
-  let tiny = 0;
-  let deepest = 0;
-  // The keyboard reaches each actionable cell by one data-tm-index: its label when it
-  // has one and nests, its own cell otherwise, a framed folder's included.
-  let misindexed = 0;
-  let framed = 0;
-  for (const cell of cells) {
-    const indexed = [cell, ...cell.querySelectorAll("[data-tm-index]")].filter((element) =>
-      element.hasAttribute("data-tm-index"),
-    );
-    const actionable = cell.classList.contains("tm-actionable");
-    if (cell.classList.contains("tm-framed")) {
-      framed += 1;
-      if (actionable && cell.getAttribute("role") !== "button") misindexed += 1;
-    }
-    if (indexed.length !== (actionable ? 1 : 0)) misindexed += 1;
-    const box = cell.getBoundingClientRect();
-    const declared = parseFloat(cell.style.width);
-    if (declared < 8 || parseFloat(cell.style.height) < 8) tiny += 1;
-    const cellPath = cell.dataset.tmPath;
-    deepest = Math.max(deepest, cellPath ? cellPath.split("/").length : 0);
-    const parentPath = cell.dataset.tmKind === "rest" ? cellPath : cellPath.split("/").slice(0, -1).join("/");
-    const parent = parentPath ? folders.get(parentPath) : null;
-    const overParent = parent && parent !== cell ? past(box, parent.getBoundingClientRect()) : 0;
-    const overView = past(box, inner);
-    const drawnWider = box.width - declared;
-    if (overParent > SLACK || overView > SLACK || drawnWider > SLACK) {
-      escapes.push({
-        path: cellPath,
-        kind: cell.dataset.tmKind,
-        overParent: Math.round(overParent * 100) / 100,
-        overView: Math.round(overView * 100) / 100,
-        drawnWider: Math.round(drawnWider * 100) / 100,
-      });
+  for (const label of viewport.querySelectorAll(".tm-label-cell")) {
+    const cell = map.cells[Number(label.dataset.tmCell)];
+    const box = label.getBoundingClientRect();
+    const own = { left: inner.left + cell.x, top: inner.top + cell.y, right: inner.left + cell.x + cell.w, bottom: inner.top + cell.y + cell.h };
+    const over = Math.max(past(box, own), past(box, inner));
+    if (over > SLACK) escapes.push({ path: cell.path, over: Math.round(over * 100) / 100 });
+  }
+  // The paint canvas's pixel at each sampled cell's center, against the fill its probe
+  // resolved, drawn once on a scratch canvas over the same surface.
+  const canvas = viewport.querySelector("canvas.tm-paint");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const covered = new Set(map.cells.map((c) => c.parent));
+  const byCell = new Map(map.paint.filter((r) => r.tone === "fill").map((r) => [r.cell, r]));
+  let sampled = 0;
+  let wrong = 0;
+  const wrongSample = [];
+  const fills = new Map();
+  for (const [i, rect] of byCell) {
+    if (covered.has(i) || rect.w < 6 || rect.h < 6) continue;
+    const cx = rect.x + Math.floor(rect.w / 2);
+    const cy = rect.y + Math.floor(rect.h / 2);
+    const k = (cy * canvas.width + cx) * 4;
+    const got = [pixels[k], pixels[k + 1], pixels[k + 2]];
+    // Cells of one style share one fill: the first sampled sets it, the rest must match.
+    const seen = fills.get(rect.style);
+    sampled += 1;
+    if (!seen) {
+      fills.set(rect.style, got);
+    } else if (got.some((v, c) => Math.abs(v - seen[c]) > 2)) {
+      wrong += 1;
+      if (wrongSample.length < 4) wrongSample.push({ path: map.cells[i].path, got, seen });
     }
   }
+  // Distinct styles paint distinct colors: two styles with one color would be a probe that
+  // read nothing.
+  const distinct = new Set([...fills.values()].map((v) => v.join(","))).size;
+  let deepest = 0;
+  let tiny = 0;
+  for (const cell of map.cells) {
+    deepest = Math.max(deepest, cell.path ? cell.path.split("/").length : 0);
+    if (cell.w < 8 || cell.h < 8) tiny += 1;
+  }
+  const actionable = map.cells.filter((c) => c.kind === "dir" || c.kind === "file").length;
   return {
-    cells: cells.length,
+    cells: map.cells.length,
+    painted: map.paint.length,
     tiny,
     deepest,
-    framed,
-    misindexed,
+    labels: viewport.querySelectorAll(".tm-label-cell").length,
     escapes: escapes.length,
     sample: escapes.slice(0, 8),
+    sampled,
+    styles: fills.size,
+    distinct,
+    wrongFill: wrong,
+    wrongSample,
+    focusable: viewport.querySelectorAll('[tabindex="0"]').length,
+    focusOrder: map.focusOrder.length,
+    actionable,
+    domElements: viewport.querySelectorAll("*").length,
+  };
+})()`;
+
+// Point at the smallest unlabelled file cell large enough to aim at, through the browser's
+// own input, and read what the map says is hovered and what the tooltip says; then click it.
+const point = (selector) => `(async () => {
+  const { inspectTreemap } = await import(${MAP_MODULE});
+  const viewport = document.querySelector(${JSON.stringify(selector)});
+  const map = inspectTreemap(viewport);
+  const labelled = new Set(map.labels);
+  const covered = new Set(map.cells.map((c) => c.parent));
+  let target = -1;
+  map.cells.forEach((c, i) => {
+    if (c.kind !== "file" || labelled.has(i) || covered.has(i) || c.w < 3 || c.h < 3) return;
+    if (target < 0 || c.w * c.h < map.cells[target].w * map.cells[target].h) target = i;
+  });
+  const rect = viewport.getBoundingClientRect();
+  const cell = map.cells[target];
+  return {
+    index: target,
+    path: cell.path,
+    x: rect.left + viewport.clientLeft + cell.x + cell.w / 2,
+    y: rect.top + viewport.clientTop + cell.y + cell.h / 2,
   };
 })()`;
 
@@ -153,7 +199,10 @@ try {
   await chrome.send("Page.enable");
   await chrome.send("Page.navigate", { url: `${base}/view/` });
   // The Overview opens first, with the compact map under the type breakdown.
-  await chrome.waitFor(`document.querySelectorAll("${COMPACT} .tm-cell").length > 50`, 30000);
+  const drawn = (selector, least) =>
+    `import(${MAP_MODULE}).then(({ inspectTreemap }) => (inspectTreemap(document.querySelector(${JSON.stringify(selector)}))?.cells.length ?? 0) > ${least})`;
+  await chrome.waitFor(`${MAP_MODULE} !== undefined`, 30000);
+  await chrome.waitFor(drawn(COMPACT, 50), 30000);
   await chrome.evaluate(`new Promise((resolve) => setTimeout(resolve, 500))`);
   /** @type {Record<string, any>} */
   const result = { compact: await chrome.evaluate(read(COMPACT)) };
@@ -162,10 +211,66 @@ try {
   await chrome.evaluate(`${TAB}.click()`);
   // The map draws once the index has finished; the count settles when the last answer
   // has been laid out.
-  await chrome.waitFor(`document.querySelectorAll("${FULL} .tm-cell").length > 100`, 30000);
+  await chrome.waitFor(drawn(FULL, 100), 30000);
   await chrome.evaluate(`new Promise((resolve) => setTimeout(resolve, 500))`);
   phase("loaded");
   result.wide = await chrome.evaluate(read(FULL));
+  // The pointer on a small unlabelled file: the map hovers it and the tooltip names it.
+  const target = await chrome.evaluate(point(FULL));
+  await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: target.x, y: target.y });
+  const hovered = `import(${MAP_MODULE}).then(({ inspectTreemap }) => inspectTreemap(document.querySelector(${JSON.stringify(FULL)})).hovered === ${target.index})`;
+  const named = `document.querySelector(".custom-tooltip")?.textContent.includes(${JSON.stringify(target.path)}) === true`;
+  result.pointer = {
+    hovered: await chrome.waitFor(hovered, 10000).then(
+      () => true,
+      () => false,
+    ),
+    tooltip: await chrome.waitFor(named, 10000).then(
+      () => true,
+      () => false,
+    ),
+  };
+  // A click opens it: the view navigates to the file.
+  for (const type of ["mousePressed", "mouseReleased"]) {
+    await chrome.send("Input.dispatchMouseEvent", {
+      type,
+      x: target.x,
+      y: target.y,
+      button: "left",
+      clickCount: 1,
+    });
+  }
+  const leaf = target.path.split("/").pop();
+  result.pointer.opened = await chrome
+    .waitFor(
+      `decodeURIComponent(location.pathname).endsWith(${JSON.stringify(`/${target.path}`)})`,
+      10000,
+    )
+    .then(
+      () => true,
+      () => false,
+    );
+  result.pointer.leaf = leaf;
+  await chrome.send("Page.navigate", { url: `${base}/view/` });
+  await chrome.waitFor(`${TAB} !== null`, 30000);
+  await chrome.evaluate(`${TAB}.click()`);
+  await chrome.waitFor(drawn(FULL, 100), 30000);
+  // The keyboard: the focus proxy takes focus, and ArrowRight moves it to the next cell.
+  result.keyboard = await chrome.evaluate(`(async () => {
+    const { inspectTreemap } = await import(${MAP_MODULE});
+    const viewport = document.querySelector(${JSON.stringify(FULL)});
+    const proxy = viewport.querySelector(".tm-focus");
+    proxy.focus();
+    const before = inspectTreemap(viewport).focused;
+    proxy.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    const after = inspectTreemap(viewport).focused;
+    const order = inspectTreemap(viewport).focusOrder;
+    return {
+      focused: document.activeElement === proxy,
+      moved: order.indexOf(after) === order.indexOf(before) + 1,
+      named: (proxy.getAttribute("aria-label") || "").length > 0,
+    };
+  })()`);
   // A narrower window: the same tree in less room, so more of it is drawn small.
   await chrome.send("Emulation.setDeviceMetricsOverride", {
     width: 760,
