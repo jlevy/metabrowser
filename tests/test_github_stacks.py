@@ -23,6 +23,7 @@ from metabrowser.builtin_plugins.github.pull_list import ListedRepository, write
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.builtin_plugins.github.pull_stacks import read_stacks, refresh_stacks
 from metabrowser.builtin_plugins.github.pull_stacks_route import StackView, stack_envelope
+from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
 from metabrowser.cache.locks import run_lock_section, source_alias_lock
 from metabrowser.server import app
 from tests.cache_home_fixture import FixtureSource, _stage_and_publish_source, build_empty_home
@@ -421,16 +422,20 @@ def test_cached_route_etag_ignores_countdown_but_changes_at_expiry(
     before = (repository.home / f"sources/{repository.slug}/pulls/stacks.json").read_bytes()
     with TestClient(app) as client:
         first = client.get("/api/plugin/github/stacks")
-        assert first.status_code == 200 and first.json()["fresh_for_s"] == 300
+        # A snapshot that was read is read again FULL_REFRESH_S later, where a failed
+        # attempt waits STACK_FRESHNESS_S.
+        assert first.status_code == 200 and first.json()["fresh_for_s"] == FULL_REFRESH_S
         monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=30))
-        assert envelope(repository)["fresh_for_s"] == 270
+        assert envelope(repository)["fresh_for_s"] == FULL_REFRESH_S - 30
         assert (
             client.get(
                 "/api/plugin/github/stacks", headers={"if-none-match": first.headers["etag"]}
             ).status_code
             == 304
         )
-        monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=301))
+        monkeypatch.setattr(
+            pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=FULL_REFRESH_S + 1)
+        )
         expired = client.get(
             "/api/plugin/github/stacks", headers={"if-none-match": first.headers["etag"]}
         )

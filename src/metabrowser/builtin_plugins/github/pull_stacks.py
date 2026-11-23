@@ -42,13 +42,19 @@ from metabrowser.builtin_plugins.github.repository_snapshot import (
 from metabrowser.builtin_plugins.github.repository_snapshot import (
     remaining_freshness as snapshot_freshness,
 )
+from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_stacks
 from metabrowser.home import PrivateStorageError
 
-# How long a snapshot, or a failed attempt, holds off the next automatic refresh; an
-# explicit retry still waits for a known rate-limit reset.
+# How long a failed attempt holds off the next automatic refresh; an explicit retry still
+# waits for a known rate-limit reset. A snapshot that was read holds it off for
+# ``FULL_REFRESH_S`` (:func:`remaining_freshness`): nothing reports a stack's change, so
+# while a view shows stacks they are read in full that often. An unchanged read is one
+# conditional page, answered ``304`` in 0.88 to 1.02 s for jlevy/metabrowser (50 KB of
+# stacks) and cli/cli with gh 2.98.0 (six reads, 2026-11-22, load average near 200), and
+# its two account checks.
 STACK_FRESHNESS_S: Final = 300.0
 # Stacks per REST page, and pages per refresh: at most 1,000 stacks.
 STACK_PAGE_SIZE: Final = 100
@@ -160,7 +166,10 @@ def last_refresh(repository: ListedRepository, cache: StackCache | None) -> Pull
 
 
 def remaining_freshness(stamp: PullRefreshStamp | None) -> float:
-    return snapshot_freshness(stamp, STACK_FRESHNESS_S)
+    """How long the last refresh still holds off the next automatic one, in seconds."""
+
+    read = stamp is not None and stamp.outcome == "succeeded"
+    return snapshot_freshness(stamp, FULL_REFRESH_S if read else STACK_FRESHNESS_S)
 
 
 def _rate_hold(repository: ListedRepository) -> PullRefreshStamp | None:

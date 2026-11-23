@@ -24,7 +24,8 @@ while they are the pull request's as last known: the newer of the record and the
 list row, by ``updated_at``. A comment, a review, or a label changes neither. When the list
 or that newer source names no head, the list is current while the pull request's
 ``updated_at`` is no newer than the list's ``fetched_at``, because any push updates it, and
-with neither known it ages by the refresh coordinator's window. A list another account
+with neither known it ages by ``FULL_REFRESH_S``, the interval at which what a view shows
+is read in full when nothing reports its change. A list another account
 read, or one whose last refresh ended ``account_changed``, is stale, as a list of pull
 requests is. ``fetched_at`` is this machine's clock and ``updated_at`` GitHub's, so under
 that fallback a clock behind GitHub's can make a new list stale; the window holds such a
@@ -86,6 +87,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     RecordAbsence,
 )
 from metabrowser.builtin_plugins.github.pull_route import cached_pull_record, pull_host
+from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_files
 from metabrowser.http_caching import build_scoped_etag
 from metabrowser.invisible_chars import display_segment
@@ -418,7 +420,11 @@ def _state(listed: PullFileList, stamp: PullRefreshStamp | None, facts: _Facts) 
     if facts.updated_at is not None:
         fresh = pull_list.parse_stamp(facts.updated_at) <= fetched
     else:
-        fresh = pull_list.utc_now() - fetched <= timedelta(seconds=FRESHNESS_WINDOW_S)
+        # Nothing reports this list's change, so it is read in full every FULL_REFRESH_S
+        # while something shows it. A list the catalog's row or the record vouches for is
+        # not read again on a clock: it is a function of the head and base it names, and
+        # is read at once when either moves.
+        fresh = pull_list.utc_now() - fetched <= timedelta(seconds=FULL_REFRESH_S)
     return "current" if fresh else "stale"
 
 

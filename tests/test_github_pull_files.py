@@ -695,6 +695,31 @@ def test_a_force_push_makes_either_list_stale(
     assert pull_files_envelope(view, window)["state"] == "stale"
 
 
+def test_a_list_nothing_vouches_for_is_read_again_every_full_refresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    """With no catalog row to say when the pull request changed, the clock decides, at
+    FULL_REFRESH_S; a list the row vouches for is current whatever its age."""
+
+    from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    _refresh(repository, TREE_PULL)
+    view = FilesView(TREE_PULL, repository, None, False, None)
+    window = FilesWindow(TREE_PULL, limit=0)
+    route = "metabrowser.builtin_plugins.github.pull_files_route._facts"
+    fetched = pull_list.parse_stamp(pull_files_envelope(view, window)["fetched_at"])  # pyright: ignore[reportArgumentType]
+
+    def at(seconds: float, updated_at: str | None) -> str:
+        monkeypatch.setattr(pull_list, "utc_now", lambda: fetched + timedelta(seconds=seconds))
+        monkeypatch.setattr(route, lambda *_: SimpleNamespace(updated_at=updated_at, record=None))
+        return pull_files_envelope(view, window)["state"]
+
+    assert at(FULL_REFRESH_S, None) == "current"
+    assert at(FULL_REFRESH_S + 1, None) == "stale"
+    assert at(24 * 3600, "2026-09-17T11:59:59Z") == "current"
+
+
 def test_local_list_retarget_and_unknown_old_base_are_stale(
     home: Path, repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -529,7 +529,12 @@ account check and the bounds on probes.
   (`pull_list_probe.py`), with the bound on paid probes for the list’s key
   (`MAX_PAID_PROBE_S`). Not yet: the per-server cap on probes in flight, which Phase 1
   builds for the record’s probe.
-- [ ] `FULL_REFRESH_S` for the catalog scan, the files list, and stacks.
+- [x] `FULL_REFRESH_S` for the catalog scan, the files list, and stacks.
+  The scan is due that often while list probes vouch (`scan_is_due`), and stacks are
+  read again that long after a snapshot (`remaining_freshness` in `pull_stacks.py`). A
+  files list ages by it only when no catalog row vouches for it: a list the row or the
+  record vouches for is a function of the head and base it names, is read at once when
+  either moves, and is not read again on a clock.
 - [ ] Budget admission for the cores walk, stacks, labels, and the timeline.
 - [ ] `AUTOMATIC_CORE_PER_HOUR` in `gh_budget.py`.
 

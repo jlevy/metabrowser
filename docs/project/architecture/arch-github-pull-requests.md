@@ -455,6 +455,9 @@ rule. A local list from the record is current while the record names its exact
 comparison; a GitHub list, or a local list from a head and base branch, while the head
 and base branch it was read for are the newest known, and for the local one while the
 pull request is open.
+A GitHub list with no catalog row to check it against ages by `FULL_REFRESH_S`; one the
+row vouches for is not read again on a clock, since it is a function of the head and
+base it names and is read at once when either moves.
 When source admission refuses the cache, no stamp can be written, so the outcome
 `cache_unwritable` is kept in bounded memory and holds automatic retries without
 contacting GitHub or touching the refused cache; it does not survive a restart.
@@ -559,6 +562,9 @@ name no reader; it never runs `gh stack view` or a checkout, sync, or tracking c
 The snapshot is bounded, a page past its bounds is omitted and marks it incomplete, and
 membership missing from a partial or unavailable snapshot never means a pull request is
 unstacked. A failure keeps the preceding snapshot.
+Nothing reports a stack’s change, so a snapshot that was read is read again
+`FULL_REFRESH_S` later while a view asks for it, one conditional page when nothing
+changed; a failed attempt waits `STACK_FRESHNESS_S`.
 
 ## Stack Change Lines
 
