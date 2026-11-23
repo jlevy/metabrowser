@@ -28,16 +28,16 @@
 // plain markup twice: by the hook on the server (src/metabrowser/inert_html.py), and by
 // static/inert-html.js, which rebuilds the inserted nodes from an inert template. No
 // class, id, data, style, or event attribute survives, but for the image fallback's own,
-// nor any SVG, media, stylesheet, frame, or form; an image written in full over https is
-// kept, with no referrer sent, unless the reader has turned that off, and any other is its
-// alt text in a chip inside its link; a link is made absolute against the
-// pull request's github.com page, kept only for http(s), and opened in a new tab with
-// rel="noopener noreferrer"; and no KPress script is loaded for a text, but for one with a
-// Mermaid block (a `pre` keeps `lang="mermaid"`), KPress's diagram modules, which draw each
-// block as an image laid out in a frame whose policy loads nothing (`drawTextDiagrams`).
-// KPress's stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes
-// in a KPress article of its own making, so a text reads as the same Markdown in a file
-// does.
+// nor any SVG, media, stylesheet, frame, form, or input but a task list's disabled box; an
+// image written in full over https is kept, with no referrer sent, unless the reader has
+// turned that off, and any other is its alt text in a chip inside its link; a link is made
+// absolute against the pull request's github.com page, kept only for http(s), and opened
+// in a new tab with rel="noopener noreferrer"; and no KPress script is loaded for a text,
+// but for one with a Mermaid block (a `pre` keeps `lang="mermaid"`), KPress's diagram
+// modules, which draw each block as an image laid out in a frame whose policy loads
+// nothing (`drawTextDiagrams`). KPress's stylesheets are, the route's one fixed list, and
+// the page sets the rebuilt nodes in a KPress article of its own making, so a text reads
+// as the same Markdown in a file does.
 
 import {
   comparisonKey,

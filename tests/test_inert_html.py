@@ -99,7 +99,8 @@ const escape = (value) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const serialize = (list) => list.map((node) => "text" in node ? escape(node.text)
   : `<${node.tag}${node.attributes.map(([name, value]) => ` ${name}="${escape(value)}"`).join("")}>`
-    + (["br", "hr", "img"].includes(node.tag) ? "" : `${serialize(node.children)}</${node.tag}>`))
+    + (["br", "hr", "img", "input"].includes(node.tag) ? ""
+      : `${serialize(node.children)}</${node.tag}>`))
   .join("");
 process.stdout.write(serialize(inert.sanitizeNodes(nodes(input.tree), doc, input.base)));
 """
@@ -602,6 +603,45 @@ def test_the_reader_who_blocks_remote_images_sees_their_alt_text_in_the_same_lin
     for settings in ({"BLOCK_REMOTE_IMAGES": False}, {}, {"BLOCK_REMOTE_IMAGES": "true"}):
         open_ = _node({"tree": html_tree(server), "base": base, "settings": settings})
         assert _tokens(open_) == _tokens(server)
+
+
+def test_a_task_lists_box_keeps_its_state_and_no_other_input_survives() -> None:
+    """KPress's box stays a disabled checkbox, ticked as the document has it, on both sides.
+
+    The allowlist dropped every ``input``, so ``- [x] Done`` read as an item with no box,
+    and a tick was a change neither the Document view nor a rendered diff showed.
+    """
+
+    rendered = _kpress("- [ ] Open\n- [x] Done\n- [X] Also done\n")
+    server = harden(rendered)
+    assert re.findall(r"<input[^>]*>", server) == [
+        '<input type="checkbox" disabled>',
+        '<input type="checkbox" disabled checked>',
+        '<input type="checkbox" disabled checked>',
+    ]
+    assert _tokens(_node({"tree": html_tree(rendered), "base": None})) == _tokens(server)
+    written = (
+        # KPress's own box, ticked.
+        '<input class="task-list-item-checkbox" checked="checked" disabled="disabled"'
+        ' type="checkbox">'
+        # Every other attribute of a checkbox goes, and so does every other input.
+        '<input type="CheckBox" name="agree" form="f" value="yes" onclick="alert(1)" autofocus>'
+        '<input type=" checkbox" checked><input type="text" value="typed"><input type="submit">'
+        "<input><input/>"
+    )
+    expected = '<input type="checkbox" disabled checked><input type="checkbox" disabled>'
+    for base in (None, PR_PAGE):
+        assert harden(written, base) == expected
+        assert _node({"tree": html_tree(written), "base": base}) == expected.replace(
+            "disabled", 'disabled=""'
+        ).replace("checked>", 'checked="">')
+    assert harden(expected) == expected
+    assert allowlist_violations(expected) == []
+    # The allowlist check refuses any other shape of one.
+    assert allowlist_violations('<input type="checkbox">') == ["input[('type', 'checkbox')]"]
+    assert allowlist_violations('<input type="text" disabled>') == [
+        "input[('type', 'text'), ('disabled', None)]"
+    ]
 
 
 def test_a_document_keeps_the_fallbacks_shape_and_nothing_else_on_a_span() -> None:

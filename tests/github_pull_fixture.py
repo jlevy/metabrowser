@@ -545,8 +545,8 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
     inside the served tree, which a document keeps and a pull-request comment never does.
     Every link must leave for http(s) or stay inside the served tree, a heading's ``id``
     must be one of the hardener's anchors, an image's ``loading`` must be ``lazy``, a
-    span may only be the image fallback's, and a layout attribute (``align``, ``width``,
-    ``height``) must hold a value the hardener keeps.
+    span may only be the image fallback's, an input only a disabled checkbox, and a layout
+    attribute (``align``, ``width``, ``height``) must hold a value the hardener keeps.
     """
 
     from html.parser import HTMLParser
@@ -555,18 +555,23 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
         ALLOWED_ATTRIBUTES,
         ALLOWED_TAGS,
         ANCHOR_PREFIX,
+        CHECKBOX_ATTRIBUTES,
         IMAGE_FALLBACK_CLASS,
         allowed_attributes,
         is_inside,
     )
 
-    tags = ALLOWED_TAGS | {"img"}
+    tags = ALLOWED_TAGS | {"img", "input"}
     found: list[str] = []
 
     class _Check(HTMLParser):
         def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
             if tag not in tags:
                 found.append(f"<{tag}>")
+            if tag == "input" and [
+                (name, value or "") for name, value in attrs if name != "checked"
+            ] != list(CHECKBOX_ATTRIBUTES):
+                found.append(f"input{attrs}")
             if tag == "img":
                 written = dict(attrs)
                 if (written.get("src") or "").startswith("https://"):

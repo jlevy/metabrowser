@@ -225,8 +225,16 @@ function serialize(nodes, inLink = false) {
       }
       // A link never holds another: a browser reads that as the first's end.
       assert(!(inLink && node.tag === "a"), "the page kept a link inside a link");
-      const allowed = inert.ALLOWED_TAGS.includes(node.tag) || node.tag === "img";
+      const allowed =
+        inert.ALLOWED_TAGS.includes(node.tag) || node.tag === "img" || node.tag === "input";
       assert(allowed, `the page kept <${node.tag}>`);
+      // An input is only ever a disabled checkbox, ticked or not.
+      assert(
+        node.tag !== "input" ||
+          JSON.stringify(node.attributes.filter(([name]) => name !== "checked")) ===
+            JSON.stringify(inert.CHECKBOX_ATTRIBUTES),
+        `the page kept an input with ${JSON.stringify(node.attributes)}`,
+      );
       for (const [name] of node.attributes) {
         const names = inert.ALLOWED_ATTRIBUTES[node.tag] ?? [];
         assert(names.includes(name), `the page kept ${node.tag}[${name}]`);
@@ -260,10 +268,12 @@ function serialize(nodes, inLink = false) {
       );
       const attributes = node.attributes
         .map(([name, value]) =>
-          name === "open" ? " open" : ` ${name}="${escapeText(value).replaceAll('"', "&quot;")}"`,
+          ["open", "disabled", "checked"].includes(name)
+            ? ` ${name}`
+            : ` ${name}="${escapeText(value).replaceAll('"', "&quot;")}"`,
         )
         .join("");
-      return ["br", "hr", "img"].includes(node.tag)
+      return ["br", "hr", "img", "input"].includes(node.tag)
         ? `<${node.tag}${attributes}>`
         : `<${node.tag}${attributes}>${serialize(node.children, inLink || node.tag === "a")}</${node.tag}>`;
     })

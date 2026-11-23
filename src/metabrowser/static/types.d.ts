@@ -3740,6 +3740,7 @@ declare global {
     ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>>;
     ALLOWED_TAGS: readonly string[];
     ANCHOR_PREFIX: string;
+    CHECKBOX_ATTRIBUTES: ReadonlyArray<readonly [string, string]>;
     DIMENSIONS: Readonly<Record<string, readonly string[]>>;
     DROPPED_WITH_CONTENT: readonly string[];
     IMAGE_FALLBACK_CLASS: string;

@@ -13,7 +13,7 @@ on the server. The page parses a render into an inert template and inserts only 
 rebuilt from the allowlist: plain text markup, links, and images inside the served tree
 or from the web over `https`, with no class, `name`, `data-*`, style, or event attribute
 but the image fallback’s own, no `id` the document wrote, and no SVG, MathML, media,
-stylesheet, frame, or form.
+stylesheet, frame, form, or input but a task list’s disabled box.
 
 This browserless session loads the production `static/inert-html.js` and
 `builtin_plugins/markdown/inert-render.js`, and rebuilds KPress’s render of
