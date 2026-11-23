@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -1127,6 +1127,9 @@ class _BusyMirror:
 
     async def ref_tip(self, ref: str) -> str | None:
         return None
+
+    async def ref_tips(self, refs: Sequence[str]) -> dict[str, str]:
+        return {}
 
     async def default_tip(self) -> str | None:
         return None

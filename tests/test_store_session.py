@@ -10,6 +10,7 @@ rules on a real mirror, and ``tests/test_checkout_store.py`` on a real checkout.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -69,6 +70,10 @@ class _Store:
     async def ref_tip(self, ref: str) -> str | None:
         self.tips.append(ref)
         return "a" * 40
+
+    async def ref_tips(self, refs: Sequence[str]) -> dict[str, str]:
+        self.tips.extend(refs)
+        return dict.fromkeys(refs, "a" * 40)
 
     async def default_tip(self) -> str | None:
         return None

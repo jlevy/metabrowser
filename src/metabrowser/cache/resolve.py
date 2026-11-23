@@ -37,7 +37,7 @@ import asyncio
 import bisect
 import re
 import unicodedata
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -588,6 +588,23 @@ async def ref_tip(target: RepositoryStoreTarget, ref: str) -> str | None:
     return None if found is None else await _peeled_commit(target, found)
 
 
+async def ref_tips(target: RepositoryStoreTarget, refs: Sequence[str]) -> dict[str, str]:
+    """The commit each of the full refs *refs* names, for those that name one, in one read.
+
+    :func:`ref_tip` for several refs with one ``for-each-ref``: a ref that does not exist
+    under exactly that name, or names no commit, is left out. Only a tag of a tag costs
+    a further process, to peel it.
+    """
+
+    wanted = [ref for ref in refs if ref.startswith("refs/") and is_valid_ref_name(ref)]
+    tips: dict[str, str] = {}
+    for ref, found in (await _exact_refs(target, wanted)).items():
+        commit = await _peeled_commit(target, found)
+        if commit is not None:
+            tips[ref] = commit
+    return tips
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedPin:
     """The commit a pin request names, and the mirror ref it was found through, if any."""
@@ -837,6 +854,7 @@ __all__ = [
     "mirror_refs",
     "ref_candidates",
     "ref_tip",
+    "ref_tips",
     "resolve_commit_id",
     "resolve_pin",
     "resolve_ref_and_path",
