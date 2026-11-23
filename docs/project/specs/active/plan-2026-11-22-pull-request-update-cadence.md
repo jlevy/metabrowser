@@ -37,8 +37,10 @@ reader’s other tools.
 - Nothing recurring that spends GitHub rate limit runs for a hidden page.
   Metabrowser’s own stores are kept current whatever is visible, since fetching into
   them spends none (see [Metabrowser’s Own Stores](#metabrowsers-own-stores)).
-- An idle visible page costs no GitHub rate limit: change detection uses conditional
-  requests, which GitHub does not count when it answers `304`.
+- An idle visible page costs almost no GitHub rate limit: change detection uses
+  conditional requests, which GitHub does not count when it answers `304`. A push to the
+  repository changes the answer, so each one costs a call, and that cost is bounded (see
+  [Budget](#budget)).
 - Background work yields to visible work and stops before the account’s budget runs low,
   as `BACKGROUND_FLOOR` already does.
   A change found on the page on screen is still read below the floor.
@@ -304,9 +306,12 @@ per record refresh and one per catalog scan, each about once a minute.
 
 ### Server Changes
 
-- **`gh.py`:** a conditional account check.
-  `active_account` reads `gh api user` with the ETag of the last answer for that host,
-  and treats `304` as “the same login”.
+- **`gh_lists.py` and `gh.py`:** a conditional account check.
+  `gh_lists.active_account`, over `gh.gh_account` and `gh.gh_active_account`, reads
+  `gh api user` with the ETag of the last answer for that host, treats `304` as “the
+  same login”, and still names the account to `gh_budget.note_account`. `gh_api` admits
+  only `repos/…` paths today, so it gains `user`. The status route keeps
+  `gh auth status`, which alone reports the token’s source and scopes.
 - **`served_pull.py`:** `ServedPull` keeps `probed_at`, when a probe last found the
   record unchanged, and `full_read_at`, when it was last read in full.
   `automatic_due` decides each automatic ask: a full read when the record is stale or
@@ -401,8 +406,8 @@ view under the same policy; the third keeps Metabrowser’s own stores current.
 
 ### Phase 1: The Pull Request on Screen
 
-Phase 1 lands as two pull requests: the probes first, then the conditional account
-check.
+Phase 1 lands in more than one pull request: the probes first, then the conditional
+account check and the bounds on probes.
 
 - [x] `ATTENDED_PROBE_S`, `CHECKS_PROBE_S`, `FULL_REFRESH_S`, and `PROBE_WAIT_S` in
   `served_pull.py`, each beside its measurement.
@@ -417,9 +422,14 @@ check.
 - [x] The architecture documents: Serving Pull Requests and Freshness Verdicts in
   `arch-github-pull-requests.md`, and Refresh Cadence in
   `arch-mirror-acquisition-and-refresh.md`.
-- [ ] A conditional account check in `gh.py`, which every job’s account check uses.
-- [ ] The `BACKGROUND_FLOOR` rule for probes (see Budget): below the floor, a probe that
-  answers `200` marks the record changed without starting its full read.
+- [ ] A conditional account check in `gh_lists.active_account`, which every job’s
+  account check uses.
+- [ ] The `BACKGROUND_FLOOR` rule for probes (see [Priority](#priority)): below the
+  floor, a change a probe finds on the page on screen still starts its full read, and
+  the `FULL_REFRESH_S` reads stop (bead `mb-qngw`).
+- [ ] The bound on paid probes (see [Budget](#budget)): a key’s probe interval doubles
+  after consecutive `200`s that changed nothing (bead `mb-y7ut`).
+- [ ] A per-server cap on probes in flight (bead `mb-et0k`).
 
 ### Phase 2: Lists and Everything Else
 
