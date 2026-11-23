@@ -3,9 +3,9 @@ type: is
 id: is-01m8397zbq8c1yd9x2neqdg5c8
 title: "T2: types= narrows a comparison on /api/plugin/diff/comparison and pull-comparison"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 delegate: claude-code@spud10
 labels:
@@ -21,8 +21,12 @@ parent_id: is-01m83968ry3rs287s3mgg0r93y
 hold: null
 hold_until: null
 created_at: 2026-11-23T04:04:51.701Z
-updated_at: 2026-11-23T04:58:16.880Z
+updated_at: 2026-11-23T10:38:17.052Z
 started_at: 2026-11-23T04:58:16.873Z
+closed_at: 2026-11-23T10:38:17.051Z
+close_reason: "Merged in https://github.com/jlevy/metabrowser/pull/734 (stack #735, merged 2026-11-23 as 72b7173)"
+resolution: null
+duplicate_of: null
 ---
 `comparison_at` (`builtin_plugins/diff/sidekick.py`) reads `types=` (parsed by
 `tree_filter.parse_types`) and narrows the manifest with the T1 matcher, modelled on

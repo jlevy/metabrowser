@@ -3,9 +3,9 @@ type: is
 id: is-01m839z1p2d8zv8x6hjt31rh0w
 title: "T9: A Docs tab on the pull request page: its documents, rendered and expanded"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 delegate: claude-code@spud10
 labels:
@@ -16,8 +16,12 @@ parent_id: is-01m83968ry3rs287s3mgg0r93y
 hold: null
 hold_until: null
 created_at: 2026-11-23T04:17:27.694Z
-updated_at: 2026-11-23T09:37:03.633Z
+updated_at: 2026-11-23T10:38:19.700Z
 started_at: 2026-11-23T07:53:37.929Z
+closed_at: 2026-11-23T10:38:19.699Z
+close_reason: "Merged in https://github.com/jlevy/metabrowser/pull/751 (stack #735, merged 2026-11-23 as 72b7173)"
+resolution: null
+duplicate_of: null
 ---
 Requested by the user 2026-11-22. A shortcut built on the diff File type filter: a new
 second tab on the pull request page, **Docs**, between Conversation and Changes

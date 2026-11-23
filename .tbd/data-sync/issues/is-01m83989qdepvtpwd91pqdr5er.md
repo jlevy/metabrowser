@@ -3,9 +3,9 @@ type: is
 id: is-01m83989qdepvtpwd91pqdr5er
 title: "T3: A comparison's file-type tally route for the diff chooser's counts"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 delegate: claude-code@spud10
 labels:
@@ -17,8 +17,12 @@ parent_id: is-01m83968ry3rs287s3mgg0r93y
 hold: null
 hold_until: null
 created_at: 2026-11-23T04:05:02.298Z
-updated_at: 2026-11-23T05:40:04.370Z
+updated_at: 2026-11-23T10:38:17.498Z
 started_at: 2026-11-23T05:40:04.347Z
+closed_at: 2026-11-23T10:38:17.497Z
+close_reason: "Merged in https://github.com/jlevy/metabrowser/pull/736 (stack #735, merged 2026-11-23 as 72b7173)"
+resolution: null
+duplicate_of: null
 ---
 The chooser lists only the types a change set has, with counts, as the Files tab's does
 from the rollup's tally (`extensions`, `canonical_extensions`, `type_families`,
