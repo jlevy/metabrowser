@@ -271,16 +271,18 @@
   min-width: 0;
 }
 
-/* A file's title gap is sized with its label, as its glyph is (labelIconGapPx,
-   treemap-layout.js); a folder's keeps 6px before its inline value. */
+/* A file's name sits under its icon, whose glyph and box are sized to the name
+   (labelIconPx, treemap-layout.js, set as --icon-glyph and --icon-box), the gap
+   between them too (labelIconGapPx); the name ellipsizes in the cell's width. A
+   folder's title keeps 6px before its inline value. */
 .tm-file > .tm-cell-title {
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--tm-title-gap);
 }
 
-/* A file's icon sits on its name's line, its glyph and box sized to the name
-   (labelIconPx, treemap-layout.js, set as --icon-glyph and --icon-box). */
 .tm-cell-file-icon {
-  align-self: center;
+  align-self: flex-start;
 }
 
 /* The tooltip's first line: the cell's icon, then its path, which wraps

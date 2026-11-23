@@ -20,7 +20,6 @@ import {
   labelIconPx,
   labelIconRoomPx,
   layoutTree,
-  TYPOGRAPHY_DEFAULTS,
 } from "./treemap-layout.js";
 import { applyMarkOps, iconList, markOps, paintCells, paintList } from "./treemap-paint.js";
 
@@ -74,14 +73,16 @@ export const PAINT_MAX_CELLS = 25_000;
 const MAX_BACKING_PIXELS = 4096 * 4096;
 
 /**
- * A file's name always follows its icon, with the icon and its gap sized to the name
- * (labelIconRoomPx, treemap-layout.js). A cell with room for the name but not for both
- * shows the icon alone, so cells of one size draw alike. The room is judged at the
- * smallest label's, not the cell's own, which grows with the cell, so a larger cell
- * never loses its name where a smaller one keeps it; a larger label's wider icon takes
- * its room from the name, which ellipsizes.
+ * The widest a value's character draws, in ems: a cell shows its size only when the
+ * whole of it fits, never cut off. Measured in headless Chrome at 1400 by 900 on
+ * 2026-11-23, Source Sans 3 with tabular numerals (.tm-cell-sub, styles.css) at 8 to
+ * 24 px drew sizes and counts such as "888.8 GB" and "22,222 files" at most 0.465 em a
+ * character; the bound leaves room for a system fallback face, which draws wider.
  */
-const LABEL_ICON_ROOM_PX = labelIconRoomPx(TYPOGRAPHY_DEFAULTS.labelMinPx);
+const VALUE_CHAR_EM = 0.55;
+
+/** The gap before a nested folder's inline value (.tm-cell-title, styles.css). */
+const FOLDER_TITLE_GAP_PX = 6;
 
 // The label bounds hold the smallest label, at labelMinPx (treemap-layout.js), inside
 // its cell. Measured in Chrome at 1400 by 900 on this repository (2026-11-23): a 9 px
@@ -94,6 +95,7 @@ const SIZE_PRESETS = Object.freeze({
     layout: Object.freeze({ maxCells: PAINT_MAX_CELLS }),
     labelMinW: 40,
     labelMinH: 14,
+    padX: 5,
     values: true,
     restLabels: true,
   }),
@@ -104,6 +106,7 @@ const SIZE_PRESETS = Object.freeze({
     layout: Object.freeze({ maxCells: PAINT_MAX_CELLS }),
     labelMinW: 32,
     labelMinH: 13,
+    padX: 4,
     values: false,
     restLabels: false,
   }),
@@ -231,7 +234,7 @@ export function withOuterBox(node) {
  * @property {ReadonlyArray<import("./treemap-paint.js").IconRect>} iconRects  where those
  *   icons are drawn, in device pixels (iconList)
  * @property {ReadonlyArray<{cell: number, px: number, alone: boolean}>} glyphs  every
- *   drawn icon's glyph size, beside its name or alone
+ *   drawn icon's glyph size, over its name or alone
  * @property {ReadonlyArray<number>} focusOrder  indexes the focus proxy walks
  * @property {number} focused  index of the cell the focus proxy is on, or -1
  * @property {number} hovered  index of the cell under the pointer, or -1
@@ -619,24 +622,44 @@ export function createTreemapMap(mb, palette, viewport, options) {
   function labelPlan(cell) {
     const labelLineHeight = cell.labelPx * 1.2;
     const valueLineHeight = cell.valuePx * 1.2;
+    // A file's name sits under its icon, which with its gap is sized to the name
+    // (labelIconRoomPx): a file shows both when its cell has room for the name's
+    // smallest width and both lines, and its name ellipsizes in the width it has. A file
+    // without that room shows its icon alone, so cells of one size draw alike.
+    const icon = cell.kind === "file";
+    const iconRoom = icon ? labelIconRoomPx(cell.labelPx) : 0;
+    const titleHeight = Math.max(preset.labelMinH, labelLineHeight + 2) + iconRoom;
     // A framed folder's children cover its whole interior, so it has no
     // room for a label; the tooltip names it.
-    const icon = cell.kind === "file";
     const showLabel =
       !cell.framed &&
       (preset.restLabels || cell.kind !== "rest") &&
-      cell.w >= preset.labelMinW + (icon ? LABEL_ICON_ROOM_PX : 0) &&
-      cell.h >= Math.max(preset.labelMinH, labelLineHeight + 2);
+      cell.w >= preset.labelMinW &&
+      cell.h >= titleHeight;
+    // A size shows only whole: its line needs the height, and its text the width
+    // (VALUE_CHAR_EM), past the cell's padding.
+    const room = Math.max(0, cell.w - 1 - 2 * preset.padX);
+    const valueWidth =
+      preset.values && showLabel && cell.kind !== "rest"
+        ? cellValueText(cell, options.getState()).length * cell.valuePx * VALUE_CHAR_EM
+        : Infinity;
     // Nested parents suppress the sublabel: the reserved header strip
     // is one line tall, and a second line would overlap child cells.
     const stacked =
       preset.values &&
       showLabel &&
-      cell.h >= labelLineHeight + valueLineHeight + 6 &&
+      cell.h >= titleHeight + valueLineHeight + 4 &&
+      valueWidth <= room &&
       cell.kind !== "rest" &&
       !cell.nested;
+    // Beside a nested folder's name, its size keeps its width and the name gives way,
+    // keeping the smallest label's width (.tm-cell-sub-inline, styles.css).
     const inline =
-      preset.values && showLabel && cell.nested && cell.kind === "dir" && cell.w >= 140;
+      preset.values &&
+      showLabel &&
+      cell.nested &&
+      cell.kind === "dir" &&
+      valueWidth + FOLDER_TITLE_GAP_PX + preset.labelMinW - 2 * preset.padX <= room;
     // Too small for its name and icon, a file shows its icon alone, sized to its cell
     // (iconOnlyPx). A folder has no icon, as in the navigation, where its row leads with
     // its chevron (docs/design-system-icons.md).
@@ -1492,7 +1515,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
         return plan.iconOnly ? [{ cell: i, px: plan.iconPx }] : [];
       }),
       iconRects,
-      // Each drawn icon's glyph size, beside a label or alone (labelIconPx, iconOnlyPx).
+      // Each drawn icon's glyph size, over a label or alone (labelIconPx, iconOnlyPx).
       glyphs: cells.flatMap((cell, i) => {
         const plan = labelPlan(cell);
         return plan.icon || plan.iconOnly

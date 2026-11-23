@@ -70,6 +70,9 @@ function matches(element, selector) {
   return element.tagName === selector.toUpperCase();
 }
 
+/** The size the map's viewport measures, which a step narrows and widens again. */
+const viewportBox = { width: 800, height: 600 };
+
 class FakeElement {
   constructor(tag) {
     this.tagName = tag.toUpperCase();
@@ -221,10 +224,10 @@ class FakeElement {
     return node === document.body;
   }
   focus() {}
-  /** The map's viewport is 800 by 600 under the page's chrome; nothing else is measured. */
+  /** The map's viewport, 800 by 600 under the page's chrome; nothing else is measured. */
   getBoundingClientRect() {
     return this.classList.contains("tm-viewport")
-      ? { top: 120, left: 0, width: 800, height: 600 }
+      ? { top: 120, left: 0, ...viewportBox }
       : { top: 0, left: 0, width: 0, height: 0 };
   }
   /** Parse markup the view writes: well-formed tags, quoted attributes, and text. */
@@ -730,6 +733,37 @@ function ownPointOf(cells, index) {
     `at rest: ${JSON.stringify(atRest)}`,
   );
   transcript["the legend under the tally bars, at rest"] = atRest;
+
+  // Each label shows a size only when the whole of it fits,
+  // at most 0.55 em a character (VALUE_CHAR_EM) inside the cell's 5 px padding. In a pane
+  // too narrow for a size, the label keeps its name and leaves the size out.
+  const labelsNow = () =>
+    viewport()
+      .querySelectorAll(".tm-label-cell")
+      .map((element) => {
+        const cell = map().cells[Number(element.dataset.tmCell)];
+        const sub = element.querySelector(".tm-cell-sub");
+        const size = sub ? sub.textContent : null;
+        assert(
+          size === null || size.length * cell.valuePx * 0.55 <= cell.w - 1 - 10,
+          `${cell.path}'s size fits whole: ${size} in ${cell.w}`,
+        );
+        return `${cell.path} ${Math.round(cell.w)}x${Math.round(cell.h)} ${size ?? "(no size)"}`;
+      })
+      .sort();
+  const wideLabels = labelsNow();
+  viewportBox.width = 56;
+  windowListeners.get("resize")();
+  const narrowLabels = labelsNow();
+  assert(
+    narrowLabels.some((each) => each.endsWith("(no size)")) &&
+      narrowLabels.some((each) => !each.endsWith("(no size)")),
+    `a narrow pane leaves out the sizes that do not fit: ${JSON.stringify(narrowLabels)}`,
+  );
+  viewportBox.width = 800;
+  windowListeners.get("resize")();
+  assert(same(labelsNow(), wideLabels), "the pane widened again draws its labels again");
+  transcript["each label at 800 px and at 56 px wide"] = { wide: wideLabels, narrow: narrowLabels };
 
   // A legend entry marks every cell of its family: the files of its type, and no nested
   // folder, whose header and frame are neutral since it holds many types (the outer box

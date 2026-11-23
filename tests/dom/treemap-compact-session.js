@@ -517,7 +517,7 @@ async function main() {
         if (cell.kind === "file") {
           assert.ok(
             element.innerHTML.includes("tm-cell-file-icon"),
-            `${cell.path}'s name follows its icon`,
+            `${cell.path}'s name sits under its icon`,
           );
         }
         return index;
@@ -592,7 +592,7 @@ async function main() {
         const glyph = map.glyphs.find((each) => each.cell === index);
         assert.ok(
           glyph && !glyph.alone,
-          `${map.cells[index].path}'s icon is reported beside its label`,
+          `${map.cells[index].path}'s icon is reported over its label`,
         );
         assert.equal(glyphOf(element.innerHTML), glyph.px, "it is drawn at its size");
         return { index, entry: `${map.cells[index].path} ${glyph.px}px` };
@@ -932,7 +932,7 @@ async function main() {
   const iconCells = iconsOnly(dwindling);
   const iconPaths = iconCells.map((each) => each.split(" ")[0]);
   steps.push({
-    step: "icons shrink with their cells: beside a name, alone, and the smallest neither",
+    step: "icons shrink with their cells: over a name, alone, and the smallest neither",
     cells: shown.cells,
     labelled: shown.labelled,
     labelIcons: labelIcons(dwindling),

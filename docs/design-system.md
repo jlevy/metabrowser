@@ -4903,10 +4903,12 @@ Its layers, bottom to top:
 
 The map lays out to its padding box, and a label lies inside its cell and the map’s
 border; `tests/test_treemap_containment_chrome.py` measures it, with the canvas’s fill
-at each cell. A file’s name always follows its icon, and a file with room for its name
-but not for both shows its icon alone, so cells of one size draw alike.
+at each cell. A file’s name sits under its icon, and a file with room for neither its
+name’s smallest width nor both lines shows its icon alone, so cells of one size draw
+alike. The name ellipsizes in the width it has; a size shows only when the whole of it
+fits, by the bound beside `VALUE_CHAR_EM` (`treemap-map.js`), and is otherwise left out.
 Each icon is sized to its cell, as its label is, by `ICON_DEFAULTS`
-(`builtin_plugins/folder/treemap-layout.js`): beside a name it is a share of the name’s
+(`builtin_plugins/folder/treemap-layout.js`): over a name it is a share of the name’s
 size, and alone it is centered, a share of the cell’s short side, so a smaller cell
 shows a smaller icon.
 A cell too small for the smallest glyph shows nothing and names itself in its tooltip.
