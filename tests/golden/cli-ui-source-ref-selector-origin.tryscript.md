@@ -1,0 +1,394 @@
+---
+cwd: ../..
+sandbox: false
+env:
+  TZ: "UTC"
+---
+# Golden Test: Source Ref Selector, a Checkout’s Origin
+
+A folder that is a repository’s root lists its origin’s branches and tags from a store
+Metabrowser keeps beside the checkout, as it last fetched them.
+The checkout itself is never fetched into.
+
+This browserless session loads the production `static/source-ref-selector.js` and
+replays the answers a real checkout gave, recorded in
+`tests/fixtures/source-ref-selector-origin-responses.json` by
+`tests/test_source_ref_selector_origin_session.py`. The checkout’s own `origin/trunk` is
+where its last fetch left it, and the origin has moved on.
+
+- An open list makes a visible page’s own ask once, `{"for": "page"}`. The server
+  fetches the store when it is older than its freshness window, and the list is asked
+  for again while that fetch runs.
+- The list of remote-tracking branches, and the list of tags, say the origin’s are as
+  Metabrowser last fetched them, and when.
+  The checkout’s own branches read no store.
+- An origin branch is chosen by its ref and is named as the checkout names it.
+- With no store, while it is first fetched, or when the origin needs credentials
+  Metabrowser lacks, the list is the checkout’s own and says why.
+- A mirror’s list, and a checkout that keeps no store, ask nothing and say nothing.
+
+```console
+$ node tests/dom/source-ref-selector-origin-session.js
+{
+  "steps": [
+    {
+      "step": "an open list of a checkout makes a visible page's own ask, once",
+      "requests": [
+        "GET /api/source/refs?kind=branch",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "branch",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "trunk 0b51e01 2020-01-01T00:00:00Z [checked out] (local chip)"
+        ],
+        "note": "",
+        "error": null
+      }
+    },
+    {
+      "step": "the store was just fetched, so nothing is due and nothing is asked",
+      "requests": [],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "branch",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "trunk 0b51e01 2020-01-01T00:00:00Z [checked out] (local chip)"
+        ],
+        "note": "",
+        "error": null
+      }
+    },
+    {
+      "step": "the origin's branches are the store's, and the list says when it was fetched",
+      "requests": [
+        "GET /api/source/refs?kind=remote"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z (remote chip)"
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
+        "error": null
+      }
+    },
+    {
+      "step": "the origin's tags are the store's, beside the tag only the checkout has",
+      "requests": [
+        "GET /api/source/refs?kind=tag"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "tag",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "local-only 0b51e01 2020-01-01T00:00:00Z (tag chip)",
+          "v2 fbc8399 2020-01-01T00:00:00Z (tag chip)"
+        ],
+        "note": "",
+        "origin": "The origin's tags are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
+        "error": null
+      }
+    },
+    {
+      "step": "a fetch the ask started is followed: the list is asked for again",
+      "requests": [
+        "GET /api/source/refs?kind=remote"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z (remote chip)"
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
+        "error": null
+      }
+    },
+    {
+      "step": "while the store is fetched, the open list asks again after a wait",
+      "requests": [],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z (remote chip)"
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
+        "error": null
+      },
+      "pullsPending": true
+    },
+    {
+      "step": "the fetch ended: the origin's branch moved, and nothing more is asked",
+      "requests": [
+        "GET /api/source/refs?kind=remote"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z (remote chip)"
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
+        "error": null
+      }
+    },
+    {
+      "step": "an origin branch is asked for by its ref",
+      "requests": [
+        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/trunk\",\"view\":\"/view/m\"}"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": true,
+        "rows": [
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z (remote chip)"
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
+        "error": null
+      }
+    },
+    {
+      "step": "the page goes to the same file in the origin's revision",
+      "requests": [],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": true,
+        "rows": [
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z (remote chip)"
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
+        "error": null
+      },
+      "navigated": [
+        "/view/g1-bQ"
+      ]
+    },
+    {
+      "step": "the button names the origin's branch as the checkout names it",
+      "requests": [],
+      "filterPending": false,
+      "paint": {
+        "button": "Remote branch: origin/trunk",
+        "open": false
+      }
+    },
+    {
+      "step": "while the store is first fetched, the list is the checkout's own",
+      "requests": [
+        "GET /api/source/refs?kind=remote"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/trunk 0b51e01 2020-01-01T00:00:00Z (remote chip)"
+        ],
+        "note": "",
+        "origin": "Fetching the origin's branches. Until then these are the checkout's own. [quiet]",
+        "error": null
+      },
+      "pullsPending": true
+    },
+    {
+      "step": "with no store, the list is the checkout's own, and says so",
+      "requests": [
+        "GET /api/source/refs?kind=remote"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/trunk 0b51e01 2020-01-01T00:00:00Z (remote chip)"
+        ],
+        "note": "",
+        "origin": "Origin not fetched. Metabrowser has not fetched this repository's origin yet. These are the checkout's own. [warning]",
+        "error": null
+      }
+    },
+    {
+      "step": "an origin that needs credentials is not fetched, and the list says why",
+      "requests": [
+        "GET /api/source/refs?kind=remote"
+      ],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/trunk 0b51e01 2020-01-01T00:00:00Z (remote chip)"
+        ],
+        "note": "",
+        "origin": "Origin not fetched. The origin was not found, or it is private and Metabrowser has no credentials for it. Metabrowser never asks for a password. These are the checkout's own. [warning]",
+        "error": null
+      }
+    }
+  ],
+  "quietWithoutAStore": {
+    "asked": [],
+    "origin": null
+  }
+}
+? 0
+```
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->
