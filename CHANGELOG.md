@@ -8,6 +8,10 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
 
 ## 0.13.0
 
+- Center rendered Markdown, YAML, and JSON inside the diff box, with change markers
+  along the left edge.
+  Source follows the selected split or unified layout.
+
 - Pull request size rows use the Commit page’s line height, including while loading.
 
 - The pull request header shows the state and dates directly below the title, followed
