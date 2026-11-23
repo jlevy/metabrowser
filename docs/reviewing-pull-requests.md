@@ -196,8 +196,8 @@ changed is never folded away.
 Raw HTML, such as `<br>`, `<details>`, or a centered `<p align="center">`, renders as
 the Document view renders it, through the same sanitizer; an HTML edit it does not show,
 such as a class or a style, is a change that only **Source** shows.
-A task list renders as the Document view renders an untrusted document, without its
-boxes, so ticking or unticking one is a change that only **Source** shows.
+A task list draws its boxes, each ticked as the document ticks it, so ticking or
+unticking one is a change that **Rendered** shows.
 
 A footnote’s reference shows its number where it is written, numbered as the Document
 view numbers it, and its note shows where its definition is written rather than at the

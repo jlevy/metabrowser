@@ -279,9 +279,15 @@ Changed words are marked by a bounded word diff.
   render drops whole, such as a script, has no block, as a comment has none.
   `_trusted` says when a top-level boundary can still be misplaced, and how the
   projection then finds it.
-  A task list’s box is raw HTML that KPress’s task list plugin writes and the allowlist
-  drops, so a task list renders without its boxes and a tick is in the hidden signature
-  only, until KPress draws the box from a token of its own (mb-rm6u).
+- **Task lists:** KPress draws each box from a token of its own (`_TASK_BOX`), with the
+  box’s state in the token’s `meta["checked"]`, and the allowlist keeps the `input` it
+  renders as a disabled checkbox, ticked as the token is (`CHECKBOX_ATTRIBUTES` in
+  `inert_html.py`). So a tick is a change in what the block renders, the box is one
+  element of the tally that bounds the render tree, and its attributes are no part of
+  the hidden signature.
+  KPress writes the item’s and the list’s classes as token attributes, where attribute
+  syntax writes its own, and the allowlist drops both, so a task list a change adds, or
+  an item that gains its box, is `source_only` until KPress marks the classes it writes.
 - **Footnotes:** a reference renders in place, numbered as the Document view numbers it,
   and each note is a block of its definition’s lines, a list of its own that starts at
   its number: `_footnotes_in_place` takes the place of KPress’s `footnote_tail`, which

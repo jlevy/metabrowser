@@ -121,7 +121,14 @@ _MAX_INLINE_WORK = 4 * _MAX_INLINE_WORDS * _MAX_INLINE_WORDS
 # does not load.
 _FRONTMATTER_MAX_NODES = 2_000
 
-_VOID = frozenset({"br", "hr", "img"})
+_VOID = frozenset({"br", "hr", "img", "input"})
+# The token KPress draws a task list item's box from (`_TASK_CHECKBOX_TOKEN` in
+# kpress/format/markdown.py), with the box's state in `meta["checked"]`: one `input`,
+# which the allowlist keeps as a disabled checkbox, ticked as the token is
+# (`CHECKBOX_ATTRIBUTES` in inert_html.py). Its attributes are that box, which the
+# render shows, so they are no part of the hidden signature, and a tick is a change in
+# what the block renders.
+_TASK_BOX = "kpress_task_checkbox"
 _CONTAINERS = frozenset({"bullet_list_open", "ordered_list_open", "blockquote_open"})
 # Blocks whose lines can hold a link reference definition that renders nothing.
 _HOLDERS = _CONTAINERS | {"list_item_open"}
@@ -518,6 +525,11 @@ class _Block:
 
 
 def _text(node: _Element) -> str:
+    """What *node* reads as: its text, and a task's box as a ballot box, ticked or not, so
+    an item whose box was ticked does not read as the same words as the item before."""
+
+    if node.tag == "input":
+        return "☑" if any(name == "checked" for name, _ in node.attrs) else "☐"
     return "".join(
         _text(child) if isinstance(child, _Element) else child for child in node.children
     )
@@ -667,6 +679,8 @@ def _hidden(tokens: Sequence[Token]) -> _Hidden:
         # The label of each link being read, as its text arrives.
         open_links: list[tuple[str, list[str]]] = []
         for member in (token, *(token.children or ())):
+            if member.type == _TASK_BOX:
+                continue
             if member.type in {"html_block", "html_inline"}:
                 entries, conceals, holds_alt = _raw_markup(member.content)
                 found.extend(entries)
@@ -1095,6 +1109,10 @@ def _parse(text: str, token_budget: float = inf) -> _Side:
         for member in (token, *(token.children or ())):
             if member.type in _NOTE_ELEMENTS:
                 elements += _NOTE_ELEMENTS[member.type]
+                continue
+            if member.type == _TASK_BOX:
+                # Its `input`.
+                elements += 1
                 continue
             # Raw HTML renders what the sanitizer and the allowlist keep of it, which may
             # be nothing, so it adds no element the render must hold; the render tree's

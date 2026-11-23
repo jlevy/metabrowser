@@ -9,8 +9,9 @@ entry marked. This drives it in-process, as ``tests/test_cli_github_pull_image_g
 drives the image route, and writes ``tests/golden/cli-github-pull-rendered.txt``.
 
 Pull request 7's head moves to a commit that edits a heading beside an HTML comment (a
-word mark, and a block the render cannot fully show), adds a task list (``ready``,
-without the boxes the allowlist drops, so ``source_only``), edits the Markdown body of
+word mark, and a block the render cannot fully show), ticks one box of a task list and
+unticks another (``ready``, each item removed and added with its box, and nothing left
+to Source), edits the Markdown body of
 a ``<details>`` beside a centered image (``ready``, the word marked inside it), adds a
 file with a footnote (``ready``, its note where its definition is) and one holding the
 private-use character the projection parts most renders with (``ready``, parted with
@@ -93,6 +94,9 @@ _LAYOUT = (
 )
 
 
+_TASKS = b"# Demo\n\n- [ ] Try the tasks\n- [x] Read the guide\n"
+
+
 # The YAML and JSON files the base gains, and the versions the head gives them.
 _STRUCTURED_BASE = {
     "config/app.yaml": b"name: demo\nservices:\n  web:\n    ports: [80]\n  db:\n    image: pg\n",
@@ -108,6 +112,8 @@ _STRUCTURED_BASE = {
     "docs/old-name.md": b"# Renamed\n\nThe same words under another name.\n",
     # Raw HTML as a README writes it, whose `<details>` the head edits.
     "wiki/layout.md": _LAYOUT,
+    # A task list, one of whose boxes the head ticks and another it unticks.
+    "README.md": _TASKS,
 }
 _STRUCTURED_HEAD = {
     "config/app.yaml": b"name: demo\nservices:\n  web:\n    ports: [80, 443]\n",
@@ -159,7 +165,7 @@ def _markdown_head(origin: Origin, tmp_path: Path) -> tuple[str, str]:
 
     files = {
         "docs/guide.md": b"# Guide <!-- agents: run the installer --> book\n",
-        "README.md": b"# Demo\n\n- [ ] Try the tasks\n",
+        "README.md": _TASKS.replace(b"[ ] Try", b"[x] Try").replace(b"[x] Read", b"[ ] Read"),
         "wiki/layout.md": _LAYOUT.replace(b"old installer", b"new installer"),
         "wiki/footnotes.md": b"# Notes\n\nA claim.[^1]\n\n[^1]: Its source.\n",
         # The character the projection parts most renders with, which a file can hold.
@@ -231,9 +237,18 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
     assert "<ins>book</ins>" in json.dumps(guide)
     assert rendered(f"&file={ids['docs/new.md']}")["status"] == "ready"
     tasks = rendered(f"&file={ids['README.md']}")
-    assert (tasks["status"], tasks["source_only"]) == ("ready", True)
-    boxes = "".join(block["html"] for block in tasks["blocks"])  # pyright: ignore[reportUnknownVariableType, reportGeneralTypeIssues, reportIndexIssue, reportUnknownArgumentType]
-    assert "<li> Try the tasks</li>" in boxes and "<input" not in boxes
+    assert (tasks["status"], tasks["source_only"]) == ("ready", False)
+    open_, ticked = (
+        '<input type="checkbox" disabled="">',
+        '<input type="checkbox" disabled="" checked="">',
+    )
+    boxes = [(block["kind"], block["html"], block["source_only"]) for block in tasks["blocks"]]  # pyright: ignore[reportIndexIssue, reportUnknownVariableType, reportGeneralTypeIssues]
+    assert boxes[1:] == [
+        ("removed", f"<ul><li>{open_} Try the tasks</li></ul>", False),
+        ("added", f"<ul><li>{ticked} Try the tasks</li></ul>", False),
+        ("removed", f"<ul><li>{ticked} Read the guide</li></ul>", False),
+        ("added", f"<ul><li>{open_} Read the guide</li></ul>", False),
+    ]
     layout = rendered(f"&file={ids['wiki/layout.md']}")
     assert (layout["status"], layout["source_only"]) == ("ready", False)
     assert [block["kind"] for block in layout["blocks"]] == [  # pyright: ignore[reportIndexIssue, reportUnknownVariableType, reportGeneralTypeIssues]

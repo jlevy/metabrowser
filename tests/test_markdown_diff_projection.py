@@ -781,34 +781,111 @@ def test_list_items_change_alone_and_keep_their_numbers() -> None:
 # ── Task lists ──────────────────────────────────────────────────
 
 _TASKS = b"# Tasks\n\n- [ ] Write the plan\n- [x] Review it\n- [ ] Ship it\n"
+_OPEN = '<input type="checkbox" disabled="">'
+_TICKED = '<input type="checkbox" disabled="" checked="">'
 
 
-def test_a_task_list_renders_without_the_boxes_the_allowlist_drops() -> None:
-    """KPress's task list plugin writes each box as raw HTML, which the allowlist drops as
-    it drops it from the Document view of an untrusted document, so the list renders
-    without its boxes; the box and the plugin's classes are in the hidden signature.
-    The boxes show once KPress draws them from a token of its own (mb-rm6u)."""
+def test_a_task_list_renders_the_boxes_kpress_draws() -> None:
+    """KPress draws each box from a token of its own, and the allowlist keeps it as a
+    disabled checkbox, ticked as the token is, as the Document view draws it."""
 
     result = _project(_TASKS, _TASKS + b"\nDone.\n")
     assert result["status"] == "ready"
     assert [(block["kind"], block["html"]) for block in result["blocks"]][1:] == [
         (
             "context",
-            "<ul>\n<li> Write the plan</li>\n<li> Review it</li>\n<li> Ship it</li>\n</ul>",
+            f"<ul>\n<li>{_OPEN} Write the plan</li>\n<li>{_TICKED} Review it</li>\n"
+            f"<li>{_OPEN} Ship it</li>\n</ul>",
         ),
         ("added", "<p>Done.</p>"),
     ]
     assert result["source_only"] is False
 
 
-def test_ticking_a_box_the_render_does_not_show_is_a_change_only_source_shows() -> None:
-    result = _project(_TASKS, _TASKS.replace(b"- [ ] Ship it", b"- [x] Ship it"))
+def test_ticking_one_box_and_unticking_another_are_changes_the_render_shows() -> None:
+    """Each item whose box changed is removed with its old box and added with its new one,
+    and nothing about either is left to Source."""
+
+    new = _TASKS.replace(b"- [ ] Ship it", b"- [x] Ship it").replace(
+        b"- [x] Review it", b"- [ ] Review it"
+    )
+    result = _project(_TASKS, new)
     assert result["status"] == "ready"
-    assert result["source_only"] is True
+    assert result["source_only"] is False
+    assert [(block["kind"], block["html"], block["source_only"]) for block in result["blocks"]][
+        1:
+    ] == [
+        ("context", f"<ul><li>{_OPEN} Write the plan</li></ul>", False),
+        ("removed", f"<ul><li>{_TICKED} Review it</li></ul>", False),
+        ("added", f"<ul><li>{_OPEN} Review it</li></ul>", False),
+        ("removed", f"<ul><li>{_OPEN} Ship it</li></ul>", False),
+        ("added", f"<ul><li>{_TICKED} Ship it</li></ul>", False),
+    ]
+
+
+def test_a_box_is_its_tokens_state_and_one_element_of_the_tally() -> None:
+    """The box is KPress's token (`_TASK_CHECKBOX_TOKEN`), its state the token's
+    ``meta["checked"]``, which the render shows; the tally that bounds the render tree
+    before it is built counts the box's `input` among the elements it renders."""
+
+    # KPress 0.3.9, the pin until 0.3.10 is released, has no such token.
+    from kpress.format.markdown import (  # pyright: ignore[reportPrivateUsage]
+        _TASK_CHECKBOX_TOKEN,  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
+    )
+
+    assert markdown_projection._TASK_BOX == _TASK_CHECKBOX_TOKEN  # pyright: ignore[reportPrivateUsage]
+    side = markdown_projection._parse(_TASKS.decode())  # pyright: ignore[reportPrivateUsage]
+    boxes = [
+        member
+        for token in side.tokens
+        for member in token.children or ()
+        if member.type == _TASK_CHECKBOX_TOKEN
+    ]
+    assert [box.meta["checked"] for box in boxes] == [False, True, False]
+    blocks, _ = markdown_projection._render(side, 10**9)  # pyright: ignore[reportPrivateUsage]
+    element = markdown_projection._Element  # pyright: ignore[reportPrivateUsage]
+
+    def elements(node: object) -> list[tuple[str, tuple[tuple[str, str], ...]]]:
+        if not isinstance(node, element):
+            return []
+        found = [(node.tag, node.attrs)] if node.tag else []
+        for child in node.children:
+            found += elements(child)
+        return found
+
+    rendered = [found for block in blocks for found in elements(block.node)]
+    assert [("checked", "") in attrs for tag, attrs in rendered if tag == "input"] == [
+        box.meta["checked"] for box in boxes
+    ]
+    assert side.elements == len(rendered)
+
+
+def test_kpress_classes_on_an_added_task_list_read_as_attribute_syntax() -> None:
+    """An added task list is drawn, boxes and all, and still flagged ``source_only``.
+
+    KPress writes the item's ``kpress-task task-list-item`` and the list's
+    ``contains-task-list`` as token attributes, where attribute syntax such as
+    ``{.checklist}`` writes its own, and the allowlist drops both; the projection cannot
+    tell KPress's from the document's without knowing KPress's names, so it reads them as
+    content no render shows. This changes when KPress marks the classes it writes.
+    """
+
+    result = _project(b"# Tasks\n", _TASKS)
     assert [(block["kind"], block["source_only"]) for block in result["blocks"]] == [
         ("context", False),
-        ("context", True),
+        ("added", True),
     ]
+    assert _TICKED in result["blocks"][1]["html"]
+
+
+def test_a_task_list_joins_to_kpress_parse_markdown() -> None:
+    """Tight, loose, nested, and ordered task lists, and one beside attribute syntax."""
+
+    _joins_to_kpress(
+        "# Tasks\n\n- [ ] One\n- [x] Two\n  - [X] Nested\n  - Plain\n\n"
+        "1. [x] First\n2. [ ] Second\n\n- [ ] Loose\n\n  More.\n\n- [x] Also loose\n\n"
+        "{.checklist}\n- [ ] Classed\n"
+    )
 
 
 # ── Raw HTML ────────────────────────────────────────────────────
