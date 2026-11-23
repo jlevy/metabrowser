@@ -5,11 +5,14 @@ title: Correct the 0.13.0 release notes for plugin SDK 0.8
 kind: bug
 status: in_progress
 priority: 1
-version: 3
+version: 4
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/727
     at: 2026-11-23T03:59:44.694Z
+  - kind: other
+    url: https://github.com/jlevy/metabrowser/actions/runs/45109953461
+    at: 2026-11-23T04:25:14.578Z
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -17,7 +20,7 @@ parent_id: is-01m7hhr3n6wpvfm1zpsxjh210t
 hold: null
 hold_until: null
 created_at: 2026-11-23T03:59:31.268Z
-updated_at: 2026-11-23T03:59:44.707Z
+updated_at: 2026-11-23T04:25:14.636Z
 started_at: 2026-11-23T03:59:39.771Z
 ---
 The draft release body and some folded entries say Plugin SDK 0.7 although the 0.13 runtime and built-in manifests require SDK 0.8. Make the changelog and release notes accurate, explain the plugin compatibility change, and preserve the published 0.12.0 history.
