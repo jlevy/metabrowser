@@ -3,15 +3,19 @@ type: is
 id: is-01m84jp3n8fvsryvh03cwc4388
 title: "PR #745 merge with #751: the File type filter's facade drops a diff's sectionForPath and pathForSection, so a place in a filterable diff falls back to the pane's offset"
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 labels: []
 dependencies: []
 parent_id: is-01m82h0qrnw9vg6vrj597asgpv
 created_at: 2026-11-23T16:09:06.471Z
-updated_at: 2026-11-23T16:09:06.471Z
+updated_at: 2026-11-23T16:16:59.231Z
+closed_at: 2026-11-23T16:16:59.230Z
+close_reason: "Fixed in 9ab02260b; the comments in diff-type-filter.js and diff-type-filter-session.js cite this bead from 85001ce25 (#758), C3 of review C. Dispositions: https://github.com/jlevy/metabrowser/pull/745#issuecomment-7106888179"
+resolution: null
+duplicate_of: null
 ---
 Found while merging main's File type filter (#751) into #745 (merge 6bd0e5031). The filter hands a host a facade over whichever diff it mounted, and lists the handle's methods; #745 added sectionForPath and pathForSection to the diff view's handle, which the pull request page keeps a reader's place in a file with. The facade did not pass them on, so on any filterable diff (more than one file) the page found no section and the place fell back to the pane's offset.
 
