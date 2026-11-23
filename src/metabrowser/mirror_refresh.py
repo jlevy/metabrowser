@@ -147,8 +147,8 @@ ELSEWHERE_WAIT_S: Final = GIT_ACQUISITION_TIMEOUT_S
 # answer from that repository's endpoint in 15 s. So a probe runs under the first-request
 # deadline (``REMOTE_PROBE_TIMEOUT_S``), and a failed one holds the next for a window.
 #
-# What these measurements do not cover, which the cadence plan's Phase 3 checklist keeps
-# open as "Both measured again on an idle machine"
+# What these measurements do not cover, which the update-cadence plan keeps open as "Both
+# measured again on an idle machine"
 # (``docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md``): an idle
 # machine; a ``file://`` origin; and a private repository, whose probe runs the provider's
 # credential helper each time.
