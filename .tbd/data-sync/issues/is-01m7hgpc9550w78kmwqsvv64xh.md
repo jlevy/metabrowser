@@ -5,7 +5,7 @@ title: "Release 0.13: prepare the PyPI package and macOS app release (owner aske
 kind: epic
 status: in_progress
 priority: 1
-version: 84
+version: 85
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/485
@@ -130,7 +130,7 @@ child_order_hints:
   - is-01m82xjjbb78jqxb7vgy68s5f5
   - is-01m82xjneh37qftd9yv3w30xj7
 created_at: 2026-11-16T06:28:43.940Z
-updated_at: 2026-11-23T00:46:46.144Z
+updated_at: 2026-11-23T00:59:27.392Z
 extensions:
   linear:
     id: a18aa3cd-0329-4c1c-bca3-17921fe6703e
@@ -150,3 +150,6 @@ Plan: attic/coord/release-plan-0.13.md in the coordinator worktree. Owner decisi
 
 
 2026-11-22 (later): main green after #706 (codex: table-view and prose-font Chrome stability, mb-19ab, mb-rts9). Merged: #702 (macOS ARCHES normalization, mb-im90), #703 (IPv6 --host, mb-vxcq), #704 (Source CRLF appends, mb-iqdg), #705 (tab chosen during first-paint hold, mb-s588), #707 (idle activity tracker CPU 30% -> 2% of a core, mb-z46o). Step (A) of the release order is done. Next: (B) KPress #80 with the owner, then (C) metab 0.13.0 candidate gates.
+
+
+2026-11-23: step (B) done. KPress 0.3.9 released (jlevy/kpress#81 release notes, tag v0.3.9 at a446f410e, PyPI wheel and sdist uploaded 00:48Z, publish workflow ran make verify). Metabrowser #719 pins kpress==0.3.9 and removes the [tool.uv.sources] git pin, so publish.yml no longer refuses a release; merged as eaabecffc. mb-d515 and mb-tbq9 closed. Next: (C) metab 0.13.0 candidate gates mb-brvm, mb-icss, mb-b246.
