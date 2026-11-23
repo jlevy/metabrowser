@@ -73,6 +73,7 @@
    does. */
 .tm-paint,
 .tm-marks,
+.tm-icons,
 .tm-labels {
   position: absolute;
   left: 0;
@@ -83,8 +84,16 @@
   right: 0;
   bottom: 0;
 }
+/* A marks canvas fades in and out as a bar segment's lift does
+   (file_type_summary.css): two canvases cross-fade as the hover moves from one
+   cell to the next (treemap-map.js, drawCellHover). */
 .tm-marks {
   filter: var(--viz-data-mark-hover-filter);
+  opacity: 0;
+  transition: opacity var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);
+}
+.tm-marks.tm-marks-shown {
+  opacity: 1;
 }
 /* Doubled class: these are cells for type and position, without a cell's fill
    or edge, which the canvas paints. */
@@ -255,24 +264,16 @@
 .tm-cell-title {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  /* Sized with the label, as its glyph is (labelIconGapPx, treemap-layout.js). */
+  gap: var(--tm-title-gap);
   max-width: 100%;
   min-width: 0;
 }
 
-/* A file's icon is as tall as its name's line, and its glyph keeps the
-   navigation's proportion to its box (--icon-glyph to --icon-box). */
+/* A file's icon sits on its name's line, its glyph and box sized to the name
+   (labelIconPx, treemap-layout.js, set as --icon-glyph and --icon-box). */
 .tm-cell-file-icon {
-  --tm-icon-size: calc(var(--tm-label-size) * 1.2);
   align-self: center;
-  width: var(--tm-icon-size);
-  height: var(--tm-icon-size);
-  flex: 0 0 var(--tm-icon-size);
-}
-
-.tm-cell-file-icon svg {
-  width: calc(var(--tm-icon-size) * 0.875);
-  height: calc(var(--tm-icon-size) * 0.875);
 }
 
 /* The tooltip's first line: the cell's icon, then its path, which wraps
@@ -343,9 +344,13 @@
 }
 
 /* A nested folder's header and frame: no family, so the fills above take
-   their neutral fallback even under an element that sets one. */
+   their neutral fallback even under an element that sets one. Its edge tone is
+   the separator its children are drawn apart by (treemap-paint.js, paintList):
+   the border tone deepened toward the muted ink, so every cell stays distinct
+   from its neighbours on any fill, and no hover changes it (markOps). */
 .tm-nested-folder {
   --mb-distribution-color: initial;
+  --tm-edge: color-mix(in oklch, var(--viz-border-strong) 55%, var(--muted));
 }
 
 .tm-ignored {
@@ -379,7 +384,8 @@
     opacity: var(--tm-pending-still-opacity);
   }
   /* The motion goes, the easing and the shimmer; the lift stays, drawn at once. */
-  .tm-cell {
+  .tm-cell,
+  .tm-marks {
     transition: none;
   }
   .tm-cell[data-hovered="self"]::after {

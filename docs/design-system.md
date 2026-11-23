@@ -4882,11 +4882,17 @@ Its layers, bottom to top:
 - **The paint canvas** holds every cell, snapped to device pixels so neighbours share an
   edge. A nesting folder paints its interior in its edge tone, and each child large
   enough draws one device pixel short, so the edge shows between neighbours
-  (`treemap-paint.js`). Its colors come from probe cells styled as a cell is, so the
-  palette, the ignored dimming, and the theme stay in the stylesheet.
-  Over its fill, a file too small for its name has its icon painted, in the color a
-  probe of the navigation’s icon resolves to.
-- **The marks canvas** holds copies of the marked cells’ pixels under the lift filter.
+  (`treemap-paint.js`). A nested folder’s edge tone is the border tone deepened toward
+  the muted ink (`.tm-nested-folder`), so every cell stands apart from its neighbours on
+  any fill. Its colors come from probe cells styled as a cell is, so the palette, the
+  ignored dimming, and the theme stay in the stylesheet.
+- **The marks canvases**, two, hold copies of the marked cells’ pixels under the lift
+  filter. A hover that marks other cells draws them on the canvas not shown, which fades
+  in on the hover’s timing as the shown one fades out, so the lift eases in and out as a
+  bar segment’s does; under reduced motion it is drawn at once.
+- **The icons canvas** holds the icons of the cells too small for their names, each
+  rasterized once for each size and color it is drawn at, since a map can hold as many
+  such icons as cells.
 - **The hover anchor** is a transparent cell over the cell under the pointer.
   It carries that cell’s shimmer and anchors its tooltip.
 - **The labels** are one element per labelled cell, positioned in the map’s padding box.
@@ -4896,11 +4902,14 @@ The map lays out to its padding box, and a label lies inside its cell and the ma
 border; `tests/test_treemap_containment_chrome.py` measures it, with the canvas’s fill
 at each cell. A file’s name always follows its icon, and a file with room for its name
 but not for both shows its icon alone, so cells of one size draw alike.
-The icon alone is centered and as large as fits, from the navigation’s icon box down to
-`ICON_MIN_PX` (`treemap-map.js`); a smaller cell shows nothing and names itself in its
-tooltip. The icons are painted, not elements: a folder of a few thousand small files
-would otherwise hold an element per file (the measurement is beside
-`ICON_IMAGE_CACHE_MAX`). A folder has no icon, as its row in the navigation has none
+Each icon is sized to its cell, as its label is, by `ICON_DEFAULTS`
+(`builtin_plugins/folder/treemap-layout.js`): beside a name it is a share of the name’s
+size, and alone it is centered, a share of the cell’s short side, so a smaller cell
+shows a smaller icon.
+A cell too small for the smallest glyph shows nothing and names itself in its tooltip.
+The icons are painted, not elements: a folder of a few thousand small files would
+otherwise hold an element per file.
+A folder has no icon, as its row in the navigation has none
 ([design-system-icons.md](design-system-icons.md)).
 
 The Files context above the map mounts the same reusable folder-rollup controls used by
@@ -4936,10 +4945,12 @@ Modification age remains available in the tooltip; it does not compete with file
 a second cell-color vocabulary.
 Treemap derives a theme-aware surface wash and stronger border from that shared base
 color so labels retain contrast; the Overview’s data bars keep the full-strength swatch.
-Hover brightens the composed cell, including its type-derived surface and border, so
-their contrast and hue relationship remain intact: the marks canvas copies the marked
-cells’ painted pixels, and the lift filter applies to the copy.
-There is no separate label hover surface.
+Hover brightens the composed cell’s fill, so its contrast and hue relationship remain
+intact: the marks canvas copies the marked cells’ painted pixels, and the lift filter
+applies to the copy.
+The edges between cells never change under a hover: they stay at their deeper tone, and
+a hovered folder lifts its header and frame and leaves the edges between its children as
+they are. There is no separate label hover surface.
 It never raises or grows a cell: a folder is painted under its children, so raising it
 would cover them.
 
@@ -4975,9 +4986,9 @@ the layout: a grid of buckets over the map lists the cells over each, and the po
 names the cell painted at the device pixel under it, the deepest whose fill covers it
 (`treemap-hit.js`), so a cell a pixel wide is the cell it names, and the edge between
 two cells is their folder’s. An inert remainder cell does not fall through to its
-parent. A hover lifts the same pixels: a marked cell’s own, with the edges inside a
-marked folder and without those around a marked file.
-The keyboard reaches every folder and file cell through the focus proxy, which the arrow
+parent. A hover lifts the same pixels: a marked cell’s own fill, and a marked folder’s
+header and frame, never an edge between cells (`markOps`, `treemap-paint.js`). The
+keyboard reaches every folder and file cell through the focus proxy, which the arrow
 keys move in layout order and which stays on its cell when the map is laid out again and
 which takes the cell’s accessible name, with the folder’s remainder named when it has
 one; Enter or Space opens it.

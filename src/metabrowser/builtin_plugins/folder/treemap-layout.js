@@ -141,6 +141,88 @@ const TYPOGRAPHY_DEFAULTS = Object.freeze({
   basisMaxPx: 360,
 });
 
+/**
+ * A cell's file-type icon, sized to its cell as its label is (treemap-map.js
+ * draws it). Every size is the glyph's, in CSS pixels; the icon's box is the
+ * glyph itself, since the cell or the title centers it.
+ *
+ * Beside a label the glyph is `labelShare` of the label's size, so a 9 px
+ * label has an 8 px glyph rather than the navigation's 14 px one, which stood
+ * taller than its name. A cell too small for its name shows its icon alone at
+ * `cellShare` of its short side, which keeps a margin on every side and names
+ * a cell 6 px on its short side with a 4 px glyph, and never larger than the
+ * glyph its label would have had, so a smaller cell never shows a larger icon
+ * than a labelled one. No glyph is drawn larger
+ * than `glyphMaxPx`, two pixels under the navigation's --icon-glyph
+ * (static/styles.css), or smaller than `glyphMinPx`: below it, a glyph is a
+ * dot of a few pixels, and the cell's color says what the glyph would.
+ *
+ * Measured in headless Chrome at 1400 by 900 on this repository at c7e2b5991
+ * (2026-11-23, tests/dom/treemap-label-coverage-chrome.mjs). With a fixed
+ * 14 px glyph, drawn alone only in a cell 16 px on each side, the Treemap view
+ * named 51 of 2,532 cells by Files and 145 of 2,446 by Bytes. With the rule
+ * before this one, an icon alone in a 16 px box down to an 8 px one and a
+ * name only with room for its icon at the name's line (42c7dd9d9), it named
+ * 51 and 376; the cells it left unnamed were 3 to 10 px on their short side by
+ * Files (1,569 of 2,481 at 9 px) and 0 to 10 px by Bytes. With these sizes it
+ * names 2,482 by Files and 1,211 by Bytes: what it leaves is under 6 px on its
+ * short side. A 6 px minimum named 1,648 and 627; the smallest glyphs looked
+ * of a piece with the rest, and leaving the cells between unnamed did not.
+ */
+const ICON_DEFAULTS = Object.freeze({
+  glyphMinPx: 4,
+  glyphMaxPx: 12,
+  labelShare: 0.85,
+  cellShare: 2 / 3,
+  /** The gap between a glyph and its label, as a share of the label's size (.tm-cell-title). */
+  gapShare: 0.4,
+});
+
+/**
+ * The glyph beside a label of `labelPx`.
+ * @param {number} labelPx
+ * @returns {number}
+ */
+function labelIconPx(labelPx) {
+  return clamp(
+    Math.round(labelPx * ICON_DEFAULTS.labelShare),
+    ICON_DEFAULTS.glyphMinPx,
+    ICON_DEFAULTS.glyphMaxPx,
+  );
+}
+
+/**
+ * The gap between a glyph and a label of `labelPx` (.tm-cell-title, styles.css).
+ * @param {number} labelPx
+ * @returns {number}
+ */
+function labelIconGapPx(labelPx) {
+  return Number((labelPx * ICON_DEFAULTS.gapShare).toFixed(2));
+}
+
+/**
+ * The room a glyph beside a label of `labelPx` takes in a title: the glyph and its gap.
+ * @param {number} labelPx
+ * @returns {number}
+ */
+function labelIconRoomPx(labelPx) {
+  return labelIconPx(labelPx) + labelIconGapPx(labelPx);
+}
+
+/**
+ * The glyph a cell too small for its name shows alone, or 0 when the cell is too
+ * small even for the smallest: a share of its short side, and no larger than
+ * the glyph beside the label it has no room for, of `labelPx`.
+ * @param {{w: number, h: number}} rect
+ * @param {number} [labelPx]  the cell's label size; the smallest label's by default
+ * @returns {number}
+ */
+function iconOnlyPx(rect, labelPx = TYPOGRAPHY_DEFAULTS.labelMinPx) {
+  const shortSide = Math.min(Math.max(0, Number(rect.w) || 0), Math.max(0, Number(rect.h) || 0));
+  const glyph = Math.floor(shortSide * ICON_DEFAULTS.cellShare);
+  return glyph < ICON_DEFAULTS.glyphMinPx ? 0 : Math.min(glyph, labelIconPx(labelPx));
+}
+
 /** The type sizes a cell too small for a label carries: the smallest, never drawn. */
 const NO_LABEL = Object.freeze({
   labelPx: TYPOGRAPHY_DEFAULTS.labelMinPx,
@@ -856,7 +938,12 @@ function layoutPass(rootNode, viewport, opts, chrome, perValue) {
 
 export {
   cellTypography,
+  ICON_DEFAULTS,
+  iconOnlyPx,
   LAYOUT_DEFAULTS,
+  labelIconGapPx,
+  labelIconPx,
+  labelIconRoomPx,
   layoutTree,
   packLevel,
   squarify,

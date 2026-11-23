@@ -13,11 +13,12 @@ the Treemap tab and reads it at a wide and a narrow window. This holds that:
   from its probe, and cells of different styles paint different colors;
 - in the other theme the map paints every cell again, in that theme's fills;
 - no label passes its cell or the viewport's padding box;
-- the DOM stays small: one label per labelled cell, one focus proxy, no element per cell;
+- the DOM stays small: one label per labelled cell, one focus proxy, no element per cell,
+  and no element per icon, which the icons canvas draws;
 - the pointer on a small unlabelled file hovers it, names it in the tooltip with its
   icon, size, and age in the navigation's classes, and a click opens it;
-- measured by bytes, files too small for their names have their icons painted on the
-  canvas, inside their cells, and no element;
+- files too small for their names show their icons alone on the icons canvas, each drawn
+  inside its cell, and measured by bytes the sized files among them;
 - a name with no break in it wraps inside the tooltip;
 - the focus proxy is the one focusable element, named, and ArrowRight moves it.
 
@@ -84,7 +85,7 @@ def _served_folder(root: Path) -> int:
     (root / "top0").mkdir(parents=True)
     (root / "top0" / _LONG_NAME).write_bytes(b"x" * 60_000)
     # Files a little larger than the tree's, which the wide window draws about 24 px on a
-    # side: past the icon's 16 px and short of a label's 40, so they show their icons.
+    # side: short of a label's 40, so they show their icons alone.
     (root / "sized").mkdir()
     for n in range(_SIZED):
         (root / "sized" / f"s{n}.py").write_bytes(b"x" * 20_000)
@@ -102,7 +103,7 @@ def _contained(reading: dict[str, Any], label: str, *, small: bool) -> None:
     assert reading["tiny"] >= (50 if small else 0), (label, reading)
     assert reading["deepest"] >= 3, (label, reading)
     assert reading["escapes"] == 0, (label, reading)
-    assert reading["iconsInked"] == reading["icons"], (label, reading)
+    assert reading["iconsDrawn"] == reading["icons"], (label, reading)
     assert reading["iconEscapes"] == 0 and reading["iconElements"] == 0, (label, reading)
     assert reading["sampled"] >= 20, (label, reading)
     assert reading["wrongFill"] == 0, (label, reading)

@@ -42,7 +42,19 @@ class FakeElement {
     this.style = {};
     this.hidden = false;
     this.className = "";
-    this.classList = { add: (name) => (this.className = `${this.className} ${name}`.trim()) };
+    const names = () => this.className.split(" ").filter(Boolean);
+    this.classList = {
+      add: (name) => {
+        if (!names().includes(name)) {
+          this.className = [...names(), name].join(" ");
+        }
+      },
+      remove: (name) =>
+        (this.className = names()
+          .filter((each) => each !== name)
+          .join(" ")),
+      contains: (name) => names().includes(name),
+    };
     this._html = "";
     this.clientWidth = 0;
     this.clientHeight = 0;
@@ -498,27 +510,78 @@ async function main() {
     return indexes.map((index) => map.cells[index].path);
   };
 
+  /** The glyph size an icon's markup carries, which the map sized to its cell. */
+  const glyphOf = (html) => {
+    const match = /--icon-glyph:([0-9.]+)px/.exec(html);
+    return match ? Number(match[1]) : null;
+  };
+
   /**
-   * The cells too small for a name that show their icon alone, painted on the canvas, by
-   * path and the icon's box: none of them labelled, and none an element.
+   * The cells too small for a label that show their icon alone, by path and glyph
+   * size: each the size the map reports for it (inspectTreemap's glyphs), drawn on the
+   * icons canvas at its place (iconRects), a square of that size inside its cell's fill,
+   * and no element in the label layer.
    */
   const iconsOnly = (page) => {
     const map = page.inspect();
-    if (!map) {
+    const layer = page.viewport.find("tm-labels");
+    if (!map || !layer) {
       return [];
     }
-    const layer = page.viewport.find("tm-labels");
-    for (const { cell } of map.icons) {
-      assert.ok(!map.labels.includes(cell), `${map.cells[cell].path} has no label too`);
-    }
+    const dpr = map.dpr;
+    const entries = map.iconRects.map((rect) => {
+      const cell = map.cells[rect.cell];
+      const glyph = map.glyphs.find((each) => each.cell === rect.cell);
+      assert.ok(glyph?.alone, `${cell.path}'s icon is reported as alone`);
+      assert.equal(rect.w, Math.round(glyph.px * dpr), `${cell.path}'s icon is drawn at its size`);
+      assert.equal(rect.w, rect.h, "square");
+      const left = Math.round(cell.x * dpr);
+      const top = Math.round(cell.y * dpr);
+      const right = Math.round((cell.x + cell.w) * dpr);
+      const bottom = Math.round((cell.y + cell.h) * dpr);
+      assert.ok(
+        rect.x >= left && rect.y >= top && rect.x + rect.w <= right && rect.y + rect.h <= bottom,
+        `${cell.path}'s icon sits inside its cell`,
+      );
+      assert.ok(!map.labels.includes(rect.cell), `${cell.path} has no label too`);
+      return `${cell.path} ${glyph.px}px`;
+    });
+    assert.deepEqual(
+      map.iconRects.map((rect) => rect.cell),
+      map.icons.map((icon) => icon.cell),
+      "the icons canvas draws the icons the map reports",
+    );
     assert.ok(
-      (layer?.children ?? []).every(
-        (element) =>
-          !element.innerHTML.includes("<svg") || element.className.includes("tm-label-cell"),
+      !layer.children.some(
+        (element) => element.dataset.tmCell && !element.className.includes("tm-label-cell"),
       ),
       "the label layer holds labels alone",
     );
-    return map.icons.map(({ cell, px }) => `${map.cells[cell].path} ${px}px`);
+    return entries;
+  };
+
+  /** The labelled cells that show their icon before their name, by path and glyph size. */
+  const labelIcons = (page) => {
+    const map = page.inspect();
+    const layer = page.viewport.find("tm-labels");
+    if (!map || !layer) {
+      return [];
+    }
+    return layer.children
+      .filter((element) => element.className.split(" ").includes("tm-label-cell"))
+      .filter((element) => element.innerHTML.includes("tm-cell-file-icon"))
+      .map((element) => {
+        const index = Number(element.dataset.tmCell);
+        const glyph = map.glyphs.find((each) => each.cell === index);
+        assert.ok(
+          glyph && !glyph.alone,
+          `${map.cells[index].path}'s icon is reported beside its label`,
+        );
+        assert.equal(glyphOf(element.innerHTML), glyph.px, "it is drawn at its size");
+        return { index, entry: `${map.cells[index].path} ${glyph.px}px` };
+      })
+      .sort((a, b) => a.index - b.index)
+      .map((each) => each.entry);
   };
 
   /** The focus proxy: the one control, over the focused cell, named for it. */
@@ -550,8 +613,21 @@ async function main() {
     assert.ok(anchors.length <= 1, "one hover anchor at most");
     const anchor = anchors[0] ?? null;
     assert.equal(anchor !== null, (map?.hovered ?? -1) >= 0, "an anchor while a cell is hovered");
+    // The two marks canvases cross-fade: a hover that marks other cells draws them on the
+    // canvas not shown and shows it, as the other fades out (styles.css, .tm-marks).
+    const marksCanvases = page.viewport.children.filter((element) =>
+      element.className.split(" ").includes("tm-marks"),
+    );
+    const shownMarks = marksCanvases.filter((element) =>
+      element.className.split(" ").includes("tm-marks-shown"),
+    );
+    assert.ok(shownMarks.length <= 1, "one marks canvas shown at most");
+    const marks = {
+      shown: shownMarks.length ? marksCanvases.indexOf(shownMarks[0]) : null,
+      ops: (map?.markOps ?? []).map((op) => `${op.op} ${map.cells[op.cell].path}`),
+    };
     if (!anchor) {
-      return { on: null, anchor: null, cursor: page.viewport.style.cursor || "" };
+      return { on: null, anchor: null, marks, cursor: page.viewport.style.cursor || "" };
     }
     const cell = map.cells[map.hovered];
     assert.equal(Number(anchor.dataset.tmCell), map.hovered, "the anchor is the hovered cell's");
@@ -568,6 +644,7 @@ async function main() {
               .replace(/<[^>]*>/g, "")
           : null,
       marked: map.marked.map((index) => map.cells[index].path),
+      marks,
       cursor: page.viewport.style.cursor,
     };
   };
@@ -656,6 +733,10 @@ async function main() {
   assert.ok(!page.viewport.contains(appAnchor), "the last cell's anchor is gone");
   assert.notEqual(page.tooltip.anchor, appAnchor, "the tooltip has a new anchor");
   steps.push({ step: "the pointer moves on to the README.md cell", pointer: pointer(page) });
+  // A folder's own hover lifts its header and frame: its fill is copied and its interior,
+  // the separators between its files, cleared, so no edge between them changes.
+  page.pointAt("src/lib");
+  steps.push({ step: "the pointer on the lib folder's header", pointer: pointer(page) });
   page.viewport.dispatch("mouseleave");
   assert.equal(page.tooltip.anchor, null, "leaving the map puts the tooltip away");
   assert.equal(page.hover.current(), null, "and lets go of the cell's hover");
@@ -823,18 +904,17 @@ async function main() {
   dwindling.watch.apply({ index_status: "done", node: DWINDLING });
   const shown = summary(dwindling);
   const iconCells = iconsOnly(dwindling);
+  const iconPaths = iconCells.map((each) => each.split(" ")[0]);
   steps.push({
-    step: "files too small for their names show their icons, and the smallest neither",
+    step: "icons shrink with their cells: beside a name, alone, and the smallest neither",
     cells: shown.cells,
     labelled: shown.labelled,
+    labelIcons: labelIcons(dwindling),
     iconsOnly: iconCells,
     bare: shown.cells
       .map((each) => each.split(" ")[1])
       .filter(
-        (each) =>
-          each !== "src" &&
-          !shown.labelled.includes(each) &&
-          !iconCells.some((icon) => icon.startsWith(`${each} `)),
+        (each) => each !== "src" && !shown.labelled.includes(each) && !iconPaths.includes(each),
       ),
   });
   dwindling.handle.dispose();

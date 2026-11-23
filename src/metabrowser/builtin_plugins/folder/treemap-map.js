@@ -14,8 +14,15 @@
 // the tooltip carries every name.
 
 import { buildHitGrid } from "./treemap-hit.js";
-import { layoutTree, TYPOGRAPHY_DEFAULTS } from "./treemap-layout.js";
-import { applyMarkOps, markOps, paintCells, paintList } from "./treemap-paint.js";
+import {
+  iconOnlyPx,
+  labelIconGapPx,
+  labelIconPx,
+  labelIconRoomPx,
+  layoutTree,
+  TYPOGRAPHY_DEFAULTS,
+} from "./treemap-layout.js";
+import { applyMarkOps, iconList, markOps, paintCells, paintList } from "./treemap-paint.js";
 
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} TreemapPalette */
 /** @typedef {{metric: "size" | "files", includeIgnored: boolean}} TreemapState */
@@ -64,45 +71,14 @@ export const PAINT_MAX_CELLS = 25_000;
 const MAX_BACKING_PIXELS = 4096 * 4096;
 
 /**
- * A cell with no room for its name shows its icon alone, as large as fits
- * inside the cell with a pixel to spare on each side, up to the navigation's
- * icon box (--icon-box, static/styles.css), and never below this box, whose
- * glyph is 7 px: the smallest at which a glyph's outline and its type's color
- * still stand apart from the cell's fill. A smaller cell shows nothing.
+ * A file's name always follows its icon, with the icon and its gap sized to the name
+ * (labelIconRoomPx, treemap-layout.js). A cell with room for the name but not for both
+ * shows the icon alone, so cells of one size draw alike. The room is judged at the
+ * smallest label's, not the cell's own, which grows with the cell, so a larger cell
+ * never loses its name where a smaller one keeps it; a larger label's wider icon takes
+ * its room from the name, which ellipsizes.
  */
-const ICON_MIN_PX = 8;
-const ICON_MAX_PX = 16;
-
-/**
- * A file's name always follows its icon, as tall as the name's line, with the
- * title's gap (.tm-cell-title, styles.css). A cell with room for the name but
- * not for both shows the icon alone, so cells of one size draw alike: before,
- * such a cell drew its name without the icon, beside neighbours a little
- * smaller that drew the icon without the name. The room is judged at the
- * smallest label's line, not the cell's own, which grows with the cell, so a
- * larger cell never loses its name where a smaller one keeps it.
- */
-/**
- * The icon images a map keeps, one per icon, color, and device size, painted
- * on the canvas rather than kept as elements: 2,400 icon elements, one per
- * 13 px file of a flat folder at 1400 by 900, took the map to 17,000 elements
- * and a switch of measure from about 0.4 s to 1.5 s before the next frame
- * (Chrome, 2026-11-23). About 30 file types, in one color each, at the 9 box
- * sizes from ICON_MIN_PX to ICON_MAX_PX, are some 270 images at a pixel ratio;
- * past this many the map lets them all go and draws them again as it needs them.
- */
-const ICON_IMAGE_CACHE_MAX = 1024;
-
-const LABEL_ICON_ROOM_PX = TYPOGRAPHY_DEFAULTS.labelMinPx * 1.2 + 6;
-
-/**
- * The box of the icon a cell too small for its name shows, or 0 for none.
- * @param {Readonly<Record<string, any>>} cell  w and h in CSS pixels
- */
-function iconOnlyPx(cell) {
-  const room = Math.floor(Math.min(cell.w, cell.h) - 3);
-  return room >= ICON_MIN_PX ? Math.min(ICON_MAX_PX, room) : 0;
-}
+const LABEL_ICON_ROOM_PX = labelIconRoomPx(TYPOGRAPHY_DEFAULTS.labelMinPx);
 
 // The label bounds hold the smallest label, at labelMinPx (treemap-layout.js), inside
 // its cell. Measured in Chrome at 1400 by 900 on this repository (2026-11-23): a 9 px
@@ -248,7 +224,11 @@ export function withOuterBox(node) {
  * @property {number} empty  cells whose snapped rectangle is empty, painted nowhere
  * @property {ReadonlyArray<number>} labels  indexes of the labelled cells
  * @property {ReadonlyArray<{cell: number, px: number}>} icons  the cells that show their
- *   icon alone, painted on the canvas, and the icon's box in CSS pixels
+ *   icon alone, painted on the icons canvas, and the glyph's size in CSS pixels
+ * @property {ReadonlyArray<import("./treemap-paint.js").IconRect>} iconRects  where those
+ *   icons are drawn, in device pixels (iconList)
+ * @property {ReadonlyArray<{cell: number, px: number, alone: boolean}>} glyphs  every
+ *   drawn icon's glyph size, beside its name or alone
  * @property {ReadonlyArray<number>} focusOrder  indexes the focus proxy walks
  * @property {number} focused  index of the cell the focus proxy is on, or -1
  * @property {number} hovered  index of the cell under the pointer, or -1
@@ -341,22 +321,39 @@ export function createTreemapMap(mb, palette, viewport, options) {
   let markedIndexes = [];
   /** @type {import("./treemap-paint.js").MarkOp[]} */
   let currentMarkOps = [];
+  /** Where the icons drawn alone go (iconList), and what draws them (paintIcons). */
+  /** @type {import("./treemap-paint.js").IconRect[]} */
+  let iconRects = [];
+  /**
+   * Each icon rect's icon, looked up once a layout rather than on every paint.
+   * @type {Array<{svg: string, className: string}>}
+   */
+  let iconOfRect = [];
+  /**
+   * Each icon rasterized once for each size and color it is drawn at, so a map of
+   * thousands of icons draws a few dozen images; cleared with the theme.
+   *
+   * A sprite is drawn from a bitmap of its SVG image, not the image: Chrome renders an
+   * SVG image again on every draw. Measured in headless Chrome on 2026-11-23 at a load
+   * average near 240, five runs each, drawing 2,500 and 25,000 icons of 8 to 16 px on a
+   * 2800 by 1800 canvas took 17.5 and 170 ms from the SVG images, 18 to 31 and 66 to 84
+   * ms from canvases, and 4.4 and 39 ms from ImageBitmaps, about what the layout and
+   * paint of 25,000 cells take together (PAINT_MAX_CELLS).
+   * @type {Map<string, {image: HTMLImageElement, bitmap: CanvasImageSource | null}>}
+   */
+  const iconSprites = new Map();
+  /** @type {Map<string, string>} each icon class's color, read from a probe */
+  const iconColors = new Map();
+  let iconFrame = 0;
+  /** The marks canvas shown (layers.marks), and the cells it marks. */
+  let shownMarks = 0;
+  /** @type {number[]} */
+  let shownMarked = [];
   /** The hover the cell under the pointer entered, until the pointer leaves the cell. */
   /** @type {DistributionHoverTarget | null} */
   let cellHover = null;
   /** @type {Map<string, PaintStyle>} */
   const styleCache = new Map();
-  /**
-   * The cells too small for their names that show their icon alone, and its box.
-   * @type {Array<{cell: number, px: number}>}
-   */
-  let iconCells = [];
-  /** An icon's color, by its file-type class, read from a probe as the navigation's. */
-  /** @type {Map<string, string>} */
-  const iconColors = new Map();
-  /** @type {Map<string, {image: HTMLImageElement, ready: boolean}>} */
-  const iconImages = new Map();
-  let iconFrame = 0;
   /**
    * What each style key stands for. A key is a JSON array, so a family key may
    * hold any character, a `|` an extension keeps among them, and still read back.
@@ -386,9 +383,19 @@ export function createTreemapMap(mb, palette, viewport, options) {
     const paint = doc.createElement("canvas");
     paint.className = "tm-paint";
     paint.setAttribute("aria-hidden", "true");
-    const marks = doc.createElement("canvas");
-    marks.className = "tm-marks";
-    marks.setAttribute("aria-hidden", "true");
+    // Two marks canvases, so a hover that moves from one cell to the next fades
+    // the old lift out as the new one fades in (drawCellHover).
+    const marks = [0, 1].map(() => {
+      const canvas = doc.createElement("canvas");
+      canvas.className = "tm-marks";
+      canvas.setAttribute("aria-hidden", "true");
+      return canvas;
+    });
+    // The icons the cells too small for their names show alone, drawn on a canvas, as
+    // the cells are: a map can hold as many such icons as cells (paintIcons).
+    const icons = doc.createElement("canvas");
+    icons.className = "tm-icons";
+    icons.setAttribute("aria-hidden", "true");
     const labels = doc.createElement("div");
     labels.className = "tm-labels";
     labels.setAttribute("aria-hidden", "true");
@@ -400,12 +407,16 @@ export function createTreemapMap(mb, palette, viewport, options) {
     const probes = doc.createElement("div");
     probes.className = "tm-probes";
     probes.setAttribute("aria-hidden", "true");
-    for (const element of [paint, marks, labels, focus, probes]) {
+    for (const element of [paint, ...marks, icons, labels, focus, probes]) {
       viewport.appendChild(element);
     }
+    // New canvases show nothing, so the next hover draws on one and shows it.
+    shownMarks = 0;
+    shownMarked = [];
     layers = {
       paint,
       marks,
+      icons,
       labels,
       focus,
       probes,
@@ -421,7 +432,10 @@ export function createTreemapMap(mb, palette, viewport, options) {
   function dropLayers() {
     if (layers) {
       zeroCanvas(layers.paint);
-      zeroCanvas(layers.marks);
+      zeroCanvas(layers.icons);
+      for (const canvas of layers.marks) {
+        zeroCanvas(canvas);
+      }
     }
     layers = null;
   }
@@ -543,111 +557,6 @@ export function createTreemapMap(mb, palette, viewport, options) {
     return style;
   }
 
-  /**
-   * The color an icon of `className` draws in, read from a probe styled as the
-   * navigation's icon, so the canvas follows the file-type palette in either theme.
-   * @param {string} className
-   */
-  function iconColor(className) {
-    const cached = iconColors.get(className);
-    if (cached) {
-      return cached;
-    }
-    const probe = doc.createElement("span");
-    probe.className = ["file-identity-icon", className].filter(Boolean).join(" ");
-    const host = ensureLayers().probes;
-    host.appendChild(probe);
-    const color = win?.getComputedStyle?.(probe)?.color || "currentColor";
-    probe.remove();
-    iconColors.set(className, color);
-    return color;
-  }
-
-  /**
-   * The icon `svg` drawn `size` device pixels square in `color`, once it has
-   * loaded; null until then, and a loaded image paints the map again.
-   * @param {string} svg
-   * @param {string} color
-   * @param {number} size
-   * @returns {HTMLImageElement | null}
-   */
-  function iconImage(svg, color, size) {
-    const key = `${size}|${color}|${svg}`;
-    const cached = iconImages.get(key);
-    if (cached) {
-      return cached.ready ? cached.image : null;
-    }
-    if (typeof win?.Image !== "function") {
-      return null;
-    }
-    if (iconImages.size >= ICON_IMAGE_CACHE_MAX) {
-      iconImages.clear();
-    }
-    // The registry's glyph, given a size and a color: its strokes are currentColor, and
-    // an image's SVG reads no stylesheet. Parsed as HTML, it is an SVG element, which
-    // serializes with its namespace, as an image needs.
-    const holder = doc.createElement("div");
-    holder.innerHTML = svg;
-    const glyph = holder.firstElementChild;
-    if (!glyph || typeof win.XMLSerializer !== "function") {
-      return null;
-    }
-    glyph.setAttribute("width", String(size));
-    glyph.setAttribute("height", String(size));
-    glyph.setAttribute("style", `color:${color}`);
-    const markup = new win.XMLSerializer().serializeToString(glyph);
-    const image = new win.Image();
-    const entry = { image, ready: false };
-    iconImages.set(key, entry);
-    image.onload = () => {
-      entry.ready = true;
-      scheduleIconPaint();
-    };
-    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
-    return null;
-  }
-
-  /** Paint the map again once the icons that were loading have arrived. */
-  function scheduleIconPaint() {
-    if (iconFrame || disposed || typeof win?.requestAnimationFrame !== "function") {
-      return;
-    }
-    iconFrame = win.requestAnimationFrame(() => {
-      iconFrame = 0;
-      if (!disposed && cells.length > 0) {
-        paintMap();
-        drawCellHover();
-      }
-    });
-  }
-
-  /**
-   * Draw each icon-only cell's icon at the center of its cell, at the cell's own
-   * opacity, over its fill: the marks canvas copies it with the cell.
-   * @param {CanvasRenderingContext2D} ctx
-   */
-  function paintIcons(ctx) {
-    for (const { cell: index, px } of iconCells) {
-      const cell = cells[index];
-      const icon = mb.fileTypeIcon(cell.name);
-      if (!icon.svg) {
-        continue;
-      }
-      // The glyph keeps the navigation's proportion to its box (--icon-glyph, --icon-box).
-      const size = Math.max(1, Math.round(px * 0.875 * dpr));
-      const image = iconImage(icon.svg, iconColor(icon.className), size);
-      if (!image) {
-        continue;
-      }
-      ctx.globalAlpha = resolveStyle(cellStyleKey(cell)).alpha;
-      // The cell's box is a pixel short of its layout rectangle (boxStyle).
-      const x = Math.round((cell.x + (cell.w - 1) / 2) * dpr - size / 2);
-      const y = Math.round((cell.y + (cell.h - 1) / 2) * dpr - size / 2);
-      ctx.drawImage(image, x, y, size, size);
-    }
-    ctx.globalAlpha = 1;
-  }
-
   /** The surface under every cell, the viewport's own: what shows between top-level cells. */
   function surfaceColor() {
     return win?.getComputedStyle?.(viewport)?.backgroundColor || "transparent";
@@ -713,37 +622,49 @@ export function createTreemapMap(mb, palette, viewport, options) {
       !cell.nested;
     const inline =
       preset.values && showLabel && cell.nested && cell.kind === "dir" && cell.w >= 140;
-    // Too small for its name, a file shows its icon alone. A folder has no icon, as in the
-    // navigation, where its row leads with its chevron (docs/design-system-icons.md).
-    const iconPx = !showLabel && cell.kind === "file" ? iconOnlyPx(cell) : 0;
-    return { showLabel, stacked, inline, icon: showLabel && icon, iconOnly: iconPx > 0, iconPx };
+    // Too small for its name and icon, a file shows its icon alone, sized to its cell
+    // (iconOnlyPx). A folder has no icon, as in the navigation, where its row leads with
+    // its chevron (docs/design-system-icons.md).
+    const iconOnlyGlyph =
+      !showLabel && icon ? iconOnlyPx({ w: cell.w, h: cell.h }, cell.labelPx) : 0;
+    return {
+      showLabel,
+      stacked,
+      inline,
+      icon: showLabel && icon,
+      iconPx: showLabel && icon ? labelIconPx(cell.labelPx) : iconOnlyGlyph,
+      iconOnly: iconOnlyGlyph > 0,
+    };
   }
 
   /**
-   * A file cell's icon as the navigation draws it, its file type's; a folder has none, as
-   * its row in the navigation has none.
+   * A file cell's icon as the navigation draws it, its file type's, at `glyphPx` when the
+   * map sizes it to its cell, or at the navigation's own size. A folder has none, as its
+   * row in the navigation has none.
    * @param {Record<string, any>} cell
    * @param {string} [extraClass]
+   * @param {number} [glyphPx]
    */
-  function cellIconHtml(cell, extraClass) {
-    const icon = cell.kind === "file" ? mb.fileTypeIcon(cell.name) : { svg: "", className: "" };
+  function cellIconHtml(cell, extraClass, glyphPx) {
+    const icon = cellIcon(cell);
     if (!icon.svg) {
       return "";
     }
     const cls = ["file-identity-icon", extraClass || "", icon.className].filter(Boolean).join(" ");
-    return `<span class="${mb.escapeHtml(cls)}" aria-hidden="true">${icon.svg}</span>`;
+    const size = glyphPx ? ` style="--icon-glyph:${glyphPx}px;--icon-box:${glyphPx}px"` : "";
+    return `<span class="${mb.escapeHtml(cls)}"${size} aria-hidden="true">${icon.svg}</span>`;
   }
 
   /**
    * A labelled cell's text, the markup the DOM cells drew inside themselves.
    * @param {Record<string, any>} cell
    * @param {TreemapState} state
-   * @param {{stacked: boolean, inline: boolean, icon: boolean}} plan
+   * @param {{stacked: boolean, inline: boolean, icon: boolean, iconPx: number}} plan
    */
   function labelInnerHtml(cell, state, plan) {
     const sub = cellValueText(cell, state);
     const visibleName = cell.kind === "dir" ? `${cell.name}/` : cell.name;
-    const fileIconHtml = plan.icon ? cellIconHtml(cell, "tm-cell-file-icon") : "";
+    const fileIconHtml = plan.icon ? cellIconHtml(cell, "tm-cell-file-icon", plan.iconPx) : "";
     return `<span class="tm-cell-title">${fileIconHtml}<span class="tm-cell-label">${mb.escapeHtml(visibleName)}</span>${
       plan.inline ? `<span class="tm-cell-sub tm-cell-sub-inline">${mb.escapeHtml(sub)}</span>` : ""
     }</span>${plan.stacked ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : ""}`;
@@ -807,7 +728,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
       if (element.className !== className) {
         element.className = className;
       }
-      const style = `${boxStyle(cell)}--tm-label-size:${cell.labelPx}px;--tm-value-size:${cell.valuePx}px;`;
+      const style = `${boxStyle(cell)}--tm-label-size:${cell.labelPx}px;--tm-value-size:${cell.valuePx}px;--tm-title-gap:${labelIconGapPx(cell.labelPx)}px;`;
       if (element.getAttribute("style") !== style) {
         element.setAttribute("style", style);
       }
@@ -936,7 +857,131 @@ export function createTreemapMap(mb, palette, viewport, options) {
     ctx.fillStyle = surfaceColor();
     ctx.fillRect(0, 0, paint.width, paint.height);
     paintCells(ctx, paintRects, resolveStyle);
-    paintIcons(ctx);
+  }
+
+  // ---- Icons -----------------------------------------------------------------
+
+  /**
+   * The color an icon of `className` is drawn in, read from a probe styled as the
+   * navigation's icon is, so the canvas follows the stylesheet in either theme.
+   * @param {string} className
+   */
+  function iconColor(className) {
+    const cached = iconColors.get(className);
+    if (cached) {
+      return cached;
+    }
+    const probe = doc.createElement("span");
+    probe.className = ["file-identity-icon", className].filter(Boolean).join(" ");
+    ensureLayers().probes.appendChild(probe);
+    const color = win?.getComputedStyle?.(probe)?.color || "currentColor";
+    probe.remove();
+    iconColors.set(className, color);
+    return color;
+  }
+
+  /**
+   * A cell's icon: a file's is its type's, and a folder or remainder has none.
+   * @param {Record<string, any>} cell
+   * @returns {{svg: string, className: string}}
+   */
+  function cellIcon(cell) {
+    return cell.kind === "file" ? mb.fileTypeIcon(cell.name) : { svg: "", className: "" };
+  }
+
+  /**
+   * The image of an icon at `size` device pixels, made on first use; null where there
+   * are no images (the vm harness) or there is no icon.
+   * @param {{svg: string, className: string}} icon
+   * @param {number} size
+   */
+  function iconSprite(icon, size) {
+    if (!icon.svg || typeof win?.Image !== "function") {
+      return null;
+    }
+    const color = iconColor(icon.className);
+    const key = `${size}\u0000${color}\u0000${icon.svg}`;
+    let sprite = iconSprites.get(key);
+    if (!sprite) {
+      const image = new win.Image();
+      /** @type {{image: HTMLImageElement, bitmap: CanvasImageSource | null}} */
+      const made = { image, bitmap: null };
+      sprite = made;
+      iconSprites.set(key, made);
+      const xmlns = /^<svg\b[^>]*\sxmlns=/.test(icon.svg)
+        ? ""
+        : ' xmlns="http://www.w3.org/2000/svg"';
+      const svg = icon.svg.replace(
+        /^<svg\b/,
+        `<svg${xmlns} width="${size}" height="${size}" style="color:${color}"`,
+      );
+      image.addEventListener("load", () => {
+        const ready = (/** @type {CanvasImageSource} */ bitmap) => {
+          made.bitmap = bitmap;
+          scheduleIconPaint();
+        };
+        if (typeof win.createImageBitmap === "function") {
+          win.createImageBitmap(image).then(ready, () => ready(image));
+        } else {
+          ready(image);
+        }
+      });
+      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    }
+    return sprite;
+  }
+
+  /** Let go of every sprite, closing its bitmap. */
+  function dropIconSprites() {
+    for (const sprite of iconSprites.values()) {
+      const bitmap = /** @type {any} */ (sprite.bitmap);
+      if (bitmap && bitmap !== sprite.image && typeof bitmap.close === "function") {
+        bitmap.close();
+      }
+    }
+    iconSprites.clear();
+  }
+
+  /** Draw the icons again once the images still loading have loaded, a frame at most. */
+  function scheduleIconPaint() {
+    if (iconFrame || disposed) {
+      return;
+    }
+    const run = () => {
+      iconFrame = 0;
+      if (!disposed) {
+        paintIcons();
+      }
+    };
+    iconFrame = win?.requestAnimationFrame ? win.requestAnimationFrame(run) : setTimeout(run, 16);
+  }
+
+  /**
+   * Draw the icons the cells too small for their names show alone on the icons
+   * canvas, each at its place (iconList), dimmed as its cell is.
+   */
+  function paintIcons() {
+    if (!layers) {
+      return;
+    }
+    const canvas = layers.icons;
+    const ctx = sizeCanvas(canvas, laidOutBox);
+    if (!ctx) {
+      return;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < iconRects.length; i += 1) {
+      const rect = iconRects[i];
+      const cell = cells[rect.cell];
+      const bitmap = iconSprite(iconOfRect[i], rect.w)?.bitmap;
+      if (!bitmap) {
+        continue;
+      }
+      ctx.globalAlpha = resolveStyle(cellStyleKey(cell)).alpha;
+      ctx.drawImage(bitmap, rect.x, rect.y, rect.w, rect.h);
+    }
+    ctx.globalAlpha = 1;
   }
 
   // ---- Hover -----------------------------------------------------------------
@@ -973,15 +1018,74 @@ export function createTreemapMap(mb, palette, viewport, options) {
       }
     }
     currentMarkOps = markOps(cells, marked, dpr);
+    // The same marks again, as a repaint or a relayout draws them, are drawn in place.
+    // New marks go on the canvas not shown, which fades in as the shown one fades out;
+    // no marks fade the shown one out where it is, so a pointer that leaves one cell
+    // for the next, a leave and then an enter, fades the old lift out as the new one
+    // fades in.
+    const changed =
+      markedIndexes.length !== shownMarked.length ||
+      markedIndexes.some((index, i) => index !== shownMarked[i]);
+    shownMarked = markedIndexes;
     if (!layers) {
       return;
     }
-    const ctx = sizeCanvas(layers.marks, laidOutBox);
+    const front = layers.marks[shownMarks];
+    if (markedIndexes.length === 0) {
+      if (changed) {
+        front.classList.remove("tm-marks-shown");
+        fadeOut(front);
+      }
+      return;
+    }
+    if (!changed) {
+      drawMarks(front);
+      return;
+    }
+    const back = layers.marks[1 - shownMarks];
+    drawMarks(back);
+    back.classList.add("tm-marks-shown");
+    front.classList.remove("tm-marks-shown");
+    fadeOut(front);
+    shownMarks = 1 - shownMarks;
+  }
+
+  /**
+   * Draw the current mark ops on `canvas`.
+   * @param {HTMLCanvasElement} canvas
+   */
+  function drawMarks(canvas) {
+    if (!layers) {
+      return;
+    }
+    const ctx = sizeCanvas(canvas, laidOutBox);
     if (ctx) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, layers.marks.width, layers.marks.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       applyMarkOps(ctx, layers.paint, currentMarkOps);
     }
+  }
+
+  /**
+   * Clear a marks canvas once it has faded out, so a hidden canvas holds no lift: at
+   * once where it does not fade (reduced motion), or when its fade ends, unless it
+   * was shown again first.
+   * @param {HTMLCanvasElement} canvas
+   */
+  function fadeOut(canvas) {
+    const clear = () => {
+      if (canvas.classList.contains("tm-marks-shown")) {
+        return;
+      }
+      const ctx = typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+    };
+    const seconds = Number.parseFloat(win?.getComputedStyle?.(canvas).transitionDuration ?? "0");
+    if (!(seconds > 0) || typeof canvas.addEventListener !== "function") {
+      clear();
+      return;
+    }
+    canvas.addEventListener("transitionend", clear, { once: true });
   }
   const unsubscribeCellHover = hover ? hover.subscribe(drawCellHover) : () => {};
 
@@ -1184,6 +1288,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
   function repaint() {
     styleCache.clear();
     iconColors.clear();
+    dropIconSprites();
     if (lastRender && !disposed) {
       render(lastRender.node, lastRender.content);
     }
@@ -1265,7 +1370,8 @@ export function createTreemapMap(mb, palette, viewport, options) {
       cells = [];
       paletteKeys = [];
       paintRects = [];
-      iconCells = [];
+      iconRects = [];
+      iconOfRect = [];
       emptyCells = 0;
       actionableIndexes = [];
       remainderNotes = new Map();
@@ -1286,11 +1392,22 @@ export function createTreemapMap(mb, palette, viewport, options) {
     paintRects = listed.rects;
     emptyCells = listed.empty;
     hitGrid = buildHitGrid(cells, box, dpr);
-    iconCells = cells.flatMap((cell, i) => {
-      const plan = labelPlan(cell);
-      return plan.iconOnly ? [{ cell: i, px: plan.iconPx }] : [];
-    });
     paintMap();
+    // Both marks canvases take the map's size with its layout, so the one a hover draws
+    // on first changes no box under it.
+    for (const canvas of ensureLayers().marks) {
+      sizeCanvas(canvas, box);
+    }
+    iconRects = iconList(
+      cells,
+      (i) => {
+        const plan = labelPlan(cells[i]);
+        return plan.iconOnly ? plan.iconPx : 0;
+      },
+      dpr,
+    );
+    iconOfRect = iconRects.map((rect) => cellIcon(cells[rect.cell]));
+    paintIcons();
     reconcileLabels(state);
     // The focus proxy walks every folder and file cell in layout order;
     // remainder cells are named by their folder instead.
@@ -1320,7 +1437,18 @@ export function createTreemapMap(mb, palette, viewport, options) {
       paint: paintRects,
       empty: emptyCells,
       labels: cells.flatMap((cell, i) => (labelPlan(cell).showLabel ? [i] : [])),
-      icons: iconCells,
+      icons: cells.flatMap((cell, i) => {
+        const plan = labelPlan(cell);
+        return plan.iconOnly ? [{ cell: i, px: plan.iconPx }] : [];
+      }),
+      iconRects,
+      // Each drawn icon's glyph size, beside a label or alone (labelIconPx, iconOnlyPx).
+      glyphs: cells.flatMap((cell, i) => {
+        const plan = labelPlan(cell);
+        return plan.icon || plan.iconOnly
+          ? [{ cell: i, px: plan.iconPx, alone: plan.iconOnly }]
+          : [];
+      }),
       focusOrder: actionableIndexes,
       focused: actionableIndexes[focusPos] ?? -1,
       hovered: hoveredIndex,
@@ -1339,12 +1467,16 @@ export function createTreemapMap(mb, palette, viewport, options) {
     if (pointerFrame && win?.cancelAnimationFrame) {
       win.cancelAnimationFrame(pointerFrame);
     }
-    pointerFrame = 0;
-    if (iconFrame && win?.cancelAnimationFrame) {
-      win.cancelAnimationFrame(iconFrame);
+    if (iconFrame) {
+      if (win?.cancelAnimationFrame) {
+        win.cancelAnimationFrame(iconFrame);
+      } else {
+        clearTimeout(iconFrame);
+      }
     }
     iconFrame = 0;
-    iconImages.clear();
+    dropIconSprites();
+    pointerFrame = 0;
     pointer = null;
     releaseCellHover();
     unsubscribeCellHover();
@@ -1359,7 +1491,8 @@ export function createTreemapMap(mb, palette, viewport, options) {
     if (layers) {
       for (const element of [
         layers.paint,
-        layers.marks,
+        ...layers.marks,
+        layers.icons,
         layers.labels,
         layers.focus,
         layers.probes,

@@ -177,7 +177,17 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     assert "z-index: -1;" in sheen_block
     assert "animation: viz-hover-shimmer" in " ".join(sheen_block.split())
     flattened = " ".join(reduced.split())
-    assert ".tm-cell { transition: none; }" in flattened
+    assert ".tm-cell, .tm-marks { transition: none; }" in flattened
+    # The lift fades in and out on the design system's hover timing, as a bar's does: the
+    # marks canvases cross-fade by opacity, and only the shown one is opaque.
+    marks_start = moving.index(".tm-marks {")
+    marks_block = " ".join(moving[marks_start : moving.index("}", marks_start)].split())
+    assert "opacity: 0;" in marks_block
+    assert (
+        "transition: opacity var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);"
+        in marks_block
+    )
+    assert ".tm-marks.tm-marks-shown { opacity: 1; }" in " ".join(moving.split())
     assert '.tm-cell[data-hovered="self"]::after { content: none; }' in flattened
     assert "filter" not in flattened, "reduced motion keeps the lift"
 

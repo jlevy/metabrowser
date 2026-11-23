@@ -25,10 +25,14 @@ The arrow keys move the one focus proxy along the folder and file cells in layou
 Enter opens the cell it is on, and Backspace, with no enclosing folder for the compact
 map, is not taken. A change of measure or of Show ignored lays the map out again, and a
 layout under a still pointer points at the cell now under it.
-A file’s name always follows its icon; a file with no room for both shows its icon
-alone, painted on the canvas as large as fits down to a smallest size, and the smallest
-files show neither. A refresh that fails keeps the map; a first rollup that fails shows
-that the map is unavailable and recovers on Retry.
+A file’s name always follows its icon, and a file with no room for both shows its icon
+alone. The icon is sized to the cell: beside a name it shrinks with the name, alone it
+shrinks with the cell, and the smallest files show neither.
+A cell’s hover is drawn on one of two marks canvases while the other fades out; a
+folder’s copies its fill and clears its interior, so its header and frame lift and the
+edges between its files do not.
+A refresh that fails keeps the map; a first rollup that fails shows that the map is
+unavailable and recovers on Retry.
 The box is left out when the breakdown failed, the index stopped at its cap before
 finishing the folder, or the folder holds no files in the population shown.
 Disposal with the pointer on a cell releases every listener, the watch, the observer,
@@ -76,6 +80,8 @@ $ node tests/dom/treemap-compact-session.js
       "layers": [
         "canvas.tm-paint",
         "canvas.tm-marks",
+        "canvas.tm-marks",
+        "canvas.tm-icons",
         "div.tm-labels",
         "div.tm-focus",
         "div.tm-probes"
@@ -144,6 +150,12 @@ $ node tests/dom/treemap-compact-session.js
         "marked": [
           "src/lib/app.py"
         ],
+        "marks": {
+          "shown": 0,
+          "ops": [
+            "copy src/lib/app.py"
+          ]
+        },
         "cursor": "pointer"
       }
     },
@@ -157,6 +169,32 @@ $ node tests/dom/treemap-compact-session.js
         "marked": [
           "src/README.md"
         ],
+        "marks": {
+          "shown": 1,
+          "ops": [
+            "copy src/README.md"
+          ]
+        },
+        "cursor": "pointer"
+      }
+    },
+    {
+      "step": "the pointer on the lib folder's header",
+      "pointer": {
+        "on": "src/lib",
+        "anchor": "tm-cell tm-hover-anchor tm-dir",
+        "shimmers": false,
+        "tooltip": "src/lib / 3 files · 11000 B / modified then",
+        "marked": [
+          "src/lib"
+        ],
+        "marks": {
+          "shown": 0,
+          "ops": [
+            "copy src/lib",
+            "clear src/lib"
+          ]
+        },
         "cursor": "pointer"
       }
     },
@@ -165,6 +203,10 @@ $ node tests/dom/treemap-compact-session.js
       "pointer": {
         "on": null,
         "anchor": null,
+        "marks": {
+          "shown": null,
+          "ops": []
+        },
         "cursor": ""
       }
     },
@@ -257,6 +299,12 @@ $ node tests/dom/treemap-compact-session.js
         "marked": [
           "src/cache.md"
         ],
+        "marks": {
+          "shown": 1,
+          "ops": [
+            "copy src/cache.md"
+          ]
+        },
         "cursor": "pointer"
       },
       "pointerAfter": {
@@ -267,6 +315,12 @@ $ node tests/dom/treemap-compact-session.js
         "marked": [
           "src/docs/guide.md"
         ],
+        "marks": {
+          "shown": 0,
+          "ops": [
+            "copy src/docs/guide.md"
+          ]
+        },
         "cursor": "pointer"
       },
       "hidden": false,
@@ -438,7 +492,7 @@ $ node tests/dom/treemap-compact-session.js
       "labelled": []
     },
     {
-      "step": "files too small for their names show their icons, and the smallest neither",
+      "step": "icons shrink with their cells: beside a name, alone, and the smallest neither",
       "cells": [
         "dir src 600x218",
         "file src/main.py 397x196",
@@ -461,14 +515,21 @@ $ node tests/dom/treemap-compact-session.js
         "src/part2.md",
         "src/part3.md"
       ],
+      "labelIcons": [
+        "src/main.py 12px",
+        "src/part0.md 10px",
+        "src/part1.md 9px",
+        "src/part2.md 9px",
+        "src/part3.md 8px"
+      ],
       "iconsOnly": [
-        "src/part4.md 16px",
-        "src/part5.md 16px",
-        "src/part6.md 9px",
-        "src/part7.md 8px"
+        "src/part4.md 8px",
+        "src/part5.md 8px",
+        "src/part6.md 8px",
+        "src/part7.md 7px",
+        "src/part8.md 5px"
       ],
       "bare": [
-        "src/part8.md",
         "src/part9.md"
       ]
     },

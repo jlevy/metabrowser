@@ -141,7 +141,10 @@ const READ = `(async () => {
   // column, where one is drawn.
   const pixels = (canvas) => canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
   const paint = pixels(viewport.querySelector(".tm-paint"));
-  const lifted = pixels(viewport.querySelector(".tm-marks"));
+  // The marks canvas shown, or, with none shown, what shows: nothing lifted. The two
+  // canvases cross-fade (styles.css, .tm-marks), and one not shown is fading out.
+  const shownMarks = viewport.querySelector(".tm-marks.tm-marks-shown");
+  const lifted = shownMarks ? pixels(shownMarks) : new ImageData(paint.width, paint.height);
   const at = (image, x, y) => [...image.data.slice((y * image.width + x) * 4, (y * image.width + x) * 4 + 4)];
   const ownPixel = (rect) => {
     const cell = map.cells[rect.cell];
@@ -218,7 +221,7 @@ const READ = `(async () => {
       : [],
     canvas: canvasReading,
     // The marks canvas lifts, and does not grow.
-    lift: style(viewport.querySelector(".tm-marks")),
+    lift: style(shownMarks ?? viewport.querySelector(".tm-marks")),
     anchor: anchor
       ? {
           name: nameOf(anchor),

@@ -195,7 +195,11 @@ const READ = `(async () => {
       return c.getContext("2d").getImageData(0, 0, c.width, c.height);
     };
     const paint = pixels(".tm-paint");
-    const marks = pixels(".tm-marks");
+    // The marks canvas shown, or, with none shown, what shows: nothing lifted. The two
+    // canvases cross-fade (styles.css, .tm-marks), and one not shown is fading out.
+    const marks = mapViewport.querySelector(".tm-marks.tm-marks-shown")
+      ? pixels(".tm-marks.tm-marks-shown")
+      : new ImageData(paint.width, paint.height);
     const at = (image, x, y) => [...image.data.slice((y * image.width + x) * 4, (y * image.width + x) * 4 + 4)];
     const markedSet = new Set(mapMarked);
     const out = { lifted: true, clear: true, sampled: 0 };
@@ -305,7 +309,8 @@ const READ = `(async () => {
   const hoveredEntry = document.querySelector(".file-type-summary-legend-item:hover");
   const pointedSegment = bars.find((bar) => bar.matches(":hover"));
   const handle = hoveredEntry ?? pointedSegment;
-  const marksLayer = mapViewport?.querySelector(".tm-marks");
+  const marksLayer =
+    mapViewport?.querySelector(".tm-marks.tm-marks-shown") ?? mapViewport?.querySelector(".tm-marks");
   return {
     marked: marked.map(nameOf),
     map: {

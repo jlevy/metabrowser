@@ -178,12 +178,12 @@ export function paintCells(ctx, rects, resolve) {
 
 /**
  * The ops that put the marked cells on the hover canvas: walking the cells
- * parent first, copy a marked cell's fill whose parent is not marked, and clear
- * an unmarked cell's fill whose parent is. A copy brings the cell's descendants
- * with it, so the clears take back those that are not marked, and a marked
- * folder lifts without its unmarked children but with the edges between them,
- * which are its own pixels. A family that marks every cell is one copy per
- * top-level cell.
+ * parent first, copy every marked cell's fill, and after a marked nesting
+ * folder's copy clear its interior (the rectangle paintList fills in its edge
+ * tone), so the folder lifts its header and frame and never the edges between
+ * its children, which keep their tone under any hover. A marked child's copy
+ * comes after its folder's clear, so it lifts on its own; an unmarked one is
+ * never copied. A family that marks every leaf is one copy per leaf.
  * @param {ReadonlyArray<Record<string, any>>} cells
  * @param {(index: number) => boolean} marked
  * @param {number} dpr
@@ -192,17 +192,20 @@ export function paintCells(ctx, rects, resolve) {
 export function markOps(cells, marked, dpr) {
   /** @type {MarkOp[]} */
   const ops = [];
-  /** @type {boolean[]} */
-  const state = new Array(cells.length);
   for (let i = 0; i < cells.length; i += 1) {
-    const parent = cells[i].parent;
-    const parentMarked = parent >= 0 ? state[parent] : false;
-    const own = marked(i);
-    state[i] = own;
-    if (own !== parentMarked) {
-      const rect = fillRect(cells[i], dpr);
-      if (rect) {
-        ops.push({ op: own ? "copy" : "clear", cell: i, ...rect });
+    if (!marked(i)) {
+      continue;
+    }
+    const cell = cells[i];
+    const fill = fillRect(cell, dpr);
+    if (!fill) {
+      continue;
+    }
+    ops.push({ op: "copy", cell: i, ...fill });
+    if (cell.nested && cell.inner) {
+      const inner = intersect(interiorRect(snapRect(cell.inner, dpr), fill), fill);
+      if (inner) {
+        ops.push({ op: "clear", cell: i, ...inner });
       }
     }
   }
@@ -224,4 +227,42 @@ export function applyMarkOps(ctx, source, ops) {
       ctx.clearRect(op.x, op.y, op.w, op.h);
     }
   }
+}
+
+/**
+ * @typedef {DeviceRect & {cell: number}} IconRect
+ */
+
+/**
+ * Where the icons drawn alone go, in device pixels: each a square of its glyph's
+ * size, centered on its cell and kept inside the cell's fill, so a glyph never
+ * covers a separator. `glyphOf` gives a cell's glyph size in CSS pixels, or 0 for
+ * a cell that shows no icon alone (iconOnlyPx, treemap-layout.js).
+ * @param {ReadonlyArray<Record<string, any>>} cells
+ * @param {(index: number) => number} glyphOf
+ * @param {number} dpr
+ * @returns {IconRect[]}
+ */
+export function iconList(cells, glyphOf, dpr) {
+  /** @type {IconRect[]} */
+  const rects = [];
+  for (let i = 0; i < cells.length; i += 1) {
+    const glyph = glyphOf(i);
+    const fill = glyph > 0 ? fillRect(cells[i], dpr) : null;
+    if (!fill) {
+      continue;
+    }
+    const size = Math.min(Math.round(glyph * dpr), fill.w, fill.h);
+    if (size <= 0) {
+      continue;
+    }
+    rects.push({
+      cell: i,
+      x: fill.x + Math.floor((fill.w - size) / 2),
+      y: fill.y + Math.floor((fill.h - size) / 2),
+      w: size,
+      h: size,
+    });
+  }
+  return rects;
 }

@@ -200,6 +200,8 @@ async function main() {
     const W = Math.round(box.w * dpr);
     const H = Math.round(box.h * dpr);
     const owner = new Int32Array(W * H).fill(-1);
+    // Whether each pixel shows its owner's edge tone: the separators between cells.
+    const edgeTone = new Uint8Array(W * H);
     let painted = 0;
     const ctx = {
       globalAlpha: 1,
@@ -207,8 +209,10 @@ async function main() {
       fillRect(x, y, w, h) {
         painted += 1;
         const index = Number(this.fillStyle.slice(1));
+        const edge = this.fillStyle[0] === "e" ? 1 : 0;
         for (let row = y; row < y + h; row += 1) {
           owner.fill(index, row * W + x, row * W + x + w);
+          edgeTone.fill(edge, row * W + x, row * W + x + w);
         }
       },
     };
@@ -264,7 +268,8 @@ async function main() {
     const unreachable = rects.filter((r) => r.tone === "fill" && !shown.has(r.cell)).length;
     check(`every painted cell can be pointed at ${at}`, unreachable === 0, `${unreachable}`);
 
-    // ── Mark ops: the lifted pixels are exactly the marked cells' own pixels ──────
+    // ── Mark ops: the lifted pixels are exactly the marked cells' own fill pixels,
+    // never a separator, which keeps its tone under any hover ─────────────────────
     for (const family of ["js", "py", "md"]) {
       const marked = (i) => cells[i].ext === family || cells[i].dominant_ext === family;
       const ops = paint.markOps(cells, marked, dpr);
@@ -276,26 +281,85 @@ async function main() {
       }
       let wrong = 0;
       for (let p = 0; p < W * H; p += 1) {
-        const expected = owner[p] >= 0 && marked(owner[p]) ? 1 : 0;
+        const expected = owner[p] >= 0 && marked(owner[p]) && !edgeTone[p] ? 1 : 0;
         if (lifted[p] !== expected) {
           wrong += 1;
         }
       }
       check(
-        `a ${family} family's ops lift exactly its cells' own pixels ${at}`,
+        `a ${family} family's ops lift exactly its cells' own fill pixels ${at}`,
         wrong === 0,
         `${wrong} pixels`,
       );
     }
+    // Every cell marked, as a pointer on each in turn would: each lifts its fill and
+    // header and frame, and no separator anywhere lifts.
     const everything = paint.markOps(cells, () => true, dpr);
+    const all = new Uint8Array(W * H);
+    for (const op of everything) {
+      for (let row = op.y; row < op.y + op.h; row += 1) {
+        all.fill(op.op === "copy" ? 1 : 0, row * W + op.x, row * W + op.x + op.w);
+      }
+    }
+    let liftedSeparators = 0;
+    let unliftedFills = 0;
+    for (let p = 0; p < W * H; p += 1) {
+      if (owner[p] < 0) {
+        continue;
+      }
+      if (edgeTone[p] && all[p]) {
+        liftedSeparators += 1;
+      } else if (!edgeTone[p] && !all[p]) {
+        unliftedFills += 1;
+      }
+    }
     check(
-      `a hover that marks every cell is one copy per top-level cell ${at}`,
-      everything.every((op) => op.op === "copy" && cells[op.cell].parent === -1),
-      `${everything.length} ops`,
+      `a hover that marks every cell lifts every fill and no separator ${at}`,
+      liftedSeparators === 0 && unliftedFills === 0,
+      `${liftedSeparators} separators lifted, ${unliftedFills} fills not`,
     );
+    // A nesting folder's own hover: its header and frame lift, and nothing inside it.
+    const folder = cells.findIndex((c) => c.nested && c.parent >= 0);
+    if (folder >= 0) {
+      const own = paint.markOps(cells, (i) => i === folder, dpr);
+      check(
+        `a folder's hover copies its fill and clears its interior ${at}`,
+        own.length === 2 &&
+          own[0].op === "copy" &&
+          own[1].op === "clear" &&
+          own.every((op) => op.cell === folder),
+        JSON.stringify(own),
+      );
+    }
     check(
       `a hover that marks nothing has no ops ${at}`,
       paint.markOps(cells, () => false, dpr).length === 0,
+    );
+    // ── Icons alone: a square of the glyph's device size, inside its cell's fill ───
+    const glyphOf = (i) => (cells[i].kind === "file" ? 2 + (i % 7) : 0);
+    const icons = paint.iconList(cells, glyphOf, dpr);
+    let iconsOutside = 0;
+    let missized = 0;
+    for (const icon of icons) {
+      const fill = paint.fillRect(cells[icon.cell], dpr);
+      if (
+        icon.x < fill.x ||
+        icon.y < fill.y ||
+        icon.x + icon.w > fill.x + fill.w ||
+        icon.y + icon.h > fill.y + fill.h
+      ) {
+        iconsOutside += 1;
+      }
+      const want = Math.min(Math.round(glyphOf(icon.cell) * dpr), fill.w, fill.h);
+      if (icon.w !== icon.h || icon.w !== want) {
+        missized += 1;
+      }
+    }
+    check(`every icon lies inside its cell's fill ${at}`, iconsOutside === 0, `${iconsOutside}`);
+    check(`every icon is a square of its glyph's size ${at}`, missized === 0, `${missized}`);
+    check(
+      `a cell with no glyph draws no icon ${at}`,
+      icons.every((icon) => glyphOf(icon.cell) > 0) && icons.length > 0,
     );
     summary += ` ${at}: ${cells.length} cells, ${rects.length} rectangles;`;
   }

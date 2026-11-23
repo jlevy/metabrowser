@@ -24,7 +24,7 @@ const source = fs
   )
   .replace(/^export\s*\{[^}]*\};$/gm, "")
   .concat(
-    "\nglobalThis.MetabrowserTreemapLayout = { LAYOUT_DEFAULTS, cellTypography, squarify, packLevel, layoutTree, worstAspect };",
+    "\nglobalThis.MetabrowserTreemapLayout = { LAYOUT_DEFAULTS, ICON_DEFAULTS, TYPOGRAPHY_DEFAULTS, cellTypography, iconOnlyPx, labelIconGapPx, labelIconPx, labelIconRoomPx, squarify, packLevel, layoutTree, worstAspect };",
   );
 vm.runInContext(source, sandbox, { filename: "treemap-layout.js" });
 
@@ -198,6 +198,65 @@ function fileNode(name, pathStr, size, extras) {
   check(
     "a narrow sliver cannot claim large type from area alone",
     layout.cellTypography({ w: 1000, h: 18 }).labelPx === tiny.labelPx,
+  );
+}
+
+// ── Icons: sized to their cell, smaller with it, within the glyph bounds ───
+{
+  const { glyphMinPx, glyphMaxPx } = layout.ICON_DEFAULTS;
+  check(
+    "the glyph bounds stay under the navigation's 14 px glyph",
+    glyphMinPx === 4 && glyphMaxPx === 12,
+    JSON.stringify(layout.ICON_DEFAULTS),
+  );
+  // Beside a label, the glyph follows the label's size, never past the bounds.
+  const besideLabel = [9, 12, 13, 14, 18, 24].map((px) => layout.labelIconPx(px));
+  check(
+    "a label's glyph grows with the label and stops at the cap",
+    JSON.stringify(besideLabel) === JSON.stringify([8, 10, 11, 12, 12, 12]),
+    JSON.stringify(besideLabel),
+  );
+  check(
+    "a label's glyph is no taller than the smallest label",
+    layout.labelIconPx(layout.TYPOGRAPHY_DEFAULTS.labelMinPx) <=
+      layout.TYPOGRAPHY_DEFAULTS.labelMinPx,
+  );
+  check(
+    "the gap and the room a glyph takes scale with the label",
+    layout.labelIconGapPx(10) === 4 &&
+      layout.labelIconRoomPx(10) === layout.labelIconPx(10) + 4 &&
+      layout.labelIconRoomPx(9) < layout.labelIconRoomPx(20),
+    `${layout.labelIconRoomPx(9)}/${layout.labelIconRoomPx(20)}`,
+  );
+  // Alone, the glyph is a share of the cell's short side: smaller cells, smaller glyphs,
+  // down to the smallest; below it, none.
+  const alone = [5, 6, 8, 9, 11, 12, 15, 30].map((side) => layout.iconOnlyPx({ w: side, h: side }));
+  check(
+    "an icon alone shrinks with its cell to the smallest glyph, then is not drawn",
+    JSON.stringify(alone) === JSON.stringify([0, 4, 5, 6, 7, 8, 8, 8]),
+    JSON.stringify(alone),
+  );
+  check(
+    "an icon alone is never larger than the glyph beside its label",
+    layout.iconOnlyPx({ w: 30, h: 30 }, 9) === layout.labelIconPx(9) &&
+      layout.iconOnlyPx({ w: 30, h: 30 }, 14) === layout.labelIconPx(14),
+  );
+  let monotone = true;
+  let fits = true;
+  for (let side = 1; side <= 60; side += 0.5) {
+    const glyph = layout.iconOnlyPx({ w: side, h: 400 }, 24);
+    if (glyph > layout.iconOnlyPx({ w: side + 0.5, h: 400 }, 24)) {
+      monotone = false;
+    }
+    if (glyph > 0 && (glyph < glyphMinPx || glyph > glyphMaxPx || glyph > side - 2)) {
+      fits = false;
+    }
+  }
+  check("an icon alone never shrinks as its cell grows", monotone);
+  check("an icon alone stays within the bounds and inside its cell's edge", fits);
+  check(
+    "a sliver's icon is sized by its short side",
+    layout.iconOnlyPx({ w: 300, h: 9 }) === 6 && layout.iconOnlyPx({ w: 6, h: 300 }) === 4,
   );
 
   const nestedRoot = dirNode("root", "", {
