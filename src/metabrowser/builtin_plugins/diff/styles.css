@@ -661,13 +661,15 @@
   justify-content: flex-end;
 }
 
-.metabrowser-diff-host .diff-markdown-control {
+/* The diff's Diff | Current chooser (`addShowControl` in diff-view.js) and a file's
+   Rendered | Source chooser, which ends the bar. */
+.metabrowser-diff-host :is(.diff-show-control, .diff-markdown-control) {
   display: flex;
   flex: none;
   margin-block: 2px;
 }
 
-/* Leads the chooser, toward the bar's free space. Keeps its place in the bar, so it
+/* Leads the end group, toward the bar's free space. Keeps its place in the bar, so it
    never moves the controls, and appears only after the loading-state delay
    (.mb-delayed-loading). */
 .metabrowser-diff-host .diff-markdown-progress {
@@ -678,6 +680,13 @@
 }
 
 .metabrowser-diff-host :is(.diff-markdown, .diff-structured, .diff-file-body)[hidden] {
+  display: none;
+}
+
+/* What Current leaves out of rendered Markdown, its removed blocks and front matter keys,
+   which the format controller hides by the attribute (`removedParts` in diff-markdown.js):
+   hidden whatever display a block's own styles give it. */
+.metabrowser-diff-host :is(.diff-markdown-block, .diff-markdown-frontmatter :is(dt, dd))[hidden] {
   display: none;
 }
 

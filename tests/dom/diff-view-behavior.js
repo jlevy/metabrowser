@@ -989,9 +989,10 @@ async function headLinkChecks(mountDiffView, byName) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
     // The bar the production view builds for a rendered file: the name's group, the
-    // disclosure, its copy control, and its stats, then the group at the bar's end, the chooser
-    // behind its progress mark. This document offers no View file control, which would
-    // end the name's group (tests/dom/diff-view-file-session.js).
+    // disclosure, its copy control, and its stats, then the group at the bar's end: its
+    // progress mark, the diff's Diff | Current, and the file's Rendered | Source, which ends
+    // the bar. This document offers no View file control, which would end the name's group
+    // (tests/dom/diff-view-file-session.js).
     const [fileBar] = container.find("diff-file-bar");
     const groups = fileBar.children.map((group) =>
       group.children.map((child) => String(child.className).split(" ").at(-1)),
@@ -1003,7 +1004,7 @@ async function headLinkChecks(mountDiffView, byName) {
         JSON.stringify(groups) ===
           JSON.stringify([
             ["expanded", "diff-file-copy", "diff-file-facts"],
-            ["diff-markdown-progress", "diff-markdown-control"],
+            ["diff-markdown-progress", "diff-show-control", "diff-markdown-control"],
           ]),
       JSON.stringify(groups),
     );

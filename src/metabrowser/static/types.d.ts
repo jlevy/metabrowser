@@ -1182,6 +1182,8 @@ type MetabrowserFilterOption = {
   /** In a dropdown, the letter that chooses this row while the menu is open and has focus. */
   key?: string;
   label: string;
+  /** The chip's tooltip, its `data-tip-text` (`ChipOption` in filter-controls.js). */
+  tip?: string;
   title?: string;
   value: string;
 };

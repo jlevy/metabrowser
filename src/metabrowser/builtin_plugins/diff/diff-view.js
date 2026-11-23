@@ -8,8 +8,9 @@
 // heading); right after the name a copy-path control riding the shared
 // [data-mb-copy] delegation; the inline +N −N stat pair and change
 // notes; then the View file controls of diff-view-file.js when the page
-// can open a file at a commit; and, at the bar's end, a file's
-// Rendered | Source chooser (diff-markdown.js). Sections start
+// can open a file at a commit; and, at the bar's end, the diff's
+// Diff | Current chooser and a file's Rendered | Source chooser
+// (diff-markdown.js), which ends the bar. Sections start
 // expanded; the bar collapses the body without disposing it.
 // Every availability state has exactly one rendering path — an absent
 // patch is a labeled state, never an empty box. Rendering is
@@ -106,6 +107,23 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {((path: string) => void) | null} openFile How the host opens one changed file
  *   at its own address, or null where a file has none in this diff.
  * @property {boolean} unfold Whether folds open as they are drawn (*unfold*).
+ * @property {Shown} show What the diff shows, one choice for every file (`setShow`).
+ * @property {Map<string, ShowControl>} showControls Each bar's Diff | Current chooser, by
+ *   the key its chips carry.
+ * @property {(() => void) | null} unbindShow
+ */
+
+/**
+ * What a diff shows: its changes, or the new version alone with its changes marked.
+ *
+ * @typedef {"diff" | "current"} Shown
+ */
+
+/**
+ * One bar's Diff | Current chooser: the element its chips are drawn in, the key they carry,
+ * and the file's section, whose place a choice there keeps.
+ *
+ * @typedef {{control: HTMLElement, key: string, section: HTMLElement}} ShowControl
  */
 
 /**
@@ -1080,7 +1098,8 @@ function repaintViewFileControls(view) {
  * in the design system. It leads with what names the file and where it opens: one
  * disclosure trigger (kind, path), the copy control right after the name, the change's
  * stats and notes, which describe the trigger, and the View file controls. Its end group
- * holds a file's Rendered | Source chooser alone (diff-markdown.js), at the bar's far end.
+ * holds the diff's Diff | Current chooser (`addShowControl`) and then a file's Rendered |
+ * Source chooser (diff-markdown.js), at the bar's far end.
  *
  * @param {Record<string, unknown>} change
  * @param {string} toggleId
@@ -1350,6 +1369,150 @@ export function setLayout(view, value, persist = true) {
     view.api?.prefs?.set("diff.layout", layout);
   }
   drawLayout(view, layout);
+}
+
+// ── Diff | Current ──────────────────────────────────────────────
+//
+// One choice for the whole diff, as the layout is: every bar that has the chooser shows it,
+// and choosing in any bar draws every file again. docs/project/specs/active/
+// plan-2026-11-23-diff-current-chooser.md has the reasons.
+
+/**
+ * Whether a file has a text diff to show either way, and so a Diff | Current chooser: a
+ * ready file with hunks, or a deferred one the view will ask for. A file whose body is a
+ * sentence (binary, too large, failed, no content changes) shows it either way. Pure.
+ *
+ * @param {Record<string, unknown>} change
+ * @param {Record<string, unknown> | undefined} patch
+ * @param {{revision?: string}} context
+ */
+export function hasTextDiff(change, patch, context) {
+  const availability = String(change.availability);
+  if (availability === "deferred") {
+    return Boolean(context.revision);
+  }
+  return (
+    availability === "ready" &&
+    patch !== undefined &&
+    Array.isArray(patch.hunks) &&
+    patch.hunks.length > 0
+  );
+}
+
+/**
+ * Put a file's Diff | Current chooser in its bar's end group, before anything the
+ * Rendered layer adds there, so Rendered | Source keeps the bar's far end.
+ *
+ * @param {MountedDiffState} view
+ * @param {HTMLElement} section
+ * @param {HTMLElement} end
+ * @param {string} id Unique to the bar, for the key its chips carry.
+ */
+function addShowControl(view, section, end, id) {
+  if (!view.api?.filterControls) {
+    return;
+  }
+  const entry = { control: el("div", "diff-show-control"), key: `diff-show:${id}`, section };
+  view.showControls.set(entry.key, entry);
+  end.append(entry.control);
+  paintShowControl(view, entry);
+}
+
+/**
+ * Draw one bar's chooser from the diff's choice. Focus in it stays on the chosen chip, in
+ * this bar: the markup is new.
+ *
+ * @param {MountedDiffState} view
+ * @param {ShowControl} entry
+ */
+function paintShowControl(view, entry) {
+  const filterControls = view.api?.filterControls;
+  if (!filterControls) {
+    return;
+  }
+  const active = /** @type {Element | null | undefined} */ (globalThis.document?.activeElement);
+  const restore = active != null && entry.control.contains?.(active) === true;
+  entry.control.innerHTML = filterControls.groupHtml({
+    key: entry.key,
+    label: "Diff or current version",
+    layout: "joined",
+    options: [
+      { label: "Diff", value: "diff", tip: "Show what changed, removals included" },
+      { label: "Current", value: "current", tip: "Show the new version alone, its changes marked" },
+    ],
+    select: "one",
+    value: view.show,
+  });
+  if (restore) {
+    /** @type {HTMLElement | null} */ (
+      entry.control.querySelector(`[data-chip-value="${view.show}"]`)
+    )?.focus();
+  }
+}
+
+/**
+ * Listen to every bar's chooser at once, on the diff's root: one listener for a diff of any
+ * size.
+ *
+ * @param {MountedDiffState} view
+ */
+function bindShowControls(view) {
+  const filterControls = view.api?.filterControls;
+  if (!filterControls || view.showControls.size === 0) {
+    return;
+  }
+  view.unbindShow = filterControls.bind(view.root, {
+    onChange(key, value, select) {
+      const entry = view.showControls.get(key);
+      if (entry === undefined || select !== "one") {
+        return;
+      }
+      // The shared handler moves focus first. Draw once it returns, so its focus recovery
+      // cannot find another bar's chip.
+      queueMicrotask(() => {
+        const top = entry.section.getBoundingClientRect?.().top;
+        setShow(view, value, typeof top === "number" ? { section: entry.section, top } : null);
+      });
+    },
+  });
+}
+
+/**
+ * The reader's choice of what the diff shows: draw it. The file whose chooser was used keeps
+ * its place on the screen (*anchor*); with none given, the file at the pane's top does.
+ * Choosing what is shown changes nothing.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} value
+ * @param {{section: HTMLElement, top: number} | null} [anchor]
+ */
+export function setShow(view, value, anchor) {
+  if (view.disposed) {
+    return;
+  }
+  const show = value === "current" ? "current" : "diff";
+  if (show === view.show) {
+    return;
+  }
+  const place = anchor !== undefined ? anchor : view.pinned === null ? placeOfTopFile(view) : null;
+  view.show = show;
+  drawShow(view, place);
+}
+
+/**
+ * Draw what the diff shows now: each bar's chooser, and the Rendered layer's files.
+ *
+ * @param {MountedDiffState} view
+ * @param {{section: HTMLElement, top: number} | null} anchor
+ */
+function drawShow(view, anchor) {
+  view.root.dataset.show = view.show;
+  for (const entry of view.showControls.values()) {
+    paintShowControl(view, entry);
+  }
+  view.markdown?.controller.show(view.show === "current");
+  holdPlace(view, anchor);
+  view.notifyCurrentFile();
 }
 
 /**
@@ -2990,10 +3153,13 @@ function renderFileSection(change, patch, context, view, draw) {
 
   // The whole bar is one activation surface, like a tree row; the
   // button stays the semantic trigger for focus and keyboard, whose
-  // synthesized click bubbles here. Only the copy control, a file's
-  // Rendered | Source chooser, and the View file controls opt out.
+  // synthesized click bubbles here. Only the copy control, the Diff | Current and
+  // Rendered | Source choosers, and the View file controls opt out.
   const format = view.markdown?.format(change) ?? null;
   const availability = String(change.availability);
+  if (format !== null && hasTextDiff(change, patch, context)) {
+    addShowControl(view, section, end, toggleId);
+  }
   const markdown =
     format === null
       ? null
@@ -3004,6 +3170,7 @@ function renderFileSection(change, patch, context, view, draw) {
           source: body,
           id: String(change.id),
           format,
+          gone: String(change.kind) === "deleted",
           // A file whose changes did not load has no Rendered either, for the reason its
           // body gives below.
           ...(availability === "ready" || availability === "deferred"
@@ -3028,6 +3195,7 @@ function renderFileSection(change, patch, context, view, draw) {
       typeof origin?.closest === "function" &&
       (origin.closest("[data-mb-copy]") ||
         origin.closest(".diff-file-view") ||
+        origin.closest(".diff-show-control") ||
         origin.closest(".diff-markdown-control"))
     ) {
       return;
@@ -3294,6 +3462,9 @@ export function mountDiffView(container, document_, api, options = {}) {
     changedFiles: options.changedFiles ?? null,
     openFile: options.openFile ?? null,
     unfold: options.unfold === true,
+    show: "diff",
+    showControls: new Map(),
+    unbindShow: null,
   };
   view.hydration = createHydrationScheduler(hydrationHost(view));
   if (
@@ -3310,6 +3481,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         ...(options.markdownTargets === undefined ? {} : { isTarget: options.markdownTargets }),
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
         unfold: options.unfold === true,
+        current: view.show === "current",
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;
@@ -3344,6 +3516,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     });
   }
   const removeSelectionGate = installSplitSelectionGate(root);
+  root.dataset.show = view.show;
   if (!view.awaitingWidth) {
     root.dataset.layout = view.layout;
   }
@@ -3410,6 +3583,7 @@ export function mountDiffView(container, document_, api, options = {}) {
       }
       view.spacer = el("div", "diff-end-spacer");
       root.append(view.spacer);
+      bindShowControls(view);
     },
     { file_count: manifest.files.length },
   );
@@ -3646,6 +3820,8 @@ export function mountDiffView(container, document_, api, options = {}) {
       view.viewFile?.dispose();
       view.layoutKey?.detach();
       view.layoutKey = null;
+      view.unbindShow?.();
+      view.unbindShow = null;
       unbind();
       removeSelectionGate();
       root.remove();

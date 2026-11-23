@@ -76,9 +76,13 @@ const UNREADABLE = {
  *   holding: boolean, tree: {dispose: () => void} | null,
  *   retryAt: number, retries: number,
  *   folds: Map<string, () => void>,
+ *   removed: HTMLElement[], gone: boolean,
  *   state: "idle" | "ready" | "unavailable", reason: string
  * }} FileView
- *   *reason* is why Rendered is unavailable, a sentence, while *state* says it is. */
+ *   *reason* is why Rendered is unavailable, a sentence, while *state* says it is.
+ *   *removed* is what a Markdown file's Rendered draws that Current leaves out: its removed
+ *   blocks and front matter keys (`removedParts`). *gone* is a deleted file, which has no
+ *   current version: in Current it shows its Source body, which says so. */
 
 /**
  * The format a changed file renders as, when both its sides are files of one rendered
@@ -461,6 +465,37 @@ export function appendBlocks(fragment, blocks, build, unfold = false) {
 }
 
 /**
+ * What Current leaves out of a Markdown file's rendered rows, before they are placed: each
+ * removed block, a wholly removed front matter among them, and each removed key of a front
+ * matter that changed. Every deleted word is in a removed block (`<del>` marks only those),
+ * so what is left is the new version, its added blocks still marked. A fold holds only
+ * unchanged blocks, so the rows are the fragment's own and the front matter's terms.
+ * @param {DocumentFragment} content The rows `frontmatterRow` and `appendBlocks` built.
+ * @returns {HTMLElement[]}
+ */
+export function removedParts(content) {
+  /** @type {HTMLElement[]} */
+  const parts = [];
+  /** @param {Element} node */
+  const keys = (node) => {
+    for (const child of node.children) {
+      if (child.classList.contains("diff-frontmatter-removed")) {
+        parts.push(/** @type {HTMLElement} */ (child));
+      }
+      keys(child);
+    }
+  };
+  for (const row of content.children) {
+    if (row.classList.contains("diff-markdown-removed")) {
+      parts.push(/** @type {HTMLElement} */ (row));
+    } else if (row.classList.contains("diff-markdown-frontmatter")) {
+      keys(row);
+    }
+  }
+  return parts;
+}
+
+/**
  * @param {KpressAssetManifest} assets
  * @returns {KpressAssetManifest}
  */
@@ -499,12 +534,16 @@ function stylesOnly(assets) {
  *   later?: (callback: () => void, ms: number) => unknown,
  *   cancel?: (handle: unknown) => void,
  *   unfold?: boolean,
- *   holdMs?: number
+ *   holdMs?: number,
+ *   current?: boolean
  * }} deps
+ *   *current* is whether the diff starts in Current (`show`).
  */
 export function createMarkdownViews(deps) {
   const now = deps.now ?? (() => Date.now());
   const isTarget = deps.isTarget ?? (() => false);
+  // Whether the diff shows its current version, not its changes (`show`).
+  let current = deps.current === true;
   const later = deps.later ?? ((callback, ms) => setTimeout(callback, ms));
   const cancel =
     deps.cancel ??
@@ -566,12 +605,29 @@ export function createMarkdownViews(deps) {
     }
   }
 
+  // Whether a file is to show its Rendered: chosen, unless it was deleted and the diff
+  // shows its current version, which a deleted file's Source body says it has none of.
+  /** @param {FileView} file */
+  function wantsRendered(file) {
+    return file.mode === "rendered" && !(current && file.gone);
+  }
+
   /** @param {FileView} file */
   function draw(file) {
-    const rich = file.mode === "rendered" && file.state === "ready";
-    file.source.hidden = rich || (file.holding && file.mode === "rendered" && file.expanded);
+    const wanted = wantsRendered(file);
+    const rich = wanted && file.state === "ready";
+    file.source.hidden = rich || (file.holding && wanted && file.expanded);
     file.rendered.hidden = !file.expanded || !rich;
     drawProgress(file);
+  }
+
+  // What Rendered draws of Current: a Markdown file's removed blocks and keys hidden, by
+  // the attribute, so which show is decided here and not by a selector.
+  /** @param {FileView} file */
+  function applyShow(file) {
+    for (const part of file.removed) {
+      part.hidden = current;
+    }
   }
 
   // The chooser stays for a file that can only show Source: its Rendered chip is
@@ -612,7 +668,7 @@ export function createMarkdownViews(deps) {
   // diff, and stays invisible until the loading-state delay passes.
   /** @param {FileView} file */
   function drawProgress(file) {
-    const showing = file.pending && file.expanded && file.mode === "rendered";
+    const showing = file.pending && file.expanded && wantsRendered(file);
     file.progress.classList.toggle("mb-delayed-loading", showing);
     file.progressLabel.textContent = showing ? `Rendering ${formatName(file.format)}` : "";
   }
@@ -778,10 +834,13 @@ export function createMarkdownViews(deps) {
         (html) => sanitizeBlock(html, inert, template, scratch, isTarget),
         deps.unfold === true,
       );
+      const removed = removedParts(content);
       settled = true;
       deps.mutate(() => {
         file.rendered.replaceChildren(content);
         file.folds = folds;
+        file.removed = removed;
+        applyShow(file);
         file.state = "ready";
         file.pending = false;
         file.retries = 0;
@@ -845,15 +904,16 @@ export function createMarkdownViews(deps) {
     /**
      * @param {{
      *   section: HTMLElement, bar: HTMLElement, end: HTMLElement, source: HTMLElement,
-     *   id: string, format: RenderedFormat, unavailable?: string
+     *   id: string, format: RenderedFormat, unavailable?: string, gone?: boolean
      * }} input The file's section; its bar; the group at the bar's end, which the
      *   chooser ends, so it is at the bar's far end; its Source body; and the format it
      *   renders as (`renderedFormat`).
      *   *unavailable* is why no projection is asked for the file, a sentence, for one
      *   whose changes the page has no patch of (`supportsRenderedChange`): it shows
-     *   Source, which says the same, from the start.
+     *   Source, which says the same, from the start. *gone* is a deleted file, which shows
+     *   its Source body in Current.
      */
-    add({ section, bar, end, source, id, format, unavailable }) {
+    add({ section, bar, end, source, id, format, unavailable, gone }) {
       const control = document.createElement("div");
       control.className = "diff-markdown-control";
       // Markdown is a KPress fragment; a tree is the structured plugin's own surface.
@@ -892,6 +952,8 @@ export function createMarkdownViews(deps) {
         retryAt: 0,
         retries: 0,
         folds: new Map(),
+        removed: [],
+        gone: gone === true,
         state: unavailable === undefined ? "idle" : "unavailable",
         reason: unavailable ?? "",
       };
@@ -905,10 +967,12 @@ export function createMarkdownViews(deps) {
           file.folds.get(href.slice(1))?.();
         }
       });
-      // The progress mark leads the chooser, on the side of the bar's free space, so the
-      // chooser stays where it is when the mark appears.
+      // The progress mark leads the end group, on the side of the bar's free space, so
+      // nothing in it moves when the mark appears, and the chooser ends it, after the
+      // diff's own Diff | Current where the file has one.
       bar.classList.add("diff-file-bar-markdown");
-      end.append(progress, control);
+      end.prepend(progress);
+      end.append(control);
       source.before(rendered);
       files.set(section, file);
       controls.set(source.id, file);
@@ -992,6 +1056,23 @@ export function createMarkdownViews(deps) {
       }
     },
     firstScreen,
+    /**
+     * Show each file's current version, or its changes (*next* false): Current leaves out
+     * what Rendered draws as removed, and a deleted file shows its Source body. The diff
+     * holds the reader's place around it, so this draws without `mutate`.
+     * @param {boolean} next
+     */
+    show(next) {
+      if (disposed || next === current) {
+        return;
+      }
+      current = next;
+      for (const file of files.values()) {
+        applyShow(file);
+        draw(file);
+      }
+      pump();
+    },
     /**
      * Make every link to a file of the head plain text, in what is drawn: the page learned
      * that the server serves another pin, at which those addresses open other files. What

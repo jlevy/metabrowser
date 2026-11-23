@@ -78,9 +78,9 @@ The chooser is the first item of the bar’s end group (`.diff-file-end`), so **
 [name group ...]                     [spinner] [Diff | Current] [Rendered | Source]
 ```
 
-The Rendered spinner moves from between the groups to the start of the end group, so the
-two choosers sit at the end group’s gap, and the spinner, which keeps its place while
-hidden, still moves neither.
+The Rendered spinner stays at the start of the end group, before both choosers, so the
+two sit at the end group’s gap, and the spinner, which keeps its place while hidden,
+still moves neither.
 A bar with a chooser wraps as a bar with Rendered | Source does today: the name’s group
 keeps the first line, the end group takes the next at the bar’s end, and where the end
 group alone is wider than the bar its choosers wrap, each line at the bar’s end.
@@ -218,7 +218,7 @@ paint-exempt row with a headless Chrome check.
 One stack on #759, one commit per bead:
 
 - [x] `mb-93t2`: this plan.
-- [ ] `mb-wexb`: the diff-wide choice, its chooser in the bars of rendered-format files,
+- [x] `mb-wexb`: the diff-wide choice, its chooser in the bars of rendered-format files,
   and Rendered Current for Markdown.
 - [ ] `mb-wd9o`: Source Current for those files.
 - [ ] `mb-256j`: Rendered Current for YAML and JSON.

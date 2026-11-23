@@ -352,8 +352,9 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     # The bar is two groups, each a centered row of boxes, and a box in the bar itself: the
     # name's, the toggle with the copy control right after it, the change's stats, and then
     # the View file or View on branch control, a box at the path's size, which centering
-    # puts on its baseline; and its end's, a file's Rendered | Source chooser behind its
-    # progress mark (`add` in diff-markdown.js).
+    # puts on its baseline; and its end's, the diff's Diff | Current chooser
+    # (`addShowControl` in diff-view.js) and a file's Rendered | Source chooser, behind the
+    # file's progress mark (`add` in diff-markdown.js).
     lead = box(
         "diff-file-lead",
         toggle,
@@ -364,6 +365,7 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     end = box(
         "diff-file-end",
         box("diff-markdown-progress"),
+        box("diff-show-control"),
         box("diff-markdown-control"),
     )
     bar = el("diff-file-bar diff-file-bar-markdown", lead, end)
