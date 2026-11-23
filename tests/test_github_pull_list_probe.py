@@ -821,3 +821,43 @@ def test_a_list_probe_counts_toward_the_servers_cap_with_its_pull_requests_probe
             await coordinator.aclose()
 
     asyncio.run(exercise())
+
+
+def test_a_list_probe_the_cap_refused_keeps_its_place_until_its_next_ask() -> None:
+    """A5 of review A on #737: its refusal lapsed a page's turn later, before the list's
+    next ask, so a pull request refused after it went first."""
+
+    from metabrowser.builtin_plugins.github import served_pull
+
+    served_pull.forget_probes()
+    probe = ListProbe()
+    now = FETCHED_AT
+
+    async def exercise() -> None:
+        loop = asyncio.get_running_loop()
+        running = [loop.create_future() for _ in range(served_pull.MAX_PROBES_IN_FLIGHT)]
+        for each in running:
+            served_pull.track_probe(each)
+        try:
+            assert not probe.may_start(now)
+            # A fifth pull request's page asks every few seconds, and is refused after it.
+            for seconds in (1, 6):
+                assert not served_pull._may_probe("pull/5", now + timedelta(seconds=seconds))  # pyright: ignore[reportPrivateUsage]
+            # One probe ends. The list's next ask is its interval and a timer's lateness
+            # after its last, and the one free place is the list's.
+            running[0].set_result(None)
+            await asyncio.sleep(0)
+            later = now + timedelta(seconds=LIST_PROBE_S, milliseconds=20)
+            assert not served_pull._may_probe("pull/5", later)  # pyright: ignore[reportPrivateUsage]
+            assert probe.may_start(later)
+            # A list whose tab went away holds no one back past two of its intervals.
+            assert not probe.may_start(later)
+            gone = later + timedelta(seconds=2 * LIST_PROBE_S + 1)
+            assert served_pull._may_probe("pull/5", gone)  # pyright: ignore[reportPrivateUsage]
+        finally:
+            for each in running[1:]:
+                each.set_result(None)
+            await asyncio.sleep(0)
+            served_pull.forget_probes()
+
+    asyncio.run(exercise())

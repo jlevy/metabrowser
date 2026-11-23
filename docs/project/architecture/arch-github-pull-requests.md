@@ -272,7 +272,8 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   and `PROBE_FLOOR_S` apart, and a rate-limit hold stops them all.
   A server runs at most `MAX_PROBES_IN_FLIGHT` at once across its pull requests, each
   one to four `gh` processes, and an ask past that answers `not_due`; one refused goes
-  ahead of those probed since, for `PROBE_TURN_S`, so askers take turns.
+  ahead of those probed since, for `PROBE_TURN_S`, so askers take turns; the list’s
+  probe keeps its place for twice its own interval, since it asks half as often.
   A probe is a coordinator job under the pull request’s key with `:probe`, taking no
   network slot and no turn at the store, so shutdown cancels it.
 - **Below `BACKGROUND_FLOOR`:** probes go on, since a `304` is free, and a change one

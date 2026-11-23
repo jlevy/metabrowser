@@ -251,10 +251,11 @@ class ListProbe:
         The cap is ``MAX_PROBES_IN_FLIGHT`` in :mod:`.served_pull`, one for the server and
         shared with the probes of its pull requests: a list probe is one ``gh`` process,
         two when an issue is newest. One refused takes its turn as a refused pull
-        request's does.
+        request's does, and keeps its place for two of its own intervals, since its next
+        ask comes ``LIST_PROBE_S`` later, not a page's ``ATTENDED_PROBE_S``.
         """
 
-        return may_probe(self.key, now)
+        return may_probe(self.key, now, turn_s=2 * LIST_PROBE_S)
 
     async def run(
         self, repository: ListedRepository, *, coordinator: RefreshCoordinator | None = None
