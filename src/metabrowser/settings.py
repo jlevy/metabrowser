@@ -263,11 +263,11 @@ TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
 # extension-tally rows before the remainder row. The semantic breakdown
 # independently caps No extension basenames and Other types extensions;
 # the route clamps every query parameter to the corresponding maximum.
-# ROLLUP_MAX_NODES bounds a response at any depth and top: emission
-# expands the heaviest folder first, so a deep or wide request spends
-# the same node budget, on the folders that hold the most. Twelve
-# levels is deeper than a treemap can draw (each nested level insets
-# its children by a few pixels).
+# The Treemap asks for both maxima, depth and top, and lets
+# ROLLUP_MAX_NODES bound the response: emission expands the heaviest
+# folder first, so a deep or wide request spends the same node budget,
+# on the folders that hold the most. Twelve levels is deeper than the
+# map can draw (each nested level insets its children by a few pixels).
 #
 # What depth does add is reach: a deep request can expand a large
 # directory far down, and expanding a directory visits every child.
@@ -555,6 +555,8 @@ def client_settings_dict(
         "GIT_DETAIL_CACHE_SIZE": GIT_DETAIL_CACHE_SIZE,
         "GIT_COMPARISON_CACHE_BYTES": GIT_COMPARISON_CACHE_BYTES,
         "ROLLUP_DEFAULT_DEPTH": ROLLUP_DEFAULT_DEPTH,
+        "ROLLUP_MAX_DEPTH": ROLLUP_MAX_DEPTH,
+        "ROLLUP_MAX_TOP": ROLLUP_MAX_TOP,
         "ROLLUP_DEFAULT_TOP": ROLLUP_DEFAULT_TOP,
         "ROLLUP_DEFAULT_EXT_TOP": ROLLUP_DEFAULT_EXT_TOP,
         "ROLLUP_DEFAULT_EXT_RANK": ROLLUP_DEFAULT_EXT_RANK,

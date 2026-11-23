@@ -4818,6 +4818,19 @@ Folders/Types grouping choice.
 File types already answers which extensions make up the population, while Treemap
 answers where space or file count sits and keeps folder and file cells navigable.
 
+The map goes as deep as it has room for.
+The Treemap asks the rollup for its deepest and widest tree, and the server spends its
+node budget on the heaviest folders first (`inventory_rollup.py`), so the nodes go where
+the map can draw them.
+The layout fills the largest pending folder next, from a share of the remaining cell
+budget proportional to its area, so the cells reach every large region of the map rather
+than draining into the first folder drawn (`treemap-layout.js`). A folder large enough
+for a label nests under a header strip; a smaller one nests inside a thin frame with no
+label, and its files are still drawn.
+Every cell lies inside its parent’s rectangle and inside the map’s border: the map lays
+out to its padding box, the box absolutely placed cells are positioned in.
+A cell too small for any text, a framed folder’s included, names itself in its tooltip.
+
 The Files context above the map mounts the same reusable folder-rollup controls used by
 Overview. The metric control appears before Files and Ignored; the scope control appears
 after them:

@@ -263,6 +263,111 @@ function fileNode(name, pathStr, size, extras) {
   );
 }
 
+// ── containment, depth, framing, and budget spread ──────────────
+{
+  // Every cell lies inside its parent folder's cell and inside the viewport,
+  // at every depth, including the right and bottom edges.
+  /** A folder `depth` levels deep, `fanout` subfolders and `files` files per level. */
+  function deepTree(prefix, depth, fanout, files) {
+    const children = [];
+    for (let i = 0; i < files; i += 1) {
+      children.push(fileNode(`f${i}.py`, `${prefix}f${i}.py`, 100 + i * 37));
+    }
+    if (depth > 0) {
+      for (let d = 0; d < fanout; d += 1) {
+        children.push(deepTree(`${prefix}d${d}/`, depth - 1, fanout, files));
+      }
+    }
+    const total = children.reduce((sum, c) => sum + (c.type === "dir" ? c.total_size : c.size), 0);
+    const count = children.reduce((sum, c) => sum + (c.type === "dir" ? c.total_files : 1), 0);
+    const name = prefix.split("/").filter(Boolean).at(-1) || "root";
+    return dirNode(name, prefix.replace(/\/$/, ""), {
+      total_size: total,
+      unignored_size: total,
+      total_files: count,
+      unignored_files: count,
+      children,
+    });
+  }
+  const tree = deepTree("", 5, 3, 4);
+  const view = { w: 1037, h: 611 };
+  const cells = layout.layoutTree(tree, view, { metric: "size" });
+  const byPath = new Map(cells.filter((c) => c.kind === "dir").map((c) => [c.path, c]));
+  const eps = 1e-6;
+  let escapesParent = 0;
+  let escapesView = 0;
+  for (const c of cells) {
+    if (c.x < -eps || c.y < -eps || c.x + c.w > view.w + eps || c.y + c.h > view.h + eps) {
+      escapesView += 1;
+    }
+    const parentPath = c.kind === "rest" ? null : c.path.split("/").slice(0, -1).join("/");
+    const parent = parentPath ? byPath.get(parentPath) : null;
+    if (
+      parent &&
+      (c.x < parent.x - eps ||
+        c.y < parent.y - eps ||
+        c.x + c.w > parent.x + parent.w + eps ||
+        c.y + c.h > parent.y + parent.h + eps)
+    ) {
+      escapesParent += 1;
+    }
+  }
+  check("no cell escapes the viewport", escapesView === 0, `${escapesView}`);
+  check("no cell escapes its parent folder", escapesParent === 0, `${escapesParent}`);
+  check(
+    "nesting reaches past the old two-level limit",
+    Math.max(...cells.map((c) => c.depth)) >= 3,
+    `${Math.max(...cells.map((c) => c.depth))}`,
+  );
+  const parentsFirst = cells.every((c, i) => {
+    const parentPath = c.kind === "rest" ? null : c.path.split("/").slice(0, -1).join("/");
+    const parent = parentPath ? byPath.get(parentPath) : null;
+    return !parent || cells.indexOf(parent) < i;
+  });
+  check("parents are emitted before their children", parentsFirst);
+
+  // A folder too small for a header still nests, framed, with no header strip.
+  const framed = cells.filter((c) => c.framed);
+  check("small folders nest in a frame", framed.length > 0, `${framed.length}`);
+  const framedChild = framed
+    .map((f) => [f, cells.find((c) => c.path.startsWith(`${f.path}/`))])
+    .find(([, child]) => child);
+  check(
+    "a framed folder's children start one pad inside it, not below a header",
+    framedChild && Math.abs(framedChild[1].y - framedChild[0].y) < framedChild[0].headerPx,
+    JSON.stringify(framedChild),
+  );
+
+  // The budget spreads across the map rather than draining into the first
+  // folder: with a small cap, every large top-level folder still nests.
+  const wideTree = dirNode("root", "", {
+    total_size: 4 * 400 * 1000,
+    children: Array.from({ length: 4 }, (_, d) =>
+      dirNode(`d${d}`, `d${d}`, {
+        total_size: 400 * 1000,
+        total_files: 400,
+        children: Array.from({ length: 400 }, (_, i) =>
+          fileNode(`f${i}.py`, `d${d}/f${i}.py`, 1000),
+        ),
+      }),
+    ),
+  });
+  const spread = layout.layoutTree(
+    wideTree,
+    { w: 1200, h: 800 },
+    { metric: "size", maxCells: 200 },
+  );
+  const perFolder = [0, 1, 2, 3].map(
+    (d) => spread.filter((c) => c.kind === "file" && c.path.startsWith(`d${d}/`)).length,
+  );
+  check(
+    "the cell budget reaches every large folder",
+    perFolder.every((n) => n >= 20),
+    JSON.stringify(perFolder),
+  );
+  check("the cap still holds while spreading", spread.length <= 200, `${spread.length}`);
+}
+
 // ── budget timing ───────────────────────────────────────────────
 {
   // Budget: lay out a two-level tree that emits ~800 cells.

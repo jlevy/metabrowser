@@ -260,12 +260,14 @@ for (const relative of [
   vm.runInContext(source, sandbox, { filename: relative });
 }
 // In dependency order, since each runs in the one sandbox with its imports taken out:
-// folder-totals.js and the treemap import the hover they share, and the treemap the legend.
+// folder-totals.js and the treemap import the hover they share, the treemap the legend, and
+// the map component the layout.
 const moduleSources = [
   "src/metabrowser/builtin_plugins/folder/distribution-hover.js",
   "src/metabrowser/builtin_plugins/folder/distribution-legend.js",
   "src/metabrowser/builtin_plugins/folder/folder-totals.js",
   "src/metabrowser/builtin_plugins/folder/treemap-layout.js",
+  "src/metabrowser/builtin_plugins/folder/treemap-map.js",
   "src/metabrowser/builtin_plugins/folder/treemap-model.js",
   "src/metabrowser/builtin_plugins/folder/rollup-controls.js",
 ];

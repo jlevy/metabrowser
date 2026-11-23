@@ -8,11 +8,15 @@
 // only while it improves the row's worst aspect ratio.
 //
 // `layoutTree` walks a /api/rollup node tree and returns a flat array
-// of positioned folder and file cells. Bounds: cells below
-// `minCellPx` in either
-// dimension merge into their parent's rest cell, and nesting stops
-// once `maxCells` cells exist, so pathological trees cannot flood the
-// DOM.
+// of positioned folder and file cells. Folders nest breadth-first by
+// area: the largest pending folder is filled next, from a share of the
+// remaining cell budget proportional to its area, so the budget spreads
+// across the whole map instead of draining into the first folder drawn.
+// Folders large enough for a label nest under a header strip; smaller
+// ones nest inside a thin frame with no label, and the tooltip names
+// them. Bounds: cells below `minCellPx` in either dimension merge into
+// their parent's rest cell, and nesting stops once `maxCells` cells
+// exist, so pathological trees cannot flood the DOM.
 
 /**
  * Layout bounds and nesting thresholds. The renderer can override any
@@ -23,13 +27,27 @@ const LAYOUT_DEFAULTS = {
   minCellPx: 4,
   /** Hard cap on emitted cells across all nesting levels. */
   maxCells: 800,
-  /** Nested levels drawn inside directory cells (1 = flat). */
-  nestDepth: 2,
-  /** Directory cells narrower/shorter than this never nest children. */
+  /**
+   * Levels drawn, the outermost included (1 = flat). Unbounded by default:
+   * the rollup's own depth and the cells' room bound it.
+   */
+  nestDepth: Infinity,
+  /** Directory cells at least this wide and tall nest under a labelled header strip. */
   nestMinW: 72,
   nestMinH: 48,
+  /**
+   * Smaller directory cells at least this size on both sides still nest, in a
+   * frame `padPx` wide with no header: their files are drawn, and the tooltip
+   * names the folder. Below it a folder is one solid cell.
+   */
+  frameNestMinPx: 14,
   /** Inner padding between a directory cell border and its children (px). */
   padPx: 2,
+  /**
+   * Fewest cells a nesting folder is offered, however small its share of the
+   * remaining area: enough for a few files and the remainder beside them.
+   */
+  minNestShare: 4,
 };
 
 const TYPOGRAPHY_DEFAULTS = Object.freeze({
@@ -312,8 +330,13 @@ function packLevel(items, rect, capacity, minPx) {
 /**
  * Flatten a rollup tree into positioned folder and file cells.
  *
+ * Every cell lies inside its parent's rectangle: children are packed into
+ * the parent's inner rectangle (inset by `padPx`, and by the header strip
+ * when the parent is labelled), and cells are emitted parent first, so a
+ * renderer painting them in order draws children over their parent.
+ *
  * @param {Record<string, any>} rootNode  /api/rollup `node`
- * @param {{w: number, h: number}} viewport
+ * @param {{w: number, h: number}} viewport  the drawable box, inside any border
  * @param {Record<string, any>} options   layout + view options:
  *   metric "size"|"files", includeIgnored boolean,
  *   plus any LAYOUT_DEFAULTS override.
@@ -326,19 +349,57 @@ function layoutTree(rootNode, viewport, options) {
   if (!rootNode || viewport.w <= 0 || viewport.h <= 0) {
     return cells;
   }
+  const excludeIgnored = opts.includeIgnored === false;
+
+  /** @typedef {{cell: Record<string, any>, node: Record<string, any>, inner: Rect, framed: boolean, area: number}} PendingNest */
+  /** @type {PendingNest[]} */
+  const pending = [];
+  let pendingArea = 0;
 
   /**
-   * Emit one directory's children into `rect`; recurse into large
-   * directory cells while depth and cell budget allow.
+   * Queue a just-emitted directory cell for nesting when its geometry and
+   * the remaining depth allow it: under a labelled header when it is large
+   * enough, otherwise inside a thin frame.
+   * @param {Record<string, any>} cell
+   * @param {Record<string, any>} node
+   */
+  function considerNesting(cell, node) {
+    const hasChildren = (Array.isArray(node.children) && node.children.length > 0) || !!node.rest;
+    if (node.type !== "dir" || !hasChildren || cell.depth + 1 >= opts.nestDepth) {
+      return;
+    }
+    const labelled = cell.w >= opts.nestMinW && cell.h >= opts.nestMinH;
+    const framed = !labelled && cell.w >= opts.frameNestMinPx && cell.h >= opts.frameNestMinPx;
+    if (!labelled && !framed) {
+      return;
+    }
+    const top = labelled ? cell.headerPx : opts.padPx;
+    const inner = {
+      x: cell.x + opts.padPx,
+      y: cell.y + top,
+      w: cell.w - 2 * opts.padPx,
+      h: cell.h - top - opts.padPx,
+    };
+    if (inner.w < opts.minCellPx || inner.h < opts.minCellPx) {
+      return;
+    }
+    const area = inner.w * inner.h;
+    pending.push({ cell, node, inner, framed, area });
+    pendingArea += area;
+  }
+
+  /**
+   * Emit one directory's children into `rect` within `capacity` cells.
    * @param {Record<string, any>} dirNode
    * @param {Rect} rect
    * @param {number} depth
+   * @param {number} capacity
+   * @returns {number} cells emitted
    */
-  function emitLevel(dirNode, rect, depth) {
+  function emitLevel(dirNode, rect, depth, capacity) {
     const children = Array.isArray(dirNode.children) ? dirNode.children : [];
     /** @type {WeightedItem[]} */
     const items = [];
-    const excludeIgnored = opts.includeIgnored === false;
     for (const child of children) {
       const value = nodeValue(child, opts);
       if (value > 0) {
@@ -367,9 +428,8 @@ function layoutTree(rootNode, viewport, options) {
     }
     items.sort((a, b) => b.value - a.value);
 
-    const packed = packLevel(items, rect, opts.maxCells - cells.length, opts.minCellPx);
-    /** @type {{cell: Record<string, any>, node: Record<string, any>}[]} */
-    const nestable = [];
+    const before = cells.length;
+    const packed = packLevel(items, rect, capacity, opts.minCellPx);
     for (const p of packed.placed) {
       const node = p.item.node;
       const typography = cellTypography(p);
@@ -399,16 +459,7 @@ function layoutTree(rootNode, viewport, options) {
         ...typography,
       };
       cells.push(cell);
-      if (
-        node.type === "dir" &&
-        Array.isArray(node.children) &&
-        depth + 1 < opts.nestDepth &&
-        p.w >= opts.nestMinW &&
-        p.h >= opts.nestMinH &&
-        cells.length < opts.maxCells
-      ) {
-        nestable.push({ cell, node });
-      }
+      considerNesting(cell, node);
     }
     if (packed.remainder) {
       const typography = cellTypography(packed.remainder);
@@ -427,22 +478,36 @@ function layoutTree(rootNode, viewport, options) {
         ...typography,
       });
     }
+    return cells.length - before;
+  }
 
-    for (const entry of nestable) {
-      const inner = {
-        x: entry.cell.x + opts.padPx,
-        y: entry.cell.y + entry.cell.headerPx,
-        w: entry.cell.w - 2 * opts.padPx,
-        h: entry.cell.h - entry.cell.headerPx - opts.padPx,
-      };
-      if (inner.w >= opts.minCellPx && inner.h >= opts.minCellPx) {
-        entry.cell.nested = true;
-        emitLevel(entry.node, inner, depth + 1);
+  emitLevel(rootNode, { x: 0, y: 0, w: viewport.w, h: viewport.h }, 0, opts.maxCells);
+
+  // Largest pending folder first, so the budget reaches every large
+  // region of the map before it is spent on small ones.
+  while (pending.length > 0 && cells.length < opts.maxCells) {
+    let best = 0;
+    for (let i = 1; i < pending.length; i += 1) {
+      if (pending[i].area > pending[best].area) {
+        best = i;
+      }
+    }
+    const entry = pending[best];
+    pending[best] = pending[pending.length - 1];
+    pending.pop();
+    const remaining = opts.maxCells - cells.length;
+    const share = Math.min(
+      remaining,
+      Math.max(opts.minNestShare, Math.ceil((remaining * entry.area) / Math.max(pendingArea, 1))),
+    );
+    pendingArea -= entry.area;
+    if (emitLevel(entry.node, entry.inner, entry.cell.depth + 1, share) > 0) {
+      entry.cell.nested = true;
+      if (entry.framed) {
+        entry.cell.framed = true;
       }
     }
   }
-
-  emitLevel(rootNode, { x: 0, y: 0, w: viewport.w, h: viewport.h }, 0);
   return cells;
 }
 

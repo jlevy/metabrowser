@@ -187,10 +187,11 @@ def test_treemap_pointer_hit_testing_uses_the_full_actionable_cell() -> None:
     the deepest visible cell rectangle rather than that label alone."""
 
     folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
-    treemap = (folder_root / "treemap.js").read_text()
+    treemap = (folder_root / "treemap-map.js").read_text()
     plugin_css = (folder_root / "styles.css").read_text()
-    click_start = treemap.index('viewport.addEventListener("click"')
-    click_block = treemap[click_start : treemap.index('viewport.addEventListener("mouseover"')]
+    assert 'viewport.addEventListener("click", onClick)' in treemap
+    click_start = treemap.index("function onClick(")
+    click_block = treemap[click_start : treemap.index("function onMouseOver(")]
 
     assert 'cls.push("tm-actionable")' in treemap
     assert "cellForElement" in click_block

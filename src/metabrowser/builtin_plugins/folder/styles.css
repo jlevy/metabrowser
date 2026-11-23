@@ -160,6 +160,13 @@
   border-color: var(--viz-border);
 }
 
+/* A folder too small for a label still nests, inside a frame of its own
+   padding (treemap-layout.js, frameNestMinPx). The frame is all of it that
+   shows, so it carries no label or padding of its own; the tooltip names it. */
+.tm-framed {
+  padding: 0;
+}
+
 .tm-cell-title {
   display: flex;
   align-items: baseline;
