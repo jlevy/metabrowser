@@ -265,6 +265,42 @@ A release comparison requires five admitted pairs.
 [Optional-font run](https://github.com/jlevy/metabrowser/actions/runs/45113917455) ·
 [Optional-font workflow](https://github.com/jlevy/metabrowser/commit/1d2df3b7f499961027bf47fedee4991c0db25e87)
 
+## Linux TCP Follow-Up
+
+The next wheel combined the narrowed sidebar font rule with an explicit TCP protocol on
+the reserved listening socket.
+Its commit was `ed7e1f10ffcd7be3524113edd6dc940cfe74c708` and its wheel SHA-256 was
+`90ba47f82e5f52651f07f76ca834c68fcc07757cb215b79e9c465937192405e8`. The Linux transport
+test verified the adopted listener’s accepted socket has `TCP_NODELAY` enabled, matching
+the ordinary host/port bind.
+All 25 focused socket tests passed on Linux and macOS. On the macOS 3.13.7 control,
+Python did not expose `SO_PROTOCOL` and all three socket configurations had the same
+accepted transport setting.
+
+The 40–42 ms header-to-body interval fell to 0–1 ms on both monitored scripts, across
+all five candidate captures.
+The five candidate first rows took 124–140 ms and each cleared every hard browser
+budget. Candidate trusted input covered 98.3–98.4% and the tab stayed visible for every
+capture.
+The backend first-row median stayed at 10 ms on both builds, ordered rows stayed
+identical, and the raw tally verdict still reported the nine expected metadata and
+preset-order differences.
+
+| Pair | Control first row, ms | TCP candidate first row, ms | Candidate / control | Control spawn to row, ms | Candidate spawn to row, ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 3 | 163 | 133 | 0.82 | 2,647 | 2,664 |
+| 4 | 130 | 124 | 0.95 | 2,554 | 2,634 |
+| 5 | 131 | 140 | 1.07 | 2,555 | 2,634 |
+
+The first control trace was refused for 32.1% trusted-input coverage.
+The second control driver wrote a profile and then reported an `ENOTEMPTY` error
+removing the browser’s temporary profile.
+The two candidate captures paired with those controls passed their individual budgets
+and remain in the ledger.
+The relative comparison above uses the three complete pairs only.
+[Combined font and TCP run](https://github.com/jlevy/metabrowser/actions/runs/45116045122)
+· [TCP fix](https://github.com/jlevy/metabrowser/pull/733)
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
