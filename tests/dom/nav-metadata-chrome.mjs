@@ -214,11 +214,16 @@ try {
     })()`);
     await frames();
   };
-  const measure = async (name) => {
+  // `setup`, an expression, puts a state in place in the same task as each read, so a live
+  // repaint cannot land between them: the tree summary repaints itself when its counts or a
+  // tree reload arrive (`paintTreeSummary` in app.js), and on a slow runner one replaced a
+  // stubbed pending line before it was read (CI, 2026-11-23).
+  const measure = async (name, setup = null) => {
+    const read = setup === null ? BAND : `(${setup}, ${BAND})`;
     await paneWidth(null);
-    bands[name] = await evaluate(BAND);
+    bands[name] = await evaluate(read);
     await paneWidth(WIDE_PX);
-    wide[name] = await evaluate(BAND);
+    wide[name] = await evaluate(read);
     await paneWidth(null);
     check(`${name}: has a metadata line`, bands[name] !== null && wide[name] !== null);
     phase(name);
@@ -274,14 +279,11 @@ try {
   await measureRules("files");
   // The line as the inline first paint draws it, before its counts arrive, and as it
   // reads while the index is still being counted: the same words in the same type.
-  await evaluate(
-    `document.querySelector(".tree-summary").outerHTML = treeSummaryHtml(null, null, null)`,
-  );
-  await measure("files pending");
-  await evaluate(
-    `document.querySelector(".tree-summary").outerHTML = treeSummaryHtml(null, 12797, 413800000)`,
-  );
-  await measure("files counting");
+  const stubSummary = (args) =>
+    `document.querySelector(".tree-summary").outerHTML = treeSummaryHtml(${args})`;
+  await measure("files pending", stubSummary("null, null, null"));
+  await evaluate(stubSummary("null, 12797, 413800000"));
+  await measure("files counting", stubSummary("null, 12797, 413800000"));
   // A filter's remarks: muted lines of the same band.
   await evaluate(
     `_renderFilteredTally({recency: "all", types: "md", size: "all", showIgnored: true}, 2)`,
