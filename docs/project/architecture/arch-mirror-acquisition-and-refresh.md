@@ -285,9 +285,10 @@ A store Metabrowser keeps is fetched as often as it usefully can be (the owner�
 2026-11-22): a fetch into it is atomic, removes no commit, writes no reader’s checkout
 ([What Is Never Written](arch-open-modes.md#what-is-never-written)), and spends no
 GitHub rate limit, so what limits it is process time and network.
-Two cadences follow, each constant beside its measurement in `mirror_refresh.py`: a
-visible page on a branch has that branch probed every `STORE_PROBE_S`, and has the whole
-mirror fetched once it is older than `FRESHNESS_WINDOW_S`.
+Three cadences follow, each constant beside its measurement in `mirror_refresh.py`: a
+visible page on a branch has that branch probed every `STORE_PROBE_S`, a visible page
+has the whole mirror fetched once it is older than `FRESHNESS_WINDOW_S`, and a server no
+page is looking at fetches every `STORE_IDLE_REFRESH_S`.
 
 - **The coordinator:** `RefreshCoordinator`, on the application state, keeps one job per
   key, a store key or a store key and a pull-request number, so concurrent requests join
@@ -331,6 +332,18 @@ mirror fetched once it is older than `FRESHNESS_WINDOW_S`.
   A tip a probe already started a fetch for starts no second one within a window, so an
   origin whose fetch does not bring what its `ls-remote` names cannot make every probe a
   fetch.
+- **A server no page is looking at:** `MirrorSession.run_idle_refresh`, started by the
+  lifespan in serve mode only, fetches once the last fetch, by this process or another
+  as the store’s record has it, is older than `STORE_IDLE_REFRESH_S`. It is the one
+  timer a server runs for a mirror, and a visible page’s asks keep the mirror newer than
+  it looks for. The record is read again when the fetch comes due, so another process’s
+  fetch is followed, and the served branch with it, instead of repeated.
+  The fetch is background work at the store: it goes only when no other job waits, takes
+  no network slot, and is cancelled when a reader’s job starts waiting, to be tried
+  again a freshness window later.
+  Status does not report that as a cancelled refresh, since no reader asked for it.
+  A reader’s refresh that joins it makes it the reader’s. One that failed is tried again
+  only after the whole interval.
 - **A commit the mirror lacks:** a page that opens a commit’s address asks for the fetch
   it waits on, which runs only when the mirror is stale, since a link in served content
   can lead to any address; a reader’s **Retry** always fetches.

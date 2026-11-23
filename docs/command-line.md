@@ -175,8 +175,9 @@ their source.
 The mirror refreshes from its origin in the background.
 While a page on a branch is visible, the server asks the origin every few seconds
 whether that branch moved and fetches at once when it did, so a push shows within
-seconds. A served branch or tag follows the origin: when a refresh moves it, the server
-serves its new commit, and an open page follows it there.
+seconds; with no page visible it fetches every few minutes.
+A served branch or tag follows the origin: when a refresh moves it, the server serves
+its new commit, and an open page follows it there.
 A commit the URL names by its ID stays put.
 The [history guide](browsing-history.md#branches-and-tags-of-a-repository-url) shows how
 to switch branches.

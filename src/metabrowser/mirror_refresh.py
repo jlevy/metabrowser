@@ -32,8 +32,10 @@ store is safe to repeat and spends no rate limit. A visible page on one of the o
 branches makes its own ask every :data:`STORE_PROBE_S` (:meth:`MirrorSession.page_ask`):
 the server asks the origin where that branch is with one ``ls-remote``, outside the store
 turn and the network slots, and fetches at once when it moved; the whole mirror is
-fetched once it is older than the freshness window. A probe or a fetch that failed is
-tried again only a window later.
+fetched once it is older than the freshness window. With no page visible, a server
+fetches every :data:`STORE_IDLE_REFRESH_S` (:meth:`MirrorSession.run_idle_refresh`), as
+background work that gives way at the store to any job a reader waits on. A probe or a
+fetch that failed is tried again only a window, or an idle interval, later.
 
 A server opens any pull request of its repository, and attends to one: the one its URL
 named, replaced whenever a pin switch serves another's head. That one counts toward the
@@ -156,6 +158,22 @@ STORE_PROBE_FLOOR_S: Final = 4.0
 # measured above (1.65 s), so the request that started a probe nearly always carries its
 # answer, and it is as long as a pull request's probe is waited for (``PROBE_WAIT_S``).
 STORE_PROBE_WAIT_S: Final = 3.0
+# How old the last fetch of a served mirror may grow while its server runs with no page
+# visible. The owner's rule (2026-11-22): a store Metabrowser keeps is fetched as often as
+# it usefully can be, since a fetch into it is atomic, removes no commit, and spends no
+# rate limit, so the cost is process time and network alone. A visible page keeps the
+# mirror inside FRESHNESS_WINDOW_S by asking; this is for the server behind a hidden tab
+# or a closed window, so a page opened later starts at most this old and its first ask
+# catches up.
+#
+# A refresh with nothing new is the two round trips measured at STORE_PROBE_S: 1.4 to 2.8 s
+# and about 0.15 s of CPU against github.com, and up to 5.3 s and 0.6 s of CPU for the
+# fetch on a large real store. Every five minutes that is twelve an hour for each served
+# mirror: at most 8 s of CPU and about a minute of network in the hour, with no reader
+# waiting on any of it, and nothing at all when the last fetch, by any process, is newer.
+# The cost would allow a shorter interval; five minutes is the "every few minutes" the
+# owner asked for, and the fetch a returning page's first ask starts takes a second or two.
+STORE_IDLE_REFRESH_S: Final = 300.0
 
 type StartedOrJoined = Literal["started", "joined"]
 # How a visible page's own ask was answered (:meth:`MirrorSession.page_ask`): the fetch
@@ -657,7 +675,7 @@ def _never() -> bool:
 
 
 def _monotonic() -> float:
-    """The clock the probe intervals are kept on; a test replaces it."""
+    """The clock the probe and idle intervals are kept on; a test replaces it."""
 
     return time.monotonic()
 
@@ -666,6 +684,9 @@ def _monotonic() -> float:
 # moved and the fetch was started, the origin did not answer, or the answer was not acted
 # on (the pin changed meanwhile, or that tip's fetch was already tried).
 type ProbeEnd = Literal["unchanged", "moved", "failed", "held"]
+# The least the idle refresh sleeps between checks, so a record whose last fetch reads
+# as due, and stays so, costs one read of a small file a second and not a busy loop.
+IDLE_CHECK_FLOOR_S: Final = 1.0
 
 
 @dataclass(eq=False, slots=True)
@@ -935,8 +956,14 @@ class MirrorSession:
         self._probe_attempt: float | None = None
         self._probe_failed: float | None = None
         self._probe_fetched: tuple[str | None, float] | None = None
-        # When a fetch of the mirror last failed.
+        # When a fetch of the mirror last ended, and when one last failed.
+        self._fetch_ended: float | None = None
         self._fetch_failed: float | None = None
+        # Whether the fetch running is the idle one (:meth:`run_idle_refresh`), which no
+        # reader waits for until a request joins it.
+        self._idle_fetch = False
+        # The earliest the idle fetch may start again after a reader's job stopped one.
+        self._idle_not_before: float | None = None
 
     # ── The attended pull request ───────────────────────────────
 
@@ -1136,6 +1163,8 @@ class MirrorSession:
         return self._refresh_mirror(companion_stale=companion_stale)
 
     def _refresh_mirror(self, *, companion_stale: bool) -> StartedOrJoined:
+        # A reader's request, or a page's: an idle fetch it joins is waited for from now.
+        self._idle_fetch = False
         started = self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
         if self._pending_selection is not None:
             self._selection_state = "pending"
@@ -1195,6 +1224,8 @@ class MirrorSession:
 
         at = _monotonic()
         if self.refreshing():
+            if self._coordinator.running(self.mirror.key):
+                self._idle_fetch = False
             return "joined"
         if self._mirror_stale(_now_utc()) and not self._fetch_held(at):
             return self._refresh_mirror(companion_stale=False)
@@ -1257,6 +1288,64 @@ class MirrorSession:
         if task is not None and not task.done():
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+
+    # ── The idle refresh ────────────────────────────────────────
+
+    def _idle_due_in(self, at: float) -> float:
+        """Seconds from *at* until the idle fetch is due; zero or less when it is.
+
+        Due once the last fetch, this process's or another's as the store's record has it,
+        is older than :data:`STORE_IDLE_REFRESH_S`, and no fetch of this process ended
+        within that long either, so one that failed is tried again only then. An idle
+        fetch a reader's job stopped is tried again a freshness window later.
+        """
+
+        waits = [0.0]
+        fetched = self.last_fetch_at()
+        moment = _parse_timestamp(fetched) if fetched is not None else None
+        if moment is not None:
+            waits.append(STORE_IDLE_REFRESH_S - (_now_utc() - moment).total_seconds())
+        if self._fetch_ended is not None:
+            waits.append(STORE_IDLE_REFRESH_S - (at - self._fetch_ended))
+        if self._idle_not_before is not None:
+            waits.append(self._idle_not_before - at)
+        return max(waits)
+
+    async def run_idle_refresh(self) -> None:
+        """Keep the served mirror at most :data:`STORE_IDLE_REFRESH_S` old; runs until cancelled.
+
+        The one timer a server runs for a mirror no page is looking at. A visible page's
+        asks keep the mirror newer than this, so the timer finds nothing due while one is
+        open. When the fetch is due, the store's record is read again first, so another
+        process's fetch is followed, and the served branch with it, rather than repeated.
+        """
+
+        while True:
+            await asyncio.sleep(max(self._idle_due_in(_monotonic()), IDLE_CHECK_FLOOR_S))
+            try:
+                if self.refreshing():
+                    continue
+                await self.observe()
+                if self._idle_due_in(_monotonic()) <= 0 and not self.refreshing():
+                    self.request_idle_refresh()
+            except Exception:
+                log.warning("the idle refresh could not check the served mirror", exc_info=True)
+                # As after a fetch that failed: nothing again until the interval has passed.
+                self._fetch_ended = _monotonic()
+
+    def request_idle_refresh(self) -> StartedOrJoined:
+        """Start the fetch no reader waits for, or join the one running.
+
+        Background work at the store (:class:`StoreTurn`): it goes only when no other job
+        waits, takes no network slot, and is cancelled when a reader's job starts waiting,
+        so nothing a reader asked for waits for it to finish. A reader's request that
+        joins it makes it the reader's from then on.
+        """
+
+        if self._coordinator.running(self.mirror.key):
+            return "joined"
+        self._idle_fetch = True
+        return self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
 
     def request_commit_fetch(self, *, retry: bool) -> CommitFetchAnswer:
         """Ask for the fetch a commit the mirror lacks waits for.
@@ -1378,8 +1467,22 @@ class MirrorSession:
 
     async def _refresh_job(self) -> None:
         baseline: RecordedFreshness | None = None
+
+        def idle() -> bool:
+            return self._idle_fetch
+
         try:
-            async with self._store_turn(lambda: True), self._coordinator.slot():
+            # The idle fetch is background work: it goes when nothing else waits at the
+            # store, holds no network slot, and is cancelled when a reader's job starts
+            # waiting. A reader's or a page's fetch goes first, as a page of code waits on it.
+            async with (
+                self._store_turn(
+                    lambda: not idle(),
+                    background=idle,
+                    preempt=partial(self._coordinator.cancel, self.mirror.key),
+                ),
+                contextlib.nullcontext() if idle() else self._coordinator.slot(),
+            ):
                 # The record just before this attempt, to tell whether another process's
                 # refresh this one may follow rewrote it. Read here so the job has its place
                 # in the queue from the moment it was asked for, and the record is not one
@@ -1388,12 +1491,21 @@ class MirrorSession:
                     baseline = await self._read_baseline()
                 result = await self.mirror.refresh()
         except asyncio.CancelledError:
-            self._set_result(RefreshResult("cancelled", _utc_timestamp()))
+            if idle():
+                # Stopped to let a reader's job go, or by shutdown: nobody asked for it, so
+                # status reports no refresh of theirs as cancelled.
+                self._idle_fetch = False
+                self._idle_not_before = _monotonic() + self._window_s
+            else:
+                self._fetch_ended = _monotonic()
+                self._set_result(RefreshResult("cancelled", _utc_timestamp()))
             raise
         except Exception:
             log.exception("refreshing the served mirror failed")
             result = RefreshResult("failed", _utc_timestamp())
-        self._fetch_failed = None if result.outcome in _UNHELD_OUTCOMES else _monotonic()
+        self._idle_fetch = False
+        self._fetch_ended = _monotonic()
+        self._fetch_failed = None if result.outcome in _UNHELD_OUTCOMES else self._fetch_ended
         self._swept.update(result.swept)
         self._set_result(result)
         if result.outcome in _FETCHED_OUTCOMES:
@@ -1694,6 +1806,7 @@ async def lifespan_refresh(app: Any) -> AsyncGenerator[None]:
     app.state.refresh_jobs = coordinator
     app.state.source_mirror = None
     config = _served_mirror
+    idle: asyncio.Task[None] | None = None
     try:
         if config is not None and _served_revision() is not None:
             session = MirrorSession(
@@ -1717,10 +1830,19 @@ async def lifespan_refresh(app: Any) -> AsyncGenerator[None]:
                 session.start_pending_selection()
             elif config.serving and session.is_stale():
                 session.request_refresh()
+            if config.serving:
+                # A one-shot command fetches only what it asks for; a server keeps its
+                # mirror from growing old while no page is visible.
+                idle = asyncio.create_task(
+                    session.run_idle_refresh(), name="metabrowser-idle-refresh"
+                )
         yield
     finally:
         served = mirror_session(app)
         app.state.source_mirror = None
+        if idle is not None:
+            idle.cancel()
+            await asyncio.gather(idle, return_exceptions=True)
         if served is not None:
             await served.stop_probe()
         await coordinator.aclose()
@@ -1739,6 +1861,7 @@ __all__ = [
     "MAX_CONCURRENT_REFRESHES",
     "MAX_FIRST_IN_A_ROW",
     "MAX_PULL_JOBS",
+    "STORE_IDLE_REFRESH_S",
     "STORE_PROBE_FLOOR_S",
     "STORE_PROBE_S",
     "STORE_PROBE_WAIT_S",

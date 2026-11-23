@@ -1050,3 +1050,199 @@ def test_the_turn_gives_background_waiters_nothing_ahead_of_others() -> None:
         "background 1",
         "background 2",
     ]
+
+
+# ── The idle refresh ─────────────────────────────────────────────────
+
+
+class _HeldFetch(_Mirror):
+    """A mirror whose fetch holds until released, and says when it was stopped."""
+
+    def __init__(self, events: list[str], *, outcome: str = "succeeded") -> None:
+        super().__init__(events)
+        self.gate = asyncio.Event()
+        self.started = asyncio.Event()
+        self.outcome = outcome
+
+    async def refresh(self) -> RefreshResult:
+        self.events.append("mirror start")
+        self.started.set()
+        try:
+            await self.gate.wait()
+        except asyncio.CancelledError:
+            self.events.append("mirror stopped")
+            raise
+        self.events.append("mirror end")
+        return RefreshResult(self.outcome, _now())
+
+
+async def _idle_for(session: MirrorSession, seconds: float) -> None:
+    """Run the server's idle timer for *seconds*, then stop it as shutdown does."""
+
+    timer = asyncio.create_task(session.run_idle_refresh())
+    await asyncio.sleep(seconds)
+    timer.cancel()
+    await asyncio.gather(timer, return_exceptions=True)
+
+
+def test_an_idle_server_fetches_a_mirror_older_than_the_idle_interval_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no page asking, the server's own timer fetches a mirror that has grown old,
+    and then not again until the interval has passed."""
+
+    monkeypatch.setattr("metabrowser.mirror_refresh.IDLE_CHECK_FLOOR_S", 0.01)
+
+    async def scenario() -> list[str]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        session = MirrorSession(_Mirror(events), coordinator, fetch_on_miss=True)
+        await session.observe()
+        await _idle_for(session, 0.3)
+        await coordinator.aclose()
+        return events
+
+    assert asyncio.run(scenario()) == ["mirror"]
+
+
+def test_an_idle_server_leaves_a_mirror_inside_the_idle_interval_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("metabrowser.mirror_refresh.IDLE_CHECK_FLOOR_S", 0.01)
+
+    async def scenario() -> list[str]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        session = MirrorSession(_Mirror(events, fetched_at=_now()), coordinator)
+        await session.observe()
+        await _idle_for(session, 0.2)
+        await coordinator.aclose()
+        return events
+
+    assert asyncio.run(scenario()) == []
+
+
+def test_the_idle_refresh_follows_another_processs_fetch_instead_of_repeating_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The store's record is read again when the fetch comes due: one another process
+    wrote meanwhile is this server's too, and the origin is not asked again."""
+
+    monkeypatch.setattr("metabrowser.mirror_refresh.IDLE_CHECK_FLOOR_S", 0.01)
+
+    async def scenario() -> tuple[list[str], str | None]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        mirror = _Mirror(events)
+        session = MirrorSession(mirror, coordinator)
+        await session.observe()
+        # Another process fetched the store since this server last read its record.
+        mirror.fetched_at = _now()
+        await _idle_for(session, 0.2)
+        await coordinator.aclose()
+        return events, session.last_fetch_at()
+
+    events, fetched = asyncio.run(scenario())
+    assert events == []
+    assert fetched is not None and fetched != _OLD
+
+
+def test_a_failed_idle_fetch_is_tried_again_only_after_the_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("metabrowser.mirror_refresh.IDLE_CHECK_FLOOR_S", 0.01)
+
+    class _Unreachable(_Mirror):
+        async def refresh(self) -> RefreshResult:
+            self.events.append("mirror")
+            return RefreshResult("network_unreachable", _now())
+
+    async def scenario() -> list[str]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        session = MirrorSession(_Unreachable(events), coordinator)
+        await session.observe()
+        await _idle_for(session, 0.3)
+        first = list(events)
+        # The same server with a short interval tries again, so it is the interval that held it.
+        monkeypatch.setattr("metabrowser.mirror_refresh.STORE_IDLE_REFRESH_S", 0.02)
+        await _idle_for(session, 0.3)
+        await coordinator.aclose()
+        return [*first, "|", *events[len(first) :]]
+
+    events = asyncio.run(scenario())
+    assert events[:2] == ["mirror", "|"]
+    assert len(events) > 2
+
+
+def test_the_idle_fetch_gives_way_to_a_readers_job_at_the_store() -> None:
+    """Background work: when a job a reader waits on wants the store, the idle fetch is
+    stopped, not waited for, and it is nobody's refresh to report as cancelled."""
+
+    async def scenario() -> tuple[list[str], object, bool]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        mirror = _HeldFetch(events)
+        companion = _Companion(events, stale=True)
+        session = await _attending(mirror, coordinator, companion, serving=True)
+        assert session.request_idle_refresh() == "started"
+        await mirror.started.wait()
+        refreshing = session.refreshing()
+        session.request_companion_refresh()
+        await _settle(coordinator)
+        return events, session._last_outcome(), refreshing
+
+    events, outcome, refreshing = asyncio.run(scenario())
+    assert events == ["mirror start", "mirror stopped", "pull start", "pull end"]
+    assert outcome is None
+    assert refreshing is True
+
+
+def test_the_idle_fetch_takes_no_network_slot() -> None:
+    """A job a reader waits on holding every slot does not hold the idle fetch back, and
+    the idle fetch holds none a reader's job would wait for."""
+
+    async def scenario() -> list[str]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator(limit=1)
+        release = asyncio.Event()
+
+        async def a_list() -> None:
+            events.append("list start")
+            await release.wait()
+
+        coordinator.start("list", a_list)
+        await _spin()
+        session = MirrorSession(_Mirror(events), coordinator, fetch_on_miss=True)
+        session.request_idle_refresh()
+        await _spin()
+        seen = list(events)
+        release.set()
+        await _settle(coordinator)
+        return seen
+
+    assert asyncio.run(scenario()) == ["list start", "mirror"]
+
+
+def test_a_readers_refresh_that_joins_the_idle_fetch_makes_it_theirs() -> None:
+    """From then on a page waits on it, so it goes first and nothing stops it."""
+
+    async def scenario() -> tuple[list[str], str, object]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        mirror = _HeldFetch(events)
+        companion = _Companion(events, stale=True)
+        session = await _attending(mirror, coordinator, companion, serving=True)
+        session.request_idle_refresh()
+        await mirror.started.wait()
+        joined = session.request_refresh(for_selection=True)
+        session.request_companion_refresh()
+        await _spin()
+        mirror.gate.set()
+        await _settle(coordinator)
+        return events, joined, session._last_outcome()
+
+    events, joined, outcome = asyncio.run(scenario())
+    assert joined == "joined"
+    assert events == ["mirror start", "mirror end", "pull start", "pull end"]
+    assert isinstance(outcome, dict) and outcome["outcome"] == "succeeded"

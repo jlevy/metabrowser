@@ -857,6 +857,50 @@ def test_the_shutdown_cancels_a_running_probe(
     assert ended == ["cancelled"]
 
 
+# ── The idle refresh ─────────────────────────────────────────────────
+
+
+def test_a_server_no_page_is_looking_at_fetches_its_mirror_by_itself(
+    origin: _Origin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A server left running behind a hidden tab keeps its mirror from growing old: its
+    own timer fetches, and the served branch follows, with no request asking."""
+
+    monkeypatch.setattr("metabrowser.mirror_refresh.STORE_IDLE_REFRESH_S", 0.5)
+    monkeypatch.setattr("metabrowser.mirror_refresh.IDLE_CHECK_FLOOR_S", 0.05)
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+        deadline = time.monotonic() + 30
+        # A GET starts no work, so only the server's own timer can have fetched.
+        while (status := client.get("/api/source/status").json())["pin"] != newer:
+            assert time.monotonic() < deadline, "the idle refresh never fetched"
+            time.sleep(0.05)
+    assert status["latest"] == newer
+    assert status["last_outcome"]["operation"] == "refresh"
+
+
+def test_a_one_shot_command_runs_no_idle_refresh(
+    tmp_path: Path, origin: _Origin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a server keeps a timer: a command reads the mirror as it is and fetches only
+    what it asks for, however old the mirror is."""
+
+    _backdate_last_fetch(tmp_path, origin)
+    fetches: list[str] = []
+
+    async def counted(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        fetches.append(store_key)
+        return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
+
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", counted)
+    monkeypatch.setattr("metabrowser.mirror_refresh.STORE_IDLE_REFRESH_S", 0.0)
+    monkeypatch.setattr("metabrowser.mirror_refresh.IDLE_CHECK_FLOOR_S", 0.0)
+    result = runner.invoke(_app, [origin.url, "--api", "/api/source/status"])
+    assert result.exit_code == 0, result.output
+    assert fetches == []
+
+
 # ── The coordinator ──────────────────────────────────────────────────
 
 
