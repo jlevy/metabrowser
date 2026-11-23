@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 45
     env:
       CONTROL_SHA: 87b8ec812774bb12a4d9f5f29901719b8b66d323
-      CANDIDATE_SHA: 78e3cdb320a10151d4652076f3941be937284870
+      CANDIDATE_SHA: ed7e1f10ffcd7be3524113edd6dc940cfe74c708
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -29,6 +29,7 @@ jobs:
         with:
           node-version: "24.18.0"
       - name: Build exact wheels and public corpus
+        id: build_exact_wheels
         shell: bash
         run: |
           set -euo pipefail
@@ -81,8 +82,8 @@ jobs:
           cd "$support/candidate"
           python_run=(uv --config-file uv.toml run --frozen python)
           bench=("${python_run[@]}" explorations/performance-loop/run.py)
-          control_label=exp-102-cli-013-http-ready-font-v0120
-          candidate_label=exp-102-cli-013-http-ready-font-candidate
+          control_label=exp-102-cli-013-http-ready-font-tcp-v0120
+          candidate_label=exp-102-cli-013-http-ready-font-tcp-candidate
           ledger=explorations/performance-loop/results/runs.jsonl
           pending=explorations/performance-loop/results/pending.json
           capture_driver="$GITHUB_WORKSPACE/explorations/performance-loop/capture-browser.js"
@@ -212,6 +213,16 @@ jobs:
           test "$(jq -s length "$results/browser-ledger.jsonl")" = 10
           test "$candidate_hard_failure" = 0
           test "$compare_status" = 0
+      - name: Verify the adopted TCP transport on Linux
+        if: ${{ !cancelled() && steps.build_exact_wheels.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          support="$RUNNER_TEMP/mb-release-comparison"
+          export TMPDIR="$support/tmp" UV_CACHE_DIR="$support/uv" CARGO_TARGET_DIR="$support/cargo"
+          cd "$support/candidate"
+          METABROWSER_STRICT_SKIPS=1 uv --config-file uv.toml run --frozen --no-sync \
+            pytest -q tests/test_server_utils.py 2>&1 | tee "$support/evidence/linux-adopted-transport.log"
       - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
