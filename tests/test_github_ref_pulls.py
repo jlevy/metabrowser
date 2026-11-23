@@ -23,7 +23,7 @@ from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.ref_pulls import ref_pulls_of
 from metabrowser.cache.providers import RefPull
 from metabrowser.mirror_refresh import MirrorRef
-from metabrowser.source_routes import REF_PULLS_PER_ROW, SourceRef, source_refs
+from metabrowser.source_routes import PIN_HEADER, REF_PULLS_PER_ROW, SourceRef, source_refs
 from tests.cache_home_fixture import (  # pyright: ignore[reportPrivateUsage]
     FixtureSource,
     _stage_and_publish_source,
@@ -445,26 +445,42 @@ def test_a_checkouts_branches_list_the_pull_requests_of_its_origin(
     server._set_root_dir(checkout)  # pyright: ignore[reportPrivateUsage]
     with TestClient(server.app) as client:
 
-        def pulls_of(**params: str) -> dict[str, list[int]]:
-            listing = client.get("/api/source/refs", params=params).json()
-            assert listing["pull_requests"]["state"] == "ready", listing
-            return {
-                row["name"]: _numbers(row["pulls"]) for row in listing["refs"] if "pulls" in row
-            }
+        def check_ref_pulls(headers: dict[str, str] | None = None) -> None:
+            # The fork's topic is excluded from the origin's branch decorations.
+            for params, expected in (
+                ({}, {"feature": [21]}),
+                ({"kind": "remote"}, {"origin/feature": [21]}),
+                ({"q": "picker"}, {"feature": [21]}),
+            ):
+                listing = client.get("/api/source/refs", params=params, headers=headers)
+                assert listing.status_code == 200, listing.text
+                body = listing.json()
+                assert body["pull_requests"] == {
+                    "state": "ready",
+                    "complete": True,
+                    "refreshing": False,
+                }
+                assert {
+                    row["name"]: _numbers(row["pulls"]) for row in body["refs"] if "pulls" in row
+                } == expected
 
-        # Its own branch, and origin's remote-tracking one; the fork's `topic` is no one's.
-        assert pulls_of() == {"feature": [21]}
-        assert pulls_of(kind="remote") == {"origin/feature": [21]}
-        assert pulls_of(q="picker") == {"feature": [21]}
-        # Served as a revision of itself, the folder is no checkout the plugin resolves, and
-        # has no Pulls tab either ("Revisions of a Checkout" in arch-source-sessions-and-pins.md),
-        # so its listing has no pull requests, and says so.
+        catalog_route = "/api/plugin/github/pulls?state=open"
+        check_ref_pulls()
+        before = client.get(catalog_route).json()
+        assert before["source"] == CANONICAL
+        assert set(_numbers(before["rows"])) == {21, 30}
+
         switched = client.post(
             "/api/source/pin",
             json={"ref": "refs/heads/topic"},
             headers={"content-type": "application/json"},
         )
         assert switched.status_code == 200, switched.text
-        on_revision = client.get("/api/source/refs").json()
-        assert on_revision["pull_requests"] is None
-        assert not any("pulls" in row for row in on_revision["refs"])
+        pin = switched.json()["status"]["pin"]
+        assert pin is not None
+        headers = {PIN_HEADER: pin}
+        check_ref_pulls(headers)
+        after = client.get(catalog_route, headers=headers)
+        assert after.status_code == 200, after.text
+        assert after.json() == before
+        assert client.get("/api/source/status").json()["pin"] == pin

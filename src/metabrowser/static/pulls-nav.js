@@ -729,9 +729,7 @@
     }
     const nav = createPullsNav({
       routes,
-      // The shell draws the tab on a pin of a GitHub mirror, and on a folder only when it is
-      // a GitHub checkout.
-      checkout: sdk.sourceKind() === "filesystem",
+      checkout: sdk.sourceKind() === "filesystem" || Boolean(window.METABROWSER_SOURCE_CHECKOUT),
       location: () => window.location,
       pushHref: (href) => {
         window.history.pushState(null, "", href);

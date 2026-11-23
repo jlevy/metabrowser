@@ -216,7 +216,6 @@ from metabrowser.root_identity import (
     canonical_repository_url,
     identity_kind_tip,
     root_identity,
-    served_repository_context,
 )
 from metabrowser.server_utils import ipv6_literal, wildcard_host
 from metabrowser.settings import (
@@ -1724,12 +1723,19 @@ async def index(
     # the registry is a startup script every page pays for under a gated budget, and a page
     # draws one of the three, which only the server knows (source_kind_marks.py).
     #
-    # The sentence's repository is the route's: `served_repository_context`. A revision of
-    # the served checkout has no mirror session, so the page's own `repository_context`
-    # above is empty for it, and the route still reads the checkout's `origin`.
+    # A revision of the served checkout has no mirror but belongs to its checkout's
+    # repository. Keep the checkout's HEAD context for ref actions. The page's
+    # repository context names the pinned commit.
     tip_context = repository_context
     if pin is not None and checkout is not None and checkout.serves(pin):
-        tip_context = await served_repository_context(mirror, checkout)
+        tip_context = await asyncio.to_thread(discover_repository_context, checkout.root)
+        if tip_context is not None:
+            repository_context = {
+                **tip_context,
+                "revision": pin.commit_oid,
+                "branch": None,
+                "branch_on_origin": False,
+            }
     root_kind = identity["kind"]
     root_kind_svg = source_kind_svg(root_kind)
     root_kind_tip = html_escape(identity_kind_tip(identity, tip_context), quote=True)
@@ -1886,10 +1892,9 @@ async def index(
             f"{_source_ref_label_html(pin, checkout=checkout is not None)}</span>"
             '<span class="chip-menu-caret" aria-hidden="true"></span></button></span></div>'
         )
-    # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
-    # hosted repository, or a checkout, a subdirectory of one too, whose `origin` is on
-    # github.com. It costs a plain folder nothing, not even a script in a bundle, and a page
-    # that has it draws it at first paint, so the tabs never shift when it arrives.
+    # The Pulls tab follows a hosted mirror or a GitHub checkout, including a
+    # checkout's revisions and subdirectories. It costs a plain folder nothing,
+    # and a page with the tab draws it at first paint so the tabs never shift.
     pulls_tab = repository_context is not None
     pulls_in_front = pulls_tab and (pull_page or pull_list)
     # Commits is drawn here when the served root is a repository's root, the one root Git
