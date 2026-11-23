@@ -109,7 +109,9 @@ FULL_REFRESH_S: Final = 90.0
 # ``mergeable`` after the read that first asks: of 12 open NixOS/nixpkgs pull requests
 # read cold on 2026-11-23, all 12 answered ``null``, and all 12 an answer on the next
 # read 3 to 4 s later; review A of #726 saw ``null`` on 8 of 10 and an answer on all 10
-# 8 s later. Thirty seconds is six probes, several times the slowest of those. Past it
+# 8 s later. Thirty seconds is six probes, several times the slowest of those. A probe
+# that fails does not spend it, and one that ends unanswered is renewed for a record read
+# later, at most once a :data:`FULL_REFRESH_S` (:meth:`ServedPull._probe`). Past it
 # the pull is asked no more, since its ETag moves with the whole repository and each move
 # costs a call, and the record is no longer vouched for: the window's read asks again.
 MERGEABLE_SETTLE_S: Final = 30.0
@@ -125,13 +127,15 @@ PROBE_WAIT_S: Final = 3.0
 # A probe is one pull request's, one at a time, so the bound is on pull requests probed in
 # the same second: a reader's visible pages, and a script asking many cached numbers,
 # which ran that many ``gh`` at once before this (review K3 on #709). Four is more visible
-# pull request pages than one server's reader keeps in view, and holds the worst case to
-# sixteen processes and about 720 MB for under a second, 180 MB when nothing settles. It
-# is a cost argument, not a measured limit.
+# pull request pages than one server's reader keeps in view. The issue has answered before
+# a probe's other three start, so a probe runs at most three at once, and four hold the
+# worst case to twelve processes and about 540 MB for under a second, 180 MB when nothing
+# settles. It is a cost argument, not a measured limit.
 MAX_PROBES_IN_FLIGHT: Final = 4
-# How long a pull request the cap refused keeps its place ahead of those probed since
-# (:func:`_may_probe`): two of a page's intervals, so one whose page asks again gets the
-# next free probe, and one whose page went away holds no one back for longer.
+# How long after its last ask a pull request the cap refused keeps its place ahead of those
+# probed since (:func:`_may_probe`): two of a page's intervals, so one whose page keeps
+# asking has its turn however many are ahead, and one whose page went away holds no one
+# back for longer.
 PROBE_TURN_S: Final = 2 * ATTENDED_PROBE_S
 # The probes running in this process, which is one server.
 _PROBES: set[asyncio.Future[None]] = set()
@@ -154,7 +158,8 @@ def _may_probe(key: str, now: datetime) -> bool:
     each round, as a script's loop over cached numbers does, take turns: before this the
     first :data:`MAX_PROBES_IN_FLIGHT` were probed every round and the rest never (review
     A4 on #726), and a record never probed is read in full once a window instead. A
-    refusal is forgotten after :data:`PROBE_TURN_S`, or when its pull request probes.
+    refusal is forgotten :data:`PROBE_TURN_S` after its pull request last asked, or when
+    it probes.
     """
 
     for other, since in list(_REFUSED.items()):
@@ -169,10 +174,12 @@ def _may_probe(key: str, now: datetime) -> bool:
     if ahead < free:
         _REFUSED.pop(key, None)
         return True
-    if key not in _REFUSED:
-        _REFUSED[key] = now
-        while len(_REFUSED) > MAX_KEPT_PULLS:
-            _REFUSED.popitem(last=False)
+    # Refused again, it keeps its place and its refusal is as new as this ask, so it
+    # lapses only once its asker stops asking: dated from the first refusal, it lapsed
+    # before the turn of any asker past the twelfth came (review B1 on #726).
+    _REFUSED[key] = now
+    while len(_REFUSED) > MAX_KEPT_PULLS:
+        _REFUSED.popitem(last=False)
     return False
 
 
@@ -665,16 +672,26 @@ class ServedPull:
         self._probe_attempt = now
         # A record whose mergeability is unknown has the pull asked too, for
         # MERGEABLE_SETTLE_S from the first probe that found this head's unknown. A
-        # record that holds an answer ends the wait, so the next unknown has its own; one
-        # that never gets an answer is asked no more until its head moves, however many
-        # records of it are read meanwhile.
+        # record that holds an answer ends the wait, so the next unknown has its own, and
+        # so does a new head. A wait that ended unanswered is renewed for a record read
+        # after it ended, as a page shown again reads one, and no sooner than
+        # FULL_REFRESH_S after it began: that bounds the asks for a pull request GitHub
+        # never answers, however many records of it are read meanwhile.
         asked = self._mergeability_asked
         head = record.pull.head.sha
+        settle = timedelta(seconds=MERGEABLE_SETTLE_S)
         if not mergeability_pending(record):
             asked = self._mergeability_asked = None
-        elif asked is None or asked[0] != head:
+        elif (
+            asked is None
+            or asked[0] != head
+            or (
+                now - asked[1] >= timedelta(seconds=FULL_REFRESH_S)
+                and _parse_stamp(record.fetched_at) > asked[1] + settle
+            )
+        ):
             asked = self._mergeability_asked = (head, now)
-        mergeability = asked is not None and now - asked[1] <= timedelta(seconds=MERGEABLE_SETTLE_S)
+        mergeability = asked is not None and now - asked[1] <= settle
         checks = checks_settling(record) and (
             self._checks_probe_attempt is None
             # Less the slack PROBE_FLOOR_S allows each probe, so jitter does not push
@@ -705,6 +722,10 @@ class ServedPull:
             # where a raised error would answer each 5 s ask with a 500 and no backoff.
             if self.fetched_at == record.fetched_at:
                 self._probe_failed = now
+            if mergeability:
+                # A failed probe holds the next for longer than the settle wait lasts, and
+                # may not have reached the pull: the wait starts over when probes resume.
+                self._mergeability_asked = None
             if isinstance(exc, pulls.PullDataError):
                 log.debug("probing pull request %s failed: %s", self.number, exc)
             else:

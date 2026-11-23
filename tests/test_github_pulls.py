@@ -6545,6 +6545,27 @@ def test_a_probe_of_unknown_mergeability_asks_the_pull_and_sees_github_answer(
     assert pulls.mergeability_probe_path(stand.published, closed) is None
 
 
+def test_a_pull_answer_that_cannot_be_read_is_not_taken_for_still_unknown(
+    stand: _Stand,
+) -> None:
+    """Review B3 on #726: read as "the same", a malformed 200 would be vouched for and its
+    ETag kept, so the pull would answer 304 from then on."""
+
+    answers = scenario(stand.origin)
+    pull_path = "repos/octo/demo/pulls/7"
+    body = answers["api"][pull_path]["body"]
+    computing = {**body, "state": "open", "merged": False, "mergeable": None}
+    answers = _api(answers, pull_path, ok(pull_path, computing))
+    stand.answer(answers)
+    record = stand.refresh(7)
+    seen = _probe(stand, record, checks=False).seen
+    issue = ok(ISSUE_PATH, {"number": 7, "updated_at": record.pull.updated_at})
+    malformed = ok(pull_path, {"number": 7, "message": "?"})
+    stand.answer(_api(_api(answers, ISSUE_PATH, issue), pull_path, malformed))
+    found = _probe(stand, record, checks=False, seen=seen, mergeability=True)
+    assert (found.outcome, found.etags) == ("checks_changed", {})
+
+
 def test_an_issue_older_than_the_record_is_behind_and_not_a_change(stand: _Stand) -> None:
     """Review A8 on #726: an answer that lags the pull's would have cost a full read."""
 

@@ -1518,3 +1518,149 @@ def test_what_a_probe_saw_of_the_issue_is_kept_when_a_newer_record_arrived_meanw
     assert held.probed_at is None
     asyncio.run(held.probe(newer))
     assert sent == [None, seen]
+
+
+# ── Review B of #726 ───────────────────────────────────────────
+
+
+@pytest.mark.parametrize("askers", [13, served_pull.MAX_KEPT_PULLS])
+def test_however_many_ask_past_the_cap_each_that_keeps_asking_is_probed(askers: int) -> None:
+    """B1: a refusal kept the time it was first made and lapsed two intervals later, so
+    with the cap at four the thirteenth asker onward went to the back each time and was
+    never probed. A refusal renewed each time it is refused lapses only when its asker
+    stops asking."""
+
+    cap = served_pull.MAX_PROBES_IN_FLIGHT
+    assert askers > 3 * cap
+    rounds = 60
+    counts = dict.fromkeys(range(1, askers + 1), 0)
+
+    async def run() -> None:
+        loop = asyncio.get_running_loop()
+        for turn in range(rounds):
+            started: list[asyncio.Future[None]] = []
+            for asker in counts:
+                # Every asker of a round asks in the same order, a millisecond apart.
+                now = NOW + timedelta(seconds=ATTENDED_PROBE_S * turn + 0.001 * asker)
+                if served_pull._may_probe(f"demo:pull/{asker}", now):  # pyright: ignore[reportPrivateUsage]
+                    probe: asyncio.Future[None] = loop.create_future()
+                    served_pull._PROBES.add(probe)  # pyright: ignore[reportPrivateUsage]
+                    started.append(probe)
+                    counts[asker] += 1
+            assert len(started) == cap
+            # Each probe of a round ends before the next round asks.
+            for probe in started:
+                probe.set_result(None)
+            served_pull._PROBES.clear()  # pyright: ignore[reportPrivateUsage]
+
+    asyncio.run(run())
+    # Not evenly, since a round's four go in the order they ask, but none is left out:
+    # each has at least two thirds of an even share.
+    share = rounds * cap // askers
+    assert min(counts.values()) >= max(1, 2 * share // 3), counts
+
+
+def test_the_pull_requests_the_cap_remembers_refusing_are_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B3: request text decides how many ask."""
+
+    monkeypatch.setattr(served_pull, "MAX_PROBES_IN_FLIGHT", 0)
+    for asker in range(served_pull.MAX_KEPT_PULLS + 5):
+        assert not served_pull._may_probe(f"demo:pull/{asker}", NOW)  # pyright: ignore[reportPrivateUsage]
+    refused = served_pull._REFUSED  # pyright: ignore[reportPrivateUsage]
+    assert len(refused) == served_pull.MAX_KEPT_PULLS
+    # The oldest are the ones forgotten.
+    assert next(iter(refused)) == "demo:pull/5"
+
+
+def test_a_settle_wait_that_lapsed_unanswered_is_renewed_for_a_record_read_long_after(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B2: one probe finds it unknown, GitHub has not answered, and the page is hidden.
+    Ten minutes on its full read stores unknown again for the same head. Before, the pull
+    was never asked for that record and no probe vouched for it."""
+
+    record = _record(mergeable="unknown", fetched=NOW)
+    held = _held(record, tmp_path)
+    asked = _asking(monkeypatch, [pulls.PullProbe("unchanged", {})] * 12)
+    clock = [NOW]
+    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    asyncio.run(held.probe(record))
+    assert asked == [(True, False)]
+    clock[0] = NOW + timedelta(minutes=10)
+    again = record.model_copy(update={"fetched_at": _stamp(clock[0])})
+    held.saw_record(again.fetched_at)
+    for _probe in range(3):
+        clock[0] += timedelta(seconds=ATTENDED_PROBE_S)
+        asyncio.run(held.probe(again))
+    assert asked[1:] == [(True, False)] * 3 and held.probed_at == _stamp(clock[0])
+    # The renewed wait is bounded as the first was, and records read meanwhile, as a
+    # checks_only read publishes every few seconds, renew nothing before FULL_REFRESH_S.
+    renewed = clock[0] - timedelta(seconds=2 * ATTENDED_PROBE_S)
+    clock[0] = renewed + timedelta(seconds=served_pull.MERGEABLE_SETTLE_S + ATTENDED_PROBE_S)
+    newer = record.model_copy(update={"fetched_at": _stamp(clock[0])})
+    held.saw_record(newer.fetched_at)
+    asyncio.run(held.probe(newer))
+    assert asked[-1] == (False, False)
+    clock[0] = renewed + timedelta(seconds=FULL_REFRESH_S - 1)
+    asyncio.run(held.probe(newer))
+    assert asked[-1] == (False, False)
+    clock[0] = renewed + timedelta(seconds=FULL_REFRESH_S)
+    asyncio.run(held.probe(newer))
+    assert asked[-1] == (True, False)
+    # A record read before the wait ended is the one the wait was for: it renews nothing.
+    clock[0] += timedelta(seconds=FULL_REFRESH_S)
+    asyncio.run(held.probe(newer))
+    assert asked[-1] == (False, False)
+
+
+def test_a_probe_that_fails_does_not_spend_the_settle_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B2: a failed probe holds the next for a freshness window, which is longer than
+    MERGEABLE_SETTLE_S, so the wait was over when probes resumed and the pull was never
+    asked."""
+
+    assert FRESHNESS_WINDOW_S > served_pull.MERGEABLE_SETTLE_S
+    record = _record(mergeable="unknown", fetched=NOW)
+    held = _held(record, tmp_path)
+    asked: list[bool] = []
+    failing = [True]
+
+    async def probe(_published: object, _record: object, **kwargs: Any) -> pulls.PullProbe:
+        asked.append(bool(kwargs["mergeability"]))
+        if failing[0]:
+            failing[0] = False
+            raise pulls.PullDataError("network_error", "no route")
+        return pulls.PullProbe("unchanged", {})
+
+    monkeypatch.setattr(pulls, "probe_pull_request", probe)
+    clock = [NOW]
+    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    asyncio.run(held.probe(record))
+    clock[0] = NOW + WINDOW + timedelta(seconds=1)
+    assert held.probe_due(clock[0])
+    asyncio.run(held.probe(record))
+    assert asked == [True, True] and held.probed_at == _stamp(clock[0])
+
+
+def test_a_head_that_moves_while_mergeability_is_unknown_has_a_wait_of_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B3: the wait is a head's, and GitHub computes afresh for a new one."""
+
+    record = _record(mergeable="unknown", fetched=NOW)
+    held = _held(record, tmp_path)
+    asked = _asking(monkeypatch, [pulls.PullProbe("unchanged", {})] * 3)
+    clock = [NOW]
+    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    asyncio.run(held.probe(record))
+    clock[0] = NOW + timedelta(seconds=served_pull.MERGEABLE_SETTLE_S + ATTENDED_PROBE_S)
+    asyncio.run(held.probe(record))
+    assert asked == [(True, False), (False, False)]
+    pushed = _record(mergeable="unknown", fetched=clock[0], head=NEWER_HEAD)
+    held.saw_record(pushed.fetched_at)
+    clock[0] += timedelta(seconds=ATTENDED_PROBE_S)
+    asyncio.run(held.probe(pushed))
+    assert asked[-1] == (True, False)

@@ -241,9 +241,13 @@ So while an open record holds `unknown`, the probe also asks the pull itself, fo
 `MERGEABLE_SETTLE_S` from the first probe that found that head’s mergeability unknown,
 and an answer starts a read of the checks alone, below the floor too.
 Past that time the pull is asked no more and no probe vouches for the record, so the
-window’s read asks again above the floor, and below it the page says unknown until the
-budget is back. A mergeability GitHub recomputes for a record that holds an answer, as
-when its base moves, shows at the next `FULL_REFRESH_S` read.
+window’s read asks again above the floor.
+Below it nothing reads the record, the envelope turns stale, and the page asks once a
+window, so until the budget is back it says unknown and shows a change up to a window
+late. A wait that ended unanswered is renewed for a record read after it ended, at most
+once a `FULL_REFRESH_S`, and a probe that fails does not spend it (review B2 of #726). A
+mergeability GitHub recomputes for a record that holds an answer, as when its base
+moves, shows at the next `FULL_REFRESH_S` read.
 Check runs and statuses are not in the pull request at all, which is why checks have
 their own probe and `pull_freshness.py` has its `checks` verdict.
 
@@ -346,8 +350,13 @@ measurements above: probes 0 while the pull request does not change, whatever is
 to its repository, after one paid read of the issue for each pull request a process
 probes; full reads about 0 once the account check is conditional; and 40 record
 refreshes and 40 catalog scans an hour, at most 40 GraphQL points.
-Today the same page costs about 3 `core` a minute in account checks alone: two per
-record refresh and one per catalog scan, each about once a minute.
+Mergeability is the exception.
+Where the base moves often enough that each full read stores `unknown`, the probe that
+sees GitHub answer is a paid `200`, and so is the pull in the read of the checks it
+starts: about two `core` per `FULL_REFRESH_S`, 80 an hour for one visible page, and
+spent below the floor too (review B4 of #726). Today the same page costs about 3 `core`
+a minute in account checks alone: two per record refresh and one per catalog scan, each
+about once a minute.
 
 ### Server Changes
 
