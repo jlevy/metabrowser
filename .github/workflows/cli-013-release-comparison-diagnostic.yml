@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 45
     env:
       CONTROL_SHA: 87b8ec812774bb12a4d9f5f29901719b8b66d323
-      CANDIDATE_SHA: 29f9f8c36661ffde18d02990873771088522e662
+      CANDIDATE_SHA: 78e3cdb320a10151d4652076f3941be937284870
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -81,8 +81,8 @@ jobs:
           cd "$support/candidate"
           python_run=(uv --config-file uv.toml run --frozen python)
           bench=("${python_run[@]}" explorations/performance-loop/run.py)
-          control_label=exp-102-cli-013-http-ready-v0120
-          candidate_label=exp-102-cli-013-http-ready-candidate
+          control_label=exp-102-cli-013-http-ready-font-v0120
+          candidate_label=exp-102-cli-013-http-ready-font-candidate
           ledger=explorations/performance-loop/results/runs.jsonl
           pending=explorations/performance-loop/results/pending.json
           capture_driver="$GITHUB_WORKSPACE/explorations/performance-loop/capture-browser.js"
