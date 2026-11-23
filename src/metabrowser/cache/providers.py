@@ -21,8 +21,6 @@ from dataclasses import dataclass
 from functools import cache
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict
 
-from metabrowser.cache.free_space import volume_free_bytes
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -337,6 +335,8 @@ def provider_credential_hint(source_url: str) -> str | None:
 async def check_first_clone(source: GitSource, *, home: Path) -> None:
     """Let every provider refuse a first clone of *source* into *home* before any fetch,
     knowing the free space on the volume that holds *home*, which may not exist yet."""
+
+    from metabrowser.cache.free_space import volume_free_bytes
 
     free_bytes = await asyncio.to_thread(volume_free_bytes, home)
     for provider in installed_providers():
