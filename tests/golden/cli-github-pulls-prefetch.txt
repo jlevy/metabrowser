@@ -218,8 +218,8 @@ status: 200
       "hour_used": 6,
       "speculative_per_hour": 100,
       "speculative_hour_used": 6,
-      "catalog_per_hour": 8,
-      "catalog_hour_used": 0
+      "prefetch_reserved": 48,
+      "walk_hour_used": 0
     }
   },
   "recent": [
@@ -415,8 +415,8 @@ status: 200
       "hour_used": 3,
       "speculative_per_hour": 100,
       "speculative_hour_used": 3,
-      "catalog_per_hour": 8,
-      "catalog_hour_used": 0
+      "prefetch_reserved": 48,
+      "walk_hour_used": 0
     }
   },
   "recent": [
@@ -477,7 +477,7 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-## This server's speculative work has spent its whole share of the ceiling this hour: the catalog's backfill and cores walk the part they may, and the prefetch the rest. The ceiling itself has two thirds left, which what is on screen keeps. A visible page asks for 9 and for 10's and 9's changed files. The record is refused at once with `self_ceiling`, and the lists go on: the store gives 10's, which costs GitHub nothing, and 9's, which GitHub would give, is refused when its turn comes.
+## This server's cores walk has spent the whole of speculative work's share of the ceiling this hour, before any page asked for the prefetch, so the lane kept nothing back from it. The ceiling itself has two thirds left, which what is on screen keeps. A visible page asks for 9 and for 10's and 9's changed files. The record is refused at once with `self_ceiling`, and the lists go on: the store gives 10's, which costs GitHub nothing, and 9's, which GitHub would give, is refused when its turn comes. From this ask on, the lane keeps a scan's records from the walk.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
 exit: 0
 --- stdout ---
@@ -517,8 +517,8 @@ status: 200
       "hour_used": 100,
       "speculative_per_hour": 100,
       "speculative_hour_used": 100,
-      "catalog_per_hour": 8,
-      "catalog_hour_used": 8
+      "prefetch_reserved": 48,
+      "walk_hour_used": 100
     }
   },
   "recent": [
@@ -585,8 +585,8 @@ status: 200
       "hour_used": 6,
       "speculative_per_hour": 100,
       "speculative_hour_used": 6,
-      "catalog_per_hour": 8,
-      "catalog_hour_used": 0
+      "prefetch_reserved": 48,
+      "walk_hour_used": 0
     }
   },
   "recent": [

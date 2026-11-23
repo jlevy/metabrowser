@@ -196,7 +196,8 @@ def _may_probe(key: str, now: datetime, *, turn_s: float = PROBE_TURN_S) -> bool
     first :data:`MAX_PROBES_IN_FLIGHT` were probed every round and the rest never (review
     A4 on #726), and a record never probed is read in full once a window instead. A
     refusal is forgotten *turn_s* after its asker last asked, :data:`PROBE_TURN_S` for a
-    pull request, or when it probes.
+    pull request, or when it probes; with :data:`MAX_KEPT_PULLS` remembered, a new one is
+    not, so those remembered keep their places.
     """
 
     for other, (since, kept_s) in list(_REFUSED.items()):
@@ -213,10 +214,13 @@ def _may_probe(key: str, now: datetime, *, turn_s: float = PROBE_TURN_S) -> bool
         return True
     # Refused again, it keeps its place and its refusal is as new as this ask, so it
     # lapses only once its asker stops asking: dated from the first refusal, it lapsed
-    # before the turn of any asker past the twelfth came (review B1 on #726).
-    _REFUSED[key] = (now, turn_s)
-    while len(_REFUSED) > MAX_KEPT_PULLS:
-        _REFUSED.popitem(last=False)
+    # before the turn of any asker past the twelfth came (review B1 on #726). A new one is
+    # remembered only while there is room, and asks again: evicting the oldest to make room
+    # forgot the asker whose turn was next, so past MAX_KEPT_PULLS askers each round's
+    # newcomers evicted one another and none was probed after the first (review D1 on
+    # #726).
+    if key in _REFUSED or len(_REFUSED) < MAX_KEPT_PULLS:
+        _REFUSED[key] = (now, turn_s)
     return False
 
 

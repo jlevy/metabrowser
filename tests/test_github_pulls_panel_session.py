@@ -965,6 +965,16 @@ def test_background_core_warming_covers_viewport_and_catalog_without_stranding_r
         ],
         # Failures per batch in five virtual minutes, none retried before its deadline.
         "staggeredFailures": [2, 11, 10],
+        # Two minutes of `held` answers back off to SLOW_POLL_MS whatever failure they name,
+        # a rate limit whose reset has passed too, which was waited for a second at a time,
+        # 119 asks (review B1 of #761). A reset still ahead is woken at once, then the same.
+        "heldBackoff": {
+            **{
+                failure: {"asks": 8, "gapsMs": [1000, 2000, 4000, 8000, 16000, 30000, 30000]}
+                for failure in ("none", "lapsedRateLimit", "staleNetworkError")
+            },
+            "rateLimitAhead": {"asks": 6, "gapsMs": [59000, 2000, 4000, 8000, 16000]},
+        },
     }
 
 

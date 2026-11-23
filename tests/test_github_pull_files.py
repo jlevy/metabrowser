@@ -61,7 +61,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
 )
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.cache.paths import source_pull_files
-from metabrowser.mirror_refresh import MAX_PULL_JOBS
+from metabrowser.mirror_refresh import MAX_PULL_JOBS, RefreshCoordinator
 from tests.cache_home_fixture import (
     FixtureSource,
     _stage_and_publish_source,  # pyright: ignore[reportPrivateUsage]
@@ -646,6 +646,48 @@ def test_a_fallback_the_caller_refuses_reads_nothing_and_keeps_nothing(
         )
     )
     assert (listed.listed_from, len(listed.rows), asked) == ("github", 2, [False, True])
+
+
+def test_a_reader_who_joins_a_background_job_has_the_list_its_fallback_would_refuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    """D3 of review D on #737: a reader who opened the files while the prefetch's job for a
+    list the store was to give ran joined it, and when Git could not give the list and
+    the lane's fallback was refused, the job ended with no list and the reader's tree had
+    none until it asked again. A mark an earlier reader left admits no later job."""
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    local = LocalComparison(tmp_path / "no-such-store.git", "b" * 40, "c" * 40)
+    asked: list[bool] = []
+
+    async def lanes() -> bool:
+        asked.append(False)
+        return False
+
+    async def background_job(*, reader: bool) -> list[str]:
+        coordinator = RefreshCoordinator()
+        view = FilesView(TREE_PULL, repository, coordinator, False, None)  # pyright: ignore[reportArgumentType]
+        ask = FilesRefreshRequest(TREE_PULL, False)
+        answers = [
+            start_files_refresh(
+                view, ask, wanted=True, local=local, background=True, fallback=lanes
+            )
+        ]
+        if reader:
+            # The reader's request arrives while the job runs, before its fallback is asked.
+            answers.append(start_files_refresh(view, ask, wanted=True, local=None))
+        await coordinator.drain(timeout_s=10)
+        return answers
+
+    assert asyncio.run(background_job(reader=True)) == ["started", "joined"]
+    listed = read_pull_files(repository.home, repository.slug, TREE_PULL)
+    assert isinstance(listed, PullFileList)
+    assert (listed.listed_from, len(listed.rows), asked) == ("github", 2, [])
+    log = Path(os.environ["FAKE_GH_LOG"])
+    calls = log.read_text(encoding="utf-8")
+    assert asyncio.run(background_job(reader=False)) == ["started"]
+    assert asked == [False]
+    assert log.read_text(encoding="utf-8") == calls, "nothing more was asked of GitHub"
 
 
 def test_a_list_the_store_gives_never_asks_the_fallback(
