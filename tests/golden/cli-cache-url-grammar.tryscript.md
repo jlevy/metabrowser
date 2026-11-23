@@ -170,6 +170,7 @@ status: 200
   "last_fetch_at": null,
   "last_outcome": null,
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": false,
   "probe_every_s": null,
   "pull_request": null,

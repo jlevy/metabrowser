@@ -25,7 +25,6 @@ from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.atomic import RecordError, read_record
 from metabrowser.cache.locks import LockBusyError, store_fetch_lock
 from metabrowser.cache.origin import (
-    BRANCH_MIRROR_PREFIX,
     REMOTE_PROBE_TIMEOUT_S,
     ls_remote_branch_args,
     parse_branch_tip,
@@ -59,12 +58,14 @@ from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.home import PrivateStorageError
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
+    PROBED_REF_PREFIX,
     MirrorDisplay,
     MirrorRef,
     OriginProbeError,
     RecordedFreshness,
     RefKind,
     RefreshResult,
+    probes_origin,
 )
 from metabrowser.paths_safe import tilde_path
 from metabrowser.repository_context import RepositoryContext
@@ -252,9 +253,9 @@ class StoreMirror:
         nothing waits for a probe longer than that.
         """
 
-        if not ref.startswith(BRANCH_MIRROR_PREFIX):
+        if not probes_origin(ref):
             raise OriginProbeError(f"{ref} is not a branch of the origin")
-        branch = ref.removeprefix(BRANCH_MIRROR_PREFIX)
+        branch = ref.removeprefix(PROBED_REF_PREFIX)
         remote_url = acquire.remote_url_for(self.source)
         try:
             printed = await run_git(

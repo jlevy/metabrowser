@@ -28,7 +28,7 @@ import shutil
 import subprocess
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -46,9 +46,11 @@ from metabrowser.cache.records import (
     StoreOperation,
 )
 from metabrowser.cache.served_mirror import StoreMirror
+from metabrowser.cache.update import update_store
 from metabrowser.cache.urls import LineSelection, RepositorySelection
 from metabrowser.cli.selection import pending_selection_opener
 from metabrowser.mirror_refresh import (
+    FRESHNESS_WINDOW_S,
     MAX_PULL_JOBS,
     STORE_PROBE_S,
     mirror_session,
@@ -470,6 +472,14 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             probe_clock[0] += STORE_PROBE_S
             recorded["probe_moved"] = answer(_page_ask(client))
             recorded["probe_followed"] = _settle(client)
+            # Once a window the ask fetches the whole mirror, which nobody pressed for:
+            # the status calls that fetch quiet. The clock is ahead only while it is asked.
+            later = datetime.now(UTC) + timedelta(seconds=FRESHNESS_WINDOW_S + 5)
+            probe_clock[0] += STORE_PROBE_S
+            with monkeypatch.context() as aged:
+                aged.setattr("metabrowser.mirror_refresh._now_utc", lambda: later)
+                recorded["window_fetch"] = answer(_page_ask(client))
+            recorded["window_fetched"] = _settle(client)
             pinned = client.post(
                 "/api/source/pin", json={"oid": recorded["probe_page"]["pin"]}, headers=JSON_BODY
             )
@@ -477,6 +487,23 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["commit_pin"] = pinned.json()["status"]
             probe_clock[0] += STORE_PROBE_S
             recorded["commit_pin_ask"] = answer(_page_ask(client))
+            # The server's own fetch, which its timer starts while no page asks, held
+            # here until the status has been read: quiet too.
+            fetching = threading.Event()
+            real_update = update_store
+
+            async def held_update(home: Path, store_key: str, *, remote_url: str) -> Any:
+                await held_until(fetching, 30)
+                return await real_update(home, store_key, remote_url=remote_url)
+
+            session = mirror_session(server.app)
+            assert session is not None and client.portal is not None
+            with monkeypatch.context() as held:
+                held.setattr("metabrowser.cache.served_mirror.update_store", held_update)
+                assert client.portal.call(session.request_idle_refresh) == "started"
+                recorded["idle_fetch"] = client.get("/api/source/status").json()
+                fetching.set()
+                _settle(client)
         # A mirror whose last refresh found the repository gone or private, inside the
         # window: the row says so in the words the command line uses.
         _write_state(
@@ -596,6 +623,14 @@ def test_recording_is_what_a_served_mirror_answers(
     followed = recorded["probe_followed"]
     assert followed["pin"] != probe_page["pin"] and followed["latest"] == followed["pin"]
     assert recorded["commit_pin"]["probe_every_s"] is None
+    window = recorded["window_fetch"]
+    assert (window["status"], window["body"]["refresh"]) == (202, "started")
+    quiet = window["body"]["status"]
+    assert (quiet["refreshing"], quiet["refresh_quiet"]) == (True, True)
+    assert moved["body"]["status"]["refresh_quiet"] is False, "the page asked for that one"
+    assert recorded["window_fetched"]["refreshing"] is False
+    idle = recorded["idle_fetch"]
+    assert (idle["refreshing"], idle["refresh_quiet"], idle["ref"]) == (True, True, None)
     unasked = recorded["commit_pin_ask"]
     assert (unasked["status"], unasked["body"]["refresh"]) == (200, "not_due")
     check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
@@ -603,8 +638,9 @@ def test_recording_is_what_a_served_mirror_answers(
 
 def test_the_session_runs_on_the_recording() -> None:
     transcript = run_session("source-freshness-session.js")
+    asks = run_session("source-freshness-session.js", "asks")
     recording = read_recording(RECORDING)
-    by_name = {step["step"]: step for step in transcript["steps"]}
+    by_name = {step["step"]: step for step in (*transcript["steps"], *asks["steps"])}
     assert by_name["open a stale page"]["requests"] == [
         "GET /api/source/status",
         "POST /api/source/refresh {}",
@@ -648,6 +684,22 @@ def test_the_session_runs_on_the_recording() -> None:
     assert len(after_refusal) == 1 and after_refusal[0].startswith("GET /api/source/status")
     silent = by_name["the server stopped answering the page's asks"]
     assert (silent["timer"], silent["paint"]["error"]) == ("slow", "The server did not answer.")
+    # A fetch nobody asked for changes nothing the row says: no repaint, so nothing is
+    # announced and no button is disabled, and no quick poll (review A2 of #721).
+    for name, timer in (
+        ("once a window the mirror is fetched, and the row says nothing", "ask"),
+        ("the quiet fetch ended, and the row still says nothing new", "ask"),
+        ("the server's own fetch says nothing on a page that is open", "slow"),
+    ):
+        quiet = by_name[name]
+        assert (quiet["repaints"], quiet["timer"]) == (0, timer), name
+        assert quiet["paint"]["tone"] == "quiet" and quiet["paint"]["label"].startswith("Fetched")
+    # The commit view does not wait for the page's first ask (review A4 of #721).
+    unheld = by_name["a missing commit does not wait for the page's first ask"]
+    assert unheld["answeredBeforeTheAsk"] is True
+    assert unheld["requests"] == ["GET /api/source/status", page_ask]
+    assert unheld["commit"]["state"] == "not_found"
+    assert by_name["the page's first ask is answered afterwards"]["timer"] == "ask"
     on_commit = by_name["a page on a commit sends no ask of its own"]
     assert (on_commit["requests"], on_commit["timer"]) == (["GET /api/source/status"], "slow")
     assert all(

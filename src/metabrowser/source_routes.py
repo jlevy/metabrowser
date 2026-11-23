@@ -208,6 +208,9 @@ class SourceStatus(TypedDict):
     last_fetch_at: str | None
     last_outcome: LastOutcome | None
     refreshing: bool
+    # True when all that is refreshing is a fetch of the mirror no reader asked for: the
+    # idle one, or a visible page's once a window. A page shows nothing for it.
+    refresh_quiet: bool
     stale: bool
     # How often a visible page of this pin asks with ``{"for": "page"}``, in seconds; null
     # when the pin is not one of the origin's branches, which alone are probed.

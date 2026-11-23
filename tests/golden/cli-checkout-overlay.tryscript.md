@@ -61,6 +61,7 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
   "probe_every_s": null,
   "pull_request": 1,
@@ -264,6 +265,7 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
   "probe_every_s": null,
   "pull_request": 1,
@@ -302,6 +304,7 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
   "probe_every_s": null,
   "pull_request": 1,
@@ -562,6 +565,7 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
   "probe_every_s": null,
   "pull_request": 1,

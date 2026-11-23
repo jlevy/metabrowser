@@ -1052,6 +1052,7 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
   "probe_every_s": null,
   "pull_request": 7,
@@ -1088,6 +1089,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https
     "at": "[TIMESTAMP]"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
   "probe_every_s": null,
   "pull_request": 7,

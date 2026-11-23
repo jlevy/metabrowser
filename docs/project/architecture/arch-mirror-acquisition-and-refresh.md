@@ -327,11 +327,20 @@ page is looking at fetches every `STORE_IDLE_REFRESH_S`.
 - **What holds a probe or a page’s fetch:** one probe runs at a time, no closer than
   `STORE_PROBE_FLOOR_S` to the last, however many tabs ask, and none while a refresh
   runs. A probe that failed, or a fetch that failed, holds the page’s asks for a
-  freshness window, so an origin that is gone or a machine that is offline is asked once
-  a window; a reader’s own Refresh is never held.
-  A tip a probe already started a fetch for starts no second one within a window, so an
-  origin whose fetch does not bring what its `ls-remote` names cannot make every probe a
-  fetch.
+  freshness window from when it failed, so an origin that is gone or a machine that is
+  offline is asked once a window; a reader’s own Refresh is never held.
+  A tip a probe started a fetch for starts no second one within a window once that fetch
+  ran to the end, so an origin whose fetch does not bring what its `ls-remote` names
+  cannot make every probe a fetch.
+  A fetch that did not run, or one the probe only joined, holds nothing, so the next
+  probe fetches for the tip.
+- **A fetch nobody asked for is quiet:** the fetch a page’s ask starts once a window,
+  and the idle one below, run with no reader waiting, so status reports them with
+  `refresh_quiet`, and the row repaints nothing: no “Refreshing…”, no disabled button,
+  and nothing announced.
+  A reader’s own Refresh that joins one ends its quiet.
+  The fetch a probe starts because the branch moved is one the page asked for, and shows
+  as a refresh.
 - **A server no page is looking at:** `MirrorSession.run_idle_refresh`, started by the
   lifespan in serve mode only, fetches once the last fetch, by this process or another
   as the store’s record has it, is older than `STORE_IDLE_REFRESH_S`. It is the one
@@ -342,8 +351,13 @@ page is looking at fetches every `STORE_IDLE_REFRESH_S`.
   no network slot, and is cancelled when a reader’s job starts waiting, to be tried
   again a freshness window later.
   Status does not report that as a cancelled refresh, since no reader asked for it.
-  A reader’s refresh that joins it makes it the reader’s. One that failed is tried again
-  only after the whole interval.
+  A reader’s refresh, a page’s ask, or a waiting URL selection that joins it makes it
+  theirs: it stops being background work, and `StoreTurn.promoted` stops any background
+  job holding the turn ahead of it, as a reader’s job arriving would have.
+  One that joins after the fetch was told to stop, before the cancellation is delivered,
+  has the fetch started again as its own once the stopped one has unwound
+  (`MirrorSession._join_running`). One that failed is tried again only after the whole
+  interval.
 - **A commit the mirror lacks:** a page that opens a commit’s address asks for the fetch
   it waits on, which runs only when the mirror is stale, since a link in served content
   can lead to any address; a reader’s **Retry** always fetches.

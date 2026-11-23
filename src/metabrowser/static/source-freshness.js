@@ -11,6 +11,8 @@
 // origin where the branch is and fetches at once when it moved, so a push shows within
 // seconds, and fetches the whole mirror once it is older than the window. That ask
 // answers the status, so it stands in for the slow poll, and a hidden page sends none.
+// A fetch nobody asked for, that one or the server's own while no page was looking, is
+// quiet (`refresh_quiet`): the row says and announces nothing for it.
 // A page on a branch or tag reads that ref as the mirror has it,
 // as github.com shows a branch: when a refresh moves the ref, the server serves its new
 // tip, and the page goes with it to the same address, by itself. Only a ref the pin does
@@ -112,6 +114,16 @@
   }
 
   /**
+   * Whether a refresh the reader, or the page for them, is waiting on runs: any but one
+   * the status calls quiet.
+   *
+   * @param {MetabrowserSourceStatus | null} status
+   */
+  function loudlyRefreshing(status) {
+    return status?.refreshing === true && status.refresh_quiet !== true;
+  }
+
+  /**
    * What the label says and offers for one status. Pure.
    *
    * @param {MetabrowserSourceStatus | null} status
@@ -137,11 +149,16 @@
     const outcome = status.last_outcome;
     const failed =
       outcome !== null && outcome.operation === "refresh" && !QUIET_OUTCOMES.has(outcome.outcome);
+    // A fetch no reader asked for, the server's idle one or a visible page's once a
+    // window, changes nothing the row says: no "Refreshing…", no disabled button, and
+    // nothing announced, every minute, to a reader who pressed nothing. The mirror it is
+    // fetching is no longer called stale either, since that is being seen to.
+    const refreshing = loudlyRefreshing(status);
     /** @type {MetabrowserSourceFreshnessModel["tone"]} */
-    let tone = status.stale ? "stale" : "quiet";
+    let tone = status.stale && !status.refresh_quiet ? "stale" : "quiet";
     let label = `Fetched ${age}`;
     let detail = `The mirror was last fetched from its origin ${age}.`;
-    if (status.refreshing) {
+    if (refreshing) {
       tone = "refreshing";
       label = "Refreshing…";
       detail = `Fetching from the origin. The mirror was last fetched ${age}.`;
@@ -175,7 +192,7 @@
       };
     }
     const selection = status.selection_state ?? null;
-    const retrySelection = selection === "fetch_failed" && !status.refreshing;
+    const retrySelection = selection === "fetch_failed" && !refreshing;
     if (selection === "pending") {
       detail = `${detail} ${SELECTION_DETAIL.pending}`;
     } else if (selection === "not_found") {
@@ -216,7 +233,7 @@
         commit: window.MetabrowserFormatters.shortCommit(status.latest),
         button: "Switch",
       };
-    } else if (status.ref !== null && status.ref_on_origin === false && !status.refreshing) {
+    } else if (status.ref !== null && status.ref_on_origin === false && !refreshing) {
       detail = `${detail} ${status.ref_name ?? status.ref} is no longer on the origin; its commits stay readable here.`;
     }
     // The attended pull request's page is one link away from every page on its pin.
@@ -583,7 +600,8 @@
       // A poll that failed backs off to the slow interval: a server that stopped while
       // a refresh ran must not be asked every second for as long as the page is open.
       // While a refresh runs the status is polled quickly, and the asks wait for its end.
-      const refreshing = status?.refreshing && error === null;
+      // A quiet one is not waited for: the page keeps its own interval through it.
+      const refreshing = loudlyRefreshing(status) && error === null;
       const askMs = refreshing || error !== null ? null : pageAskMs();
       const delay = askMs ?? (refreshing ? FAST_POLL_MS : SLOW_POLL_MS);
       timer = deps.schedule(() => {
@@ -638,7 +656,10 @@
       }
       render();
       // The first status of a visible period: ask at once, unless the page is already
-      // leaving for the commit its branch moved to.
+      // leaving for the commit its branch moved to. The ask is not waited for, and
+      // whoever waits for this status is told first: the server can hold the ask for as
+      // long as a probe takes, and a commit view waiting to ask for its own fetch, or to
+      // say what it found, must not wait for that.
       if (
         error === null &&
         !status?.refreshing &&
@@ -646,7 +667,8 @@
         !pageAskedWhileVisible &&
         pageAskMs() !== null
       ) {
-        await pageAsk();
+        notifyChange();
+        void pageAsk();
         return;
       }
       scheduleNext();

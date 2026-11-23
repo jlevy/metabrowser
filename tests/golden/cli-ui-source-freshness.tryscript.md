@@ -168,184 +168,6 @@ $ node tests/dom/source-freshness-session.js
       }
     },
     {
-      "step": "a page on a branch asks with its first status",
-      "requests": [
-        "GET /api/source/status",
-        "POST /api/source/refresh {\"for\":\"page\"}"
-      ],
-      "timer": "ask",
-      "reloads": 0,
-      "repaints": 1,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
-    },
-    {
-      "step": "an unchanged branch: the ask is the poll, and nothing repaints",
-      "requests": [
-        "POST /api/source/refresh {\"for\":\"page\"}"
-      ],
-      "timer": "ask",
-      "reloads": 0,
-      "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
-    },
-    {
-      "step": "a hidden page asks nothing",
-      "requests": [],
-      "timer": null,
-      "reloads": 0,
-      "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
-    },
-    {
-      "step": "shown again, the page asks at once",
-      "requests": [
-        "GET /api/source/status",
-        "POST /api/source/refresh {\"for\":\"page\"}"
-      ],
-      "timer": "ask",
-      "reloads": 0,
-      "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
-    },
-    {
-      "step": "the origin moved the branch: the fetch starts at once",
-      "requests": [
-        "POST /api/source/refresh {\"for\":\"page\"}"
-      ],
-      "timer": "fast",
-      "reloads": 0,
-      "repaints": 1,
-      "paint": {
-        "label": "Refreshing…",
-        "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
-        "offer": null,
-        "error": null
-      }
-    },
-    {
-      "step": "the fetch brought the push; the page follows its branch",
-      "requests": [
-        "GET /api/source/status",
-        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}"
-      ],
-      "timer": "ask",
-      "reloads": 1,
-      "repaints": 1,
-      "paint": {
-        "label": "Updating to topic…",
-        "tone": "refreshing",
-        "detail": "topic is now at 0d434c3, and this page follows it.",
-        "offer": null,
-        "error": null
-      }
-    },
-    {
-      "step": "a refused ask says nothing, and the page polls instead",
-      "requests": [
-        "GET /api/source/status",
-        "POST /api/source/refresh {\"for\":\"page\"}"
-      ],
-      "timer": "slow",
-      "reloads": 0,
-      "repaints": 1,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
-    },
-    {
-      "step": "the poll after a refused ask",
-      "requests": [
-        "GET /api/source/status If-None-Match: \"s1\""
-      ],
-      "timer": "slow",
-      "reloads": 0,
-      "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
-    },
-    {
-      "step": "the server stopped answering the page's asks",
-      "requests": [
-        "POST /api/source/refresh {\"for\":\"page\"}"
-      ],
-      "timer": "slow",
-      "reloads": 0,
-      "repaints": 1,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": "The server did not answer."
-      }
-    },
-    {
-      "step": "a page on a commit sends no ask of its own",
-      "requests": [
-        "GET /api/source/status"
-      ],
-      "timer": "slow",
-      "reloads": 0,
-      "repaints": 1,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
-    },
-    {
-      "step": "a page on a commit polls slowly",
-      "requests": [
-        "GET /api/source/status If-None-Match: \"s1\""
-      ],
-      "timer": "slow",
-      "reloads": 0,
-      "repaints": 0,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": null,
-        "error": null
-      }
-    },
-    {
       "step": "a page on a file the new commit lacks goes to the root",
       "requests": [
         "GET /api/source/status",
@@ -1186,6 +1008,307 @@ $ node tests/dom/source-freshness-session.js
       "code": "history_stale",
       "initial": true,
       "means": "failed"
+    }
+  ]
+}
+? 0
+```
+
+## A Page’s Own Ask
+
+A page on one of the origin’s branches makes its own ask while it is visible,
+`POST /api/source/refresh` with `{"for": "page"}`, with its first status and then as
+often as the status’s `probe_every_s` says (`ask` in the `timer` column).
+The server asks the origin where the branch is and answers the status, so the ask is the
+page’s poll too; a hidden page sends none.
+A probe that finds a push starts the fetch at once, and the page polls quickly until it
+ends and then follows its branch.
+
+A fetch nobody asked for is quiet: the one the ask starts once a window, and the one a
+server runs by itself while no page asks.
+The status says so (`refresh_quiet`), and the row repaints nothing for it, so it keeps
+its words and its button and announces nothing.
+A server that refuses the ask is polled instead, one that stops answering is reported as
+a failed poll is, and a page on a commit opened by its ID sends no ask.
+A commit view that waits for the first status does not wait for the first ask, which the
+server may hold for as long as a probe takes (`answeredBeforeTheAsk`).
+
+```console
+$ node tests/dom/source-freshness-session.js asks
+{
+  "part": "asks",
+  "steps": [
+    {
+      "step": "a page on a branch asks with its first status",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "an unchanged branch: the ask is the poll, and nothing repaints",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a hidden page asks nothing",
+      "requests": [],
+      "timer": null,
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "shown again, the page asks at once",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the origin moved the branch: the fetch starts at once",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the fetch brought the push; the page follows its branch",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}"
+      ],
+      "timer": "ask",
+      "reloads": 1,
+      "repaints": 1,
+      "paint": {
+        "label": "Updating to topic…",
+        "tone": "refreshing",
+        "detail": "topic is now at 0d434c3, and this page follows it.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "once a window the mirror is fetched, and the row says nothing",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the quiet fetch ended, and the row still says nothing new",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a refused ask says nothing, and the page polls instead",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the poll after a refused ask",
+      "requests": [
+        "GET /api/source/status If-None-Match: \"s1\""
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the server stopped answering the page's asks",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": "The server did not answer."
+      }
+    },
+    {
+      "step": "a page on a commit sends no ask of its own",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a page on a commit polls slowly",
+      "requests": [
+        "GET /api/source/status If-None-Match: \"s1\""
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the server's own fetch says nothing on a page that is open",
+      "requests": [
+        "GET /api/source/status If-None-Match: \"s1\""
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a missing commit does not wait for the page's first ask",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": null,
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      },
+      "commit": {
+        "repaints": 1,
+        "state": "not_found",
+        "title": "Commit not found · fetched 5 min ago",
+        "detail": "This commit is not in the mirror as fetched 5 min ago.",
+        "offer": "[Retry]"
+      },
+      "answeredBeforeTheAsk": true
+    },
+    {
+      "step": "the page's first ask is answered afterwards",
+      "requests": [],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": null,
+        "error": null
+      },
+      "commit": {
+        "repaints": 0,
+        "state": "not_found",
+        "title": "Commit not found · fetched 5 min ago",
+        "detail": "This commit is not in the mirror as fetched 5 min ago.",
+        "offer": "[Retry]"
+      }
     }
   ]
 }

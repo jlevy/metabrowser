@@ -13,6 +13,7 @@ import pytest
 
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import (
+    FRESHNESS_WINDOW_S,
     MAX_FIRST_IN_A_ROW,
     MAX_PULL_JOBS,
     CommitFetchAnswer,
@@ -1246,3 +1247,252 @@ def test_a_readers_refresh_that_joins_the_idle_fetch_makes_it_theirs() -> None:
     assert joined == "joined"
     assert events == ["mirror start", "mirror end", "pull start", "pull end"]
     assert isinstance(outcome, dict) and outcome["outcome"] == "succeeded"
+
+
+# ── A request that joins the idle fetch ──────────────────────────────
+
+
+async def _stopping_idle_fetch(
+    events: list[str], coordinator: RefreshCoordinator
+) -> tuple[MirrorSession, _HeldFetch]:
+    """A session whose idle fetch a reader's pull-request job has just told to stop: the
+    cancellation is asked for and not yet delivered, which takes one more loop step."""
+
+    mirror = _HeldFetch(events)
+    session = await _attending(mirror, coordinator, _Companion(events, stale=True), serving=True)
+    assert session.request_idle_refresh() == "started"
+    await mirror.started.wait()
+    session.request_companion_refresh()
+    await asyncio.sleep(0)
+    return session, mirror
+
+
+def test_a_readers_refresh_that_joins_an_idle_fetch_being_stopped_is_fetched_all_the_same() -> None:
+    """Review A1 of #721: the reader's Refresh was answered ``joined``, the fetch it joined
+    was then cancelled, nothing fetched, and status reported a cancelled refresh."""
+
+    async def scenario() -> tuple[list[str], str, object, bool]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        session, mirror = await _stopping_idle_fetch(events, coordinator)
+        joined = session.request_refresh(for_selection=True)
+        await _spin()
+        running = session.refreshing()
+        mirror.gate.set()
+        await _settle(coordinator)
+        return events, joined, session._last_outcome(), running
+
+    events, joined, outcome, running = asyncio.run(scenario())
+    assert joined == "joined"
+    assert running is True, "the reader's fetch runs once the stopped one has unwound"
+    assert events.count("mirror start") == 2 and events[:2] == ["mirror start", "mirror stopped"]
+    assert "mirror end" in events
+    assert isinstance(outcome, dict) and outcome["outcome"] == "succeeded"
+
+
+def test_a_page_ask_that_joins_an_idle_fetch_being_stopped_reports_no_cancelled_refresh() -> None:
+    """Review A1 of #721: a page whose reader pressed nothing showed a failed refresh."""
+
+    async def scenario() -> tuple[list[str], str, object, bool]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        session, mirror = await _stopping_idle_fetch(events, coordinator)
+        answer = await session.page_ask()
+        await _spin()
+        quiet = session._refresh_quiet()
+        mirror.gate.set()
+        await _settle(coordinator)
+        return events, answer, session._last_outcome(), quiet
+
+    events, answer, outcome, quiet = asyncio.run(scenario())
+    assert answer == "joined"
+    assert "mirror end" in events
+    assert isinstance(outcome, dict) and outcome["outcome"] == "succeeded"
+    # The page's fetch, which nobody pressed for, stays quiet.
+    assert quiet is True
+
+
+def test_a_url_selection_that_joins_an_idle_fetch_being_stopped_is_not_left_pending() -> None:
+    """Review A1 of #721: the selection was marked pending for a fetch that never ran."""
+
+    async def scenario() -> tuple[list[str], str | None]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        opened: list[str] = []
+
+        async def opener() -> None:
+            opened.append("asked")
+            return None
+
+        mirror = _HeldFetch(events)
+        session = MirrorSession(
+            mirror,
+            coordinator,
+            fetch_on_miss=True,
+            pending_selection=opener,
+            pull_requests=_Set(_Companion(events, stale=True)),
+        )
+        await session.attend(7)
+        session.request_idle_refresh()
+        await mirror.started.wait()
+        session.request_companion_refresh()
+        await asyncio.sleep(0)
+        session.start_pending_selection()
+        await _spin()
+        mirror.gate.set()
+        await _settle(coordinator)
+        return opened, session._selection_state
+
+    opened, state = asyncio.run(scenario())
+    assert opened == ["asked"], "the fetch the selection waited for ran to its end"
+    assert state == "not_found"
+
+
+def test_a_readers_refresh_that_joins_a_queued_idle_fetch_stops_background_work() -> None:
+    """Review A3 of #721: an idle fetch queues as background work and stops nothing; the
+    reader's Refresh that joins it must stop the background job holding the turn, as it
+    does when no idle fetch is queued, and not wait for that job to finish."""
+
+    async def scenario(*, idle_queued: bool) -> tuple[list[str], list[str]]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        session = MirrorSession(_Mirror(events), coordinator, fetch_on_miss=True)
+        stopped: list[str] = []
+        release = asyncio.Event()
+
+        async def prefetch() -> None:
+            async with session.background_store_turn(lambda: stopped.append("prefetch")):
+                events.append("prefetch start")
+                await release.wait()
+
+        task = asyncio.create_task(prefetch())
+        await _spin()
+        if idle_queued:
+            session.request_idle_refresh()
+            await _spin()
+            assert stopped == [], "background work does not stop background work"
+        session.request_refresh(for_selection=True)
+        await _spin()
+        seen = list(stopped)
+        release.set()
+        await task
+        await _settle(coordinator)
+        return seen, events
+
+    for idle_queued in (True, False):
+        stopped, events = asyncio.run(scenario(idle_queued=idle_queued))
+        assert stopped == ["prefetch"], f"idle fetch queued: {idle_queued}"
+        assert events == ["prefetch start", "mirror"]
+
+
+def test_a_readers_request_that_joins_a_queued_background_pull_stops_background_work() -> None:
+    """The same gap for a prefetched pull request a reader then asks for (review A3)."""
+
+    async def scenario() -> list[str]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        session = await _attending(
+            _Mirror(events, fetched_at=_now()), coordinator, _Companion(events, stale=True)
+        )
+        stopped: list[str] = []
+        release = asyncio.Event()
+
+        async def prefetch() -> None:
+            async with session.background_store_turn(lambda: stopped.append("prefetch")):
+                await release.wait()
+
+        task = asyncio.create_task(prefetch())
+        await _spin()
+        assert session.request_pull_refresh(7, background=True) == "started"
+        await _spin()
+        assert stopped == []
+        assert session.request_pull_refresh(7) == "joined"
+        await _spin()
+        seen = list(stopped)
+        release.set()
+        await task
+        await _settle(coordinator)
+        return seen
+
+    assert asyncio.run(scenario()) == ["prefetch"]
+
+
+def test_a_page_ask_that_joins_the_idle_fetch_keeps_it_running_and_quiet() -> None:
+    """A visible page waits on it from then on, so a pull request's job no longer stops
+    it; nobody pressed for it, so status still calls it quiet (review A5 of #721)."""
+
+    async def scenario() -> tuple[list[str], str, bool]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        mirror = _HeldFetch(events)
+        companion = _Companion(events, stale=True)
+        session = await _attending(mirror, coordinator, companion, serving=True)
+        session.request_idle_refresh()
+        await mirror.started.wait()
+        answer = await session.page_ask()
+        session.request_companion_refresh()
+        await _spin()
+        quiet = session._refresh_quiet()
+        mirror.gate.set()
+        await _settle(coordinator)
+        return events, answer, quiet
+
+    events, answer, quiet = asyncio.run(scenario())
+    assert answer == "joined"
+    assert events == ["mirror start", "mirror end", "pull start", "pull end"]
+    # The pull request's job was waiting by then, which a reader does see.
+    assert quiet is False
+
+
+def test_an_idle_fetch_a_readers_job_stopped_is_tried_again_only_a_window_later(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review A5 of #721: nothing failed when the hold after a preemption was deleted.
+    The timer sleeps for as long as :meth:`MirrorSession._idle_due_in` says, so what it
+    says is what is held to the clock here."""
+
+    clock = [1000.0]
+    monkeypatch.setattr("metabrowser.mirror_refresh._monotonic", lambda: clock[0])
+
+    async def scenario() -> tuple[list[str], float, float]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        mirror = _HeldFetch(events)
+        companion = _Companion(events, stale=True)
+        session = await _attending(mirror, coordinator, companion, serving=True)
+        await session.observe()
+        assert session._idle_due_in(clock[0]) <= 0, "a mirror this old is due at once"
+        session.request_idle_refresh()
+        await mirror.started.wait()
+        session.request_companion_refresh()
+        await _settle(coordinator)
+        stopped = session._idle_due_in(clock[0])
+        clock[0] += FRESHNESS_WINDOW_S
+        return events, stopped, session._idle_due_in(clock[0])
+
+    events, stopped, later = asyncio.run(scenario())
+    assert events == ["mirror start", "mirror stopped", "pull start", "pull end"]
+    assert stopped == FRESHNESS_WINDOW_S
+    assert later <= 0
+
+
+def test_status_calls_a_fetch_nobody_asked_for_quiet_until_a_reader_joins_it() -> None:
+    """Review A2 of #721: the idle fetch made every visible page say "Refreshing…"."""
+
+    async def scenario() -> list[tuple[bool, bool]]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        mirror = _HeldFetch(events)
+        session = MirrorSession(mirror, coordinator, fetch_on_miss=True)
+        seen = [(session.refreshing(), session._refresh_quiet())]
+        session.request_idle_refresh()
+        await mirror.started.wait()
+        seen.append((session.refreshing(), session._refresh_quiet()))
+        session.request_refresh(for_selection=True)
+        seen.append((session.refreshing(), session._refresh_quiet()))
+        mirror.gate.set()
+        await _settle(coordinator)
+        seen.append((session.refreshing(), session._refresh_quiet()))
+        return seen
+
+    assert asyncio.run(scenario()) == [(False, False), (True, True), (True, False), (False, False)]

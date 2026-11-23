@@ -3629,6 +3629,11 @@ declare global {
     last_fetch_at: string | null;
     last_outcome: { operation: string; outcome: string; at: string } | null;
     refreshing: boolean;
+    /**
+     * Whether all that is refreshing is a fetch of the mirror no reader asked for, the
+     * server's idle one or a visible page's once a window, which the row says nothing of.
+     */
+    refresh_quiet: boolean;
     stale: boolean;
     /**
      * How often, in seconds, a visible page of this pin makes its own ask, which has the

@@ -146,6 +146,12 @@ ELSEWHERE_WAIT_S: Final = GIT_ACQUISITION_TIMEOUT_S
 # torvalds/linux had printed nothing after 386 s, when it was killed, and ``curl`` got no
 # answer from that repository's endpoint in 15 s. So a probe runs under the first-request
 # deadline (``REMOTE_PROBE_TIMEOUT_S``), and a failed one holds the next for a window.
+#
+# What these measurements do not cover, which the cadence plan's Phase 3 checklist keeps
+# open as "Both measured again on an idle machine"
+# (``docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md``): an idle
+# machine; a ``file://`` origin; and a private repository, whose probe runs the provider's
+# credential helper each time.
 STORE_PROBE_S: Final = 5.0
 # The shortest gap the server keeps between two probes of the served branch, however
 # many pages ask. Below STORE_PROBE_S, so an ask that arrives a little early, as timers
@@ -520,6 +526,9 @@ class FreshnessFields(TypedDict):
     pending can go there. ``probe_every_s`` is how often a visible page of this pin makes
     its own ask (:meth:`MirrorSession.page_ask`): :data:`STORE_PROBE_S` while the pin is
     one of the origin's branches, which the server probes there, and ``None`` otherwise.
+    ``refresh_quiet`` says that all that is refreshing is a fetch of the mirror no reader
+    asked for, the idle one or a visible page's once a window, so a page shows and
+    announces nothing for it; a reader's request that joins such a fetch ends that.
     """
 
     refreshable: bool
@@ -529,6 +538,7 @@ class FreshnessFields(TypedDict):
     last_fetch_at: str | None
     last_outcome: LastOutcome | None
     refreshing: bool
+    refresh_quiet: bool
     stale: bool
     probe_every_s: float | None
     pull_request: int | None
@@ -544,6 +554,7 @@ UNSERVED_FRESHNESS: Final[FreshnessFields] = {
     "last_fetch_at": None,
     "last_outcome": None,
     "refreshing": False,
+    "refresh_quiet": False,
     "stale": False,
     "probe_every_s": None,
     "pull_request": None,
@@ -593,10 +604,14 @@ def probes_origin(ref: str | None) -> bool:
     its ID cannot, and a pull request's head is the provider's to watch.
     """
 
-    return ref is not None and ref.startswith(_PROBED_REF_PREFIX)
+    return ref is not None and ref.startswith(PROBED_REF_PREFIX)
 
 
-_PROBED_REF_PREFIX: Final = "refs/remotes/origin/"
+# The mirror's refs for its origin's branches: what the status advertises as probed, and
+# what :meth:`ServedMirror.origin_tip` accepts and strips to name the branch at the
+# origin, so the two cannot disagree. ``tests/test_source_refresh.py`` holds it to the
+# prefix the cache fetches branches under.
+PROBED_REF_PREFIX: Final = "refs/remotes/origin/"
 # Refresh outcomes that say nothing against trying again at once: the fetch ran, another
 # process's is running, or this one was stopped before the origin answered.
 _UNHELD_OUTCOMES: Final = frozenset(
@@ -681,9 +696,10 @@ def _monotonic() -> float:
 
 
 # How a probe of the served branch ended: the origin has it where the mirror does, it
-# moved and the fetch was started, the origin did not answer, or the answer was not acted
-# on (the pin changed meanwhile, or that tip's fetch was already tried).
-type ProbeEnd = Literal["unchanged", "moved", "failed", "held"]
+# moved and the fetch was started (``moved``) or one that began meanwhile was joined, the
+# origin did not answer, or the answer was not acted on (the pin changed meanwhile, or
+# that tip's fetch was already tried).
+type ProbeEnd = Literal["unchanged", "moved", "joined", "failed", "held"]
 # The least the idle refresh sleeps between checks, so a record whose last fetch reads
 # as due, and stays so, costs one read of a small file a second and not a busy loop.
 IDLE_CHECK_FLOOR_S: Final = 1.0
@@ -717,7 +733,9 @@ class StoreTurn:
     counted against :data:`MAX_FIRST_IN_A_ROW`, and when any other job starts waiting
     while it holds the turn, its *preempt* is called, which cancels it. So a reader's job
     waits at the store for the background job to unwind, never for it to finish. A
-    background job promoted to a reader's (*background* false from then on) is neither.
+    background job promoted to a reader's (*background* false from then on) is neither,
+    and whoever promotes one that is waiting says so (:meth:`promoted`), since it arrived
+    as background and stopped nothing then.
     """
 
     def __init__(self) -> None:
@@ -759,6 +777,20 @@ class StoreTurn:
             yield
         finally:
             self._pass()
+
+    def promoted(self) -> None:
+        """A waiting job stopped being background: stop a background job that holds the turn.
+
+        The check a job's arrival runs is run again, because a job a reader's request
+        joined arrived as background and stopped nothing then. Without it the reader's job
+        would wait for the background one to finish, not to unwind.
+        """
+
+        holder = self._holder
+        if holder is None or holder.preempt is None or not holder.background():
+            return
+        if any(not waiter.turn.done() and not waiter.background() for waiter in self._waiting):
+            holder.preempt()
 
     def _pass(self) -> None:
         self._taken = False
@@ -964,6 +996,12 @@ class MirrorSession:
         self._idle_fetch = False
         # The earliest the idle fetch may start again after a reader's job stopped one.
         self._idle_not_before: float | None = None
+        # Whether a request joined the idle fetch after it was told to stop, so its fetch
+        # is started again, as the request's own, once the stopped one has unwound.
+        self._restart_stopped_idle = False
+        # Whether the fetch running is one no reader asked for, the idle one or a visible
+        # page's once a window, which status reports as ``refresh_quiet``.
+        self._quiet_fetch = False
 
     # ── The attended pull request ───────────────────────────────
 
@@ -1088,12 +1126,23 @@ class MirrorSession:
             "last_fetch_at": self.last_fetch_at(),
             "last_outcome": self._last_outcome(),
             "refreshing": self.refreshing() or self.companion_refreshing(),
+            "refresh_quiet": self._refresh_quiet(),
             "stale": self.is_stale(),
             "probe_every_s": STORE_PROBE_S if probes_origin(subject.ref) else None,
             "pull_request": self._pull_request,
             "selection_state": self._selection_state,
             "selection_href": self._selection_href if self._selection_state == "found" else None,
         }
+
+    def _refresh_quiet(self) -> bool:
+        """Whether all that is refreshing is a fetch of the mirror that no reader asked for."""
+
+        return (
+            self._quiet_fetch
+            and self._coordinator.running(self.mirror.key)
+            and not self._coordinator.running(self._elsewhere_key)
+            and not self.companion_refreshing()
+        )
 
     def refreshing(self) -> bool:
         """Whether this server is refreshing, or following another process's refresh."""
@@ -1162,10 +1211,47 @@ class MirrorSession:
             return self.request_companion_refresh() or "joined"
         return self._refresh_mirror(companion_stale=companion_stale)
 
-    def _refresh_mirror(self, *, companion_stale: bool) -> StartedOrJoined:
+    def _join_running(self, *, quiet: bool) -> None:
+        """Make the mirror's fetch that is running, if one is, a request's own.
+
+        A reader's request (*quiet* false) ends its quiet. An idle fetch stops being
+        background work, and the store turn is told (:meth:`StoreTurn.promoted`), so
+        background work holding the turn is stopped for it. An idle fetch that was already
+        told to stop cannot be kept: cancellation is delivered a loop step after it is
+        asked for, so the fetch is started again, as the request's, once the stopped one
+        has unwound, and nothing is recorded as cancelled.
+        """
+
+        if not quiet:
+            self._quiet_fetch = False
+        if not self._idle_fetch:
+            return
+        job = self._coordinator.job(self.mirror.key)
+        if job is not None and job.cancelling():
+            if not self._restart_stopped_idle:
+                self._restart_stopped_idle = True
+                job.add_done_callback(self._restart_after_stopped_idle)
+            return
         # A reader's request, or a page's: an idle fetch it joins is waited for from now.
         self._idle_fetch = False
+        self._store_turn.promoted()
+
+    def _restart_after_stopped_idle(self, _stopped: asyncio.Task[None]) -> None:
+        self._restart_stopped_idle = False
+        try:
+            # After the coordinator's own callback, added first, has forgotten the job.
+            self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
+        except RuntimeError:
+            # The server is shutting down, which is what stopped the fetch.
+            log.debug("a stopped idle fetch was not started again: the server is closing")
+
+    def _refresh_mirror(self, *, companion_stale: bool, quiet: bool = False) -> StartedOrJoined:
+        """Start or join the mirror's fetch; *quiet* is a fetch no reader asked for."""
+
+        self._join_running(quiet=quiet)
         started = self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
+        if started == "started":
+            self._quiet_fetch = quiet
         if self._pending_selection is not None:
             self._selection_state = "pending"
         if companion_stale:
@@ -1220,15 +1306,19 @@ class MirrorSession:
 
         Waits for the probe at most :data:`STORE_PROBE_WAIT_S`, then answers ``not_due``
         and leaves it to end on its own; cancelling the wait never cancels the probe.
+        The fetch a moved branch starts is the page's to show as a refresh; the one a stale
+        mirror starts is quiet (``refresh_quiet``).
         """
 
         at = _monotonic()
         if self.refreshing():
             if self._coordinator.running(self.mirror.key):
-                self._idle_fetch = False
+                # A visible page waits on it now, so it gives way to nothing; it stays quiet.
+                self._join_running(quiet=True)
             return "joined"
         if self._mirror_stale(_now_utc()) and not self._fetch_held(at):
-            return self._refresh_mirror(companion_stale=False)
+            # Nobody asked for this one, so status reports it as quiet.
+            return self._refresh_mirror(companion_stale=False, quiet=True)
         ref = self._probe_ref(at)
         if ref is None:
             return "not_due"
@@ -1239,15 +1329,18 @@ class MirrorSession:
             return "not_due"
         if end == "unchanged":
             return "probed"
-        return "started" if end == "moved" else "not_due"
+        if end == "moved":
+            return "started"
+        return "joined" if end == "joined" else "not_due"
 
     async def _probe(self, ref: str, at: float) -> ProbeEnd:
         """Ask the origin where *ref*'s branch is, and fetch at once if not where the mirror has it.
 
         Outside the store turn and the network slots: it writes nothing and a probe queued
         behind a fetch would defeat its purpose. A tip a probe already started a fetch for
-        starts no second one within a freshness window, so an origin whose fetch does not
-        bring what its ``ls-remote`` names cannot make every probe a fetch.
+        starts no second one within a freshness window once that fetch ran to the end, so
+        an origin whose fetch does not bring what its ``ls-remote`` names cannot make every
+        probe a fetch. A fetch that did not run, or one that was only joined, holds nothing.
         """
 
         self._probe_attempt = at
@@ -1257,7 +1350,9 @@ class MirrorSession:
             # Nothing waits on a probe but the page's freshness, so any failure only holds
             # the next one for a window.
             log.debug("could not probe %s at the origin", ref, exc_info=True)
-            self._probe_failed = at
+            # From when it failed, not when it began: one that ran to its deadline would
+            # otherwise use up half the hold before it was set.
+            self._probe_failed = _monotonic()
             return "failed"
         self._probe_failed = None
         held = self._tip
@@ -1272,13 +1367,19 @@ class MirrorSession:
             self._fetch_held(ended)
         ):
             return "held"
-        self._probe_fetched = (tip, ended)
         log.info("the origin moved %s; fetching", ref)
         try:
-            self._refresh_mirror(companion_stale=False)
+            started = self._refresh_mirror(companion_stale=False)
         except RuntimeError:
             # The server is shutting down and starts no more jobs.
             return "held"
+        if started == "joined":
+            # A fetch that began while the origin was asked may have read it before the
+            # push, so it says nothing about this tip: the next probe may fetch for it.
+            return "joined"
+        # Held only while that fetch runs and after it brought what the origin had
+        # (:meth:`_refresh_job` forgets it otherwise).
+        self._probe_fetched = (tip, ended)
         return "moved"
 
     async def stop_probe(self) -> None:
@@ -1345,6 +1446,7 @@ class MirrorSession:
         if self._coordinator.running(self.mirror.key):
             return "joined"
         self._idle_fetch = True
+        self._quiet_fetch = True
         return self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
 
     def request_commit_fetch(self, *, retry: bool) -> CommitFetchAnswer:
@@ -1403,6 +1505,7 @@ class MirrorSession:
             if not background and key in self._background_pulls:
                 self._background_pulls.discard(key)
                 self._pull_jobs.add(key)
+                self._store_turn.promoted()
             return "joined"
         if background:
             self._background_pulls.add(key)
@@ -1491,9 +1594,12 @@ class MirrorSession:
                     baseline = await self._read_baseline()
                 result = await self.mirror.refresh()
         except asyncio.CancelledError:
+            self._probe_fetched = None
             if idle():
                 # Stopped to let a reader's job go, or by shutdown: nobody asked for it, so
-                # status reports no refresh of theirs as cancelled.
+                # status reports no refresh of theirs as cancelled. A request that joined
+                # it since it was told to stop has its fetch started again
+                # (:meth:`_join_running`).
                 self._idle_fetch = False
                 self._idle_not_before = _monotonic() + self._window_s
             else:
@@ -1506,6 +1612,9 @@ class MirrorSession:
         self._idle_fetch = False
         self._fetch_ended = _monotonic()
         self._fetch_failed = None if result.outcome in _UNHELD_OUTCOMES else self._fetch_ended
+        if result.outcome not in _FETCHED_OUTCOMES:
+            # The fetch a probe started did not run, so it holds no probe of that tip.
+            self._probe_fetched = None
         self._swept.update(result.swept)
         self._set_result(result)
         if result.outcome in _FETCHED_OUTCOMES:
@@ -1878,6 +1987,7 @@ __all__ = [
     "MirrorSession",
     "OpenedSelection",
     "OriginProbeError",
+    "PROBED_REF_PREFIX",
     "PageAsk",
     "PullJobStart",
     "PullRequestSet",

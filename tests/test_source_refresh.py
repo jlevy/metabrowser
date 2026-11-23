@@ -29,6 +29,7 @@ from typer.testing import CliRunner
 from metabrowser import server
 from metabrowser.cache.atomic import write_record_atomic
 from metabrowser.cache.locks import repository_store_lock, store_fetch_lock
+from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX
 from metabrowser.cache.paths import store_record
 from metabrowser.cache.records import (
     REPOSITORY_STORE_STATE_CONTRACT_ID,
@@ -36,22 +37,27 @@ from metabrowser.cache.records import (
     StoreOperation,
 )
 from metabrowser.cache.served_mirror import StoreMirror
-from metabrowser.cache.update import RefreshOutcome, StoreUpdate
+from metabrowser.cache.update import RefreshOutcome, StoreUpdate, update_store
 from metabrowser.cli.main import _app
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, store_batch_reader_count
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
+    PROBED_REF_PREFIX,
     STORE_PROBE_FLOOR_S,
     STORE_PROBE_S,
     LastOutcome,
     MirrorDisplay,
     MirrorRef,
     MirrorSession,
+    OriginProbeError,
     RecordedFreshness,
     RefKind,
     RefreshCoordinator,
     RefreshResult,
     followed_outcome,
+    mirror_session,
+    probes_origin,
+    refresh_coordinator,
 )
 from metabrowser.repository_context import RepositoryContext
 from metabrowser.source import (
@@ -706,6 +712,8 @@ def test_a_page_ask_probes_the_served_branch_and_fetches_at_once_when_it_moved(
     moved = _page_ask(served)
     assert moved.status_code == 202
     assert moved.json()["refresh"] == "started"
+    # The fetch the page asked for because its branch moved is one the row shows.
+    assert moved.json()["status"]["refresh_quiet"] is False
     assert len(probes) == 2
     after = _settle(served)
     assert after["last_outcome"] == {
@@ -768,9 +776,25 @@ def test_a_page_ask_fetches_a_stale_mirror_and_not_again_inside_a_window_of_a_fa
     later = datetime.now(UTC) + timedelta(seconds=FRESHNESS_WINDOW_S + 5)
     monkeypatch.setattr("metabrowser.mirror_refresh._now_utc", lambda: later)
 
+    release = threading.Event()
+    real = update_store
+
+    async def held_update(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        await held_until(release, 30)
+        return await real(home, store_key, remote_url=remote_url)
+
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", held_update)
     stale = _page_ask(served)
     assert (stale.status_code, stale.json()["refresh"]) == (202, "started")
-    assert _settle(served)["last_outcome"]["outcome"] == "succeeded"
+    # Nobody pressed for this fetch, so status calls it quiet and the row says nothing
+    # (review A2 of #721), until a reader's own Refresh joins it.
+    running = stale.json()["status"]
+    assert (running["refreshing"], running["refresh_quiet"]) == (True, True)
+    pressed = _post(served, "/api/source/refresh").json()
+    assert (pressed["refresh"], pressed["status"]["refresh_quiet"]) == ("joined", False)
+    release.set()
+    after = _settle(served)
+    assert (after["last_outcome"]["outcome"], after["refresh_quiet"]) == ("succeeded", False)
 
     shutil.rmtree(origin.path)
     monkeypatch.setattr(
@@ -836,16 +860,150 @@ def test_page_asks_while_a_probe_runs_start_no_second_one(
     release.set()
 
 
-def test_the_shutdown_cancels_a_running_probe(
+def test_a_probe_that_outlives_its_request_still_starts_the_fetch(
+    served: TestClient, origin: _Origin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The request stops waiting after the probe's wait, and the probe ends on its own:
+    when it finds the push, the fetch starts with no request asking (review A5 of #721)."""
+
+    release = threading.Event()
+    real = StoreMirror.origin_tip
+
+    async def slow_tip(self: StoreMirror, ref: str) -> str | None:
+        await held_until(release, 30)
+        return await real(self, ref)
+
+    monkeypatch.setattr(StoreMirror, "origin_tip", slow_tip)
+    monkeypatch.setattr("metabrowser.mirror_refresh.STORE_PROBE_WAIT_S", 0.05)
+    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+    answer = _page_ask(served)
+    assert (answer.status_code, answer.json()["refresh"]) == (200, "not_due")
+    assert answer.json()["status"]["pin"] == origin.second
+    release.set()
+    deadline = time.monotonic() + 30
+    # A GET starts no work, so only the probe can have started the fetch.
+    while served.get("/api/source/status").json()["pin"] != newer:
+        assert time.monotonic() < deadline, "the probe never started the fetch"
+        time.sleep(0.05)
+    assert _settle(served)["last_outcome"]["outcome"] == "succeeded"
+
+
+def test_the_hold_after_a_failed_probe_runs_from_when_it_failed(
+    served: TestClient, clock: _Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review A6 of #721: a probe that ran to its deadline had used up half its hold by
+    the time it failed, so an origin that does not answer was being asked half the time."""
+
+    asked: list[float] = []
+
+    async def unanswered(self: StoreMirror, ref: str) -> str | None:
+        asked.append(clock.now)
+        clock.now += 30.0
+        raise OriginProbeError("the origin did not answer the probe")
+
+    monkeypatch.setattr(StoreMirror, "origin_tip", unanswered)
+    assert _page_ask(served).json()["refresh"] == "not_due"
+    # 50 s after it failed, 80 s after it began: still held.
+    clock.now += FRESHNESS_WINDOW_S - 10
+    assert _page_ask(served).json()["refresh"] == "not_due"
+    assert len(asked) == 1
+    clock.now += 11
+    assert _page_ask(served).json()["refresh"] == "not_due"
+    assert len(asked) == 2
+
+
+def test_a_fetch_that_did_not_run_holds_no_probe_of_the_tip_it_was_started_for(
+    served: TestClient, origin: _Origin, clock: _Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review A7 of #721: the fetch a probe started found another process fetching, so it
+    brought nothing, and every probe for a window then answered that the tip was tried.
+    The push showed a window late, which is the delay the probe is there to remove."""
+
+    real = update_store
+    answers = [StoreUpdate(RefreshOutcome.refreshing_elsewhere, _FUTURE)]
+
+    async def busy_once(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        if answers:
+            return answers.pop()
+        return await real(home, store_key, remote_url=remote_url)
+
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", busy_once)
+    monkeypatch.setattr("metabrowser.mirror_refresh.ELSEWHERE_POLL_S", 0.01)
+    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+    assert _page_ask(served).json()["refresh"] == "started"
+    assert _settle(served)["pin"] == origin.second
+    clock.now += STORE_PROBE_S
+    again = _page_ask(served)
+    assert (again.status_code, again.json()["refresh"]) == (202, "started")
+    assert _settle(served)["pin"] == newer
+
+
+def test_a_probe_that_joins_a_fetch_says_so_and_holds_nothing(
+    served: TestClient, origin: _Origin, clock: _Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reviews A10 and A7 of #721: a fetch that began while the origin was asked may have
+    read it before the push. The ask answers ``joined``, not ``started``, and the next
+    probe fetches for the tip, which that fetch did not bring."""
+
+    release = threading.Event()
+    real_tip = StoreMirror.origin_tip
+    real_update = update_store
+    held = [True]
+
+    async def held_first(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        if held:
+            held.pop()
+            await held_until(release, 30)
+            return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
+        return await real_update(home, store_key, remote_url=remote_url)
+
+    async def refreshed_meanwhile(self: StoreMirror, ref: str) -> str | None:
+        session = mirror_session(server.app)
+        if held and session is not None:
+            # A reader pressed Refresh while the origin was being asked.
+            assert session.request_refresh() == "started"
+        return await real_tip(self, ref)
+
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", held_first)
+    monkeypatch.setattr(StoreMirror, "origin_tip", refreshed_meanwhile)
+    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+    joined = _page_ask(served)
+    assert (joined.status_code, joined.json()["refresh"]) == (202, "joined")
+    # The reader's own fetch, so the row says so.
+    assert joined.json()["status"]["refresh_quiet"] is False
+    release.set()
+    assert _settle(served)["pin"] == origin.second
+    clock.now += STORE_PROBE_S
+    assert _page_ask(served).json()["refresh"] == "started"
+    assert _settle(served)["pin"] == newer
+
+
+def test_the_probed_refs_are_the_refs_the_cache_fetches_branches_under() -> None:
+    """Review A8 of #721: what the status advertises as probed, and what the mirror
+    accepts and strips, is one constant, held here to the cache's own."""
+
+    assert PROBED_REF_PREFIX == BRANCH_MIRROR_PREFIX
+    assert probes_origin(f"{BRANCH_MIRROR_PREFIX}topic")
+    assert not probes_origin("refs/tags/v1") and not probes_origin("refs/pull/7/head")
+
+
+def test_the_shutdown_stops_a_running_probe_before_it_closes_the_jobs(
     origin: _Origin, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ended: list[str] = []
+    """The lifespan stops the probe itself, which kills its Git, while the server is
+    still whole. Closing the client's loop cancels whatever is left on it too, so the
+    probe says whether the refresh jobs were already closed when it was stopped: with no
+    ``stop_probe`` they are (review A5 of #721)."""
+
+    stopped: list[bool] = []
 
     async def endless_tip(self: StoreMirror, ref: str) -> str | None:
         try:
             await asyncio.sleep(3600)
         except asyncio.CancelledError:
-            ended.append("cancelled")
+            jobs = refresh_coordinator(server.app)
+            assert jobs is not None
+            stopped.append(jobs._closed)
             raise
         return None
 
@@ -854,7 +1012,7 @@ def test_the_shutdown_cancels_a_running_probe(
     assert _serve(origin.url).exit_code == 0
     with TestClient(server.app) as client:
         assert _page_ask(client).json()["refresh"] == "not_due"
-    assert ended == ["cancelled"]
+    assert stopped == [False]
 
 
 # ── The idle refresh ─────────────────────────────────────────────────
@@ -880,25 +1038,29 @@ def test_a_server_no_page_is_looking_at_fetches_its_mirror_by_itself(
     assert status["last_outcome"]["operation"] == "refresh"
 
 
-def test_a_one_shot_command_runs_no_idle_refresh(
+def test_only_a_server_runs_the_idle_timer(
     tmp_path: Path, origin: _Origin, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Only a server keeps a timer: a command reads the mirror as it is and fetches only
-    what it asks for, however old the mirror is."""
+    """A command reads the mirror as it is and fetches only what it asks for, however
+    old the mirror is. What is counted is the timer itself: a command ends before a timer
+    started beside it would fetch, so counting fetches proves nothing (review A5 of #721)."""
 
     _backdate_last_fetch(tmp_path, origin)
-    fetches: list[str] = []
+    timers: list[str] = []
 
-    async def counted(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
-        fetches.append(store_key)
-        return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
+    async def recorded(self: MirrorSession) -> None:
+        timers.append("started")
 
-    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", counted)
-    monkeypatch.setattr("metabrowser.mirror_refresh.STORE_IDLE_REFRESH_S", 0.0)
-    monkeypatch.setattr("metabrowser.mirror_refresh.IDLE_CHECK_FLOOR_S", 0.0)
-    result = runner.invoke(_app, [origin.url, "--api", "/api/source/status"])
-    assert result.exit_code == 0, result.output
-    assert fetches == []
+    monkeypatch.setattr(MirrorSession, "run_idle_refresh", recorded)
+    for route in ("/api/source/status", "/api/git/repo"):
+        result = runner.invoke(_app, [origin.url, "--api", route])
+        assert result.exit_code == 0, result.output
+    assert timers == []
+
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        _settle(client)
+    assert timers == ["started"]
 
 
 # ── The coordinator ──────────────────────────────────────────────────
