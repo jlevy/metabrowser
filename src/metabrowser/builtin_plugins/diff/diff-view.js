@@ -1076,11 +1076,13 @@ function repaintViewFileControls(view) {
 }
 
 /**
- * The per-file bar, in two groups, per the section-disclosure and icon button primitives
- * in the design system. It leads with what names the file and where it opens: one
- * disclosure trigger (kind, path), the copy control right after the name, the change's
- * stats and notes, which describe the trigger, and the View file controls. Its end group
- * holds a file's Rendered | Source chooser alone (diff-markdown.js), at the bar's far end.
+ * The per-file bar, per the section-disclosure and icon button primitives in the design
+ * system. It leads with the group that names the file: one disclosure trigger (kind,
+ * path), the copy control right after the name, and the change's stats and notes, which
+ * describe the trigger. The View file controls follow that group, each a part of the bar
+ * of its own, so a bar that wraps moves them to the next line before the name gives way.
+ * Its end group holds a file's Rendered | Source chooser alone (diff-markdown.js), at the
+ * bar's far end.
  *
  * @param {Record<string, unknown>} change
  * @param {string} toggleId
@@ -1143,7 +1145,7 @@ function renderFileBar(change, toggleId, bodyId, factsId, view) {
     }
   }
   // Each group is one flex item: a bar that wraps or cuts a long path short never parts
-  // the copy control from the name it copies, and its end group moves as one.
+  // the copy control or the stats from the name, and its end group moves as one.
   const lead = el("div", "diff-file-lead");
   const end = el("div", "diff-file-end");
   lead.append(toggle);
@@ -1163,20 +1165,23 @@ function renderFileBar(change, toggleId, bodyId, factsId, view) {
   if (facts !== null) {
     lead.append(facts);
   }
-  bar.append(lead, end);
 
   /** @type {HTMLElement | null} */
   let notice = null;
+  /** @type {HTMLElement[]} */
+  let controls = [];
   const actions = view.viewFile?.actions(change, view.resolved) ?? [];
   if (actions.length > 0) {
     notice = el("div", "diff-availability diff-file-notice");
     notice.setAttribute("role", "status");
     notice.hidden = true;
     const said = { element: notice, timer: 0 };
-    const controls = actions.map((action) => renderViewFileControl(action, view, said));
-    lead.append(...controls);
+    controls = actions.map((action) => renderViewFileControl(action, view, said));
     view.viewFileBars.push({ change, controls, said });
   }
+  // The View file controls sit between the name's group and the end group, in neither:
+  // where the bar wraps, they take the next line, and the name keeps the first.
+  bar.append(lead, ...controls, end);
   return { bar, end, toggle, notice };
 }
 
