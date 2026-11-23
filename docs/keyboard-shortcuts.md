@@ -38,7 +38,7 @@ work.
 | `O` | Overview | A folder is shown |
 | `M` | Treemap, from its map | A folder is shown |
 | `C` | Conversation | A pull request page is shown |
-| `D` | Docs: the pull request’s changed documents, rendered and unfolded | A pull request page is shown |
+| `D` | Docs: the pull request’s changed documents, rendered and unfolded | A pull request page that changes a document is shown |
 | `G` | Changes, from chan-*g*es | A pull request page is shown |
 | `E` | Checks, from ch-*e*-cks | A pull request page is shown |
 | `L` | Diff layout: Split or Unified | A diff with a layout control is shown |

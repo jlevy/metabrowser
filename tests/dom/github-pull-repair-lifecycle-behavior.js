@@ -4,7 +4,7 @@ const optionalStacks = require("../fixtures/github-stacks-responses.json");
 const { pathToFileURL } = require("node:url");
 const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
 
-async function story({ delaySecondMount = false } = {}) {
+async function story({ delaySecondMount = false, counts = undefined } = {}) {
   const timers = new Map();
   globalThis.document = {
     visibilityState: "visible",
@@ -69,6 +69,8 @@ async function story({ delaySecondMount = false } = {}) {
       whenIdle: require("./sdk-idle-fixture.js").whenIdle,
       ensureKindAssets: async () => {},
       getRegisteredView: () => ({
+        // The comparison's File type counts, when the story gives them (`askDocs`).
+        ...(counts === undefined ? {} : { typeCounts: async () => counts }),
         render: async (host, context) => {
           mounted.push(context.comparison);
           const group = context.group ?? null;
@@ -114,6 +116,8 @@ async function story({ delaySecondMount = false } = {}) {
   return {
     handle,
     container,
+    docsLink: () =>
+      [...container.descendants()].find((item) => item.tag === "a" && item.textContent === "Docs"),
     mounted,
     groups,
     jumps,
@@ -314,6 +318,28 @@ async function docs() {
   run.handle.dispose();
 }
 
+// Docs is offered only where the comparison changes a document: hidden once its counts
+// say none changed, shown again while the reader is on it, and shown where one changed.
+async function docsOffered() {
+  const none = await story({ counts: { type_presets: [["docs", 0, 0]], truncated: false } });
+  await settle();
+  assert.equal(none.docsLink().hidden, true, "no document changed: Docs is hidden");
+  await none.land("docs");
+  await none.handle.whenFilesReady();
+  assert.equal(none.docsLink().hidden, false, "an address on Docs keeps it, empty state and all");
+  await none.land("files");
+  assert.equal(none.docsLink().hidden, true, "and leaving it hides it again");
+  none.handle.dispose();
+  const some = await story({ counts: { type_presets: [["docs", 2, 0]], truncated: false } });
+  await settle();
+  assert.equal(some.docsLink().hidden, false, "a changed document: Docs is offered");
+  some.handle.dispose();
+  const cut = await story({ counts: { type_presets: [["docs", 0, 0]], truncated: true } });
+  await settle();
+  assert.equal(cut.docsLink().hidden, false, "a list cut short may hold one: Docs stays");
+  cut.handle.dispose();
+}
+
 const selected = process.argv.includes("--case") ? process.argv.at(-1) : "all";
 (async () => {
   if (selected === "all" || selected === "history") {
@@ -324,6 +350,9 @@ const selected = process.argv.includes("--case") ? process.argv.at(-1) : "all";
   }
   if (selected === "all" || selected === "docs") {
     await docs();
+  }
+  if (selected === "all" || selected === "docs-offered") {
+    await docsOffered();
   }
   process.stdout.write(`${JSON.stringify({ case: selected, passed: true })}\n`);
 })().catch((error) => {

@@ -127,7 +127,7 @@ sign of the background work.
 A cached page shows at once and refreshes in the background; the
 [design system](design-system.md#the-pull-request-page) describes how it draws.
 
-The page has four tabs:
+The page has up to four tabs:
 
 - **Conversation** (`C`): the description, then comments, reviews, and commits in
   GitHub’s order, joined by a timeline line.
@@ -138,7 +138,9 @@ The page has four tabs:
   Markdown, plain text, reStructuredText, and the rest), each in its rendered view with
   nothing folded, so you can read what the pull request says in its docs without the
   code around it. A document with no rendered view shows its text diff, also unfolded.
-  A pull request that changes no document says so, with a link to Changes.
+  The tab shows only when the pull request changes a document: it appears at once and
+  goes when the comparison’s File type counts say no document changed.
+  An address on Docs still opens it, and says so, with a link to Changes.
 - **Changes** (`G`): the diff from the merge base to the head, **Split** or **Unified**
   (`L` switches). Markdown files open as rendered changes, as the next section describes.
   The changed-file list on the Pulls tab moves through this diff, and the selected file

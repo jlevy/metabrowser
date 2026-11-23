@@ -290,6 +290,31 @@ export function noFiles(document_) {
   );
 }
 
+/**
+ * Whether a comparison's File type counts (the diff route's `view=types`) say it changes a
+ * document: its `docs` preset row, the group the Docs tab shows. Null where the answer does
+ * not say, and where it counts none of a list cut short at its bounds, which may have left
+ * its documents out.
+ *
+ * @param {unknown} counts
+ * @returns {boolean | null}
+ */
+export function changesDocuments(counts) {
+  const answer = /** @type {{type_presets?: unknown, truncated?: unknown} | null} */ (counts);
+  const rows = answer?.type_presets;
+  if (!Array.isArray(rows)) {
+    return null;
+  }
+  const row = rows.find((entry) => Array.isArray(entry) && entry[0] === "docs");
+  if (!Array.isArray(row) || typeof row[1] !== "number") {
+    return null;
+  }
+  if (row[1] > 0) {
+    return true;
+  }
+  return answer?.truncated === true ? null : false;
+}
+
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
   not_github: "This server serves no GitHub repository.",
@@ -4799,6 +4824,12 @@ export function mountPullPage(container, ctx, mb) {
   let diffHandle = null;
   /** The diff tab the mounted diff was drawn for (`diffTab`): Docs narrows it. */
   let diffShows = "";
+  /** The comparison asked whether it changes a document (`askDocs`), and what it said. */
+  let docsFor = "";
+  /** @type {boolean | null} */
+  let docsChanged = null;
+  /** @type {AbortController | null} */
+  let docsAsking = null;
   /**
    * The File type choice of Changes, null for every type: the page's, kept while the reader
    * is on another tab and given to each mount (the diff plugin's `ctx.types`).
@@ -6193,6 +6224,7 @@ export function mountPullPage(container, ctx, mb) {
         link.classList.toggle("active", model.tab === id);
         link.setAttribute("aria-selected", String(model.tab === id));
       }
+      showDocsTab(model);
       const returning = tabColumn.parentNode === null;
       header.after(tabColumn);
       if (returning) {
@@ -7347,6 +7379,75 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
+  /**
+   * Docs is offered only where the comparison changes a document: shown until its File
+   * type counts say none changed, so the usual pull request's tab bar never moves, and
+   * kept while the reader is on it, whose empty state says so.
+   *
+   * @param {PullModel} model
+   */
+  function showDocsTab(model) {
+    const docs = tabLinks.find(({ id }) => id === "docs")?.link;
+    if (docs) {
+      docs.hidden = docsChanged === false && model.tab !== "docs";
+    }
+  }
+
+  /**
+   * Ask once per comparison whether it changes a document (`changesDocuments`), through the
+   * diff view's `typeCounts`, at the comparison's own address with `view=types`.
+   *
+   * @param {PullModel} model
+   */
+  function askDocs(model) {
+    const comparison = model.pull === null ? null : model.comparison;
+    if (comparison === null) {
+      return;
+    }
+    const key = JSON.stringify([comparison.left, comparison.right, comparison.route ?? ""]);
+    if (key === docsFor) {
+      return;
+    }
+    docsAsking?.abort();
+    const asking = new AbortController();
+    docsAsking = asking;
+    docsFor = key;
+    docsChanged = null;
+    listening.signal.addEventListener("abort", () => asking.abort(), { once: true });
+    void mb
+      .ensureKindAssets("diff")
+      .then(() => {
+        const view = /** @type {MetabrowserPublicViewSpec | null} */ (
+          mb.getRegisteredView("diff", "diff")
+        );
+        if (asking.signal.aborted || typeof view?.typeCounts !== "function") {
+          return null;
+        }
+        return view.typeCounts(
+          {
+            left: comparison.left,
+            right: comparison.right,
+            base_policy: "merge_base",
+            ...(comparison.route === undefined ? {} : { route: comparison.route }),
+          },
+          asking.signal,
+        );
+      })
+      .then(
+        (counts) => {
+          if (asking.signal.aborted || docsFor !== key) {
+            return;
+          }
+          docsChanged = changesDocuments(counts);
+          if (shown !== null) {
+            showDocsTab(shown);
+          }
+        },
+        // A count that did not come leaves Docs shown, as before it was asked.
+        () => {},
+      );
+  }
+
   /** What this history entry remembers of Changes, for a page first mounting a diff on it. */
   function entryMemory() {
     // The entry's memory is kept with its place: by a page in the pane that scrolls.
@@ -7851,6 +7952,7 @@ export function mountPullPage(container, ctx, mb) {
     // The header paints the record at once, held or not: only the body waits for its
     // Markdown, so the title shows as soon as the record is in hand (exp-099).
     paintHeader(model);
+    askDocs(model);
     paintStacks(model);
     // Conversation and Checks use the reading column. Changes and Docs use the full pane.
     body.classList.toggle("page-reading-column", model.pull === null || !diffTab(model.tab));
@@ -8357,7 +8459,17 @@ export function mountPullPage(container, ctx, mb) {
   const listening = new AbortController();
   // The tab keys end with it too: cancelPending() aborts the signal. A page the shell
   // stages for a retained navigation is inert, so its keys wait until it is shown.
-  tabKeys = attachTabKeys(mb.shortcuts, tabLinks, (tab) => page.setTab(tab), listening.signal);
+  tabKeys = attachTabKeys(
+    mb.shortcuts,
+    tabLinks,
+    (tab) => {
+      // A hidden tab's key does nothing, as its link offers nothing.
+      if (!tabLinks.some(({ id, link }) => id === tab && link.hidden)) {
+        page.setTab(tab);
+      }
+    },
+    listening.signal,
+  );
   const controller = createPullController(
     {
       async request(method, route, options) {
