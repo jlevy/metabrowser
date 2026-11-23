@@ -654,6 +654,8 @@ const MEASURE = `async (name, change, tab, width) => {
     rows,
     lines,
     rowGap: parseFloat(getComputedStyle(header).rowGap),
+    bottomPadding: parseFloat(getComputedStyle(header).paddingBottom),
+    contentPadding: parseFloat(getComputedStyle(header).getPropertyValue("--content-padding-y")),
     // The page's one gap under a title, before its first metadata line (mb-wcbc).
     titleGap: parseFloat(getComputedStyle(header).getPropertyValue("--page-title-gap")),
     // How many labels the record names, or null while there is no record.
@@ -2148,18 +2150,21 @@ async function main() {
                 Math.abs(shape.refresh.rightEdge) <= 0.5,
               JSON.stringify({ refresh: shape.refresh, lines: shape.lines }),
             );
-            // The first metadata line is the page's title gap under the title, every page's
-            // (mb-wcbc), and each row after it the header's one gap under the row before it.
-            const gapAfter = (row) => (row.row === "title" ? shape.titleGap : shape.rowGap);
+            // The title has the shared gap; both sides of the size line get an extra
+            // half-gap. The bottom padding gives that space back.
+            const gapBetween = (before, after) =>
+              before.row === "title"
+                ? shape.titleGap
+                : shape.rowGap * (before.row === "size" || after.row === "size" ? 1.5 : 1);
             check(
-              `${where}: the first row is the title gap under the title, each after it the header's one gap under the row before it`,
+              `${where}: the title, the size line and surrounding rows keep their gaps`,
               shape.titleGap > shape.rowGap &&
                 shape.lines[0]?.row === "title" &&
                 shape.lines.every(
                   (each, at) =>
                     at === 0 ||
                     Math.abs(
-                      each.top - shape.lines[at - 1].bottom - gapAfter(shape.lines[at - 1]),
+                      each.top - shape.lines[at - 1].bottom - gapBetween(shape.lines[at - 1], each),
                     ) <= 0.5,
                 ),
               JSON.stringify({
@@ -2168,15 +2173,29 @@ async function main() {
                 lines: shape.lines,
               }),
             );
+            check(
+              `${where}: the state and ages come first, then the author and the branches`,
+              shape.lines
+                .slice(0, 4)
+                .map((row) => row.row)
+                .join(" ") === "title opened meta branches",
+              JSON.stringify(shape.lines),
+            );
+            check(
+              `${where}: the padding below the Diff summary gives the space around the size line back`,
+              Math.abs(shape.bottomPadding - (shape.contentPadding - shape.rowGap)) <= 0.5,
+              JSON.stringify([shape.bottomPadding, shape.contentPadding, shape.rowGap]),
+            );
             if (shape.recordLabels === 0) {
-              // The next row shown, the status line or the summary, is one gap under it.
-              const next = shape.lines[shape.lines.findIndex((each) => each.row === "opened") + 1];
+              const branchesAt = shape.lines.findIndex((each) => each.row === "branches");
+              const branches = shape.lines[branchesAt];
+              const next = shape.lines[branchesAt + 1];
               check(
-                `${where}: a pull request with no labels has no labels row, the next row one gap under the row of ages`,
+                `${where}: a pull request with no labels has no labels row or gap after the branches`,
                 line("labels") === undefined &&
-                  opened !== undefined &&
+                  branches !== undefined &&
                   next !== undefined &&
-                  Math.abs(next.top - opened.bottom - shape.rowGap) <= 0.5,
+                  Math.abs(next.top - branches.bottom - gapBetween(branches, next)) <= 0.5,
                 JSON.stringify(shape.lines),
               );
             }
