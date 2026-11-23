@@ -5,7 +5,7 @@ title: "Annotated collections: one format for Guided PR guides, reading lists, d
 kind: epic
 status: open
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
 labels:
   - linear
@@ -18,10 +18,10 @@ child_order_hints:
   - is-01m836c59zjyn3p0p4azezrhh3
   - is-01m836c5sjm5382s2wc93p852s
 created_at: 2026-11-23T03:14:41.041Z
-updated_at: 2026-11-23T03:20:34.172Z
+updated_at: 2026-11-23T03:20:52.392Z
 extensions:
   linear:
     id: e6d16b1a-6932-46d8-ab79-79487c4851c8
-    linked_at: 2026-11-23T03:20:34.172Z
+    linked_at: 2026-11-23T03:20:52.392Z
 ---
 Effort epic. Guided PR's guide becomes the first form of one annotated-collection format, metabrowser.collection:Collection/v1, shared by a PR description and repository files. Design: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md (PR #693). Phases each ship alone.
