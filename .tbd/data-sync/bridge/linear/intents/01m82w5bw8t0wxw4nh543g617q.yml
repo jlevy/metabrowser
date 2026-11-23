@@ -1,0 +1,38 @@
+created_at: 2026-11-23T00:16:14.728Z
+ops:
+  - bead_id: is-01m7hgpc9550w78kmwqsvv64xh
+    block: |-
+      ⟦tbd⟧
+      `mb-wzsl` · epic · in_progress · P1
+      Children: 47 (14 ready)
+      Bead: `tbd show mb-wzsl`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: a18aa3cd-0329-4c1c-bca3-17921fe6703e
+    kind: splice_description
+  - bead_id: is-01m82h0qrnw9vg6vrj597asgpv
+    block: |-
+      ⟦tbd⟧
+      `mb-dip2` · epic · in_progress · P1
+      Children: 9 (7 ready)
+      Bead: `tbd show mb-dip2`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 0c7789d9-960d-4814-a23b-d2a26e474369
+    kind: splice_description
+  - bead_id: is-01m82hy6zdk5e5zzmsan8xhw6q
+    block: |-
+      ⟦tbd⟧
+      `mb-d7e0` · task · in_progress · P0
+      Children: 4 (0 ready)
+      Bead: `tbd show mb-d7e0`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 79e3aeab-0661-464d-a802-5624c419ac9a
+    kind: splice_description
+provider: linear
+run_id: 01m82w5bw8t0wxw4nh543g617q
+type: in
