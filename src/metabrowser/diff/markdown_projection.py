@@ -1066,7 +1066,9 @@ def _block(
             hidden, concealed = (*hidden, *definitions), True
     children: tuple[_Block, ...] | None = None
     if descend and not merged and node.tag and tokens[first].type in _CONTAINERS:
-        inner = _slices(tokens, first + 1, stop - 1, tokens[first].level + 1)
+        # Within the container's own close: an inline note's list, which the slice was
+        # extended over, is not one of its children.
+        inner = _slices(tokens, first + 1, _close(tokens, first) - 1, tokens[first].level + 1)
         elements = _elements(node)
         if elements is not None and len(elements) == len(inner):
             items: list[_Block] = []

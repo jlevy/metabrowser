@@ -1167,6 +1167,33 @@ def test_an_inline_note_is_part_of_the_block_that_holds_it() -> None:
 
 
 @pytest.mark.parametrize(
+    ("old", "new", "kinds"),
+    [
+        pytest.param(None, b">b<table>^[]", ["added"], id="added"),
+        pytest.param(
+            b"# Doc\n\n> Quoted <table> text ^[a note]\n",
+            b"# Doc changed\n\n> Quoted <table> text ^[a note]\n",
+            ["removed", "added", "context"],
+            id="a heading edited above it",
+        ),
+    ],
+)
+def test_a_quote_whose_open_table_holds_its_inline_note_projects(
+    old: bytes | None, new: bytes, kinds: list[str]
+) -> None:
+    """The quote's slice extends over its inline note's list, which a table left open
+    keeps inside the quote's element. The note's list is not one of the quote's
+    children, which are read within the quote's own close."""
+
+    result = _project(old, new)
+    assert result["status"] == "ready"
+    assert [block["kind"] for block in result["blocks"]] == kinds
+    quote = result["blocks"][-1]["html"]
+    assert quote.startswith("<blockquote>")
+    assert "<ol>" in quote
+
+
+@pytest.mark.parametrize(
     ("old", "new"),
     [
         pytest.param(
