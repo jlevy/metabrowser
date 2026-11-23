@@ -300,27 +300,51 @@ budget.
 The bytes, not the node count, are the cost, and most bytes are per-file keys and
 repeated paths.
 
+The same replay on this repository’s main checkout, on 2026-11-22 (38,819 entries,
+`attic/treemap-budget/run.sh`, recorded in the
+[research document](../../research/research-2026-11-22-dense-treemap-rendering.md#rollup-budget-on-this-repository)),
+Files metric, gzip at level 6:
+
+| Scope | Nodes | `top` | JSON | gzip | Compact | Server ms | Unexpanded | In remainders |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Show ignored on | 4,000 | 200 | 0.75 MB | 0.09 MB | 0.29 MB | 14.5 | 53.8% | 9.3% |
+|  | 16,000 | 200 | 3.17 MB | 0.35 MB | 1.11 MB | 38 | 21.3% | 10.2% |
+|  | 16,000 | 16,000 | 3.03 MB | 0.33 MB | 1.01 MB | 25 | 32.3% | 0.2% |
+|  | 32,000 | 32,000 | 6.19 MB | 0.66 MB | 1.99 MB | 50 | 6.9% | 0.0% |
+|  | the whole tree |  | 7.49 MB | 0.79 MB | 2.39 MB | 67 | 0.1% | 0.0% |
+| Ignored files left out | 4,000 | 200 | 0.43 MB | — | 0.14 MB | 4 | 0.0% | 14.8% |
+|  | 2,740, the whole tree | 4,000 | 0.49 MB | 0.07 MB | 0.17 MB | 4 | 0.0% | 0.0% |
+
+Two answers follow. **Without ignored files, the whole tree fits today’s budget**: 2,740
+nodes, so leaving ignored files out of the budget and letting `top` reach it draws every
+file in 0.5 MB, with no new encoding.
+**With ignored files shown**, the budget binds hard: `node_modules` and the virtual
+environment hold 93% of the entries, the whole tree is 7.5 MB of JSON to parse (0.8 MB
+on the wire), and the compact encoding cuts the parse to 2.4 MB.
+
 ### Changes
 
+- **A budget that skips what the map hides**, first, because it alone completes the
+  default view. `ignored=exclude` emits no gitignored children, so with Show ignored off
+  the budget goes to the files the map draws, and `top` rises to the budget for that
+  scope, since the whole unignored tree is under it.
+  The Show ignored toggle then refetches, where today it is client-only.
 - **A compact encoding.** `/api/rollup?encoding=compact` writes each folder’s file
   children as positional arrays (name, size, mtime, extension, ignored) without `path`,
   which the client derives from the folder’s path.
-  The review estimates the whole tree at 1.0 to 1.1 MB this way.
-  Only the Treemap view asks for it, and the folder plugin decodes it, not
-  `plugin-sdk.js`, which is eager and at its startup byte budget.
+  Measured on the main checkout, it is a third of the JSON: 2.39 MB for the whole tree
+  against 7.49 MB. Only the Treemap view asks for it, and the folder plugin decodes it,
+  not `plugin-sdk.js`, which is eager and at its startup byte budget.
 - **A node budget the request names.** `nodes=` bounded by a raised `ROLLUP_MAX_NODES`,
   set from the measurement; the default stays 4,000, so the Overview and other callers
   are unchanged and the Overview keeps one request of today’s size.
-- **A budget that skips what the map hides.** `ignored=exclude` emits no gitignored
-  children, so with Show ignored off the budget goes to the files the map draws; today
-  88 unignored folders arrive unexpanded with ignored files hidden.
-  The Show ignored toggle then refetches, where today it is client-only.
 - **`top` set together with the budget**, so a flat folder cannot take it.
 - **The body cache** (`ROLLUP_BODY_CACHE_ENTRIES`) gets a byte bound beside its entry
   bound, since denser bodies raise its ceiling.
 
-Grafts stay out unless this measurement on a large checkout (this repository’s main
-checkout has 35,790 files with ignored files shown) leaves a large unexpanded share.
+Grafts stay out: with ignored files left out the tree is complete, and with them shown a
+budget near 32,000 compact nodes leaves under 7% unexpanded; the browser measurement of
+parse and layout at that size decides the budget.
 
 ## Components
 

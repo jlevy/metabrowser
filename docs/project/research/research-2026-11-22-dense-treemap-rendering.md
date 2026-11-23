@@ -133,6 +133,20 @@ Paint time, in ms:
   is focusable DOM elements over or behind the canvas, with the focus ring drawn
   separately ([TPGI](https://www.tpgi.com/html5-canvas-sub-dom/)).
 
+### Rollup Budget on This Repository
+
+The production `build_rollup`, replayed on 2026-11-22 over a walk of this repository’s
+main checkout (38,819 entries, 2,741 of them outside gitignored paths), at several node
+budgets and `top` values, with each tree laid out by the production `layoutTree` at
+1223×587 with a 0.5 px cell floor.
+The replay and its outputs are in the worktree’s gitignored `attic/treemap-budget/`
+(`run.sh` reruns them); the table is in the
+[treemap granularity plan](../specs/active/plan-2026-11-22-treemap-canvas-granularity.md#where-the-area-goes).
+In short: without ignored files the whole tree is 2,740 nodes and 0.49 MB of JSON, under
+today’s 4,000-node budget; with them it is 38,402 nodes, 7.49 MB of JSON (0.79 MB
+gzipped, 2.39 MB as positional arrays without paths), and today’s budget leaves 53.8% of
+the map in unexpanded folders.
+
 ## Conclusions
 
 1. One canvas paints every cell down to about a device pixel: about 25 ms for a 36k-cell
@@ -143,8 +157,9 @@ Paint time, in ms:
 3. Hover and selection go on an overlay, never a repaint of the map, and never through
    `ctx.filter`.
 4. Hit testing is geometric, through a bucket grid built after layout.
-5. Folders the first response did not expand are fetched when drawn large, from
-   cumulative totals the server already sends.
+5. The data, not the renderer, bounds the map when ignored files are shown: the budget
+   must rise, in a compact encoding, and with ignored files hidden the budget must skip
+   them, which alone completes the tree.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
