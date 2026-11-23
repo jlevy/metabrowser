@@ -143,8 +143,8 @@ _SHA = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 # Existing full-record refreshes keep conditional REST and their original two checks.
 _CORE_FIELDS: Final = """
       number url title body state isDraft merged createdAt updatedAt closedAt mergedAt
-      author { login avatar_url:avatarUrl(size:40) }
-      mergedBy { login avatar_url:avatarUrl(size:40) }
+      author { __typename login avatar_url:avatarUrl(size:40) }
+      mergedBy { __typename login avatar_url:avatarUrl(size:40) }
       baseRefName baseRefOid baseRepository { nameWithOwner }
       headRefName headRefOid headRepository { nameWithOwner }
       mergeable mergeCommit { oid } potentialMergeCommit { oid }
@@ -492,6 +492,20 @@ class _Unavailable:
     state: PullDataState
 
 
+def _rest_actor(actor: object) -> object:
+    """*actor* as REST names it: GraphQL names an app by its slug (``dependabot``) and REST
+    by its bot account (``dependabot[bot]``), so a record read either way compares equal,
+    and a probe of a cold open's record does not find the author changed (review B2, #709).
+    """
+
+    if not isinstance(actor, dict):
+        return actor
+    login = actor.get("login")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    if actor.get("__typename") == "Bot" and isinstance(login, str) and not login.endswith("[bot]"):  # pyright: ignore[reportUnknownMemberType]
+        return {**actor, "login": f"{login}[bot]"}  # pyright: ignore[reportUnknownArgumentType]
+    return actor  # pyright: ignore[reportUnknownVariableType]
+
+
 def _graph_pull(value: object, number: int) -> PullRequest:
     """Project the fixed GraphQL core through the same validated core model."""
     item = as_dict(value)
@@ -517,14 +531,14 @@ def _graph_pull(value: object, number: int) -> PullRequest:
             "state": {"OPEN": "open", "CLOSED": "closed", "MERGED": "closed"}[item["state"]],
             "draft": item["isDraft"],
             "merged": item["merged"],
-            "merged_by": item["mergedBy"],
+            "merged_by": _rest_actor(item["mergedBy"]),
             "commits": as_dict(item["commits"])["totalCount"],
             "merge_commit_sha": None if merged_commit is None else as_dict(merged_commit)["oid"],
             "mergeable": {"MERGEABLE": True, "CONFLICTING": False, "UNKNOWN": None}[
                 item["mergeable"]
             ],
             "labels": as_dict(item["labels"])["nodes"],
-            "user": item["author"],
+            "user": _rest_actor(item["author"]),
             "created_at": item["createdAt"],
             "updated_at": item["updatedAt"],
             "closed_at": item["closedAt"],

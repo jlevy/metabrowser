@@ -426,6 +426,8 @@ function createPage(runtime, options) {
       timer.callback();
     },
     timersLeft: () => timers.size,
+    /** The waiting ask's delay, or null with none waiting. */
+    askDelay: () => [...timers.values()].find(isAsk)?.delayMs ?? null,
     /** The poll's timer, to tell a poll left waiting from one armed again. */
     pollTimer: () => [...timers.entries()].find(([, each]) => !isAsk(each))?.[0] ?? null,
   };
@@ -1141,6 +1143,45 @@ async function main() {
   await probing.step("the gap passes and it asks", async () =>
     probing.fireAsk(runtime.PROBE_ASK_GAP_MS),
   );
+  // Review B1 on #709: the record goes stale when its full read comes due, a few seconds
+  // before the next probe ask would start it. The poll that reads it so asks at once,
+  // since no ask for a stale record was sent within a window; it does not wait a window
+  // from the probe ask before it. Asserted rather than printed: the page's transcript is at
+  // its review budget, and the two steps repeat paints the story already shows.
+  probing.clock.now += 2000;
+  const overdue = recorded.probed_current.body;
+  probing.server.pull = {
+    ...recorded.probed_current,
+    etag: `${recorded.probed_current.etag}-overdue`,
+    body: { ...overdue, state: "stale", verified_by: "fetch", verified_at: overdue.fetched_at },
+  };
+  const overdueRead = await probing.step("past its full read the poll reads it stale", async () =>
+    probing.fire(),
+  );
+  assert(
+    overdueRead.paint?.status === "stale" &&
+      overdueRead.paint.revalidating === true &&
+      overdueRead.paint.canRefresh === false,
+    `an overdue record did not paint as revalidating: ${JSON.stringify(overdueRead)}`,
+  );
+  assert(
+    probing.askDelay() === 0,
+    `a record gone stale between probe asks waited a window: ${probing.askDelay()}`,
+  );
+  probing.server.refresh.push({
+    status: 202,
+    etag: null,
+    body: { pull: { ...overdue, refreshing: true } },
+  });
+  const fullRead = await probing.step("its full read starts", async () => probing.fireAsk(0));
+  assert(
+    JSON.stringify(fullRead.requests) ===
+      JSON.stringify(['POST /api/plugin/github/pull-refresh {"number":7}']) &&
+      fullRead.timer === "fast",
+    `an overdue record's ask did not start its full read: ${JSON.stringify(fullRead)}`,
+  );
+  probing.server.pull = recorded.probed_current;
+  await probing.step("the full read ends and the record is current", async () => probing.fire());
   probing.setVisible(false);
   await probing.controller.onVisibilityChange();
   probingStory.push(

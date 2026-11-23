@@ -6155,6 +6155,23 @@ def test_a_probe_tells_a_change_from_a_new_etag_for_the_same_pull(stand: _Stand)
     assert _probe(stand, record, checks=True).outcome == "changed"
 
 
+def test_an_app_authored_pull_reads_the_same_through_graphql_and_rest(stand: _Stand) -> None:
+    """GraphQL names an app by its slug and REST by its bot account; the core read projects
+    REST's, so the first probe after a cold open finds no change (review B2 on #709)."""
+
+    answers = scenario(stand.origin)
+    rest = copy.deepcopy(answers["api"]["repos/octo/demo/pulls/7"]["body"])
+    rest["user"] = {"login": "dependabot[bot]", "type": "Bot"}
+    rest["merged_by"] = {"login": "renovate[bot]", "type": "Bot"}
+    graph = graph_core_data(rest)["repository"]["pull"]
+    graph["author"] = {"__typename": "Bot", "login": "dependabot"}
+    graph["mergedBy"] = {"__typename": "Bot", "login": "renovate"}
+    assert pulls._graph_pull(graph, 7) == pulls._pull(rest, 7)  # pyright: ignore[reportPrivateUsage]
+    # A person is named the same both ways, whatever their login.
+    graph["author"] = {"__typename": "User", "login": "octocat"}
+    assert pulls._graph_pull(graph, 7).author == "octocat"  # pyright: ignore[reportPrivateUsage]
+
+
 def test_a_probe_of_a_record_with_no_etag_reads_once_and_keeps_the_etag(stand: _Stand) -> None:
     """A cold open's pull, read through GraphQL, has no REST ETag: the first probe asks
     unconditionally, compares, and keeps the ETag, so it is no change and no second read."""

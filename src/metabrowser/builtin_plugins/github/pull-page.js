@@ -1973,6 +1973,12 @@ export function createPullController(deps, options) {
   let autoAskedAt = null;
   /** When that ask was answered, or failed, by `deps.now()`. @type {number | null} */
   let autoAnsweredAt = null;
+  // When the page last sent an automatic ask for a stale record. A stale record asks once
+  // a window from this, not from the last probe ask: a probed record goes stale when its
+  // full read comes due, a few seconds before the next probe ask would start that read,
+  // and waiting a window from that probe ask showed it stale for most of a minute.
+  /** @type {number | null} */
+  let staleAskedAt = null;
   /** That ask: none, scheduled (waiting in `askTimer`), or sent and not yet answered. */
   /** @type {"none" | "scheduled" | "sent"} */
   let autoAsk = "none";
@@ -1982,6 +1988,8 @@ export function createPullController(deps, options) {
   // Once the repository's list of pull requests has vouched for this record, the page keeps
   // that list scanned while it is visible, so the record stays current without being read
   // again: when the check lapses it asks for the next scan, once a window, before it reads.
+  // While probes vouch for the record the envelope's check is theirs and never lapses, so
+  // a probing page asks for no scan (`catalogScanDue`).
   let catalogBacked = false;
   /** When the page last asked for the catalog's scan, by `deps.now()`. @type {number | null} */
   let catalogAskedAt = null;
@@ -2166,11 +2174,13 @@ export function createPullController(deps, options) {
         (autoAnsweredAt ?? autoAskedAt) + PROBE_ASK_GAP_MS - deps.now(),
       );
     }
-    // A stale record asks again once a window has passed since the last ask, on the poll
-    // that finds it so: the server answers a probe ask that finds a change, or a record
-    // past its full-read interval, with a refresh at once, so a record still stale after
-    // an ask is one whose refresh failed or was not due.
-    return deps.now() - autoAskedAt >= envelope.fresh_for_s * 1000 ? 0 : null;
+    // A stale record asks again once a window has passed since the last ask for a stale
+    // record (`staleAskedAt`), on the poll that finds it so: the server answers a probe ask
+    // that finds a change, or a record past its full-read interval, with a refresh at once,
+    // so a record still stale after such an ask is one whose refresh failed or was not due.
+    return staleAskedAt === null || deps.now() - staleAskedAt >= envelope.fresh_for_s * 1000
+      ? 0
+      : null;
   }
 
   /**
@@ -2210,6 +2220,9 @@ export function createPullController(deps, options) {
       autoAsk = "sent";
       autoAskStale = envelope?.state === "stale";
       autoAskedAt = deps.now();
+      if (autoAskStale) {
+        staleAskedAt = autoAskedAt;
+      }
       try {
         await askForRefresh({ number: options.number }, { automatic: true });
       } finally {

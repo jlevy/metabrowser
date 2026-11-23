@@ -443,7 +443,8 @@ class ServedPull:
     def full_read_due(self, now: datetime) -> bool:
         """Whether a full read is overdue (:meth:`full_read_overdue`) and may start at *now*.
 
-        Not while GitHub's limit holds, nor within :data:`FULL_REFRESH_S` of the last full
+        Not while GitHub's limit holds, within a freshness window of a failed refresh of any
+        kind (:meth:`_failed_recently`), nor within :data:`FULL_REFRESH_S` of the last full
         read tried, so a failing one is not retried on every ask. ``checks_only`` reads,
         which neither count as one nor hold one back, do not move either clock.
         """
@@ -451,10 +452,22 @@ class ServedPull:
         return (
             self.full_read_overdue(now)
             and not self._held(now)
+            and not self._failed_recently(now)
             and (
                 self._full_attempt is None
                 or now - self._full_attempt > timedelta(seconds=FULL_REFRESH_S)
             )
+        )
+
+    def _failed_recently(self, now: datetime) -> bool:
+        """Whether the last refresh failed and was tried within a freshness window."""
+
+        last = self.last
+        return (
+            last is not None
+            and last["outcome"] != "succeeded"
+            and self._last_attempt is not None
+            and now - self._last_attempt <= timedelta(seconds=FRESHNESS_WINDOW_S)
         )
 
     def probe_due(self, now: datetime) -> bool:
@@ -467,18 +480,12 @@ class ServedPull:
         """
 
         window = timedelta(seconds=FRESHNESS_WINDOW_S)
-        last = self.last
         return not (
             self.fetched_at is None
             or self._refreshing
             or (self._probe_task is not None and not self._probe_task.done())
             or self._held(now)
-            or (
-                last is not None
-                and last["outcome"] != "succeeded"
-                and self._last_attempt is not None
-                and now - self._last_attempt <= window
-            )
+            or self._failed_recently(now)
             or (self._probe_failed is not None and now - self._probe_failed <= window)
             or (
                 self._probe_attempt is not None
@@ -510,7 +517,10 @@ class ServedPull:
         self._probe_attempt = now
         checks = checks_pending(record) and (
             self._checks_probe_attempt is None
-            or now - self._checks_probe_attempt >= timedelta(seconds=CHECKS_PROBE_S)
+            # Less the slack PROBE_FLOOR_S allows each probe, so jitter does not push
+            # the checks to every third probe (review B7 on #709).
+            or now - self._checks_probe_attempt
+            >= timedelta(seconds=CHECKS_PROBE_S - (ATTENDED_PROBE_S - PROBE_FLOOR_S))
         )
         if checks:
             self._checks_probe_attempt = now
@@ -554,8 +564,9 @@ class ServedPull:
         self.probed_at = None
         self._probe_etags = {}
         self._probe_saw = self._probe_saw_at = None
-        self._checks_probe_attempt = None
         self._probe_failed = None
+        # ``_checks_probe_attempt`` is kept: the checks probes keep their own cadence across
+        # the checks_only reads they start, rather than starting afresh after each one.
 
     def saw_record(
         self,
@@ -571,7 +582,12 @@ class ServedPull:
         """
 
         if fetched_at is not None and (self.fetched_at is None or fetched_at > self.fetched_at):
-            self.fetched_at = self.full_read_at = fetched_at
+            self.fetched_at = fetched_at
+            if not self._refreshing:
+                # Another writer's record, taken as read in full; a refresh of this server's
+                # that is running sets ``full_read_at`` itself when it ends, and may be the
+                # checks_only read that published this record (review B6 on #709).
+                self.full_read_at = fetched_at
             self.without_store = without_store
             self._forget_probes()
             self.display_core = None

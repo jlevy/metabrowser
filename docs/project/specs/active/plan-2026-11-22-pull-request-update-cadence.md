@@ -333,12 +333,15 @@ the transcripts, with no compatibility layer.
 ### Page Changes
 
 - `pull-page.js`: while visible, the page asks every `probe_every_s` for a current
-  record, and a window after its last ask for a stale one.
+  record, and a window after its last ask for a stale one, so a record that goes stale
+  when its full read comes due is asked for at once.
   An ask that starts nothing leaves the poll on its own interval, so the poll still
   reports a server that stops answering, and so does the failed ask.
   The server’s attempt rules stop a changed record from looping.
   It polls fast only while a refresh runs, as today.
   An unchanged probe is one `POST` answered without a job, local to the machine.
+  While probes vouch for the record the page asks for no catalog scan: the scan would
+  only vouch for what the probes already did.
 - `pulls-panel.js`: the same, against `fresh_for_s` of the list envelope.
 - Visibility, focus, and coming back online wake both at once, as they do now.
 

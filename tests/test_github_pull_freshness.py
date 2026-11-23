@@ -841,3 +841,58 @@ def test_a_probe_that_raises_anything_waits_a_window_and_is_not_evicted_while_it
         await task
 
     asyncio.run(run())
+
+
+def test_an_overdue_full_read_waits_out_a_failed_refresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review B5 on #709: a failed read of any kind holds the full read for a window."""
+
+    record = _record(state="closed", fetched=NOW - timedelta(seconds=FULL_REFRESH_S + 30))
+    held = _held(record, tmp_path)
+    held.last = {"outcome": "gh_failed", "message": "x", "reset_at": None, "at": _stamp(NOW)}
+    held._last_attempt = NOW - timedelta(seconds=5)  # pyright: ignore[reportPrivateUsage]
+    assert held.full_read_overdue(NOW) and not held.full_read_due(NOW)
+    assert held.automatic_due(NOW) is None
+    assert held.full_read_due(NOW + WINDOW)
+
+
+def test_a_record_a_running_refresh_published_is_not_taken_as_a_full_read(
+    tmp_path: Path,
+) -> None:
+    """Review B6 on #709: the running refresh, perhaps checks_only, sets the clock itself."""
+
+    record = _record(state="open", fetched=NOW)
+    held = _held(record, tmp_path)
+    held.full_read_at = record.fetched_at
+    held._refreshing = True  # pyright: ignore[reportPrivateUsage]
+    held.saw_record(_stamp(NOW + timedelta(seconds=30)))
+    assert held.fetched_at == _stamp(NOW + timedelta(seconds=30))
+    assert held.full_read_at == record.fetched_at
+    held._refreshing = False  # pyright: ignore[reportPrivateUsage]
+    held.saw_record(_stamp(NOW + timedelta(seconds=40)))
+    assert held.full_read_at == _stamp(NOW + timedelta(seconds=40))
+
+
+def test_the_checks_probes_keep_their_cadence_through_jitter_and_checks_only_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review B7 on #709: a probe a little early still asks the checks once CHECKS_PROBE_S
+    is nearly up, and a checks_only read does not restart their clock."""
+
+    record = _record(state="open", runs=("in_progress",), fetched=NOW)
+    held = _held(record, tmp_path)
+    asked = _probing(monkeypatch, [pulls.PullProbe("unchanged", {})] * 3)
+    clock = [NOW]
+    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    asyncio.run(held.probe(record))
+    # Two probes PROBE_FLOOR_S apart reach the checks a little before CHECKS_PROBE_S.
+    clock[0] = NOW + timedelta(seconds=PROBE_FLOOR_S)
+    asyncio.run(held.probe(record))
+    clock[0] = NOW + timedelta(seconds=2 * PROBE_FLOOR_S + 1)
+    assert 2 * PROBE_FLOOR_S + 1 < CHECKS_PROBE_S
+    asyncio.run(held.probe(record))
+    assert asked == [True, False, True]
+    # A newer record keeps the checks probes' clock.
+    held.saw_record(_stamp(clock[0] + timedelta(seconds=1)))
+    assert held._checks_probe_attempt == clock[0]  # pyright: ignore[reportPrivateUsage]

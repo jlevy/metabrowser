@@ -142,8 +142,16 @@ def test_the_envelope_is_vouched_for_only_by_a_probe_of_the_record_it_carries(
     # Another record than the one probed.
     older = record.model_copy(update={"fetched_at": "2000-01-01T00:00:00Z"})
     assert vouched(older) is None
-    # A record whose full read is overdue, whatever the probes say.
-    assert vouched(at=now + timedelta(seconds=FULL_REFRESH_S + 1)) is None
+    # A record whose full read is overdue, whatever the probes say: one probed a second
+    # ago, which vouches for it on its own, does not (review B9 on #709).
+    later = now + timedelta(seconds=FULL_REFRESH_S + 1)
+    probed, held.probed_at = (
+        held.probed_at,
+        (later - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+    assert held.probe_vouches(later)
+    assert vouched(at=later) is None
+    held.probed_at = probed
     # One the catalog says GitHub changed since.
     changed = cast("RecordFreshness", SimpleNamespace(verdict="changed"))
     assert vouched(freshness=changed) is None
