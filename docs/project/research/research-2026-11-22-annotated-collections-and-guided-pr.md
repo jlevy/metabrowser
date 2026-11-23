@@ -4,11 +4,14 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft.
-A design proposal for one question: can Guided PR’s guide be the first
-form of the collection format, so that a pull request and a repository file use one
-format? Nothing here is built.
-Every design statement is a proposal; code claims cite the file they come from.
+**Status:** Direction accepted by the owner on 2026-11-23, with the choices recorded
+under [Decisions](#decisions).
+Phase 1 is implemented in
+[pull request 677](https://github.com/jlevy/metabrowser/pull/677), at `eada48cc9`, which
+the owner is landing; later phases are planned under the epic `mb-vui8` and are not
+built.
+Code claims cite the file they come from, and #677’s files are cited on its branch
+`claude/guided-pr-ready` until it merges.
 
 ## Overview
 
@@ -31,38 +34,44 @@ The two differ in where references resolve, not in what an item is.
   rows, a table, cards, and a board are others.
 - **Phase 1 is a rename inside #677,** with no new behavior: the contract ID, the
   envelope key, and four field names.
-  Every later phase ships alone.
+  It is done; every later phase ships alone.
 
 ## What Each Is Today
 
 ### Guided PR
 
-Guided PR is open and unmerged on branch `claude/guided-pr-ready`, 223 commits behind
-`main`; its files are cited as paths on that branch.
+Guided PR is open on branch `claude/guided-pr-ready`, independent of the stack this
+brief sits in.
+Its files are cited as paths on that branch at `eada48cc9`, after phase 1.
 
 - **Carrier and envelope.** One top-level fenced block whose info string is `guided-pr`,
   in the raw PR description, found among MarkdownIt block tokens with inline parsing
   disabled, so a fence inside another fence is an example (`guided_pr.py` in
   `src/metabrowser/builtin_plugins/github/`, lines 44 and 114–135). It holds
-  `softschema:` metadata, which must equal the contract, envelope `guide`, and status
-  `enforced` exactly, and a `guide:` payload (lines 140–147).
+  `softschema:` metadata, which must equal the contract, envelope `collection`, and
+  status `enforced` exactly, and a `collection:` payload (lines 140–147).
 - **Contract.** A SoftSchema `Contract` the plugin builds with the `pure-yaml` profile
   (lines 34–42), validated by `validate_artifact` on the parsed document (line 148),
   then by strict Pydantic models with `extra="forbid"` (lines 71–111). It is not in the
   artifact-contract registry; `tests/test_guided_pr.py` (line 71) compares the model
-  with `guided-pr-v1.schema.yaml`.
-- **Record.** `comparison {merge_base, head}`, `feature`, `architecture`, and `steps`,
-  each a `title`, `commentary`, and `references`; a reference is a `path`, optionally
-  with `side` (`old` or `new`) and an inclusive `start_line` and `end_line`.
+  with `collection-v1.schema.yaml`.
+- **Record.** `comparison {merge_base, head}`, `summary`, `overview`, and `items`, each
+  a `title`, a `note`, and `references`; a reference is a `path`, optionally with `side`
+  (`old` or `new`) and an inclusive `start_line` and `end_line`. Until phase 1 these
+  were `feature`, `architecture`, `steps`, and `commentary` under
+  `metabrowser.github:GuidedPR/v1`.
 - **Staleness and bounds.** `stale` when the pinned head or merge base differs from the
-  cached record, or the catalog knows a newer head (lines 342–349). `MAX_STEPS`,
+  cached record, or the catalog knows a newer head (lines 342–349). `MAX_ITEMS`,
   `MAX_REFERENCES`, and `MAX_EXCERPT_BYTES` carry their measurements (lines 46–61);
   `MAX_BODY_BYTES` in `pull_record.py` bounds the description.
-- **Route and view.** `GET /api/plugin/github/guided-pr?number=&step=` answers one step,
-  its excerpts, and a `state` per reference (lines 247–281); `guided-pr.js` draws one
-  step at a time. Its golden is `tests/golden/cli-github-guided-pr.tryscript.md`.
-- **Standing.** `changelog.d/mb-yakh.md` calls the block “the new external format
-  `metabrowser.github:GuidedPR/v1`”.
+- **Route and view.** `GET /api/plugin/github/guided-pr?number=&step=` answers one item
+  as a step, its excerpts, and a `state` per reference (lines 247–281); `guided-pr.js`
+  draws one step at a time under the headings “What this changes” (`summary`) and
+  “Architecture” (`overview`). Its golden is
+  `tests/golden/cli-github-guided-pr.tryscript.md`.
+- **Standing.** `changelog.d/mb-yakh.md` calls the block the first use of the external
+  format `metabrowser.collection:Collection/v1`. #677’s own description carries a guide
+  in this format, which is the first real one.
 
 ### The Collection Brief
 
@@ -73,14 +82,14 @@ with a subject and a note; faces normalize to one record that a route answers; t
 smallest step is one built-in plugin, one route, rows before Recent’s R4 cards, a table
 through `[[table_source]]`, and no core change; and rendering never fetches a URL.
 
-| Collection brief | Guided PR v1 | Difference |
+| Collection brief | Guided PR, before phase 1 | After phase 1 |
 | --- | --- | --- |
-| Collection | `guide` | None in kind |
-| Item | step | Same: ordered, titled, annotated |
-| Note | `commentary` | Same; plain text |
-| Subject | `references` | Up to `MAX_REFERENCES` per item; a reading-list item usually has one |
-| Group | none | Not needed to step through a PR |
-| Pin | `comparison` | A repository file needs none |
+| Collection | `guide` | `collection` |
+| Item | `steps[]` | `items[]`, drawn as steps |
+| Note | `commentary` | `note`; plain text |
+| Subject | `references` | Unchanged; up to `MAX_REFERENCES` per item |
+| Group | none | None until phase 2 |
+| Pin | `comparison` | Unchanged; a repository file will need none |
 
 ## The Unified Model
 
@@ -234,7 +243,7 @@ already, pinned to its comparison and drawn one item at a time, in phase 1.
 [Compatibility and Legacy Code](../../development.md#compatibility-and-legacy-code) asks
 whether a consumer cannot update with the producer, or released data needs migrating.
 Before #677 merges, neither holds: no release reads `GuidedPR/v1`, and the only guides
-were written to test it.
+are test fixtures and #677’s own description.
 So phase 1 renames in place, with no second reader and no alias for the old ID, which
 [AGENTS.md](../../../AGENTS.md#compatibility-and-legacy-code) forbids as a speculative
 layer anyway.
@@ -358,7 +367,7 @@ needed through phase 3.
 
 ### Bounds
 
-- **`MAX_STEPS` becomes `MAX_ITEMS`,** keeping its measurement of parse cost per step
+- **`MAX_ITEMS`, which was `MAX_STEPS`,** keeps its measurement of parse cost per step
   (`guided_pr.py`, lines 49–57). The parse is the same for every carrier, so it
   transfers; a rows layout that wants more measures first.
 - **`MAX_REFERENCES`** was set by a comparison’s per-step hydration, matching
@@ -374,36 +383,39 @@ needed through phase 3.
 
 ## Incremental Path
 
-**Phase 1, in #677 before it merges.** A rename, with no new behavior:
+**Phase 1, in #677 before it merges (done, `mb-5xpx`).** A rename, with no new behavior:
 
 1. Contract `metabrowser.collection:Collection/v1`, envelope `collection`, schema file
-   `collection-v1.schema.yaml`, still in the GitHub plugin.
-2. `feature`, `architecture`, `steps`, and `commentary` become `summary`, `overview`,
-   `items`, and `note`; `MAX_STEPS` becomes `MAX_ITEMS`. Every requirement stays.
-3. `guided_pr.py` splits into the format (models, `parse_collection` of a parsed
-   document, format bounds, the path rule) and the PR carrier (fence extraction, the
-   comparison check, excerpts, the parse cache).
-4. The route’s record fields, the `guided-pr.js` typedefs, tests, goldens,
-   `docs/reviewing-pull-requests.md`, the architecture section, and `mb-yakh.md` follow.
-   The route, its `step` parameter, the fence info string, and the tab stay.
+   `collection-v1.schema.yaml` compiled from the model, still in the GitHub plugin.
+2. `feature`, `architecture`, `steps`, and `commentary` became `summary`, `overview`,
+   `items`, and `note`; `MAX_STEPS` became `MAX_ITEMS`. Every requirement stays.
+3. The route’s answer uses the same names; `step` and `step_count` stay, as they belong
+   to the step view. The route, the fence info string, the tab, its `D` key, and its
+   headings are unchanged.
+4. Tests, goldens, `docs/reviewing-pull-requests.md`, the architecture section, and
+   `mb-yakh.md` follow.
 
-**Phase 2, collection files.** A built-in `collection` plugin owns the format module, a
-`collection` kind for YAML files, the record route, Rows, Table, and Source.
+`guided_pr.py` was not split: the owner deferred the split into the format and the PR
+carrier to phase 2, when a second carrier exists to justify it.
+
+**Phase 2, collection files (`mb-2sft`).** A built-in `collection` plugin owns the
+format module, split from the PR carrier then, a `collection` kind for YAML files, the
+record route, Rows, Table, and Source.
 `comparison` and `overview` become optional in the schema; `group` is added.
 
-**Phase 3, URL references.** `{url}`, `https` only, never fetched, opened as the inert
-path opens an external link.
+**Phase 3, URL references (`mb-1rte`).** `{url}`, `https` only, never fetched, opened as
+the inert path opens an external link.
 A PR guide can then cite a design document or an issue.
 
-**Phase 4, the Markdown face.** A frontmatter-marked Markdown file whose headings are
-groups and whose link items are items, parsed on the server by the KPress core in
-`diff/markdown_projection.py` under bounds measured for link lists; a checkbox maps to
-an optional, read-only `done`.
+**Phase 4, the Markdown face (`mb-tzbp`).** A frontmatter-marked Markdown file whose
+headings are groups and whose link items are items, parsed on the server by the KPress
+core in `diff/markdown_projection.py` under bounds measured for link lists; a checkbox
+maps to an optional, read-only `done`.
 
-**Later, each alone.** Cards after R4; steps over repository files; line excerpts from
-served files; object references; a read-only board; and a Documents view over a folder
-or a pull request’s changed Markdown, from the same route internals with an implicit
-member list.
+**Later, each alone (`mb-z9ox`).** Cards after R4; steps over repository files; line
+excerpts from served files; object references; a read-only board; and a Documents view
+over a folder or a pull request’s changed Markdown, from the same route internals with
+an implicit member list.
 
 ## What Not to Do
 
@@ -419,26 +431,41 @@ member list.
 - No generalizing the `guided-pr` route into a collection route; each carrier keeps its
   own.
 
+## Decisions
+
+The owner took each recommendation on 2026-11-23:
+
+| Choice | Decided |
+| --- | --- |
+| The name | `collection`, for the envelope key and the format |
+| The contract ID | `metabrowser.collection:Collection/v1`, naming the plugin that will own it in phase 2, so the ID never changes |
+| The header | The three-line `softschema:` header, which works today with exact matching; the one-line form stays untested |
+| The fence | `guided-pr` only in a PR description |
+| Field names | `summary`, `overview`, `items`, `note`, with the tab’s headings unchanged so a PR author is still prompted |
+| The route’s answer | Renamed to match the record; `step` and `step_count` stay |
+| The module split | Deferred to phase 2 |
+| Internal names | CSS classes, JavaScript variables, and `GuideError` keep their names |
+| Timing | Phase 1 lands in #677 before it merges, and #677 merges alone |
+
+This also answers the collection-documents review’s condition, to decide the authoring
+format before converting renderer observations into a contract: the format is
+Collection/v1, and its data is parsed from source on the server, so no renderer behavior
+becomes a contract. The inert-path findings still constrain how a Markdown face’s prose
+renders, not what its items are.
+
 ## Open Questions for the Owner
 
-1. **The name.** `collection` is the object model’s word and the key a classifier
-   matches; it is generic and may collide with other tools’ YAML. Is it what users see?
-2. **The header.** SoftSchema treats `envelope` and `status` as optional
-   (`softschema/models.py`). Should the header shrink to `softschema: {contract: …}`,
-   which keeps the version that fail-fast needs?
-   Whether `validate_artifact` then warns is unverified.
-3. **The fence name.** Should a PR description also accept a `collection` fence, so one
-   word appears everywhere, or does `guided-pr` say more to a PR author?
-4. **`summary` and `overview`.** Do the generic names lose the prompt `feature` and
-   `architecture` give an author, or can the user guide carry it?
-5. **Which repository face first:** the YAML file (identical bytes, the detection risk)
+1. **Which repository face first:** the YAML file (identical bytes, the detection risk)
    or the Markdown link list (better on GitHub, a new parser)?
-6. **Other layouts for a pull request.** Should the Guided tab offer Rows beside Steps?
+   Phase 2 assumes the YAML file.
+2. **Other layouts for a pull request.** Should the Guided tab offer Rows beside Steps?
+3. **The one-line header.** Should a later version accept `softschema: {contract: …}`
+   alone, once its validation is tested?
 
 ## References
 
 - Guided PR on branch `claude/guided-pr-ready`: `guided_pr.py`,
-  `guided-pr-v1.schema.yaml`, `guided-pr.js`, `pull-page.js`, and `manifest.toml` in
+  `collection-v1.schema.yaml`, `guided-pr.js`, `pull-page.js`, and `manifest.toml` in
   `src/metabrowser/builtin_plugins/github/`; `docs/reviewing-pull-requests.md`;
   `docs/project/architecture/arch-github-pull-requests.md`; `tests/test_guided_pr.py`;
   `tests/golden/cli-github-guided-pr.tryscript.md`; `changelog.d/mb-yakh.md`

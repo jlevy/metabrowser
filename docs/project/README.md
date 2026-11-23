@@ -214,13 +214,13 @@ A research record stays here while it informs open work, and moves to
 [`research/archive/`](research/archive/) once its questions are answered.
 
 - [Annotated collections, with Guided PR as the first](research/research-2026-11-22-annotated-collections-and-guided-pr.md):
-  a proposal to make Guided PR’s guide the first form of one collection format, so a
-  pull request description and a repository file share one contract, with phases that
-  each ship alone
+  Guided PR’s guide as the first form of one collection format, Collection/v1, shared by
+  a pull request description and repository files: the decisions taken, phase 1, and the
+  phases that each ship alone
 - [Collection documents for dashboards, reading lists, and boards](research/research-2026-11-20-collection-documents.md):
   a brainstorm on a Markdown and YAML format whose link lists render as cards, tables,
-  and boards through plugins: every design choice, its options, and their trade-offs,
-  with no decision taken
+  and boards through plugins: every design choice, its options, and their trade-offs;
+  the format chosen from it is in Annotated collections
 - [Prior art for plain-text collections and dashboards](research/research-2026-11-20-collection-formats-prior-art.md):
   the syntax and data models of Notion, Obsidian Bases and Kanban, Quarto, directive
   syntaxes, bookmark formats, and Kanban as text, and the patterns that recur

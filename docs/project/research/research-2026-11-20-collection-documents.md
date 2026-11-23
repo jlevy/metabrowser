@@ -7,6 +7,13 @@
 **Status:** Draft. A brainstorm that lays out options and their trade-offs.
 No decision is taken here.
 
+**Update 2026-11-23:** the owner chose a format, Collection/v1, with Guided PR as its
+first use;
+[Annotated Collections](research-2026-11-22-annotated-collections-and-guided-pr.md)
+records it and the phases.
+That brief answers choices 1, 2, 4, 12, 13, 14, and 16 for a first format, and this one
+stays the map of the wider design space.
+
 ## Overview
 
 An agent finishes a research task and leaves seven Markdown documents in a folder.
