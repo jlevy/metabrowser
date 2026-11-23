@@ -1247,7 +1247,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/style-tokens.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1259,7 +1259,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/syntax.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1271,7 +1271,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/document.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1283,7 +1283,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "455ce6a0f538267b",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/components.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1295,7 +1295,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/print.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1307,7 +1307,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "f4a0751b8416f372",
         "output_path": "css/print-fonts.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/print-fonts.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print-fonts.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1319,7 +1319,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "9a5f82ca54019902",
         "output_path": "css/mono-planetaire-400-normal.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1331,7 +1331,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "c5232ad5d38dc5a6",
         "output_path": "css/mono-planetaire-700-normal.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1343,7 +1343,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "34bd1d5b7aa5a794",
         "output_path": "css/mono-planetaire-400-italic.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1355,7 +1355,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8fe04148a6caac2d",
         "output_path": "css/mono-planetaire-700-italic.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -1367,7 +1367,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "4271064a37f3ffc0",
         "output_path": "fonts/pt-serif-latin-400-normal.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/pt-serif-latin-400-normal.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/pt-serif-latin-400-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1379,7 +1379,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "bf23a7a4eebedbb8",
         "output_path": "fonts/pt-serif-latin-700-normal.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/pt-serif-latin-700-normal.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/pt-serif-latin-700-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1391,7 +1391,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "cb373bde18855c82",
         "output_path": "fonts/pt-serif-latin-400-italic.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/pt-serif-latin-400-italic.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/pt-serif-latin-400-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1403,7 +1403,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "3cb3cfab3c562cbb",
         "output_path": "fonts/pt-serif-latin-700-italic.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/pt-serif-latin-700-italic.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/pt-serif-latin-700-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1415,7 +1415,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "7a19a7027e125257",
         "output_path": "fonts/source-sans-3-latin-wght-normal.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/source-sans-3-latin-wght-normal.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/source-sans-3-latin-wght-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1427,7 +1427,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "9a15dafc2c2b2414",
         "output_path": "fonts/source-sans-3-latin-wght-italic.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/source-sans-3-latin-wght-italic.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/source-sans-3-latin-wght-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1439,7 +1439,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "c1b4e25238045596",
         "output_path": "fonts/kpress-quotes.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-quotes.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-quotes.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1451,7 +1451,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "f41033bac2496b3b",
         "output_path": "fonts/kpress-print-sans-latin-370-normal.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-370-normal.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-370-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1463,7 +1463,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "a957bd8de97e31da",
         "output_path": "fonts/kpress-print-sans-latin-400-normal.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-400-normal.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-400-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1475,7 +1475,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "bf059edc7dd4843b",
         "output_path": "fonts/kpress-print-sans-latin-410-normal.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-410-normal.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-410-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1487,7 +1487,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "050256481eaa7d24",
         "output_path": "fonts/kpress-print-sans-latin-550-normal.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-550-normal.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-550-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1499,7 +1499,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "900df4999e4dc354",
         "output_path": "fonts/kpress-print-sans-latin-600-normal.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-600-normal.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-600-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1511,7 +1511,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "8cd1aee8d860fe72",
         "output_path": "fonts/kpress-print-sans-latin-650-normal.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-650-normal.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-650-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1523,7 +1523,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "4d839c9d54c57ab0",
         "output_path": "fonts/kpress-print-sans-latin-370-italic.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-370-italic.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-370-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1535,7 +1535,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "bd1f2a046978c67d",
         "output_path": "fonts/kpress-print-sans-latin-400-italic.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-400-italic.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-400-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1547,7 +1547,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "298817be3c07f0d3",
         "output_path": "fonts/kpress-print-sans-latin-410-italic.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-410-italic.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-410-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1559,7 +1559,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "05c33c4d0b64b915",
         "output_path": "fonts/kpress-print-sans-latin-550-italic.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-550-italic.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-550-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1571,7 +1571,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "90ee17afac862425",
         "output_path": "fonts/kpress-print-sans-latin-600-italic.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-600-italic.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-600-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1583,7 +1583,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "ff519fb1358fa12a",
         "output_path": "fonts/kpress-print-sans-latin-650-italic.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/kpress-print-sans-latin-650-italic.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/kpress-print-sans-latin-650-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1595,7 +1595,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "0ecd530d8bdc55cc",
         "output_path": "fonts/planetaire-mono-text-latin-400-normal.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/planetaire-mono-text-latin-400-normal.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/planetaire-mono-text-latin-400-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1607,7 +1607,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "5b01f48d9a28b265",
         "output_path": "fonts/planetaire-mono-text-latin-700-normal.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/planetaire-mono-text-latin-700-normal.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/planetaire-mono-text-latin-700-normal.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1619,7 +1619,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "079d54b75f6d5822",
         "output_path": "fonts/planetaire-mono-text-latin-400-italic.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/planetaire-mono-text-latin-400-italic.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/planetaire-mono-text-latin-400-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       },
@@ -1631,7 +1631,7 @@ status: 200
         "media_type": "font/woff2",
         "content_hash": "4665ca22f8e64518",
         "output_path": "fonts/planetaire-mono-text-latin-700-italic.woff2",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/fonts/planetaire-mono-text-latin-700-italic.woff2",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/fonts/planetaire-mono-text-latin-700-italic.woff2",
         "entry_point": false,
         "loading": "resource"
       }
