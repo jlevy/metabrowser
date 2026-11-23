@@ -3,18 +3,22 @@ type: is
 id: is-01m82yzrw40w07dnw6zhsg8jep
 title: "Treemap: deeper nesting, containment fix, compact map on Overview"
 kind: feature
-status: closed
+status: in_progress
 priority: 2
-version: 3
+version: 8
 delegate: claude-code@spud10
 labels: []
 dependencies: []
+child_order_hints:
+  - is-01m832rs4ryhw09n31ah5haztf
+  - is-01m832rz5kkqdjm64fftcyjsb7
+  - is-01m832s53eb7m4chdhzwncqt3r
 hold: null
 hold_until: null
 created_at: 2026-11-23T01:05:37.128Z
-updated_at: 2026-11-23T01:26:47.201Z
+updated_at: 2026-11-23T02:11:54.600Z
 started_at: 2026-11-23T01:05:57.669Z
-closed_at: 2026-11-23T01:26:47.199Z
+closed_at: null
 close_reason: null
 resolution: null
 duplicate_of: null
