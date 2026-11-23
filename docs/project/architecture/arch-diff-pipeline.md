@@ -147,6 +147,10 @@ diff view’s File type menu: the rows the Files tab’s menu reads, over every 
 change whatever `types` and `file` say, counted by `file_type_match.type_tally`, which
 the Files tree on a revision counts with too.
 `cli-api-diff-type-filter.tryscript.md` pins the answers.
+In the browser, `builtin_plugins/diff/diff-type-filter.js` keeps the whole comparison
+and mounts each choice’s `types=` answer in its place, so going back to every type, or a
+jump to a file the choice hides, asks for nothing; a served folder’s comparison is not
+cached, so there each choice reruns the listing (bead mb-no6c records the cost).
 
 **In the page**, `builtin_plugins/diff/diff-view.js` keeps every file’s bar in the page
 and draws rows only near the viewport:

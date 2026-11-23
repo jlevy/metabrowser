@@ -2518,6 +2518,22 @@ The toolbar is not sticky, so nothing scrolls under it that a rule would separat
 `tests/dom/diff-summary-chrome.mjs` reads in Chrome that a patch’s toolbar and a
 commit’s draw no rule and that the first card starts 12 px below them.
 
+### Diff File Type Control
+
+A diff of more than one file leads its layout control with the Files tab’s **File type**
+menu: the same [menu](#overlays-menus-and-dialogs) built by the same code
+(`filterControls.typeMenu`), with **Any type** first, then the Groups and each display
+group’s families, then the extensions most numerous first, each with how many of the
+comparison’s changed files it holds.
+Choosing types narrows the diff to their files and adds a muted note, “12 of 35 files”,
+and **Clear** after the menu; the [Diff summary](#diff-summary) still describes the
+whole change set. A choice shows in the menu at once, with the control `aria-busy` until
+its files arrive, so there is no spinner; a choice that keeps no file says so in muted
+text where the files would be, and one whose files do not load says that in the note at
+`--status-error-text`. `Y` opens the menu (`diff.type-filter`).
+`builtin_plugins/diff/diff-type-filter.js` holds the behavior, and
+`tests/dom/diff-type-filter-session.js` its session.
+
 ## The Pull Request Page
 
 The page at `/pull/<n>` shows one cached pull request.
