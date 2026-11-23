@@ -1451,7 +1451,7 @@ type AgentsExports = {
   loadLogRenderers: () => Promise<AgentLogRenderers>;
 };
 
-/** What the GitHub plugin exports for the shell. */
+/** What the diff plugin exports to a plugin that requires it. */
 type DiffExports = {
   /** One file's hunks, as the diff route answers them, drawn as Changes draws a file's
    * body: each hunk under its header bar, long changed runs behind fold bars, then changed
@@ -1464,6 +1464,7 @@ type DiffExports = {
   ) => { dispose(): void };
 };
 
+/** What the GitHub plugin exports for the shell. */
 type GithubExports = {
   /** A pull request's state as the Pulls tab draws it: its icon, named for assistive
    * technology unless `named` is false. */

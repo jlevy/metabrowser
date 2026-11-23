@@ -9,12 +9,15 @@ async function main() {
   const calls = [];
   const states = [];
   const pending = [];
+  /** The step count each render was told, which bounds the reader's moves. */
+  const counts = [];
   const guide = createGuideNavigation({
     read(step, signal) {
       calls.push(step);
-      return new Promise((resolve) => pending.push({ signal, resolve }));
+      return new Promise((resolve, reject) => pending.push({ signal, resolve, reject }));
     },
-    render(answer, at) {
+    render(answer, at, steps) {
+      counts.push(steps);
       const shown = at === 0 ? "overview" : `step ${at}`;
       states.push(
         "step" in answer
@@ -25,6 +28,10 @@ async function main() {
   });
   function respond(result) {
     pending.shift().resolve(result);
+    return settle();
+  }
+  function fail() {
+    pending.shift().reject(new Error("offline"));
     return settle();
   }
   const titles = ["One", "Two", "Three"];
@@ -115,6 +122,28 @@ async function main() {
   guide.move(1);
   guide.go(0);
   assert.equal(calls.length, read);
+
+  // A step whose read is refused or fails keeps the guide's steps, so the reader can still
+  // move, and is read again when chosen again, the step on screen too; a step in hand is
+  // not (B7 of review B on #677).
+  guide.show("sixth", false);
+  await respond(answer("sixth", 1));
+  guide.go(2);
+  await respond({ state: "comparison_unavailable", record_revision: "sixth" });
+  assert.equal(states.at(-1), "step 2: comparison_unavailable");
+  assert.equal(counts.at(-1), 3);
+  guide.go(2);
+  await fail();
+  assert.equal(states.at(-1), "step 2: error");
+  assert.equal(counts.at(-1), 3);
+  guide.go(1);
+  assert.equal(states.at(-1), "step 1: step 1 of 3");
+  guide.go(1);
+  guide.go(2);
+  await respond(answer("sixth", 2));
+  guide.go(2);
+  assert.equal(states.at(-1), "step 2: step 2 of 3");
+  assert.deepEqual(calls.slice(-4), [1, 2, 2, 2]);
 
   // Disposal drops the read on its way, and its late answer paints nothing.
   guide.show("fifth", false);

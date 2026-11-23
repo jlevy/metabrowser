@@ -110,7 +110,8 @@ try {
 
   // 1. A pull request with a guide: the tab leads the bar once its record is in, its front
   // page is the guide, opened by the description, and Conversation has an address of its own,
-  // where the description's block is a card. R opens the guide once the page has its keys.
+  // where the description's block is a card. R opens the guide once the page has its keys,
+  // at the front page's address, which shows it.
   await go("/pull/7");
   await waitFor(`${GUIDE_TAB} !== undefined`);
   same("the tabs of a pull request with a guide", await evaluate(TABS), [
@@ -141,6 +142,11 @@ try {
     ),
     "/pull/7/conversation",
   );
+  same(
+    "Guided Review's address is the front page's",
+    await evaluate(`${GUIDE_TAB}.getAttribute("href")`),
+    "/pull/7",
+  );
   await waitFor(`${GUIDE_TAB}.getAttribute("aria-keyshortcuts") !== null`);
   await press("c");
   await waitFor(`location.pathname === "/pull/7/conversation"`);
@@ -154,7 +160,7 @@ try {
     ),
   );
   await pressR();
-  await waitFor(`location.pathname === "/pull/7/guided"`);
+  await waitFor(`location.pathname === "/pull/7"`);
   await introduced();
   same(
     "the step list",

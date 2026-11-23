@@ -12,6 +12,8 @@ It discards late responses after a revision change or disposal.
 An edited guide with fewer steps returns the reviewer to its first step.
 A head GitHub reports past the cached record asks for the step again, and the server
 answers a stale guide with its step, so a stale guide’s steps still move.
+A step whose read is refused or fails keeps the guide’s steps, so the reader can still
+move, and it is read again when chosen again, the one on screen too.
 
 ```console
 $ node tests/dom/github-guided-pr-session.js
@@ -28,7 +30,11 @@ $ node tests/dom/github-guided-pr-session.js
     1,
     1,
     1,
-    1
+    1,
+    2,
+    2,
+    2,
+    2
   ],
   "states": [
     "overview: preview",
@@ -56,7 +62,16 @@ $ node tests/dom/github-guided-pr-session.js
     "step 1: updated",
     "step 1: loading",
     "step 1: invalid",
-    "step 1: loading"
+    "step 1: loading",
+    "step 1: step 1 of 3",
+    "step 2: loading",
+    "step 2: comparison_unavailable",
+    "step 2: loading",
+    "step 2: error",
+    "step 1: step 1 of 3",
+    "step 2: loading",
+    "step 2: step 2 of 3",
+    "step 2: loading"
   ]
 }
 ? 0
@@ -81,6 +96,15 @@ read. A step is inserted as text, so markup in the guide stays markup, and each 
 the diff plugin’s, its code a span, which the shell’s highlighter, which takes
 `pre code`, skips. Open full diff reaches the page’s own `openChangedFile`, which asks
 the route for the file’s Changes address.
+A guide stale only because GitHub reports a newer head says it may be out of date, and
+that whether its steps match the newest commits is unknown.
+Commits the server counted but could not list are counted.
+A refused step keeps the step list, whose buttons survive the click that chose it, and
+says why in the step’s place.
+A core preview opens a guided pull request on its guide, which waits for the record, and
+the record’s arrival reads the guide without changing tab.
+On a guided front page, Guided Review’s link and key go to the page already shown, and
+the description’s card on Conversation links the front page.
 
 ```console
 $ node tests/dom/github-guided-pr-mount-behavior.js
@@ -105,7 +129,17 @@ $ node tests/dom/github-guided-pr-mount-behavior.js
   "the new read's answer: Overview",
   "a poll of the same record: asked step 1, step 1",
   "Guided Review opened and left before its import settled: guide not mounted; asked nothing",
-  "the page ended before the import settled: asked nothing"
+  "the page ended before the import settled: asked nothing",
+  "a guide behind a newer head on GitHub: This guide may be out of date. / GitHub reports a newer head than this copy of the pull request. Reload it to compare the guide with the newest commits. / Whether its steps still match the newest commits is unknown.; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
+  "commits counted and not listed: This guide is out of date. / It was written for head bbbbbbb. The pull request is now at head ccccccc. / 3 commits since the guide. / None of the files its steps cite changed, so every step still matches. Its author can update the guide's pins and ranges in the description.",
+  "a refused step: Step 2 of 3; Overview | 1 Step 1 | > 2 Step 2 | 3 Step 3; says This step could not be read. Choose it again to retry.",
+  "chosen again: asked step 1, step 2, step 2",
+  "and answered: Step 2 of 3; Step 2; says nothing",
+  "back: Step 1 of 3; asked step 1, step 2, step 2",
+  "a preview's front page: guide mounted; says The guide needs the full pull request.; asked nothing",
+  "its record arrives: guide mounted; asked step 1",
+  "the guided front page: Guided Review links /pull/7, Conversation /pull/7/conversation; its key opens nothing",
+  "from Conversation, the description's card links /pull/7"
 ]
 ? 0
 ```

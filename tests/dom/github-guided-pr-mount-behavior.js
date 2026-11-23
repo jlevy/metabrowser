@@ -31,6 +31,29 @@ function envelope(generation) {
   return body;
 }
 
+/** A core preview of page 7: its description, and no record yet. */
+function previewEnvelope() {
+  const full = envelope(1);
+  return {
+    ...full,
+    state: "pending",
+    reason: "not_cached",
+    record: null,
+    record_revision: null,
+    fetched_at: null,
+    refreshing: true,
+    core_preview: {
+      source: full.source,
+      number: 7,
+      reader: full.record.reader,
+      observed_at: full.record.fetched_at,
+      revision: "a".repeat(64),
+      pull: full.record.pull,
+      comparison_state: "no_store",
+    },
+  };
+}
+
 /** One step as the route answers it: one hunk of a context, a deleted and an added line, and
  * a path the comparison does not have. Its text is markup, which a page that inserted it as
  * HTML would draw as elements. */
@@ -224,6 +247,7 @@ function host() {
           },
         },
       );
+      const view = () => container.querySelector(".github-pull-guided-pr");
       return {
         handle,
         container,
@@ -232,7 +256,7 @@ function host() {
           window.location.pathname = next === "" ? "/pull/7" : `/pull/7/${next}`;
           handle.setTab(next);
         },
-        guided: () => container.querySelector(".github-pull-guided-pr"),
+        guided: view,
         /** Click the guide's button named *label*, as a reader does. */
         press(label) {
           [...container.descendants()]
@@ -253,6 +277,18 @@ function host() {
                   .join(" ")}`,
             )
             .join(" | "),
+        /** The step list's buttons, in order. */
+        links: () => container.querySelectorAll(".github-pull-guide-steps-link"),
+        /** What the guide says in place of a step, or "nothing". */
+        said() {
+          const notice = view()?.children.find((node) => node.classes?.has("github-pull-quiet"));
+          return notice && !notice.hidden ? notice.textContent : "nothing";
+        },
+        /** The stale notice's lines, or null while there is none. */
+        stale() {
+          const notice = container.querySelector(".github-pull-guide-stale");
+          return notice ? lines(notice) : null;
+        },
         /** The step on screen, as the reader sees it, or null while there is none. */
         shown() {
           const title = container
@@ -274,6 +310,13 @@ function host() {
     },
   };
 }
+
+/** A notice's lines, as a reader reads them. */
+const lines = (notice) =>
+  notice.children
+    .map((child) => child.textContent)
+    .filter(Boolean)
+    .join(" / ");
 
 const asked = (reads) => reads.map((read) => `step ${read.step}`).join(", ") || "nothing";
 
@@ -500,6 +543,143 @@ async function run() {
     view.handle.dispose();
     await settle();
     steps.push(`the page ended before the import settled: asked ${asked(third.reads)}`);
+  }
+
+  // A guide this copy matches, stale only because GitHub reports a newer head: what the
+  // newer commits changed is unknown, so the notice never says that every step still
+  // matches (B1 of review B on #677).
+  {
+    const newer = host();
+    const view = newer.mount(page, "guided", envelope(1));
+    await settle();
+    const pins = { merge_base: "a".repeat(40), head: "b".repeat(40) };
+    newer.pending()[0].answer({
+      ...step(1, 1, 3),
+      state: "stale",
+      stale: {
+        guide: pins,
+        current: pins,
+        github_newer: true,
+        history: "ahead",
+        commit_count: 0,
+        commits: [],
+        changed_paths: null,
+        changed_steps: null,
+      },
+    });
+    await settle();
+    assert.ok(!view.stale().includes("still matches"), "what the newer head changed is unknown");
+    steps.push(`a guide behind a newer head on GitHub: ${view.stale()}; ${view.outline()}`);
+    view.handle.dispose();
+  }
+
+  // Commits the server counted and could not list, their subjects past its bound, are
+  // counted and not listed (B10 of review B on #677).
+  {
+    host();
+    const { staleNotice } = await import(
+      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guided-pr.js")).href
+    );
+    const notice = staleNotice(
+      {
+        guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+        current: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+        github_newer: false,
+        history: "ahead",
+        commit_count: 3,
+        commits: [],
+        changed_paths: [],
+        changed_steps: [],
+      },
+      2,
+      (commit) => commit.slice(0, 7),
+    );
+    assert.equal(notice.querySelector(".github-pull-guide-commits"), null);
+    steps.push(`commits counted and not listed: ${lines(notice)}`);
+  }
+
+  // One step's read refused, or failed, keeps the guide: its steps, the place, and the way
+  // on, with the reason in the step's place; the step is read again when chosen again (B7
+  // of review B on #677). A step chosen from the list keeps its button, which a reader's
+  // focus is on (B14).
+  {
+    const refused = host();
+    const view = refused.mount(page, "guided", envelope(1));
+    await settle();
+    refused.pending()[0].answer(step(1, 1, 3));
+    await settle();
+    const buttons = view.links();
+    buttons[2].events.get("click")();
+    await settle();
+    refused
+      .pending()[0]
+      .answer({ state: "comparison_unavailable", record_revision: revisionOf(1) });
+    await settle();
+    steps.push(`a refused step: ${view.position()}; ${view.outline()}; says ${view.said()}`);
+    assert.ok(
+      view.links().every((button, index) => button === buttons[index]),
+      "the step list keeps its buttons across a step chosen from it",
+    );
+    buttons[2].events.get("click")();
+    await settle();
+    steps.push(`chosen again: asked ${asked(refused.reads)}`);
+    refused.pending()[0].answer(step(1, 2, 3));
+    await settle();
+    steps.push(`and answered: ${view.position()}; ${view.shown()}; says ${view.said()}`);
+    view.press("Previous step");
+    await settle();
+    steps.push(`back: ${view.position()}; asked ${asked(refused.reads)}`);
+    view.handle.dispose();
+  }
+
+  // A core preview resolves the front page from its description, as the record will: a
+  // guided pull request opens on Guided Review, which waits for the record, and the record's
+  // arrival reads the guide without changing tab (B3 of review B on #677).
+  {
+    const early = host();
+    const view = early.mount(page, "", previewEnvelope());
+    await settle();
+    steps.push(
+      `a preview's front page: guide ${view.guided() === null ? "not mounted" : "mounted"}; says ${view.said()}; asked ${asked(early.reads)}`,
+    );
+    assert.notEqual(view.guided(), null, "a preview's front page is its guide");
+    early.current = envelope(1);
+    await early.poll();
+    steps.push(
+      `its record arrives: guide ${view.guided() === null ? "not mounted" : "mounted"}; asked ${asked(early.reads)}`,
+    );
+    view.handle.dispose();
+  }
+
+  // On a guided front page, Guided Review's link and key go to the page on screen, never to
+  // a second history entry of it at /pull/<n>/guided (B20 of review B on #677); from
+  // Conversation they go to the front page.
+  {
+    const front = host();
+    const view = front.mount(page, "", envelope(1));
+    await settle();
+    const tab = (label) =>
+      view.container
+        .querySelectorAll(".tab-btn")
+        .find((link) => link.tag === "a" && link.textContent === label);
+    view.handle.setTab("guided");
+    await settle();
+    assert.equal(front.opened.length, 0, "the page on screen is not opened again");
+    assert.equal(tab("Guided Review").getAttribute("href"), "/pull/7");
+    steps.push(
+      `the guided front page: Guided Review links ${tab("Guided Review").getAttribute("href")}, Conversation ${tab("Conversation").getAttribute("href")}; its key opens ${front.opened.length === 0 ? "nothing" : front.opened.map((route) => route.tab).join(", ")}`,
+    );
+    view.handle.dispose();
+    const away = host();
+    const there = away.mount(page, "conversation", envelope(1));
+    await settle();
+    const card = there.container
+      .querySelectorAll(".notice")
+      .find((node) => node.textContent.includes("guided review"));
+    const link = [card, ...card.descendants()].find((node) => node.tag === "a");
+    assert.equal(link.getAttribute("href"), "/pull/7");
+    steps.push(`from Conversation, the description's card links ${link.getAttribute("href")}`);
+    there.handle.dispose();
   }
 
   return steps;

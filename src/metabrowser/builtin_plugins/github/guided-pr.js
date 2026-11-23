@@ -28,19 +28,21 @@
  * The guide's place and its reads. Step 0 is the overview, the description the page
  * draws itself; steps 1 to `step_count` are the guide's. The overview shows the answer
  * for step 1, whose step titles list the guide, so the first step the reader moves to is
- * already in hand. Answers are kept for the record revision they were read for.
+ * already in hand. Answers with a step are kept for the record revision they were read for.
+ * A step whose read was refused or failed keeps the guide's steps, from the last answer that
+ * had them, so the reader can still move, and is read again when the reader returns to it.
  *
  * @param {{
  *   read(step: number, signal: AbortSignal): Promise<Step | Refusal>,
- *   render(state: GuideState, at: number): void,
- * }} deps
+ *   render(state: GuideState, at: number, steps: number): void,
+ * }} deps *render* is told the guide's step count, 0 while no answer has had a step.
  */
 export function createGuideNavigation(deps) {
   /** @type {string | null | undefined} */
   let revision;
   let headMoved = false;
   let selected = 0;
-  /** The step count of the last answer that had a step, which bounds a move. */
+  /** The step count of the last answer of this revision that had a step, which bounds a move. */
   let count = 0;
   /** @type {Map<number, Step | Refusal>} */
   let answers = new Map();
@@ -56,12 +58,12 @@ export function createGuideNavigation(deps) {
     const kept = answers.get(asked);
     if (kept !== undefined) {
       pending = null;
-      deps.render(kept, at);
+      deps.render(kept, at, count);
       return;
     }
     const request = new AbortController();
     pending = request;
-    deps.render({ state: "loading" }, at);
+    deps.render({ state: "loading" }, at, count);
     try {
       let result = await deps.read(asked, request.signal);
       if (request.signal.aborted) {
@@ -75,15 +77,17 @@ export function createGuideNavigation(deps) {
         return;
       }
       if (result.record_revision !== expected) {
-        deps.render({ state: "updated" }, selected);
+        deps.render({ state: "updated" }, selected, count);
         return;
       }
-      answers.set(Math.max(selected, 1), result);
-      count = "step" in result ? result.step_count : 0;
-      deps.render(result, selected);
+      if ("step" in result) {
+        answers.set(Math.max(selected, 1), result);
+        count = result.step_count;
+      }
+      deps.render(result, selected, count);
     } catch {
       if (!request.signal.aborted) {
-        deps.render({ state: "error" }, selected);
+        deps.render({ state: "error" }, selected, count);
       }
     } finally {
       if (pending === request) {
@@ -94,7 +98,11 @@ export function createGuideNavigation(deps) {
 
   /** @param {number} target */
   function go(target) {
-    if (disposed || !revision || count === 0 || target === selected) {
+    if (disposed || !revision || count === 0) {
+      return;
+    }
+    // The step on screen is read again only when its read was refused or failed.
+    if (target === selected && (pending !== null || answers.has(Math.max(target, 1)))) {
       return;
     }
     if (target >= 0 && target <= count) {
@@ -115,7 +123,7 @@ export function createGuideNavigation(deps) {
       count = 0;
       if (nextRevision === null) {
         pending?.abort();
-        deps.render({ state: "preview" }, selected);
+        deps.render({ state: "preview" }, selected, count);
         return;
       }
       // A head GitHub reports past the record's is the server's to read: it answers the
@@ -149,12 +157,22 @@ const MESSAGES = Object.freeze({
   error: "Could not load the guide. Reopen the tab to try again.",
 });
 
+// One step of a guide whose other steps read: the reader can move on, and a step whose read
+// was refused or failed is read again when chosen again.
+const STEP_MESSAGES = Object.freeze({
+  refused: "This step could not be read. Choose it again to retry.",
+  error: "Could not load this step. Choose it again to retry.",
+});
+
 const REFERENCE_MESSAGES = Object.freeze({
   manifest_truncated: "This path is outside the available changed-file list.",
   path_not_changed: "This path is not in the comparison.",
-  diff_unavailable: "The diff for this range is unavailable.",
+  diff_unavailable: "This file's diff is unavailable.",
   range_unavailable: "This range is not within a single available diff hunk.",
   excerpt_too_large: "This excerpt is too large to show here.",
+  // Past a step's budget for whole files (MAX_STEP_PATCH_BYTES in guided_pr.py), or past
+  // what the diff source reads in one run beside the step's other files.
+  patch_too_large: "This file's diff is too large to show in this step.",
 });
 
 /**
@@ -294,10 +312,20 @@ export function staleNotice(stale, stepCount, shortCommit) {
     paragraph.append(...parts);
     box.append(paragraph);
   };
-  box.append(element("p", "This guide is out of date.", "github-pull-guide-stale-title"));
   const baseMoved =
     stale.current.merge_base !== null && stale.current.merge_base !== stale.guide.merge_base;
   const headMoved = stale.current.head !== stale.guide.head;
+  // A guide this copy still matches is out of date only if the newer head GitHub reports
+  // moved it, which this copy cannot tell; nor can it tell whether the description there
+  // was updated with it.
+  const known = headMoved || baseMoved;
+  box.append(
+    element(
+      "p",
+      known ? "This guide is out of date." : "This guide may be out of date.",
+      "github-pull-guide-stale-title",
+    ),
+  );
   /** @param {Pins} pins */
   const pinned = (pins) =>
     baseMoved && pins.merge_base !== null
@@ -321,21 +349,27 @@ export function staleNotice(stale, stepCount, shortCommit) {
     say(["The local copy does not have the guide's head, so the commits since are unknown."]);
   } else if (headMoved) {
     const count = stale.commit_count ?? 0;
+    // The server counts the commits and lists none when their subjects were too long to
+    // read within its bound (`_commits_since` in guided_pr.py).
+    const listed = stale.commits.length > 0;
+    const end = listed ? ":" : ".";
     say([
       stale.history === "rewritten"
-        ? `The guide's head is no longer in the branch's history, as after a rebase or force push. The branch has ${plural(count, "commit")} the guide's head does not:`
-        : `${plural(count, "commit")} since the guide:`,
+        ? `The guide's head is no longer in the branch's history, as after a rebase or force push. The branch has ${plural(count, "commit")} the guide's head does not${end}`
+        : `${plural(count, "commit")} since the guide${end}`,
     ]);
-    const list = element("ul", "", "github-pull-guide-commits");
-    for (const commit of stale.commits) {
-      const item = element("li");
-      item.append(short(commit.sha), " ", commit.subject);
-      list.append(item);
+    if (listed) {
+      const list = element("ul", "", "github-pull-guide-commits");
+      for (const commit of stale.commits) {
+        const item = element("li");
+        item.append(short(commit.sha), " ", commit.subject);
+        list.append(item);
+      }
+      if (count > stale.commits.length) {
+        list.append(element("li", `and ${plural(count - stale.commits.length, "earlier commit")}`));
+      }
+      box.append(list);
     }
-    if (count > stale.commits.length) {
-      list.append(element("li", `and ${plural(count - stale.commits.length, "earlier commit")}`));
-    }
-    box.append(list);
   }
   if (baseMoved) {
     say(["Its merge base moved, as when the base branch is merged in or the branch is rebased."]);
@@ -343,7 +377,12 @@ export function staleNotice(stale, stepCount, shortCommit) {
   /** @type {Array<Node | string>} */
   const verdict = [];
   if (stale.changed_steps === null || stale.changed_paths === null) {
-    verdict.push("Whether its steps still match the pull request is unknown.");
+    // With a newer head on GitHub the server reads neither list: what changed is unknown.
+    verdict.push(
+      stale.github_newer
+        ? "Whether its steps still match the newest commits is unknown."
+        : "Whether its steps still match the pull request is unknown.",
+    );
   } else if (stale.changed_steps.length === 0) {
     verdict.push("None of the files its steps cite changed, so every step still matches.");
   } else {
@@ -360,7 +399,11 @@ export function staleNotice(stale, stepCount, shortCommit) {
         : ". The other steps still match; the changed ones are marked.",
     );
   }
-  say([...verdict, " Its author can update the guide's pins and ranges in the description."]);
+  say(
+    known
+      ? [...verdict, " Its author can update the guide's pins and ranges in the description."]
+      : verdict,
+  );
   return box;
 }
 
@@ -506,6 +549,13 @@ export function mountGuidedPR(host, introduction, number, deps) {
   let changedSteps = [];
   /** @param {number} at */
   const nameOf = (at) => stepName(at, titles[at - 1] ?? "");
+  /**
+   * The step list's rows, built once for each list of titles and updated in place, so the
+   * row a reader activated keeps focus, as the tab bar keeps its links across paints.
+   *
+   * @type {{key: string | null, rows: {link: HTMLButtonElement, mark: HTMLElement}[]}}
+   */
+  let built = { key: null, rows: [] };
 
   /** @param {number} at */
   function paintOutline(at) {
@@ -515,27 +565,45 @@ export function mountGuidedPR(host, introduction, number, deps) {
     status.textContent = placeName(at, count);
     previous.disabled = at <= 0;
     next.disabled = at >= count;
-    list.replaceChildren(
-      ...[OVERVIEW, ...titles].map((title, index) => {
-        const item = element("li", "", "github-pull-guide-steps-item");
-        const link = document.createElement("button");
-        link.type = "button";
-        link.className = "github-pull-guide-steps-link";
-        link.append(
-          element("span", index === 0 ? "" : String(index), "github-pull-guide-steps-number"),
-          element("span", title, "github-pull-guide-steps-title"),
-        );
-        if (changedSteps.includes(index)) {
-          link.append(element("span", "changed since the guide", "github-pull-guide-step-changed"));
+    const key = JSON.stringify(titles);
+    if (built.key !== key) {
+      built = {
+        key,
+        rows: [OVERVIEW, ...titles].map((title, index) => {
+          const link = document.createElement("button");
+          link.type = "button";
+          link.className = "github-pull-guide-steps-link";
+          link.append(
+            element("span", index === 0 ? "" : String(index), "github-pull-guide-steps-number"),
+            element("span", title, "github-pull-guide-steps-title"),
+          );
+          link.addEventListener("click", () => navigation.go(index));
+          const mark = element("span", "changed since the guide", "github-pull-guide-step-changed");
+          return { link, mark };
+        }),
+      };
+      list.replaceChildren(
+        ...built.rows.map(({ link }) => {
+          const item = element("li", "", "github-pull-guide-steps-item");
+          item.append(link);
+          return item;
+        }),
+      );
+    }
+    for (const [index, { link, mark }] of built.rows.entries()) {
+      if (changedSteps.includes(index)) {
+        if (mark.parentNode !== link) {
+          link.append(mark);
         }
-        if (index === at) {
-          link.setAttribute("aria-current", "step");
-        }
-        link.addEventListener("click", () => navigation.go(index));
-        item.append(link);
-        return item;
-      }),
-    );
+      } else {
+        mark.remove();
+      }
+      if (index === at) {
+        link.setAttribute("aria-current", "step");
+      } else {
+        link.removeAttribute("aria-current");
+      }
+    }
     back.hidden = at <= 0;
     onward.hidden = at >= count;
     backLabel.textContent = at > 0 ? nameOf(at - 1) : "";
@@ -572,7 +640,7 @@ export function mountGuidedPR(host, introduction, number, deps) {
       }
       return result;
     },
-    render(state, at) {
+    render(state, at, steps) {
       undraw();
       if (state.state === "loading") {
         // The overview is the page's own, so it shows at once; a step waits for its read.
@@ -594,6 +662,26 @@ export function mountGuidedPR(host, introduction, number, deps) {
         return;
       }
       const available = "step" in state;
+      if (!available && steps > 0 && state.state !== "updated") {
+        // One step's read was refused or failed: the guide keeps its steps and the notice
+        // the last answer drew, and the refusal takes the step's place, under the list.
+        // The step is read again when the reader returns to it.
+        if ("stale" in state && state.stale) {
+          showStale(state.stale, steps);
+        }
+        paintOutline(at);
+        pager.hidden = false;
+        introduction.hidden = at !== 0;
+        detail.replaceChildren();
+        notice.hidden = false;
+        notice.textContent =
+          state.state === "invalid"
+            ? (state.message ?? "This guide is invalid.")
+            : state.state === "error"
+              ? STEP_MESSAGES.error
+              : STEP_MESSAGES.refused;
+        return;
+      }
       showStale(
         "stale" in state ? state.stale : null,
         available ? /** @type {Step} */ (state).step_count : null,

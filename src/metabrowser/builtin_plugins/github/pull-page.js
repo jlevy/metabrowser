@@ -301,15 +301,21 @@ export function stackTab(tab) {
 }
 
 /**
- * The route that shows a tab: Conversation's is the front page's address unless the front
- * page is Guided Review, when it is `/pull/<n>/conversation` (`shownTabFor`).
+ * The route that shows a tab: the front page's address for the tab the front page shows,
+ * so its link and key go to the page already on screen rather than to a second entry of it,
+ * and Conversation's is `/pull/<n>/conversation` when the front page is Guided Review
+ * (`shownTabFor`).
  *
  * @param {string} id The tab's id in `PULL_TABS`.
  * @param {string | null} description
  * @returns {string}
  */
 export function routeForTab(id, description) {
-  return id === "" && shownTabFor("", description) !== "" ? "conversation" : id;
+  const front = shownTabFor("", description);
+  if (id === front) {
+    return "";
+  }
+  return id === "" ? "conversation" : id;
 }
 
 /**
@@ -2073,8 +2079,12 @@ export function createPullController(deps, options) {
   let etag = null;
   // What the address asks for: a tab, or "" for the front page, which `shownTab` resolves.
   let routeTab = TABS.includes(options.tab) ? options.tab : "";
-  /** The tab on screen: the route's, with the front page resolved against the record. */
-  const shownTab = () => shownTabFor(routeTab, partText(envelope?.record ?? null, "body"));
+  /**
+   * The tab on screen: the route's, with the front page resolved against the description the
+   * page shows, the record's or before it the core preview's (`textSource`), as the page
+   * resolves its address against the model's (`addressShows`), so the two never disagree.
+   */
+  const shownTab = () => shownTabFor(routeTab, partText(textSource(envelope), "body"));
   /** @type {unknown} */
   let timer = null;
   /** When `timer` fires, by `deps.now()`. */
@@ -5627,8 +5637,9 @@ export function mountPullPage(container, ctx, mb) {
 
   /** One link per tab, kept across paints so a poll does not take focus from one. */
   const tabLinks = PULL_TABS.map(({ id, label }) => {
-    // Conversation's route is the front page's or `/pull/<n>/conversation` (`routeForTab`);
-    // paintHeader keeps the link's route and address current.
+    // Conversation's route and Guided Review's are the front page's when it shows them, and
+    // otherwise their own addresses (`routeForTab`); paintHeader keeps each link's route and
+    // address current.
     /** @type {{number: number, tab: string}} */
     const route = { number, tab: id };
     const link = pageLink(route, "tab-btn", [label]);
@@ -6322,7 +6333,7 @@ export function mountPullPage(container, ctx, mb) {
       tabColumn.remove();
     } else {
       for (const [at, { id, link, route }] of tabLinks.entries()) {
-        if (id === "") {
+        if (id === "" || id === "guided") {
           route.tab = routeForTab(id, model.pull?.text ?? null);
           link.setAttribute("href", `/pull/${number}${route.tab ? `/${route.tab}` : ""}`);
         }
@@ -6580,7 +6591,7 @@ export function mountPullPage(container, ctx, mb) {
       ],
       () =>
         descriptionCard(pull, textBlock("body", pull.text, pull.truncated), [
-          ...(GUIDED_FENCE.test(pull.text) ? [guideCard()] : []),
+          ...(GUIDED_FENCE.test(pull.text) ? [guideCard(pull.text)] : []),
         ]),
     );
     /** @type {Map<string, {node: HTMLElement, pending: boolean}>} */
@@ -8044,12 +8055,15 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * Where Conversation's description had its guided-pr block: the server renders the
-   * description without it (`part_text`), and this says where the guide is read.
+   * description without it (`render_part`), and this says where the guide is read: the
+   * front page, which shows it (`routeForTab`).
+   *
+   * @param {string} description
    */
-  function guideCard() {
+  function guideCard(description) {
     return notice(null, [
       "This description has a guided review. ",
-      pageLink({ number, tab: "guided" }, "", ["Open Guided Review"]),
+      pageLink({ number, tab: routeForTab("guided", description) }, "", ["Open Guided Review"]),
     ]);
   }
 
@@ -8972,7 +8986,12 @@ export function mountPullPage(container, ctx, mb) {
      */
     setTab(next) {
       if (TABS.includes(next) && !onPageRoute(window.location.pathname, number, next)) {
-        void open({ number, tab: next });
+        // A tab already on screen at another of the page's addresses, Guided Review on the
+        // front page, stays where it is: its own address would be a second history entry
+        // of the same view.
+        if (!addressShows(shownTabFor(next, shown?.pull?.text ?? null))) {
+          void open({ number, tab: next });
+        }
         return;
       }
       const changed = controller.snapshot().tab !== shownTabFor(next, shown?.pull?.text ?? null);
