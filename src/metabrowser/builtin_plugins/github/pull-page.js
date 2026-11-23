@@ -7692,9 +7692,9 @@ export function mountPullPage(container, ctx, mb) {
     if (action === "mount" || action === "follow") {
       showChanges(comparison, action === "follow");
     } else if (diffFor !== null && diffShows !== model.tab) {
-      // Changes and Docs are two drawings of one comparison: moving between them draws the
-      // one shown again, an earlier one the reader chose included (mb-n9ra).
-      diffMounted = mountDiff(diffFor, model.tab);
+      // Changes and Docs are two drawings of one comparison: moving between them draws it
+      // again, the record's as it is now, or an earlier one the reader chose (mb-n9ra).
+      diffMounted = mountDiff(action === "offer" ? diffFor : comparison, model.tab);
     }
     if (action === "offer") {
       const offer = h("button", { type: "button", class: "btn github-pull-newer" }, [
