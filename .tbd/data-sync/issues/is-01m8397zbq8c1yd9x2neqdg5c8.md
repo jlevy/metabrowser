@@ -3,10 +3,11 @@ type: is
 id: is-01m8397zbq8c1yd9x2neqdg5c8
 title: "T2: types= narrows a comparison on /api/plugin/diff/comparison and pull-comparison"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
+delegate: claude-code@spud10
 labels:
   - diff
 dependencies:
@@ -17,8 +18,11 @@ dependencies:
   - type: blocks
     target: is-01m839z1p2d8zv8x6hjt31rh0w
 parent_id: is-01m83968ry3rs287s3mgg0r93y
+hold: null
+hold_until: null
 created_at: 2026-11-23T04:04:51.701Z
-updated_at: 2026-11-23T04:17:58.589Z
+updated_at: 2026-11-23T04:58:16.880Z
+started_at: 2026-11-23T04:58:16.873Z
 ---
 `comparison_at` (`builtin_plugins/diff/sidekick.py`) reads `types=` (parsed by
 `tree_filter.parse_types`) and narrows the manifest with the T1 matcher, modelled on

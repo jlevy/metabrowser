@@ -3,9 +3,9 @@ type: is
 id: is-01m83859mjgnk7whvej489dvzc
 title: "Address PR #726 review A: Phase 1b"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 delegate: claude-code@spud10
 labels: []
@@ -24,6 +24,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-23T03:45:55.341Z
-updated_at: 2026-11-23T03:46:31.165Z
+updated_at: 2026-11-23T04:59:27.283Z
 started_at: 2026-11-23T03:46:31.153Z
+closed_at: 2026-11-23T04:59:27.253Z
+close_reason: "Dispositioned on #726 (review A)"
+resolution: null
+duplicate_of: null
 ---
