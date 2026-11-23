@@ -16,8 +16,8 @@
 //      heights, where they sit, the list's box, how many rows are drawn, and what a
 //      pull request's line holds;
 //   2. scrolls to the middle row and reads which row is under the list's center;
-//   3. focuses the first row, presses End, which draws the last row, never drawn before,
-//      and Home;
+//   3. focuses the first row, draws the Files toolbar again, and presses End, which draws
+//      the last row, never drawn before, and Home;
 //   4. types `#12`, which finds branches by their pull requests' numbers, and a word of
 //      a title that no branch's name has;
 //   5. reads the same list with the Files toolbar drawn again around it;
@@ -275,6 +275,13 @@ async function press(key, code, keyCode) {
 const listed = (heights) => chrome.evaluate(listedScript(heights));
 
 try {
+  // A reader's page is focused. A headless one is not until its first key, so it fires no
+  // focus events before then, and a redraw of the Files toolbar, which takes the selector
+  // out of the page and puts it back (`keepAcrossRefills`), would not know which control
+  // to give focus back to. Such a redraw comes whenever the index's tallies change, at any
+  // step: one between step 3's focus and its first key put focus in the filter box, so
+  // End moved nothing (mb-nbyu).
+  await chrome.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await chrome.send("Page.navigate", { url: `${server.base}/view/` });
   await chrome.waitFor(
     `${MOUNTED} && document.querySelectorAll("#tree-content .tree-item").length > 0`,
@@ -349,6 +356,10 @@ try {
     ${LIST}.scrollTop = 0;
     await ${FRAMES};
     ${LIST}.querySelector("button").focus();
+    // A redraw of the toolbar before the key, as the index's tallies arriving makes one,
+    // leaves focus on the row the key moves from.
+    renderNavFilterBar();
+    await ${FRAMES};
     return true;
   })()`);
   await press("End", "End", 35);
@@ -397,10 +408,6 @@ try {
     await chrome.waitFor(`window.__asks > ${asks} && ${SETTLED}`, 15000);
     await chrome.evaluate(FRAMES);
   };
-  // A headless page is not focused, so it fires no focus events, and the Files toolbar's
-  // own redraws, which take the selector out of the page and put it back
-  // (`keepAcrossRefills`), would not know which control to give focus back to.
-  await chrome.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await openFilling();
   result.fillingBefore = await chrome.evaluate(VIEW_STATE);
   await chrome.evaluate(`(async () => {
