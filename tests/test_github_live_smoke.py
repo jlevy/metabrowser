@@ -17,6 +17,7 @@ installed ``metab`` process with a fresh application home, as a user would run i
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import stat
@@ -131,27 +132,37 @@ def test_live_anonymous_open_of_a_public_repository(tmp_path: Path) -> None:
 def test_live_tree_url_with_a_slash_containing_ref(tmp_path: Path) -> None:
     require_admitted_git()
     listed = subprocess.run(
-        ["git", "ls-remote", "--heads", "--", SLASHED],
+        ["git", "ls-remote", "--", SLASHED, "HEAD", "refs/heads/*"],
         check=True,
         capture_output=True,
         text=True,
         timeout=60,
         env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
     ).stdout
+    refs = {ref: oid for oid, ref in (line.split("\t", 1) for line in listed.splitlines())}
+    default_oid = refs["HEAD"]
     slashed = [
-        (line.split("\t")[0], line.split("\t")[1].removeprefix("refs/heads/"))
-        for line in listed.splitlines()
-        if "/" in line.split("\t")[1].removeprefix("refs/heads/")
+        (oid, ref.removeprefix("refs/heads/"))
+        for ref, oid in refs.items()
+        if ref.startswith("refs/heads/")
+        and "/" in ref.removeprefix("refs/heads/")
+        and oid != default_oid
     ]
     if not slashed:
-        pytest.skip(f"{SLASHED} has no branch with a slash today")
+        pytest.skip(f"{SLASHED} has no slash-named branch with a different tip from HEAD today")
     oid, branch = slashed[0]
     home = tmp_path / "home"
     anonymous = _no_credentials_path(tmp_path)
-    opened = _ok(home, f"{SLASHED}/tree/{branch}", "--no-serve", path=anonymous)
+    url = f"{SLASHED}/tree/{branch}"
+    opened = _ok(home, url, "--no-serve", path=anonymous)
     assert f"pin: {oid} (branch {branch})" in opened.stdout
-    repo = _ok(home, f"{SLASHED}/tree/{branch}", "--api", "/api/git/repo", path=anonymous)
-    assert f'"revision": "{oid}"' in repo.stdout
+    source = _ok(home, url, "--api", "/api/source/status", path=anonymous)
+    status = json.loads(source.stdout.split("status: 200\n", 1)[1])
+    assert (status["pin"], status["ref_name"]) == (oid, branch)
+
+    # The repository status drives Commits, which uses the mirror's default branch.
+    repo = _ok(home, url, "--api", "/api/git/repo", path=anonymous)
+    assert json.loads(repo.stdout.split("status: 200\n", 1)[1])["head"]["revision"] == default_oid
 
 
 def test_live_missing_repository_is_a_typed_state(tmp_path: Path) -> None:
