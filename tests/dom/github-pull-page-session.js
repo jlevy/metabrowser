@@ -1476,6 +1476,9 @@ async function main() {
     ["/pull/7/checks", 7, "checks"],
     ["/pull/7/checks", 7, ""],
     ["/pull/7/checks/src/app.py", 7, "checks"],
+    ["/pull/7/docs", 7, "docs"],
+    ["/pull/7/docs", 7, ""],
+    ["/pull/7/docs/README.md", 7, "docs"],
     ["/pull/70/files", 7, "files"],
     ["/pull/7/filesx", 7, "files"],
     ["/pull/8/files/src/app.py", 7, "files"],
@@ -1483,6 +1486,14 @@ async function main() {
     ([pathname, number, tab]) =>
       `${pathname} is #${number}'s ${tab || "conversation"}: ${runtime.onPageRoute(pathname, number, tab)}`,
   );
+  // Docs and Changes both draw the diff, and own its fetch; Docs says so when its group
+  // holds no changed file.
+  const diffTabs = runtime.TABS.map((tab) => `${tab || "conversation"}: ${runtime.diffTab(tab)}`);
+  const docsEmpty = [
+    ["no changed document", { manifest: { files: [] } }],
+    ["one changed document", { manifest: { files: [{ id: "f1" }] } }],
+    ["no manifest", {}],
+  ].map(([when, document_]) => `${when}: ${runtime.noFiles(document_)}`);
   const second = {
     leftOpen: leftOpenStory,
     failing: failingStory,
@@ -1493,6 +1504,8 @@ async function main() {
     hunks,
     place: placeStory(runtime),
     pageRoutes,
+    diffTabs,
+    docsEmpty,
   };
   const part = process.argv.indexOf("--part");
   const wanted = part === -1 ? "1" : process.argv[part + 1];

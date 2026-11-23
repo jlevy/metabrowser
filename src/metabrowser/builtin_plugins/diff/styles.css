@@ -185,6 +185,37 @@
   margin-left: auto;
 }
 
+/* The File type filter (diff-type-filter.js) leads the layout control at the toolbar's end:
+   the menu, how many files it keeps, and Clear. */
+.metabrowser-diff-host .diff-type-control {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.metabrowser-diff-host .diff-type-control + .diff-layout-control {
+  margin-left: 0;
+}
+
+.metabrowser-diff-host .diff-type-note {
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: nowrap;
+}
+
+/* The shared notice's identity, at the toolbar's height. */
+.metabrowser-diff-host .diff-type-note.notice {
+  padding: 2px 8px;
+  color: var(--status-error-text);
+  line-height: inherit;
+}
+
+.metabrowser-diff-host .diff-type-empty {
+  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+}
+
 .metabrowser-diff-host .diff-file {
   margin: 12px 0;
   border: 1px solid var(--border);

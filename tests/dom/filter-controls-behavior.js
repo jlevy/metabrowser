@@ -1113,6 +1113,132 @@ assertEqual(
   );
 }
 
+// ── The File type menu's rows (typeMenu) ───────────────────────
+//
+// The Files tab's menu and a diff's build their rows here from a server tally, so the
+// rules below hold for both: counts follow Show ignored, the extension list is capped,
+// and presets add or remove only their own values.
+
+{
+  const tm = fc.typeMenu;
+  sandbox.METABROWSER_SETTINGS = {
+    FILTER_TYPE_PRESETS: [
+      { id: "docs", label: "Docs", values: [".md", "readme"] },
+      { id: "code", label: "Code", values: [".py"] },
+    ],
+  };
+  sandbox.MetabrowserFileTypeTaxonomy = {
+    displayGroups: [{ id: "documentation", label: "Documentation", icon: "doc" }],
+    families: [
+      { id: "markdown", label: "Markdown", groupId: "documentation", extensions: [".md"] },
+      { id: "plain-text", label: "Plain text", groupId: "documentation", extensions: [".txt"] },
+      { id: "python", label: "Python", groupId: "code", extensions: [".py"] },
+    ],
+  };
+  sandbox.MetabrowserIcons.withClass = (name, cls) => `<svg class="${cls}" data-icon="${name}">`;
+  sandbox.MetabrowserFileTypes = { iconFor: (name) => ({ svg: `<i>${name}</i>`, cls: "tinted" }) };
+
+  const tally = {
+    extensions: [
+      [".py", 3, 0],
+      [".md", 1, 4],
+      [".lock", 0, 2],
+    ],
+    canonical_extensions: [],
+    type_families: [
+      ["python", 3, 0],
+      ["markdown", 1, 4],
+    ],
+    type_presets: [
+      ["docs", 1, 4],
+      ["code", 3, 0],
+    ],
+  };
+  assertEqual(
+    "type options count gitignored files while they are shown, ranked by the count shown",
+    tm.options(tally).map((o) => [o.value, o.count]),
+    [
+      [".md", 5],
+      [".py", 3],
+      [".lock", 2],
+    ],
+  );
+  assertEqual(
+    "hiding gitignored files drops a type that has no other files and re-ranks the rest",
+    tm.options(tally, { showIgnored: false }).map((o) => [o.value, o.count]),
+    [
+      [".py", 3],
+      [".md", 1],
+    ],
+  );
+  assertEqual(
+    "a type row carries the tree's icon for that type, from the shell's resolver",
+    [tm.options(tally)[0].icon, tm.options(tally)[0].iconClass],
+    ["<i>x.md</i>", "tinted"],
+  );
+  assertEqual(
+    "canonical extensions are preferred when the tally has them",
+    tm.options({ ...tally, canonical_extensions: [[".yaml", 2, 0]] }).map((o) => o.value),
+    [".yaml"],
+  );
+  const many = { extensions: Array.from({ length: 30 }, (_, i) => [`.e${i}`, 30 - i, 0]) };
+  assertEqual("the extension list is hard capped", tm.options(many).length, tm.MAX_OPTIONS);
+  assertEqual("a caller may lower the cap", tm.options(many, { max: 3 }).length, 3);
+  assertEqual("an empty tally offers no type rows", tm.options({}), []);
+
+  const sections = tm.presetSections(tally);
+  assertEqual(
+    "preset sections: Groups first, then each display group",
+    sections.map((s) => s.id),
+    ["groups", "families:documentation"],
+  );
+  assertEqual(
+    "group presets count gitignored files while they are shown",
+    sections[0].presets.map((p) => [p.id, p.count]),
+    [
+      ["docs", 5],
+      ["code", 3],
+    ],
+  );
+  assertEqual(
+    "group presets follow Show ignored",
+    tm.presetSections(tally, { showIgnored: false })[0].presets.map((p) => p.count),
+    [1, 3],
+  );
+  assertEqual(
+    "a display group lists only its families that have files",
+    sections[1].presets.map((p) => [p.id, p.values, p.count]),
+    [["family:markdown", [".md"], 5]],
+  );
+  assertEqual(
+    "a display group's heading leads with its category icon",
+    sections[1].icon,
+    '<svg class="category-icon" data-icon="doc">',
+  );
+
+  assertEqual(
+    "a preset turned on adds its values to the selection",
+    tm.togglePreset([".py"], [".md", "readme"], false),
+    [".py", ".md", "readme"],
+  );
+  assertEqual(
+    "a preset already part-selected adds only what is missing",
+    tm.togglePreset([".md"], [".md", "readme"], false),
+    [".md", "readme"],
+  );
+  assertEqual(
+    "a preset turned off removes only its own values",
+    tm.togglePreset([".py", ".md", "readme"], [".md", "readme"], true),
+    [".py"],
+  );
+  assertEqual(
+    "removing the last values is no constraint",
+    tm.togglePreset([".md"], [".md"], true),
+    null,
+  );
+  assertEqual("nothing selected is null", tm.togglePreset(null, [".md"], true), null);
+}
+
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);
