@@ -265,10 +265,10 @@ profile.
 
 ### Origin Branches in a Repository Folder
 
-**Built** (bead `mb-ay84`), in `checkout_store.py`; what is left is at the end of this
-section. The owner set the rule on 2026-11-22: a repository folder shows its origin’s
-branches and tags as Metabrowser last fetched them into a store of its own beside the
-checkout, kept current as a mirror’s store is, while the checkout is never fetched into.
+**Built** (bead `mb-ay84`), in `checkout_store.py`. The owner set the rule on
+2026-11-22: a repository folder shows its origin’s branches and tags as Metabrowser last
+fetched them into a store of its own beside the checkout, kept current as a mirror’s
+store is, while the checkout is never fetched into.
 It carries out “in local mode, … the cache layers are still the same as mirror mode”
 (the owner, 2026-11-19): a folder’s revisions are a mirror’s, and the working tree and
 local branches are what it adds.
@@ -326,6 +326,17 @@ cost alone
   local tag, is still read from the checkout.
   The checkout’s own `refs/remotes/origin/*` is not a second list.
   The checkout’s own branches are read from the checkout, as before.
+- **Where the reader’s own `origin/<branch>` differs:** a row of the origin’s branches
+  carries `checkout` when the checkout’s own remote-tracking branch is not at the row’s
+  commit: that ref’s commit and its date, or nulls when the checkout has no such ref
+  (`_own_difference` in `checkout_revisions.py`, bead `mb-h7mv`). So a branch the reader
+  has not pulled, or has pushed since Metabrowser’s last fetch, is visible, and the
+  chooser marks the row “yours differs” or “not in checkout”.
+  The row says that the two differ and not which is ahead or by how many commits: that
+  takes a walk of the history between the two for every branch that differs, a Git
+  process apiece whose cost the number of refs does not bound, where the checkout’s ref
+  was already read by the listing’s one `for-each-ref`. Both commits’ dates are in the
+  row, and the tooltip says which is the later.
 - **Showing an origin branch** serves a revision read from the store
   (`StoreMirror.open_selection`), inert as every revision is, and it follows the branch
   when a fetch moves it, as a mirror’s does
@@ -383,9 +394,6 @@ The defaults this was built on, recorded 2026-11-22 with the implementation:
   the reason, and nothing prompts.
 - A checkout whose origin is not a network remote, or that has no origin, keeps its
   earlier behavior.
-
-Not built: a row that marks where the reader’s own `origin/<branch>` differs from the
-origin’s, so a branch the reader has not pulled is visible (bead `mb-h7mv`).
 
 ## What Is Never Written
 
@@ -720,7 +728,7 @@ A pull request that builds a part updates its row.
 | GitHub links opened in the app, and `SessionRoot` | Built: one mirror per repository, which opens every link into it in its running server | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0`; `mb-30xb` |
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Built | [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout); [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
-| A repository folder’s origin branches and tags from Metabrowser’s store beside it | Built; a row that marks where the reader’s own `origin/<branch>` differs is not (`mb-h7mv`) | [Origin Branches in a Repository Folder](#origin-branches-in-a-repository-folder), `mb-ay84` |
+| A repository folder’s origin branches and tags from Metabrowser’s store beside it, each marked where the reader’s own `origin/<branch>` differs | Built | [Origin Branches in a Repository Folder](#origin-branches-in-a-repository-folder), `mb-ay84`, `mb-h7mv` |
 | Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |
 | File > Open URL… | Built, without the offer of a known checkout, which waits for a way to tell that an open folder is a checkout of the URL’s repository | [#560](https://github.com/jlevy/metabrowser/pull/560), `mb-m4mg`; the offer is `mb-bkk2` |
 | View on GitHub on files, folders, pull requests, and commits | Built; the app’s native popover is its own | `mb-4wqh` |

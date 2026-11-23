@@ -115,6 +115,10 @@ Click it or press `W` to see any other branch or tag without checking it out.
   background while the folder is served, so `origin/main` there is where the origin is,
   not where your own last `git fetch` left it.
   The origin’s default branch is first and marked “default”.
+  A branch there is marked “yours differs” when your checkout’s own `origin/<branch>` is
+  at another commit, which is a branch you have not pulled, or have pushed since
+  Metabrowser last fetched, and “not in checkout” when you have never fetched it; hover
+  over the row for your commit and which of the two was committed later.
   The row at the foot of the navigation pane says when the origin was last fetched and
   has **Refresh**, on your working tree’s page too; it fetches Metabrowser’s store,
   never your checkout.
