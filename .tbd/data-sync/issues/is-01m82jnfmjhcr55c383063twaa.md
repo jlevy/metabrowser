@@ -3,9 +3,9 @@ type: is
 id: is-01m82jnfmjhcr55c383063twaa
 title: Step the main page's gutters up at wide pane widths
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 2
+version: 3
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m82hy6zdk5e5zzmsan8xhw6q
 hold: null
 hold_until: null
 created_at: 2026-11-22T21:30:17.100Z
-updated_at: 2026-11-22T23:02:51.113Z
+updated_at: 2026-11-23T00:34:11.086Z
 started_at: 2026-11-22T23:02:51.104Z
+closed_at: 2026-11-23T00:34:11.038Z
+close_reason: "Exact independently reviewed reading layout and responsive gutter heads merged in the formal #711/#714 stack at 5550b6c after both PRs and current upstream CI passed."
+resolution: null
+duplicate_of: null
 ---
 OS-599 part 2a. Grow the main page's gutters and the spacing around its components in steps as the pane gets wider. Narrow panes keep today's tight 24px.
 

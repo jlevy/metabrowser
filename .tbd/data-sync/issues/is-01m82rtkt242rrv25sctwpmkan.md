@@ -3,9 +3,9 @@ type: is
 id: is-01m82rtkt242rrv25sctwpmkan
 title: Use muted design-system text for embedded progress status
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/713
@@ -17,8 +17,12 @@ parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 hold: null
 hold_until: null
 created_at: 2026-11-22T23:17:56.613Z
-updated_at: 2026-11-23T00:02:36.827Z
+updated_at: 2026-11-23T00:25:25.862Z
 started_at: 2026-11-22T23:27:41.999Z
+closed_at: 2026-11-23T00:25:25.862Z
+close_reason: "Independently reviewed and merged in #713 at 0261d8ae3. Hosted Chrome and pinned-mirror integration passed at exact #713 head; installed preview verified the running runtime."
+resolution: null
+duplicate_of: null
 ---
 The Agents overview Indexing session details message uses normal text ink. Use the existing muted progress styling for embedded status, document the rule in the design system, and verify both appearances while preserving count announcements and layout.
 

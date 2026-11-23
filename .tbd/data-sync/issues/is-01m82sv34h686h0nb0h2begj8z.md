@@ -3,9 +3,9 @@ type: is
 id: is-01m82sv34h686h0nb0h2begj8z
 title: Center the folder overview with a collapsed README
 kind: bug
-status: in_progress
+status: closed
 priority: 3
-version: 4
+version: 5
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/711
@@ -17,8 +17,12 @@ parent_id: is-01m82hy6zdk5e5zzmsan8xhw6q
 hold: null
 hold_until: null
 created_at: 2026-11-22T23:35:40.943Z
-updated_at: 2026-11-22T23:53:10.297Z
+updated_at: 2026-11-23T00:34:10.710Z
 started_at: 2026-11-22T23:36:19.976Z
+closed_at: 2026-11-23T00:34:10.704Z
+close_reason: "Exact independently reviewed reading layout and responsive gutter heads merged in the formal #711/#714 stack at 5550b6c after both PRs and current upstream CI passed."
+resolution: null
+duplicate_of: null
 ---
 PR #711 reserves the README table-of-contents rail even after the document panel is collapsed, shifting the wide centered Overview about 9rem left. Condition the rail on an expanded panel and verify with a long README in Chrome. Independent review https://github.com/jlevy/metabrowser/pull/711#pullrequestreview-6015125473.
 
