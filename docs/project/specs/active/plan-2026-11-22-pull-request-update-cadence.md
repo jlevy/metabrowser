@@ -2,6 +2,8 @@
 
 **Date:** 2026-11-22
 
+**Author:** Joshua Levy (github.com/jlevy) with LLM assistance
+
 **Status:** Draft, for review.
 Bead `mb-sjgl`.
 
@@ -33,10 +35,13 @@ reader’s other tools.
   anything change detection cannot see (an edited comment, a reaction, a mergeability
   recomputation) is at most that late.
 - Nothing recurring runs for a hidden page.
-- An idle visible page costs no GitHub rate limit: change detection uses conditional
-  requests, which GitHub does not count when it answers `304`.
+- An idle visible page costs almost no GitHub rate limit: change detection uses
+  conditional requests, which GitHub does not count when it answers `304`. A push to the
+  repository changes the answer, so each one costs a call, and that cost is bounded (see
+  [Budget](#budget)).
 - Background work yields to visible work and stops before the account’s budget runs low,
   as `BACKGROUND_FLOOR` already does.
+  A change found on the page on screen is still read below the floor.
 
 ## Non-Goals
 
@@ -106,6 +111,8 @@ another client can explain but this measurement cannot rule out.
 
 ### How Each View Is Updated Today
 
+This section describes the code at `0047ed0ab`, the commit this plan was written
+against; the constants it names hold the current values.
 No server timer starts GitHub work: every automatic read starts from a visible page’s
 request, except a stale mirror’s fetch at server startup.
 Each poller stops when `document.visibilityState` is not `visible`.
@@ -145,8 +152,11 @@ from 20:06 to 20:31 UTC on 2026-11-22, and logged each `200` against the row’s
 inside the probe interval, so GitHub’s ETags move within seconds of a change.
 Twice, at 20:11:04 and 20:11:23, the ETag changed while the first row’s number and
 `updated_at` did not.
-So a `200` is a hint, not proof: the design compares the fields it depends on before
-starting a full read.
+Both were very likely pushes: a pull request’s REST representation embeds its base and
+head repository objects, whose `pushed_at` moves on every push to any branch.
+Review A of #696 read one unchanged pull request three times across pushes and got three
+`200`s whose bodies differed only in `pushed_at`. So a `200` is a hint, not proof: the
+design compares the pull request before starting a full read.
 
 One conditional `gh api` used 0.06 s of CPU and 45 MB of memory for 0.6 s (three runs,
 load average 295).
@@ -158,14 +168,17 @@ load average 295).
 Every automatic read of GitHub is one of three kinds, and each has its own cadence.
 
 1. **A probe** asks whether something changed.
-   It is one conditional REST request carrying the ETag the last full read saved.
+   It is one conditional REST request carrying the newest ETag the probe saw for that
+   path, kept apart from the record’s own.
    A `304` costs nothing and changes nothing.
-   A `200` costs one call; when the fields the view depends on differ from the record’s
-   (for a pull request: `updated_at`, `state`, `merged`, head, base, `mergeable`; for
-   the list: the first row’s number and `updated_at`), it starts the matching full read
-   at once, and otherwise it only saves the new ETag.
-   A probe needs no account check: it publishes nothing, and the full read it starts
-   checks the account as it does today.
+   A `200` costs one call; when the pull request as the record projects it differs from
+   the record’s (for the list: the first row’s number and `updated_at`), it marks the
+   record changed and the matching full read starts at once.
+   Otherwise it keeps the new ETag for the next probe and leaves the record alone.
+   A record marked changed is not probed again until a full read of it has been tried,
+   and a failed one holds probes for a freshness window, so a full read that cannot run
+   does not turn every probe into a paid `200`. A probe needs no account check: it
+   publishes nothing, and the full read it starts checks the account as it does today.
 2. **A full read** is what runs today: the record refresh, the catalog scan, the files
    refresh, stacks, and labels.
    It runs when a probe saw a change, when a reader asks, and otherwise once every
@@ -182,7 +195,7 @@ Every automatic read of GitHub is one of three kinds, and each has its own caden
 | Its checks, while open and `checks_pending` or inside `NO_CHECKS_GRACE_S` | First page of `commits/<head>/check-runs` and `commits/<head>/status`, with the record’s ETags | `CHECKS_PROBE_S` | `checks_only` record refresh, every `FULL_REFRESH_S` |
 | A visible Pulls list, or the repository of a visible page | `GET repos/o/r/pulls?state=all&sort=updated&direction=desc&per_page=1` with the last answer’s ETag | `LIST_PROBE_S` | Catalog delta scan, every `FULL_REFRESH_S` |
 | Its changed files and stacks | None; they follow the record and the catalog | — | Every `FULL_REFRESH_S`, and the files list whenever the head moves |
-| Its labels | None | — | `LABEL_FRESHNESS_S`, kept at 300 s: a full read of a large label set is 29 or more `gh` processes, and only chip colors depend on it |
+| Its labels | None | — | `LABEL_FRESHNESS_S`, as today: a full read of a large label set is 29 or more `gh` processes, and only chip colors depend on it |
 | Its timeline and cores | None; keyed by the record’s discussion revision and the catalog | — | When those change |
 | Anything on a hidden page | None | — | None; becoming visible probes at once |
 
@@ -198,19 +211,25 @@ their own probe and `pull_freshness.py` has its `checks` verdict.
 
 Proposed values, each to be set by measurement beside its constant:
 
-- `ATTENDED_PROBE_S = 5.0`. A change then shows on average 2.5 s plus one probe (0.6 to
-  1.0 s) plus one record refresh (2 to 4 s) after GitHub reports it, about 6 s, and at
-  worst about 10 s. That is 720 probes an hour per visible page, all free while nothing
-  changes, at one `gh` process each.
-- `CHECKS_PROBE_S = 10.0`. While CI runs, check runs change every few seconds.
-  At most six checks refreshes a minute cost about 12 `core` a minute, about 120 for a
-  ten-minute run.
+- `ATTENDED_PROBE_S = 5.0`. Once GitHub reports a change (its ETag moves), the page
+  shows it after half a probe interval on average (2.5 s), one probe (0.6 to 1.0 s), one
+  record refresh (median 5.2 s, as the note on `MAX_PULL_JOBS` in `mirror_refresh.py`
+  records), and half a fast poll (`FAST_POLL_MS`): a median of about 9 s, plus any wait
+  for the store turn. GitHub’s own lag comes before that (see
+  [How Soon GitHub Reports a Change](#how-soon-github-reports-a-change)). That is 720
+  probes an hour per visible page, free while their ETag holds, at one `gh` process
+  each.
+- `CHECKS_PROBE_S = 10.0`. While CI runs, check runs change every few seconds, so most
+  checks probes find a change.
+  Each costs the probe’s `200`s and the `checks_only` refresh’s `200`s for the same
+  paths, 2 to 4 `core`, so up to six a minute cost 12 to 24 `core` a minute, 120 to 240
+  for a ten-minute run.
 - `LIST_PROBE_S = 10.0`. The list’s scan costs a GraphQL point and an account check, so
   the list can afford a slower probe than the page.
-- `FULL_REFRESH_S = 90.0`, inside the “every minute or two” the reader asked for.
+- `FULL_REFRESH_S = 90.0`, inside the “every minute or two” the owner asked for.
   With conditional reads and a conditional account check, an unchanged full record
-  refresh costs about 0 `core`, so this bounds work and latency for what probes cannot
-  see, not rate limit.
+  refresh costs about 0 `core` between pushes, so this bounds work and latency for what
+  probes cannot see more than rate limit.
 
 ### Priority
 
@@ -221,10 +240,15 @@ From first to last:
 2. Probes and the full reads they start, for the attended pull request and then the
    visible list. Probes do not take a turn at the store or one of
    `MAX_CONCURRENT_REFRESHES`’ network slots: they run no Git and end within a second,
-   and a probe queued behind a 7 s refresh would defeat its purpose.
+   and a probe queued behind a record refresh would defeat its purpose.
    Each key (one number, or one repository’s list) has one probe in flight at a time,
    and `ATTENDED_PROBE_S` or `LIST_PROBE_S` is the least time between two, however many
-   tabs ask.
+   tabs ask. A per-server cap on probes in flight bounds the number of keys, since each
+   probe is a `gh` process (bead `mb-et0k`); an ask past the cap answers `not_due`, and
+   the page asks again at its next interval.
+   A full read a probe starts is not held by `BACKGROUND_FLOOR`: the floor is a reserve
+   for the reader, and this is the page the reader is looking at.
+   The rate-limit hold and the self-ceiling still hold it.
 3. The `FULL_REFRESH_S` reads of what is visible, admitted by `gh_budget.admission` as
    background work is.
 4. Background preparation, as today.
@@ -234,33 +258,57 @@ From first to last:
 The account’s budget is shared with the reader’s other tools, so the plan keeps two
 guards and adds one:
 
-- `BACKGROUND_FLOOR` (kept): full reads and preparation stop while less than a quarter
-  of a resource remains.
-  Probes keep running, since a `304` is free, but a probe that answers `200` below the
-  floor marks the record changed without starting its full read; the page says the
-  record is behind and offers Refresh.
+- `BACKGROUND_FLOOR` (kept): below it, the `FULL_REFRESH_S` reads and preparation stop.
+  Probes keep running, and a change one finds on the attended pull request or the
+  visible list still starts its full read, as [Priority](#priority) says (the owner’s
+  rule, 2026-11-22). The change that builds this rewrites the floor’s sizing comment and
+  the docstring of `gh_budget.py`, which say today that only a reader’s own work goes
+  below it.
 - The rate-limit hold (kept): nothing automatic runs before `reset_at`.
 - **Admission everywhere** (new): the cores walk, stacks, labels, and the timeline ask
   `gh_budget.admission` before automatic work, as the backfill and prefetch already do.
   A reader’s own action still never asks.
+- **A bound on paid probes** (new, Phase 1): a probe is free only while its ETag holds,
+  and a push to any branch of the repository moves the ETag of every pull request in it
+  (see [How Soon GitHub Reports a Change](#how-soon-github-reports-a-change)). So a
+  probe costs one `core` per push to the repository, per visible page, per server, and
+  the list probe’s row embeds the same objects.
+  After a few consecutive `200`s that changed nothing, a key’s probe interval doubles,
+  up to `FULL_REFRESH_S`; a `304` or a real change resets it.
+  Probing a representation that embeds no repository, such as the issue, would avoid the
+  cost; measuring that is bead `mb-2ppr`.
 - **A self-ceiling** (new), `AUTOMATIC_CORE_PER_HOUR`, in `gh_budget.py`: the `core`
-  this process’s automatic work may spend in a rolling hour, counted from the
-  `x-ratelimit-used` deltas it observes on its own responses.
-  Past it, probes slow to `FULL_REFRESH_S` and full reads to five minutes until the hour
-  rolls. Proposed: 600, about an eighth of the account’s 5,000, which leaves the rest of
-  the hour to the reader’s agents even with several servers on screen.
+  this process’s automatic work may spend in a rolling hour, counted from what the
+  process spends itself, which it knows exactly: one `core` for each REST answer that is
+  not `304`, and each GraphQL query’s reported cost.
+  `x-ratelimit-used` cannot count it, because it is the account’s counter: two of one
+  process’s responses 204 s apart differed by 208 calls, one of them its own.
+  Past the ceiling, probes slow to `FULL_REFRESH_S` and full reads to five minutes until
+  the hour rolls. The ceiling is per process, and six servers ran on this account in
+  [Background](#how-much-budget-is-metabrowsers), so the proposal is sized for six: 300
+  a server, at most 1,800 of the account’s 5,000 if all six reach it.
+
+GitHub’s secondary limits count every request, `304`s included: at most 100 in flight,
+and 900 points a minute for each REST endpoint, a `GET` being one point.
+A visible page probes its pull request 12 times a minute and its checks up to 12 more,
+so one endpoint would need more than 35 visible pages on one account to near its limit,
+and the per-server probe cap bounds requests in flight.
 
 Steady-state cost for one visible page with nothing changing on GitHub, from the
-measurements above: probes 0, full reads about 0 once the account check is conditional,
-and 40 record refreshes and 40 catalog scans an hour, at most 40 GraphQL points.
-Today the same page costs about 3 `core` a minute in account checks alone: two per
-record refresh and one per catalog scan, each about once a minute.
+measurements above: probes 0 while nothing is pushed to the repository, and one `core`
+per push otherwise, bounded as above; full reads about 0 once the account check is
+conditional; and 40 record refreshes and 40 catalog scans an hour, at most 40 GraphQL
+points. Today the same page costs about 3 `core` a minute in account checks alone: two
+per record refresh and one per catalog scan, each about once a minute.
 
 ### Server Changes
 
-- **`gh.py`:** a conditional account check.
-  `active_account` reads `gh api user` with the ETag of the last answer for that host,
-  and treats `304` as “the same login”.
+- **`gh_lists.py` and `gh.py`:** a conditional account check.
+  `gh_lists.active_account`, over `gh.gh_account` and `gh.gh_active_account`, reads
+  `gh api user` with the ETag of the last answer for that host, treats `304` as “the
+  same login”, and still names the account to `gh_budget.note_account`. `gh_api` admits
+  only `repos/…` paths today, so it gains `user`. The status route keeps
+  `gh auth status`, which alone reports the token’s source and scopes.
 - **`served_pull.py`:** `ServedPull` keeps `probed_at` and the outcome of the last
   probe. `is_stale` gains the probe rule: an automatic ask for a record probed or read
   within `ATTENDED_PROBE_S` is fresh; one older than that but read within
@@ -271,6 +319,10 @@ record refresh and one per catalog scan, each about once a minute.
 - **`pull_list_route.py`:** the catalog job probes first, and runs its GraphQL scan only
   when the probe answered `200`, when the last scan is older than `FULL_REFRESH_S`, or
   when a reader asked.
+  An unchanged list probe moves the catalog’s checked time, as an unchanged record probe
+  moves `verified_at`, so `record_freshness` in `pull_freshness.py` keeps vouching
+  between scans; otherwise it would vouch for nothing in the last third of each
+  `FULL_REFRESH_S`.
 - **The envelope:** `verified_by` gains `probe`, and `verified_at` moves with each
   `304`, so the page’s age line says when GitHub last confirmed the record.
   `fresh_for_s` becomes the time until the next probe is due, so the page knows when to
@@ -310,7 +362,8 @@ policy.
 
 ### Phase 1: The Pull Request on Screen
 
-- [ ] A conditional account check in `gh.py`, which every job’s account check uses.
+- [ ] A conditional account check in `gh_lists.active_account`, which every job’s
+  account check uses.
 - [ ] `ATTENDED_PROBE_S`, `CHECKS_PROBE_S`, and `FULL_REFRESH_S`, each beside its
   measurement.
 - [ ] The pull request probe and the checks probe as `ServedPull` jobs outside the store
@@ -336,8 +389,9 @@ policy.
   `200` with the same fields, and `200` with changed fields.
   Tests check that a probe starts a full read only for a real change, that a probe never
   runs an account check, that two tabs asking at once get one probe, that a hold stops
-  probes, and that a probe below the floor marks the record changed without refreshing
-  it.
+  probes, that below the floor a change a probe finds is still read while the
+  `FULL_REFRESH_S` reads stop, and that `200`s which change nothing lengthen the probe
+  interval.
 - **Goldens:** `--api` transcripts for `pull-refresh` answered by a probe (unchanged,
   changed, ETag-only), and the envelope’s `verified_by: probe`, as the parity registry
   requires.
@@ -347,7 +401,8 @@ policy.
   becoming visible asks at once.
 - **Live:** one real pull request page open in a browser, a change made on github.com,
   and the time from GitHub’s `updated_at` to the page’s paint, from the event log.
-  Target: under 10 s. Also one hour of a visible, unchanged page, with `core` spent read
+  Target: a median under 10 s from when GitHub’s ETag moves, with GitHub’s own lag
+  reported beside it. Also one hour of a visible, unchanged page, with `core` spent read
   from `GET /rate_limit` before and after, against the steady-state cost above.
 
 ## Open Questions
@@ -355,8 +410,10 @@ policy.
 - Is 5 s right for the page on screen, or should it be faster?
   Each probe is one `gh` process (0.06 s of CPU, 45 MB for 0.6 s). Below about 2 s,
   probes would overlap their own latency.
-- Is 600 `core` an hour the right self-ceiling for automatic work, given how much of the
-  account’s hour other tools use?
+- Is 300 `core` an hour per server the right self-ceiling for automatic work, given how
+  much of the account’s hour other tools use?
+  Should the servers of one home share a ceiling instead, through a file beside their
+  event logs?
 - The live test needs a real change on GitHub.
   A throwaway draft pull request in this repository, edited and closed by the test,
   would do; that publishes to GitHub, so it needs the owner’s go-ahead.
