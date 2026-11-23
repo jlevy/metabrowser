@@ -42,10 +42,10 @@ registered, any other status, and a golden that never runs the route.
 | `/api/identity` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md`, `cli-github-pull.tryscript.md` |
 | `/api/counterpart` | covered | `--api` | `cli-api-counterpart.tryscript.md` |
 | `/api/source/status` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md`, `cli-checkout-overlay.tryscript.md`, `cli-checkout-overlay.txt` |
-| `/api/source/refresh` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md`, `cli-git-refresh.txt` |
+| `/api/source/refresh` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md`, `cli-git-refresh.txt`, `cli-api-source-checkout-store.txt` |
 | `/api/source/pin` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-shell.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
 | `/api/source/link` | covered | `--api --data` | `cli-api-source-link.txt`, `app-contract.txt` |
-| `/api/source/refs` | covered | `--api` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-shell.tryscript.md` |
+| `/api/source/refs` | covered | `--api` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-source-checkout-store.txt`, `cli-api-shell.tryscript.md` |
 | `/api/git/repo` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/refs` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/summary` | covered | `--api` | `cli-api-git.tryscript.md` |
@@ -215,6 +215,8 @@ interaction session and fails when a named function did not execute.
 | `source.checkout-refs` | data | `/api/source/refs` | `owned-route` | `metab checkout --api /api/source/refs` | `cli-api-source-checkout.txt` |
 | `source.ref-pulls` | data | `/api/source/refs` | `owned-route` | `metab https://github.com/octo/demo --api '/api/source/refs?kind=branch&q=%2328'` | `cli-github-ref-pulls.txt` |
 | `source.checkout-revision` | data | `/api/source/pin` | `owned-route` | `metab checkout --api /api/source/pin --data pin-feature-view.json` | `cli-api-source-checkout.txt` |
+| `source.checkout-origin-store` | data | `/api/source/refs`, `/api/source/refresh`, `/api/source/pin` | `owned-route` | `metab checkout --api '/api/source/refs?kind=remote'` | `cli-api-source-checkout-store.txt` |
+| `source.ref-selector-origin` | interaction | `static/source-ref-selector.js#askForOrigin`, `static/source-ref-selector.js#describe`, `static/source-ref-selector.js#sameListing`, `static/source-ref-selector.js#watchPulls` | `/api/source/refs`, `/api/source/refresh`, `/api/source/pin` | `node tests/dom/source-ref-selector-origin-session.js` | `cli-ui-source-ref-selector-origin.tryscript.md` |
 | `source.checkout-ref-option` | data | `/api/source/status` | `owned-route` | `metab checkout --ref feature --api /api/source/status` | `cli-api-source-checkout.txt` |
 | `source.checkout-revision-content` | data | `/api/catalog` | `owned-route` | `metab checkout --ref feature --api /api/catalog` | `cli-api-source-checkout.txt` |
 | `source.checkout-commits-unpinned` | data | `/api/git/log` | `owned-route` | `metab checkout --ref feature --api '/api/git/log?limit=2'` | `cli-api-source-checkout.txt` |

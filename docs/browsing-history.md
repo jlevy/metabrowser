@@ -106,8 +106,19 @@ Click it or press `W` to see any other branch or tag without checking it out.
 - **Branches** are the checkout’s own, with the one you have checked out first and
   marked “checked out”.
   **Tags** are its tags.
-  **Remotes** are its remote-tracking branches, such as `origin/main`, as your last
-  fetch left them. Each list holds every one, newest first by its last commit.
+  **Remotes** are its remote-tracking branches, such as `origin/main`. Each list holds
+  every one, newest first by its last commit.
+- **The origin’s branches and tags are as Metabrowser last fetched them,** when the
+  checkout’s `origin` is an `https` address.
+  Metabrowser keeps a store of its own beside the checkout for them, which borrows the
+  checkout’s objects and holds only what the checkout lacks, and fetches it in the
+  background while the folder is served, so `origin/main` there is where the origin is,
+  not where your own last `git fetch` left it.
+  A line under the list says when it was fetched, or why it was not: an origin that
+  needs a password Metabrowser does not have is listed from your checkout instead, and
+  nothing asks for one.
+  Another remote’s branches, and a tag only your checkout has, are read from the
+  checkout.
 - Choosing a branch or tag shows its last commit, read from the repository’s Git
   objects. The button then names it, and the navigation header, still the folder’s name,
   names its full commit when you hover over it.
@@ -131,10 +142,12 @@ again or the server stops.
 that branch or tag
 ([the command line](command-line.md#a-branch-or-tag-of-a-local-checkout)). A tab left on
 the other one says so and offers **Reload**. Metabrowser fetches nothing into a
-checkout, so a remote-tracking branch is only as new as your own last `git fetch`, and a
-branch that moves while it is shown is shown at its new commit when you choose it again.
-The button follows the folder you opened: it is there when that folder is a repository’s
-root, as the Commits tab is.
+checkout, so your own branches, and another remote’s, are only as new as your own Git
+commands left them, and one that moves while it is shown is shown at its new commit when
+you choose it again.
+One of the origin’s branches follows the origin by itself, as a repository opened by its
+URL does. The button follows the folder you opened: it is there when that folder is a
+repository’s root, as the Commits tab is.
 
 Showing a branch or tag needs a Git as recent as cloning does
 ([installation](installation.md#git-and-github-setup)), and in a partial clone, one made
