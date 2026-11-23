@@ -931,7 +931,9 @@ def test_changes_follows_a_moved_head_in_the_readers_file_and_entry() -> None:
     its note and the reader's choice outlast a reload (C1). Through the production page
     host, a walk of the Pulls tab's files and a click on a file land the page on an entry
     with no state, which the page writes its memory into, so the choice outlasts the next
-    reload (A1 of review A on #758). Both diff tabs say new commits are on their way and
+    reload (A1 of review A on #758); Back to an entry the page left gets what the diff
+    shows now, its note and choice included (B1 of review B). Both diff tabs say new
+    commits are on their way and
     Conversation does not (A2), and Docs asks for a missing comparison by itself only at
     its own address (A3).
     """
@@ -949,6 +951,7 @@ def test_changes_follows_a_moved_head_in_the_readers_file_and_entry() -> None:
         "docsDrawsTheRecordsComparison": True,
         "docsRemembersWhatItShows": True,
         "walkAndClickKeepTheChoice": True,
+        "backKeepsTheChoice": True,
         "newCommitsOnBothDiffTabs": True,
         "docsAsksForTheComparison": True,
     }

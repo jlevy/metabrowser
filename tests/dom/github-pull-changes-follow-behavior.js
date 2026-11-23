@@ -541,6 +541,62 @@ async function run() {
     handle.dispose();
   }
 
+  // Back lands the page on an entry it left, whose state is as the page last wrote it there,
+  // so the page writes what its diff shows now (`land`). Entry A follows the first push; a
+  // click on a file pushes entry B, where the second push is followed and the reader goes
+  // back to the diff entry A shows, now chosen. So A's memory differs from the page's in
+  // the diff its note names and in the choice, not in the diff shown (B1 of review B on
+  // #758).
+  {
+    window.location.pathname = "/pull/7/files";
+    window.history.state = null;
+    pane.scrollTop = 0;
+    current = first;
+    const host = hosted();
+    await host.show({ number: 7, tab: "files" });
+    ({ container, handle } = host.opened());
+    await painted(handle);
+    current = moved;
+    fire("visibilitychange");
+    await settle();
+    await painted(handle);
+    const entryA = structuredClone(window.history.state);
+    assert.deepEqual(
+      [entryA.pullChanges.shown.right, entryA.pullChanges.from?.right, entryA.pullChanges.chosen],
+      [NEWER, earlier, false],
+    );
+    await host.open({ number: 7, tab: "files", file: "b.py" });
+    await settle();
+    current = newest;
+    fire("visibilitychange");
+    await settle();
+    await painted(handle);
+    assert.equal(mounted.at(-1), NEWEST, "entry B follows the second push");
+    container.querySelector(".github-pull-earlier").events.get("click")();
+    await painted(handle);
+    assert.equal(mounted.at(-1), NEWER);
+    // Back to A in the same document: the browser restores A's state, and the host lands.
+    window.location.pathname = "/pull/7/files";
+    window.history.state = entryA;
+    host.onHistory(window.location.pathname, false);
+    await settle();
+    await painted(handle);
+    assert.deepEqual(
+      [entry().pullChanges.shown.right, entry().pullChanges.from, entry().pullChanges.chosen],
+      [NEWER, null, true],
+      "the entry Back lands on remembers the reader's choice",
+    );
+    // The reload a push makes on A, the record at the second push's head.
+    host.dispose();
+    pane.scrollTop = 0;
+    ({ container, handle } = mount(newest));
+    await painted(handle);
+    assert.equal(mounted.at(-1), NEWER, "a reload after Back keeps the diff the reader chose");
+    assert.equal(said(container, ".github-pull-followed"), null);
+    assert.equal(said(container, ".github-pull-newer-offer"), offerNewest);
+    handle.dispose();
+  }
+
   // While the pull request's head has moved and its record is read again, both diff tabs
   // say so over the diff they have, and Conversation does not (A2 of review A on #758).
   const pushed = structuredClone(first);
@@ -597,6 +653,7 @@ async function run() {
     docsDrawsTheRecordsComparison: true,
     docsRemembersWhatItShows: true,
     walkAndClickKeepTheChoice: true,
+    backKeepsTheChoice: true,
     newCommitsOnBothDiffTabs: true,
     docsAsksForTheComparison: true,
   };
