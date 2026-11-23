@@ -7,7 +7,8 @@
 // and Show ignored. It shares the section's hover, so pointing at a breakdown
 // legend entry marks that family's cells here too. A cell opens the Treemap
 // view: a folder's cell at that folder, a file's or a remainder's at the
-// folder holding it. Every cell, however small, names itself in its tooltip.
+// folder holding it, and the outer box, labelled with the folder's name, at
+// the folder itself. Every cell, however small, names itself in its tooltip.
 //
 // Its box is decided by the breakdown's answer, which the section holds its
 // first paint for (file-overview-panel.js), so the box is there or not from
@@ -47,6 +48,18 @@ function treemapFolderOf(cell) {
   }
   const slash = cell.path.lastIndexOf("/");
   return slash === -1 ? "" : cell.path.slice(0, slash);
+}
+
+/**
+ * The folder as the map's one top-level cell: an outer box, labelled with the
+ * folder's name, around everything in it, so one click on its frame opens the
+ * Treemap view at the folder itself (mb-olmt). Its totals are the folder's, so
+ * every share inside is what it would be without the box.
+ * @param {Record<string, any>} node
+ * @returns {Record<string, any>}
+ */
+function withOuterBox(node) {
+  return { ...node, children: [node], rest: null };
 }
 
 /**
@@ -156,7 +169,9 @@ export function mountCompactTreemap(container, context, mb, palette, rollupContr
       });
       return;
     }
-    map.render(envelope?.node ?? null, { placeholderHtml: TREEMAP_LOADING_HTML });
+    map.render(envelope?.node ? withOuterBox(envelope.node) : null, {
+      placeholderHtml: TREEMAP_LOADING_HTML,
+    });
   }
   relayout();
 

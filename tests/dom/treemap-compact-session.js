@@ -3,8 +3,9 @@
 // kept with a skeleton while the index scans, without asking for the deep tree; left out
 // when the breakdown's request failed, the index stopped at its cap, or the folder holds no
 // files in the population shown; and drawn once the index has settled and the map's own
-// rollup answers. It follows the section's legend hover, measure, Show ignored, and the
-// tab's activation; a cell opens the Treemap view at its folder; a failed rollup keeps the
+// rollup answers, inside an outer box for the folder itself. It follows the section's legend
+// hover, measure, Show ignored, and the tab's activation; a cell opens the Treemap view at its
+// folder, and the outer box at the folder itself; a failed rollup keeps the
 // box and recovers on Retry. Disposal releases every listener, the watch, and the observer,
 // and puts away only the map's own tooltip.
 //
@@ -340,6 +341,23 @@ async function main() {
   }
   steps.push({
     step: "activating two file cells and a folder cell opens the Treemap at their folders",
+    navigation: page.navigation,
+  });
+
+  // The folder's own cell is the outer box around the rest, and opens the Treemap at it.
+  const outer = page.viewport.cells[0];
+  const [left, top, width, height] = outer.box;
+  assert.equal(outer.dataset.tmPath, "src");
+  assert.ok(
+    left <= 1 && top <= 1 && width >= page.viewport.clientWidth - 2,
+    "the box spans the map",
+  );
+  assert.ok(height >= page.viewport.clientHeight - 2, "the box spans the map's height");
+  page.navigation.length = 0;
+  click({ target: outer });
+  steps.push({
+    step: "activating the outer box opens the Treemap at the folder",
+    outerBox: outer.classes.includes("tm-nested") ? "labelled, around the tree" : "solid",
     navigation: page.navigation,
   });
 

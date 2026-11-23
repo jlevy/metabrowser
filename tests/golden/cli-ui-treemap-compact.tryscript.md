@@ -11,10 +11,12 @@ breakdown’s answers.
 While the index scans it keeps its box with a skeleton and does not ask for the deep
 tree; once the index has finished it asks for the deepest, widest tree the server
 returns, the same request the Treemap view makes, and draws every folder and file inside
-the map’s border. The section’s legend hover marks the family’s cells, a cell opens the
-Treemap view at its folder, and a change of measure or of Show ignored lays the map out
-again. A refresh that fails keeps the map; a first rollup that fails shows that the map
-is unavailable and recovers on Retry.
+the map’s border, within an outer box for the folder itself.
+The section’s legend hover marks the family’s cells, a cell opens the Treemap view at
+its folder, the outer box opens it at the folder itself, and a change of measure or of
+Show ignored lays the map out again.
+A refresh that fails keeps the map; a first rollup that fails shows that the map is
+unavailable and recovers on Retry.
 The box is left out when the breakdown failed, the index stopped at its cap before
 finishing the folder, or the folder holds no files in the population shown.
 Disposal releases every listener, the watch, and the observer, and puts away only the
@@ -61,15 +63,16 @@ $ node tests/dom/treemap-compact-session.js
       "unavailable": false,
       "asked": true,
       "cells": [
-        "dir src/lib 243x217",
-        "file src/cache.md 199x217",
-        "dir src/docs 155x139",
-        "file src/README.md 155x77",
-        "file src/lib/app.py 130x191",
-        "file src/lib/util.py 108x114",
-        "file src/lib/cli.py 108x76",
-        "file src/docs/guide.md 100x116",
-        "file src/docs/notes.md 50x116"
+        "dir src 599x217",
+        "dir src/lib 242x188",
+        "file src/cache.md 198x188",
+        "dir src/docs 154x121",
+        "file src/README.md 154x67",
+        "file src/lib/app.py 129x162",
+        "file src/lib/util.py 108x97",
+        "file src/lib/cli.py 108x64",
+        "file src/docs/guide.md 99x98",
+        "file src/docs/notes.md 49x98"
       ]
     },
     {
@@ -86,20 +89,18 @@ $ node tests/dom/treemap-compact-session.js
       "navigation": [
         [
           {
-            "path": "src/lib"
+            "path": "src"
           },
           {
             "viewId": "treemap"
           }
-        ],
-        [
-          {
-            "path": "src/docs"
-          },
-          {
-            "viewId": "treemap"
-          }
-        ],
+        ]
+      ]
+    },
+    {
+      "step": "activating the outer box opens the Treemap at the folder",
+      "outerBox": "labelled, around the tree",
+      "navigation": [
         [
           {
             "path": "src"
@@ -117,15 +118,16 @@ $ node tests/dom/treemap-compact-session.js
       "unavailable": false,
       "asked": true,
       "cells": [
-        "dir src/lib 256x217",
-        "dir src/docs 170x217",
-        "file src/README.md 170x108",
-        "file src/cache.md 170x108",
-        "file src/lib/app.py 168x95",
-        "file src/lib/util.py 168x95",
-        "file src/lib/cli.py 83x191",
-        "file src/docs/guide.md 166x96",
-        "file src/docs/notes.md 166x96"
+        "dir src 599x217",
+        "dir src/lib 254x188",
+        "dir src/docs 169x188",
+        "file src/README.md 169x94",
+        "file src/cache.md 169x94",
+        "file src/lib/app.py 83x162",
+        "file src/lib/util.py 83x162",
+        "file src/lib/cli.py 83x162",
+        "file src/docs/guide.md 82x164",
+        "file src/docs/notes.md 82x164"
       ]
     },
     {
@@ -135,14 +137,15 @@ $ node tests/dom/treemap-compact-session.js
       "unavailable": false,
       "asked": true,
       "cells": [
-        "dir src/lib 299x217",
-        "dir src/docs 199x217",
-        "file src/README.md 99x217",
-        "file src/lib/app.py 98x190",
-        "file src/lib/util.py 98x190",
-        "file src/lib/cli.py 98x190",
-        "file src/docs/guide.md 97x192",
-        "file src/docs/notes.md 97x192"
+        "dir src 599x217",
+        "dir src/lib 297x188",
+        "dir src/docs 198x188",
+        "file src/README.md 98x188",
+        "file src/lib/app.py 97x162",
+        "file src/lib/util.py 97x162",
+        "file src/lib/cli.py 97x162",
+        "file src/docs/guide.md 96x163",
+        "file src/docs/notes.md 96x163"
       ]
     },
     {
@@ -156,14 +159,15 @@ $ node tests/dom/treemap-compact-session.js
       "unavailable": false,
       "asked": true,
       "cells": [
-        "dir src/lib 299x217",
-        "dir src/docs 199x217",
-        "file src/README.md 99x217",
-        "file src/lib/app.py 98x190",
-        "file src/lib/util.py 98x190",
-        "file src/lib/cli.py 98x190",
-        "file src/docs/guide.md 97x192",
-        "file src/docs/notes.md 97x192"
+        "dir src 599x217",
+        "dir src/lib 297x188",
+        "dir src/docs 198x188",
+        "file src/README.md 98x188",
+        "file src/lib/app.py 97x162",
+        "file src/lib/util.py 97x162",
+        "file src/lib/cli.py 97x162",
+        "file src/docs/guide.md 96x163",
+        "file src/docs/notes.md 96x163"
       ]
     },
     {
