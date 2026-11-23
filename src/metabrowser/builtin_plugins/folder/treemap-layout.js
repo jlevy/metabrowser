@@ -25,8 +25,15 @@
 const LAYOUT_DEFAULTS = {
   /** Cells smaller than this (either dimension, px) merge into the rest cell. */
   minCellPx: 4,
-  /** Hard cap on emitted cells across all nesting levels. */
-  maxCells: 800,
+  /**
+   * Hard cap on emitted cells across all nesting levels. The layout is about
+   * 1 ms of a render; writing the cells is the rest. Measured in the app's
+   * browser pane on this repository, 2026-11-22, layout and markup together:
+   * 11 to 14 ms at 800 cells, 22 to 23 ms at 1,600, 30 to 31 ms at 2,400.
+   * 1,600 keeps a relayout near two frames while drawing twice the cells; the
+   * rollup's node budget (ROLLUP_MAX_NODES, settings.py) is the other bound.
+   */
+  maxCells: 1600,
   /**
    * Levels drawn, the outermost included (1 = flat). Unbounded by default:
    * the rollup's own depth and the cells' room bound it.
