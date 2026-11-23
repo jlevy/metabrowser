@@ -236,13 +236,29 @@ const NO_LABEL = Object.freeze({
  */
 
 /**
- * The type a child sorts by among children of equal value: a file's extension, or a
- * folder's dominant one, which colors a solid folder's cell, case folded; "" for none.
+ * A child's extension, case folded: a file's own, or a folder's dominant one, which
+ * colors a solid folder's cell; "" for none.
  * @param {Record<string, any>} node
  */
-function typeKey(node) {
+function extensionOf(node) {
   const ext = node.type === "dir" ? node.dominant_ext : node.ext;
   return typeof ext === "string" ? ext.toLowerCase() : "";
+}
+
+/**
+ * The type a child sorts by among children of equal value: the color family its
+ * extension belongs to, as `typeOf` names it (the map passes the palette's lookup),
+ * so a family of several extensions, as JavaScript's .js and .mjs, sits together;
+ * without `typeOf`, its extension. "" for none.
+ * @param {Record<string, any>} node
+ * @param {((ext: string) => string) | undefined} [typeOf]
+ */
+function typeKey(node, typeOf) {
+  const raw = node.type === "dir" ? node.dominant_ext : node.ext;
+  if (typeOf) {
+    return String(typeOf(typeof raw === "string" ? raw : ""));
+  }
+  return extensionOf(node);
 }
 
 /** Code-unit order, the same in every engine, as a locale's order is not. */
@@ -256,11 +272,11 @@ function compareText(/** @type {unknown} */ a, /** @type {unknown} */ b) {
  * The order a folder's children are laid out in. Value comes first, largest first, as
  * the squarified layout needs, so the order changes no cell's size. Children of equal
  * value, as every file is by Files and same-sized files are by Bytes, break by type, so
- * cells of one color sit together: by extension (typeKey), with none after every
- * extension, then by name case folded, then by path. The remainder comes after every
- * child of its value. The order is total, so the map draws the same whichever order the
- * rollup sent the children in, as the compact encoding sends a folder's files after its
- * folders (treemap-rollup-decode.js).
+ * cells of one color sit together: by type (typeKey), with none after every type,
+ * then by extension within it, then by name case folded, then by path. The remainder
+ * comes after every child of its value. The order is total, so the map draws the same
+ * whichever order the rollup sent the children in, as the compact encoding sends a
+ * folder's files after its folders (treemap-rollup-decode.js).
  * @param {WeightedItem} a
  * @param {WeightedItem} b
  */
@@ -274,6 +290,7 @@ function compareChildren(a, b) {
   return (
     Number(a.sortType === "") - Number(b.sortType === "") ||
     compareText(a.sortType, b.sortType) ||
+    compareText(a.sortExt, b.sortExt) ||
     compareText(a.sortName, b.sortName) ||
     compareText(a.node?.path, b.node?.path)
   );
@@ -869,7 +886,8 @@ function layoutPass(rootNode, viewport, opts, chrome, perValue) {
           count:
             child.type === "dir" ? (excludeIgnored ? child.unignored_files : child.total_files) : 1,
           node: child,
-          sortType: typeKey(child),
+          sortType: typeKey(child, opts.typeOf),
+          sortExt: extensionOf(child),
           sortName: String(child.name ?? "").toLowerCase(),
         });
       }

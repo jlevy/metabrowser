@@ -236,7 +236,8 @@ const DWINDLING = dir("src", "src", [
   ),
 ]);
 // Files of one size in a mixed order, with one larger: the larger leads, and the rest,
-// tied, group by extension, the one without any last, then by name whatever its case.
+// tied, group by the family that colors them (Markdown, the other types, Python), then
+// by extension, then by name whatever its case.
 const TIED = dir("src", "src", [
   file("zeta.py", "src/zeta.py", 1000, ".py"),
   file("Makefile", "src/Makefile", 1000, ""),
@@ -940,8 +941,8 @@ async function main() {
   dwindling.handle.dispose();
 
   // ── files of one size, grouped by type ─────────────────────────
-  // Value orders the cells, so no size changes; a tie breaks by extension, then by name,
-  // so one type's cells, in one color, sit together. The same files sent in reverse lay
+  // Value orders the cells, so no size changes; a tie breaks by family, then extension,
+  // then name, so one color's cells sit together. The same files sent in reverse lay
   // out alike.
   const tied = mount();
   tied.setControls({ metric: "size", includeIgnored: false });
@@ -960,7 +961,10 @@ async function main() {
     "the rollup's order changes nothing",
   );
   reversed.handle.dispose();
-  steps.push({ step: "files of one size group by type, then by name", cells: tiedOrder });
+  steps.push({
+    step: "files of one size group by family, then by extension and name",
+    cells: tiedOrder,
+  });
 
   // ── a box too small to draw in yet ────────────────────────────
   const narrow = mount({ width: 6 });

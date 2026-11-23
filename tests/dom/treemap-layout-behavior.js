@@ -217,6 +217,31 @@ function fileNode(name, pathStr, size, extras) {
     top.join(",") === "a.json,x.MD,b.py,NOTES",
     top.join(","),
   );
+  // With the palette's families (typeOf), a family of several extensions sits together:
+  // JavaScript's .js and .mjs, apart from JSON, then by extension within the family.
+  const families = { ".js": "family:js", ".mjs": "family:js", ".json": "family:json" };
+  check(
+    "a type is its family where typeOf names one",
+    layout.typeKey({ type: "file", ext: ".mjs" }, (ext) => families[ext]) === "family:js",
+  );
+  const mixed = dirNode("root", "", {
+    total_files: 4,
+    children: [
+      fileNode("b.mjs", "b.mjs", 100, { ext: ".mjs" }),
+      fileNode("c.json", "c.json", 100, { ext: ".json" }),
+      fileNode("z.js", "z.js", 100, { ext: ".js" }),
+      fileNode("a.mjs", "a.mjs", 100, { ext: ".mjs" }),
+    ],
+  });
+  const byFamily = layout
+    .layoutTree(mixed, { w: 300, h: 100 }, { metric: "files", typeOf: (ext) => families[ext] })
+    .filter((cell) => cell.depth === 0)
+    .map((cell) => cell.path);
+  check(
+    "ties sit by family, then extension, then name",
+    byFamily.join(",") === "z.js,a.mjs,b.mjs,c.json",
+    byFamily.join(","),
+  );
 }
 
 // ── Fluid typography: continuous, bounded, and geometry-aware ───

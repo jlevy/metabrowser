@@ -24,5 +24,5 @@
   asks again; the map keeps its drawing until the new tree arrives.
   The Overview’s compact map keeps the default budget.
 
-- Treemap cells of equal size are now ordered by path, so the same folder draws the same
-  way whichever order its rollup lists it in.
+- Treemap cells of equal size are now in a fixed order, so the same folder draws the
+  same way whichever order its rollup lists it in.

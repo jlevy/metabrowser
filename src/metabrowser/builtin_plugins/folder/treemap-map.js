@@ -472,7 +472,14 @@ export function createTreemapMap(mb, palette, viewport, options) {
     if (cell.kind === "dir" && cell.nested) {
       return NESTED_FOLDER_KEY;
     }
-    const extension = cell.ext || "(none)";
+    return extensionKey(cell.ext || "(none)");
+  }
+
+  /**
+   * The palette key of an extension, the family that colors it, looked up once a layout.
+   * @param {string} extension
+   */
+  function extensionKey(extension) {
     let key = extensionKeys.get(extension);
     if (key === undefined) {
       key = mb.fileTypes.distributionKeyForExtension(extension);
@@ -1390,9 +1397,13 @@ export function createTreemapMap(mb, palette, viewport, options) {
     const box = drawableBox();
     const state = options.getState();
     dpr = Math.min(devicePixelRatio(), Math.sqrt(MAX_BACKING_PIXELS / Math.max(1, box.w * box.h)));
+    // Read the registry again for this layout, as its children's order (typeOf) and
+    // their cells' colors (cellPaletteKey) both do.
+    extensionKeys.clear();
     const laidOut =
       node && box.w >= 10 && box.h >= 10
         ? layoutTree(node, box, {
+            typeOf: (/** @type {string} */ ext) => extensionKey(ext || "(none)"),
             ...preset.layout,
             minCellPx: 1 / dpr,
             labelMinW: preset.labelMinW,
@@ -1424,7 +1435,6 @@ export function createTreemapMap(mb, palette, viewport, options) {
       return 0;
     }
     cells = laidOut;
-    extensionKeys.clear();
     paletteKeys = cells.map(cellPaletteKey);
     laidOutBox = box;
     ensureLayers();

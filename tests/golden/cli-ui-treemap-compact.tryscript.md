@@ -31,9 +31,9 @@ shrinks with the cell, and the smallest files show neither.
 A cell’s hover is drawn on one of two marks canvases while the other fades out; a
 folder’s copies its fill and clears its interior, so its header and frame lift and the
 edges between its files do not.
-Files of one size sit by type, then by name, in whatever order the rollup sent them.
-A refresh that fails keeps the map; a first rollup that fails shows that the map is
-unavailable and recovers on Retry.
+Files of one size sit by color family, then by extension and name, in whatever order the
+rollup sent them. A refresh that fails keeps the map; a first rollup that fails shows
+that the map is unavailable and recovers on Retry.
 The box is left out when the breakdown failed, the index stopped at its cap before
 finishing the folder, or the folder holds no files in the population shown.
 Disposal with the pointer on a cell releases every listener, the watch, the observer,
@@ -535,15 +535,15 @@ $ node tests/dom/treemap-compact-session.js
       ]
     },
     {
-      "step": "files of one size group by type, then by name",
+      "step": "files of one size group by family, then by extension and name",
       "cells": [
         "file src/big.py 238x196",
-        "file src/data.json 119x98",
         "file src/alpha.md 119x98",
         "file src/beta.md 119x98",
+        "file src/Makefile 119x98",
+        "file src/data.json 119x98",
         "file src/Alpha.py 119x98",
-        "file src/zeta.py 119x98",
-        "file src/Makefile 119x98"
+        "file src/zeta.py 119x98"
       ]
     },
     {
