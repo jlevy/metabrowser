@@ -3,17 +3,21 @@ type: is
 id: is-01m839z1p2d8zv8x6hjt31rh0w
 title: "T9: A Docs tab on the pull request page: its documents, rendered and expanded"
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
+delegate: claude-code@spud10
 labels:
   - diff
   - github
 dependencies: []
 parent_id: is-01m83968ry3rs287s3mgg0r93y
+hold: null
+hold_until: null
 created_at: 2026-11-23T04:17:27.694Z
-updated_at: 2026-11-23T04:17:27.694Z
+updated_at: 2026-11-23T07:54:15.893Z
+started_at: 2026-11-23T07:53:37.929Z
 ---
 Requested by the user 2026-11-22. A shortcut built on the diff File type filter: a new
 second tab on the pull request page, **Docs**, between Conversation and Changes
@@ -45,3 +49,7 @@ request's documents so a reader can read them quickly.
   and the parity registry; changelog fragment.
 - **Delivery:** its own pull request, stacked on the diff File type filter's stack once
   the basic chooser works.
+
+## Notes
+
+Decision taken unattended (2026-11-22, user said not to ask): the Docs tab is always shown, keyed D, with an empty state linking to Changes when the PR has no documents, so the tab set and its keys stay stable from PR to PR. Revisit in the morning if the user prefers hiding it.
