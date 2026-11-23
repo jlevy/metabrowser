@@ -327,12 +327,17 @@ Clones and records live in the cache directory that
 measures them. No command removes a clone: to reclaim the space, stop every server and
 delete the cache directory, and the next run clones again.
 
-A first clone is refused before it starts when GitHub reports the repository over the
-size limit. The refusal gives the repository’s size, the limit, and the deadline every
-clone must meet. If your network is fast enough, set a larger limit in kilobytes:
+A first clone is refused before it starts when the repository GitHub reports would not
+fit on the cache’s volume with `METABROWSER_CACHE_RESERVE_MB` still free.
+No size is refused for itself.
+The refusal gives the repository’s size, what its clone can take, the volume’s free
+space, and the reserve.
+Free space on the volume, point
+[`METABROWSER_CACHE_DIR`](command-line.md#storage-locations) at a volume with more, or
+lower the reserve:
 
 ```shell
-METABROWSER_MAX_FIRST_CLONE_KB=<size> metab https://github.com/owner/repo/pull/123
+METABROWSER_CACHE_RESERVE_MB=200 metab https://github.com/owner/repo/pull/123
 ```
 
 To pay for a long clone ahead of time, run the same URL with `--no-serve`.
@@ -366,7 +371,7 @@ account’s scopes.
 | `not_found_or_private` | It does not exist, or the account cannot read it; GitHub does not say which | Check the URL, and that `metab --doctor` names an account with access and the `repo` scope |
 | `rate_limited` | GitHub’s rate limit, with its reset time when GitHub gives one | Wait; the page tries again after the reset |
 | `network_error`, `network_unreachable`, `connection_interrupted`, `timed_out` | GitHub could not be reached, by `gh` or by Git | Restore the network, then **Refresh** |
-| `too_large` | The first clone is over the size limit | See [large repositories](#large-repositories) |
+| `too_large` | The first clone does not fit on the cache’s volume | See [large repositories](#large-repositories) |
 | `lender_missing` | The checkout this clone borrows from has moved, gone, or can no longer lend | Run the command again with `--checkout <new path>` |
 | `account_changed`, `head_mismatch` | The `gh` account changed, or the pull request kept moving, during the read | **Refresh** |
 | `fetch_failed`, `git_failed` | Git failed | **Refresh**; for a clone, `--log-level debug` shows Git’s own message |

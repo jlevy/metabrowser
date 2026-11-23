@@ -64,8 +64,9 @@ Credentials belong to the provider:
   `$HOME/.netrc` and Git cannot turn that off; only the `gh` helper command is given the
   real home, with the `GH_*` variables that would redirect or log it cleared.
 - Acquisition never inherits a checkout’s remote or credential helper.
-- With `gh` installed, `check_first_clone` refuses a first clone that GitHub reports
-  over `MAX_FIRST_CLONE_KB`, which `METABROWSER_MAX_FIRST_CLONE_KB` raises.
+- With `gh` installed, `check_first_clone` refuses a first clone whose GitHub-reported
+  size, packed, would leave less than the reserve free on the cache’s volume
+  (`cache/free_space.py`, which `METABROWSER_CACHE_RESERVE_MB` sets).
   It first runs
   [the GitHub status check](arch-github-pull-requests.md#the-github-status-check), and
   refuses a pull-request URL that `gh` is missing, too old, or not signed in to read.

@@ -1198,7 +1198,7 @@ async def acquire_source(
         source, checkout, on_note, allow_clone_fallback=allow_clone_fallback
     )
     if lender is None:
-        await check_first_clone(source)
+        await check_first_clone(source, home=home)
     home = (await run_lock_section(functools.partial(open_cache, home))).home
     with await _reserve_acquisition(source, home, on_note):
         found = await run_lock_section(functools.partial(_find_for_acquisition, source, home))
@@ -1219,7 +1219,7 @@ async def acquire_source(
                 raise CheckoutRefusedError(str(exc)) from exc
             # The origin's format is known only after the phase line was printed.
             _note(on_note, f"{exc}; cloning instead")
-            await check_first_clone(source)
+            await check_first_clone(source, home=home)
             staged = await acquire_into_staging(
                 source,
                 home=home,

@@ -25,7 +25,7 @@ changes nothing.
 ``cache``      The cache directory resolves, is private and writable or can be     problem
                created, and is apart from the configuration; an override the
                app's servers do not get, or free space below
-               :func:`low_free_space_bytes`, is a warning
+               the reserve every first clone leaves free, is a warning
 ``event_log``  Whether a server writes its event log, where, and what it leaves    warning
                out; an environment that turns it off, or a state directory that
                cannot hold it, is a warning
@@ -66,7 +66,6 @@ from __future__ import annotations
 import os
 import platform
 import re
-import shutil
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -75,7 +74,12 @@ from typing import TYPE_CHECKING, Final, Literal
 
 from metabrowser import __version__
 from metabrowser.build_version import display_version
-from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_KB, first_clone_limit_kb
+from metabrowser.cache.free_space import (
+    FREE_SPACE_RESERVE_ENV,
+    free_space_reserve_bytes,
+    gigabytes,
+    volume_free_bytes,
+)
 from metabrowser.invisible_chars import display_segment
 from metabrowser.tool_install import Remedy
 
@@ -108,16 +112,6 @@ METAB_UPGRADE_COMMANDS: Final[dict[MetabInstallMethod, str]] = {
     "environment": "uv tool install --upgrade 'metabrowser>={minimum}'",
 }
 _RELEASE: Final = re.compile(r"^([0-9]+(?:\.[0-9]+)*)")
-# A pack is 1.0 to 1.1 times GitHub's reported size in the measurements beside
-# MAX_FIRST_CLONE_KB.
-_PACK_PER_REPORTED: Final = 1.1
-# Free space below this on the cache's volume is a warning: the largest first clone the
-# app's servers admit, MAX_FIRST_CLONE_KB of GitHub-reported size (the app passes no
-# METABROWSER_MAX_FIRST_CLONE_KB), packed at 1.1 times, about 1.52 GB, may not fit, and a
-# clone that fills the disk stops partway with an error that reads like a network
-# failure. In a terminal, the floor follows the limit that variable sets there
-# (low_free_space_bytes).
-LOW_FREE_SPACE_BYTES: Final[int] = int(MAX_FIRST_CLONE_KB * 1024 * _PACK_PER_REPORTED)
 # The bundle path of the app running `metab --doctor`, which Help > Check Setup… sets
 # (`DoctorRun.spec` in apps/macos/Sources/ShellCore/Setup/DoctorReport.swift). The metab
 # check compares with that build's minimum, not the app LaunchServices finds first, which
@@ -549,22 +543,6 @@ def _overridden(check: Check, servers: str | None) -> Check:
     )
 
 
-def _free_bytes(directory: Path) -> int | None:
-    """The free space on the volume that holds *directory*, or its nearest existing parent."""
-
-    probe = directory
-    while not probe.exists() and probe != probe.parent:
-        probe = probe.parent
-    try:
-        return shutil.disk_usage(probe).free
-    except OSError:
-        return None
-
-
-def _gigabytes(count: int) -> str:
-    return f"{count / 1e9:.1f} GB"
-
-
 def cache_check(*, app_path: str | None = None) -> Check:
     """The cache directory: where, whether it is private and writable, and its free space.
 
@@ -588,9 +566,9 @@ def cache_check(*, app_path: str | None = None) -> Check:
     except StorageDirectoryError as exc:
         return Check("cache", heading, "problem", str(exc), (("source", source),))
     details: list[tuple[str, str]] = [("directory", _shown(directory)), ("source", source)]
-    free = _free_bytes(directory)
+    free = volume_free_bytes(directory)
     if free is not None:
-        details.append(("free space", _gigabytes(free)))
+        details.append(("free space", gigabytes(free)))
     try:
         validate_private_home(directory)
         writable = private_directory_is_writable(directory, "")
@@ -698,29 +676,25 @@ def event_log_check() -> Check:
     return Check("event_log", heading, "ok", summary, tuple(details))
 
 
-def low_free_space_bytes() -> int:
-    """The free space the largest first clone this ``metab`` admits can take: the floor
-    :data:`LOW_FREE_SPACE_BYTES` sets for the default limit, or the same for the limit
-    ``METABROWSER_MAX_FIRST_CLONE_KB`` sets where it runs."""
-
-    return int(first_clone_limit_kb() * 1024 * _PACK_PER_REPORTED)
-
-
 def _cache_space(check: Check, free: int | None) -> Check:
-    """*check* as a warning when its volume has less than :func:`low_free_space_bytes`."""
+    """*check* as a warning when its volume has less free than the reserve a first clone
+    leaves (:func:`~metabrowser.cache.free_space.free_space_reserve_bytes`), so that every
+    first clone is refused."""
 
-    floor = low_free_space_bytes()
-    if free is None or free >= floor or check.state != "ok":
+    reserve = free_space_reserve_bytes()
+    if free is None or free >= reserve or check.state != "ok":
         return check
     return Check(
         check.id,
         check.title,
         "warning",
-        f"the cache's volume has {_gigabytes(free)} free, less than the "
-        f"{_gigabytes(floor)} the largest first clone metab admits can take, "
-        "so a clone can stop partway",
+        f"the cache's volume has {gigabytes(free)} free, less than the "
+        f"{gigabytes(reserve)} a first clone leaves free, so metab refuses every first clone",
         check.details,
-        Remedy("Free space on the volume, or set METABROWSER_CACHE_DIR to one with more."),
+        Remedy(
+            "Free space on the volume, set METABROWSER_CACHE_DIR to one with more, or "
+            f"lower {FREE_SPACE_RESERVE_ENV}."
+        ),
     )
 
 
@@ -768,7 +742,6 @@ __all__ = [
     "CHECKOUT_PROJECT",
     "CHECKOUT_VENV",
     "DOCTOR_APP_ENV",
-    "LOW_FREE_SPACE_BYTES",
     "METAB_UPGRADE_COMMANDS",
     "PIPX_METADATA",
     "STORAGE_OVERRIDES",
@@ -779,7 +752,6 @@ __all__ = [
     "declares_this_project",
     "doctor_checks",
     "event_log_check",
-    "low_free_space_bytes",
     "meets_release",
     "metab_check",
     "metab_install",

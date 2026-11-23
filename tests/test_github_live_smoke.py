@@ -207,10 +207,10 @@ def test_live_size_check_with_the_real_gh() -> None:
     small = GitSource(
         transport="https", form="url", normalized="https://github.com/octocat/hello-world"
     )
-    asyncio.run(provider.check_first_clone(small))
+    asyncio.run(provider.check_first_clone(small, free_bytes=2 * 10**9))
     large = GitSource(transport="https", form="url", normalized="https://github.com/torvalds/linux")
     with pytest.raises(RepositoryTooLargeError, match=r"\(too_large\)"):
-        asyncio.run(provider.check_first_clone(large))
+        asyncio.run(provider.check_first_clone(large, free_bytes=2 * 10**9))
 
 
 def test_live_serve_refresh_and_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -24,7 +24,7 @@ import click
 from watchfiles import DefaultFilter
 
 from metabrowser.builtin_plugins.github.gh_status import GH_MINIMUM_LABEL
-from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_ENV
+from metabrowser.cache.free_space import FREE_SPACE_RESERVE_ENV, FREE_SPACE_RESERVE_MB
 from metabrowser.cli.exit_codes import (
     INTERRUPTED_EXIT_CODE,
     PRESENT_BLOCKED_EXIT_CODE,
@@ -341,9 +341,15 @@ def stated_values() -> list[Stated]:
         ),
         Stated(
             "docs/command-line.md",
-            "the first-clone override",
-            r"^\| `(\w+)` \| The size limit, in kilobytes, on a first clone",
-            (MAX_FIRST_CLONE_ENV,),
+            "the first-clone free-space reserve",
+            r"^\| `(\w+)` \| The free space, in megabytes, a first clone leaves",
+            (FREE_SPACE_RESERVE_ENV,),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the default first-clone free-space reserve",
+            r"a first clone leaves on the cache volume, (\d+) by default",
+            (str(FREE_SPACE_RESERVE_MB),),
         ),
         Stated(
             "docs/installation.md",

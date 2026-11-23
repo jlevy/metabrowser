@@ -20,12 +20,12 @@ from metabrowser.builtin_plugins.github.gh_status import (
     gh_below_minimum,
     gh_upgrade_fix,
 )
+from metabrowser.cache.free_space import FREE_SPACE_RESERVE_ENV, FREE_SPACE_RESERVE_MB
 from metabrowser.cli import doctor
 from metabrowser.cli.doctor import (
     CHECKOUT_PROJECT,
     CHECKOUT_VENV,
     DOCTOR_APP_ENV,
-    LOW_FREE_SPACE_BYTES,
     METAB_UPGRADE_COMMANDS,
     PIPX_METADATA,
     UV_RECEIPT,
@@ -34,7 +34,6 @@ from metabrowser.cli.doctor import (
     config_check,
     declares_this_project,
     doctor_checks,
-    low_free_space_bytes,
     meets_release,
     metab_check,
     metab_install,
@@ -374,44 +373,38 @@ def test_an_override_the_apps_servers_do_not_get_is_a_warning(
     assert config_check(app_path=None).state == "ok", "without an app there is nothing to differ"
 
 
-def test_low_free_space_on_the_caches_volume_is_a_warning(
+_RESERVE: int = FREE_SPACE_RESERVE_MB * 1_000_000
+
+
+def test_free_space_below_the_first_clone_reserve_is_a_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Below the reserve a first clone leaves free, every first clone is refused."""
+
     cache = tmp_path / "cache"
     cache.mkdir(mode=0o700)
     _storage(monkeypatch, tmp_path, METABROWSER_CACHE_DIR=str(cache))
-    monkeypatch.delenv("METABROWSER_MAX_FIRST_CLONE_KB", raising=False)
-    monkeypatch.setattr(doctor, "_free_bytes", lambda _directory: LOW_FREE_SPACE_BYTES - 1)
+    monkeypatch.delenv(FREE_SPACE_RESERVE_ENV, raising=False)
+    monkeypatch.setattr(doctor, "volume_free_bytes", lambda _directory: _RESERVE - 1)
     low = cache_check()
     assert low.state == "warning"
-    assert low.summary.startswith("the cache's volume has 1.5 GB free, less than the 1.5 GB")
-    monkeypatch.setattr(doctor, "_free_bytes", lambda _directory: LOW_FREE_SPACE_BYTES)
-    assert cache_check().state == "ok"
-
-
-def test_the_free_space_floor_holds_the_largest_first_clone_packed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A pack is 1.0 to 1.1 times GitHub's reported size (beside ``MAX_FIRST_CLONE_KB``),
-    and the floor follows the limit ``METABROWSER_MAX_FIRST_CLONE_KB`` sets."""
-
-    from metabrowser.builtin_plugins.github.provider import (
-        MAX_FIRST_CLONE_ENV,
-        MAX_FIRST_CLONE_KB,
+    assert low.summary == (
+        "the cache's volume has 1.0 GB free, less than the 1.0 GB a first clone leaves "
+        "free, so metab refuses every first clone"
     )
-
-    monkeypatch.delenv(MAX_FIRST_CLONE_ENV, raising=False)
-    assert MAX_FIRST_CLONE_KB * 1024 * 1.1 <= LOW_FREE_SPACE_BYTES + 1
-    assert low_free_space_bytes() == LOW_FREE_SPACE_BYTES
-    monkeypatch.setenv(MAX_FIRST_CLONE_ENV, "1000")
-    assert low_free_space_bytes() == int(1000 * 1024 * 1.1)
+    assert low.remedy is not None and FREE_SPACE_RESERVE_ENV in low.remedy.text
+    monkeypatch.setattr(doctor, "volume_free_bytes", lambda _directory: _RESERVE)
+    assert cache_check().state == "ok"
+    monkeypatch.setenv(FREE_SPACE_RESERVE_ENV, "0")
+    monkeypatch.setattr(doctor, "volume_free_bytes", lambda _directory: 0)
+    assert cache_check().state == "ok", "no reserve, so no volume refuses every clone"
 
 
 def test_a_missing_cache_directory_metab_cannot_create_is_a_problem(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # The host's free space is not what this test is about.
-    monkeypatch.setattr(doctor, "_free_bytes", lambda _directory: LOW_FREE_SPACE_BYTES)
+    monkeypatch.setattr(doctor, "volume_free_bytes", lambda _directory: _RESERVE)
     locked = tmp_path / "locked"
     locked.mkdir(mode=0o500)
     try:

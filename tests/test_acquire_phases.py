@@ -509,7 +509,7 @@ def test_a_provider_refusal_writes_nothing_and_runs_no_git(
     _allow_installed_git(monkeypatch)
     source = _source(tmp_path)
 
-    async def too_large(checked: GitSource) -> None:
+    async def too_large(checked: GitSource, *, home: Path) -> None:
         raise RepositoryTooLargeError(checked.normalized, detail="measured")
 
     async def no_git(*_args: object, **_kwargs: object) -> bytes:
@@ -529,7 +529,7 @@ def test_a_below_floor_git_is_refused_before_any_provider_check(
     def below_floor() -> tuple[int, int, int]:
         raise UnsupportedGitVersionError("git version 2.43.0", "2.43.7")
 
-    async def no_check(_source: GitSource) -> None:
+    async def no_check(_source: GitSource, *, home: Path) -> None:
         raise AssertionError("the provider check ran before the Git floor")
 
     monkeypatch.setattr(acquire_module, "require_acquisition_git", below_floor)

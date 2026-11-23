@@ -812,7 +812,7 @@ def test_a_released_home_is_a_cache_hit_after_the_migration_and_never_a_new_clon
     assert not first.git_dir.exists()
     assert cached_source(source, home) is None, "a read that cannot migrate is a miss"
 
-    async def no_provider_asked(_source: object) -> None:
+    async def no_provider_asked(_source: object, **_kwargs: object) -> None:
         raise AssertionError("a store that is cached must not be looked up at the provider")
 
     async def no_fetch(*_args: object, **_kwargs: object) -> object:
