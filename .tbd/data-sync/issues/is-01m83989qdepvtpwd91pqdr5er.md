@@ -3,18 +3,22 @@ type: is
 id: is-01m83989qdepvtpwd91pqdr5er
 title: "T3: A comparison's file-type tally route for the diff chooser's counts"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
+delegate: claude-code@spud10
 labels:
   - diff
 dependencies:
   - type: blocks
     target: is-01m8398zrcds3cgc9ebm47c9td
 parent_id: is-01m83968ry3rs287s3mgg0r93y
+hold: null
+hold_until: null
 created_at: 2026-11-23T04:05:02.298Z
-updated_at: 2026-11-23T04:06:01.463Z
+updated_at: 2026-11-23T05:40:04.370Z
+started_at: 2026-11-23T05:40:04.347Z
 ---
 The chooser lists only the types a change set has, with counts, as the Files tab's does
 from the rollup's tally (`extensions`, `canonical_extensions`, `type_families`,
