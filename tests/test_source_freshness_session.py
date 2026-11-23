@@ -656,6 +656,41 @@ def test_a_folders_row_names_its_store_of_the_origin_on_every_page() -> None:
         assert step["paint"]["offer"] is None and step.get("reloads", 0) == 0, step["step"]
 
 
+def test_a_folders_page_follows_its_checkouts_own_branch() -> None:
+    """A page on one of the checkout's own branches asks as often as its status says, and
+    goes with the branch when the reader's commit moved it, with a store and without."""
+
+    part = run_session("source-freshness-session.js", "checkout-branch")
+    by_name = {step["step"]: step for step in part["steps"]}
+    ask = 'POST /api/source/refresh {"for":"page"}'
+    opened = by_name["a page on the checkout's own branch asks where the branch is"]
+    assert opened["requests"] == ["GET /api/source/status", ask]
+    assert opened["timer"] == "ask"
+    unmoved = by_name["the branch is where it was: nothing repaints, and it asks again"]
+    assert (unmoved["requests"], unmoved["repaints"], unmoved["reloads"]) == ([ask], 0, 0)
+    followed = by_name["the reader committed on the branch; the page follows it"]
+    assert followed["requests"][0] == ask
+    assert followed["requests"][1].startswith('POST /api/source/pin {"ref":"refs/heads/trunk"')
+    assert (followed["reloads"], followed["paint"]["label"]) == (1, "Updating to trunk…")
+    # With no store nothing is refreshable, so there is no row, and the page asks all the same.
+    plain = by_name["with no store of an origin there is no row, and the page still asks"]
+    assert (plain["requests"], plain["timer"], plain["paint"]) == (
+        ["GET /api/source/status", ask],
+        "ask",
+        None,
+    )
+    refused = by_name["a follow the server refused says the branch moved, and why"]
+    assert (refused["reloads"], refused["paint"]["label"]) == (0, "trunk moved")
+    assert refused["paint"]["error"] == "Could not follow trunk to its new commit."
+    pressed = by_name["pressed, the page asks again and follows"]
+    assert len(pressed["requests"]) == 1 and pressed["requests"][0].startswith(
+        'POST /api/source/pin {"ref":"refs/heads/trunk"'
+    )
+    assert pressed["reloads"] == 1
+    hidden = by_name["a hidden page asks nothing"]
+    assert (hidden["requests"], hidden["timer"]) == ([], None)
+
+
 def test_the_session_runs_on_the_recording() -> None:
     transcript = run_session("source-freshness-session.js")
     asks = run_session("source-freshness-session.js", "asks")
