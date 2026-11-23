@@ -48,6 +48,12 @@ type MetabrowserRenderContext = {
    *  each new choice (null for every type); a pull request's page keeps it across tabs. */
   types?: Array<string> | null;
   onTypes?: (types: Array<string> | null) => void;
+  /** A diff narrowed to one fixed File type group, `type:<id>`, with no File type chooser;
+   *  every fold drawn open (*unfold*); and what it says when the group holds no file
+   *  (*emptyText*). A pull request's Docs tab is `type:docs`, unfolded. */
+  group?: string | null;
+  unfold?: boolean;
+  emptyText?: string;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;

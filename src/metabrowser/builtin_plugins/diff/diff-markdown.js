@@ -348,13 +348,15 @@ function blockRow(block, build) {
  * run is built only when it opens, so a long document mounts the blocks a reader sees
  * rather than all of them (review C of #349: at p90, 80% of blocks ended inside a fold).
  * A context block whose source says more never folds. Returns, for each heading id a
- * fold holds, the function that opens it.
+ * fold holds, the function that opens it. With *unfold* nothing folds: every block is
+ * drawn, for a page that shows its documents whole.
  * @param {DocumentFragment} fragment
  * @param {Block[]} blocks
  * @param {(html: string) => Node} build
+ * @param {boolean} [unfold]
  * @returns {Map<string, () => void>}
  */
-export function appendBlocks(fragment, blocks, build) {
+export function appendBlocks(fragment, blocks, build, unfold = false) {
   /** @type {Map<string, () => void>} */
   const folds = new Map();
   let index = 0;
@@ -369,7 +371,7 @@ export function appendBlocks(fragment, blocks, build) {
       index += 1;
     }
     const run = blocks.slice(first, index);
-    if (run.length <= 2 * CONTEXT_BLOCKS + 1) {
+    if (unfold || run.length <= 2 * CONTEXT_BLOCKS + 1) {
       fragment.append(...run.map((block) => blockRow(block, build)));
       continue;
     }
@@ -434,7 +436,8 @@ function stylesOnly(assets) {
  *
  * *holdMs* is how long the first screen's files wait for Rendered with Source hidden,
  * `LOADING_DELAY_MS` unless a page says otherwise. `firstScreen` settles once none of
- * them waits: each is drawn, Rendered or Source, or the wait is over. A page that keeps the
+ * them waits: each is drawn, Rendered or Source, or the wait is over. *unfold* draws every
+ * unchanged run open (`appendBlocks`). A page that keeps the
  * comparison out of sight until then shows its first screen at the heights it keeps.
  * @param {{
  *   load: (fileId: string, signal: AbortSignal) => Promise<unknown>,
@@ -447,6 +450,7 @@ function stylesOnly(assets) {
  *   now?: () => number,
  *   later?: (callback: () => void, ms: number) => unknown,
  *   cancel?: (handle: unknown) => void,
+ *   unfold?: boolean,
  *   holdMs?: number
  * }} deps
  */
@@ -723,8 +727,11 @@ export function createMarkdownViews(deps) {
       }
       const scratch = document.implementation.createHTMLDocument("");
       const template = document.createElement("template");
-      const folds = appendBlocks(content, projection.blocks, (html) =>
-        sanitizeBlock(html, inert, template, scratch, isTarget),
+      const folds = appendBlocks(
+        content,
+        projection.blocks,
+        (html) => sanitizeBlock(html, inert, template, scratch, isTarget),
+        deps.unfold === true,
       );
       settled = true;
       deps.mutate(() => {

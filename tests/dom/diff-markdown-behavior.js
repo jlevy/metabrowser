@@ -369,6 +369,19 @@ async function main() {
   details.listeners.get("toggle")();
   assert.equal(details.children.length, 5);
 
+  // Unfolded, as a pull request's Docs tab draws its documents, the same run is drawn
+  // whole: no fold, every block built, and nothing for a fragment link to open.
+  built.length = 0;
+  const whole = make("div");
+  const none = appendBlocks(whole, [0, 1, 2, 3, 4, 5, 6, 7].map(context), build, true);
+  assert.ok(!whole.children.some((child) => child.tagName === "DETAILS"), "an unfolded run");
+  assert.equal(whole.children.length, 8);
+  assert.deepEqual(
+    built,
+    [0, 1, 2, 3, 4, 5, 6, 7].map((n) => context(n).html),
+  );
+  assert.equal(none.size, 0);
+
   const calls = [];
   let assets = 0;
   let mutations = 0;

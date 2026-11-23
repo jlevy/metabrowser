@@ -45,6 +45,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Record<string, unknown>} change
  * @property {HTMLElement} body
  * @property {Set<string>} expandedFolds
+ * @property {boolean} unfold Whether every fold of the file opens as it is drawn, as a
+ *   pull request's Docs tab shows its documents whole (`mountDiffView`'s *unfold*).
  * @property {Map<string, {timer: number}>} foldTasks
  * @property {Record<string, unknown>} patch
  * @property {DiffViewApi} api
@@ -100,6 +102,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  *   summary is drawn on, or null where it could not be loaded.
  * @property {((path: string) => void) | null} openFile How the host opens one changed file
  *   at its own address, or null where a file has none in this diff.
+ * @property {boolean} unfold Whether folds open as they are drawn (*unfold*).
  */
 
 /**
@@ -579,6 +582,10 @@ function appendFoldedRows(section, rows, changedRunOf, renderRow, state, hunkInd
     }
     section.append(...run.slice(0, FOLD_VISIBLE).map(renderRow));
     const key = `${String(state.change.id)}:${hunkIndex}:${changedRun}`;
+    if (state.unfold) {
+      // Drawn open, its rows materialized in batches as a reader's opening does.
+      state.expandedFolds.add(key);
+    }
     const expanded = state.expandedFolds.has(key);
     foldSequence += 1;
     const group = el("div", `diff-fold-group${expanded ? "" : " diff-fold-collapsed"}`);
@@ -634,9 +641,10 @@ function renderSplitHunk(hunk, state, hunkIndex) {
  * @param {Record<string, unknown>} patch
  * @param {DiffViewApi} api
  * @param {HTMLElement} body
+ * @param {boolean} [unfold]
  * @returns {FileViewState}
  */
-export function createFileState(change, patch, api, body) {
+export function createFileState(change, patch, api, body, unfold = false) {
   const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
   return {
     api,
@@ -644,6 +652,7 @@ export function createFileState(change, patch, api, body) {
     change,
     expandedFolds: new Set(),
     foldTasks: new Map(),
+    unfold,
     patch,
     renderModel: measureProjection(
       api,
@@ -2492,7 +2501,7 @@ function spliceDeferred(file, loaded, view) {
     file.body.append(el("div", "diff-availability", "No content changes."));
     return "none";
   }
-  const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body);
+  const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body, view.unfold);
   if (!view.awaitingWidth) {
     renderFileBody(state, view.layout);
   }
@@ -3011,7 +3020,7 @@ function renderFileSection(change, patch, context, view, draw) {
     queueDeferredHydration(section, body, change, context.revision ?? "", view, held);
     return section;
   }
-  const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body);
+  const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body, view.unfold);
   view.files.push(state);
   if (!view.awaitingWidth) {
     renderFileBody(state, view.layout);
@@ -3164,7 +3173,8 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   openFile?: (path: string) => void,
  *   summaryManifest?: Record<string, unknown> | null,
  *   toolbarControl?: HTMLElement | null,
- *   emptyText?: string
+ *   emptyText?: string,
+ *   unfold?: boolean
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
@@ -3180,7 +3190,9 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   A diff narrowed to some file types (diff-type-filter.js) passes the whole comparison's
  *   manifest as *summaryManifest*, so its summary still describes the whole change set; its
  *   File type control as *toolbarControl*, which leads the layout control; and *emptyText*,
- *   what it says when it keeps no file.
+ *   what it says when it keeps no file. *unfold* draws every fold open, the rendered
+ *   view's unchanged runs and the text diff's long changed runs alike, for a page that
+ *   shows its files whole: a pull request's Docs tab.
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
@@ -3233,6 +3245,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     yielders: new Set(),
     changedFiles: options.changedFiles ?? null,
     openFile: options.openFile ?? null,
+    unfold: options.unfold === true,
   };
   view.hydration = createHydrationScheduler(hydrationHost(view));
   if (
@@ -3248,6 +3261,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         controls: api.filterControls,
         ...(options.markdownTargets === undefined ? {} : { isTarget: options.markdownTargets }),
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
+        unfold: options.unfold === true,
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;

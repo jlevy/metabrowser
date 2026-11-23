@@ -167,7 +167,8 @@ async function prefetchMarkdown(markdown, payload, signal) {
  * @param {string} key
  * @param {{signal?: AbortSignal}} [options]
  * @param {string} [file]
- * @param {Record<string, string>} [narrowing] `types=` or `view=types` (diff-type-filter.js).
+ * @param {Record<string, string>} [narrowing] `types=` or `view=types` (diff-type-filter.js),
+ *   or `group=`, a fixed File type group (`ctx.group`).
  */
 function fetchComparison(key, options, file, narrowing = {}) {
   const target = key.startsWith("/")
@@ -602,6 +603,12 @@ mb.registerView("diff", "diff", {
     // which is the whole point of the format.
     // A revision is a commit against its first parent; a comparison names both ends.
     const revision = ctx.comparison ? comparisonKey(ctx.comparison) : ctx.revision || "";
+    // A fixed File type group, `type:<id>`, which the host shows alone and the reader does
+    // not change: a pull request's Docs tab is its documents (`type:docs`). Such a diff
+    // has no File type chooser.
+    const group = revision && typeof ctx.group === "string" && ctx.group ? ctx.group : null;
+    /** @type {Record<string, string>} */
+    const narrowing = group === null ? {} : { group };
     const startedAt = Date.now();
     // Asked for now, so its request overlaps the diff's own instead of following it. Its
     // failure waits for the mount below, and may never reach it: a diff that fails first
@@ -612,12 +619,17 @@ mb.registerView("diff", "diff", {
     // The tree the Diff summary is drawn on, whose display rule the file bars show paths by.
     const summaryTree = changedFilesTree();
     // Asked for beside the comparison too, for a diff of more than one file.
-    const typeFilter = typeFilterModule(revision, ctx.summaryTotals);
+    const typeFilter = group === null ? typeFilterModule(revision, ctx.summaryTotals) : null;
     let payload;
     try {
       payload = revision
         ? await (ctx.raw === undefined
-            ? fetchComparison(revision, signal === undefined ? undefined : { signal })
+            ? fetchComparison(
+                revision,
+                signal === undefined ? undefined : { signal },
+                undefined,
+                narrowing,
+              )
             : ctx.raw)
         : await mb.fetchPluginData("diff", "document", { path: ctx.path || "" });
       if (signal?.aborted) {
@@ -713,6 +725,8 @@ mb.registerView("diff", "diff", {
       ...(ctx.summaryTotals === undefined ? {} : { summaryTotals: ctx.summaryTotals }),
       changedFiles,
       ...(typeof ctx.openFile === "function" ? { openFile: ctx.openFile } : {}),
+      ...(ctx.unfold === true ? { unfold: true } : {}),
+      ...(typeof ctx.emptyText === "string" ? { emptyText: ctx.emptyText } : {}),
       viewFile,
       ...(!rendered
         ? {}
