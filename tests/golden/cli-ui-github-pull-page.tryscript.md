@@ -1751,6 +1751,13 @@ $ node tests/dom/github-pull-page-second-session.js
     "no changed document: true",
     "one changed document: false",
     "no manifest: false"
+  ],
+  "docsOffered": [
+    "two documents: true",
+    "no document: false",
+    "no document listed of a cut-short list: null",
+    "no docs row: null",
+    "no counts: null"
   ]
 }
 ? 0

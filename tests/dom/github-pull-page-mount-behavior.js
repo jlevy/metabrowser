@@ -298,8 +298,13 @@ async function releasedFilesMounts(page, initial, diffView, errors) {
     let requested = 0;
     let requestSignal;
     if (phase === "comparison") {
-      window.metabrowser.fetchPluginData = (_plugin, hook, _params, options) => {
+      window.metabrowser.fetchPluginData = (_plugin, hook, params, options) => {
         assert.equal(hook, "pull-comparison");
+        if (params?.view === "types") {
+          // The page's own question whether Docs has anything (`askDocs`), apart from the
+          // diff's read this phase holds.
+          return Promise.resolve({ type_presets: [["docs", 1, 0]], truncated: false });
+        }
         requested += 1;
         requestSignal = options?.signal;
         requestSignal?.addEventListener("abort", () => fail(requestSignal.reason), { once: true });

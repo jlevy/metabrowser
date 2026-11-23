@@ -796,6 +796,22 @@ mb.registerView("diff", "diff", {
   prefetch: (comparison, signal) =>
     fetchComparison(comparisonKey(comparison), signal === undefined ? undefined : { signal }),
   /**
+   * A comparison's File type counts, the route's `view=types` answer at the address
+   * `prefetch` asks, for a page that decides what to offer by them: a pull request's page
+   * shows its Docs tab only where the comparison changes a document.
+   *
+   * @param {Comparison} comparison
+   * @param {AbortSignal} [signal]
+   * @returns {Promise<unknown>}
+   */
+  typeCounts: (comparison, signal) =>
+    fetchComparison(
+      comparisonKey(comparison),
+      signal === undefined ? undefined : { signal },
+      undefined,
+      { view: "types" },
+    ),
+  /**
    * The first screen's Markdown projections of a comparison a page shows, asked for while
    * the reader is still on another tab, for the comparison *raw* is the answer to. Nothing
    * for a comparison that names no rendered route. *signal* is the page's, so a page

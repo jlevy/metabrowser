@@ -1947,6 +1947,24 @@ async function main() {
     ["one changed document", { manifest: { files: [{ id: "f1" }] } }],
     ["no manifest", {}],
   ].map(([when, document_]) => `${when}: ${runtime.noFiles(document_)}`);
+  // Docs is offered where the comparison's File type counts (`view=types`) say a document
+  // changed; a list cut short that counts none, or an answer without the row, does not say.
+  const docsOffered = [
+    ["two documents", { type_presets: [["docs", 2, 0]], truncated: false }],
+    [
+      "no document",
+      {
+        type_presets: [
+          ["code", 3, 0],
+          ["docs", 0, 0],
+        ],
+        truncated: false,
+      },
+    ],
+    ["no document listed of a cut-short list", { type_presets: [["docs", 0, 0]], truncated: true }],
+    ["no docs row", { type_presets: [["code", 3, 0]], truncated: false }],
+    ["no counts", null],
+  ].map(([when, counts]) => `${when}: ${runtime.changesDocuments(counts)}`);
   const second = {
     leftOpen: leftOpenStory,
     probing: probingStory,
@@ -1960,6 +1978,7 @@ async function main() {
     pageRoutes,
     diffTabs,
     docsEmpty,
+    docsOffered,
   };
   const part = process.argv.indexOf("--part");
   const wanted = part === -1 ? "1" : process.argv[part + 1];

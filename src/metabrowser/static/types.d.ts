@@ -180,6 +180,19 @@ type MetabrowserViewSpec = {
     signal?: AbortSignal,
   ) => Promise<unknown>;
   /**
+   * A comparison's File type counts (the comparison route's `view=types` answer), at the
+   * address `prefetch` asks. The diff view has one.
+   */
+  typeCounts?: (
+    comparison: {
+      left: string;
+      right: string;
+      base_policy: "direct" | "merge_base";
+      route?: string;
+    },
+    signal?: AbortSignal,
+  ) => Promise<unknown>;
+  /**
    * The first screen's rendered Markdown of a comparison *raw* answers, asked for ahead of
    * the view, apart from `prefetch`, under the asking page's *signal*. The diff view has one;
    * a comparison that names no rendered route asks for nothing.
