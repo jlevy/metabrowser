@@ -3271,9 +3271,11 @@ async def api_rollup(request: Request) -> Response:
     clamps parameters to the ROLLUP_* settings bounds. `node` is null while the
     index cannot serve the path yet (cold start); the client renders that as a
     pending treemap and refreshes off `/api/events` activity. Totals always
-    cover the full subtree. Depth truncation is represented by `children: null`
-    without a rest bucket; node-budget truncation can retain emitted `children`
-    alongside a `rest` bucket for their omitted siblings.
+    cover the full subtree. `children: null`, without a rest bucket, means the
+    directory was not expanded: it is at `depth`, or the node budget, which
+    expands the heaviest folders first, did not reach it. A directory whose
+    children ran past `top` or the node budget keeps the emitted `children`
+    and a `rest` bucket for the omitted siblings.
     A Git pin answers from recursive blob names and sizes and omits mtime.
     """
 

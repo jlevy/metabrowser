@@ -293,45 +293,166 @@ def test_rollup_mtime_stays_in_the_filesystem_key_order() -> None:
 def test_node_budget_expands_the_heaviest_directory_first() -> None:
     """A wide, light folder must not spend the budget a deep, heavy one needs.
 
-    Level by level, the budget went to ``wide``'s thirty one-file folders and ``deep/a``
+    Level by level, the budget went to ``wide``'s thirty one-file folders and ``zdeep/a``
     came back unexpanded, though it holds most of the files. Heaviest first, the chain
-    down to ``deep/a/b`` expands and its files are emitted.
+    down to ``zdeep/a/b`` expands and its files are emitted. The heavy branch sorts after
+    the light one, so expanding in path order fails here too.
     """
 
-    entries: dict[str, _RollupProbe] = {
-        "": _RollupProbe("", "", "root", "dir", "", 0, 1, False, 130),
-        "wide": _RollupProbe("wide", "", "wide", "dir", "", 0, 1, False, 30),
-        "deep": _RollupProbe("deep", "", "deep", "dir", "", 0, 1, False, 100),
-        "deep/a": _RollupProbe("deep/a", "deep", "a", "dir", "", 0, 1, False, 100),
-        "deep/a/b": _RollupProbe("deep/a/b", "deep/a", "b", "dir", "", 0, 1, False, 100),
-    }
-    for i in range(30):
-        folder = f"wide/s{i:02d}"
-        entries[folder] = _RollupProbe(folder, "wide", f"s{i:02d}", "dir", "", 0, 1, False, 1)
-        entries[f"{folder}/x.py"] = _RollupProbe(
-            f"{folder}/x.py", folder, "x.py", "file", ".py", 10, 1, False, None
-        )
-    for i in range(100):
-        path = f"deep/a/b/f{i:03d}.py"
-        entries[path] = _RollupProbe(
-            path, "deep/a/b", f"f{i:03d}.py", "file", ".py", 10, 1, False, None
-        )
+    entries = _probes(
+        _dir(""),
+        _dir("wide"),
+        _dir("zdeep"),
+        _dir("zdeep/a"),
+        _dir("zdeep/a/b"),
+        *(_dir(f"wide/s{i:02d}") for i in range(30)),
+        *(_file(f"wide/s{i:02d}/x.py", 10) for i in range(30)),
+        *(_file(f"zdeep/a/b/f{i:03d}.py", 10) for i in range(100)),
+    )
 
+    root = _rollup_root(entries, depth=6, top=50, max_nodes=40)
+    nodes = _nodes_by_path(root)
+    assert nodes["zdeep/a"]["children"] is not None
+    assert nodes["zdeep/a/b"]["children"], "the heaviest chain was not expanded"
+    assert len(nodes) <= 40
+
+
+def test_node_budget_weighs_unignored_files_beside_all_files() -> None:
+    """One response serves both Show ignored settings.
+
+    ``build`` is ignored and holds most of all files; ``src`` holds most of the unignored
+    ones. Both expand before ``docs``, which is light by either measure. Weighing all
+    files alone leaves ``src`` unexpanded; weighing unignored files alone leaves ``build``.
+    """
+
+    entries = _probes(
+        _dir(""),
+        _dir("build", ignored=True),
+        _dir("build/a"),
+        _dir("build/b"),
+        _dir("src"),
+        _dir("src/lib"),
+        _dir("docs"),
+        _dir("docs/guide"),
+        *(_file(f"build/a/f{i:02d}.py") for i in range(50)),
+        *(_file(f"build/b/f{i:02d}.py") for i in range(40)),
+        *(_file(f"src/lib/f{i}.py") for i in range(8)),
+        *(_file(f"docs/guide/f{i}.md") for i in range(2)),
+    )
+
+    nodes = _nodes_by_path(_rollup_root(entries, depth=12, top=50, max_nodes=15))
+    assert [child["name"] for child in nodes["build"]["children"] or []] == ["a", "b"]
+    assert len(nodes.get("src/lib", {}).get("children") or []) == 8
+    assert nodes["build/a"]["children"] is None
+    assert nodes["docs"]["children"] is None
+
+
+def test_node_budget_weighs_bytes_beside_files() -> None:
+    """A folder heavy by bytes and one heavy by files both expand before a light one.
+
+    ``assets`` holds one large file, ``tests`` many small ones, and ``misc`` is light by
+    either measure, though it outweighs ``tests`` by bytes and ``assets`` by files.
+    """
+
+    entries = _probes(
+        _dir(""),
+        _dir("assets"),
+        _dir("assets/img"),
+        _dir("tests"),
+        _dir("tests/unit"),
+        _dir("misc"),
+        _dir("misc/x"),
+        _file("assets/img/hero.png", 9_000),
+        *(_file(f"tests/unit/t{i}.py", 1) for i in range(8)),
+        *(_file(f"misc/x/m{i}.bin", 500) for i in range(2)),
+    )
+
+    nodes = _nodes_by_path(_rollup_root(entries, depth=12, top=50, max_nodes=15))
+    assert len(nodes["assets/img"]["children"] or []) == 1
+    assert len(nodes.get("tests/unit", {}).get("children") or []) == 8
+    assert nodes["misc"]["children"] is None
+
+
+def test_node_budget_breaks_an_exact_weight_tie_by_path() -> None:
+    """Equal weights at one level expand in path order, whatever order they were found.
+
+    ``q`` outweighs ``p``, so ``q/aa`` is found before ``p/zz``; the two weigh exactly the
+    same and the budget expands one, so path order picks ``p/zz``. The emitted tree is the
+    same whatever order the entries arrive in.
+    """
+
+    probes = (
+        _dir(""),
+        _dir("p"),
+        _dir("p/zz"),
+        _dir("q"),
+        _dir("q/aa"),
+        _file("q/f1.py"),
+        _file("q/f2.py"),
+        *(_file(f"p/zz/f{i}.py") for i in range(5)),
+        *(_file(f"q/aa/f{i}.py") for i in range(5)),
+    )
+
+    root = _rollup_root(_probes(*probes), depth=12, top=50, max_nodes=12)
+    nodes = _nodes_by_path(root)
+    assert len(nodes["p/zz"]["children"] or []) == 5
+    assert nodes["q/aa"]["children"] is None
+    assert _rollup_root(_probes(*reversed(probes)), depth=12, top=50, max_nodes=12) == root
+
+
+def test_zero_weight_tree_expands_level_by_level() -> None:
+    """With no files counted yet every weight is zero, and expansion falls back to levels.
+
+    Path order would expand ``a/x`` before ``b``; level order, which keeps truncation
+    honest (``inventory_engine/contract.py``), expands every top-level folder it can first.
+    """
+
+    entries = _probes(
+        _dir(""),
+        *(_dir(name) for name in ("a", "b", "c")),
+        *(_dir(f"{name}/x") for name in ("a", "b", "c")),
+        *(_dir(f"{name}/x/y") for name in ("a", "b", "c")),
+    )
+
+    nodes = _nodes_by_path(_rollup_root(entries, depth=12, top=10, max_nodes=6))
+    assert [child["path"] for child in nodes["a"]["children"] or []] == ["a/x"]
+    assert [child["path"] for child in nodes["b"]["children"] or []] == ["b/x"]
+    assert nodes["c"]["children"] is None
+    assert nodes["a/x"]["children"] is None
+
+
+def _dir(path: str, *, ignored: bool = False) -> _RollupProbe:
+    parent, _, name = path.rpartition("/")
+    return _RollupProbe(path, parent, name or "root", "dir", "", 0, 1, ignored, 1)
+
+
+def _file(path: str, size: int = 1, *, ignored: bool = False) -> _RollupProbe:
+    parent, _, name = path.rpartition("/")
+    dot = name.rfind(".")
+    ext = name[dot:] if dot > 0 else ""
+    return _RollupProbe(path, parent, name, "file", ext, size, 1, ignored, None)
+
+
+def _probes(*probes: _RollupProbe) -> dict[str, _RollupProbe]:
+    return {probe.path: probe for probe in probes}
+
+
+def _rollup_root(
+    entries: dict[str, _RollupProbe], *, depth: int, top: int, max_nodes: int
+) -> dict[str, Any]:
     result = build_rollup(
         entries,
         group_rollup_children(entries),
         "",
-        RollupOptions(depth=6, top=50, ext_top=0, max_nodes=40),
+        RollupOptions(depth=depth, top=top, ext_top=0, max_nodes=max_nodes),
         False,
     )
     assert result is not None
-    root = cast(dict[str, Any], result["node"])
-    root_children = {child["name"]: child for child in root["children"]}
-    a = root_children["deep"]["children"][0]
-    assert a["name"] == "a" and a["children"] is not None
-    b = a["children"][0]
-    assert b["name"] == "b" and b["children"], "the heaviest chain was not expanded"
-    assert sum(1 for _ in _walk(root)) <= 40
+    return cast(dict[str, Any], result["node"])
+
+
+def _nodes_by_path(root: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {node["path"]: node for node in _walk(root)}
 
 
 def _walk(node: dict[str, Any]) -> Iterator[dict[str, Any]]:

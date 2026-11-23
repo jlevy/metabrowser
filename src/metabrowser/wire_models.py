@@ -231,8 +231,10 @@ class RollupDirNode(TypedDict):
     Unlike tree nodes, aggregates are always numeric — partial scans
     are flagged by ``state: "pending"`` instead of null tallies, so the
     treemap can lay out whatever is indexed so far. ``children`` is
-    required and ``None`` past the emission depth (totals stay
-    full-subtree); ``rest`` appears only when children were capped.
+    required and ``None`` when the directory was not expanded: at
+    ``depth``, or not reached by the node budget, which expands the
+    heaviest folders first (totals stay full-subtree). ``rest``
+    appears only when children were capped.
     """
 
     name: str

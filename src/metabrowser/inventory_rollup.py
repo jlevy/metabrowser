@@ -353,7 +353,12 @@ def _emit_bounded_tree(
     ignored setting. Spending the node budget heaviest first gives it to the directories a
     treemap has room to draw. Level by level, a wide shallow tree (a ``node_modules``) spent
     it all on tiny entries a few levels down, and large folders elsewhere came back
-    unexpanded. Ties break by path, so the emitted tree is deterministic.
+    unexpanded.
+
+    Equal weights break by level, then path. Level first, so a tree whose weights are all
+    zero (directories listed, no files counted yet) still expands level by level, which
+    keeps truncation honest as ``inventory_engine/contract.py`` explains; path last, since
+    paths are unique, makes the order total and the emitted tree deterministic.
     """
 
     root_aggregate = aggregates[root_entry.path]
@@ -368,13 +373,13 @@ def _emit_bounded_tree(
 
     root_node = _directory_node(root_entry, root_aggregate, root_ignored, options)
     remaining_nodes = max(0, options.max_nodes - 1)
-    pending: list[tuple[float, str, int, RollupEntry, dict[str, Any], int, bool]] = []
+    pending: list[tuple[float, int, str, int, RollupEntry, dict[str, Any], bool]] = []
     sequence = 0
     heapq.heappush(
-        pending, (-1.0, root_entry.path, sequence, root_entry, root_node, 0, root_ignored)
+        pending, (-1.0, 0, root_entry.path, sequence, root_entry, root_node, root_ignored)
     )
     while pending:
-        _, _, _, entry, node, level, ignored = heapq.heappop(pending)
+        _, level, _, _, entry, node, ignored = heapq.heappop(pending)
         if level >= options.depth or remaining_nodes <= 0:
             node["children"] = None
             continue
@@ -400,11 +405,11 @@ def _emit_bounded_tree(
                     pending,
                     (
                         -weight(child_aggregate),
+                        level + 1,
                         child.path,
                         sequence,
                         child,
                         child_node,
-                        level + 1,
                         child_ignored,
                     ),
                 )
