@@ -3,18 +3,22 @@ type: is
 id: is-01m8398hsz2wtpdd8ybjpczec2
 title: "T4: Expose the File type menu builders through window.metabrowser"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
+delegate: claude-code@spud10
 labels:
   - diff
 dependencies:
   - type: blocks
     target: is-01m8398zrcds3cgc9ebm47c9td
 parent_id: is-01m83968ry3rs287s3mgg0r93y
+hold: null
+hold_until: null
 created_at: 2026-11-23T04:05:10.589Z
-updated_at: 2026-11-23T04:06:01.566Z
+updated_at: 2026-11-23T06:07:56.785Z
+started_at: 2026-11-23T06:07:56.784Z
 ---
 The Files tab builds the chooser's rows in private `app.js` globals (`filterTypeOptions`,
 `filterTypePresets`, `filterTypeFamilies`, `filterTypePresetSections`, reading
