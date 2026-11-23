@@ -281,7 +281,6 @@ def test_jsonc_parses_as_the_tree_view_parses_it() -> None:
         (b"a: 1\na: 2\n", b"a: 1\n", "yaml"),
         (b'{"admin": false}', b'{"admin": true, "admin": false}', "json"),
         (b'{"a": 1,}', b'{"a": 1, "a": 2,}', "json"),
-        (b"a: 1\n", b"a: 1\n", "yaml"),
     ],
     ids=[
         "malformed-yaml",
@@ -289,7 +288,6 @@ def test_jsonc_parses_as_the_tree_view_parses_it() -> None:
         "yaml-duplicate-key",
         "json-duplicate-key",
         "jsonc-duplicate-key",
-        "same-bytes",
     ],
 )
 def test_a_side_the_tree_view_would_not_draw_is_unsupported(
@@ -301,6 +299,19 @@ def test_a_side_the_tree_view_would_not_draw_is_unsupported(
         "status": "unsupported",
         "root": [],
         "source_only": False,
+    }
+
+
+def test_a_pair_of_the_same_bytes_says_its_content_did_not_change() -> None:
+    """A rename or a mode change has nothing to draw, and the page says why."""
+
+    answer = project_structured_diff(old=b"a: 1\n", new=b"a: 1\n", fmt="yaml")
+    assert answer == {
+        "version": "structured-diff-v1",
+        "status": "unsupported",
+        "root": [],
+        "source_only": False,
+        "reason": "no_changes",
     }
 
 

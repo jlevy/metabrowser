@@ -228,7 +228,7 @@ try {
   phase("conversation");
 
   // Checks: its summary and each check are the main view's secondary text.
-  await click("#preview-pane .tab-bar .tab-btn:nth-child(3)");
+  await click("#preview-pane .tab-bar .tab-btn[href$='/checks']");
   await waitFor("document.querySelector('.github-pull-checks li') !== null");
   const checksTab = "a pull request's Checks";
   await role(checksTab, "reading text", ".github-pull-checks li");

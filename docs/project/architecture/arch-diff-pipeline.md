@@ -133,6 +133,25 @@ A pull request’s first answer hydrates fewer, `INITIAL_PULL_FILES` in
 what one run hydrates: one file past it is `too_large`, and a file that would take a run
 past it is `deferred`. Each constant’s comment records the measurement that set it.
 
+**Narrowing** keeps part of the listed manifest, before the hydration bound applies.
+`&file=` keeps one path, for a deferred file’s own request.
+`&types=` keeps the changed files of some file types, in the Files tab’s File type
+vocabulary (`tree_filter.parse_types`), matched by `file_type_match.py`, the rule the
+Files tree on a revision uses.
+A change matches when either of its sides does, so a rename from `.txt` to `.md` is of
+both. The bound then counts kept files, the totals are the kept files’, and `truncated`
+still says the listing stopped at its own bound.
+A narrowed answer is cached apart from the whole one, whose key and tag are unchanged.
+`&view=types` answers the comparison’s File type counts instead of a document, for the
+diff view’s File type menu: the rows the Files tab’s menu reads, over every listed
+change whatever `types` and `file` say, counted by `file_type_match.type_tally`, which
+the Files tree on a revision counts with too.
+`cli-api-diff-type-filter.tryscript.md` pins the answers.
+In the browser, `builtin_plugins/diff/diff-type-filter.js` keeps the whole comparison
+and mounts each choice’s `types=` answer in its place, so going back to every type, or a
+jump to a file the choice hides, asks for nothing; a served folder’s comparison is not
+cached, so there each choice reruns the listing (bead mb-no6c records the cost).
+
 **In the page**, `builtin_plugins/diff/diff-view.js` keeps every file’s bar in the page
 and draws rows only near the viewport:
 
@@ -233,10 +252,15 @@ hardening. `tests/test_markdown_diff_projection.py` checks the joined blocks aga
 KPress’s own render.
 Changed words are marked by a bounded word diff.
 
-- **Fallback:** a side with raw HTML other than comments, with footnotes, or past the
-  projection’s budgets (`MARKDOWN_DIFF_MAX_BYTES` and the bounds beside it, each with
-  its measurement) is refused, and the file shows Source.
-  The projection renders with math and diagrams off and without code highlighting.
+- **Fallback:** a side with raw HTML other than comments, a task list, footnotes, or
+  nesting past what MarkdownIt keeps is refused with that `reason`, and the file shows
+  Source with its Rendered chip unavailable and saying why.
+  The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement, bound only a
+  projection in a thread, which nothing can stop; past them the pair goes to the
+  Markdown child, whose deadline bounds it (`markdown_projection_worker.py`), and the
+  pull request route reads a pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
+  `builtin_plugins/github/pull_rendered_diff.py` (mb-rm40). The projection renders with
+  math and diagrams off and without code highlighting.
 - **Hidden signature:** whatever a block’s source says that its render does not show,
   such as a link destination, a title, alt text, or a fence’s info string.
   A changed block whose hidden signature differs is flagged `source_only`, as is a file

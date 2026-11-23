@@ -460,12 +460,15 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
 
     # The diff's toolbar draws no rule under itself: the first card's border, the cards' gap
     # below it, is the line, on a patch, where the toolbar leads with the Diff summary, and
-    # on a commit's page, where it holds the layout control alone (mb-a073). Before, both
-    # drew a 1px rule 12 px above the card's.
+    # on a commit's page, where it holds the File type control, for a commit of more than
+    # one file (mb-axjt), and the layout control (mb-a073). Before, both drew a 1px rule
+    # 12 px above the card's.
     patch = measured["nested"]["collapsed"]["chrome"]
     commit_page = measured["commit"]
     assert patch["toolbar"]["holds"] == ["diff-summary", "diff-layout-control"], patch
-    assert commit_page["toolbar"]["holds"] == ["diff-layout-control"], commit_page
+    assert commit_page["toolbar"]["holds"] == ["diff-type-control", "diff-layout-control"], (
+        commit_page
+    )
     broken = _toolbar_draws_no_rule(patch["toolbar"], "patch") + _toolbar_draws_no_rule(
         commit_page["toolbar"], "commit"
     )

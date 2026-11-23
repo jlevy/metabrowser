@@ -31,6 +31,7 @@ from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from html import escape
 from html.parser import HTMLParser
+from math import inf
 from typing import Any, Final, Literal, NotRequired, TypedDict, cast
 from urllib.parse import unquote
 
@@ -171,9 +172,20 @@ class FrontmatterDiff(TypedDict):
     entries: list[FrontmatterDiffEntry]
 
 
+# Why a projection refuses, where that says more than its status: the page tells the
+# reader in each one's own sentence (`REFUSALS` in builtin_plugins/diff/diff-markdown.js).
+# ``no_changes`` is the route's, for a file whose content did not change, and ``deadline``
+# the worker's, for a projection it stopped.
+type MarkdownRefusal = Literal[
+    "raw_html", "task_list", "footnotes", "nesting", "deadline", "no_changes"
+]
+
+
 class MarkdownDiffProjection(TypedDict):
     version: Literal["markdown-diff-v1"]
     status: Literal["ready", "unsupported", "too_large"]
+    # Present on a refusal whose cause the page can name.
+    reason: NotRequired[MarkdownRefusal]
     blocks: list[MarkdownDiffBlock]
     source_only: bool
     # Present when either side shows front matter.
@@ -199,12 +211,48 @@ class PreparedMarkdownDiff:
     references: tuple[LocalReference, ...]
 
 
-class _Unsupported(ValueError):
+class _Refused(ValueError):
+    """A projection that answers no blocks, and the cause the page can name, if any."""
+
+    def __init__(self, message: str, reason: MarkdownRefusal | None = None) -> None:
+        super().__init__(message)
+        self.reason: MarkdownRefusal | None = reason
+
+
+class _Unsupported(_Refused):
     """The source patch and render could not be mapped with confidence."""
 
 
-class _OverBudget(ValueError):
+class _OverBudget(_Refused):
     """The projection would exceed its work budget."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Limits:
+    """What one projection's input may hold.
+
+    The budgets beside the constants above bound a projection nothing can stop: one in a
+    thread, on the server's interpreter. A projection that can be stopped, the Markdown
+    child's, has none of them, since its deadline bounds it whatever it holds
+    (``_PROJECTION_TIMEOUT_S`` in ``markdown_projection_worker.py``; "Stop what no
+    estimate bounds" in docs/large-content-rendering.md). The nesting limit holds for
+    both: past it MarkdownIt drops the rest of a block, and no deadline restores it.
+    """
+
+    input_bytes: float
+    link_openers: float
+    container_lines: float
+    tokens: float
+    nodes: float
+
+
+def _limits(stoppable: bool) -> _Limits:
+    if stoppable:
+        return _Limits(inf, inf, inf, inf, inf)
+    # Read at each call, so a test that lowers a budget sees it applied.
+    return _Limits(
+        MARKDOWN_DIFF_MAX_BYTES, _MAX_LINK_OPENERS, _MAX_CONTAINER_LINES, _MAX_TOKENS, _MAX_NODES
+    )
 
 
 @dataclass(slots=True)
@@ -217,7 +265,7 @@ class _Element:
 class _Html(HTMLParser):
     """Read the small already hardened HTML subset without repairing its structure."""
 
-    def __init__(self, html: str, budget: int) -> None:
+    def __init__(self, html: str, budget: float) -> None:
         super().__init__()
         self.root = _Element("")
         self.stack = [self.root]
@@ -230,8 +278,10 @@ class _Html(HTMLParser):
 
     def _count(self) -> None:
         self.nodes += 1
-        if self.nodes > self.budget or len(self.stack) > _MAX_NESTING:
+        if self.nodes > self.budget:
             raise _OverBudget("render tree")
+        if len(self.stack) > _MAX_NESTING:
+            raise _OverBudget("render tree nesting", "nesting")
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self._count()
@@ -538,7 +588,12 @@ class _Side:
     frontmatter: str | None = None
 
 
-def _parse(text: str) -> _Side:
+# The checkbox KPress's task list plugin writes for `- [ ]`: raw HTML to MarkdownIt, and
+# a state the inert render drops, so a ticked box would show as nothing changed.
+_TASK_CHECKBOX = re.compile(r'<input class="task-list-item-checkbox"[^>]*>')
+
+
+def _parse(text: str, token_budget: float = inf) -> _Side:
     offset = 0
     source = text
     frontmatter = None
@@ -550,26 +605,28 @@ def _parse(text: str) -> _Side:
         raise _Unsupported("source contains the block separator")
     env: dict[str, object] = {}
     tokens = _KPRESS.parse(source, env)
-    if sum(1 + len(token.children or ()) for token in tokens) > _MAX_TOKENS:
+    if sum(1 + len(token.children or ()) for token in tokens) > token_budget:
         raise _OverBudget("Markdown tokens")
     if any(
         member.level >= _MAX_NESTING - 1
         for token in tokens
         for member in (token, *(token.children or ()))
     ):
-        raise _OverBudget("Markdown nesting")
+        raise _OverBudget("Markdown nesting", "nesting")
     # A standalone image's paragraph renders as a figure, which the hardener unwraps.
     _mark_standalone_image_figures(tokens)
     elements = 0
     for token in tokens:
         for member in (token, *(token.children or ())):
             if member.type.startswith("footnote"):
-                raise _Unsupported("footnotes render away from their source")
+                raise _Unsupported("footnotes render away from their source", "footnotes")
             # Raw markup is outside the versioned Markdown block contract.
             if member.type in {"html_block", "html_inline"} and not _COMMENT.fullmatch(
                 member.content.strip()
             ):
-                raise _Unsupported("raw HTML has no reliable Markdown projection")
+                if _TASK_CHECKBOX.fullmatch(member.content):
+                    raise _Unsupported("a task list's checkbox has no projection", "task_list")
+                raise _Unsupported("raw HTML has no reliable Markdown projection", "raw_html")
             if (
                 member.nesting == 1
                 and not member.hidden
@@ -583,7 +640,7 @@ def _parse(text: str) -> _Side:
     return _Side(source, offset, tokens, _slices(tokens, 0, len(tokens), 0), elements, frontmatter)
 
 
-def _render(side: _Side, budget: int) -> tuple[list[_Block], int]:
+def _render(side: _Side, budget: float) -> tuple[list[_Block], int]:
     if side.elements > budget:
         raise _OverBudget("Markdown elements")
     tokens = side.tokens
@@ -1085,6 +1142,8 @@ class _Projector:
     nodes: int
     # Labels whose links point somewhere new anywhere in the document (see _rebound).
     rebound: frozenset[str] = frozenset()
+    # The nodes the answer may hold (`_Limits.nodes`), which a word diff's marks add to.
+    node_budget: float = inf
     # The inline word diffs' quadratic work so far, against _MAX_INLINE_WORK.
     work: int = 0
     # The alignments' word comparisons so far, against _MAX_PAIR_WORK.
@@ -1122,7 +1181,7 @@ class _Projector:
         )
 
     def spend(self, nodes: int) -> bool:
-        if self.nodes + nodes > _MAX_NODES:
+        if self.nodes + nodes > self.node_budget:
             return False
         self.nodes += nodes
         return True
@@ -1443,14 +1502,18 @@ def _frontmatter_diff(old: str | None, new: str | None) -> _FrontmatterChange:
 
 
 def _project(
-    old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
+    old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str, limits: _Limits
 ) -> PreparedMarkdownDiff:
     before, after = old or b"", new or b""
-    if len(before) + len(after) > MARKDOWN_DIFF_MAX_BYTES:
+    if len(before) + len(after) > limits.input_bytes:
         raise _OverBudget("Markdown input bytes")
-    if max(before.count(b"["), after.count(b"[")) > _MAX_LINK_OPENERS:
+    if max(before.count(b"["), after.count(b"[")) > limits.link_openers:
         raise _OverBudget("Markdown link-label work")
-    if max(len(_CONTAINER_LINE.findall(data)) for data in (before, after)) > _MAX_CONTAINER_LINES:
+    if (
+        limits.container_lines != inf
+        and max(len(_CONTAINER_LINE.findall(data)) for data in (before, after))
+        > limits.container_lines
+    ):
         raise _OverBudget("Markdown container lines")
     old_lines, new_lines = _lines(old), _lines(new)
     if patch.truncated or any(
@@ -1458,13 +1521,14 @@ def _project(
     ):
         raise _Unsupported("unmapped Markdown source")
     unchanged, removed, added = _correspondence(old_lines, new_lines, patch)
-    old_side, new_side = _parse(before.decode()), _parse(after.decode())
+    old_side = _parse(before.decode(), limits.tokens)
+    new_side = _parse(after.decode(), limits.tokens)
     shown = _frontmatter_diff(old_side.frontmatter, new_side.frontmatter)
     frontmatter = shown.diff
-    if old_side.elements + new_side.elements > _MAX_NODES:
+    if old_side.elements + new_side.elements > limits.nodes:
         raise _OverBudget("combined Markdown elements")
-    old_blocks, old_nodes = _render(old_side, _MAX_NODES - new_side.elements)
-    new_blocks, new_nodes = _render(new_side, _MAX_NODES - old_nodes)
+    old_blocks, old_nodes = _render(old_side, limits.nodes - new_side.elements)
+    new_blocks, new_nodes = _render(new_side, limits.nodes - old_nodes)
     projector = _Projector(
         old_lines,
         new_lines,
@@ -1475,6 +1539,7 @@ def _project(
         _namespace_ids(new_blocks, namespace, "new"),
         old_nodes + new_nodes,
         _rebound(old_blocks, new_blocks),
+        limits.nodes,
     )
     projector.walk(old_blocks, new_blocks)
     projector.flag_moves()
@@ -1515,28 +1580,44 @@ def _project(
     return PreparedMarkdownDiff(projection, tuple(projector.references))
 
 
-def unavailable_markdown_diff(status: Literal["unsupported", "too_large"]) -> PreparedMarkdownDiff:
-    """A projection that refuses, with no partial HTML."""
+def unavailable_markdown_diff(
+    status: Literal["unsupported", "too_large"], reason: MarkdownRefusal | None = None
+) -> PreparedMarkdownDiff:
+    """A projection that refuses, with no partial HTML, and *reason* where one is known."""
 
-    return PreparedMarkdownDiff(
-        {"version": MARKDOWN_DIFF_VERSION, "status": status, "blocks": [], "source_only": False},
-        (),
-    )
+    projection: MarkdownDiffProjection = {
+        "version": MARKDOWN_DIFF_VERSION,
+        "status": status,
+        "blocks": [],
+        "source_only": False,
+    }
+    if reason is not None:
+        projection["reason"] = reason
+    return PreparedMarkdownDiff(projection, ())
 
 
 def prepare_markdown_diff(
-    *, old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
+    *,
+    old: bytes | None,
+    new: bytes | None,
+    patch: FilePatch,
+    namespace: str,
+    stoppable: bool = False,
 ) -> PreparedMarkdownDiff:
     """The projection with its live local destinations still unbound.
 
     It holds only plain data, so a worker process can compute it and the server bind it.
+    *stoppable* says the caller stops this run at a deadline, as the Markdown child's
+    server does, so the input budgets of a run nothing stops do not apply (:class:`_Limits`).
     """
 
     try:
-        return _project(old, new, patch, namespace)
-    except _OverBudget:
-        return unavailable_markdown_diff("too_large")
-    except (UnicodeError, _Unsupported):
+        return _project(old, new, patch, namespace, _limits(stoppable))
+    except _OverBudget as refused:
+        return unavailable_markdown_diff("too_large", refused.reason)
+    except _Unsupported as refused:
+        return unavailable_markdown_diff("unsupported", refused.reason)
+    except UnicodeError:
         return unavailable_markdown_diff("unsupported")
 
 
@@ -1572,6 +1653,8 @@ def bind_markdown_diff(
     }
     if "frontmatter" in projection:
         answer["frontmatter"] = projection["frontmatter"]
+    if "reason" in projection:
+        answer["reason"] = projection["reason"]
     return answer
 
 
