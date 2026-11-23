@@ -428,6 +428,33 @@ class _Limits:
     (``_PROJECTION_TIMEOUT_S`` in ``markdown_projection_worker.py``; "Stop what no
     estimate bounds" in docs/large-content-rendering.md). The nesting limit holds for
     both: past it MarkdownIt drops the rest of a block, and no deadline restores it.
+
+    *raw_html* says a side may hold raw HTML that renders, which only the child's may: no
+    count over the input bounds what the sanitizer makes of it. Its HTML parser rebuilds
+    each formatting element left open at every later block, as HTML5 says, so one line
+    of ``n`` distinct ``<b a=i>`` then ``m`` ``<div>x</div>`` renders ``n * m`` elements.
+    Measured 2026-11-23 on an Apple M1 Pro, Python 3.14.7, KPress 0.3.9 (nh3), at a load
+    average of 220 to 340, each size in its own process, on a thread before this bound:
+
+    =========  ============  =========================  =========
+    Bytes      ``n * m``     Time (nh3, then harden)    Peak RSS
+    =========  ============  =========================  =========
+    7,987      151,267       3.9 s (0.12 s, 3.0 s)      128 MB
+    11,989     338,142       10.5 s (0.88 s, 8.5 s)     189 MB
+    15,988     598,928       20.4 s (2.5 s, 16.1 s)     280 MB
+    23,988     1,308,378     59.5 s (12.8 s, 45.5 s)    459 MB
+    =========  ============  =========================  =========
+
+    nh3 alone took 1,281 MB and 40 s on 47,988 bytes (5 million rebuilt), and a side of
+    48 KiB of ``<``, the slowest input inside every budget without raw HTML, took 3.1 to
+    7.2 s with 75 MB in the same runs. Markdown with no raw HTML renders balanced
+    elements, which the parser rebuilds none of, so for it the budgets above are the
+    bound. A side that holds raw HTML is refused on a thread with a budget's refusal,
+    which names no cause, so the server asks the child for the pair (``past_a_thread``
+    in ``markdown_projection_worker.py``). The child, as when it renders the same file
+    for the Document view, is bounded by its deadline in time only: stopped 10 s after
+    the call, 47,988 bytes had reached 1,295 MB, and 2,000 elements left open then
+    20,000 blocks (258,902 bytes) 1,016 MB (mb-zrng).
     """
 
     input_bytes: float
@@ -435,14 +462,20 @@ class _Limits:
     container_lines: float
     tokens: float
     nodes: float
+    raw_html: bool
 
 
 def _limits(stoppable: bool) -> _Limits:
     if stoppable:
-        return _Limits(inf, inf, inf, inf, inf)
+        return _Limits(inf, inf, inf, inf, inf, raw_html=True)
     # Read at each call, so a test that lowers a budget sees it applied.
     return _Limits(
-        MARKDOWN_DIFF_MAX_BYTES, _MAX_LINK_OPENERS, _MAX_CONTAINER_LINES, _MAX_TOKENS, _MAX_NODES
+        MARKDOWN_DIFF_MAX_BYTES,
+        _MAX_LINK_OPENERS,
+        _MAX_CONTAINER_LINES,
+        _MAX_TOKENS,
+        _MAX_NODES,
+        raw_html=False,
     )
 
 
@@ -1109,8 +1142,8 @@ def _parse(text: str, token_budget: float = inf) -> _Side:
                 elements += _NOTE_ELEMENTS[member.type]
                 continue
             # Raw HTML renders what the sanitizer and the allowlist keep of it, which may
-            # be nothing, so it adds no element the render must hold; the render tree's
-            # own budget bounds what it does add (_Html).
+            # be nothing, so it adds no element the render must hold. Only a run that can
+            # be stopped renders it (_Limits.raw_html).
             if (
                 member.nesting == 1
                 and not member.hidden
@@ -2112,6 +2145,13 @@ def _project(
         added = {line for git in added for line in new_at[git]}
     old_side = _parse(_decoded(before), limits.tokens)
     new_side = _parse(_decoded(after), limits.tokens)
+    if not limits.raw_html and any(
+        _is_raw(member)
+        for side in (old_side, new_side)
+        for token in side.tokens
+        for member in (token, *(token.children or ()))
+    ):
+        raise _OverBudget("raw HTML on a thread")
     shown = _frontmatter_diff(old_side.frontmatter, new_side.frontmatter)
     frontmatter = shown.diff
     if old_side.elements + new_side.elements > limits.nodes:
@@ -2252,14 +2292,19 @@ def project_markdown_diff(
     patch: FilePatch,
     namespace: str,
     rewrite_local: _RewriteLocal | None = None,
+    stoppable: bool = False,
 ) -> MarkdownDiffProjection:
     """Return a versioned projection; unavailable projections carry no partial HTML.
 
     Local destinations are inert unless the caller binds them to the head snapshot.
+    *stoppable* is :func:`prepare_markdown_diff`'s.
     """
 
     return bind_markdown_diff(
-        prepare_markdown_diff(old=old, new=new, patch=patch, namespace=namespace), rewrite_local
+        prepare_markdown_diff(
+            old=old, new=new, patch=patch, namespace=namespace, stoppable=stoppable
+        ),
+        rewrite_local,
     )
 
 

@@ -254,10 +254,14 @@ Changed words are marked by a bounded word diff.
 
 - **Fallback:** a side nested past what MarkdownIt keeps is refused with that `reason`,
   and the file shows Source with its Rendered chip unavailable and saying why.
-  The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement, bound only a
-  projection in a thread, which nothing can stop; past them the pair goes to the
-  Markdown child, whose deadline bounds it (`markdown_projection_worker.py`), and the
-  pull request route reads a pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
+  The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement, bound a
+  projection in a thread, which nothing can stop, only for Markdown without raw HTML. No
+  count over the input bounds what the sanitizer makes of raw HTML, which rebuilds each
+  formatting element left open at every later block (`_Limits`), so a thread refuses a
+  side that holds any.
+  Past a budget, or with raw HTML, the pair goes to the Markdown child, whose deadline
+  bounds its time (`markdown_projection_worker.py`), and the pull request route reads a
+  pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
   `builtin_plugins/github/pull_rendered_diff.py` (mb-rm40). The projection renders with
   math and diagrams off and without code highlighting.
   The rest of its refusals guard what it checks rather than what a file holds: a patch

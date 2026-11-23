@@ -69,16 +69,27 @@ def _file(
 
 
 def _projection(old: bytes | None, new: bytes | None, path: str) -> dict[str, Any]:
+    """The route's answer: a thread's, or the Markdown child's for a pair a thread refuses
+    only for its budgets, as raw HTML (`past_a_thread` in `markdown_projection_worker.py`)."""
+
     source = GitPath.from_display(path)
-    return dict(
-        project_markdown_diff(
-            old=old,
-            new=new,
-            patch=_patch(old, new),
-            namespace=f"comparison/{path}",
-            rewrite_local=lambda href, image: _SNAPSHOT.reference(source, href, image),
+
+    def run(stoppable: bool) -> dict[str, Any]:
+        return dict(
+            project_markdown_diff(
+                old=old,
+                new=new,
+                patch=_patch(old, new),
+                namespace=f"comparison/{path}",
+                rewrite_local=lambda href, image: _SNAPSHOT.reference(source, href, image),
+                stoppable=stoppable,
+            )
         )
-    )
+
+    answer = run(False)
+    if answer["status"] == "too_large" and "reason" not in answer:
+        return run(True)
+    return answer
 
 
 def _recording() -> dict[str, Any]:
@@ -90,8 +101,8 @@ def _recording() -> dict[str, Any]:
         # Nested past what MarkdownIt parses whole, which the Markdown child refuses as a
         # thread does. A file only past a thread's budgets is the child's, and renders.
         "f3": _projection(None, (b"1. " * 40)[:-1] + b"\n", "docs/deep.md"),
-        # Raw HTML as a README writes it, which the page keeps as the server sent it
-        # through the same allowlist.
+        # Raw HTML as a README writes it, which only the child projects, and which the page
+        # keeps as the server sent it through the same allowlist.
         "f4": _projection(None, _README, "README.md"),
         "f6": _projection(_NOTES_OLD, _NOTES_NEW, "docs/notes.md"),
         "f7": _projection(_PLAIN_OLD, _PLAIN_NEW, "docs/plain.md"),
