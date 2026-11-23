@@ -4922,10 +4922,10 @@ under it. The map’s cells, its bars, and its legend share one hover
 (`distribution-hover.js`), as File Overview’s do
 ([Aggregate Distributions](#aggregate-distributions)). Pointing at an entry marks every
 cell painted its family’s color, the files of its types and the solid folders it is the
-dominant type of but no nested folder, its segment in every tally row, and the entry, with the entry’s counts
-tooltip. Pointing at a cell or a segment marks it and its family’s entry, and a cell
-keeps its own tooltip.
-Every marked cell lifts, and none grows
+dominant type of but no nested folder, its segment in every tally row, and the entry,
+with the entry’s counts tooltip.
+Pointing at a cell or a segment marks it and its family’s entry, and a cell keeps its
+own tooltip. Every marked cell lifts, and none grows
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
 Only the file or remainder under the pointer also shimmers, on the hover anchor, which
 lies under the labels, so its sheen does too.
