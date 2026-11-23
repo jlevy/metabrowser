@@ -999,6 +999,8 @@ class MirrorSession:
         # Whether a request joined the idle fetch after it was told to stop, so its fetch
         # is started again, as the request's own, once the stopped one has unwound.
         self._restart_stopped_idle = False
+        # Whether a reader's request, not only a page's ask, waits for that restart.
+        self._restart_loud = False
         # Whether the fetch running is one no reader asked for, the idle one or a visible
         # page's once a window, which status reports as ``refresh_quiet``.
         self._quiet_fetch = False
@@ -1135,14 +1137,14 @@ class MirrorSession:
         }
 
     def _refresh_quiet(self) -> bool:
-        """Whether all that is refreshing is a fetch of the mirror that no reader asked for."""
+        """Whether all that is refreshing is a fetch of the mirror that no reader asked for.
 
-        return (
-            self._quiet_fetch
-            and self._coordinator.running(self.mirror.key)
-            and not self._coordinator.running(self._elsewhere_key)
-            and not self.companion_refreshing()
-        )
+        The follow of another process's fetch that such a fetch started is as quiet as it
+        was. No quiet fetch starts while a follow runs, and a reader's request during one
+        ends the quiet (:meth:`_join_running`) and starts its own job.
+        """
+
+        return self._quiet_fetch and self.refreshing() and not self.companion_refreshing()
 
     def refreshing(self) -> bool:
         """Whether this server is refreshing, or following another process's refresh."""
@@ -1224,13 +1226,19 @@ class MirrorSession:
 
         if not quiet:
             self._quiet_fetch = False
-        if not self._idle_fetch:
-            return
         job = self._coordinator.job(self.mirror.key)
+        # Asked of the task, and before the idle flag: the cancel handler in
+        # :meth:`_refresh_job` clears that flag before the task is done, so a test of the
+        # flag alone would hold only while nothing awaits between the two. Only the idle
+        # fetch is ever told to stop, short of shutdown, where the restart starts nothing.
         if job is not None and job.cancelling():
+            if not quiet:
+                self._restart_loud = True
             if not self._restart_stopped_idle:
                 self._restart_stopped_idle = True
                 job.add_done_callback(self._restart_after_stopped_idle)
+            return
+        if not self._idle_fetch:
             return
         # A reader's request, or a page's: an idle fetch it joins is waited for from now.
         self._idle_fetch = False
@@ -1239,11 +1247,16 @@ class MirrorSession:
     def _restart_after_stopped_idle(self, _stopped: asyncio.Task[None]) -> None:
         self._restart_stopped_idle = False
         try:
-            # After the coordinator's own callback, added first, has forgotten the job.
+            # After the coordinator's own callback, added first, has forgotten the job. A
+            # request handled since the job ended may have started the fetch already, and
+            # this then joins it.
             self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
         except RuntimeError:
             # The server is shutting down, which is what stopped the fetch.
             log.debug("a stopped idle fetch was not started again: the server is closing")
+        if self._restart_loud:
+            self._quiet_fetch = False
+        self._restart_loud = False
 
     def _refresh_mirror(self, *, companion_stale: bool, quiet: bool = False) -> StartedOrJoined:
         """Start or join the mirror's fetch; *quiet* is a fetch no reader asked for."""
@@ -1251,7 +1264,9 @@ class MirrorSession:
         self._join_running(quiet=quiet)
         started = self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
         if started == "started":
-            self._quiet_fetch = quiet
+            # Not quiet while a reader's request waits for the restart of a stopped idle
+            # fetch: a page's ask handled first starts the fetch that request then joins.
+            self._quiet_fetch = quiet and not self._restart_loud
         if self._pending_selection is not None:
             self._selection_state = "pending"
         if companion_stale:

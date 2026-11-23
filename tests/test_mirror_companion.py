@@ -1496,3 +1496,116 @@ def test_status_calls_a_fetch_nobody_asked_for_quiet_until_a_reader_joins_it() -
         return seen
 
     assert asyncio.run(scenario()) == [(False, False), (True, True), (True, False), (False, False)]
+
+
+class _Elsewhere(_Mirror):
+    """A mirror whose store another process is fetching until the test says it has ended."""
+
+    def __init__(self, events: list[str]) -> None:
+        super().__init__(events, busy_at=_now())
+        self.other_done = False
+
+    async def refresh_running_elsewhere(self) -> bool:
+        return not self.other_done
+
+
+def test_a_quiet_fetch_stays_quiet_while_it_follows_another_processs_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review B1 of #721: two servers on one store go stale together, so one's fetch
+    often finds the other's running; the row then said "Refreshing…" for as long as the
+    other fetched. A reader's Refresh during the follow is theirs, and shows."""
+
+    monkeypatch.setattr("metabrowser.mirror_refresh.ELSEWHERE_POLL_S", 0.01)
+
+    async def scenario() -> tuple[list[object], list[tuple[bool, bool]]]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        mirror = _Elsewhere(events)
+        session = MirrorSession(mirror, coordinator, fetch_on_miss=True, follow_elsewhere=True)
+        answers: list[object] = []
+        seen: list[tuple[bool, bool]] = []
+        for ask in ("page", "idle", "idle, then a reader"):
+            mirror.other_done = False
+            answers.append(
+                await session.page_ask() if ask == "page" else session.request_idle_refresh()
+            )
+            seen.append((session.refreshing(), session._refresh_quiet()))
+            await _spin()
+            # This server's own job has ended; it follows the other process's fetch.
+            assert not coordinator.running(mirror.key)
+            if ask == "idle, then a reader":
+                session.request_refresh(for_selection=True)
+            seen.append((session.refreshing(), session._refresh_quiet()))
+            mirror.other_done = True
+            for _ in range(3):
+                await coordinator.drain(timeout_s=5)
+        await coordinator.aclose()
+        return answers, seen
+
+    answers, seen = asyncio.run(scenario())
+    assert answers == ["started", "started", "started"]
+    assert seen == [
+        (True, True),
+        (True, True),
+        (True, True),
+        (True, True),
+        (True, True),
+        (True, False),
+    ]
+
+
+def test_a_page_ask_before_the_restart_of_a_stopped_idle_fetch_does_not_quiet_a_readers_refresh() -> (
+    None
+):
+    """Review B2 of #721: the reader's Refresh joined an idle fetch being stopped. A page's
+    ask handled in the one loop step between that job's end and its restart started the
+    fetch as quiet, and the reader's refresh, which then joined it, showed nothing."""
+
+    async def scenario() -> tuple[list[object], list[str]]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        session, mirror = await _stopping_idle_fetch(events, coordinator)
+        seen: list[object] = [session.request_refresh(for_selection=True)]
+
+        def a_page_asks() -> None:
+            # Queued behind the stopped job's last step: it runs once that job is done and
+            # before the job's done callbacks, which restart the fetch.
+            asking = session.page_ask()
+            try:
+                asking.send(None)
+            except StopIteration as answered:
+                seen.append(answered.value)
+
+        asyncio.get_running_loop().call_soon(a_page_asks)
+        await _spin()
+        seen.append((session.refreshing(), session._refresh_quiet()))
+        mirror.gate.set()
+        await _settle(coordinator)
+        return seen, events
+
+    seen, events = asyncio.run(scenario())
+    assert seen == ["joined", "started", (True, False)]
+    assert events.count("mirror start") == 2, "one fetch after the stopped one, not two"
+
+
+def test_the_restart_of_a_stopped_fetch_does_not_depend_on_the_idle_flag() -> None:
+    """Review B4 of #721: the cancel handler clears the idle flag before the task is done.
+    Nothing awaits between the two today; if something ever does, a request that joins
+    there must still get its fetch, so the task is asked, not the flag."""
+
+    async def scenario() -> tuple[list[str], object]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        session, mirror = await _stopping_idle_fetch(events, coordinator)
+        # As a request would find it after the handler ran and before the task ended.
+        session._idle_fetch = False
+        session.request_refresh(for_selection=True)
+        await _spin()
+        mirror.gate.set()
+        await _settle(coordinator)
+        return events, session._last_outcome()
+
+    events, outcome = asyncio.run(scenario())
+    assert "mirror end" in events
+    assert isinstance(outcome, dict) and outcome["outcome"] == "succeeded"
