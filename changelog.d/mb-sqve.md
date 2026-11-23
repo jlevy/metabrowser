@@ -1,1 +1,0 @@
-- Clicking an open branch or tag chip again closes its menu.
