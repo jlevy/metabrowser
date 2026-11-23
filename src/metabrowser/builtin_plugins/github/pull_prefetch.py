@@ -36,11 +36,14 @@ lists took turns with records, each record 3.6 to 4.7 s and each list from GitHu
 (1.3 s one at a time), and each list 42 to 134 ms. Before each item it reads again, off the event
 loop, whether the item is still due, which another process's refresh may have made it
 not, then whether the rate-limit governor admits it (:mod:`.gh_budget`) and the caps have
-room. It stops, dropping the rest, when the governor refuses; a cap that is reached drops
-the rest of its own kind, and the other goes on. The page asks again later. A job is started under
-the pull request's own key, so a reader's request for it joins and promotes it, and as a
-background job it takes no network slot, waits at a store turn behind a reader's job, and
-is cancelled when one starts waiting (:mod:`.checkout`, :mod:`metabrowser.mirror_refresh`).
+room. A list the store gives costs GitHub nothing, so the governor is not asked for it,
+and an ask the governor refuses still lists what the store gives; should Git fail to give
+a list after all, GitHub's is read only past the governor and inside the cap, as any list
+from GitHub is. It stops, dropping the rest but those lists, when the governor refuses; a
+cap that is reached drops the rest of its own kind, and the other goes on. The page asks
+again later. A job is started under the pull request's own key, so a reader's request for
+it joins and promotes it, and as a background job it takes no network slot, waits at a
+store turn behind a reader's job, and is cancelled when one starts waiting (:mod:`.checkout`, :mod:`metabrowser.mirror_refresh`).
 A preempted job gives its place in the caps back, and the lane stops there: what it had
 queued would wait behind the reader too, and the page's next ask says what is wanted then.
 
@@ -55,8 +58,10 @@ a server process serves; the arithmetic of :data:`RECORDS_PER_HOUR` and
 :data:`FILES_PER_HOUR` is beside them. What bounds the lane's points, whatever its items
 cost, is speculative work's share of the process's own ceiling
 (:data:`~.gh_budget.SPECULATIVE_CORE_PER_HOUR`), which the lane's jobs are counted toward
-and the governor refuses past; what bounds the account as a whole is the governor's floor,
-read from GitHub's own count of what remains (:mod:`.gh_budget`). :data:`RECORDS_PER_SCAN`
+and the governor refuses past. The catalog's backfill and cores walk stop at their own
+part of that share (:data:`~.gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR`), which leaves
+the caps' price to the lane whatever they spent first. What bounds the account as a whole
+is the governor's floor, read from GitHub's own count of what remains (:mod:`.gh_budget`). :data:`RECORDS_PER_SCAN`
 keeps one scan's changes from spending a whole hour's records at once; a scan is one
 publication of the catalog, its ``fetched_at``, however many pages it read.
 
@@ -110,11 +115,13 @@ MERGE_BASES_AT_ONCE: Final = 4
 # (``gh_budget.SPECULATIVE_CORE_PER_HOUR``), which refuses the lane whatever its items turn
 # out to cost. At one page a part a record costs at most 6 points and a files list from
 # GitHub 1 (the module docstring), so the two caps together spend at most
-# 12 × 6 + 20 × 1 = 92 points an hour, under the share's 100, and leave the rest of it, and
-# whatever they do not use, to the catalog's backfill, the cores walk, and the label set,
-# first come, first served. They were 40 and 100 before the ceiling, at most 40 × 8 +
-# 100 × 3 = 620 points an hour at that day's prices, against a ceiling of 300 for all
-# automatic work (review A1 of #737); ``tests/test_github_pull_prefetch.py`` pins the sum.
+# 12 × 6 + 20 × 1 = 92 points an hour, under the share's 100. The catalog's backfill and
+# cores walk stop at the 8 that leaves (``gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR``), so
+# they cannot take this part before the lane asks for it (review B1 of #737); the label
+# set's read and whatever the caps do not use are first come, first served with the lane.
+# They were 40 and 100 before the ceiling, at most 40 × 8 + 100 × 3 = 620 points an hour
+# at that day's prices, against a ceiling of 300 for all automatic work (review A1 of
+# #737); ``tests/test_github_pull_prefetch.py`` pins the sum.
 # A scan's cap is eight, above the seven records a page names as the ones it expects
 # opened next, its top rows (``PREFETCH_TOP_ROWS`` in pulls-panel.js) and the open row's
 # two neighbours, so one scan's changes do not crowd them out; it is two thirds of an
@@ -304,8 +311,12 @@ async def request_prefetch(
         return "not_due", None, 0
     verdict = await _governor(host.pulls)
     if not verdict.admitted:
-        lane.queue.clear()
-        return "deferred", verdict.reason, 0
+        # A list the store gives costs GitHub nothing, so the lists go on without the rest:
+        # each one the store cannot give is refused as the records are (`_files`).
+        items = [item for item in items if item.kind == "files"]
+        if not items:
+            lane.queue.clear()
+            return "deferred", verdict.reason, 0
     lane.queue = deque(items)
     # Each ask prepares its lists again, as the heads and base branches are then: a list
     # already current is left out, so this costs a fetch only when there is a list to make.
@@ -314,7 +325,8 @@ async def request_prefetch(
     started = host.coordinator.start(
         _key(host.pulls), partial(_run_lane, app, host, lane), network=False
     )
-    return started, None, len(items)
+    # A reason beside a start says the lane lists only what the store gives.
+    return started, verdict.reason, len(items)
 
 
 _STOPS: Final = frozenset(
@@ -367,10 +379,21 @@ async def _work_lane(app: Any, host: PullHost, lane: Lane) -> None:
         finally:
             lane.running = None
         lane.note(item, outcome)
+        # A list the store gives costs GitHub nothing, so neither the governor's refusal nor
+        # the cap of lists drops one queued; anything else that stops the lane does.
         if outcome in _STOPS:
-            lane.queue.clear()
+            governor = outcome.startswith("deferred:")
+            lane.queue = deque(other for other in lane.queue if governor and _free(lane, other))
         elif outcome in _KIND_STOPS:
-            lane.queue = deque(other for other in lane.queue if other.kind != item.kind)
+            lane.queue = deque(
+                other for other in lane.queue if other.kind != item.kind or _free(lane, other)
+            )
+
+
+def _free(lane: Lane, item: Item) -> bool:
+    """Whether *item* is a list the store gives, which the lane asks no governor for."""
+
+    return item.kind == "files" and item.number in lane.local_ready
 
 
 def _listable_heads(
@@ -612,29 +635,65 @@ async def _files(app: Any, host: PullHost, lane: Lane, item: Item) -> ItemOutcom
     )
     if not wanted:
         return "skipped:not_due"
-    # A local comparison's list needs no GitHub and is not counted, but one Git cannot
-    # give falls through to GitHub's, so the governor is asked either way.
-    verdict = await _governor(host.pulls)
-    if not verdict.admitted:
-        return f"deferred:{verdict.reason}"
-    now = pulls.utc_now()
-    if local is None and lane.used(lane.file_starts, now) >= FILES_PER_HOUR:
-        return "deferred:hourly_cap"
-    started = start_files_refresh(view, ask, wanted=True, local=local, background=True)
-    if started != "started":
-        return started if started == "joined" else f"skipped:{started}"
+    # A list the store gives needs no GitHub and is not counted, so the governor is not
+    # asked for it (review B1 of #737). One Git cannot give after all falls through to
+    # GitHub's, which `may_ask_github` admits as any list from GitHub is admitted.
+    # When the list was counted toward the hour's cap, which a preempted job gives back.
+    counted: list[datetime] = []
     if local is None:
-        lane.file_starts.append(now)
+        admitted = await _admit_from_github(host, lane)
+        if isinstance(admitted, str):
+            return admitted
+        counted.append(admitted)
+    now = pulls.utc_now()
+    refused: list[ItemOutcome] = []
+
+    async def may_ask_github() -> bool:
+        admitted = await _admit_from_github(host, lane)
+        if isinstance(admitted, str):
+            refused.append(admitted)
+            return False
+        counted.append(admitted)
+        return True
+
+    started = start_files_refresh(
+        view,
+        ask,
+        wanted=True,
+        local=local,
+        background=True,
+        fallback=may_ask_github if local is not None else None,
+    )
+    if started != "started":
+        for at in counted:
+            _refund(lane.file_starts, at)
+        return started if started == "joined" else f"skipped:{started}"
     if not await _wait(host, files_job_key(view.repository, item.number)):
-        if local is None:
-            _refund(lane.file_starts, now)
+        for at in counted:
+            _refund(lane.file_starts, at)
         return "preempted"
+    if refused:
+        # Git could not give the list and GitHub's was not read: nothing was published.
+        return refused[0]
     stamp = await asyncio.to_thread(
         read_files_refresh, view.repository.home, view.repository.slug, item.number
     )
     if stamp is None or stamp.at < utc_stamp(now):
         return "failed:unknown"
     return "refreshed" if stamp.outcome == "succeeded" else f"failed:{stamp.outcome}"
+
+
+async def _admit_from_github(host: PullHost, lane: Lane) -> datetime | ItemOutcome:
+    """When a list from GitHub was counted toward the hour's cap, or why it may not be read."""
+
+    verdict = await _governor(host.pulls)
+    if not verdict.admitted:
+        return f"deferred:{verdict.reason}"
+    now = pulls.utc_now()
+    if lane.used(lane.file_starts, now) >= FILES_PER_HOUR:
+        return "deferred:hourly_cap"
+    lane.file_starts.append(now)
+    return now
 
 
 class BudgetWire(TypedDict):
@@ -657,6 +716,10 @@ class CeilingWire(TypedDict):
     # governor refuses the lane with ``self_ceiling`` though the ceiling itself has room.
     speculative_per_hour: int
     speculative_hour_used: int
+    # The catalog's part of that share, and what its backfill and cores walk have spent: at
+    # or past it they are refused, and the lane is not.
+    catalog_per_hour: int
+    catalog_hour_used: int
 
 
 class GovernorWire(TypedDict):
@@ -719,6 +782,8 @@ async def prefetch_envelope(host: PullHost | None) -> PrefetchEnvelope:
                 hour_used=gh_budget.automatic_spent(now),
                 speculative_per_hour=gh_budget.SPECULATIVE_CORE_PER_HOUR,
                 speculative_hour_used=gh_budget.speculative_spent(now),
+                catalog_per_hour=gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR,
+                catalog_hour_used=gh_budget.catalog_spent(now),
             ),
         ),
         recent=list(lane.recent),

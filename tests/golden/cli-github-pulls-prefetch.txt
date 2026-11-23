@@ -217,7 +217,9 @@ status: 200
       "per_hour": 300,
       "hour_used": 6,
       "speculative_per_hour": 100,
-      "speculative_hour_used": 6
+      "speculative_hour_used": 6,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 0
     }
   },
   "recent": [
@@ -412,7 +414,9 @@ status: 200
       "per_hour": 300,
       "hour_used": 3,
       "speculative_per_hour": 100,
-      "speculative_hour_used": 3
+      "speculative_hour_used": 3,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 0
     }
   },
   "recent": [
@@ -473,6 +477,69 @@ status: 200
 }
 --- stderr ---
 --- gh ---
+## This server's speculative work has spent its whole share of the ceiling this hour: the catalog's backfill and cores walk the part they may, and the prefetch the rest. The ceiling itself has two thirds left, which what is on screen keeps. A visible page asks for 9 and for 10's and 9's changed files. The record is refused at once with `self_ceiling`, and the lists go on: the store gives 10's, which costs GitHub nothing, and 9's, which GitHub would give, is refused when its turn comes.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-prefetch
+status: 202
+{
+  "prefetch": "started",
+  "queued": 2,
+  "reason": "self_ceiling",
+  "status_route": "/api/plugin/github/pulls-prefetch"
+}
+after: /api/plugin/github/pulls-prefetch
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "running": null,
+  "queued": [],
+  "records": {
+    "per_scan": 8,
+    "scan": null,
+    "scan_used": 0,
+    "per_hour": 12,
+    "hour_used": 0
+  },
+  "files": {
+    "per_hour": 20,
+    "hour_used": 0
+  },
+  "governor": {
+    "floor": 0.25,
+    "admits": false,
+    "reason": "self_ceiling",
+    "held_until": null,
+    "observed": {},
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 100,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 100,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 8
+    }
+  },
+  "recent": [
+    {
+      "kind": "files",
+      "number": 10,
+      "outcome": "refreshed",
+      "at": "2026-09-17T14:01:01Z"
+    },
+    {
+      "kind": "files",
+      "number": 9,
+      "outcome": "deferred:self_ceiling",
+      "at": "2026-09-17T14:01:01Z"
+    }
+  ]
+}
+--- stderr ---
+--- body ---
+{"records": [9], "files": [10, 9]}
+--- gh ---
 ## Every REST answer now reports 1,000 of 5,000 core points left, below the 25% floor. Nothing was observed when the lane started, so 9 is read; its answers stop the lane before 106.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
 exit: 0
@@ -517,7 +584,9 @@ status: 200
       "per_hour": 300,
       "hour_used": 6,
       "speculative_per_hour": 100,
-      "speculative_hour_used": 6
+      "speculative_hour_used": 6,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 0
     }
   },
   "recent": [

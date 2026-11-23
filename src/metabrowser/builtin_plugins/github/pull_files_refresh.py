@@ -6,7 +6,9 @@
   comparison's commits, the record's or one the prefetch computed from a head and base
   branch (``LocalComparison``), so the list is the comparison's manifest, ``git diff --raw`` and
   ``--numstat`` through :class:`GitDiffSource`, with no patch and no network. A manifest
-  cut at ``MAX_MANIFEST_FILES``, or one Git cannot list, falls through to GitHub's.
+  cut at ``MAX_MANIFEST_FILES``, or one Git cannot list, falls through to GitHub's, unless
+  the caller's *fallback* refuses it, as the prefetch's governor may, which ends the job
+  with nothing published (:class:`FallbackRefused`).
 - **GitHub's list**, which runs no Git: the active account, then one ``gh api
   repos/<owner>/<repo>/pulls/<n>/files`` request per hundred files, checking the account
   before each progressive publication and before publishing the complete list.
@@ -32,7 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import Final
@@ -102,6 +104,10 @@ _KIND_STATUS: Final[dict[str, FileStatus]] = {
 }
 
 type Slot = Callable[[], AbstractAsyncContextManager[object]]
+
+
+class FallbackRefused(Exception):
+    """The local comparison gave no list and the caller refused GitHub's: nothing was read."""
 
 
 def _path(value: object) -> str:
@@ -417,14 +423,17 @@ async def refresh_pull_files(
     local: LocalComparison | None,
     slot: Slot,
     known_head: Callable[[], KnownHead] | None = None,
+    fallback: Callable[[], Awaitable[bool]] | None = None,
 ) -> PullFileList:
     """List pull request *number*'s changed files and cache them; see the module.
 
     *local* names the store and commits of a comparison, the record's or the prefetch's,
     when the store holds both. *slot* is one of the coordinator's network slots, held for one ``gh`` request at a
     time. *known_head* reads, blocking, the head and base branch the pull request has as last
-    known, which GitHub's list then names. Raises only :class:`PullDataError`; how it ended
-    is kept beside the list either way.
+    known, which GitHub's list then names. *fallback*, when given, says whether GitHub's list
+    may be read once the local comparison gives none. Raises :class:`PullDataError`, after
+    which how it ended is kept beside the list, or :class:`FallbackRefused`, which keeps
+    nothing: no attempt was made.
     """
 
     reader: str | None = None
@@ -451,6 +460,8 @@ async def refresh_pull_files(
             )
         if listed is not None:
             await _write(repository, listed)
+        elif fallback is not None and not await fallback():
+            raise FallbackRefused
         else:
             async with slot():
                 login = await active_account()
@@ -514,4 +525,4 @@ async def _measure_size(local: LocalComparison) -> None:
         log.debug("a pull request's size could not be measured: %r", exc)
 
 
-__all__ = ["Slot", "refresh_pull_files"]
+__all__ = ["FallbackRefused", "Slot", "refresh_pull_files"]
