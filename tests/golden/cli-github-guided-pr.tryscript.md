@@ -432,19 +432,21 @@ The description introduces the guide: its Markdown, which Conversation and Guide
 both render, leaves out the guided-pr block.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?number=7&part=body' | grep -c 'softschema\|guided-pr'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?number=7&part=body' > markdown.json
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ grep -c 'softschema\|guided-pr' markdown.json
 0
 ? 1
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?number=7&part=body' | grep -o 'The app learns to count to two.'
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+$ grep -o 'The app learns to count to two.' markdown.json
 The app learns to count to two.
 ? 0
 ```
