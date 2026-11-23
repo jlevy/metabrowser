@@ -3,9 +3,9 @@ type: is
 id: is-01m7hhr36mmrjwfw662gmgngf6
 title: "Release 0.13: previous-release performance comparison (v0.12.0 vs exact candidate)"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 12
+version: 13
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45109522719
@@ -37,8 +37,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:08.755Z
-updated_at: 2026-11-23T05:43:22.127Z
+updated_at: 2026-11-23T06:28:41.343Z
 started_at: 2026-11-23T03:13:34.430Z
+closed_at: 2026-11-23T06:28:41.311Z
+close_reason: "The exact product comparison met the hard and 1.3× release budgets in five admitted pairs. exp-102, source protocols and generated ledger/report are on main at 51ca65a3e via #727, whose exact landed CI passed."
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes
