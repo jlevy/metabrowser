@@ -169,7 +169,11 @@ def test_an_untrusted_folder_keeps_the_refusal_by_the_documents_text(
         # Another file with the same text is the same document: refused without a render.
         copy = client.get("/api/kpress/render", params={"path": "copy.md", "view": "document"})
         rendered_before_sent = len(exchanges)
-        # A page's own text in its place is another document, and renders.
+        # A page's own text in its place is another document, and renders. The short
+        # deadline was for the slow document; a real render of a heading takes longer than
+        # 0.2 s at a high load average (0.28 s at about 340, mb-z7oj), so the claim here,
+        # that the kept refusal is not this document's, gets a deadline it can meet.
+        monkeypatch.setattr(worker_module, "_RENDER_DEADLINE_S", 30.0)
         sent = client.post(
             "/api/kpress/render",
             json={"path": "slow.md", "view": "document", "source_text": "# Sent\n"},

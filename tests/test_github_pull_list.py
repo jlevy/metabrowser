@@ -270,6 +270,43 @@ def test_backfill_past_the_prefix_pauses_below_the_budget_floor_and_resumes(
     }
 
 
+def test_the_backfill_is_speculative_work_and_pauses_once_that_works_share_is_spent(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A1 of review A on #737: a reader's pages are not counted toward the share."""
+
+    calls = _provider(monkeypatch, _mostly_closed(450))
+    graphql = pull_list_refresh.gh_graphql
+
+    async def counted(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        gh_budget.spent(1, now=FETCHED_AT)
+        return await graphql(*args, **kwargs)
+
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", counted)
+    state = asyncio.run(refresh_pull_list(repository, "open", target=45))
+    assert calls == ["graphql:open:start"] + [
+        f"graphql:all:{'start' if not n else f'all-{n}'}" for n in range(0, 500, 100)
+    ]
+    assert state.done["all"]
+    # The reader's prefix is what is on screen; the five pages past it are speculative.
+    assert gh_budget.automatic_spent(FETCHED_AT) == 6
+    assert gh_budget.speculative_spent(FETCHED_AT) == 5
+
+
+def test_a_spent_share_pauses_the_backfill_and_not_the_readers_prefix(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _provider(monkeypatch, _mostly_closed(450))
+    with gh_budget.speculative():
+        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR, now=FETCHED_AT)
+    assert not gh_budget.over_ceiling(FETCHED_AT)
+    held = asyncio.run(refresh_pull_list(repository, "open", target=45))
+    assert calls == ["graphql:open:start"]
+    assert (held.cached["open"], held.done["all"]) == (45, False)
+    stamp = read_list_refresh(repository.home, repository.slug, "all")
+    assert stamp is not None and stamp.outcome == "succeeded", "a pause is not a failure"
+
+
 def test_a_rate_hold_pauses_the_backfill_without_a_refusal_of_its_own(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:

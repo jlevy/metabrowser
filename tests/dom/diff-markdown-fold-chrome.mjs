@@ -51,7 +51,7 @@ const near = (a, b) => Math.abs(a - b) <= TOLERANCE_PX;
 // KPress's tokens and the shell's sheet load with the shell, then the diff plugin's.
 // KPress's document stylesheets load last, the order in which the diff's rules must
 // still win; in the app they may also load before the diff plugin's.
-const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>diff fold</title>
+const PAGE = `<!doctype html><html style="--doc-max-chars: ${INPUT.docMaxChars}"><head><meta charset="utf-8"><title>diff fold</title>
 <link rel="stylesheet" href="/kpress/css/style-tokens.css">
 <link rel="stylesheet" href="/static/styles.css">
 <link rel="stylesheet" href="/diff/styles.css">
@@ -119,6 +119,30 @@ const MOUNT = `(blocks) => {
     el("div", "metabrowser-kpress-host", [documentArticle]),
   );
   return document.querySelectorAll("details.diff-markdown-context").length;
+}`;
+
+// Read geometry at two card widths under the same preview pane, so a column based on
+// the viewport rather than the file box fails this check.
+const RENDERED_GEOMETRY = `(width) => {
+  const file = document.querySelector(".diff-file");
+  const row = file.querySelector(".diff-markdown-added");
+  const style = getComputedStyle(row);
+  file.style.inlineSize = width + "px";
+  const start = file.getBoundingClientRect().left + file.clientLeft;
+  const end = start + file.clientWidth;
+  const prose = row.querySelector(".kpress-prose").getBoundingClientRect();
+  const band = row.getBoundingClientRect();
+  const result = {
+    startInset: prose.left - start,
+    endInset: end - prose.right,
+    proseWidth: prose.width,
+    bandStart: band.left - start,
+    bandEnd: end - band.right,
+    gutterColor: style.borderInlineStartColor,
+    gutterWidth: parseFloat(style.borderInlineStartWidth),
+  };
+  file.style.removeProperty("inline-size");
+  return result;
 }`;
 
 // In the page: the fold, its summary, every block row, and the document's own details,
@@ -322,6 +346,31 @@ try {
   const folds = await chrome.evaluate(`(${MOUNT})(${JSON.stringify(INPUT.blocks)})`);
   check("the comparison has one fold", folds === 1, `${folds}`);
   await chrome.evaluate("document.fonts.ready.then(() => true)");
+  const wide = await chrome.evaluate(`(${RENDERED_GEOMETRY})(1000)`);
+  const narrow = await chrome.evaluate(`(${RENDERED_GEOMETRY})(360)`);
+  for (const [size, measured] of [
+    ["wide", wide],
+    ["narrow", narrow],
+  ]) {
+    check(
+      `${size}: the prose is centered in the diff box`,
+      near(measured.startInset, measured.endInset),
+      JSON.stringify(measured),
+    );
+    check(
+      `${size}: the colored change gutter is at the edge of the full-width band`,
+      near(measured.bandStart, 0) &&
+        near(measured.bandEnd, 0) &&
+        measured.gutterWidth > 0 &&
+        measured.gutterColor !== "rgba(0, 0, 0, 0)",
+      JSON.stringify(measured),
+    );
+  }
+  check(
+    "the prose grows to its reading measure while the wide card keeps extra margins",
+    wide.proseWidth > narrow.proseWidth && wide.startInset > narrow.startInset,
+    JSON.stringify({ wide, narrow }),
+  );
   await chrome.evaluate(SETTLE);
   const closed = await chrome.evaluate(`(${READ})()`);
   await shot("closed");

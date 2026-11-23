@@ -179,6 +179,14 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 client, "/api/source/pin", {"ref": ORIGIN_TRUNK, "view": VIEW}
             )
             recorded["remotes_on_origin_branch"] = listing(client, "remote")
+            # An hour on, the origin branch's page finds the store grown old. It shows the
+            # store, so its ask is the loud one, held while the status is read.
+            isolated.clock.advance(3600)
+            recorded["status_origin_branch_stale"] = client.get("/api/source/status").json()
+            fetch_gate.clear()
+            recorded["origin_branch_refresh_started"] = post(client, "/api/source/refresh", {})
+            fetch_gate.set()
+            _until(client, "ready")
             # The checkout's own branch follows the checkout: the reader commits on it,
             # a visible page's own ask reads the refs and finds the commit, and the page
             # asks the pin route where it is on that commit.
@@ -276,6 +284,12 @@ def test_recording_is_what_a_served_checkout_with_a_store_answers(
     assert switched["status"]["pin"] == recorded["moved"]
     assert switched["status"]["refreshable"] is True and switched["read_from"] == "origin"
     assert switched["status"]["location"] == "/sandbox/checkout"
+    on_branch_stale = recorded["status_origin_branch_stale"]
+    assert (on_branch_stale["stale"], on_branch_stale["follows"]) == (True, True)
+    assert on_branch_stale["ref"] == switched["status"]["ref"]
+    loud = recorded["origin_branch_refresh_started"]
+    assert (loud["status"], loud["body"]["refresh"]) == (202, "started")
+    assert (loud["body"]["status"]["refreshing"], loud["body"]["status"]["follows"]) == (True, True)
     on_branch = recorded["remotes_on_origin_branch"]["body"]
     assert [row["name"] for row in on_branch["refs"] if row["current"]] == ["origin/trunk"]
     # The checkout's own branch follows the checkout, with a store and without one.

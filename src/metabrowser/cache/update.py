@@ -304,7 +304,7 @@ async def _fetch_atomically(
     remote_url: str,
     lock_fd: int,
     before: dict[str, str] | None,
-    negotiation: tuple[str, ...] = (),
+    overlay: OverlayFetch,
 ) -> _Fetched:
     """Fetch every branch and tag in one transaction, pruning separately and retrying once.
 
@@ -313,7 +313,9 @@ async def _fetch_atomically(
     says what the store held just before the fetch that landed.
     """
 
-    fetch = mirror_fetch_args(remote_url, prune=True, negotiation=negotiation)
+    fetch = mirror_fetch_args(
+        remote_url, prune=True, negotiation=overlay.tips, config=overlay.config
+    )
     try:
         porcelain = await run_git(
             fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,)
@@ -479,7 +481,7 @@ async def _fetch(
     *,
     lock_fd: int,
     previous_ref: str | None,
-    negotiation: tuple[str, ...] = (),
+    overlay: OverlayFetch,
 ) -> StoreUpdate:
     """Observe the origin's HEAD, fetch, and read the default branch back from the mirror.
 
@@ -509,7 +511,7 @@ async def _fetch(
     # that folded two refs into one file can be undone; see ``folded_refs``.
     before = await mirror_refs(target) if await store_ignores_case(target) else None
     try:
-        fetched = await _fetch_atomically(target, remote_url, lock_fd, before, negotiation)
+        fetched = await _fetch_atomically(target, remote_url, lock_fd, before, overlay)
     except asyncio.CancelledError:
         # Stopped as the fetch ended: it may have landed and folded. Nothing a cancelled
         # refresh did stays, so the refs go back as they were before it began.
@@ -687,7 +689,7 @@ async def update_store(home: Path, store_key: str, *, remote_url: str) -> StoreU
                 remote_url,
                 lock_fd=fetch_lock.descriptor,
                 previous_ref=previous_ref,
-                negotiation=prepared.tips,
+                overlay=prepared,
             )
             if prepared.swept:
                 update = replace(update, swept=prepared.swept)

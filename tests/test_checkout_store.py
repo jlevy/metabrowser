@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import itertools
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -278,6 +279,32 @@ def test_the_checkout_is_byte_identical_after_the_store_is_made_fetched_probed_a
     assert pinned_git(folder.checkout, "rev-parse", _ORIGIN_TRUNK) == folder.behind
 
 
+def test_a_small_fetch_leaves_objects_the_checkout_already_holds_as_they_were(
+    folder: _Folder,
+) -> None:
+    """The origin sends a few objects the checkout holds but offered no tip for, here
+    ones it fetched by address, which only ``FETCH_HEAD`` names. A fetch that unpacked
+    them would mark each one written again, in the checkout, by its modification time;
+    the store keeps the pack instead, at the acquisition and at a refresh."""
+
+    pinned_git(folder.checkout, "fetch", "-q", str(folder.replica.origin), "trunk")
+    _push(folder.replica, "m7")
+    before = fingerprint(folder.checkout)
+    server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
+    serve_checkout_store()
+    with TestClient(server.app) as client:
+        _ready(client)
+        assert fingerprint(folder.checkout) == before, "the acquisition touched the checkout"
+        _push(folder.replica, "m8")
+        pinned_git(folder.checkout, "fetch", "-q", str(folder.replica.origin), "trunk")
+        newest = _push(folder.replica, "m9")
+        before = fingerprint(folder.checkout)
+        assert _post(client, "/api/source/refresh").status_code == 202
+        _settled(client)
+        assert _by_name(_refs(client, "remote"))["origin/trunk"] == newest
+    assert fingerprint(folder.checkout) == before, "the fetch touched the checkout"
+
+
 def test_a_folder_no_page_is_looking_at_fetches_its_store_by_itself_and_writes_no_checkout(
     folder: _Folder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -430,7 +457,7 @@ def test_an_origin_that_needs_credentials_is_shown_as_not_fetched_with_the_reaso
     folder: _Folder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The acquisition's refusal is the reason; the list is the checkout's own; and a
-    page's own ask does not try the origin again inside a freshness window."""
+    page's own ask does not try the origin again before the timer's own next try."""
 
     attempts: list[str] = []
 
@@ -453,6 +480,105 @@ def test_an_origin_that_needs_credentials_is_shown_as_not_fetched_with_the_reaso
         assert (asked.status_code, asked.json()["refresh"]) == (200, "not_due")
         assert attempts == ["acquire"]
         # A reader's own refresh tries again.
+        assert _post(client, "/api/source/refresh").json()["refresh"] == "started"
+        deadline = time.monotonic() + 30
+        while len(attempts) < 2:
+            assert time.monotonic() < deadline
+            time.sleep(0.05)
+
+
+def test_an_origin_that_refuses_says_what_its_provider_says_to_do(
+    folder: _Folder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The chooser's line is the only place a reader learns why the origin is not
+    fetched, so it carries the provider's hint, as the command line's refusal does."""
+
+    from metabrowser.cache import acquire, providers
+
+    async def unreadable(source: Any, **_kwargs: Any) -> Any:
+        raise acquire.RemoteAccessError("not_found_or_private", source.normalized)
+
+    monkeypatch.setattr(acquire, "acquire_source", unreadable)
+    monkeypatch.setattr(
+        providers,
+        "provider_credential_hint",
+        lambda url: f"if it is private, sign in with gh auth login ({url})",
+    )
+    server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
+    serve_checkout_store()
+    with TestClient(server.app) as client:
+        deadline = time.monotonic() + 30
+        while (origin := _refs(client, "remote")["origin"])["state"] != "absent":
+            assert time.monotonic() < deadline, origin
+            time.sleep(0.05)
+    assert origin["reason"] == "not_found_or_private"
+    assert origin["detail"] == (
+        ABSENCE_DETAIL["not_found_or_private"]
+        + " If it is private, sign in with gh auth login (https://github.com/octo/demo)."
+    )
+
+
+def test_a_failing_acquisition_is_tried_again_less_often_each_time(
+    folder: _Folder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each failure in a row doubles the wait before the next unasked try, from when the
+    attempt ended, up to the cap. The waits are lower bounds, so load only lengthens them."""
+
+    attempts: list[float] = []
+
+    async def unreachable(*_args: Any, **_kwargs: Any) -> Any:
+        attempts.append(time.monotonic())
+        raise CheckoutStoreError("network_error", "the repository could not be read")
+
+    monkeypatch.setattr(checkout_store, "acquire_checkout_store", unreachable)
+    monkeypatch.setattr(checkout_store, "STORE_IDLE_REFRESH_S", 0.2)
+    monkeypatch.setattr(checkout_store, "ACQUISITION_RETRY_CAP_S", 0.8)
+    server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
+    serve_checkout_store()
+    with TestClient(server.app) as client:
+        deadline = time.monotonic() + 30
+        while len(attempts) < 5:
+            assert time.monotonic() < deadline, attempts
+            # A visible page's own ask is held to the same waits: it starts a try only
+            # once one is due, so asking all the while shortens none of them.
+            assert _post(client, "/api/source/refresh", {"for": "page"}).status_code < 300
+            time.sleep(0.02)
+    waits = [later - earlier for earlier, later in itertools.pairwise(attempts)]
+    assert all(wait >= least for wait, least in zip(waits, (0.2, 0.4, 0.8, 0.8), strict=True)), (
+        waits
+    )
+
+
+def test_an_acquisition_that_ran_out_its_deadline_waits_for_a_reader_to_ask(
+    folder: _Folder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """It downloaded for the whole deadline and kept nothing, and would again, so neither
+    the timer nor a visible page's own ask starts it over; a reader's refresh does."""
+
+    from metabrowser.cache import acquire
+    from metabrowser.git.process import GitTimeoutError
+
+    attempts: list[str] = []
+
+    async def too_long(*_args: Any, **_kwargs: Any) -> Any:
+        attempts.append("acquire")
+        raise GitTimeoutError
+
+    monkeypatch.setattr(acquire, "acquire_source", too_long)
+    monkeypatch.setattr(checkout_store, "STORE_IDLE_REFRESH_S", 0.05)
+    server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
+    serve_checkout_store()
+    with TestClient(server.app) as client:
+        deadline = time.monotonic() + 30
+        while (origin := _refs(client, "remote")["origin"])["state"] != "absent":
+            assert time.monotonic() < deadline, origin
+            time.sleep(0.05)
+        assert (origin["reason"], origin["detail"]) == ("timed_out", ABSENCE_DETAIL["timed_out"])
+        # Twenty idle intervals, each of which the timer once spent on another try.
+        time.sleep(1.0)
+        asked = _post(client, "/api/source/refresh", {"for": "page"})
+        assert (asked.status_code, asked.json()["refresh"]) == (200, "not_due")
+        assert attempts == ["acquire"]
         assert _post(client, "/api/source/refresh").json()["refresh"] == "started"
         deadline = time.monotonic() + 30
         while len(attempts) < 2:
@@ -496,13 +622,49 @@ def test_a_checkout_with_a_local_origin_or_none_keeps_no_store_and_is_served_as_
         assert not folder.home.exists()
 
 
-def test_an_origin_reached_another_way_is_one_metabrowser_cannot_fetch(folder: _Folder) -> None:
-    pinned_git(folder.checkout, "remote", "set-url", "origin", "git@example.com:octo/demo.git")
+@pytest.mark.parametrize(
+    ("spelled", "shown"),
+    [
+        ("git@example.com:octo/demo.git", "git@example.com:octo/demo.git"),
+        ("http://example.com/octo/demo.git", "http://example.com/octo/demo.git"),
+        ("http://token@example.com/octo/demo.git", "http://example.com/octo/demo.git"),
+        ("git://example.com/octo/demo.git", "git://example.com/octo/demo.git"),
+        # A query string or a fragment can carry a credential: neither is shown.
+        ("http://host/a/b.git?token=secret", "http://host/a/b.git"),
+        ("http://host/a/b.git#fragment", "http://host/a/b.git"),
+        ("git://tok@host/a/b.git#x?token=secret", "git://host/a/b.git"),
+    ],
+)
+def test_an_origin_reached_another_way_is_one_metabrowser_cannot_fetch(
+    folder: _Folder, monkeypatch: pytest.MonkeyPatch, spelled: str, shown: str
+) -> None:
+    """SSH on a host no provider reduces, ``http``, and ``git``: each names another
+    machine by a transport Metabrowser does not fetch over, so the chooser says so, with
+    the address and no userinfo, and a server never tries it."""
+
+    attempts: list[str] = []
+
+    async def acquired(*_args: Any, **_kwargs: Any) -> Any:
+        attempts.append("acquire")
+        raise CheckoutStoreError("fetch_failed", "never reached")
+
+    monkeypatch.setattr(checkout_store, "acquire_checkout_store", acquired)
+    monkeypatch.setattr(checkout_store, "STORE_IDLE_REFRESH_S", 0.05)
+    pinned_git(folder.checkout, "remote", "set-url", "origin", spelled)
     server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
+    serve_checkout_store()
     with TestClient(server.app) as client:
-        origin = _refs(client, "remote")["origin"]
-        assert (origin["state"], origin["reason"]) == ("absent", "transport_unsupported")
+        deadline = time.monotonic() + 30
+        while (origin := _refs(client, "remote")["origin"])["state"] != "absent":
+            assert time.monotonic() < deadline, origin
+            time.sleep(0.05)
+        assert origin["reason"] == "transport_unsupported"
+        assert origin["detail"] == ABSENCE_DETAIL["transport_unsupported"]
+        assert origin["address"] == shown
         assert _post(client, "/api/source/refresh").status_code == 409
+        # Several idle intervals: a transport that cannot be fetched is never retried.
+        time.sleep(0.3)
+    assert attempts == []
     assert not folder.home.exists()
 
 
@@ -526,6 +688,22 @@ def test_the_github_plugin_takes_cores_turn_and_names_cores_store(folder: _Folde
     )
     state = plugin._checkout_state(repository)  # pyright: ignore[reportPrivateUsage]
     assert state.turn is store_turn(folder.home, named)
+
+
+def test_a_turn_something_holds_is_the_stores_however_many_stores_follow(folder: _Folder) -> None:
+    """Two turns for one store would let two jobs fetch into it at once, so a turn in use
+    is never dropped for the turns of stores served since."""
+
+    from dataclasses import replace
+
+    from metabrowser.cache.lender import checkout_origin
+
+    named = checkout_origin(folder.checkout)
+    assert named is not None
+    held = store_turn(folder.home, named)
+    for number in range(32):
+        store_turn(folder.home, replace(named, normalized=f"{named.normalized}-{number}"))
+    assert store_turn(folder.home, named) is held
 
 
 def test_the_plugins_acquisition_is_cores_and_a_server_then_adopts_that_store(

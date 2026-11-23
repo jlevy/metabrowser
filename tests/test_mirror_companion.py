@@ -7,6 +7,7 @@ A fake mirror and a fake companion drive the real :class:`MirrorSession` and
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 import pytest
@@ -74,6 +75,9 @@ class _Mirror:
 
     async def ref_tip(self, ref: str) -> str | None:
         return None
+
+    async def ref_tips(self, refs: Sequence[str]) -> dict[str, str]:
+        return {}
 
     async def default_tip(self) -> str | None:
         return None

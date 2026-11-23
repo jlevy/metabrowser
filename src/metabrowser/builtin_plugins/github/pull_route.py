@@ -333,6 +333,9 @@ class PullHost:
     # The store's turn for the prefetch's own fetch, held as background work; its argument
     # is called when a reader's job starts waiting for the turn.
     store_turn: Callable[[Callable[[], object]], AbstractAsyncContextManager[None]] | None = None
+    # On a mirror: told the head a record read from disk names, so a pin on that pull
+    # request's head follows one another process fetched (:func:`follow_adopted_head`).
+    observe_head: Callable[[int, str], None] | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
@@ -374,6 +377,7 @@ def pull_host(app: Any) -> PullHost | None:
         start_background=partial(session.request_pull_refresh, background=True),
         job_key=served.key,
         store_turn=session.background_store_turn,
+        observe_head=session.observe_pull_head,
     )
 
 
@@ -651,6 +655,26 @@ def note_full_record(view: PullView) -> None:
         and window.previews is not None
     ):
         window.previews.pop(view.number, None)
+
+
+def follow_adopted_head(view: PullView, envelope: PullEnvelope) -> None:
+    """Tell the server the head *envelope*'s record names, when its pin is not at it.
+
+    A pin served under this pull request's head follows the head. This server's own
+    refresh sees to that when it ends; a record another process published reaches this
+    one only here, where the route read it (A7 of review A on #745). Reads nothing.
+    """
+
+    host, record = view.host, envelope["record"]
+    if host is None or host.observe_head is None or record is None or view.refreshing:
+        return
+    head = record["pull"]["head"]["sha"]
+    if (
+        view.pin_ref == f"refs/pull/{view.number}/head"
+        and isinstance(head, str)
+        and head != view.pin
+    ):
+        host.observe_head(view.number, head)
 
 
 def core_preview_current(view: PullView, preview: PullCorePreview | None) -> bool:

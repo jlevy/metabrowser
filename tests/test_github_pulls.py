@@ -1116,9 +1116,10 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
         plain_code=True,
     )
     assert "<symbol" in str(raw["html"])
-    html = client.get(
-        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
-    ).json()["html"]
+    answered = client.get("/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"})
+    # A refusal names its code in the body; indexing it would say only that a key is missing.
+    assert answered.status_code == 200, answered.text
+    html = answered.json()["html"]
     for gone in ("<svg", "<symbol", "<use"):
         assert gone not in html, gone
 
@@ -1138,9 +1139,10 @@ def test_the_markdown_route_keeps_a_mermaid_block_for_the_page_to_draw(
         stand.published.slug,
         record.model_copy(update={"pull": record.pull.model_copy(update={"body": text})}),
     )
-    html = client.get(
-        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
-    ).json()["html"]
+    answered = client.get("/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"})
+    # A refusal names its code in the body; indexing it would say only that a key is missing.
+    assert answered.status_code == 200, answered.text
+    html = answered.json()["html"]
     assert '<pre lang="mermaid"><code>flowchart LR\n  A --&gt; B\n</code></pre>' in html
     assert (html.count("<pre"), html.count("lang=")) == (2, 1)
 
@@ -1151,9 +1153,9 @@ def test_the_markdown_route_names_only_kpress_stylesheets_and_the_same_ones_for_
     """A page sets a text in KPress's stylesheets; a comment must not choose what it loads."""
 
     _stand, client = pinned_pull
-    answer = client.get(
-        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
-    ).json()
+    answered = client.get("/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"})
+    assert answered.status_code == 200, answered.text
+    answer = answered.json()
     assets = answer["assets"]["assets"]
     assert {asset["id"] for asset in assets} >= {"css/document.css", "css/components.css"}
     assert {asset["loading"] for asset in assets} == {"stylesheet"}
@@ -1819,8 +1821,8 @@ def test_a_refresh_answer_leaves_out_the_record_its_asker_holds(
 ) -> None:
     """An ask that names the record it holds gets every field but that record (mb-jd08).
 
-    A visible page asks every ``probe_every_s``, and the whole envelope each time was
-    344 KiB and 1.7 ms on the event loop for the largest record measured.
+    A visible page asks every ``probe_every_s``; what the whole envelope cost each time
+    is recorded beside ``pull_route.refresh_answer_pull``.
     """
 
     _stand, client = pinned_pull
@@ -1935,6 +1937,96 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
         git_repo.clear_repo_cache()
 
 
+def test_a_commit_pinned_by_its_id_stays_when_the_pull_request_it_heads_moves(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A commit opened by its ID stays put, also while it is a pull request's head.
+
+    The mirror names such a pin by the pull request whose head it is, so the selector can
+    say so, but the reader asked for a commit: the next push must not move it, and a pull
+    request they never opened is not attended, so nothing probes it (A2 of review A on
+    #745, reproduced as the review did: from a page on the branch, with no pull request
+    attended, pin the head by ID and refresh). The newer head is reported as ``latest``.
+    A request that names the ref, as Browse code and View on branch do with ``under``,
+    follows it.
+    """
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    monkeypatch.setattr(pulls, "utc_now", lambda: datetime.now(UTC).replace(microsecond=0))
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    _move_pull_head(stand, earlier)
+    stand.answer(_answering_head(stand, earlier))
+
+    def pin(client: TestClient, body: dict[str, str]) -> dict[str, Any]:
+        answer = client.post("/api/source/pin", json=body, headers=_JSON)
+        assert answer.status_code == 200, answer.text
+        return answer.json()["status"]
+
+    try:
+        result = _serve(CANONICAL)
+        assert result.exit_code == 0, result.output
+        with TestClient(app) as client:
+            assert settle(client)["pull_request"] is None
+            assert client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON).status_code == 202
+            _until(client, 7)
+            by_id = pin(client, {"oid": earlier})
+            assert (by_id["pin"], by_id["ref"]) == (earlier, "refs/pull/7/head")
+            assert (by_id["follows"], by_id["pull_request"]) == (False, None)
+
+            _move_pull_head(stand, head)
+            stand.answer(scenario(stand.origin))
+            assert client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON).status_code == 202
+            deadline = time.monotonic() + 30
+            while _read(client, 7).json()["record"]["pull"]["head"]["sha"] != head:
+                assert time.monotonic() < deadline, "the refresh did not read the newer head"
+                time.sleep(0.01)
+            _until(client, 7)
+            status = client.get("/api/source/status").json()
+            assert (status["pin"], status["latest"]) == (earlier, head)
+            assert (status["follows"], status["pull_request"]) == (False, None)
+
+            named = pin(client, {"oid": head, "under": "refs/pull/7/head"})
+            assert (named["pin"], named["follows"], named["pull_request"]) == (head, True, 7)
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+
+
+def test_a_record_another_process_published_moves_the_pin_on_that_pull_requests_head(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two servers on one store: the one that only reads the other's record follows too.
+
+    The other process's refresh fetched the newer head into the shared store and wrote the
+    record. This server ran no job, so nothing observed the mirror; the read that adopts
+    the record asks for that (A7 of review A on #745).
+    """
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    monkeypatch.setattr(pulls, "utc_now", lambda: datetime.now(UTC).replace(microsecond=0))
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    _move_pull_head(stand, earlier)
+    stand.answer(_answering_head(stand, earlier))
+    try:
+        result = _serve(f"{CANONICAL}/pull/7")
+        assert result.exit_code == 0, result.output
+        with TestClient(app) as client:
+            assert settle(client)["pin"] == earlier
+            _move_pull_head(stand, head)
+            stand.answer(scenario(stand.origin))
+            time.sleep(1.1)  # A record's time has one-second resolution; this one is newer.
+            assert stand.refresh(7).pull.head.sha == head
+            assert client.get("/api/source/status").json()["pin"] == earlier
+            assert _read(client, 7).json()["record"]["pull"]["head"]["sha"] == head
+            deadline = time.monotonic() + 30
+            while client.get("/api/source/status").json()["pin"] != head:
+                assert time.monotonic() < deadline, "the pin did not follow the adopted head"
+                time.sleep(0.01)
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+
+
 def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2037,9 +2129,23 @@ def test_a_pin_on_another_pull_requests_head_makes_it_the_attended_one(
     assert pin({"ref": DEFAULT_BRANCH})["pull_request"] == 8
     assert session.companion is attended
     assert pin({"ref": "refs/pull/7/head"})["pull_request"] == 7
-    # View file switches by commit ID: under that head's ref, it is the same switch.
+    # A switch by commit ID alone is named by the head it is, and attends nothing new: the
+    # reader opened a commit. Naming the head too, as View on branch does, attends it.
     by_commit = pin({"oid": stand.origin["merged_head"]})
-    assert (by_commit["ref"], by_commit["pull_request"]) == ("refs/pull/8/head", 8)
+    assert (by_commit["ref"], by_commit["pull_request"]) == ("refs/pull/8/head", 7)
+    assert by_commit["follows"] is False
+    # The same commit asked for by the head's name is the same pin, which now follows the
+    # head and attends its pull request.
+    flipped = pin({"ref": "refs/pull/8/head"})
+    assert (flipped["pin"], flipped["pull_request"], flipped["follows"]) == (
+        stand.origin["merged_head"],
+        8,
+        True,
+    )
+    assert pin({"ref": "refs/pull/7/head"})["pull_request"] == 7
+    assert pin({"ref": DEFAULT_BRANCH})["follows"] is True
+    named = pin({"oid": stand.origin["merged_head"], "under": "refs/pull/8/head"})
+    assert (named["ref"], named["pull_request"], named["follows"]) == ("refs/pull/8/head", 8, True)
 
 
 def _serving_repository_url(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4447,6 +4553,136 @@ def test_visible_core_preemption_honors_a_failure_recorded_during_its_checks(
     # The source-wide failure hold covers the visible batch: no second provider read.
     _drain_visible_cores(client)
     assert calls == [(8,)]
+
+
+# Each route that may start a refresh for a reader's own click: the module and name of the
+# start it calls inside ``_whose``, and what else its body must name.
+_RETRY_ROUTES: Final[dict[str, tuple[str, str, dict[str, Any]]]] = {
+    "pull-refresh": ("pull_route", "start_refresh", {"number": 7}),
+    "pulls-refresh": ("pull_list_route", "start_refresh", {}),
+    "stacks-refresh": ("pull_stacks_route", "start_refresh", {}),
+    "labels-refresh": ("pull_labels_route", "start_refresh", {}),
+    "pull-files-refresh": ("pull_files_route", "start_files_refresh", {"number": 7}),
+}
+
+
+@pytest.mark.parametrize("retry", [True, False], ids=["reader", "automatic"])
+@pytest.mark.parametrize("route", sorted(_RETRY_ROUTES))
+def test_each_refresh_route_starts_a_readers_click_where_the_ceiling_does_not_count_it(
+    pinned_pull: tuple[_Stand, TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    retry: bool,
+) -> None:
+    """A9 of review A on #737: the unit tests proved the context and the coordinator's copy
+    of it, and nothing proved a route enters it, so a handler that dropped ``_whose`` would
+    count a reader's Reload against the process's ceiling unseen.
+
+    The start each route calls is replaced by one that spends where it is called, which is
+    where the job it starts would copy its context from.
+    """
+
+    import importlib
+    import inspect
+
+    from metabrowser.builtin_plugins.github import gh_budget, pull_list_route
+
+    module_name, name, body = _RETRY_ROUTES[route]
+    module = importlib.import_module(f"metabrowser.builtin_plugins.github.{module_name}")
+    counted: list[tuple[int, int]] = []
+
+    def spend() -> str:
+        now = datetime.now(UTC)
+        before = (gh_budget.automatic_spent(now), gh_budget.speculative_spent(now))
+        gh_budget.spent(5, now=now)
+        after = (gh_budget.automatic_spent(now), gh_budget.speculative_spent(now))
+        counted.append((after[0] - before[0], after[1] - before[1]))
+        return "not_due"
+
+    async def started_async(*_args: object, **_kwargs: object) -> str:
+        return spend()
+
+    def started(*_args: object, **_kwargs: object) -> str:
+        return spend()
+
+    real = getattr(module, name)
+    monkeypatch.setattr(
+        module, name, started_async if inspect.iscoroutinefunction(real) else started
+    )
+    # A page's automatic ask also probes the list, which spends on its own.
+    monkeypatch.setattr(pull_list_route, "attend_list", lambda _view: None)
+    _stand, client = pinned_pull
+    response = client.post(
+        f"/api/plugin/github/{route}", json={**body, "retry": retry}, headers=_JSON
+    )
+    assert response.status_code == 200, response.text
+    # A reader's click is not counted; an automatic ask is, and the label set's periodic
+    # read is speculative work as well (A1 of review A on #737).
+    speculative = 5 if route == "labels-refresh" else 0
+    assert counted == ([(0, 0)] if retry else [(5, speculative)])
+
+
+def test_cores_for_rows_on_screen_are_held_over_the_process_ceiling(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A9 of review A on #737: no test spent the ceiling before asking for visible cores.
+
+    The rows on screen are the visible lane, which the floor does not hold; the ceiling
+    and a rate-limit hold do.
+    """
+
+    from metabrowser.builtin_plugins.github import gh_budget, pulls
+
+    visible, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8,), lane="visible"
+    )
+    _stand, client = pinned_pull
+    ninth = {**visible, "window": {**visible["window"], "id": "viewport"}, "numbers": [9]}
+    assert ninth["lane"] == "visible"
+    gh_budget.spent(gh_budget.AUTOMATIC_CORE_PER_HOUR, now=pulls.utc_now())
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "held"
+    # What the cache covers is answered all the same, with no request.
+    assert client.post(_PREPARE_CORES, json=visible).json()["preparation"] == "ready"
+    assert calls == [(8,)]
+    gh_budget.forget()
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "started"
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+
+
+def test_a_spent_speculative_share_holds_the_cores_walk_and_not_the_rows_on_screen(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A1 of review A on #737: the walk's batches are speculative, and counted as such."""
+
+    from metabrowser.builtin_plugins.github import gh_budget, pulls
+
+    async def spend() -> None:
+        gh_budget.spent(1, now=pulls.utc_now())
+
+    walk, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8,), hold_batch=spend, lane="background"
+    )
+    _stand, client = pinned_pull
+    _drain_visible_cores(client)
+    now = pulls.utc_now()
+    assert gh_budget.speculative_spent(now) == 1
+    # What the stand's own reads spent, which were not the walk's.
+    others = gh_budget.automatic_spent(now) - 1
+    with gh_budget.speculative():
+        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR - 1, now=now)
+    assert not gh_budget.over_ceiling(now)
+    ninth = {**walk, "window": {**walk["window"], "id": "walk-9"}, "numbers": [9]}
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "held"
+    assert calls == [(8,)]
+    # The same row on screen is read, and its batch is not speculative work.
+    on_screen = {**ninth, "window": {**walk["window"], "id": "viewport"}, "lane": "visible"}
+    assert client.post(_PREPARE_CORES, json=on_screen).json()["preparation"] == "started"
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+    now = pulls.utc_now()
+    assert gh_budget.speculative_spent(now) == gh_budget.SPECULATIVE_CORE_PER_HOUR
+    assert gh_budget.automatic_spent(now) == others + gh_budget.SPECULATIVE_CORE_PER_HOUR + 1
 
 
 def test_visible_core_preempts_a_background_batch_that_reads_none_of_its_rows(

@@ -478,6 +478,8 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   ([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)).
   `CheckoutRevisions.serves` answers for a revision of either, so the page of one is
   still the folder’s.
+- **Revision reads.** The checkout serves a pinned commit of its own directly from its
+  own Git objects.
 - **Following a branch.** A revision served under one of the checkout’s own branches,
   remote-tracking branches, or tags (`FOLLOWED_CHECKOUT_REFS` in
   `checkout_revisions.py`) reads that ref, not one commit of it, as a mirror’s pin does
@@ -523,8 +525,9 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
     than `FRESHNESS_WINDOW_S`, quietly.
   - **Never written.** `tests/test_checkout_revisions.py` compares every entry under the
     checkout, `.git` included, across an ask, a follow, and the new commit’s files.
-- **Not yet.** A revision of a checkout has no Pulls tab, and its branch list shows no
-  pull requests.
+- **Pull requests.** A GitHub checkout’s Pulls tab and branch list use the same
+  repository catalog on the working tree and its pinned revisions.
+  Opening a pull request leaves the Files pin in place.
 
 ## How a Mirror’s Page Names Itself
 

@@ -342,7 +342,7 @@ def refresh_wanted(repository: ListedRepository, *, retry: bool = False) -> bool
     # A page's own ask is automatic work, which the budget may hold: only chip colors wait.
     return (
         remaining_freshness(stamp) == 0
-        and gh_budget.admission(("core",), now=pull_list.utc_now()).admitted
+        and gh_budget.admission(("core",), now=pull_list.utc_now(), speculative=True).admitted
     )
 
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -42,6 +43,7 @@ from metabrowser.cache.resolve import (
     UnresolvedSelection,
     list_mirror_refs,
     ref_tip,
+    ref_tips,
     resolve_pin,
     resolve_selection,
 )
@@ -320,6 +322,9 @@ class StoreMirror:
 
     async def ref_tip(self, ref: str) -> str | None:
         return await ref_tip(self._target(), ref)
+
+    async def ref_tips(self, refs: Sequence[str]) -> dict[str, str]:
+        return await ref_tips(self._target(), refs)
 
     async def default_tip(self) -> str | None:
         # The store's record of the default branch, then one `for-each-ref` for it.

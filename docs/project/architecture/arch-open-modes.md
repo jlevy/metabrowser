@@ -291,8 +291,9 @@ cost alone
   A checkout with no `origin`, or one whose origin is a path or a `file://` address,
   keeps no store and is served exactly as before: its remote-tracking branches are
   already that repository’s, a file read away, and the listing’s `origin` is null.
-  An origin reached another way, such as SSH on a host no provider reduces to HTTPS, is
-  one Metabrowser cannot fetch, and the chooser says so (`transport_unsupported`).
+  An origin reached another way, SSH on a host no provider reduces to HTTPS, or an
+  `http://` or `git://` address, is one Metabrowser cannot fetch, and the chooser says
+  so (`transport_unsupported`); a server never tries it.
 - **When it is fetched:** from the moment the folder is served, by the rules of every
   store Metabrowser keeps
   ([Refresh Cadence](arch-mirror-acquisition-and-refresh.md#refresh-cadence)). A server
@@ -362,9 +363,14 @@ cost alone
   own branches follows the checkout’s ref, which is read and never fetched
   ([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
   The row says what was fetched is Metabrowser’s store of the origin and never the
-  checkout, asks for one refresh when the store has grown old, as a mirror’s page does,
-  and leaves the reload offer to the ref selector (`describe` with `checkout` in
-  `static/source-freshness.js`).
+  checkout, and leaves the reload offer to the ref selector (`describe` with `checkout`
+  in `static/source-freshness.js`). A page that shows nothing of the store, the working
+  tree’s or one of the checkout’s own revisions, has a store grown old fetched by its
+  own ask, `{"for": "page"}`: once each time it is shown, and on one of the checkout’s
+  own branches each time that page asks while it is visible.
+  That fetch is quiet: nothing on the page can change when it ends.
+  The row says “Refreshing…” for the reader’s own Refresh, and on a page of one of the
+  origin’s branches, which a fetch can move.
 - **Refresh:** `POST /api/source/refresh` on a folder that keeps a store fetches the
   store, whatever the folder shows, and the listing reads the checkout’s refs again each
   time it is asked for.
@@ -373,13 +379,23 @@ cost alone
   why. An origin that needs credentials the provider’s helper lacks is
   `not_found_or_private`: the origin is shown as not fetched, with that reason.
   Nothing prompts, since the acquisition policy gives Git no terminal and no askpass
-  program. A server tries the acquisition again each `STORE_IDLE_REFRESH_S`, also when it
-  was the checkout that could not lend, since a partial clone can be made whole; the
-  chooser keeps the reason while it tries.
-  A page’s own ask starts none within `FRESHNESS_WINDOW_S` of one that failed.
+  program. Where the provider says what to do about it, as GitHub’s does for `gh`, the
+  reason’s sentence ends with that.
+  A server tries a failed acquisition again unasked `STORE_IDLE_REFRESH_S` after it
+  ended, and then twice as long after each failure in a row, up to
+  `ACQUISITION_RETRY_CAP_S`, also when it was the checkout that could not lend, since a
+  partial clone can be made whole; the chooser keeps the reason while it tries.
+  An acquisition that ran out its deadline (`timed_out`) downloaded for all of it and
+  kept nothing, so it is not tried again unasked at all (`_NOT_RETRIED_UNASKED` in
+  `checkout_store.py`, with the measurement).
+  A page’s own ask is held to the same waits, and a reader’s Refresh to none.
 - **Never written:** `tests/test_checkout_store.py` compares every entry under the
   checkout’s `.git`, and its working tree, before and after the store is made, an origin
   branch served and read, a probe, a reader’s fetch, and the idle fetch.
+  An entry’s modification time is compared too: every fetch into a store that borrows
+  keeps the pack it receives (`OVERLAY_FETCH_CONFIG` in `cache/lender.py`), because Git
+  would otherwise mark an object the checkout already holds as written again, in the
+  checkout.
 
 The first acquisition was measured on 2026-11-22; the numbers are in
 `checkout_store.py`, beside the acquisition.

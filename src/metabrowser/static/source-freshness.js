@@ -1,5 +1,5 @@
 // Freshness of a served mirror: the quiet fetched label, following a branch to its
-// new commit, and offering a reload when another ref is served.
+// new commit, and switching the pin.
 //
 // A page on a pinned revision polls /api/source/status while it is visible: quickly
 // while a refresh runs, slowly otherwise, and with If-None-Match so an unchanged
@@ -15,8 +15,9 @@
 // quiet (`refresh_quiet`): the row says and announces nothing for it.
 // A page on a branch, a tag, or a pull request's head reads that ref as the mirror has it,
 // as github.com shows a branch: when a refresh moves the ref, the server serves its new
-// tip, and the page goes with it to the same address, by itself. Every ref a mirror
-// serves a pin under follows, so the row offers no switch to a newer commit.
+// tip, and the page goes with it to the same address, by itself. A commit opened by its
+// ID stays where it is, also while a ref names it: when that ref moves on, its new tip is
+// offered instead, and accepting switches the pin to the ref.
 // When the server serves another ref than the one the page was rendered for -- another
 // tab switched it, or a restart -- the row offers a reload.
 //
@@ -146,6 +147,17 @@
    */
   function loudlyRefreshing(status) {
     return status?.refreshing === true && status.refresh_quiet !== true;
+  }
+
+  /**
+   * What the row calls the ref a status serves: its short name, and for a pull request's
+   * head, whose only name is `refs/pull/<n>/head`, the pull request. Pure.
+   *
+   * @param {MetabrowserSourceStatus} status
+   */
+  function refLabel(status) {
+    const pull = /^refs\/pull\/([1-9][0-9]*)\/head$/.exec(status.ref ?? "");
+    return pull !== null ? `pull request #${pull[1]}` : (status.ref_name ?? status.ref ?? "");
   }
 
   /**
@@ -294,8 +306,27 @@
       };
     } else if (retrySelection) {
       offer = { kind: "retry", text: "Fetch the address again", button: "Retry" };
+    } else if (
+      !status.follows &&
+      status.ref !== null &&
+      status.latest !== null &&
+      status.pin !== null &&
+      status.latest !== status.pin
+    ) {
+      // A pin that does not follow, a commit opened by its ID that a ref names, and that
+      // ref moved on: offer its new tip.
+      offer = {
+        kind: "switch",
+        ref: status.ref,
+        latest: status.latest,
+        // "Now at", not "newer": a force-push can move a branch back. The commit follows
+        // the words in the commit-ID face, as every line names one.
+        text: `${refLabel(status)} is now at`,
+        commit: window.MetabrowserFormatters.shortCommit(status.latest),
+        button: "Switch",
+      };
     } else if (status.ref !== null && status.ref_on_origin === false && !refreshing) {
-      detail = `${detail} ${status.ref_name ?? status.ref} is no longer on the origin; its commits stay readable here.`;
+      detail = `${detail} ${refLabel(status)} is no longer on the origin; its commits stay readable here.`;
     }
     // The attended pull request's page is one link away from every page on its pin.
     return { visible: true, tone, label, detail, offer, error, pull, follow: null };
@@ -342,7 +373,9 @@
    * @returns {MetabrowserSourceFreshnessModel}
    */
   function following(status, follow, pull) {
-    const name = status.ref_name ?? follow.ref;
+    // A pull request's head is named for its pull request (`refLabel`); `followTarget`
+    // follows only the ref status serves, so the label names that ref.
+    const name = refLabel(status);
     return {
       visible: true,
       tone: "refreshing",
@@ -365,7 +398,7 @@
    * server could not follow yet, status reports the tip as `latest`, and the page asks for
    * it. A page drawn for another ref than the one served was switched by another tab or
    * a restart, which a reload offer answers instead, and a commit opened by its ID does
-   * not move.
+   * not move, whatever ref names it.
    *
    * A repository folder's page on one of its checkout's own branches follows the same
    * way: there the ref moves by the reader's own commit or fetch, which the server reads
@@ -652,6 +685,7 @@
     // Whether the server answers the page's own ask. One that refuses it is polled as a
     // page that sends none is, until the page is shown again.
     let pageAskAnswered = true;
+    let switching = false;
     // A page follows its ref at most once: it leaves, or a refused follow says why and
     // waits for the reader's refresh rather than asking on every poll.
     let following = false;
@@ -780,7 +814,9 @@
         return;
       }
       if (status?.stale && !status.refreshing && !refreshAskedWhileVisible) {
-        await ask({}, { own: true });
+        // A folder's page that shows nothing of the store asks as a page does, so the
+        // fetch is quiet: nothing on the page can change when it ends.
+        await ask(checkout && !status.follows ? { for: "page" } : {}, { own: true });
         return;
       }
       render();
@@ -900,7 +936,7 @@
           }
           return;
         }
-        followError = `Could not follow ${status?.ref_name ?? ref} to its new commit.`;
+        followError = `Could not follow ${status === null ? ref : refLabel(status)} to its new commit.`;
       } catch {
         if (disposed) {
           return;
@@ -1024,14 +1060,33 @@
     async function acceptOffer() {
       const model = describe(status, { shown, nowMs: deps.now(), error: followError });
       const offer = model.offer;
-      if (disposed || offer === null) {
+      if (disposed || switching || offer === null) {
         return;
       }
       if (offer.kind === "reload") {
         deps.reload();
         return;
       }
-      await requestRefresh();
+      if (offer.kind === "retry") {
+        await requestRefresh();
+        return;
+      }
+      switching = true;
+      try {
+        const response = await deps.request("POST", PIN_ROUTE, { body: { ref: offer.ref } });
+        if (response.status === 200) {
+          deps.reload();
+          return;
+        }
+        error = "Could not switch to that commit.";
+      } catch {
+        error = "The switch request failed.";
+      } finally {
+        switching = false;
+      }
+      if (!disposed) {
+        render();
+      }
     }
 
     function onVisibilityChange() {
@@ -1089,7 +1144,11 @@
       parts.push(model.label);
     }
     if (model.offer !== null) {
-      parts.push(model.offer.text);
+      parts.push(
+        model.offer.kind === "switch"
+          ? `${model.offer.text} ${model.offer.commit}`
+          : model.offer.text,
+      );
     }
     if (model.error !== null) {
       parts.push(model.error.replace(/\.$/, ""));
@@ -1150,6 +1209,12 @@
       offer.className = "source-freshness-offer";
       const text = document.createElement("span");
       text.textContent = model.offer.text;
+      if (model.offer.kind === "switch") {
+        const commit = document.createElement("span");
+        commit.className = "git-commit-sha";
+        commit.textContent = model.offer.commit;
+        text.append(" ", commit);
+      }
       const button = document.createElement("button");
       button.type = "button";
       button.className = "btn source-freshness-accept";

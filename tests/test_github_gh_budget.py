@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -12,6 +13,7 @@ from metabrowser.builtin_plugins.github.gh_budget import (
     AUTOMATIC_CORE_PER_HOUR,
     BACKGROUND_FLOOR,
     CEILING_FULL_READ_S,
+    SPECULATIVE_CORE_PER_HOUR,
     Admission,
     admission,
     held_until,
@@ -293,6 +295,35 @@ def test_a_graphql_query_costs_what_github_reports_and_one_when_it_reports_nothi
     assert gh_budget.automatic_spent(NOW) == cost
 
 
+@pytest.mark.parametrize(
+    ("status", "reason", "headers"),
+    [
+        (401, "Unauthorized", ""),
+        (403, "Forbidden", f"X-Ratelimit-Remaining: 0\r\nX-Ratelimit-Reset: {RESET}\r\n"),
+        (502, "Bad Gateway", ""),
+    ],
+)
+def test_a_graphql_query_github_refused_costs_one(
+    monkeypatch: pytest.MonkeyPatch, status: int, reason: str, headers: str
+) -> None:
+    """A refusal is charged as a ``200`` is, rate-limited or not (A9 of review A on #737)."""
+
+    import asyncio
+    from types import SimpleNamespace
+
+    from metabrowser.builtin_plugins.github import gh
+
+    out = f"HTTP/2.0 {status} {reason}\r\n{headers}\r\n".encode() + b'{"message": "no"}'
+
+    async def run(*_args: object, **_kwargs: object) -> object:
+        return SimpleNamespace(stdout=out, stderr=b"", returncode=0)
+
+    monkeypatch.setattr(gh, "_run", run)
+    with pytest.raises(gh.GhError):
+        asyncio.run(gh.gh_graphql("query Fixed { viewer { login } }", {}, now=NOW))
+    assert gh_budget.automatic_spent(NOW) == 1
+
+
 def test_a_job_the_coordinator_starts_for_a_readers_click_is_the_readers_too() -> None:
     import asyncio
 
@@ -341,3 +372,112 @@ def test_the_account_check_is_counted_as_any_other_answer_is(
         assert gh_budget.automatic_spent(datetime.now(UTC)) == before + 1
     finally:
         gh.forget_account()
+
+
+# ── Speculative work's share of the ceiling ─────────────────────
+
+
+def test_speculative_work_stops_at_its_share_and_what_is_on_screen_keeps_the_rest() -> None:
+    """A1 of review A on #737: the prefetch could spend the ceiling the screen then paid for."""
+
+    with gh_budget.speculative():
+        gh_budget.spent(SPECULATIVE_CORE_PER_HOUR - 1, now=NOW)
+    assert admission(("core",), now=NOW, speculative=True) == Admission(True)
+    with gh_budget.speculative():
+        gh_budget.spent(1, now=NOW)
+    assert gh_budget.speculative_spent(NOW) == SPECULATIVE_CORE_PER_HOUR
+    assert admission(("core",), now=NOW, speculative=True) == Admission(False, "self_ceiling")
+    # What is on screen is admitted, and neither its probes nor its full reads slow.
+    assert not gh_budget.over_ceiling(NOW)
+    assert admission(("graphql",), now=NOW) == Admission(True)
+    assert gh_budget.full_read_interval(90.0, now=NOW) == 90.0
+    # It keeps the rest of the ceiling, to the point.
+    rest = AUTOMATIC_CORE_PER_HOUR - SPECULATIVE_CORE_PER_HOUR
+    gh_budget.spent(rest - 1, now=NOW)
+    assert admission(("core",), now=NOW) == Admission(True)
+    gh_budget.spent(1, now=NOW)
+    assert admission(("core",), now=NOW) == Admission(False, "self_ceiling")
+    # The share rolls with the hour, as the ceiling does.
+    later = NOW + timedelta(minutes=60)
+    assert gh_budget.speculative_spent(later) == 0
+    assert admission(("core",), now=later, speculative=True) == Admission(True)
+
+
+def test_what_is_on_screen_spends_none_of_speculative_works_share() -> None:
+    gh_budget.spent(SPECULATIVE_CORE_PER_HOUR, now=NOW)
+    assert gh_budget.speculative_spent(NOW) == 0
+    assert admission(("core",), now=NOW, speculative=True) == Admission(True)
+    # The ceiling stops speculative work as it stops any background work.
+    gh_budget.spent(AUTOMATIC_CORE_PER_HOUR - SPECULATIVE_CORE_PER_HOUR, now=NOW)
+    assert admission(("core",), now=NOW, speculative=True) == Admission(False, "self_ceiling")
+
+
+def test_the_share_leaves_what_is_on_screen_more_than_one_busy_page_spends() -> None:
+    """The arithmetic beside the constants: 160 points an hour for one busy visible page."""
+
+    assert AUTOMATIC_CORE_PER_HOUR - SPECULATIVE_CORE_PER_HOUR >= 160
+    assert 0 < SPECULATIVE_CORE_PER_HOUR < AUTOMATIC_CORE_PER_HOUR
+
+
+def test_a_job_started_inside_speculative_work_is_speculative_and_a_readers_own_is_uncounted() -> (
+    None
+):
+    import asyncio
+
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    async def job() -> None:
+        gh_budget.spent(4, now=NOW)
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator(limit=1)
+        with gh_budget.speculative():
+            coordinator.start("a prefetch", job, network=False)
+            with gh_budget.readers_own():
+                coordinator.start("a reader's refresh", job, network=False)
+        coordinator.start("a visible page's refresh", job, network=False)
+        await coordinator.drain(timeout_s=2)
+        await coordinator.aclose()
+
+    asyncio.run(run())
+    assert gh_budget.speculative_spent(NOW) == 4 and gh_budget.automatic_spent(NOW) == 8
+
+
+def test_another_account_starts_its_share_afresh() -> None:
+    gh_budget.note_account("octo-reader")
+    with gh_budget.speculative():
+        gh_budget.spent(SPECULATIVE_CORE_PER_HOUR, now=NOW)
+    gh_budget.note_account("someone-else")
+    assert gh_budget.speculative_spent(NOW) == 0
+
+
+def test_the_hours_spending_is_read_from_a_copy_while_the_loop_counts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A6 of review A on #737: a worker thread summed the buckets the loop was adding to.
+
+    The stand-in dictionary lets another thread count a new minute's spending in the
+    middle of a read's iteration, which is the switch the lock rules out.
+    """
+
+    import threading
+
+    counting = threading.Thread(
+        target=gh_budget.spent, args=(1,), kwargs={"now": NOW + timedelta(minutes=5)}
+    )
+
+    class Interrupted(dict[int, int]):
+        def items(self) -> Any:
+            for pair in tuple(super().items()):
+                if not counting.is_alive() and len(self) == 1:
+                    counting.start()
+                    # Under the lock the count waits for this read; without it, it lands.
+                    counting.join(0.2)
+                    if len(self) != 1:
+                        raise RuntimeError("dictionary changed size during iteration")
+                yield pair
+
+    monkeypatch.setattr(gh_budget, "_SPENT", Interrupted({gh_budget._minute(NOW): 2}))  # pyright: ignore[reportPrivateUsage]
+    assert gh_budget.automatic_spent(NOW + timedelta(minutes=5)) == 2
+    counting.join(5)
+    assert gh_budget.automatic_spent(NOW + timedelta(minutes=5)) == 3

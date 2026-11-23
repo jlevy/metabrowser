@@ -148,6 +148,7 @@ async def pull_handler(request: Request) -> Response:
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
         envelope_etag,
+        follow_adopted_head,
         note_full_record,
         pull_answer,
         pull_host,
@@ -216,6 +217,7 @@ async def pull_handler(request: Request) -> Response:
         _drop_core_preview(envelope)
     if envelope["record"] is not None:
         note_full_record(view)
+        follow_adopted_head(view, envelope)
     if view.kept is not None:
         view.kept.saw_record(
             envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
@@ -457,6 +459,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     )
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
+        follow_adopted_head,
         note_full_record,
         pull_answer,
         pull_host,
@@ -482,7 +485,14 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
             status_code=409,
         )
     # A visible page's automatic ask also keeps its repository's list probed, beside its
-    # own record's probe and for no longer (:func:`.pull_list_route.attend_list`).
+    # own record's probe and for no longer (:func:`.pull_list_route.attend_list`). The
+    # answer waits for it, at most ``PROBE_WAIT_S`` and a thread's read: a one-shot
+    # ``metab --api`` drains the coordinator's jobs running when the answer comes and then
+    # shuts the application down, which cancels every other task, and neither the ask's
+    # read of the catalog nor the scan a probe's change starts is such a job until it has
+    # begun. Without the wait, whether a one-shot ask probes the list and scans for what
+    # it finds would depend on timing (review A7 of #737). The two probes run side by
+    # side, so the wait is the list's time past the record's.
     attending = None if ask.retry else attend_list(list_view(request.app, DEFAULT_LIST))
     try:
         with _whose(ask.retry):
@@ -503,6 +513,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
         _drop_core_preview(envelope)
     if envelope["record"] is not None:
         note_full_record(view)
+        follow_adopted_head(view, envelope)
     if view.kept is not None:
         view.kept.saw_record(
             envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
@@ -518,16 +529,19 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     return JSONResponse(answer, status_code=_REFRESH_STATUS[started], headers=_NO_STORE)
 
 
-def _whose(retry: bool) -> contextlib.AbstractContextManager[None]:
+def _whose(retry: bool, *, speculative: bool = False) -> contextlib.AbstractContextManager[None]:
     """The context a refresh starts in: a reader's own for a *retry*, which no ceiling counts.
 
     The job's task copies it, so what a reader's click spends is not counted against the
-    process's automatic work (:func:`.gh_budget.readers_own`).
+    process's automatic work (:func:`.gh_budget.readers_own`). An automatic ask for
+    *speculative* work starts in that context instead (:func:`.gh_budget.speculative`).
     """
 
     from metabrowser.builtin_plugins.github import gh_budget
 
-    return gh_budget.readers_own() if retry else contextlib.nullcontext()
+    if retry:
+        return gh_budget.readers_own()
+    return gh_budget.speculative() if speculative else contextlib.nullcontext()
 
 
 def _invalid_request(message: str, status_code: int = 400) -> JSONResponse:
@@ -942,7 +956,8 @@ async def labels_refresh_handler(request: Request) -> Response:
             status_code=409,
         )
     wanted = await asyncio.to_thread(refresh_wanted, view.repository, retry=retry)
-    with _whose(retry):
+    # The set's periodic read colors chips nobody is waiting on: speculative work.
+    with _whose(retry, speculative=True):
         started = start_refresh(view, retry=retry, wanted=wanted)
     envelope = await asyncio.to_thread(label_envelope, label_view(request.app))
     return JSONResponse(

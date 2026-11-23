@@ -637,15 +637,23 @@ def test_recording_is_what_a_served_mirror_answers(
 
 
 def test_a_folders_row_names_its_store_of_the_origin_on_every_page() -> None:
-    """The row on a repository folder's pages, its working tree's among them: it asks for
-    one refresh of a store grown old, says what was fetched is Metabrowser's store, and
-    leaves the reload offer to the ref selector."""
+    """The row on a repository folder's pages, its working tree's among them: a store
+    grown old is fetched once by the page's own quiet ask, since the page shows nothing
+    of it, and only the reader's Refresh says "Refreshing…"; the row says what was
+    fetched is Metabrowser's store, and leaves the reload offer to the ref selector."""
 
     folder = run_session("source-freshness-session.js", "folder")
     by_name = {step["step"]: step for step in folder["steps"]}
-    stale = by_name["the working tree's page, its origin's store grown old, asks once"]
-    assert stale["requests"] == ["GET /api/source/status", "POST /api/source/refresh {}"]
-    assert stale["paint"]["label"] == "Refreshing…"
+    stale = by_name["the working tree's page, its origin's store grown old, asks quietly, once"]
+    assert stale["requests"] == [
+        "GET /api/source/status",
+        'POST /api/source/refresh {"for":"page"}',
+    ]
+    assert stale["paint"]["label"].startswith("Origin fetched ")
+    assert stale["paint"]["tone"] == "quiet"
+    pressed = by_name["the reader's own Refresh says so while it runs"]
+    assert pressed["requests"] == ["POST /api/source/refresh {}"]
+    assert pressed["paint"]["label"] == "Refreshing…"
     fetched = by_name["the store was fetched; the row says when, and nothing reloads"]
     assert fetched["paint"]["label"].startswith("Origin fetched ")
     assert "never fetched into" in fetched["paint"]["detail"]

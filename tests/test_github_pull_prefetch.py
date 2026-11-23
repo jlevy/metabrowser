@@ -229,6 +229,72 @@ def test_a_scan_refreshes_at_most_its_cap_and_a_new_scan_starts_another(
     assert host.started[RECORDS_PER_SCAN:] == list(numbers[RECORDS_PER_SCAN:])
 
 
+def test_the_lane_leaves_what_is_on_screen_the_ceiling_it_needs(
+    stand: tuple[_Host, dict[int, str], list[int]],
+) -> None:
+    """A1 of review A on #737, in the terms of the code before it: records that each cost a
+    fifth of the ceiling stopped the lane only once it had spent the whole ceiling, and the
+    page on screen then paid for that with probes slowed, full reads held five minutes
+    apart, the cores of its rows held, and its timeline refused."""
+
+    host, _verdicts, _revision = stand
+    numbers = (9, 10, 11, 12, 13, 14)
+    for number in numbers:
+        host.on_refresh[number] = lambda: gh_budget.spent(
+            gh_budget.AUTOMATIC_CORE_PER_HOUR // 5, now=NOW
+        )
+    _run(host, PrefetchRequest(records=numbers))
+    assert host.started[:2] == [9, 10]
+    assert not gh_budget.over_ceiling(NOW)
+    assert gh_budget.admission(("graphql",), now=NOW).admitted
+    assert gh_budget.full_read_interval(90.0, now=NOW) == 90.0
+
+
+def test_the_caps_priced_at_a_page_a_part_fit_speculative_works_share() -> None:
+    """The arithmetic beside the caps: 6 points a record and 1 a list (A1, review A of #737)."""
+
+    assert RECORDS_PER_HOUR * 6 + FILES_PER_HOUR * 1 <= gh_budget.SPECULATIVE_CORE_PER_HOUR
+    assert RECORDS_PER_SCAN <= RECORDS_PER_HOUR
+
+
+def test_what_the_lanes_jobs_spend_is_speculative_and_the_lane_stops_at_its_share(
+    stand: tuple[_Host, dict[int, str], list[int]],
+) -> None:
+    """A1 of review A on #737: the lane spent the ceiling that the screen then paid for."""
+
+    host, _verdicts, _revision = stand
+    share = gh_budget.SPECULATIVE_CORE_PER_HOUR
+    host.on_refresh[9] = lambda: gh_budget.spent(6, now=NOW)
+    host.on_refresh[10] = lambda: gh_budget.spent(share - 6, now=NOW)
+    assert _run(host, PrefetchRequest(records=(9,))) == ("started", None, 1)
+    assert (gh_budget.speculative_spent(NOW), gh_budget.automatic_spent(NOW)) == (6, 6)
+    ceiling = _report(host)["governor"]["ceiling"]
+    assert ceiling == {
+        "per_hour": gh_budget.AUTOMATIC_CORE_PER_HOUR,
+        "hour_used": 6,
+        "speculative_per_hour": share,
+        "speculative_hour_used": 6,
+    }
+    # 10's read spends the rest of the share, and the lane stops there, dropping 11.
+    assert _run(host, PrefetchRequest(records=(10, 11, 12))) == ("started", None, 3)
+    assert host.started == [9, 10]
+    assert _recent(host)[-2:] == [
+        ("record", 10, "refreshed"),
+        ("record", 11, "deferred:self_ceiling"),
+    ]
+    assert not lane_of(host.pulls).queue  # pyright: ignore[reportArgumentType]
+    assert _run(host, PrefetchRequest(records=(11,))) == ("deferred", "self_ceiling", 0)
+    governor = _report(host)["governor"]
+    assert (governor["admits"], governor["reason"]) == (False, "self_ceiling")
+    assert governor["ceiling"]["speculative_hour_used"] == share
+    # What is on screen is admitted all the while: the ceiling has two thirds left.
+    assert not gh_budget.over_ceiling(NOW)
+    assert gh_budget.admission(("graphql",), now=NOW).admitted
+    host.clock[0] = NOW + timedelta(hours=1)  # pyright: ignore[reportAttributeAccessIssue]
+    assert _run(host, PrefetchRequest(records=(11,))) == ("started", None, 1)
+    assert host.started == [9, 10, 11]
+
+
 def test_an_hours_records_are_capped_and_the_cap_frees_an_hour_later(
     stand: tuple[_Host, dict[int, str], list[int]],
 ) -> None:

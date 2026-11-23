@@ -15,9 +15,9 @@ type MetabrowserRenderContext = {
     /** The route that renders one changed Markdown, YAML or JSON file, which a page completes
      *  with its ID. */
     rendered_route?: string;
-    /** A pull request's Changes: its head ref when the comparison shows the pull request's
-     *  head, which View on branch opens, and null when it shows another commit. */
-    branch?: { ref: string } | null;
+    /** A pull request's Changes file controls. The head ref opens by branch, a
+     *  null ref opens by commit, and a null branch omits the controls. */
+    branch?: { ref: string | null } | null;
   };
   /** The owner of a selected comparison read, while its view is mounting. */
   comparisonSignal?: AbortSignal;
@@ -3653,6 +3653,7 @@ declare global {
   type MetabrowserSourcePage = { pin: string; ref: string | null };
 
   type MetabrowserSourceOffer =
+    | { kind: "switch"; ref: string; latest: string; text: string; commit: string; button: string }
     | { kind: "reload"; text: string; button: string }
     | { kind: "retry"; text: string; button: string };
 

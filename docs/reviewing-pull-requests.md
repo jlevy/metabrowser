@@ -271,7 +271,9 @@ then stays until you choose **Show the newer changes**. While the new commits ar
 being fetched, Changes says `New commits were pushed; updating.` over the diff it has.
 
 On a repository URL, code served on the pull request’s head follows it too, as a branch
-does, and the page reloads on the new head; a commit you opened by its ID stays put.
+does, and the page reloads on the new head.
+A commit you opened by its ID stays put; when it was the head, the foot of the
+navigation pane says the pull request is now at the newer commit, with **Switch**.
 Beside a checkout, only Changes moves, since Files and Commits show your working tree.
 The foot of the navigation pane says separately when the repository’s mirror was
 fetched.

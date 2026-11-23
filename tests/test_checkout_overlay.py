@@ -948,8 +948,13 @@ def test_a_head_the_checkout_lacks_is_fetched_into_the_store_alone(linear: _Stan
     assert linear.store_git("cat-file", "-t", replica["H1"]) == "commit"
     assert pinned_git(checkout, "cat-file", "-t", replica["M5"]) == "commit"
     assert fingerprint(checkout) == before
-    objects = linear.store_git("count-objects")
-    assert objects != "0 objects, 0 kilobytes"
+    # What it fetched is its own, and kept as the pack it arrived in: a fetch that
+    # unpacked could touch the checkout's objects (``OVERLAY_FETCH_CONFIG``).
+    counted = dict(
+        line.split(": ", 1) for line in linear.store_git("count-objects", "-v").splitlines()
+    )
+    assert (counted["count"], counted["packs"]) == ("0", "1")
+    assert int(counted["in-pack"]) > 0
 
 
 def test_the_store_says_what_it_borrows_and_a_full_store_says_nothing(linear: _Stand) -> None:

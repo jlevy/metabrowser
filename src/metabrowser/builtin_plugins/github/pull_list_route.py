@@ -508,14 +508,16 @@ def refresh_wanted(view: ListView, ask: RefreshRequest) -> ListRefreshWanted:
     probe = view.probe
     if listed is None:
         return True
+    if probe is not None and probe.saw is not None:
+        # A probe that outlasted its request's wait found a change: its scan is due now,
+        # below the floor too. Asked before the periodic scan, which would otherwise start
+        # the job without telling the probe, and the row would then be scanned for twice.
+        return "changed"
     # The periodic scan is automatic work, admitted as background work is; below the floor
-    # it stops, and a change a probe finds is still scanned for, just below.
+    # it stops.
     admitted = gh_budget.admission(("graphql", "core"), now=now, ceiling=False).admitted
     if admitted and scan_is_due(stamp, probe, now=now):
         return True
-    if probe is not None and probe.saw is not None:
-        # A probe that outlasted its request's wait found a change: its scan is due now.
-        return "changed"
     if not listed.done["all"]:
         from metabrowser.builtin_plugins.github.pull_list_refresh import (
             backfill_admitted,
@@ -538,7 +540,16 @@ async def probe_list(view: ListView) -> ListRefreshWanted:
 
     repository, probe = view.repository, view.probe
     assert repository is not None and probe is not None
-    if not probe.may_start(pull_list.utc_now()):
+    now = pull_list.utc_now()
+    if not probe.due(now):
+        # The ask found it due in a worker thread, and another ask's probe started, or
+        # ended, before this one reached the loop again: two tabs, or a tab and a page
+        # (review A2 of #737). That probe's own ask starts the scan for what it finds, and
+        # one that outlasted its wait leaves ``saw`` for the next ask's
+        # :func:`refresh_wanted`, so this ask starts nothing: answering ``changed`` too
+        # could start a second delta scan for the same row.
+        return False
+    if not probe.may_start(now):
         # The server's cap on probes in flight is full; the next ask probes.
         return False
     try:

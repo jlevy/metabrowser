@@ -19,15 +19,18 @@ included, before and after the store is made, fetched, probed, and read.
 grammar accepts. A checkout with no ``origin``, or one whose origin is a path or a
 ``file://`` address, keeps no store and is served as before: its remote-tracking
 branches are already that repository's, a file read away. An origin reached another way,
-over SSH on a host no provider reduces to HTTPS, is one Metabrowser cannot fetch, and
-the chooser says so.
+over SSH on a host no provider reduces to HTTPS, or by ``http://``, ``git://``, or any
+other scheme, is one Metabrowser cannot fetch, and the chooser says so.
 
 **When it is fetched.** By the rules of every store Metabrowser keeps
 (:class:`~metabrowser.mirror_refresh.StoreSession`): from the moment a server serves the
 folder, the idle refresh keeps it at most ``STORE_IDLE_REFRESH_S`` old with no page
-visible (it tries a failed acquisition again as often, a checkout that could not lend
-included), and a visible page's own ask fetches it once it is older than the freshness
-window and probes a served origin branch every ``STORE_PROBE_S``. A one-shot command
+visible, and a visible page's own ask fetches it once it is older than the freshness
+window and probes a served origin branch every ``STORE_PROBE_S``. A failed acquisition
+is tried again unasked after ``STORE_IDLE_REFRESH_S``, then twice as long after each
+failure in a row up to :data:`ACQUISITION_RETRY_CAP_S`, a checkout that could not lend
+included, and one that ran out its deadline is not tried again until a reader asks
+(:meth:`CheckoutStore.retry_at`). A one-shot command
 reads the store the cache has and fetches only when it asks. Nothing prompts: the
 acquisition policy gives Git no terminal, so an origin that needs credentials the
 provider's helper lacks is ``not_found_or_private``, and the chooser shows the origin as
@@ -48,7 +51,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from collections import OrderedDict
+import weakref
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -61,7 +64,6 @@ from metabrowser.checkout_revisions import (
     set_origin_session,
 )
 from metabrowser.mirror_refresh import (
-    FRESHNESS_WINDOW_S,
     STORE_IDLE_REFRESH_S,
     LastOutcome,
     MirrorSession,
@@ -84,8 +86,16 @@ log = logging.getLogger(__name__)
 # The transport a checkout's store is fetched over. A path or ``file://`` origin is on
 # this machine, where the checkout's own remote-tracking branches already are.
 _STORE_TRANSPORT: Final = "https"
-# Stores whose turn a process keeps: one server serves one root, and tests serve several.
-_MAX_TURNS: Final = 8
+# The longest the timer waits between unasked tries of an acquisition that keeps failing.
+# The first wait is ``STORE_IDLE_REFRESH_S`` and each failure in a row doubles it, so an
+# origin that refuses is asked 5 times in its first 2 hours and once an hour after that,
+# where every idle interval was 24 times in those 2 hours and 12 an hour after. An
+# attempt that fails early costs the origin's probe, one ``ls-remote`` with the
+# provider's credential helper run for it; one that gets as far as the fetch is the cost
+# measured at :func:`acquire_checkout_store`. An hour is a choice, not a measurement: a
+# laptop back on its network has its origin within the hour with nobody asking, and at
+# once when a reader refreshes.
+ACQUISITION_RETRY_CAP_S: Final = 3600.0
 
 type OriginStoreState = Literal["ready", "acquiring", "absent"]
 # Why a checkout has no store to list its origin from. ``not_fetched`` is a store nothing
@@ -96,6 +106,7 @@ type AcquisitionFailure = Literal[
     "lender_missing",
     "not_found_or_private",
     "network_error",
+    "timed_out",
     "git_failed",
     "refreshing_elsewhere",
     "fetch_failed",
@@ -103,6 +114,16 @@ type AcquisitionFailure = Literal[
 type OriginAbsence = (
     Literal["not_fetched", "transport_unsupported", "cache_unavailable"] | AcquisitionFailure
 )
+# The failures the timer does not try again: only a reader's own refresh does. An
+# acquisition has no size bound of its own, since what an overlay fetches is what the
+# checkout lacks and nothing says how much that is before the fetch, so its bound is the
+# deadline, ``GIT_ACQUISITION_TIMEOUT_S``. One that ran it out downloaded for all of it
+# and kept nothing, and would again: a single-branch clone of a large repository lacks
+# most of it. So nobody's asking costs at most one deadline of download for as long as
+# the server runs. At the slowest rate measured for a first clone, 1,820 KB/s
+# (``builtin_plugins/github/provider.py``, 2026-09-23), that is about 1.5 GB once; the
+# acquisition measured at :func:`acquire_checkout_store` took 21 s and kept 1.26 MB.
+_NOT_RETRIED_UNASKED: Final[frozenset[OriginAbsence]] = frozenset({"timed_out"})
 
 # What a page says for each reason. No path and no address: the envelope names the origin.
 ABSENCE_DETAIL: Final[dict[OriginAbsence, str]] = {
@@ -120,6 +141,10 @@ ABSENCE_DETAIL: Final[dict[OriginAbsence, str]] = {
         "for it. Metabrowser never asks for a password."
     ),
     "network_error": "The origin could not be reached.",
+    "timed_out": (
+        "Fetching what this checkout lacks of its origin took longer than Metabrowser "
+        "waits. It is not tried again until you refresh."
+    ),
     "git_failed": "Git could not prepare Metabrowser's store.",
     "refreshing_elsewhere": "Another Metabrowser process is preparing this store.",
     "fetch_failed": "Metabrowser's store could not be prepared.",
@@ -151,30 +176,35 @@ class CheckoutStoreError(Exception):
     """A checkout's store could not be acquired. ``code`` is an :data:`AcquisitionFailure`.
 
     ``str()`` is safe to show only for ``refreshing_elsewhere``, where it can name the
-    cache's reservation lock for a reader to find its holder.
+    cache's reservation lock for a reader to find its holder. ``hint`` is what the
+    origin's provider says to do about it, a clause safe to show, or ``None``.
     """
 
-    def __init__(self, code: AcquisitionFailure, message: str) -> None:
+    def __init__(self, code: AcquisitionFailure, message: str, *, hint: str | None = None) -> None:
         super().__init__(message)
         self.code: AcquisitionFailure = code
+        self.hint = hint
 
 
-_TURNS: OrderedDict[tuple[str, str], StoreTurn] = OrderedDict()
+# Held weakly: a turn lives while anything holds it, a session, the GitHub plugin's
+# record of the checkout, or a job inside its block, and every one of those gets the same
+# object. A turn nothing holds has no holder and no queue, so making it again loses
+# nothing; a bounded table that dropped the oldest could drop one in use, and the next
+# caller would get a second turn for the same store.
+_TURNS: weakref.WeakValueDictionary[tuple[str, str], StoreTurn] = weakref.WeakValueDictionary()
 
 
 def store_turn(home: Path, source: GitSource) -> StoreTurn:
     """The one turn this process keeps for the store of *source* in *home*.
 
     Everything in a server that fetches into that store takes it: the folder's own fetch
-    and each pull request's. A turn holds nothing while no job waits, so one made for a
-    root no longer served costs a dictionary entry until :data:`_MAX_TURNS` drops it.
+    and each pull request's. The caller keeps it for as long as it may be taken; one
+    made for a root no longer served goes with the last thing that held it.
     """
 
     key = (str(home), source.normalized)
     held = _TURNS.get(key)
     if held is None:
-        while len(_TURNS) >= _MAX_TURNS:
-            _TURNS.popitem(last=False)
         held = _TURNS[key] = StoreTurn()
     return held
 
@@ -213,7 +243,8 @@ async def acquire_checkout_store(
     from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
     from metabrowser.cache.lender import CheckoutRefusedError
     from metabrowser.cache.locks import LockBusyError
-    from metabrowser.git.process import GitError
+    from metabrowser.cache.providers import provider_credential_hint
+    from metabrowser.git.process import GitError, GitTimeoutError
     from metabrowser.home import PrivateStorageError, StorageDirectoryError
 
     try:
@@ -223,10 +254,15 @@ async def acquire_checkout_store(
     except (LenderMissingError, CheckoutRefusedError) as exc:
         raise CheckoutStoreError("lender_missing", "the checkout cannot lend its objects") from exc
     except RemoteAccessError as exc:
-        code: AcquisitionFailure = (
-            "not_found_or_private" if exc.state == "not_found_or_private" else "network_error"
-        )
-        raise CheckoutStoreError(code, "the repository could not be read from its origin") from exc
+        unreadable = "the repository could not be read from its origin"
+        if exc.state == "not_found_or_private":
+            # What to do is the provider's to say, as the command line's refusal has it:
+            # for GitHub, how to sign gh in, or which account it is signed in as.
+            hint = provider_credential_hint(source.normalized)
+            raise CheckoutStoreError("not_found_or_private", unreadable, hint=hint) from exc
+        raise CheckoutStoreError("network_error", unreadable) from exc
+    except GitTimeoutError as exc:
+        raise CheckoutStoreError("timed_out", "the acquisition ran out its deadline") from exc
     except GitError as exc:
         raise CheckoutStoreError("git_failed", "Git could not prepare the store") from exc
     except LockBusyError as exc:
@@ -267,13 +303,20 @@ def _read_origin(root: Path) -> _Origin | None:
     name. No Git process and no write.
     """
 
-    from metabrowser.cache.lender import checkout_origin
+    from metabrowser.cache.lender import checkout_origin, unfetched_origin_address
     from metabrowser.cache.served_mirror import display_origin
     from metabrowser.cache.urls import GitSource
     from metabrowser.home import StorageDirectoryError, application_cache
 
     named = checkout_origin(root)
-    if named is None or named.transport == "file":
+    if named is None:
+        # No origin, or one the grammar refuses: ``http://`` and ``git://`` name another
+        # machine too, by a transport Metabrowser does not fetch over.
+        elsewhere = unfetched_origin_address(root)
+        if elsewhere is None:
+            return None
+        return _Origin(address=display_origin(elsewhere), absent="transport_unsupported")
+    if named.transport == "file":
         return None
     address = display_origin(named.normalized)
     if named.transport != _STORE_TRANSPORT:
@@ -330,12 +373,18 @@ class CheckoutStore:
         self._origin: _Origin | None = None
         self._opened = False
         self._absent: OriginAbsence | None = None
-        # When the acquisition last failed, on the loop's clock, so a page's own ask does
-        # not try an origin that just refused more than once a freshness window.
+        # What the origin's provider says to do about the last failure, if anything.
+        self._hint: str | None = None
+        # When the acquisition last failed, on the loop's clock, and how many times in a
+        # row it has: what the next unasked try waits for (:meth:`retry_at`).
         self._failed_at: float | None = None
+        self._failures = 0
+        # Whether an acquisition this store asked for has yet to end, and the event set
+        # each time one ends, however it ends, for the timer to look again.
+        self._pending = False
+        self._settled = asyncio.Event()
         self.session: MirrorSession | None = None
         self._refs_location: GitLocation | None = None
-        self._made = asyncio.Event()
         # Set as the application stops: an acquisition still unwinding adopts nothing,
         # so no session of a stopped application is left named for the root.
         self._closed = False
@@ -394,10 +443,12 @@ class CheckoutStore:
                 refreshing=True,
             )
         reason: OriginAbsence = self._absent or "not_fetched"
+        hint = self._hint
+        said = "" if hint is None else f" {hint[:1].upper()}{hint[1:]}."
         return OriginStore(
             state="absent",
             reason=reason,
-            detail=ABSENCE_DETAIL[reason],
+            detail=ABSENCE_DETAIL[reason] + said,
             address=address,
             last_fetch_at=None,
             last_outcome=None,
@@ -472,44 +523,73 @@ class CheckoutStore:
         if self._coordinator.running(self._key):
             return "joined"
         # It waits for its turn at the store first and takes a network slot itself.
-        return self._coordinator.start(self._key, self._acquire_job, network=False)
+        started = self._coordinator.start(self._key, self._acquire_job, network=False)
+        self._pending = True
+        return started
 
     async def _acquire_job(self) -> None:
         origin = self._origin
         assert origin is not None and origin.source is not None and origin.home is not None
+        # Not background work at the store: a pull request's job that needs this store
+        # waits for it and then finds it made, where stopping this would start it again.
+        try:
+            async with store_turn(origin.home, origin.source)(lambda: False):
+                await self._acquire(origin.source, origin.home)
+        finally:
+            self._pending = False
+            self._settled.set()
+
+    async def _acquire(self, source: GitSource, home: Path) -> None:
+        """Acquire the store and adopt it, or record why not. The caller holds the store's turn."""
+
         from metabrowser.cache.acquire import AcquiringElsewhereError, wait_for_source_reservation
         from metabrowser.cache.locks import LockBusyError
         from metabrowser.home import PrivateStorageError, StorageDirectoryError
 
-        # Not background work at the store: a pull request's job that needs this store
-        # waits for it and then finds it made, where stopping this would start it again.
-        async with store_turn(origin.home, origin.source)(lambda: False):
+        try:
             try:
-                try:
-                    # Another process's cold open is waited out holding no network slot.
-                    await wait_for_source_reservation(origin.source, home=origin.home)
-                except AcquiringElsewhereError as exc:
-                    raise CheckoutStoreError("refreshing_elsewhere", str(exc)) from exc
-                except (LockBusyError, PrivateStorageError, StorageDirectoryError, OSError):
-                    # The acquisition that follows meets the same condition and reports it.
-                    log.debug("could not wait for another cold open", exc_info=True)
-                async with self._coordinator.slot():
-                    published = await acquire_checkout_store(
-                        origin.source, home=origin.home, checkout=self.root
-                    )
-            except CheckoutStoreError as exc:
-                log.info("the checkout's store was not acquired: %s", exc.code)
-                self._absent = exc.code
-                self._failed_at = asyncio.get_running_loop().time()
-                return
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                log.exception("acquiring the checkout's store failed")
-                self._absent = "fetch_failed"
-                self._failed_at = asyncio.get_running_loop().time()
-                return
-            await self._adopt(published)
+                # Another process's cold open is waited out holding no network slot.
+                await wait_for_source_reservation(source, home=home)
+            except AcquiringElsewhereError as exc:
+                raise CheckoutStoreError("refreshing_elsewhere", str(exc)) from exc
+            except (LockBusyError, PrivateStorageError, StorageDirectoryError, OSError):
+                # The acquisition that follows meets the same condition and reports it.
+                log.debug("could not wait for another cold open", exc_info=True)
+            async with self._coordinator.slot():
+                published = await acquire_checkout_store(source, home=home, checkout=self.root)
+        except CheckoutStoreError as exc:
+            log.info("the checkout's store was not acquired: %s", exc.code)
+            self._failed(exc.code, exc.hint)
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("acquiring the checkout's store failed")
+            self._failed("fetch_failed", None)
+            return
+        await self._adopt(published)
+
+    def _failed(self, reason: AcquisitionFailure, hint: str | None) -> None:
+        self._absent = reason
+        self._hint = hint
+        self._failed_at = asyncio.get_running_loop().time()
+        self._failures += 1
+
+    def retry_at(self) -> float | None:
+        """When the next unasked try of a failed acquisition is due, on the loop's clock.
+
+        ``STORE_IDLE_REFRESH_S`` after the attempt ended, and twice as long after each
+        failure in a row, up to :data:`ACQUISITION_RETRY_CAP_S`. ``None`` when nothing has
+        failed, and for a failure only a reader's refresh tries again
+        (:data:`_NOT_RETRIED_UNASKED`). The timer and a visible page's own ask both wait
+        for it; a reader's refresh waits for nothing.
+        """
+
+        failed = self._failed_at
+        if failed is None or self._absent in _NOT_RETRIED_UNASKED:
+            return None
+        doubled = STORE_IDLE_REFRESH_S * 2 ** min(self._failures - 1, 32)
+        return failed + min(doubled, ACQUISITION_RETRY_CAP_S)
 
     async def _adopt(self, published: PublishedSource) -> None:
         from metabrowser.cache.served_mirror import StoreMirror
@@ -543,22 +623,34 @@ class CheckoutStore:
             return
         self.session = session
         self._absent = None
+        self._hint = None
         self._failed_at = None
+        self._failures = 0
         set_origin_session(self.root, session)
-        self._made.set()
 
     async def _keep_fresh(self) -> None:
-        """Try the acquisition again each idle interval until the store exists, then keep it.
+        """Try a failed acquisition again when it is due until the store exists, then keep it.
 
         An origin that could not be reached when the folder opened is asked again no more
-        often than a store with no page visible is fetched. So is a checkout that could
-        not lend: a partial clone can be made whole, and one that borrowed objects can
-        repack, and the check that refused it reads a few of its files.
+        often than a store with no page visible is fetched, and less often each time it
+        fails again (:meth:`retry_at`). So is a checkout that could not lend: a partial
+        clone can be made whole, and one that borrowed objects can repack, and the check
+        that refused it reads a few of its files. A failure that is not tried again
+        unasked waits here for the acquisition a reader's refresh starts.
         """
 
+        loop = asyncio.get_running_loop()
         while self.session is None:
+            self._settled.clear()
+            # While one runs, the last failure's time says nothing of the next try.
+            due = None if self._pending else self.retry_at()
+            if due is None and (self._pending or self._failed_at is None):
+                # One runs, or was stopped before it began or ended: looked at again
+                # after an idle interval, in case its end never arrives.
+                due = loop.time() + STORE_IDLE_REFRESH_S
+            wait = None if due is None else max(due - loop.time(), 0.0)
             try:
-                await asyncio.wait_for(self._made.wait(), STORE_IDLE_REFRESH_S)
+                await asyncio.wait_for(self._settled.wait(), wait)
             except TimeoutError:
                 if self.session is None:
                     try:
@@ -575,9 +667,10 @@ class CheckoutStore:
         """Answer ``POST /api/source/refresh`` for a folder: fetch the store, or make it.
 
         With a store it is the store session's answer, as a mirror's. Without one it
-        starts or joins the acquisition; a page's own ask starts none within a freshness
-        window of one that failed. The second value is how a pull request's refresh was
-        answered, which only a commit's fetch asks for.
+        starts or joins the acquisition; a page's own ask starts none before the timer's
+        own next try of one that failed (:meth:`retry_at`), so a visible page asks a
+        failing origin no more often than a hidden one. The second value is how a pull
+        request's refresh was answered, which only a commit's fetch asks for.
         """
 
         session = self.session
@@ -592,12 +685,10 @@ class CheckoutStore:
             return "joined", None
         if not self._opened:
             return "joined", None
-        failed = self._failed_at
-        held = (
-            failed is not None and asyncio.get_running_loop().time() - failed <= FRESHNESS_WINDOW_S
-        )
-        if purpose == "page" and held:
-            return "not_due", None
+        if purpose == "page" and self._failed_at is not None:
+            due = self.retry_at()
+            if due is None or asyncio.get_running_loop().time() < due:
+                return "not_due", None
         return self.request_acquisition(), None
 
     async def aclose(self) -> None:
@@ -686,6 +777,7 @@ async def lifespan_checkout_store(app: Any) -> AsyncGenerator[None]:
 
 __all__ = [
     "ABSENCE_DETAIL",
+    "ACQUISITION_RETRY_CAP_S",
     "AcquisitionFailure",
     "CheckoutStore",
     "CheckoutStoreError",

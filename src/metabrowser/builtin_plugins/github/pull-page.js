@@ -242,6 +242,9 @@ const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
 const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 // Give a transient queue or provider failure one chance to clear while the reader stays.
 export const TIMELINE_RETRY_MS = 1000;
+// The longest wait the server may name for a timeline its budget refused (`retry_after_s`,
+// HELD_RETRY_S in pull_timeline.py): the schema's own bound, an hour.
+const TIMELINE_HELD_MAX_S = 3600;
 export const TABS = Object.freeze(["", "files", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
 const TITLE_OVERHANG_PX = 4;
@@ -365,7 +368,7 @@ const TRUNCATED = Object.freeze({
 /**
  * @typedef {{kind: "commit", oid: string, subject: string, committed_at: string | null}} TimelineCommit
  * @typedef {{kind: "comment" | "review", id: string} | TimelineCommit} TimelineEvent
- * @typedef {{state: "complete" | "partial" | "unavailable", events: TimelineEvent[], retryable: boolean}} TimelineProjection
+ * @typedef {{state: "complete" | "partial" | "unavailable", events: TimelineEvent[], retryable: boolean, heldMs: number | null}} TimelineProjection
  */
 
 /**
@@ -448,7 +451,7 @@ const TRUNCATED = Object.freeze({
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   checkNotes: string[],
  *   notes: string[],
- *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, size_route?: string, branch: {ref: string} | null} | null,
+ *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, size_route?: string, branch: {ref: string | null} | null} | null,
  *   comparisonComing: boolean,
  *   head: string | null,
  *   baseRef: string | null,
@@ -851,7 +854,19 @@ function readTimelineProjection(value, revision) {
       events.push({ kind: event.kind, id: event.id });
     }
   }
-  return { state, events, retryable: state !== "complete" && answer.retryable === true };
+  const retryable = state !== "complete" && answer.retryable === true;
+  const wait = answer.retry_after_s;
+  // The budget refused the read: the server says how long to wait before asking again.
+  const heldMs =
+    retryable &&
+    state === "unavailable" &&
+    typeof wait === "number" &&
+    Number.isInteger(wait) &&
+    wait >= 1 &&
+    wait <= TIMELINE_HELD_MAX_S
+      ? wait * 1000
+      : null;
+  return { state, events, retryable, heldMs };
 }
 
 /** The exact PR's GitHub commit page, built from the held record's source. @param {string} source @param {number} number @param {string} oid */
@@ -1301,6 +1316,7 @@ export function rateLimitLifts(envelope) {
  *
  * @param {PullEnvelope | null} envelope
  * *checkoutHead* is the served checkout's `HEAD`, on a folder, which has no pin.
+ * *checkoutPin* marks a checkout's revision, which can open files at its own commit.
  *
  * The controller says what it will send. *fetchQueued* is a selected fetch not asked
  * for yet that the page will send once it is visible or the reader stops; *ownsChanges*
@@ -1334,7 +1350,7 @@ export function rateLimitLifts(envelope) {
  * comparison's, else the record's or the core's, and null before either; `baseRef` is the
  * record's or the core's base branch.
  *
- * @param {{number: number, tab: string, nowMs: number, error?: string | null, errorFromComparison?: boolean, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatHold?: (liftMs: number, nowMs: number) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, errorFromComparison?: boolean, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatHold?: (liftMs: number, nowMs: number) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, checkoutPin?: boolean, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
  * @returns {PullModel}
  */
 export function describePull(envelope, page) {
@@ -1528,7 +1544,10 @@ export function describePull(envelope, page) {
   model.head = head || null;
   model.baseRef = text(pull.base?.ref) || null;
   const headRef = `refs/pull/${pull.number}/head`;
-  if (envelope.pin !== null && head !== "") {
+  // The PR's head ref belongs to a mirror. A checkout can link to a PR
+  // head that it is already serving.
+  const canOpenHead = page.checkoutPin !== true || envelope.pin === head;
+  if (canOpenHead && envelope.pin !== null && head !== "") {
     model.browse = { kind: "link", at: envelope.pin };
     if (envelope.pin !== head) {
       // A branch, a tag, or another pull request. Nothing is wrong, so nothing is said:
@@ -1570,8 +1589,12 @@ export function describePull(envelope, page) {
     model.comparison = {
       ...comparison,
       // What View on branch opens: the pull request's head, under its ref, when the diff
-      // shows that head. A diff of another commit has no branch it is on.
-      branch: head !== "" && comparison.right === head ? { ref: headRef } : null,
+      // shows that head. A diff of another commit has no branch it is on. A checkout can
+      // open only the head it serves, and then under no ref of its own.
+      branch:
+        canOpenHead && head !== "" && comparison.right === head
+          ? { ref: page.checkoutPin === true ? null : headRef }
+          : null,
     };
   }
   model.comparisonComing =
@@ -1935,6 +1958,7 @@ export function renderedTextsHeld() {
  *     walking?: () => boolean,
  *   } | null,
  *   checkoutHead?: string | null,
+ *   checkoutPin?: boolean,
  * }} options
  */
 export function createPullController(deps, options) {
@@ -2289,6 +2313,7 @@ export function createPullController(deps, options) {
       comparisonRefusal,
       waitForReader: reader !== null && !readerAsked && envelope?.reason !== "not_github",
       checkoutHead: options.checkoutHead ?? null,
+      checkoutPin: options.checkoutPin === true,
       listed: deps.listed?.(envelope?.source ?? null, options.number) ?? null,
     };
   }
@@ -2496,9 +2521,12 @@ export function createPullController(deps, options) {
    * The envelope a refresh answered, with the record the page holds put back where the
    * answer left it out. An ask that names `held`, the revision of the record the page
    * shows, is answered `record_held` in place of that record when the server's is the
-   * same one, which is nearly every answer of a page left open: the whole envelope each
-   * `probe_every_s` cost 1.7 ms of the server's event loop and 344 KiB for the largest
-   * record measured (`refresh_answer_pull` in pull_route.py).
+   * same one, which is nearly every answer of a page left open (`refresh_answer_pull` in
+   * pull_route.py records what the whole envelope cost each `probe_every_s`).
+   *
+   * The revision leaves out the record's `fetched_at`, which a read that found the same
+   * content moves, so the record takes the answer's: the envelope's `fetched_at` is its
+   * record's, and the age line is counted from the record.
    *
    * Null when the page no longer holds that record as the server has it: another revision
    * since the ask, or a record whose comparison a server with no store drops (`no_store`),
@@ -2520,7 +2548,7 @@ export function createPullController(deps, options) {
     ) {
       return null;
     }
-    return { ...rest, record: envelope.record };
+    return { ...rest, record: { ...envelope.record, fetched_at: rest.fetched_at } };
   }
 
   /**
@@ -3398,23 +3426,29 @@ export function placeAt(tops, scrollTop) {
  * pixels of rows, and a page opened again draws it closed, so the same offset would land
  * that far into the page.
  *
- * *fileBlock* is where the place's file is now, when the page has it: the place is in that
- * block, whichever block it was. A file the page no longer has leaves the place at its index.
+ * *fileBlock* is where the place's file is now, when the page can say: the place is in
+ * that block, whichever block it was. `-1` is a page that has no such file, a newer diff
+ * the file is not in: the place is the top of the block at its index, since the offset was
+ * a line of a file that is gone. Left out, the page cannot say, as before its diff has
+ * mounted, and the place is at its index as it was.
  *
  * @param {PanePlace} place
  * @param {number[]} tops
  * @param {number} [fileBlock]
  * @returns {number | null}
  */
-export function scrollTopOf(place, tops, fileBlock = -1) {
+export function scrollTopOf(place, tops, fileBlock) {
   if (tops.length === 0) {
     return null;
   }
   if (place.block < 0) {
     return Math.min(place.top, tops[0]);
   }
-  const block = fileBlock >= 0 && fileBlock < tops.length ? fileBlock : place.block;
-  return tops[Math.min(block, tops.length - 1)] + place.offset;
+  if (fileBlock !== undefined && fileBlock >= 0 && fileBlock < tops.length) {
+    return tops[fileBlock] + place.offset;
+  }
+  const top = tops[Math.min(place.block, tops.length - 1)];
+  return fileBlock === undefined ? top + place.offset : top;
 }
 
 /**
@@ -3534,7 +3568,11 @@ export function createScrollKeeper(deps) {
     },
     /**
      * Hold a place the page chose for the reader, as a landing's is held: where they were in
-     * a diff that Changes replaced. Written at once, so a reload lands there too.
+     * a diff that Changes is about to replace. Written at once, so a reload lands there
+     * too, and put when the page next changes height, which is the new diff arriving: the
+     * page is asked for nothing now, while it still shows the diff being replaced, and a
+     * scroll before then, the emptied pane's clamp to its top, is the hold's and writes
+     * nothing.
      *
      * @param {PanePlace} place
      */
@@ -3546,7 +3584,6 @@ export function createScrollKeeper(deps) {
       cancelSettle();
       holding = place;
       deps.write(place);
-      hold();
     },
     /** The page changed height. */
     contentChanged() {
@@ -3719,18 +3756,41 @@ export function followedNote(from, to) {
 
 /**
  * What a history entry remembers of Changes, read back from `history.state`, or null for
- * anything else. Pure.
+ * anything else: the comparison it showed, the one its note named, and whether the one
+ * shown is the earlier diff the reader went back to. Pure.
  *
  * @param {unknown} value
- * @returns {{shown: ShownComparison, from: ShownComparison | null} | null}
+ * @returns {{shown: ShownComparison, from: ShownComparison | null, chosen: boolean} | null}
  */
 export function rememberedChanges(value) {
-  const memory = /** @type {{shown?: unknown, from?: unknown} | null} */ (value);
+  const memory = /** @type {{shown?: unknown, from?: unknown, chosen?: unknown} | null} */ (value);
   if (typeof value !== "object" || memory === null) {
     return null;
   }
   const shown = shownComparison(memory.shown);
-  return shown === null ? null : { shown, from: shownComparison(memory.from) };
+  return shown === null
+    ? null
+    : { shown, from: shownComparison(memory.from), chosen: memory.chosen === true };
+}
+
+/**
+ * The earlier diff a reader went back to, which a page loaded again on the entry shows in
+ * place of the record's, or null. Pure.
+ *
+ * The choice stays until the reader takes the newer changes, and on a repository URL every
+ * later push reloads the page, so the entry holds it. A record that names the remembered
+ * commits again has nothing earlier to show.
+ *
+ * @param {{shown: ShownComparison, chosen: boolean} | null} memory
+ * @param {{left: string, right: string}} comparison The record's.
+ * @returns {ShownComparison | null}
+ */
+export function chosenEarlier(memory, comparison) {
+  if (memory === null || !memory.chosen) {
+    return null;
+  }
+  const { shown } = memory;
+  return shown.left === comparison.left && shown.right === comparison.right ? null : shown;
 }
 
 /**
@@ -4467,11 +4527,11 @@ const CHECKS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
  */
 export function mountPullPage(container, ctx, mb) {
   const number = typeof ctx.number === "number" ? ctx.number : 0;
+  const checkoutPin = window.METABROWSER_SOURCE_CHECKOUT?.working_tree === false;
   const open = typeof ctx.open === "function" ? ctx.open : () => {};
   container.classList.add("github-pull");
-  // A page header, as a commit's summary is (docs/design-system.md, "Page Headers"): the
-  // title, then lines at the body size, 6 px apart, the author's first and the Diff summary
-  // last, in the order a commit's page has the parts the two share.
+  // The shared page header's lines start with state and ages beneath the title and end
+  // with the Diff summary (docs/design-system.md, "Page Headers").
   const header = h("div", { class: "github-pull-header page-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
   // The header's box is decided at first paint: every row is there in every state, at one
@@ -4561,7 +4621,7 @@ export function mountPullPage(container, ctx, mb) {
   // (docs/design-system.md, "Change Size Line"): "2 commits · 36 files changed · 1.8 MB
   // compressed (6.2 MB raw diff)". It is there whenever the summary's row is, holding the
   // same pending placeholder while the summary waits, so neither row moves the tabs.
-  const sizeRow = h("div", { class: "github-pull-size page-header-line" });
+  const sizeRow = h("div", { class: "github-pull-size page-header-line page-header-size" });
   const sizePending = h("span", { class: "mb-delayed-loading github-pull-size-pending" }, [
     h("span", { class: "tally-pending", "aria-hidden": "true" }),
   ]);
@@ -4670,7 +4730,7 @@ export function mountPullPage(container, ctx, mb) {
   let bodyShows = "none";
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
-   *   settled: boolean, cacheMiss: boolean, retryPending: boolean,
+   *   settled: boolean, cacheMiss: boolean, retryPending: boolean, heldMs: number | null,
    *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
   let commitTimeline = null;
   // The allowlist a text's Markdown passes through before it is inserted; a text stays
@@ -5257,7 +5317,7 @@ export function mountPullPage(container, ctx, mb) {
    */
   function fileLink(path, line, browse) {
     const wire = mb.sourceKind() === "git_revision" && path !== "" ? gitPathWire(path) : null;
-    if (wire === null) {
+    if (wire === null || (checkoutPin && browse === null)) {
       return h("span", { class: "github-pull-file" }, [path]);
     }
     const target = { path: wire, ...(line === null ? {} : { fragment: `L${line}` }) };
@@ -5892,9 +5952,8 @@ export function mountPullPage(container, ctx, mb) {
         });
       }
       placeChildren(openedRow, [stateBadge, opened.row, refresh]);
-      children.push(title, counterpartCorner, paintStateRow(pull), branchesRow, openedRow);
-      // A pull request with no labels has no labels row, and no gap for it: the next row
-      // shown follows the row of ages as the next metadata line (mb-2u08). Its labels come
+      children.push(title, counterpartCorner, openedRow, paintStateRow(pull), branchesRow);
+      // The labels follow the branches and take no row or gap if absent. They come
       // with its record or core, so the row is decided with the record's first paint; a
       // label's color and tooltip, which the repository's set may bring later, change no
       // chip's box.
@@ -5941,7 +6000,7 @@ export function mountPullPage(container, ctx, mb) {
           refresh,
         ]);
         placeChildren(labelList, []);
-        children.push(stateRow, branchesRow, openedRow, labelsRow);
+        children.push(openedRow, stateRow, branchesRow, labelsRow);
       }
     }
     status.dataset.status = model.status;
@@ -6569,6 +6628,8 @@ export function mountPullPage(container, ctx, mb) {
   let changesFrom = null;
   /** Whether the reader went back to the diff shown, which then stays (`filesAction`). */
   let changesChosen = false;
+  /** Whether the keeper holds the place of a diff the one mounting replaces. */
+  let keptThrough = false;
 
   function disposeDiff() {
     cancelCurrentFileBridge();
@@ -7222,28 +7283,48 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
+  /** What this history entry remembers of Changes, for a page first mounting a diff on it. */
+  function entryMemory() {
+    // The entry's memory is kept with its place: by a page in the pane that scrolls.
+    return changesShown === null && pane !== null
+      ? rememberedChanges(window.history.state?.[CHANGES_KEY])
+      : null;
+  }
+
+  /**
+   * Hold the reader's place through a diff's replacement, in its file where the next diff
+   * has it. Held and written before the body is emptied: the pane then clamps to its top,
+   * which arrives as a scroll, and with nothing held that top would be written as the
+   * reader's place for as long as the next comparison takes to read, where the reload a
+   * followed pin makes would land on it (A3 of review A on #745).
+   */
+  function keepPlaceThrough() {
+    if (place !== null) {
+      place.keeper.holdAt(place.measure());
+      keptThrough = true;
+    }
+  }
+
   /**
    * Mount the record's comparison in Changes. One that replaces another diff, the one shown
    * or the one this history entry showed when the page was last loaded, is noted
-   * (`followedNote`). *keep* holds the reader's place through the replacement, in its file
-   * where the new diff has it.
+   * (`followedNote`). *keep* holds the reader's place through the replacement.
    *
    * @param {NonNullable<PullModel["comparison"]>} comparison
    * @param {boolean} keep
    */
   function showChanges(comparison, keep) {
-    // The entry's memory is kept with its place: by a page in the pane that scrolls.
-    const memory =
-      changesShown === null && pane !== null
-        ? rememberedChanges(window.history.state?.[CHANGES_KEY])
-        : null;
+    const memory = entryMemory();
     changesFrom = followedFrom(
       changesShown ?? memory?.shown ?? null,
       changesFrom ?? memory?.from ?? null,
       comparison,
     );
     changesChosen = false;
-    diffMounted = mountDiff(comparison, keep ? (place?.measure() ?? null) : null);
+    if (keep) {
+      keepPlaceThrough();
+    }
+    diffMounted = mountDiff(comparison);
   }
 
   /** The way back a followed diff's note offers: the diff it replaced, which then stays. */
@@ -7256,7 +7337,24 @@ export function mountPullPage(container, ctx, mb) {
     changesChosen = true;
     // An explicit choice of the earlier diff ends an older repair's hold on Changes.
     filesRefresh = null;
-    diffMounted = mountDiff(earlier, place?.measure() ?? null);
+    keepPlaceThrough();
+    diffMounted = mountDiff(earlier);
+  }
+
+  /**
+   * On a page loaded again on its entry: the earlier diff the reader had gone back to,
+   * mounted in place of the record's, so the choice outlives the reload each later push
+   * makes on a repository URL (`chosenEarlier`). The landing holds the place.
+   *
+   * @param {NonNullable<PullModel["comparison"]>} comparison
+   */
+  function restoreChosen(comparison) {
+    const earlier = chosenEarlier(entryMemory(), comparison);
+    if (earlier !== null) {
+      changesFrom = null;
+      changesChosen = true;
+      diffMounted = mountDiff(earlier);
+    }
   }
 
   /** What this entry's Changes shows, for a page loaded again on it (`rememberedChanges`). */
@@ -7264,17 +7362,17 @@ export function mountPullPage(container, ctx, mb) {
     // History can move on before this page is told, as for a place (`keepPlace`).
     if (pane !== null && onPageRoute(window.location.pathname, number, "files")) {
       window.history.replaceState(
-        { ...window.history.state, [CHANGES_KEY]: { shown: changesShown, from: changesFrom } },
+        {
+          ...window.history.state,
+          [CHANGES_KEY]: { shown: changesShown, from: changesFrom, chosen: changesChosen },
+        },
         "",
       );
     }
   }
 
-  /**
-   * @param {ShownComparison & {branch?: {ref: string} | null}} comparison
-   * @param {PanePlace | null} [keepAt] Where the reader was in the diff this one replaces.
-   */
-  async function mountDiff(comparison, keepAt = null) {
+  /** @param {ShownComparison & {branch?: {ref: string | null} | null}} comparison */
+  async function mountDiff(comparison) {
     if (listening.signal.aborted) {
       return;
     }
@@ -7370,13 +7468,15 @@ export function mountPullPage(container, ctx, mb) {
       // Landed before the wait, so the first screen the Markdown layer reports is the one the
       // reader lands on: a file the address names, not the top of the diff.
       if (landFile() === null) {
-        if (keepAt !== null) {
-          place?.keeper.holdAt(keepAt);
-        } else {
-          // A landing's hold can find its file now that the diff says where each one is.
-          place?.keeper.contentChanged();
-        }
+        // A held place, a landing's or one kept through a replaced diff, can find its file
+        // now that the diff says where each one is.
+        place?.keeper.contentChanged();
+      } else if (keptThrough) {
+        // The file the reader asked for is where they are now: a place kept through the
+        // replaced diff gives way to it, as it did when it was held only from here.
+        place?.keeper.readerMoved();
       }
+      keptThrough = false;
       const firstScreen = /** @type {{firstScreen?: () => Promise<void>} | null} */ (handle)
         ?.firstScreen;
       if (holds && typeof firstScreen === "function") {
@@ -7500,6 +7600,9 @@ export function mountPullPage(container, ctx, mb) {
       // Let the current route render normally instead of restoring the older repair.
     }
     const comparison = model.comparison;
+    if (diffFor === null && comparison !== null) {
+      restoreChosen(comparison);
+    }
     const action = filesAction(diffFor, comparison, changesChosen);
     if (comparison === null || action === "unavailable") {
       disposeDiff();
@@ -7953,6 +8056,9 @@ export function mountPullPage(container, ctx, mb) {
               settled: false,
               cacheMiss: false,
               retryPending: false,
+              // How long the server said to wait before asking again for a read its
+              // budget refused; null for a transient failure's one retry.
+              heldMs: null,
               read: null,
             }
           : null;
@@ -7976,6 +8082,8 @@ export function mountPullPage(container, ctx, mb) {
     }
     cancelTimeline();
     const retrying = held.retryPending;
+    // A wait the server's budget asked for is not the transient failure's one retry.
+    const afterHold = retrying && held.heldMs !== null;
     if (held.settled || (retrying && !providerAllowed)) {
       return;
     }
@@ -8001,8 +8109,10 @@ export function mountPullPage(container, ctx, mb) {
       }
       if (retrying) {
         // The retry budget is spent when the provider request starts, even if it is aborted.
+        // A read the server's budget held spent none: it is asked for until it is read.
         held.retryPending = false;
-        held.settled = true;
+        held.settled = held.heldMs === null;
+        held.heldMs = null;
       }
       // Commits join a conversation that is already shown, so the age line breathes for
       // them as for a refresh; nothing spins in the description card.
@@ -8065,7 +8175,14 @@ export function mountPullPage(container, ctx, mb) {
       if (cachedOnly && held.projection === null) {
         held.cacheMiss = true;
         followTimeline();
-      } else if (!cachedOnly && !retrying && projection?.retryable) {
+      } else if (!cachedOnly && projection?.retryable && projection.heldMs !== null) {
+        // The server's budget refused the read, at no cost to GitHub: ask again when it
+        // says, for as long as it refuses and this record's page stays.
+        held.settled = false;
+        held.retryPending = true;
+        held.heldMs = projection.heldMs;
+        followTimeline();
+      } else if (!cachedOnly && (!retrying || afterHold) && projection?.retryable) {
         held.retryPending = true;
         followTimeline();
       } else {
@@ -8077,7 +8194,7 @@ export function mountPullPage(container, ctx, mb) {
       }
     };
     if (retrying) {
-      const timer = window.setTimeout(() => void load(), TIMELINE_RETRY_MS);
+      const timer = window.setTimeout(() => void load(), held.heldMs ?? TIMELINE_RETRY_MS);
       read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
     } else if (typeof window.requestAnimationFrame === "function") {
       let frame = window.requestAnimationFrame(() => {
@@ -8239,6 +8356,7 @@ export function mountPullPage(container, ctx, mb) {
       tab: typeof ctx.tab === "string" ? ctx.tab : "",
       reader: ctx.reader ?? null,
       checkoutHead: mb.sourceKind() === "filesystem" ? (mb.repository?.revision ?? null) : null,
+      checkoutPin,
     },
   );
   document.addEventListener(
@@ -8285,10 +8403,12 @@ export function mountPullPage(container, ctx, mb) {
         /** @type {{pathForSection?: (section: Element) => string | null} | null} */ (
           diffHandle
         )?.pathForSection?.(block) ?? null,
-      sectionOf: (path) =>
-        /** @type {{sectionForPath?: (path: string) => Element | null} | null} */ (
+      sectionOf(path) {
+        const section = /** @type {{sectionForPath?: (path: string) => Element | null} | null} */ (
           diffHandle
-        )?.sectionForPath?.(path) ?? null,
+        )?.sectionForPath;
+        return typeof section === "function" ? section(path) : undefined;
+      },
     });
     place.keeper.land();
   }
@@ -8465,9 +8585,10 @@ export function mountPullPage(container, ctx, mb) {
  * @param {HTMLElement} body
  * @param {() => string} tab
  * @param {number} number
- * @param {{pathOf(block: Element): string | null, sectionOf(path: string): Element | null}} files
+ * @param {{pathOf(block: Element): string | null, sectionOf(path: string): Element | null | undefined}} files
  *   Which changed file a block of Changes is, and the block of a file, as the mounted diff
- *   says, so a place there is its file's whichever diff shows it (`PanePlace`).
+ *   says, so a place there is its file's whichever diff shows it (`PanePlace`). *sectionOf*
+ *   answers null for a file the diff lacks and undefined while no diff can say.
  */
 function keepPlace(pane, body, tab, number, files) {
   const blocks = () => Array.from(body.querySelectorAll(PLACE_BLOCKS));
@@ -8495,8 +8616,12 @@ function keepPlace(pane, body, tab, number, files) {
     measure,
     apply(place) {
       const of = blocks();
-      const section = place.file === undefined ? null : files.sectionOf(place.file);
-      const top = scrollTopOf(place, tops(of), section === null ? -1 : of.indexOf(section));
+      const section = place.file === undefined ? undefined : files.sectionOf(place.file);
+      const top = scrollTopOf(
+        place,
+        tops(of),
+        section === undefined ? undefined : section === null ? -1 : of.indexOf(section),
+      );
       if (top === null) {
         return false;
       }

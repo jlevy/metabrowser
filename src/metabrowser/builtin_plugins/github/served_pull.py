@@ -103,8 +103,13 @@ PROBE_FLOOR_S: Final = 4.0
 # conditional reads of both pages for six heads, four with runs in progress, the 56
 # answered ``200`` after a page's first each changed a run's status or conclusion, added
 # a run, or changed the status, all of which a record keeps; and for four pull requests
-# whose checks had ended, both pages answered ``304`` in all 96 reads over 7 minutes in
-# which the pull's own ETag moved seven times.
+# whose checks had ended, both pages answered ``304`` in all 96 reads of each page over
+# 7 minutes in which the pull's own ETag moved seven times.
+# That is a sample, mostly of GitHub Actions runs. A check app that rewrites a run's
+# output while it stays in progress would answer a paid ``200`` that changes nothing a
+# record keeps, one ``core`` each interval; what bounds those is the checks ending and
+# the process's ceiling (:func:`.gh_budget.over_ceiling`), past which
+# :meth:`ServedPull.probe_due` slows every probe to :data:`FULL_REFRESH_S`.
 CHECKS_PROBE_S: Final = 10.0
 # How long a record the probes vouch for goes without a full read. A probe cannot see an
 # edited comment, a reaction, a re-run check of a finished head, or a mergeability GitHub
@@ -151,8 +156,9 @@ PROBE_TURN_S: Final = 2 * ATTENDED_PROBE_S
 # The probes running in this process, which is one server.
 _PROBES: set[asyncio.Future[None]] = set()
 # Pull requests the cap refused, oldest first, by the refresh key each asks under, with
-# when. Request text decides how many ask, so it is bounded as the kept pulls are.
-_REFUSED: OrderedDict[str, datetime] = OrderedDict()
+# when and how long its place is kept. Request text decides how many ask, so it is bounded
+# as the kept pulls are.
+_REFUSED: OrderedDict[str, tuple[datetime, float]] = OrderedDict()
 
 
 def probes_in_flight() -> int:
@@ -161,14 +167,17 @@ def probes_in_flight() -> int:
     return sum(not task.done() for task in _PROBES)
 
 
-def may_probe(key: str, now: datetime) -> bool:
+def may_probe(key: str, now: datetime, *, turn_s: float) -> bool:
     """:func:`_may_probe` for a probe that is not a pull request's: the list's.
 
-    One cap for the server, shared by both kinds (:mod:`.pull_list_probe`). On the event
-    loop, as every caller of the cap is.
+    One cap for the server, shared by both kinds (:mod:`.pull_list_probe`). *turn_s* is
+    how long a refusal keeps its place, twice the asker's own interval as
+    :data:`PROBE_TURN_S` is twice a page's: the list asks half as often as a page, and
+    kept for a page's turn its refusal lapsed before its next ask (review A5 on #737). On
+    the event loop, as every caller of the cap is.
     """
 
-    return _may_probe(key, now)
+    return _may_probe(key, now, turn_s=turn_s)
 
 
 def track_probe(task: asyncio.Future[None]) -> None:
@@ -178,7 +187,7 @@ def track_probe(task: asyncio.Future[None]) -> None:
     task.add_done_callback(_PROBES.discard)
 
 
-def _may_probe(key: str, now: datetime) -> bool:
+def _may_probe(key: str, now: datetime, *, turn_s: float = PROBE_TURN_S) -> bool:
     """Whether the pull request asking under *key* may start a probe at *now*, under the cap.
 
     Past the cap an ask is refused and remembered. A free probe then goes to those
@@ -186,12 +195,12 @@ def _may_probe(key: str, now: datetime) -> bool:
     each round, as a script's loop over cached numbers does, take turns: before this the
     first :data:`MAX_PROBES_IN_FLIGHT` were probed every round and the rest never (review
     A4 on #726), and a record never probed is read in full once a window instead. A
-    refusal is forgotten :data:`PROBE_TURN_S` after its pull request last asked, or when
-    it probes.
+    refusal is forgotten *turn_s* after its asker last asked, :data:`PROBE_TURN_S` for a
+    pull request, or when it probes.
     """
 
-    for other, since in list(_REFUSED.items()):
-        if not timedelta(0) <= now - since <= timedelta(seconds=PROBE_TURN_S):
+    for other, (since, kept_s) in list(_REFUSED.items()):
+        if not timedelta(0) <= now - since <= timedelta(seconds=kept_s):
             del _REFUSED[other]
     free = MAX_PROBES_IN_FLIGHT - probes_in_flight()
     ahead = 0
@@ -205,7 +214,7 @@ def _may_probe(key: str, now: datetime) -> bool:
     # Refused again, it keeps its place and its refusal is as new as this ask, so it
     # lapses only once its asker stops asking: dated from the first refusal, it lapsed
     # before the turn of any asker past the twelfth came (review B1 on #726).
-    _REFUSED[key] = now
+    _REFUSED[key] = (now, turn_s)
     while len(_REFUSED) > MAX_KEPT_PULLS:
         _REFUSED.popitem(last=False)
     return False

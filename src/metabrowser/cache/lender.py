@@ -512,6 +512,13 @@ def checkout_origin(root: Path) -> GitSource | None:
     off the event loop.
     """
 
+    spelled = _origin_url(root)
+    return None if spelled is None else _identity(*spelled)
+
+
+def _origin_url(root: Path) -> tuple[str, Path] | None:
+    """The URL the ``origin`` remote of the checkout at *root* names, and what it is relative to."""
+
     try:
         resolved = root.expanduser().resolve()
     except (OSError, RuntimeError):
@@ -520,11 +527,36 @@ def checkout_origin(root: Path) -> GitSource | None:
     parser = None if common_dir is None else _read_config(common_dir)
     if common_dir is None or parser is None:
         return None
-    base = _checkout_root(common_dir)
     for name, url in _remotes(parser):
         if name == ORIGIN_REMOTE:
-            return _identity(url, base)
+            return url, _checkout_root(common_dir)
     return None
+
+
+def unfetched_origin_address(root: Path) -> str | None:
+    """The origin of the checkout at *root* when it is on another machine by a transport
+    the grammar refuses, without its userinfo, query, or fragment; ``None`` otherwise.
+
+    ``http://`` and ``git://`` are these: both name a repository elsewhere, and
+    Metabrowser fetches over neither, since neither is encrypted and the acquisition
+    allows Git only ``https`` and ``file`` (``PROTOCOL_ARGS``). :func:`checkout_origin`
+    answers ``None`` for them as for a checkout with no origin, and a caller that tells
+    a reader why an origin is not fetched asks here which it was. A path, a ``file://``
+    address, an ``https`` one, and every spelling the grammar accepts are not this
+    function's. Blocking and bounded, as :func:`checkout_origin` is.
+    """
+
+    spelled = _origin_url(root)
+    if spelled is None or _identity(*spelled) is not None:
+        return None
+    url = spelled[0]
+    scheme = _SCHEME.match(url)
+    # An ``https`` address the grammar refuses is misspelled, not reached another way.
+    if scheme is None or scheme.group().lower() in ("file://", "https://"):
+        return None
+    # The grammar never vetted this address, and a token can ride in its query string
+    # as well as in its userinfo, so it is shown only up to the first ``?`` or ``#``.
+    return redact_userinfo(re.split(r"[?#]", url, maxsplit=1)[0])
 
 
 def _write_atomic(path: Path, text: str) -> None:
@@ -973,15 +1005,46 @@ async def negotiation_tip_args(
     return _tip_args(lent, held)
 
 
+# What every fetch into an overlay runs under, before ``fetch``: the pack it receives is
+# kept as a pack, however few objects it holds. Below ``fetch.unpackLimit`` (100 unless
+# set) Git hands the pack to ``unpack-objects``, which does not write an object the store
+# can already read: it marks it written again, with ``utime`` on the loose file or the
+# pack that holds it, and it reads through ``objects/info/alternates``, so the file it
+# touches is the lending checkout's. The origin sends such an object whenever the
+# checkout holds it and offered no tip for it: one fetched by address, left by a reset,
+# or past :data:`MAX_NEGOTIATION_TIPS`. ``index-pack`` writes the new pack and touches
+# nothing else. Measured 2026-11-22 with Git 2.56.1: a three-object fetch into an overlay
+# moved the modification time of three loose objects under the checkout's ``.git``, and
+# of a pack there in plain Git, and with this none
+# (``test_a_small_fetch_leaves_objects_the_checkout_already_holds_as_they_were``).
+# Passed with each fetch and not written to the store's configuration, so a store made
+# before this is covered too. Nothing else Metabrowser runs in a store writes an object:
+# its other writers are ``update-ref`` and ``remote prune``, and maintenance and
+# collection are off (``_STORE_CONFIG`` in ``acquire.py``).
+#
+# So kept packs accumulate: every fetch that brings anything leaves one, and nothing
+# consolidates them. Without this the same fetches left loose objects, which also only
+# grew. Measured 2026-11-23 by review B of the pull request that added this, with Git
+# 2.56.1 at a load average near 350, on two overlays fed the same 616 one-commit
+# fetches, 616 packs against 1,842 loose objects: ``log`` of all 619 commits took 0.16 to
+# 0.21 s against 0.08 to 0.17 s, and a lookup of an absent object 0.07 to 0.10 s against
+# 0.02 to 0.04 s. Consolidation was looked at and left: nothing there needs a bound yet.
+OVERLAY_FETCH_CONFIG: Final = ("-c", "fetch.unpackLimit=1")
+
+
 @dataclass(frozen=True, slots=True)
 class OverlayFetch:
-    """What a fetch into an overlay passes, and the refs the sweep before it deleted."""
+    """What a fetch into an overlay passes, and the refs the sweep before it deleted.
+
+    ``config`` goes before ``fetch`` (:data:`OVERLAY_FETCH_CONFIG`), ``tips`` after it.
+    """
 
     tips: tuple[str, ...]
     swept: tuple[str, ...]
+    config: tuple[str, ...] = OVERLAY_FETCH_CONFIG
 
 
-_FULL_STORE_FETCH: Final = OverlayFetch((), ())
+_FULL_STORE_FETCH: Final = OverlayFetch((), (), ())
 
 
 async def prepare_overlay_fetch(
@@ -1049,6 +1112,7 @@ async def overlay_fetch_arguments(
 
 __all__ = [
     "LenderGoneError",
+    "OVERLAY_FETCH_CONFIG",
     "OverlayFetch",
     "Sweep",
     "collection_doubt",
@@ -1071,6 +1135,7 @@ __all__ = [
     "attach_lender",
     "check_lender",
     "checkout_origin",
+    "unfetched_origin_address",
     "checkout_command",
     "lender_boundary_path",
     "negotiation_tips",

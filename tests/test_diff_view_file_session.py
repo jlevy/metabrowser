@@ -261,8 +261,10 @@ def test_recording_is_what_the_servers_answer(
     assert recorded["page_at_parent"] == {"pin": ids["first"], "ref": None}
     head = recorded["switch_head"]
     assert (head["status"], head["body"]["view_href"]) == (200, recorded["views"]["new_name"])
-    # Back on the branch's tip by its ID, the server serves the branch again.
+    # Back on the branch's tip by its ID, the server serves the branch again, and the commit
+    # asked for by its ID stays put when the branch moves (mb-cww9).
     assert head["body"]["status"]["ref"] == "refs/remotes/origin/trunk"
+    assert head["body"]["status"]["follows"] is False
     assert recorded["switch_readme"]["body"]["view_href"] == recorded["views"]["readme"]
     # Named under the pull request's head, the same commit is the pull request's.
     on_branch = recorded["switch_on_branch"]

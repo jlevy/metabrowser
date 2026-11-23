@@ -25,6 +25,14 @@ Before, at 760 px, the Diff summary was 13 px on both pages, a pull request’s 
 ages and status line were 12 px and 18 px tall, its header 229 and 255 px, and the
 commit’s metadata one line 8 px under its subject.
 
+On 2026-11-22, the same Chrome fixture measured the Commit and pull request size rows at
+980, 560, and 360 px pane widths.
+Both rows use the 21 px body line.
+At the default gutter step, the Commit page has 6 px on each side of its size row and 16
+px from its Diff summary to its description card.
+The pull request has 9 px on each side of its size row and 10 px from its Diff summary
+to its tabs.
+
 ## Type by Role
 
 For [Type Scale](../../docs/design-system.md#type-scale), recorded on 2026-11-16, when
@@ -115,7 +123,12 @@ For
   they center onto one baseline.
   At the path’s size alone the link form still sat 0.5 px above it at 14 px and 0.75 px
   at 13 px, at ratios of 1 and 2, until it took the toggle’s `normal` line height
-  ([Type by Role](#type-by-role)).
+  ([Type by Role](#type-by-role)). On 2026-11-23 the toggle and the control each moved
+  into a group of the bar, each centered in its group and each group in the bar
+  ([Diff File Bar](../../docs/design-system.md#diff-file-bar)). In headless Chrome, on a
+  pull request’s Changes and a commit’s page, on every bar drawn on one line, the
+  control’s baseline was the path’s, 0 px apart, at ratios of 1 and 2: the link form as
+  the pages drew it, and a button of the control’s class put in its place.
 - A mirror’s location note at the far end of the file header, centered rather than
   baseline-aligned, sits 0.25px above the path at a device pixel ratio of 1. On
   2026-11-16 and 2026-11-17, at the header’s one size, 13 px and then 14 px

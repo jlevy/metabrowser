@@ -439,7 +439,7 @@ class CheckoutRevisions:
         commit ID or another remote's branch among them, is the checkout's.
         """
 
-        from metabrowser.cache.resolve import is_valid_ref_name, ref_tip
+        from metabrowser.cache.resolve import is_valid_ref_name, ref_tips
 
         named = under if oid is not None else ref
         if named is None:
@@ -455,16 +455,26 @@ class CheckoutRevisions:
             # Revision syntax, or no name at all: the checkout's resolver refuses it.
             return False, ref
         target, _head = await self._repository()
-        if await ref_tip(target, f"refs/heads/{named}") is not None:
+        own_branch = f"refs/heads/{named}"
+        branch = (
+            PROBED_REF_PREFIX + named.removeprefix(_ORIGIN_NAME)
+            if named.startswith(_ORIGIN_NAME)
+            else None
+        )
+        # One read of each repository, at once, and the order applied to what they hold:
+        # this is on the pin route's path, before the switch resolves the name again.
+        own, stored = await asyncio.gather(
+            ref_tips(target, [own_branch, tag]),
+            origin.mirror.ref_tips([tag] if branch is None else [tag, branch]),
+        )
+        if own_branch in own:
             return False, ref
-        if await origin.mirror.ref_tip(tag) is not None:
+        if tag in stored:
             return True, tag
-        if await ref_tip(target, tag) is not None:
+        if tag in own:
             return False, ref
-        if named.startswith(_ORIGIN_NAME):
-            branch = PROBED_REF_PREFIX + named.removeprefix(_ORIGIN_NAME)
-            if await origin.mirror.ref_tip(branch) is not None:
-                return True, branch
+        if branch is not None and branch in stored:
+            return True, branch
         return False, ref
 
     async def _open_origin(self) -> bool:

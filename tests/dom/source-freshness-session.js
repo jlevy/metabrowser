@@ -324,7 +324,12 @@ function paintOf(model) {
     label: model.label,
     tone: model.tone,
     detail: model.detail,
-    offer: offer === null ? null : `${offer.text} [${offer.button}]`,
+    offer:
+      offer === null
+        ? null
+        : offer.kind === "switch"
+          ? `${offer.text} ${offer.commit} [${offer.button}] → ${offer.ref}`
+          : `${offer.text} [${offer.button}]`,
     error: model.error,
   };
 }
@@ -337,7 +342,9 @@ async function settle() {
 
 // A repository folder that keeps a store of its checkout's origin: the row is on every
 // page of the folder, its working tree's too, says what was fetched is that store, and
-// its Refresh fetches the store. The reload offer is the ref selector's there.
+// its Refresh fetches the store. A page that shows nothing of the store has it fetched
+// quietly when it has grown old, and says "Refreshing…" only for the reader's own press.
+// The reload offer is the ref selector's there.
 async function runFolder() {
   const steps = [];
   const options = { checkout: true };
@@ -345,13 +352,23 @@ async function runFolder() {
     const page = createPage();
     const controller = freshness.createController(page.deps, options);
     page.setStatus(recordedFolder.status_stale);
-    page.answerPost("/api/source/refresh", 202, recordedFolder.refresh_started.body);
+    page.answerPageAsk(recordedFolder.ask_started.status, recordedFolder.ask_started.body);
     await page.start(controller);
-    steps.push(page.observe("the working tree's page, its origin's store grown old, asks once"));
+    steps.push(
+      page.observe("the working tree's page, its origin's store grown old, asks quietly, once"),
+    );
 
     page.setStatus(recordedFolder.status_refreshed);
     await page.fireTimer();
     steps.push(page.observe("the store was fetched; the row says when, and nothing reloads"));
+
+    page.answerPost(
+      "/api/source/refresh",
+      recordedFolder.refresh_started.status,
+      recordedFolder.refresh_started.body,
+    );
+    await controller.requestRefresh();
+    steps.push(page.observe("the reader's own Refresh says so while it runs"));
 
     page.setStatus(recordedFolder.status_refresh_failed);
     await page.fireTimer();
@@ -374,6 +391,36 @@ async function runFolder() {
     page.setStatus(recordedFolder.status_working_tree);
     await page.fireTimer();
     steps.push(page.observe("the server shows the working tree again: this row offers no reload"));
+    controller.dispose();
+  }
+  {
+    // An origin branch's page opened on a store grown old asks as the reader's Refresh
+    // does: it shows the store, so the fetch can change what it shows, and the row says
+    // "Refreshing…" while it runs.
+    const status = recordedFolder.status_origin_branch_stale;
+    const page = createPage();
+    const controller = freshness.createController(page.deps, {
+      ...options,
+      shown: { pin: status.pin, ref: status.ref },
+    });
+    page.setStatus(status);
+    page.answerPost(
+      "/api/source/refresh",
+      recordedFolder.origin_branch_refresh_started.status,
+      recordedFolder.origin_branch_refresh_started.body,
+    );
+    await page.start(controller);
+    steps.push(page.observe("an origin branch's page, its store grown old, asks loudly"));
+    const opened = steps.at(-1);
+    assert(
+      JSON.stringify(opened.requests) ===
+        JSON.stringify(["GET /api/source/status", "POST /api/source/refresh {}"]),
+      `an origin branch's page did not ask loudly: ${JSON.stringify(opened.requests)}`,
+    );
+    assert(
+      opened.paint.label === "Refreshing…",
+      `an origin branch's page did not say Refreshing…: ${JSON.stringify(opened.paint)}`,
+    );
     controller.dispose();
   }
   // The same statuses on a page that is not a folder's show no row for a working tree.
@@ -1333,12 +1380,13 @@ async function run() {
     }),
   }));
 
-  // A focused invariant of `describe`, outside the recorded conversation: the recording's
-  // mirror has no pull request heads to pin. A pin on a pull request's head follows it as a
-  // branch's does (`follows_moves` in mirror_refresh.py), so a page drawn for the head
-  // before goes with it and is offered nothing.
+  // Focused invariants of `describe`, outside the recorded conversation: the recording's
+  // mirror has no pull request heads to pin. A pin on a pull request's head follows it as
+  // a branch's does (`follows_moves` in mirror_refresh.py), and the row names the pull
+  // request, not its raw ref. A commit opened by its ID that is such a head stays put
+  // (`follows` false), and the head's new tip is offered instead.
   {
-    const moved = {
+    const onHead = {
       ...recorded.stale,
       ref: "refs/pull/7/head",
       ref_name: "refs/pull/7/head",
@@ -1346,13 +1394,57 @@ async function run() {
       pin: recorded.refreshed.pin,
       latest: recorded.refreshed.pin,
     };
-    const model = freshness.describe(moved, {
-      shown: { pin: recorded.stale.pin, ref: moved.ref },
+    const followed = freshness.describe(onHead, {
+      shown: { pin: recorded.stale.pin, ref: onHead.ref },
       nowMs: NOW_MS,
     });
     assert(
-      model.follow?.ref === moved.ref && model.follow.commit === moved.pin && model.offer === null,
-      `a pull request's head is followed, not offered: ${JSON.stringify(model)}`,
+      followed.follow?.ref === onHead.ref &&
+        followed.follow.commit === onHead.pin &&
+        followed.offer === null &&
+        followed.label === "Updating to pull request #7…" &&
+        followed.detail.startsWith("pull request #7 is now at "),
+      `a pull request's head is followed, and named: ${JSON.stringify(followed)}`,
+    );
+    const byId = { ...onHead, follows: false, pin: recorded.stale.pin };
+    const offered = freshness.describe(byId, {
+      shown: { pin: byId.pin, ref: byId.ref },
+      nowMs: NOW_MS,
+    });
+    assert(
+      offered.follow === null &&
+        offered.offer?.kind === "switch" &&
+        offered.offer.ref === byId.ref &&
+        offered.offer.text === "pull request #7 is now at" &&
+        offered.offer.button === "Switch",
+      `a commit opened by its ID is offered its ref's new tip: ${JSON.stringify(offered)}`,
+    );
+
+    // Taking the offer asks for the ref by name, which the server follows from then on, and
+    // reloads; a refusal says so and keeps the offer.
+    const page = createPage();
+    page.setStatus(byId);
+    const controller = freshness.createController(page.deps, {
+      shown: { pin: byId.pin, ref: byId.ref },
+    });
+    await page.start(controller);
+    page.observe("opened on a commit a pull request's head has moved on from");
+    page.answerPost("/api/source/pin", 409, { code: "ref_moved" });
+    await controller.acceptOffer();
+    const refused = page.observe("the switch is refused");
+    page.answerPost("/api/source/pin", 200, { changed: true, status: onHead });
+    await controller.acceptOffer();
+    const taken = page.observe("the switch is taken");
+    controller.dispose();
+    const asked = `POST /api/source/pin ${JSON.stringify({ ref: byId.ref })}`;
+    assert(
+      refused.requests.includes(asked) &&
+        refused.reloads === 0 &&
+        refused.paint.error === "Could not switch to that commit." &&
+        refused.paint.offer?.startsWith("pull request #7 is now at ") &&
+        taken.requests.includes(asked) &&
+        taken.reloads === 1,
+      `the offer switches to the ref by name: ${JSON.stringify({ refused, taken })}`,
     );
   }
 

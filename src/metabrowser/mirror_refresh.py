@@ -62,7 +62,7 @@ import contextlib
 import logging
 import re
 import time
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -440,6 +440,11 @@ class ServedMirror(Protocol):
         """The commit *ref* names in the mirror now, or ``None`` when it is gone."""
         ...
 
+    async def ref_tips(self, refs: Sequence[str]) -> dict[str, str]:
+        """The commit each of *refs* names in the mirror now, in one read; a ref that is
+        gone is left out."""
+        ...
+
     async def default_tip(self) -> str | None:
         """The commit the origin's default branch names in the mirror now, or ``None``.
 
@@ -623,8 +628,9 @@ def pull_head_number(ref: str | None) -> int | None:
 # (:meth:`MirrorSession.observe`) and the page goes with it. The owner decided the pull
 # request's case on 2026-11-22 (mb-6a6w): its refresh is probed every few seconds while a
 # page is visible, so a new head offered behind a button was offered seconds after every
-# push of a review. A commit opened by its ID is served under no ref, or under one only
-# while it is that ref's tip, so it stays.
+# push of a review. A commit opened by its ID stays: it is served under no ref, or named
+# by one whose tip it is, and a pin asked for by ID alone is never moved
+# (``MirrorSession._by_id``).
 _FOLLOWED_REF_PREFIXES: Final = ("refs/remotes/origin/", "refs/tags/")
 
 
@@ -1650,6 +1656,15 @@ class MirrorSession(StoreSession):
         self._tip: tuple[str, str | None] | None = None
         # The ref last served, kept while a commit pinned by ID is served under none.
         self._last_ref: str | None = None
+        # Whether the served pin was asked for by commit ID alone. The mirror may name it
+        # by a ref whose tip it is, a ref kept from before or a pull request's head, for
+        # the selector, but the reader opened a commit, so it does not follow that ref
+        # (:meth:`_follows`) and attends no pull request. A request that names the ref, by
+        # name or as ``under``, follows it. The owner decided this (mb-cww9).
+        self._by_id = False
+        # The pull request head last observed for, on a record another process published
+        # (:meth:`observe_pull_head`), so each such record starts one observation.
+        self._head_observed: tuple[int, str] | None = None
         self._pin_lock = asyncio.Lock()
         # The keys of the pull-request jobs started, some of which may have ended.
         self._pull_jobs: set[str] = set()
@@ -1731,12 +1746,46 @@ class MirrorSession(StoreSession):
     def _beside_refreshing(self) -> bool:
         return self.companion_refreshing()
 
+    def _follows(self, subject: GitRevisionSubject) -> bool:
+        """Whether the served pin moves with its ref: a ref that follows, asked for by name."""
+
+        return follows_moves(subject.ref) and not self._by_id
+
+    def observe_pull_head(self, number: int, head: str) -> None:
+        """A record read from disk names *head* for pull request *number*; follow it.
+
+        This server's own pull job observes the mirror when it ends. A record another
+        process published was fetched into the same store by that process, and nothing
+        here observed it, so a pin on that pull request's head stayed on the earlier one
+        until this server's next job of any kind. One observation is started for each
+        such head, off the request that read the record; it finds the ref where the other
+        process left it and follows. A pin that does not follow, or is at *head*, asks
+        for nothing.
+        """
+
+        subject = self.served()
+        if (
+            subject is None
+            or subject.ref != f"refs/pull/{number}/head"
+            or subject.commit_oid == head
+            or not self._follows(subject)
+            or self._head_observed == (number, head)
+            or self.pull_refreshing(number)
+        ):
+            return
+        self._head_observed = (number, head)
+        try:
+            self._coordinator.start(f"{self.mirror.key}:observe", self.observe, network=False)
+        except RuntimeError:
+            log.debug("not observing an adopted head: the server is closing")
+
     async def _follow_ref(self) -> None:
         # Under the pin lock, as a switch is: a reader's switch that ran meanwhile is the
         # pin now, and this follows only the pin it finds.
         async with self._pin_lock:
             subject = self.served()
-            if subject is None:
+            # A pin asked for by its ID alone never moves, whatever ref names it.
+            if subject is None or not self._follows(subject):
                 return
             moved = await follow_served_ref(
                 subject,
@@ -1786,7 +1835,7 @@ class MirrorSession(StoreSession):
             on_origin = latest is not None
         return {
             "refreshable": True,
-            "follows": follows_moves(subject.ref),
+            "follows": self._follows(subject),
             "latest": latest,
             "ref_on_origin": on_origin,
             "last_fetch_at": self.last_fetch_at(),
@@ -2009,6 +2058,7 @@ class MirrorSession(StoreSession):
             subject = opened.subject
             await replace_owned_subject(subject)
             self._tip = (subject.ref, subject.commit_oid) if subject.ref is not None else None
+            self._by_id = False
             self._selection_state = "found"
             self._selection_href = opened.view_href
 
@@ -2057,6 +2107,8 @@ class MirrorSession(StoreSession):
                 # longer describes what the reader asked for.
                 self._pending_selection = None
                 self._selection_state = "superseded"
+            # A commit asked for by its ID stays put, whatever ref the mirror names it by.
+            by_id = oid is not None and under is None
             current = self.served()
             if (
                 current is not None
@@ -2064,6 +2116,11 @@ class MirrorSession(StoreSession):
                 and current.ref == subject.ref
             ):
                 await subject.aclose()
+                if self._by_id and not by_id:
+                    # The commit served by its ID, asked for now by the ref it is the tip
+                    # of: the same pin, which follows that ref from here.
+                    self._by_id = False
+                    await self._attend_named(subject.ref)
                 return False, get_source_session()
             session = await replace_owned_subject(subject)
             if subject.ref is not None:
@@ -2071,10 +2128,22 @@ class MirrorSession(StoreSession):
                 self._tip = (subject.ref, subject.commit_oid)
             else:
                 self._tip = None
-            number = pull_head_number(subject.ref)
-            if number is not None:
-                await self.attend(number)
+            self._by_id = by_id
+            if not by_id:
+                await self._attend_named(subject.ref)
             return True, session
+
+    async def _attend_named(self, ref: str | None) -> None:
+        """Attend the pull request whose head a request named, as *ref*, if it is one.
+
+        Only a request that names the head attends it: a commit asked for by its ID that
+        happens to head a pull request the reader never opened attends nothing, so
+        nothing probes that pull request for them.
+        """
+
+        number = pull_head_number(ref)
+        if number is not None:
+            await self.attend(number)
 
     def _refs_to_keep(self) -> tuple[str, ...]:
         """The refs a commit pinned by ID is opened under when it is their tip.
@@ -2082,8 +2151,10 @@ class MirrorSession(StoreSession):
         View file on a commit's diff switches by commit ID, to the commit and back: without
         this the way back would leave the server on no ref, the selector reading
         "Commit: …" where it read the branch or the pull request, and freshness no
-        longer following the ref. The ref last served comes first, then the attended pull
-        request's head, GitHub's own ref for it.
+        longer saying when the ref moves on. The pin is still the commit asked for by its
+        ID, so it does not follow the ref (:attr:`_by_id`); the row offers the ref's new
+        tip instead. The ref last served comes first, then the attended pull request's
+        head, GitHub's own ref for it.
         """
 
         current = self.served()
