@@ -379,6 +379,71 @@ def test_a_killed_render_starts_its_replacement_at_once(
     assert replacement != killed
 
 
+def test_a_start_slower_than_the_render_deadline_still_renders() -> None:
+    # mb-xmte: the start wait was the render deadline's default, so a child that took
+    # longer than that to start, as one does at a load average of 300 to 400, had its
+    # document refused as unavailable. The stand-in is ready half a second past it.
+    slow_start = worker_module.INERT_RENDER_DEADLINE_MS / 1000 + 0.5
+    assert slow_start < worker_module._START_WAIT_S  # pyright: ignore[reportPrivateUsage]
+
+    async def run() -> dict[str, Any]:
+        worker = ProjectionWorker(command=_standin("--slow-start", str(slow_start)))
+        try:
+            return await worker.render_inert(_request("echo slow start"))
+        finally:
+            await worker.aclose()
+
+    assert asyncio.run(run())["html"] == "<p>echo slow start</p>"
+
+
+def test_a_start_past_its_wait_is_refused_unkept_and_goes_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(worker_module, "_START_WAIT_S", 0.3)
+
+    async def run() -> tuple[str, bool, dict[str, Any]]:
+        worker = ProjectionWorker(command=_standin("--slow-start", "2"))
+        try:
+            with pytest.raises(InertRenderRefused) as refused:
+                await worker.render_inert(_request("echo x"))
+            first = _child(worker)
+            # The same start goes on, and the same document renders once it is ready.
+            child = await _ready(worker)
+            return (
+                refused.value.code,
+                child is first and not refused.value.remembered,
+                await worker.render_inert(_request("echo x")),
+            )
+        finally:
+            await worker.aclose()
+
+    code, same_start, rendered = asyncio.run(run())
+    assert code == "renderer_unavailable"
+    assert same_start, "the refusal neither replaced the start nor was kept"
+    assert rendered["html"] == "<p>echo x</p>"
+
+
+@pytest.mark.parametrize("deadline_ms", ["250", "600000"])
+def test_the_render_deadline_does_not_move_the_start_wait(deadline_ms: str) -> None:
+    # A start costs the same whatever a document may take, so the setting that bounds a
+    # render, shortened or lengthened, leaves the wait for a start where it was measured.
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import metabrowser.diff.markdown_projection_worker as worker;"
+            "print(worker._RENDER_DEADLINE_S, worker._START_WAIT_S)",
+        ],
+        env={**os.environ, "METABROWSER_INERT_RENDER_DEADLINE_MS": deadline_ms},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    deadline, start_wait = (float(each) for each in completed.stdout.split())
+    assert deadline == int(deadline_ms) / 1000
+    assert start_wait == worker_module._START_WAIT_S  # pyright: ignore[reportPrivateUsage]
+
+
 def test_three_failed_starts_cool_off_then_try_again_and_say_why(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -6,6 +6,1352 @@ All notable changes to Metabrowser are documented here.
 
 New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds them.
 
+## 0.13.0
+
+- Preserve the HTTP server’s low-latency TCP settings on Linux when the CLI reserves its
+  port before startup.
+
+- Keep the navigation steady when its font arrives after the first paint.
+  On a slow load, the sidebar keeps the system font for that page so the tabs, filter
+  bar, and folder menu stay in place.
+
+- Center rendered Markdown, YAML, and JSON inside the diff box, with change markers
+  along the left edge.
+  Source follows the selected split or unified layout.
+
+- Pull request size rows use the Commit page’s line height, including while loading.
+
+- The pull request header shows the state and dates directly below the title, followed
+  by the author and branches.
+
+- The pull request header gives the size line more room above and below and tightens the
+  gap after the Diff summary.
+
+- New macOS folder windows open at 92% of the screen’s usable height.
+
+- Pull requests remain available while browsing a pinned revision of a local GitHub
+  checkout.
+
+- The checkout’s folder details open the shared branch menu from its current branch
+  chip.
+
+- The checkout’s folder details show a monospace commit ID and can copy the full ID.
+
+- Branch and tag chip chevrons fade in over a translucent backdrop.
+
+- Clicking an open branch or tag chip again closes its menu.
+
+- The macOS Open URL dialog shows progress until the repository window opens and keeps
+  URL check and setup errors in the dialog so you can retry.
+
+- Opening a GitHub repository through macOS Open URL or by choosing a recent repository
+  skips the extra clone confirmation.
+  Incoming links from Terminal and other apps keep the confirmation for an uncached
+  repository.
+
+- The macOS title-bar folder chooser and Open Recent menu show up to 16 recent targets.
+
+- The main page’s side margins and top padding grow in steps on wider windows, so the
+  page is less cramped against the navigation pane and the window’s edge on a large
+  display. Narrow windows keep the tight margins they had, and hiding or showing the
+  navigation pane never changes them.
+  See [Main View Gutter](docs/design-system.md#main-view-gutter).
+
+- Hiding the navigation pane centers a rendered document, with its table of contents,
+  and a folder’s Overview in the wider page, instead of leaving them at the left edge
+  with the window’s spare width beside them.
+  The title, the Up button, and the tabs move with the text, and what is at the right,
+  such as View on GitHub, stays there; the text glides to its place as the page slides.
+  Source files, tables, diffs, and logs keep the page’s full width, and a page too
+  narrow to dock a table of contents is unchanged.
+  For plugin authors, a view whose body is a reading column can opt in by setting
+  `--reading-unit` on the main view’s children.
+  See [Hiding the Navigation Pane](docs/design-system.md#hiding-the-navigation-pane).
+
+- The folder icon and name in the navigation link to Home.
+  The adjacent details menu closes when you click its chevron again or click outside the
+  menu.
+
+- The Agents overview uses muted text for session indexing progress.
+
+- The Pulls navigation shows file status counts and line totals.
+  Compressed and raw diff sizes appear on the pull request overview.
+
+- View on GitHub opens the repository home from the default branch and uses readable
+  branch links for published files and folders.
+  Commit pages still link to the exact commit.
+
+- An idle server no longer spends CPU in proportion to the files under `.logs` and
+  `.state`. Every 5 seconds the activity tracker reread the catalog and probed each of
+  those files, which kept a server on a folder of 30,000 of them at 11–17% of a core.
+  It now rereads the catalog only when the inventory changes and probes the files it
+  shows as active, the files the inventory just saw change, and a bounded part of the
+  rest in rotation. A write the file watcher reports shows its badge as soon as it did
+  before; where no watcher reports it and a folder has more such files than one poll
+  covers, the badge can take a few minutes to appear.
+  The `pid_alive` label is now set only on a file shown as active.
+
+- `metab --host` now serves on an IPv6 address.
+  `--host ::` and `--host ::1` used to exit with “No available port”, because the port
+  search tried each port on an IPv4 socket whatever the host.
+  An IPv6 host is now printed in the brackets a URL needs, `http://[::1]:8411/view/`,
+  and admitted by the Host check in that form.
+  `--host ::` accepts IPv4 connections as well as IPv6 and still prints `127.0.0.1`. A
+  host this machine has no address for is refused as that, “Cannot listen on host”,
+  where it used to be reported as a range of busy ports.
+
+- A view tab chosen while its file is still coming up is no longer lost.
+  A click on a tab, or a link that names a view, that arrived while a folder or file
+  held its first paint did nothing, and the first view came to the front; now the chosen
+  view opens. A tab picked on the page you are reading while another file loads behind it
+  no longer leaves that file with an empty view under the wrong tab.
+
+- Fixed Load more in a Source view for files with CRLF or lone CR line endings.
+  The text it appended kept the file’s own line endings while the first part had them
+  normalized, so the appended part of a file with lone CRs showed as one line with no
+  line numbers, a copy of the view had mixed line endings, and a CRLF that fell across
+  the boundary between two loaded parts showed as an extra empty line.
+  The first render and every appended part now go through one normalization.
+
+- Table search progress and the clear-filters link stay visible when live updates
+  connect.
+
+- Compressed and raw diff sizes on pull request and commit summaries now use the same
+  blue style as file sizes in the Files navigation.
+
+- Two servers started at the same moment on one port no longer both announce it.
+  Each `metab` now holds its port from the moment it chooses it, so the second takes the
+  next port, where before one exited with “address already in use” after printing a
+  `Serving` line whose address the other server then answered with its own folder.
+  A connection made while a server is still starting now waits for its answer instead of
+  being refused.
+
+- The macOS Open URL panel accepts bare GitHub repository shortcuts like
+  `jlevy/metabrowser` and shows all three accepted repository address forms.
+
+- Opening the repository cache retries if another process removes the same staging lock
+  during startup cleanup.
+
+- Click a branch or tag chip for its context, name-copy action, and available
+  Metabrowser and GitHub destinations.
+  The menu chevron overlays the chip on hover and keyboard focus.
+
+- The folder details menu shows a labeled local path and a short source description.
+  It keeps the file count and size and drops the raw timestamp.
+  Both link menus show the exact address above their actions, and their down chevrons
+  stay still when open.
+
+- Live directory updates now keep each folder’s modification time in sync with its
+  newest file, including when that file is removed.
+
+- Copy Link and Open in Browser use the same icons in the root repository menu and the
+  View on GitHub menu beside a page title.
+
+- A chevron beside the root name opens checkout details, file totals, and repository
+  link actions when a remote URL is available.
+
+- Cloud mirrors use a folder with a cloud overlay in the browser and native Mac menus.
+
+- Agents Overview now uses the file-crawl spinner while it indexes session details, with
+  a count of sessions checked.
+  It reports unreadable sessions when indexing finishes.
+
+- The built-in Agents plugin appears as Agent Session Browser.
+  Its manifest and provider adapters own coding-agent formats, and its plugin ID remains
+  `agents`.
+
+- macOS Settings lists the selected runtime’s plugins and any discovery problems.
+  About Metabrowser includes the full GitHub repository link.
+  Runtime setup and diagnostics direct users to the README for installation and
+  troubleshooting.
+
+- **App contract:** macOS Settings reads the existing `metab --plugins --json` inventory
+  and discovery errors.
+
+- An [fsqlite](https://github.com/jlevy/fsqlite) store opens as one: its `fsqlite.json`
+  marker is the `sqlite-store` kind, and the tree badges the store’s folder.
+  A store is a container whose tables are those of the snapshot its `current` pointer
+  names, each at `<marker>/<table>` as a SQLite database’s are, with the format’s
+  `applied_tx` and `fsqlite_meta` grouped as internal tables.
+  Its Table view is the store’s overview, or at a table’s address the table itself,
+  sorted, filtered, and paged as any SQLite table; its Schema view shows the snapshot’s
+  DDL; and its Info view shows the store’s format and identity, the version `current`
+  names, the transaction envelopes waiting for the next reconcile, and that snapshot as
+  a SQLite database’s Info view shows one, or the state of a store it cannot show
+  (invalid, unsupported, or corrupt).
+  Metabrowser reads a store as a guest: the snapshot with `immutable=1` in a reader
+  process with no writes, locks, or leases.
+  It checks the snapshot’s identity and required metadata before showing its contents.
+  It refuses SQLite WAL files, shared-memory files, and live rollback journals next to a
+  published snapshot. If garbage collection removes the snapshot during the initial read,
+  Metabrowser follows the pointer again.
+  If a later table operation needs the collected file, it returns `snapshot_moved` so
+  the reader can refresh.
+  `metab --api` reaches the same models at `/api/plugin/fsqlite/info`,
+  `/api/plugin/fsqlite/schema`, and `/api/plugin/fsqlite/children`, and the tables
+  through `/api/plugin/table/*` at the marker’s path
+  ([Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md)).
+
+- The SQLite plugin exports its Info view’s `infoModel` and `drawInfo`, and its Table
+  and Schema views’ `mountTableView` and `mountSchema`, to a plugin that requires it.
+
+- `.csv` and `.tsv` files are now the `delimited` kind, each one table that
+  `metab --api` reads through the new table routes,
+  `/api/plugin/table/{tables,schema,rows,record,card}?path=`: typed columns inferred
+  from the file, pages sorted in either direction, filtered (`f.<field>=<op>:<value>`),
+  and searched, with cursors that name a sort position, and one record or hover card by
+  its row’s position (`@<n>`). A cell keeps what plain JSON would lose: an integer past
+  2⁵³, an infinite real, a long value’s length, invalid UTF-8, a value whose type
+  differs from its column’s, and a short row’s missing cells.
+  Table is the default view, and Source is available
+  ([Table Sources](docs/project/architecture/arch-plugin-system.md#table-sources)).
+
+- **Plugin SDK:** a plugin can serve its own kind as tables through the built-in `table`
+  plugin’s routes by declaring `[[table_source]]` with a Python adapter and
+  `requires = ["table"]`; `metabrowser.plugin_api` exports the protocol, its cell and
+  token helpers, and its bounds ([Table Sources](docs/plugins.md#table-sources)).
+  `metab --plugin NAME` lists a plugin’s table sources, and `metab --doctor` reports one
+  whose adapter does not import.
+
+- **Breaking (Plugin SDK):** `PLUGIN_SDK_VERSION` is now `0.8`. A plugin shares helpers
+  by exporting them from its `index.js` module, and a plugin that uses another’s names
+  it in its manifest, `[plugin] requires = ["markdown"]`, and gets its exports with
+  `await metabrowser.plugins.load("markdown")`, which loads the provider on demand
+  ([Declared Dependencies](docs/plugins.md#declared-dependencies)).
+  `metabrowser.builtins` and the render-time-only rule for reading it are gone: the
+  Markdown plugin’s `mountRendered`, `renderSource`, and `drawDiagrams`, the structured
+  plugin’s `renderInlineTree` and tree helpers, and the GitHub plugin’s `pullStateIcon`
+  are their modules’ exports, and the agents plugin’s agent-log renderers are what its
+  exported `loadLogRenderers` answers.
+  To upgrade from SDK 0.7, replace `metabrowser.builtins` calls with declared provider
+  dependencies and use their module exports.
+  Set `sdk_version = "0.8"` after updating the plugin.
+  The manifest must match the runtime’s SDK version.
+  See [plugin diagnostics](docs/command-line.md#diagnostics-and-plugins).
+
+- Discovery refuses a plugin that requires one that was not discovered or was refused,
+  and every plugin on a cycle of requirements, naming the cause.
+  An operator plugin that replaces another by name and is refused for its requirements
+  leaves the plugin it would have replaced in place, as an invalid manifest does.
+  `metab --doctor` lists each refusal and reports the plugin dependency graph, and
+  `metab --plugins` and `--plugin NAME` show each plugin’s `requires`.
+
+- An agent log’s opened event payload is always drawn as the structured tree, which
+  loads with the first payload opened; before, it was a flat JSON block unless a JSON or
+  YAML file had been opened first.
+
+- A SQLite database now lists its tables: it expands in the navigation tree like a
+  folder, its Table view is an overview of its tables, views, and virtual tables with an
+  estimate of each one’s rows, and each table opens at `<database>/<table>` in the table
+  view, sorted, filtered, searched, and paged in both directions without reading the
+  whole table. Every value is shown as stored: null apart from the empty string, an
+  integer past what a browser number holds with its digits, infinite reals, text that is
+  not valid UTF-8, JSON, blobs as hex, a value in a column of another type marked, and a
+  long value previewed with its size.
+  Declared foreign keys are references with hover cards, a value naming a missing row is
+  marked missing, and a record counts the rows that reference it.
+  A count past its cap is a lower bound, and on a large table only indexed fields sort.
+  A new Schema view shows each object’s DDL, indexes, triggers, and foreign keys.
+  Reading never changes the database or the files beside it.
+
+- `metab --api` reaches every table at `/api/plugin/table/*?path=<database>/<table>`,
+  and the new `/api/plugin/sqlite/schema` and `/api/plugin/sqlite/children` routes.
+
+- Plugin authors: a `<file>/<table>` address reaches a table source with the inner path
+  as its table, `blob_cell` joins the cell helpers, `resolve_content_container` takes
+  `suffixes=None` for a kind matched by its bytes, and a text read only in part may be
+  `{text, bytes}` and a reference to a missing record `{ref: {…, missing: true}}`.
+
+- **SQLite databases open as SQLite, whatever their name.** A file that starts with
+  SQLite’s 16-byte header opens in an Info view instead of Bytes: how Metabrowser read
+  it and why, its page size and count, encoding, journal or write-ahead log, schema
+  objects, `application_id` (an fsqlite snapshot is named), and the SQLite library
+  against the reader’s minimum.
+  A database named `History`, or with an extension no rule lists, is recognized too; a
+  `.db` file that is not SQLite stays binary, and so does a compressed database.
+  The file-type registry counts `.db`, `.sqlite3`, `.db3`, and `.s3db` as SQLite
+  (revision 4). See [Reading Files](docs/browsing-files.md#reading-files).
+
+- **Another application’s database is read without changing it.** Every connection runs
+  in a separate reader process, never in the server, and opens the database by what it
+  finds beside it: a rollback-journal database and an idle write-ahead-log one with no
+  lock, validated against a commit; a log an application has open through its index; a
+  log with no index, one no application has open (an owner that crashed, a copied
+  folder), or a file with a second name, through a private copy.
+  Metabrowser never writes to the database, its log, or an index no application holds,
+  never creates or removes a file beside it, never rolls back another process’s journal,
+  and never takes a lock that could refuse the owner’s commit; while the owner is
+  writing, the view says so.
+  See
+  [Reading SQLite Databases](docs/project/architecture/arch-plugin-system.md#reading-sqlite-databases).
+
+- **Plugins can claim a binary format by its magic number.** A `[[kind]]` match may name
+  `magic = { offset, hex }`, checked on every file that would otherwise be `binary`,
+  whatever its name; `ext` or `exts` beside it decide only the tree’s chevron.
+  See [Kind Rules](docs/plugins.md#kind-rules).
+
+- **The pull request catalog no longer drops its own locks.** A read of the catalog in
+  one thread of the server could release the lock another thread’s write held, so a
+  second Metabrowser process sharing the cache could read a half-written catalog; every
+  handle on the catalog now closes after the last connection to it.
+
+- JSON and YAML files gain a **Table** view (`A`), beside Tree, still the default, and
+  Source. A file whose top level is a list of mappings, such as an export of records or a
+  YAML list of entries, opens there as a table: one row a mapping, one column a key, in
+  the order each first appears, typed from its values.
+  It sorts, filters, searches, and opens a row’s record as a CSV file’s table does, and
+  a nested mapping or list is its JSON in the table and a collapsible tree in the
+  record. Any other document says in the tab that it is not a list of records, and why.
+  Table and Tree share one parse in either order, and a file opened first in Table
+  parses without writing the copy as YAML that Tree offers, which was most of a large
+  file’s first open; Tree writes it from that parse when first shown.
+  A nested value is read only as far as a cell, a record, or a filter shows it, so YAML
+  aliases cannot make a query cost far more than the file.
+
+- **Plugin SDK:** `mountTable(container, {path, renderJson})` takes a function that
+  draws a JSON value into an element and returns a handle with `dispose()`; the record
+  draws each nested value with it, and the structured plugin passes its inline tree.
+  A table whose source refuses the file (`source_unreadable`) shows the source’s words
+  in place of the table, with no way back to a whole table it does not have.
+
+- `.csv` and `.tsv` files now open in a **Table** view, the kind’s default (`V`), with
+  their text one key away in **Source** (`S`). Sort a column either way from its header,
+  filter it from its header’s menu or by pressing a `true` or `false` value, search the
+  text, choose columns, and open a row’s record in place of the table, by pointer or by
+  the keyboard (one Tab stop, `J` and `K` or the arrows, Enter, and Up from the first
+  row to the header’s buttons).
+  `null`, an empty value, and a short row’s missing value are drawn apart; numbers are
+  right-aligned; a value too long for its column is cut with its whole text in the
+  tooltip. The sort, filters, search, columns, and open record are in the page’s address,
+  so a link reproduces the view and Back returns to it, at the row and scroll the reader
+  left, as a reload does.
+  A table past a few hundred rows draws only the rows near the view; there Search stands
+  in for find in page, Shift with Up, Down, Home, or End selects rows that copy as
+  tab-separated values, and printing prints the rows read, up to a bound, saying on the
+  paper which rows it printed ([Data Tables](docs/design-system.md#data-tables)). A
+  table says what it could not do in the time a request may take: a sort it refused
+  names the column and offers the table’s own order or to try again, and a search it
+  stopped shows the matches among the rows it read.
+  A file larger than the table reads says whether every row or only the leading rows
+  were read.
+
+- **Plugin SDK:** the `table` plugin exports `mountTable(container, {path})`, the table
+  view, so a plugin that serves its kind as tables gives the kind a Table view with
+  `mb.plugins.load("table")` ([Table Sources](docs/plugins.md#table-sources)). Its
+  handle’s `refresh()` asks the table again and redraws it in place, keeping the
+  reader’s row, scroll, and selection.
+  `navigation.open(target, {replace: true})`, which replaces the history entry rather
+  than pushing one, is now documented.
+  `fetchPluginData` sends an array value as its parameter repeated, one value each, as
+  the table rows route takes `cols`; it used to send the array joined with commas.
+
+- The folder’s Distribution and totals tables take the new Data Tables component’s
+  number and heading rules, and the unused `.data-table` and `.table-container`
+  stylesheet rules are gone.
+
+- An open table follows its file: when a CSV or TSV file changes, even an ignored one or
+  one deep in the folder, the table reads its rows again with the same sort, filters,
+  and search, flashes the rows that changed or arrived, offers rows that would land
+  above where you are reading instead of pushing the page down, and keeps your scroll
+  position, focused row, open menus, and unsent filter text.
+  A **Live** button pauses it and counts the changes held back, also from an open
+  record, and a read that fails keeps the rows last read and says so
+  ([Live Updates](docs/browsing-files.md#live-updates)). A table in a hidden tab reads
+  nothing until it is shown, and a file that is slow to read is read less often.
+
+- A container in the tree, such as a patch file, reads its entries again when its file
+  changes, at most once in a short window and without redrawing entries that are the
+  same.
+
+- Plugins can watch a file with
+  `metabrowser.watchFile(path, {generation, onChange, onState})`, which registers it on
+  the page’s one event stream rather than opening another; `fs.snapshot` now names its
+  connection, and `POST /api/events/watch` registers a path on it, answers the
+  generation a watch compares, and reports changes as `file.changed`
+  ([File Watches](docs/project/architecture/arch-live-delivery.md#file-watches),
+  [Plugin Authoring](docs/plugins.md)).
+
+- In the macOS app’s folder chooser, the check mark on the window’s own folder now
+  stands on the line of the folder’s name, beside its mark, rather than centered between
+  the name and the location below it.
+  VoiceOver still reads the row as checked.
+
+- The root’s name at the top of the navigation leads with a mark for what is open: a
+  cloud for a cloud mirror, a folder with Git’s branch for a local Git checkout, and a
+  folder with a dot for a local folder.
+  The main page’s header for the root leads with the same mark, and a folder inside it
+  with the plain folder outline.
+  Hover the mark for its kind, such as “Cloud mirror of owner/repo”, “Local Git checkout
+  (GitHub: owner/repo)”, or “Local folder”.
+  None of them is the plain folder outline of an ordinary folder, and the macOS app
+  draws the same three marks, glyph for glyph, in the title’s folder chooser and path
+  menu, the Switch Folder panel, File > Open Recent, and the Dock menu; the path menu
+  keeps the plain outline for the folders above the root.
+  [Source Kinds](docs/design-system-icons.md#source-kinds) lists each mark.
+
+- `GET /api/identity` says a root’s kind as `folder`, `git`, or `mirror`, with
+  `kind_label` “Local folder”, “Local Git checkout”, or “Cloud mirror” (a mirror was
+  “Cached mirror”), and a new `kind_tip`, the sentence the mark carries as its tooltip.
+  A folder is `git` when it holds a `.git` entry, and it stays `git` while it shows one
+  of its revisions.
+
+- `metab --recent --json` lists `git` for each target, true for a folder that was a
+  checkout when it was opened, so the macOS app can draw its mark without looking at the
+  folder. A recent folder opened before this release lists it as false until it is opened
+  again.
+
+- **App contract:** the macOS app reads a third value of `kind` from
+  `GET /api/identity`, `git`, beside `folder` and `mirror`, and `git` for each target of
+  `metab --recent --json`, which it draws each root’s mark from.
+  The app and `metab` change together, and `MetabRequirement.minimumRelease` stays
+  0.13.0, the release that first has `--recent`.
+
+- A link no rule colors is now the design’s link color everywhere, not the browser’s
+  default blue and visited purple: the shell sets a zero-specificity base anchor color
+  ([Links Have a Base Color](docs/design-system.md#links-have-a-base-color)), which
+  plugin authors’ bare links inherit and any context’s own rule still overrides.
+
+- The agents views follow the design system.
+  Session links are `--link` with an underline on hover and the focus ring, the home’s
+  agent line uses the design’s separator in place of a stray “.”, Running now and Recent
+  sessions are two-line rows whose age stays at the end of the first line however long
+  the project path is, section titles and the page title use the shell’s headings, and
+  the session list’s table scrolls in a keyboard-reachable wrap
+  ([The Agents Views](docs/design-system.md#the-agents-views)).
+
+- **Rendered documents print in KPress’s print model.** A Markdown document, or a
+  folder’s README, prints as KPress’s own PDF export draws it, in the browser and in the
+  macOS app alike: the print button waits for the document’s images, KPress’s print
+  faces, and its diagrams before it prints; the page prints on light paper whatever the
+  app’s theme; a README’s centred logo stays centred; and the Overview prints the README
+  alone, without its label.
+  In the app, whose WebKit printed lazily loaded images as nothing, left headings alone
+  at a page’s foot, and printed edge to edge, pages now have KPress’s margin, headings
+  stay with what follows them, and every image prints.
+  See [Print](docs/design-system.md#print).
+
+- **App contract:** The View on GitHub button’s links carry the macOS app’s marker,
+  which names no site: `data-web-view="open"` and `data-web-view="external"`; the
+  button’s root is `data-view-on-github`. A page or plugin can mark any link
+  `data-web-view="open"`, and the app shows a plain click on it in its web pane when the
+  page is on a site the app knows, GitHub so far.
+  See [View on GitHub](docs/design-system.md#view-on-github).
+
+- In the macOS app, every site its web pane shows, such as github.com in View on
+  GitHub’s popover, shares one store, as a browser profile does, and Metabrowser > Clear
+  Website Data… clears one site or all of them, reloading only a pane whose site’s data
+  it cleared.
+
+- The branch chooser’s list keeps the place it was scrolled to when the Files toolbar is
+  redrawn in the moment after a scroll, as a tally arriving does while a folder’s index
+  warms up: it came back at its top, because the page put back the position the last
+  scroll event had named ([The Ref Selector](docs/design-system.md#the-ref-selector)).
+
+- Coding-agent log support is now the built-in `agents` plugin, in place of `agent-log`:
+  its JSONL adapters (Claude Code, Codex, Pi, Gemini) and the Log, Charts, and Raw JSON
+  views live there. The charts hook moves from `/api/plugin/agent-log/charts` to
+  `/api/plugin/agents/charts`; kind and view ids are unchanged.
+  A JSONL file no adapter recognizes now reports the adapter `unknown`, where it
+  reported `claude`. The agent adapters register when plugins are discovered, so a
+  script that calls `detect_adapter` without starting the server gets `unknown` for
+  them.
+
+- Plugin authors: a manifest’s optional `[plugin] register = "dotted.module"` names a
+  Python module that discovery imports once for registrations such as
+  `register_log_adapter`. It applies to built-in and installed entry-point plugins; an
+  operator-directory plugin is JavaScript-only, so the field is ignored there with a
+  warning and reported by `metab --doctor`.
+
+- Plugin authors: Metabrowser’s own JSONL adapters now register through
+  `register_log_adapter` like a plugin’s, so no adapter name is reserved and
+  `registered_log_adapters()` lists them all in detection order.
+  `register_log_adapter` takes an optional `line_detector` for a stream that opens with
+  plain text. Detection asks Metabrowser’s detectors before a plugin’s.
+
+- Plugin authors: a `[[view]]` of the `folder` kind can declare
+  `offer = "module:function"`, a predicate that decides which folders show the view; an
+  offered default view becomes that folder’s default.
+
+- Plugin authors: a `[[kind]]` with `binary = true` claims a binary file by its path, so
+  a format Metabrowser cannot read as text reaches the plugin’s views.
+
+- Plugin authors: `metabrowser.plugin_api` adds `plugin_cache_directory`,
+  `PluginCacheUnavailableError`, `jsonl_parse_max_bytes`, `extract_agent_charts_bytes`,
+  `lookup_agent_charts`, `remember_agent_charts`, and `registered_log_adapters`.
+
+- The built-in `agents` plugin keeps a catalog of the Claude Code and Codex sessions
+  under a served folder that is, or holds, a `~/.claude` or `~/.codex` home, and answers
+  five routes from it: `/api/plugin/agents/catalog`, `sessions`, `session`, `records`,
+  and `live`. A background worker lists every session and then summarizes them, newest
+  first, into a private cache directory, so a request returns what is ready with its
+  progress and never waits for a full read of your history; `sync=1` waits for it, which
+  is what `metab --api` and a script want
+  ([Agent Catalog](docs/project/architecture/arch-views-models-routes.md#agent-catalog)).
+
+- Serving a Claude Code or Codex home, `~/.claude`, `~/.codex`, or a folder holding
+  them, now opens on an **Agents** page: every session’s count, size, and place in time,
+  the sessions running now, a histogram of session sizes, the most recent sessions, and
+  a progress line while a large history is summarized.
+  A **Sessions** list beside it filters by agent, origin, status, project, model, and
+  start, sorts by any column, pages, and hides automatic reviews until asked
+  ([Browsing Agent History](docs/working-with-agents.md#browsing-agent-history)).
+
+- A Claude Code transcript or a Codex rollout now opens on a **Session** view, a header
+  with the session’s agent, status, origin, project, models, times, and its parent and
+  children, above its events.
+  Rollouts Codex has compressed with zstd, which did not open before, open on their own
+  Session and Log views, read from Codex’s history store.
+  A log that is in no agent home keeps showing the Log it had.
+
+- Event kinds and tool families have one color each, in light and dark, wherever they
+  appear: the Log’s badges, the Charts view’s series, and the Session view.
+  A plugin that styled its own views with the agent log’s `--agent-log-kind-*` tokens
+  now uses `--agent-kind-<kind>-*` and `--agent-tool-<family>-*`
+  ([Color and Theming](docs/design-system.md#color-and-theming)).
+
+- The `sessions` route of the `agents` plugin lists a `model` facet, and the `live`
+  route names each running session’s source files.
+
+- A session opened while its home is still being listed for the first time shows the
+  catalog’s progress and appears when listing finishes, instead of falling back to the
+  plain Log or saying the file is in no agent home.
+  A session with more events than one request can scan says so, rather than offering
+  “Load more events” forever, and the agents plugin’s Log, Charts, and Raw JSON code and
+  styles load only when one of those views is shown, not with every folder page.
+
+- A Git revision now offers **By age** and **Modified within**, and its Recent list,
+  where Git can date its files (`git last-modified`, Git 2.53 or newer): a file is in a
+  window or a band by the time of its last commit, and a file whose last commit is not
+  known yet, or at all in a shallow clone, is in a last group, **Undated**, that says
+  what it is older than when it can.
+  A revision’s page opens at once and draws again when the ages arrive, the open file’s
+  age included, and says, in the line that counts the files a filter keeps and in the
+  name of the Undated group, that the ages are being read, why a read failed, or how
+  many files could not be dated.
+  A folder in a group or window is dated by the files that put it there, and a Recent
+  list counts the files it could not date in any window.
+  With an older Git a revision offers neither, as before.
+  Adds `recency` to a revision’s capabilities where Git can date it, folder names to
+  `/api/recent` rows, `mtime` to `/api/file` envelopes of a revision (`?ages=1` makes
+  `--api` wait for the answer), and `recency_tallies` to a grouped `/api/tree`.
+
+- The branch chooser in the Files toolbar now shows the pull request a branch is the
+  head of, on a second line of its row: its state’s icon, its number, and its title.
+  A branch with several shows the open one first and counts the others, and a fork’s
+  branch of the same name is not the repository’s branch, so it shows none.
+  The filter box then finds a branch by its pull request as well as by its name, by `#`
+  and the start of a number or by the words of a title.
+  The pull requests are only what the cache already holds, so the list opens as fast as
+  before and fills in while the cache does; a list of tags has none
+  ([The Ref Selector](docs/design-system.md#the-ref-selector)). A row lists up to six of
+  a branch’s pull requests and says how many there are, a list that is open keeps its
+  place and its focus as pull requests arrive for the rows above, and a filter says when
+  the cache holds only some of them.
+  `GET /api/source/refs` carries them as `pulls` and `pulls_total` on a row and
+  `pull_requests` on the envelope, and `PLUGIN_SDK_VERSION` is unchanged: the GitHub
+  plugin exports `pullStateIcon` for the chooser.
+
+- A Git revision’s files and folders now show their age, the time of the last commit
+  that changed them, as a hosting site’s file list does, on a mirror, a pull request’s
+  head, and a branch or tag of a checkout alike.
+  Git reads it (`git last-modified`, Git 2.53 or newer) in the background, so a page
+  opens at once and shows the times on its next load, and the answer is kept per commit,
+  so coming back to a branch is free and a branch whose ancestor is known, with no merge
+  since, reads only the commits since it.
+  A shallow clone says a file is older than its oldest commit and never dates it by that
+  commit. With an older Git a revision shows no ages, as before, and `metab --doctor`
+  reports the Git it found and the release it needs, and in the app’s Check Setup…. Adds
+  the `file_ages` block of a pin’s `/api/capabilities`, an `ages` state on its
+  `/api/tree` and `/api/index/progress`, and an `mtime` on tree nodes.
+
+- **App contract:** the `git` check of `metab --doctor --json` gains a third detail,
+  `file ages`, and is a warning when the Git is older than the release that reads file
+  ages on a Git revision, in the shape it had before.
+  The app lists a check’s details as it receives them, so Check Setup… shows the line
+  and the warning with no change to the app, and no release floor moves.
+
+- Images from the web now show in a repository you opened from its URL, in a pull
+  request’s text, and in a folder served with `--untrusted`, as they do on github.com:
+  README badges and screenshots over `https` load, fetched with no referrer sent, where
+  they were links to their images.
+  An image over `http` is still not loaded.
+  A badge that is a link, `[![alt](image)](destination)`, keeps its destination whether
+  or not its image loads: the page no longer draws an empty link and a second, visible
+  one that went to the image.
+  An image that is not loaded is its alt text in a small chip with an image mark, inside
+  its link, and its address in the chip’s tooltip.
+  **Block remote images**, in the Metabrowser menu and off unless you tick it, turns
+  them all into those chips, and the page’s policy then refuses an image from the web,
+  so no request for one leaves the page
+  ([The Untrusted Page Policy](docs/project/architecture/arch-server-and-content.md#the-untrusted-page-policy)).
+  A trusted folder’s own Markdown is unchanged; a pull request’s text, a commit’s, and a
+  Markdown diff follow the setting in any folder.
+
+- A link that holds only an image, such as a badge, no longer has a GitHub mark after
+  it, in a trusted folder or an untrusted one, so the mark no longer wraps onto a line
+  of its own under a row of badges
+  ([External GitHub Links](docs/design-system.md#external-github-links)).
+
+- A repository’s mirror is kept in a directory named for the repository, such as
+  `~/.cache/metabrowser/repos/github-com-jlevy-markform-1bo2sp3ey2l`, where it was named
+  by all 64 hexadecimal digits of an identity, in `repository-stores/`. The name is the
+  repository’s readable name, its words joined by single dashes, and the first 11
+  characters of the mirror’s identity digest written in base 36 (`0-9a-z`): 56.9 bits,
+  which the arithmetic beside `NAME_SUFFIX_CHARS` sizes so that two mirrors on one
+  machine are under one chance in a billion of taking the same first name, even at
+  10,000 mirrors, the most the cache lists, and with every repository name taken to be
+  the same. Chance is not what keeps two mirrors apart: the identity each mirror’s
+  `store.yml` records is read before a name is claimed or a mirror is opened, and a name
+  another mirror holds is never shared, so that mirror takes a longer one.
+  The directory of a repository’s source, which holds what its provider said about it,
+  is named the same way, such as `sources/github-com-jlevy-markform-jqlzm24hgct` where
+  it was `sources/github-com--jlevy--markform--8c5e18ed6f7f`, and `source.yml` records
+  it. The main heading’s note reads `mirror in ~/.cache/metabrowser/repos/<name>`,
+  without the `/repository.git` every mirror ends in; its tooltip and
+  `/api/source/status` still give the whole location, where
+  `git -C <location> log --all` works.
+  `/api/cache/stores` says each store’s `key`, is paged by it (`after` and `next_after`
+  are keys, where they were identities), and reports `id` as `null` for a store whose
+  record cannot be read; `/api/cache/sources` and `/api/cache/source/<slug>` name a
+  source by its new slug.
+  See [Store Keys](docs/project/architecture/arch-repository-cache.md#store-keys) and
+  [Slugs](docs/project/architecture/arch-repository-cache.md#slugs).
+
+- Upgrading to the `f03` cache layout, which names mirrors and sources as above: the
+  first `metab` that opens a repository in an older cache renames each source and mirror
+  where it stands and moves each mirror into `repos/`, so nothing is cloned again, and
+  removes `repository-stores/` once it is empty.
+  A source’s `source.yml` is rewritten as `RepositorySource/v2`, the contract that holds
+  the new slug. A mirror no source names keeps the words its old name had, or, when it
+  had none, is kept as `unattached-<11 characters>`, and an entry the rename cannot read
+  or move is named in a warning and left as it is: a source under its old name in
+  `sources/`, and any other entry under its old name in `repos/`. A pull request’s list
+  of changed files is worked out again the first time the pull request is opened
+  afterwards, since the saved list names its mirror by path.
+  That first open writes to the cache, so the cache must be writable once; a read-only
+  copy is not migrated.
+  Until then `/api/cache/*` answers `migration_pending`. If another app sends a link to
+  a repository already in the old cache, Metabrowser asks its clone question once.
+  Opening the repository migrates the cache.
+  A `metab` of an earlier release refuses a migrated cache and asks for an upgrade.
+  Stop running `metab` servers before the first new `metab` opens a repository (the
+  macOS app restarts its own).
+  The upgrade refuses, and changes nothing, while a `metab` of an earlier release is
+  fetching into a mirror: stop it and open the repository again.
+  A server of an earlier release that is still running fails to read its mirrors until
+  it is restarted, and a clone it starts afterwards is published in a new
+  `repository-stores/` that this release does not read and no command lists.
+  The next open of that repository clones it again; delete that directory.
+
+- File Overview’s legend names up to nine file-type families, up from five, each at
+  least 1% of the folder, then Other for the rest.
+  A family at exactly 1% is named, and Details, which folds rows below that share into
+  “N more”, now shows its row too.
+  The rollup’s `file_type_legend` carries the new `limit`.
+
+- File Overview’s bars start further left, at one place in every row of the Files,
+  Ignored, and Total bars and of Details, with Files or Bytes and with Details open or
+  closed: a label column as wide as the longest label there, the Documentation heading
+  and the No extension and Markdown rows, where it had been a quarter of the table, so
+  the bars start 54 px further left in the default pane.
+  A longer label wraps inside the column and moves no bar, and in a pane too narrow for
+  the column the bars start where they did.
+  See [Aggregate Distributions](docs/design-system.md#aggregate-distributions).
+
+- The text in a pull request’s description, comments, and reviews, and in a commit’s
+  message, now has more room between it and its box’s left and right borders, so a
+  heading that opens a description no longer sits against the border.
+  Every bordered box that holds prose takes one design token,
+  `--boxed-prose-padding-inline`, which `--github-pull-text-inset` and the commit
+  message’s box read; a card’s head, a commit’s row, and a review comment’s hunk lines
+  move in with the text, so an avatar and the text under it still start at one x
+  ([Boxed Prose](docs/design-system.md#boxed-prose)).
+
+- **App contract:** the macOS app asks
+  `metab FOLDER --api '/api/event-log?limit=1' --format json` where Metabrowser’s own
+  event log is, for Help > Open Event Log, which opens the newest segment in a window on
+  the log’s own folder, even when a folder that holds it is open, and keeps that folder
+  out of Open Recent. The route is unchanged, so no `metab` release the app already
+  requires needs a change.
+  `metab --event-log` opens the same log from a terminal: it names the directory the
+  event log is written to as `ROOT`, so serving selects the newest segment, and `--api`,
+  `--show`, `--walk`, and `--check-api` read it as a folder.
+  A pull request page’s Details names the menu item for a server the app started, from
+  `METABROWSER_SETTINGS.EVENT_REPORTS.open_menu`, and the command otherwise, from
+  `open_command`. See [Browsing the Log](docs/realtime-debugging.md#browsing-the-log).
+
+- Metabrowser’s own event log opens in Metabrowser.
+  A file named `events-*.jsonl`, such as a segment of the log a served `metab` writes to
+  its state directory, is an event log, and opens as Timeline (spans nested under the
+  spans that started them: a request, the job it started, the `git` and `gh` processes
+  the job ran), Latency (the slowest spans and the distribution of every span’s time),
+  By kind (each kind and name counted, timed, and ended), and Errors (failures by cause
+  as `/api/event-log/failures` groups them, the page’s reports apart, and the work that
+  had not ended when the log did), beside Raw JSON, with keys `V`, `L`, `B`, `E`, and
+  `S`. Chips choose the kind and the outcome and a menu the least time.
+  Each view is a route, `metab DIR --api '/api/plugin/event-log/timeline?path=<file>'`
+  and its `slowest`, `kinds`, and `errors`, so a terminal reads what the page shows.
+  A server whose folder holds the log, such as `metab ~`, writes its log as usual and
+  leaves out the requests for the log itself; one whose folder is the log’s own writes
+  none, and says so in its Details and in `metab --doctor`, which now checks the event
+  log too. See [Browsing the Log](docs/realtime-debugging.md#browsing-the-log).
+
+- **App contract:** `metab --doctor --json` lists one more check, `event_log`, in
+  `checks` (whether a server writes the event log, where, and what it leaves out), which
+  Help > Check Setup… shows as a row of its own, since the app draws every entry of
+  `checks` it receives.
+  No release the app already requires needs a change: an older `metab` lacks the row,
+  and the app does not look for it.
+
+- On a Git revision, the navigation pane’s freshness line (“Fetched 1 min ago”) now sits
+  above the keyboard shortcut strip, which stays the pane’s last row.
+
+- **A size line above every Diff summary.** A commit’s page, its hover card, and a pull
+  request’s page say a change set’s scale on its own line, “77 commits · 83 files
+  changed · 2.3 MB compressed (14.0 MB raw diff)”. A tooltip explains the two sizes.
+  The Diff summary below shows the statuses and line totals, “› 15 A, 20 D, 70 M ·
+  +1,234 −6,344”. Plugins reach it as `metabrowser.changeSizeLine` and
+  `metabrowser.changeSizeLineNodes`. See
+  [Change Size Line](docs/design-system.md#change-size-line).
+
+- **A commit’s and a pull request’s size, as Git pushes it.**
+  `GET /api/git/commit-size/<rev>` answers a commit’s size against its first parent, and
+  `GET /api/plugin/github/pull-size` a pull request’s head against its merge base: the
+  thin pack `git push` sends (`pushed_bytes`), the uncompressed patch (`diff_bytes`),
+  and the commits the change holds.
+  Every option that could move either is pinned, so a size is measured once and kept,
+  beside a mirror’s store too; the Pulls rows’ `pull-files-summary` answer carries it
+  once kept, and the pull envelope names the page’s `size_route`. See
+  [Change Sizes](docs/project/architecture/arch-git.md#change-sizes).
+
+- Current Claude Code session transcripts open as agent logs with the Log and Charts
+  views. Since about Claude Code 2.1.247 a transcript’s first `assistant` record comes
+  after line 20, so these logs opened as plain JSONL. Queue operations, attachments, and
+  session metadata records each show as one compact line.
+
+- Codex rollout files (`~/.codex/sessions/**/rollout-*.jsonl`) open as agent logs
+  through a new `codex-rollout` adapter.
+  The Log shows the conversation, the commands, file changes, and MCP calls run inside
+  Codex’s `exec` tool, per-response token usage, and each turn’s duration.
+  The `codex exec --json` stream, which the `codex` adapter already parsed, now opens as
+  an agent log too. Compressed rollouts (`.jsonl.zst`) and rollouts older than the typed
+  envelope do not open yet.
+
+- The macOS app keeps one mirror per GitHub repository.
+  A pull request, branch, commit, folder, or file link, whether sent to the app or
+  entered in File > Open URL…, opens the repository on its default branch and goes to
+  the link’s page. A second link into the same repository opens in that window and its
+  running server instead of starting the server again on the new link: the mirror
+  refreshes, a pull request or a commit opens at its page, and a link to another branch
+  switches the window to it.
+  See [GitHub Links](docs/project/architecture/arch-macos-app.md#github-links).
+
+- `POST /api/source/link` with `{"link": "<URL>"}` opens a link into the repository a
+  mirror serves: it starts a refresh, switches the pin where the link names another
+  revision, and answers the page to go to.
+  `metab URL --api /api/source/link --data FILE` asks it from a terminal.
+
+- **App contract:** The macOS app posts every link into a repository to
+  `POST /api/source/link` on the repository’s server, reading `href` and `code`, and
+  reads `refreshing` from `/api/source/status` while a link the mirror lacks waits for
+  its refresh, where it read `ref_name` and `selection_state`. A repository’s server is
+  started on the repository’s address, never on a link.
+  `metab` 0.13.0 is the first release with the route.
+
+- A repository opened by its URL now shows a branch as the mirror last fetched it, the
+  way github.com does.
+  When a fetch moves the branch or tag you are reading, the page follows it to the new
+  commit by itself, on the same file when the new commit has it, in place of the old
+  “main is now at … **Switch**” offer at the foot of the navigation pane.
+  A commit opened by its ID stays put, and a pull request’s new head is still offered
+  with **Switch**. `GET /api/source/status` gains `follows`, which says whether the
+  served pin moves with its ref.
+  See
+  [Following a Branch](docs/project/architecture/arch-mirror-acquisition-and-refresh.md#following-a-branch).
+
+- Mermaid diagrams in a pull request’s description and comments are now drawn beside a
+  checkout too, not only on a repository URL’s page.
+  They are laid out in a hidden frame that can load nothing, so a diagram that names an
+  image cannot fetch it; one drawn around an image, Mermaid’s image shape, shows its
+  source with a message that its image is not loaded
+  ([Trust](docs/reviewing-pull-requests.md#trust)).
+
+- Plugin SDK: `metabrowser.moduleUrl(name)` returns an on-demand module bundle’s
+  absolute URL, for a frame that imports it in its own realm, and the Markdown plugin’s
+  `drawDiagrams(root, {isolated: true})` lays untrusted diagrams out in that frame
+  ([Browser SDK](docs/plugins.md#browser-sdk)).
+
+- A pull request’s Diff summary that has not arrived at the late threshold now says so
+  in place of its placeholder, and a failed refresh’s line ends the same way, each with
+  **Details**: what the server is still running, the failures in the window by cause
+  with the message, the addresses that failed, and the latest calls, the last probe of
+  GitHub, and the page’s own slow or unfinished work, with links to the records.
+  The page reports to the event log what only it saw: a request slower than the
+  slow-request threshold or still pending at it, a frame that froze it, and a wait still
+  running at the late threshold, and how that wait ended, `never_completed` when the
+  reader left first. A wait counts only the time its tab was shown.
+  Every request a page sends to its server’s `/api/` carries the page’s client ID in the
+  `x-metabrowser-client` header, which the server’s records of the request and of the
+  jobs and processes it starts carry as `client`, so
+  `metab . --api '/api/event-log?client=<page>'` reads everything one page asked for and
+  saw. `POST /api/event-log/client` is new.
+  `/api/event-log/failures` lists the page’s reports under `page_reports`, apart from
+  the causes it ranks.
+  See [What the Page Reports](docs/realtime-debugging.md#what-the-page-reports).
+
+- For plugin authors: `mb.eventReports`, present once the shell has loaded the
+  `event-reports` bundle (`mb.ensureAsset("event-reports")`), names a wait the event log
+  hears of if it runs late (`wait(name, {startedAt, detail, onLate})`, ended with
+  `end(outcome)`) and paints the Details for a query (`showDetails(panel, query)`).
+
+- In the macOS app’s folder chooser, under a window’s title, each row’s folder or cloud
+  mark now stands on the line of the folder’s name, with its location or “In another
+  window” on the line below the name, rather than centered between the two lines.
+  A location too long for one line is cut in the middle, as the Switch Folder panel cuts
+  it, and the row’s tooltip shows all of it.
+  The Switch Folder panel’s rows match.
+
+- Markdown lays itself out with the HTML attributes github.com keeps, as github.com
+  does: `align` on a paragraph, `div`, heading, image, or table cell or row, and `width`
+  and `height` on an image or a table cell.
+  Metabrowser’s own README, a 192-pixel logo in a `<p align="center">` over a centered
+  title, drew its logo at the file’s 512 pixels against the left edge with active
+  content off (a repository URL, a served mirror, or `--untrusted`), whose allowlist
+  dropped both attributes.
+  In every render an image sized by its `height` alone now takes that height, an image
+  floated by `align` keeps github.com’s room beside it and stays inside the document, an
+  image sized or aligned by these attributes has no margin, so a badge sits on its line
+  of text, and a table cell’s or row’s `align` sets the cell’s text.
+  An `<img>` with both a `width` and a `height` now draws at exactly that size, as on
+  github.com, even where a narrow pane caps its width and its height stays; before, it
+  kept its file’s proportions.
+  A wiki embed sized as `![[image.png|640x480]]` keeps its file’s proportions, as
+  before. See [Markdown](docs/browsing-files.md#markdown).
+
+- An open branch and tag list keeps its place when the Files toolbar is drawn again, as
+  it is when files in the folder change and while the index warms up.
+  The list jumped back to its top, with no rows drawn there, and the row the reader had
+  reached went out of view.
+
+- **Controls, badges, and messages follow one design system throughout**: every
+  focusable control draws the same inset focus ring; status text (added and deleted line
+  counts, failures, badges) reads at full contrast in both themes; run and agent badges
+  have dark-theme colors; failures and partial results in folder Overview, the Treemap,
+  diffs, and embedded notes are notice boxes with a severity; Retry buttons, the
+  structured view’s copy button, and the text fields in the menu and ref selector use
+  the shared primitives; counts follow your locale everywhere; and the GitHub plugin
+  says a rate limit, a failed load, or a refused refresh in one wording, without HTTP
+  status codes. See [Design System](docs/design-system.md).
+
+- **Plugin authors**: new shared tokens `--focus-ring-width`, `--focus-ring-color`,
+  `--focus-ring-offset`, `--status-*-text`, `--badge-*-bg` and `--badge-*-text`, and
+  `--diff-add-row-bg` / `--diff-del-row-bg`, and a `.field` primitive for text fields
+  ([Design System](docs/design-system.md)).
+
+- A failed GitHub refresh now says what actually went wrong, such as “GitHub could not
+  be reached because the connection to api.github.com at 20.172.24.160 timed out; other
+  sites are reachable” or “GitHub answered HTTP 503”, in place of “gh could not reach
+  api.github.com”. When `gh` gives up with no answer, Metabrowser checks the network
+  itself, resolving `api.github.com` and connecting to each address (through the proxy
+  `gh` would use), to tell an unreachable GitHub from a slow one; on macOS, when GitHub
+  cannot be reached and no proxy is set, it also opens one connection to
+  `captive.apple.com`, the host macOS checks for a working network, to say whether other
+  sites are reachable.
+  `METABROWSER_NETWORK_PROBE_CONTROL=0` turns that connection off, and
+  `METABROWSER_NETWORK_PROBE=0` the whole check.
+  A repeated failure says how many calls to GitHub failed in the last hour, and
+  `metab . --api /api/event-log/failures` lists recent failures by cause; see
+  [GitHub Failures](docs/realtime-debugging.md#github-failures).
+
+- A served Metabrowser writes a structured event log, one JSON line for every request,
+  for the background jobs that refresh and prepare what a page shows (pull request and
+  file list refreshes, comparison listings, the pull request prefetch, a checkout’s idle
+  comparison, GitHub status checks, and repository rediscovery), and for every `git` or
+  `gh` process that runs to completion, with how long it took, how it ended, and what
+  started it. A streaming `git` session, such as a history or tree reader, is not
+  recorded on its own; the request that reads it is.
+  Work that never finishes, such as a pull request refresh whose `gh` stops answering,
+  is on record within seconds, and a `gh` timeout says where it stalled.
+  The log lives under `~/.local/state/metabrowser/events/` (or `METABROWSER_STATE_DIR`),
+  bounded in size, and `metab . --api '/api/event-log?outcome=timeout,failed'` reads it;
+  see [Event Log](docs/realtime-debugging.md#event-log).
+
+- **App contract:** The macOS app passes `METABROWSER_STATE_DIR`, `XDG_STATE_HOME`, and
+  `METABROWSER_EVENT_LOG` from its own environment to the servers it starts, so their
+  event log goes where, and only when, those say.
+  An older `metab` ignores them.
+
+- A pull request opened after the Pulls tab’s catalog last read the repository, opened
+  by a link while the list shows the other filter, is now selected in the list once the
+  catalog reads it
+  ([Navigation Reveals the Item](docs/design-system.md#navigation-reveals-the-item)).
+  Before, the list kept saying “#N is not in this list.”
+
+- The note that a pull request is further down than the Pulls list draws no longer
+  disappears and comes back at each page you scroll in.
+
+- The branch and tag chooser lists every branch, tag, and remote branch.
+  It showed the first 100 and said “filter to narrow” for the rest.
+  Each list is now newest first, by the date of each one’s last commit, which its row
+  shows as an age: branches listed by name before, and tags by when they were tagged.
+  A mirror’s default branch, or the branch a checkout has checked out, still lists
+  first. The list draws only the rows near its view, so scrolling and the arrow keys cost
+  the same over ten thousand branches as over a thousand.
+  Asking again for a list whose refs have not moved runs no Git, except for a list of
+  more than about 9,000 refs, or from a repository with too many unpacked refs to check
+  cheaply: those run Git each time.
+  For API callers, `GET /api/source/refs` takes no `limit` and answers no `limit`,
+  `total`, or `truncated`.
+
+- Markdown documents now draw fenced `mermaid` blocks as diagrams, as GitHub does, with
+  the same Mermaid release GitHub uses, in the page’s light or dark theme.
+  Hovering a diagram shows buttons to copy its source, show the source in its place, and
+  open it in a dialog that zooms and pans with buttons, keys, the wheel, a pinch, or a
+  drag. A diagram Mermaid cannot parse shows the parse error above its source.
+  Mermaid loads only for a document that has a diagram, and its `click` callbacks never
+  run. With active content off, diagrams are drawn as pictures, and a label keeps its
+  bold and line breaks but drops any image or link.
+  `.mmd` and `.mermaid` files open as one diagram, with a Diagram view and a Source
+  view. See [Browsing Files](docs/browsing-files.md#markdown).
+
+- A pull request’s description and comments draw their `mermaid` blocks as pictures too,
+  as GitHub draws them there, when Metabrowser serves a repository or pull-request URL.
+  Beside a checkout, whose page may run without the untrusted page’s protections, they
+  still show the block’s source.
+
+- A fenced `svg` block in Markdown now shows as code, as GitHub shows it, where it was
+  drawn as an image.
+
+- For plugin authors: `metabrowser.ensureModule(name)` imports a published ES module
+  bundle once and resolves to its namespace, beside `ensureAsset` for script bundles.
+  The inert render now keeps `lang="mermaid"` on a `pre`, and no other `lang` value.
+  The Markdown plugin’s `drawDiagrams(root, {inert})` draws the diagrams of a KPress
+  render another plugin placed, as images unless `inert: false`.
+
+- A repository opened by its URL is headed by its name alone in the navigation column,
+  and a branch or tag of a local checkout by the folder’s name alone: the branch and the
+  short commit no longer follow the name there.
+  The branch and tag selector under the heading names the branch, and the heading’s
+  tooltip names the full commit.
+
+- A short commit ID is the size of the text around it wherever it appears, in a commit’s
+  page and hover card, the branch and tag selector, the freshness row, and a pull
+  request’s timeline. Its monospace face is scaled to the x-height of the interface sans
+  in each font set, where it read larger than the text beside it in some places and
+  smaller in others ([Short Commit IDs](docs/design-system.md#short-commit-ids)).
+
+- Opening a pull request that the Pulls tab’s Open or Closed filter leaves out, by a
+  link, Quick Search, Back, a stack key, or its address, now moves the list to All, or
+  to the pull request’s own filter when it is too far down All, and selects it there,
+  instead of saying “#N is not listed under Closed.”
+  Under All, one too far down All moves the list to its own filter the same way, instead
+  of saying “#N is not among the pull requests loaded.”
+  A filter you pick while a pull request is shown stays as you picked it, with no note
+  about the pull request it leaves out
+  ([Navigation Reveals the Item](docs/design-system.md#navigation-reveals-the-item)).
+
+- The macOS app’s File > Open URL… now opens a GitHub URL typed without its scheme
+  instead of asking for the full URL: `github.com/owner/repo` and
+  `//github.com/owner/repo` get `https://`, and `http://github.com/…` becomes
+  `https://`. The field shows the full URL it checks.
+  The app accepts `owner/repo` and refuses other sites’ addresses, local paths, and SSH
+  addresses. On the command line, `metab github.com/owner/repo` opens
+  `https://github.com/owner/repo` when nothing on disk has that name; a folder that does
+  is still served, so write the `https://` to open the repository whatever is on disk.
+  `owner/repo` alone is still a path.
+  See [the app’s guide](docs/macos-app.md#opening-github-links) and
+  [What ROOT Names](docs/command-line.md#what-root-names).
+
+- The main page’s blue focus ring is no longer covered at its top by a pull request’s
+  tabs, or by any page drawn over the pane with a background of its own.
+
+- The navigation column’s path row is shorter, so the space around the folder’s name
+  matches the space around the Files, Pulls, and Commits tabs below it.
+
+- The address above a file’s or a folder’s name is the twin of the navigation’s path row
+  beside it: the same height and text size, its rule on the same line across the window,
+  and its text on the same baseline as the folder’s name.
+  See [View Headers](docs/design-system.md#view-headers).
+
+- The Up arrow before a file’s or a folder’s address is a plain arrow, framed only while
+  it is hovered or focused, as the chevron that hides the navigation pane is.
+  It is a larger target, at the size of the smallest a pointer should have to hit.
+
+- The View on GitHub button sits at the end of the title’s first line, its label on the
+  title’s baseline, on a file’s, a folder’s, a pull request’s, and a commit’s page
+  alike. In a main view too narrow to hold a name of ordinary length beside it, a file’s
+  or a folder’s moves up to the address row, so the name is not broken mid-word.
+  See [View on GitHub](docs/design-system.md#view-on-github).
+
+- The space between a page’s title and the details under it is one moderate gap on a
+  file’s, a folder’s, a pull request’s, and a commit’s page.
+  A pull request’s title or a commit’s subject on one line no longer holds an empty
+  second line above its details.
+  A pull request opened from the Pulls tab shows its own title while its record loads,
+  and one whose record is slow to arrive keeps the loading title’s height, so the page
+  does not move when the record lands.
+  See [Page Headers](docs/design-system.md#page-headers).
+
+- A short commit ID is seven characters everywhere, as GitHub shows them, and on the
+  page always in the commit-ID face and the same gray: the branch chooser’s button and
+  rows, the page heading, the Commits tab, the freshness offer, and the pull request
+  page, its timeline’s commit links included.
+  The CLI’s messages, `metab --version`, and the macOS app’s About box cut an ID to the
+  same seven. See [Short Commit IDs](docs/design-system.md#short-commit-ids).
+  The JSON routes still carry full IDs, and the history routes’ `short_id` is still
+  Git’s own abbreviation.
+
+- The plugin SDK has `metabrowser.shortCommit(commit)`, which cuts a commit ID to the
+  length the page shows.
+
+- The macOS app records the full commit it was built from (`MetabrowserSourceCommit`),
+  and a release check compares it whole with the tag’s commit rather than as a prefix.
+
+- **App contract:** The macOS app copies `SHORT_COMMIT_CHARS` from
+  `src/metabrowser/commit_ids.py` as `AppIdentity.shortCommitChars`, the length its
+  About box shows of the build’s commit; `tests/golden/app-contract-copies.txt` records
+  it.
+
+- In the macOS app, a GitHub link for a repository you have a checkout of open in a
+  window now opens beside it: when the repository’s mirror has no window yet, the mirror
+  opens as a new tab of the checkout’s window rather than in a window of its own.
+  A checkout is matched by the GitHub repository its `origin` names, not by its folder’s
+  name, and of several such windows the one you used most recently takes it
+  ([Opening GitHub Links](docs/macos-app.md#opening-github-links)).
+
+- **App contract:** `GET /api/identity` now reports `repository`, the lowercase
+  `https://github.com/<owner>/<repo>` a served checkout’s `origin` names or a mirror
+  mirrors, or `null` for none on github.com.
+  The macOS app reads it to find a checkout of a link’s repository; with a `metab` that
+  lacks it, a link’s mirror opens as before.
+
+- In the macOS app, Edit > Find (Command-F) works on every page.
+  The find bar used to search through AppKit’s text finder, which found nothing on a
+  Metabrowser page; it now runs WebKit’s own find, which searches the whole page as a
+  browser’s does, including after you open another file in place.
+  Return and Command-G find the next match, Shift-Return and Shift-Command-G the
+  previous one, Command-E uses the selection, and Escape closes the bar.
+
+- A commit’s page shows the rest of its message as Markdown, as a pull request’s page
+  shows its description, through the same renderer and allowlist: lines wrapped at 72
+  columns join into paragraphs, `-` and `*` lines are lists, indented and fenced code
+  stays code, and an absolute link opens in a new tab
+  ([Browsing History](docs/browsing-history.md)). Git’s trailers, such as
+  `Signed-off-by:` and `Co-Authored-By:`, follow the text as written, one per line.
+  `#123` and a bare URL stay text, as in a description, and HTML is reduced to the same
+  plain markup. A body longer than a description may be
+  (`GIT_COMMIT_BODY_MARKDOWN_MAX_BYTES`), or one the renderer refuses, is shown as
+  written, with a notice that says why.
+  The new `GET /api/git/commit-markdown/<rev>` answers the body’s rendered `html`, its
+  `trailers` as written, the `link_base` its links were resolved against, and KPress’s
+  stylesheets, and `422` `body_too_large` past the bound.
+
+- The Files tab’s filter chevron no longer shows a count of the filters set.
+  Clear, beside it, already says some are set, and without the count Clear and the
+  chevron stay on Group by’s line in a Git checkout instead of wrapping below it.
+
+- Show ignored moves from the Files tab’s filter row into the drawer behind the chevron,
+  after Minimum file size, so the row holds the branch and tag chooser where there is
+  one, Group by, Clear, and the chevron.
+  The chevron’s badge now counts Show ignored while it is off, since the closed drawer
+  hides it. See [Grouping the Files Tree](docs/design-system.md#grouping-the-files-tree).
+
+- The chevron that hides the navigation pane has no plate of its own, so the page’s edge
+  and the pane’s shadow show through it, and it sits a little closer to that edge.
+  Holding Shift now shows its Backslash badge, which the button used to cover.
+
+- **App contract:** What the macOS app reads of `metab` is declared in one file,
+  `apps/macos/metab-contract.toml`, and recorded in one golden,
+  `tests/golden/app-contract.txt`: every command the app runs and every route it asks,
+  with the keys and lines it reads of each answer, and beside it each value of `metab`’s
+  that the app copies.
+  A change to any of them is a change to that contract, which a changelog entry now
+  names with `**App contract:**`, or `**App contract fix:**` for a bug fix, and which
+  ships in a minor or major release: `make lint-check` fails a branch that changes the
+  contract without such an entry, and a patch release whose section holds one
+  ([The App’s Contract with metab](docs/project/architecture/arch-app-contract.md)).
+  `python -m devtools.check_app_contract accepts /path/to/metab` asks any `metab`
+  whether it takes every command the app runs.
+
+- A folder created while Metabrowser is watching no longer counts twice in the file
+  counts and sizes of the folders above it when two refreshes reach it at once, such as
+  the watcher’s and an activity refresh, or when a file inside it changes while the
+  folder is still being read.
+  On a folder watched by polling, a deleted file no longer comes off the totals of the
+  folders above it twice.
+  A refresh now sets the totals of the folders it touches, and of those above them, from
+  the files the index holds.
+
+- In the macOS app, a page’s View on GitHub button opens the item’s page on github.com
+  in a native popover below the button, over most of the window.
+  Escape, Command-W, or a click outside closes it, and opened again soon after for the
+  same item it is as you left it.
+  Its header has Back, Forward, the github.com location, Copy Link, and Open in Browser,
+  and while it has the keyboard View > Back, Forward, Reload Page, and zoom act on it.
+  A Command-click on the button opens your default browser instead, and a GitHub link
+  sent to the app still opens Metabrowser’s view of it.
+  The macOS app guide’s View on GitHub section has the details.
+
+- In the macOS app, signing in to github.com in the View on GitHub popover holds in
+  every window and tab and after a relaunch: every popover shares one persistent store
+  of its own, apart from Metabrowser’s pages and your browser.
+  Metabrowser > Clear Website Data… signs you out of github.com, or of every site, and
+  removes what it stored.
+
+- Every page that github.com has a page for has one **View on GitHub** button in its
+  header’s upper right: a file, a folder, the served root, each of a pull request’s
+  tabs, and a commit’s page.
+  It opens the page on github.com in a new tab, and its chevron’s menu offers **Copy
+  Link** and **Open in Browser**; the arrow keys, Home, End, Escape, and Tab work in the
+  menu. A file or folder links to the version `origin` has, as of your last fetch: at
+  your commit once it is pushed, and before then at the commit your branch last shared
+  with its upstream branch, or with `origin`’s default branch.
+  A file with local edits links to its pushed version; a file only your unpushed commits
+  hold, a staged file in no commit, an untracked or ignored file, and a deleted one have
+  no button. The button replaces the View on GitHub link among a pull request’s dates.
+  See [View on GitHub](docs/design-system.md#view-on-github).
+
+- `metab --api '/api/counterpart?page=<page>'` answers a page’s github.com counterpart,
+  or why it has none, and plugins can draw the same button with `mountCounterpart` and
+  `counterpartButton`
+  ([Rendering and Formatting](docs/plugins.md#rendering-and-formatting)).
+
+- The navigation pane can be hidden: a chevron at the start of the main page’s foot, on
+  the row of the navigation’s shortcut hints, slides the page over the pane to fill the
+  window and turns to point back, and a second click shows the pane again.
+  Backslash does the same from anywhere outside a text field, and so does
+  Shift-Backslash (`|`). Help lists it, and holding Shift shows it on the chevron.
+  While the pane is hidden its keys, such as `0` and `F`, do nothing until it is shown.
+  See [Hiding the Navigation Pane](docs/design-system.md#hiding-the-navigation-pane).
+
+- A file’s or a folder’s size and age, and a folder’s file count, now sit just to the
+  right of its name in the view header, on the name’s baseline, rather than on a line of
+  their own under it, so the header is 26 px shorter.
+  A file’s badges, such as Gzip or a run’s status, move with them.
+  A name too long for its row now wraps, whole, with the metadata after its last line,
+  where it was cut short with the whole name as its tooltip; where the metadata does not
+  fit after the name, it wraps to the next line, whole
+  ([View Headers](docs/design-system.md#view-headers)).
+
+- The macOS app has **File > Close Folder**, which closes the folder the front window
+  shows in every window that shows it.
+  Each of those windows shows the folder open in the background that you looked at last,
+  or closes if there is none, and the folder’s server stops.
+  A folder open in the background is saved with the session and reopens in the
+  background, starting its server only when a window shows it.
+  Close Folder does nothing while a dialog or panel is open on one of those windows.
+
+- A macOS app window’s title is a folder chooser.
+  Click it, marked by a small chevron, for the open folders and the recent ones;
+  choosing one shows it in this window, and the folder the window showed stays open in
+  the background, so switching back is instant.
+  A folder another window shows brings that window forward instead, and a recent GitHub
+  repository opens in a window of its own.
+  Option opens the choice in a new window, and **Close Background Folders** closes the
+  folders no window shows.
+  A double-click on the title opens the chooser too, rather than zooming the window; the
+  rest of the title bar still zooms.
+  View > Switch Folder… (Shift-Command-O) lists the same folders from the keyboard, in a
+  panel, the last one shown first, filtered as you type.
+
+- The macOS app’s File > Open Folder… shows hidden folders and files, so a folder such
+  as `~/.claude`, where Claude Code keeps its logs, can be chosen without first pressing
+  Command-Shift-Period, which still hides them.
+
+- The branch and tag chooser is in the Files tab’s toolbar, before Group by, instead of
+  above the tabs, since it chooses what the Files tab shows and nothing else.
+  The Commits tab no longer follows it.
+  A local checkout’s Commits tab shows the checkout’s history whichever branch or tag
+  the Files tab shows, and keeps working when another tab switches the server; a
+  commit’s page is read as before.
+  A repository URL’s Commits tab shows the default branch’s history whichever branch,
+  tag, or commit the Files tab shows, so a `/tree/<branch>` or `/pull/<n>` address no
+  longer narrows it to that branch’s or pull request’s commits.
+  When another tab switches a checkout’s server, the offer to reload is at the foot of
+  the pane, where every tab shows it, as a mirror’s freshness row is.
+  Each branch and tag in the chooser’s list shows its commit’s short ID in the commit-ID
+  face and that commit’s age, with the exact time as its tooltip, a tag’s being its
+  commit’s. A commit’s short ID has one length in the list, on the button, in the
+  navigation heading, and in a mirror’s offer of a newer commit, which now shows it in
+  the commit-ID face. The working tree row names the folder by its path, with the
+  folder’s own name kept whole, in place of “Live local files”.
+  `GET /api/source/refs` rows gain `committed_at`, and its `working_tree` gains the
+  folder’s `name` and `location`.
+
+- `metab --doctor` reports what GitHub work needs from GitHub CLI: the `gh` it found and
+  its version, the account it is signed in to, that account’s token scopes, and one
+  state (`ok`, `gh_missing`, `gh_too_old`, `not_logged_in`, `missing_scope`,
+  `network_error`, or `gh_failed`) with the command or page that fixes it.
+  A token GitHub refuses in `GH_TOKEN` or `GITHUB_TOKEN` names that variable, since `gh`
+  will not sign in while it is set.
+  `--doctor --json` carries the same report as `github`, and
+  `POST /api/plugin/github/status` serves it to any page or tool.
+  The report never changes the doctor’s exit status.
+  Opening a pull-request URL now checks it first: when `gh` is missing, too old, or not
+  signed in and the pull request is not cached, the command stops with exit status 1 and
+  that step, without cloning anything, where it used to clone and then serve the default
+  branch. A repository that is not found while the token lacks the `repo` scope now says
+  so, with the `gh auth refresh` command that adds it.
+
+- A pull request’s Changes now opens a changed YAML or JSON file in **Rendered**, as it
+  opens a Markdown file: the tree the file view draws, with added and removed keys and
+  items in the change gutter, and a changed value as its old row removed and its new row
+  added, wrapped so a long string shows where it changed.
+  Mappings and lists that hold a change are open, as far as a first screen of rows
+  allows, and unchanged ones closed; a long list draws a page at a time behind a “… N
+  more” row that also counts the changes it holds, so a large changed file opens and
+  responds at once. Aliases and merge keys read as the values they name.
+  **Source** shows the exact diff, and the only view of a change to a comment, quoting,
+  or key order, or of a value whose type changed and whose text did not, such as a date
+  that became the string that spells it; the tree says so above it.
+  A file with a key twice in one mapping, or too large or too deeply nested for the
+  rendered view, opens in Source.
+  A Markdown file’s front matter now shows in **Rendered** as the Document view’s
+  Frontmatter disclosure, open with each changed key marked when it changed; a
+  front-matter change no longer shows only in Source, and front matter that does not
+  load leaves its lines to Source while the body still renders.
+  `GET /api/plugin/github/pull-rendered-diff` answers a YAML or JSON file as
+  `structured-diff-v1`, a refusal of such a file included, and a Markdown answer carries
+  `frontmatter`. See
+  [Reviewing Pull Requests](docs/reviewing-pull-requests.md#rendered-yaml-and-json-in-changes).
+
+- For plugin authors: the structured plugin’s `materializeRows` and
+  `calculateOptimalExpansion` now write a row’s path by position (`$/3/0`) instead of by
+  key (`$.a[0]`), and `materializeRows` takes options.
+  `renderRowHtml` and `expansion`, the file view’s first-draw expansion options, are
+  new. These, a tree row’s fields and the rows’ `data-path` values are internal to
+  Metabrowser’s views and may change; `renderInlineTree` remains the stable embedding
+  contract.
+
+- The macOS app needs `metab` 0.13.0 or later; 0.12.0 is too old.
+  A `metab` change the app depends on ships in a new minor or major release, never a
+  patch ([Choosing a Version](docs/publishing.md#choosing-a-version)). A source checkout
+  reports the next minor release as its development version, and `make install` or any
+  `uv run` rebuilds that version after each new commit or tag.
+
+- `metab --doctor` checks the setup as well as the plugins: `metab` itself (version,
+  Python, how it was installed, and whether the macOS app `--present` would open runs
+  it), Git against the floors for cloning and for a partial clone, and the configuration
+  and cache directories.
+  A directory that cannot be created is a problem; low free space for a clone, and a
+  directory override the macOS app’s servers do not get, are warnings.
+  Each check has a state, details, and the step that fixes it, and `--doctor --json`
+  lists them, the plugins and `open_in` first, under `checks`
+  ([Diagnostics](docs/command-line.md#diagnostics-and-plugins)). A warning never changes
+  the exit status; a broken configuration or cache directory exits 1. A configuration
+  directory with a problem is listed once, not also under `open_in`.
+
+- Opening a pull request that is not cached needs `gh` 2.81.0 or later, the release that
+  added `gh auth status --json`; an older `gh` already stopped there in this release,
+  and a public clone or a cached pull request still opens with one.
+  `metab --doctor` and the GitHub status route report an older `gh` by its version, with
+  `gh_minimum`, and its fix is the upgrade for how `gh` was installed:
+  `brew upgrade gh`, `sudo port upgrade gh`, or the install page.
+  The status’s new `remedy` gives that fix in the checks’ `{text, command, url}` shape,
+  and names a command only for one that runs as written.
+
+- The macOS app has Help > Check Setup…, which runs `metab --doctor --json` as the app’s
+  servers run it and shows each check with its fix, Check Again, and Copy Report;
+  Settings’ Run Doctor button is now Check Setup… and opens it
+  ([Checking the Setup](docs/macos-app.md#checking-the-setup)). The step that upgrades
+  an older `metab` uses the tool that installed it: uv, pipx, or
+  `git pull && make install` in a source checkout.
+
+- **App contract:** Help > Check Setup… reads `metab --doctor --json`: `ok`, `problems`,
+  each entry of `checks` (`id`, `title`, `state`, `summary`, `details[].name` and
+  `.value`, and `remedy`’s `text`, `command`, and `url`), and `github`’s `state`,
+  `message`, `remedy`, `gh_path`, `gh_version`, `gh_minimum`, and `account`. It sets
+  `METABROWSER_DOCTOR_APP` to its own bundle, whose `MetabrowserMinimumMetab` the
+  `metab` check compares with.
+  The doctor’s configuration and cache checks rely on the app giving its servers none of
+  the storage variables (`STORAGE_OVERRIDES` in `cli/doctor.py`).
+
+- A pull request’s description no longer shows as raw Markdown for a second or more when
+  the pull request opens before its full record is cached.
+  The page opened on the description prepared ahead of selection and asked for no
+  Markdown until the full record arrived; now it renders that description at once, and
+  the record that follows keeps the render.
+  A text whose render is still on its way past the page’s short first-paint hold shows a
+  quiet placeholder in its place, never its source; source shows only when the render
+  will not come, with the line that says why.
+  The same holds for the comments in view when the full record arrives, which are now
+  asked for before they first show, and the placeholder stops pulsing under reduced
+  motion. `GET /api/plugin/github/pull-markdown` renders a pull request’s description
+  from its prepared core when no record is cached, and answers `core_revision` for it.
+
+- In the Pulls list, a pull request’s three lines are one row: they hover, show as
+  selected, and take keyboard focus together, as a Files row does.
+  Up and Down move between whole pull requests, Enter opens one, Space shows or hides
+  its changed files, and Right and Left show and hide them as on a folder.
+  Clicking the title or number opens the pull request without showing its files;
+  clicking anywhere on the third line, the one with the chevron, shows or hides them,
+  and that line shows its own hover on the chevron.
+  The third line no longer takes focus of its own, and screen readers no longer meet it
+  as a button inside the row: the row says whether its files are open, and is described
+  by the third line’s words.
+  Moving onto a pull request, or revealing one, scrolls all three of its lines into
+  view. Every key acts on the pull request with focus, even after a refresh of the list.
+
+- The rule under the Files totals and under the Pulls count and connection lines now
+  runs the navigation pane’s full width, as the rules under the tabs and the toolbars
+  do. It stopped 11 px short of the pane’s right edge, where the tree’s scrollbar has its
+  space. These lines now stand under their tab’s toolbar rather than at the top of the
+  list, so they stay in view while the tree or the list scrolls, as the Commits tally
+  does. A line that comes or goes while the list is scrolled, such as the note that a
+  recency window may be out of date, now moves the rows by its height.
+
+- `metab ROOT --present` opens the target in a browser when no app takes it, and the new
+  `open_in` preference chooses: `auto`, the default, uses the app when an installed
+  build takes the target and otherwise a browser; `app` uses the app or nothing, exiting
+  4 as before; and `browser` never looks for the app.
+  `--open-in WHERE` sets it for one command, `METABROWSER_OPEN_IN` for a shell, and
+  `open_in` in `config.yml`, a setting `ApplicationConfig` now declares, for good; a
+  value that is not one of the three is an `Error:` line naming where it was read.
+  For a browser, `--present` starts `metab ROOT` detached, in a session of its own with
+  its output in a log in the temporary folder, waits for its `Serving` line and for that
+  address to answer `/api/identity` as a server of the target, and reports
+  `delivered_to: browser` with the server’s `url`, `pid`, and `log`; the server opens
+  the page once it answers and runs until `kill` stops it.
+  Its codes are `server_started` and `server_starting` (status 0) and `server_failed`
+  (status 1); under `auto` the report’s `fallback` says why no app took the target.
+  `present_browser: false` in `config.yml` turns browser delivery off: `--present` then
+  opens a target in the app or nowhere, with `browser_off` and status 4. No option of
+  the command overrides it, and `--present` refuses `--config-dir`; the environment
+  still chooses the configuration directory (`METABROWSER_CONFIG_DIR`,
+  `XDG_CONFIG_HOME`, `HOME`), and one without `config.yml` allows a browser.
+  Set it with any sandbox rule for `metab --present`, which otherwise lets an agent
+  start a server outside the sandbox for any path.
+  Every `--present` report gains `open_in`, `open_in_source`, `url`, `pid`, `log`, and
+  `fallback`, and `--present --dry-run` adds a `decision`: where the target would go and
+  why, looking the app up but sending nothing and starting nothing; its status still
+  says only whether ROOT resolved.
+  `--app-bundle-id` is now valid with `--dry-run`, and refused with `--open-in browser`.
+  `metab --doctor` reports the preference, where it was read, and the app it finds, as
+  an `open_in` line and an `open_in` object in `--doctor --json`; an unreadable
+  preference, or `app` with no app to take a target, is a problem.
+  Bare `metab ROOT` is unchanged and does not read the preference.
+  The agent skill gives the user `.url` for a page opened in a browser, adds
+  `--open-in browser` for when the user asks for one, stops the server with `kill` when
+  the user is done, adds `--open-in app` to every rerun outside the sandbox, and never
+  reruns a delivery to a browser there.
+  See
+  [choosing the app or a browser](docs/command-line.md#choosing-the-app-or-a-browser).
+
+- Each file-type category has one icon, its most important format’s, drawn in the
+  heading’s gray: Documentation leads with Markdown’s icon.
+  It leads the category’s heading in File Overview’s Details, in the Files tab’s **By
+  file type** sections, and in the File type menu’s sections, with the headings’ type
+  unchanged. `/api/tree?group_by=type` names it on each group as `icon`, and an age
+  group’s is `null`. The design system’s **File-Type Category Icons** lists each choice
+  and why.
+
+- Changelog entries for unreleased changes are files under `changelog.d/`, one per
+  change, which a release folds into this changelog
+  ([changelog.d/README.md](changelog.d/README.md)). A pull request that adds an entry to
+  the Unreleased section directly fails `make lint-check`, and
+  `python -m devtools.changelog show` prints the Unreleased section with every pending
+  entry folded in.
+
 - An agent log event’s chevron and a code block’s copy button draw the app’s one chevron
   and copy icon. The chevron was larger and thinner than every other one, and the copy
   button an older shape than the app’s other copy buttons.
@@ -15,8 +1361,7 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   shapes the recommended registry gives a category or a format, so a registry that gives
   one any of those five, or `folder`, `fileSymlink`, `gear`, `sun`, `moon`, `print`,
   `serif`, `sans`, or `toggle`, fails validation.
-  `PLUGIN_SDK_VERSION` remains `0.7`. See the
-  [Icon Catalog](docs/design-system-icons.md).
+  See the [Icon Catalog](docs/design-system-icons.md).
 
 - Choosing a branch or tag in the branch and tag chooser no longer flashes **Reload** on
   the page you are leaving.
@@ -250,8 +1595,8 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   Command-P, or Control-P outside macOS, still prints every view, and in the macOS app
   File > Print does; a source view, which had the header’s button, now prints that way.
   For plugin authors, the Markdown builtin’s `mountRendered` takes
-  `printIndicator: true` to draw the button, off unless asked; `PLUGIN_SDK_VERSION`
-  remains `0.7`. See [Print](docs/design-system.md#print).
+  `printIndicator: true` to draw the button, off unless asked.
+  See [Print](docs/design-system.md#print).
 
 - `metab ROOT --present` hands a folder, a file, or a GitHub URL to the macOS app and
   reports what it sent.
@@ -301,10 +1646,11 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   the app opens the repository’s mirror in its one window, cloning the repository or
   reusing its cache as `metab URL` does; a link `metab` refuses shows `metab`’s message,
   and what a burst of links could not open is said in one alert.
-  A link to a repository the cache does not hold asks first, with Cancel as the default,
-  while other links go on opening; one into a repository with a window starts its server
-  again on the link, so the window shows the revision the link names, and the app says
-  when GitHub has nothing the link names.
+  An incoming link asks before cloning a repository the cache does not hold.
+  Cancel is the default, and other links go on opening.
+  A link to a repository with an open window navigates that window to the revision it
+  names and keeps its server running.
+  The app says when GitHub has nothing the link names.
   Servers start on the canonical link `metab` hands back, never on the link as sent, so
   a token in a link reaches no server.
   A first clone is no longer stopped 60 seconds after its server started: the app waits
@@ -320,11 +1666,8 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   sent to the app opens: `metab URL --present --dry-run --format json` checks it, and it
   opens in the repository’s mirror, never a checkout.
   A space or a letter outside ASCII in the path is sent encoded, as a browser sends it.
-  A URL it does not open keeps the panel open with the reason under the field: `metab`’s
-  message for a GitHub page it refuses, and the app’s own for a shorthand such as
-  `owner/repo`, which is not taken, or for anything but an `https` URL on GitHub.
-  While the app is still finding or rechecking its `metab`, the panel closes instead,
-  and a URL it does not open is reported in an alert once `metab` is ready.
+  The panel stays open while Metabrowser checks its runtime or resolves the URL, and
+  shows errors below the field.
   File > Open… is now Open Folder…. See
   [the app’s guide](docs/macos-app.md#opening-github-links).
 
@@ -408,9 +1751,10 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   can move, that `--diff-check` can take more than a minute in a large repository, that
   a server’s address answers a moment after its `Serving` line, and that `--remote` is
   for the user’s own terminal, and it lists `/pull/<n>/files/<path>`. It says that it is
-  tested against the `metab` of its own commit, so the skill on `main` can need a source
-  checkout’s `metab` until the next release, and `tests/test_skill_commands.py` fails
-  when a flag, route, recipe, or field name in it drifts from that `metab`.
+  tested against the `metab` of its own commit.
+  Using an unreleased feature on `main` can require a source checkout’s `metab`. The
+  `tests/test_skill_commands.py` check fails when a flag, route, recipe, or field name
+  in it drifts from that `metab`.
 
 - A Pulls row now leads with its title, right after the state icon, on its first line,
   and puts the stack position, number, author, and age on the second; its author’s
@@ -476,7 +1820,7 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   heading on the folder’s address instead of opening the README as a file.
   For plugin authors, `metabrowser.kpressInitToc(container, config)` hands KPress its
   per-binding configuration, and the Markdown builtin’s `mountRendered` takes a
-  `pagePath`; `PLUGIN_SDK_VERSION` remains `0.7`. See
+  `pagePath`. See
   [Embedded Document Navigation](docs/design-system.md#embedded-document-navigation).
 
 - The Files panel’s totals no longer move the tree when the count of ignored files
@@ -583,9 +1927,8 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   A pull request’s author with no avatar on GitHub now shows it too, in the header and
   on the Conversation; a Pulls row still shows no icon for one.
   For plugin authors, `metabrowser.actorIdentity(name, options)` and
-  `metabrowser.actorIdentityHtml(name, options)` draw a person as the shell does, and
-  `PLUGIN_SDK_VERSION` remains `0.7`. See
-  [Page Headers](docs/design-system.md#page-headers) and
+  `metabrowser.actorIdentityHtml(name, options)` draw a person as the shell does.
+  See [Page Headers](docs/design-system.md#page-headers) and
   [Actor Identity](docs/design-system.md#actor-identity).
 
 - A Files tree row’s tooltip stays under a pointer that has not moved when something
@@ -1562,7 +2905,7 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   shown controls hold.
   With `numbered: true` instead of a letter, a situational control takes a number from
   its place on screen, beside the shell’s. `METABROWSER_SETTINGS` serves the reserved
-  keys as `RESERVED_SHELL_KEYS`. `PLUGIN_SDK_VERSION` remains `0.7`.
+  keys as `RESERVED_SHELL_KEYS`.
 
 - Hold Shift outside a text field to see the keys: a keycap appears on each control a
   key reaches now, and the shortcut strip lists the common keys that are live.
@@ -1609,7 +2952,6 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   reports it, naming the plugin that holds a shared key.
   A view left alone, as HTML’s Source is without active content, has no other tab to
   switch to and is served without its key.
-  `PLUGIN_SDK_VERSION` remains `0.7`.
 
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and

@@ -1,1 +1,0 @@
-- Pull request size rows use the Commit page’s line height, including while loading.

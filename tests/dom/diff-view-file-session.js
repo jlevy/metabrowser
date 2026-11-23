@@ -428,7 +428,15 @@ function bars(container) {
   const shown = {};
   for (const section of container.find("diff-file")) {
     const bar = section.find("diff-file-bar")[0];
-    shown[barLabel(bar)] = bar.find("diff-file-view").map(describeControl);
+    const controls = bar.find("diff-file-view");
+    // The controls are the group at the bar's end, after the name's.
+    const end = bar.children.at(-1);
+    assert(
+      end.classList.contains("diff-file-end") &&
+        controls.every((each, index) => end.children[index] === each),
+      `${barLabel(bar)}: a View file control is not at the bar's end`,
+    );
+    shown[barLabel(bar)] = controls.map(describeControl);
   }
   return shown;
 }
@@ -482,7 +490,9 @@ function busy(container) {
   return container
     .find("diff-file-view")
     .filter((candidate) => candidate.getAttribute("aria-busy") === "true")
-    .map((candidate) => `${barLabel(candidate.parentNode)} [${candidate.textContent}]`);
+    .map(
+      (candidate) => `${barLabel(candidate.closest(".diff-file-bar"))} [${candidate.textContent}]`,
+    );
 }
 
 /** The path a `/view/` address names on a pin, by the production decoder. */
