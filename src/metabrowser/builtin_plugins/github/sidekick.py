@@ -510,16 +510,19 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     return JSONResponse(answer, status_code=_REFRESH_STATUS[started], headers=_NO_STORE)
 
 
-def _whose(retry: bool) -> contextlib.AbstractContextManager[None]:
+def _whose(retry: bool, *, speculative: bool = False) -> contextlib.AbstractContextManager[None]:
     """The context a refresh starts in: a reader's own for a *retry*, which no ceiling counts.
 
     The job's task copies it, so what a reader's click spends is not counted against the
-    process's automatic work (:func:`.gh_budget.readers_own`).
+    process's automatic work (:func:`.gh_budget.readers_own`). An automatic ask for
+    *speculative* work starts in that context instead (:func:`.gh_budget.speculative`).
     """
 
     from metabrowser.builtin_plugins.github import gh_budget
 
-    return gh_budget.readers_own() if retry else contextlib.nullcontext()
+    if retry:
+        return gh_budget.readers_own()
+    return gh_budget.speculative() if speculative else contextlib.nullcontext()
 
 
 def _invalid_request(message: str, status_code: int = 400) -> JSONResponse:
@@ -934,7 +937,8 @@ async def labels_refresh_handler(request: Request) -> Response:
             status_code=409,
         )
     wanted = await asyncio.to_thread(refresh_wanted, view.repository, retry=retry)
-    with _whose(retry):
+    # The set's periodic read colors chips nobody is waiting on: speculative work.
+    with _whose(retry, speculative=True):
         started = start_refresh(view, retry=retry, wanted=wanted)
     envelope = await asyncio.to_thread(label_envelope, label_view(request.app))
     return JSONResponse(

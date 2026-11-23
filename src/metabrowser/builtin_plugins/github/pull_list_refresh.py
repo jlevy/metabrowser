@@ -304,7 +304,7 @@ def backfill_admitted() -> bool:
     keeps the list current, are never asked.
     """
 
-    return gh_budget.admission(("graphql",), now=pull_list.utc_now()).admitted
+    return gh_budget.admission(("graphql",), now=pull_list.utc_now(), speculative=True).admitted
 
 
 def _next_scan(
@@ -466,9 +466,15 @@ async def refresh_pull_list(
                         return state
                     # A delta scan vouches for what GitHub had when it asked for its first page.
                     asked_at = utc_stamp(pull_list.utc_now())
-                    page = await _read_page(
-                        repository, "all" if updated else scan, cursor, login=login, updated=updated
-                    )
+                    # A backfill page is one no reader asked for: speculative work.
+                    with gh_budget.speculative() if backfill else contextlib.nullcontext():
+                        page = await _read_page(
+                            repository,
+                            "all" if updated else scan,
+                            cursor,
+                            login=login,
+                            updated=updated,
+                        )
                     # The query's viewer identifies the reader of these rows. A settings
                     # switch after that response cannot relabel it; the next page must
                     # still match this job's reader before it can advance the checkpoint.

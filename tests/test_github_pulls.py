@@ -4395,6 +4395,41 @@ def test_visible_core_preemption_honors_a_failure_recorded_during_its_checks(
     assert calls == [(8,)]
 
 
+def test_a_spent_speculative_share_holds_the_cores_walk_and_not_the_rows_on_screen(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A1 of review A on #737: the walk's batches are speculative, and counted as such."""
+
+    from metabrowser.builtin_plugins.github import gh_budget, pulls
+
+    async def spend() -> None:
+        gh_budget.spent(1, now=pulls.utc_now())
+
+    walk, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8,), hold_batch=spend, lane="background"
+    )
+    _stand, client = pinned_pull
+    _drain_visible_cores(client)
+    now = pulls.utc_now()
+    assert gh_budget.speculative_spent(now) == 1
+    # What the stand's own reads spent, which were not the walk's.
+    others = gh_budget.automatic_spent(now) - 1
+    with gh_budget.speculative():
+        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR - 1, now=now)
+    assert not gh_budget.over_ceiling(now)
+    ninth = {**walk, "window": {**walk["window"], "id": "walk-9"}, "numbers": [9]}
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "held"
+    assert calls == [(8,)]
+    # The same row on screen is read, and its batch is not speculative work.
+    on_screen = {**ninth, "window": {**walk["window"], "id": "viewport"}, "lane": "visible"}
+    assert client.post(_PREPARE_CORES, json=on_screen).json()["preparation"] == "started"
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+    now = pulls.utc_now()
+    assert gh_budget.speculative_spent(now) == gh_budget.SPECULATIVE_CORE_PER_HOUR
+    assert gh_budget.automatic_spent(now) == others + gh_budget.SPECULATIVE_CORE_PER_HOUR + 1
+
+
 def test_visible_core_preempts_a_background_batch_that_reads_none_of_its_rows(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:

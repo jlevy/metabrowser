@@ -96,8 +96,14 @@ moves it. A reader’s own action is not counted: its route starts the job insid
 `readers_own`, and the job’s task inherits that.
 Past the ceiling background work is not admitted (`self_ceiling`), probes slow to
 `FULL_REFRESH_S`, and the full reads of what is visible to `CEILING_FULL_READ_S`, until
-the hour rolls. `GET pulls-prefetch` reports the ceiling and what the hour has used
-beside the governor’s other state.
+the hour rolls. Speculative work, which nobody is looking at, has its own share of that
+ceiling, `SPECULATIVE_CORE_PER_HOUR`: the prefetch, the backfill past every reader’s
+prefix, the cores walk past the rows on screen, and the label set’s periodic read run
+inside `gh_budget.speculative`, which counts what they spend toward the share too, and
+are refused with `self_ceiling` once it is spent.
+What is on screen is never refused for the share, so it keeps the rest of the ceiling.
+`GET pulls-prefetch` reports the ceiling and the share and what the hour has used of
+each under `governor.ceiling`, beside the governor’s other state.
 
 ### The GitHub Status Check
 

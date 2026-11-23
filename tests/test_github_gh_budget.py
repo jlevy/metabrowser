@@ -13,6 +13,7 @@ from metabrowser.builtin_plugins.github.gh_budget import (
     AUTOMATIC_CORE_PER_HOUR,
     BACKGROUND_FLOOR,
     CEILING_FULL_READ_S,
+    SPECULATIVE_CORE_PER_HOUR,
     Admission,
     admission,
     held_until,
@@ -342,6 +343,83 @@ def test_the_account_check_is_counted_as_any_other_answer_is(
         assert gh_budget.automatic_spent(datetime.now(UTC)) == before + 1
     finally:
         gh.forget_account()
+
+
+# ── Speculative work's share of the ceiling ─────────────────────
+
+
+def test_speculative_work_stops_at_its_share_and_what_is_on_screen_keeps_the_rest() -> None:
+    """A1 of review A on #737: the prefetch could spend the ceiling the screen then paid for."""
+
+    with gh_budget.speculative():
+        gh_budget.spent(SPECULATIVE_CORE_PER_HOUR - 1, now=NOW)
+    assert admission(("core",), now=NOW, speculative=True) == Admission(True)
+    with gh_budget.speculative():
+        gh_budget.spent(1, now=NOW)
+    assert gh_budget.speculative_spent(NOW) == SPECULATIVE_CORE_PER_HOUR
+    assert admission(("core",), now=NOW, speculative=True) == Admission(False, "self_ceiling")
+    # What is on screen is admitted, and neither its probes nor its full reads slow.
+    assert not gh_budget.over_ceiling(NOW)
+    assert admission(("graphql",), now=NOW) == Admission(True)
+    assert gh_budget.full_read_interval(90.0, now=NOW) == 90.0
+    # It keeps the rest of the ceiling, to the point.
+    rest = AUTOMATIC_CORE_PER_HOUR - SPECULATIVE_CORE_PER_HOUR
+    gh_budget.spent(rest - 1, now=NOW)
+    assert admission(("core",), now=NOW) == Admission(True)
+    gh_budget.spent(1, now=NOW)
+    assert admission(("core",), now=NOW) == Admission(False, "self_ceiling")
+    # The share rolls with the hour, as the ceiling does.
+    later = NOW + timedelta(minutes=60)
+    assert gh_budget.speculative_spent(later) == 0
+    assert admission(("core",), now=later, speculative=True) == Admission(True)
+
+
+def test_what_is_on_screen_spends_none_of_speculative_works_share() -> None:
+    gh_budget.spent(SPECULATIVE_CORE_PER_HOUR, now=NOW)
+    assert gh_budget.speculative_spent(NOW) == 0
+    assert admission(("core",), now=NOW, speculative=True) == Admission(True)
+    # The ceiling stops speculative work as it stops any background work.
+    gh_budget.spent(AUTOMATIC_CORE_PER_HOUR - SPECULATIVE_CORE_PER_HOUR, now=NOW)
+    assert admission(("core",), now=NOW, speculative=True) == Admission(False, "self_ceiling")
+
+
+def test_the_share_leaves_what_is_on_screen_more_than_one_busy_page_spends() -> None:
+    """The arithmetic beside the constants: 160 points an hour for one busy visible page."""
+
+    assert AUTOMATIC_CORE_PER_HOUR - SPECULATIVE_CORE_PER_HOUR >= 160
+    assert 0 < SPECULATIVE_CORE_PER_HOUR < AUTOMATIC_CORE_PER_HOUR
+
+
+def test_a_job_started_inside_speculative_work_is_speculative_and_a_readers_own_is_uncounted() -> (
+    None
+):
+    import asyncio
+
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    async def job() -> None:
+        gh_budget.spent(4, now=NOW)
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator(limit=1)
+        with gh_budget.speculative():
+            coordinator.start("a prefetch", job, network=False)
+            with gh_budget.readers_own():
+                coordinator.start("a reader's refresh", job, network=False)
+        coordinator.start("a visible page's refresh", job, network=False)
+        await coordinator.drain(timeout_s=2)
+        await coordinator.aclose()
+
+    asyncio.run(run())
+    assert gh_budget.speculative_spent(NOW) == 4 and gh_budget.automatic_spent(NOW) == 8
+
+
+def test_another_account_starts_its_share_afresh() -> None:
+    gh_budget.note_account("octo-reader")
+    with gh_budget.speculative():
+        gh_budget.spent(SPECULATIVE_CORE_PER_HOUR, now=NOW)
+    gh_budget.note_account("someone-else")
+    assert gh_budget.speculative_spent(NOW) == 0
 
 
 def test_the_hours_spending_is_read_from_a_copy_while_the_loop_counts(
