@@ -790,6 +790,83 @@
       ]
     }
   },
+  "status_origin_branch_stale": {
+    "subject": "git_revision",
+    "generation": 4,
+    "pin": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+    "ref": "refs/remotes/origin/trunk",
+    "ref_name": "origin/trunk",
+    "name": "checkout",
+    "origin": null,
+    "location": "/sandbox/checkout",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T13:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-17T13:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": true,
+    "probe_every_s": 5.0,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "origin_branch_refresh_started": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": true
+      },
+      "status": {
+        "subject": "git_revision",
+        "generation": 4,
+        "pin": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref": "refs/remotes/origin/trunk",
+        "ref_name": "origin/trunk",
+        "name": "checkout",
+        "origin": null,
+        "location": "/sandbox/checkout",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": true,
+        "refresh_quiet": false,
+        "stale": true,
+        "probe_every_s": 5.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
   "status_refresh_failed": {
     "subject": "attached_filesystem",
     "generation": 5,
@@ -805,11 +882,11 @@
     "follows": false,
     "latest": null,
     "ref_on_origin": null,
-    "last_fetch_at": "2026-09-17T13:00:00Z",
+    "last_fetch_at": "2026-09-17T14:00:00Z",
     "last_outcome": {
       "operation": "refresh",
       "outcome": "failed",
-      "at": "2026-09-17T13:00:00Z"
+      "at": "2026-09-17T14:00:00Z"
     },
     "refreshing": false,
     "refresh_quiet": false,

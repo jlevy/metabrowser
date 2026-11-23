@@ -393,6 +393,36 @@ async function runFolder() {
     steps.push(page.observe("the server shows the working tree again: this row offers no reload"));
     controller.dispose();
   }
+  {
+    // An origin branch's page opened on a store grown old asks as the reader's Refresh
+    // does: it shows the store, so the fetch can change what it shows, and the row says
+    // "Refreshing…" while it runs.
+    const status = recordedFolder.status_origin_branch_stale;
+    const page = createPage();
+    const controller = freshness.createController(page.deps, {
+      ...options,
+      shown: { pin: status.pin, ref: status.ref },
+    });
+    page.setStatus(status);
+    page.answerPost(
+      "/api/source/refresh",
+      recordedFolder.origin_branch_refresh_started.status,
+      recordedFolder.origin_branch_refresh_started.body,
+    );
+    await page.start(controller);
+    steps.push(page.observe("an origin branch's page, its store grown old, asks loudly"));
+    const opened = steps.at(-1);
+    assert(
+      JSON.stringify(opened.requests) ===
+        JSON.stringify(["GET /api/source/status", "POST /api/source/refresh {}"]),
+      `an origin branch's page did not ask loudly: ${JSON.stringify(opened.requests)}`,
+    );
+    assert(
+      opened.paint.label === "Refreshing…",
+      `an origin branch's page did not say Refreshing…: ${JSON.stringify(opened.paint)}`,
+    );
+    controller.dispose();
+  }
   // The same statuses on a page that is not a folder's show no row for a working tree.
   const plain = freshness.describe(recordedFolder.status_working_tree, {
     shown: null,
