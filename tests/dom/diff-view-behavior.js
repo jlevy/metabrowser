@@ -38,6 +38,14 @@ class FakeClassList {
     this.owner.className = [...set].join(" ");
   }
 
+  add(...names) {
+    const set = this._set();
+    for (const name of names) {
+      set.add(name);
+    }
+    this._write(set);
+  }
+
   toggle(name, force) {
     const set = this._set();
     const want = force === undefined ? !set.has(name) : force;
@@ -1017,6 +1025,67 @@ async function headLinkChecks(mountDiffView, byName) {
     );
     handle.dispose();
     check("disposal lets the page's pin-change news go", pinChanged === null);
+
+    // A Markdown file whose changes did not load has the chooser too: Source is chosen,
+    // Rendered is unavailable for the reason the file's body gives, and no projection is
+    // asked for it (mb-rm40).
+    const unread = structuredClone(byName.get("added-text-file"));
+    unread.manifest.files[0].availability = "too_large";
+    unread.patches = {};
+    const choosers = [];
+    const asked = requested.length;
+    const unreadContainer = new MarkupElement("div");
+    const unreadHandle = mountDiffView(
+      unreadContainer,
+      unread,
+      {
+        filterControls: {
+          groupHtml(spec) {
+            if (String(spec.label).endsWith(" diff format")) {
+              choosers.push(spec);
+            }
+            return "";
+          },
+          bind: () => () => {},
+        },
+        ensureAsset: async () => {},
+      },
+      {
+        viewFile,
+        markdownViews,
+        renderMarkdown: async (fileId) => {
+          requested.push(fileId);
+          return null;
+        },
+        markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
+        markdownHoldMs: 0,
+      },
+    );
+    for (const observer of observers) {
+      observer.callback(
+        [...observer.targets].map((target) => ({ target, isIntersecting: true })),
+        observer,
+      );
+    }
+    for (let turn = 0; turn < 20; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const chooser = choosers.at(-1);
+    const said = unreadContainer
+      .querySelectorAll("div")
+      .filter((node) => node.className === "diff-availability")
+      .map((node) => node.textContent);
+    check(
+      "a Markdown file whose changes did not load keeps its chooser, Rendered unavailable for the reason its body gives",
+      chooser?.value === "source" &&
+        chooser.options[0].value === "rendered" &&
+        chooser.options[0].tip === "This change is too large to show inline." &&
+        chooser.options[1].tip === undefined &&
+        said.includes("This change is too large to show inline.") &&
+        requested.length === asked,
+      JSON.stringify({ choosers, said, requested }),
+    );
+    unreadHandle.dispose();
   } finally {
     global.document = saved.document;
     global.window = saved.window;
@@ -1975,6 +2044,25 @@ async function main() {
   check(
     "restored split fold stays visible",
     !switchingFold.find("diff-fold-group")[0].classList.contains("diff-fold-collapsed"),
+  );
+
+  // Unfolded, as a pull request's Docs tab draws, a long run is drawn open; one the reader
+  // closes stays closed when a layout change draws the file again.
+  const unfolded = new FakeElement("div");
+  mountDiffView(unfolded, longDoc, layoutApi, { unfold: true });
+  await nextTask();
+  check(
+    "an unfolded diff draws its long run open",
+    unfolded.find("diff-fold-control")[0].getAttribute("aria-expanded") === "true",
+  );
+  unfolded.find("diff-fold-control")[0].click();
+  await nextTask();
+  layoutChange("diff-layout", "unified", "one");
+  layoutChange("diff-layout", "split", "one");
+  await nextTask();
+  check(
+    "a fold the reader closed stays closed when the file is drawn again",
+    unfolded.find("diff-fold-control")[0].getAttribute("aria-expanded") === "false",
   );
 
   // Deferred data and syntax share one mount lifetime. Layout changes

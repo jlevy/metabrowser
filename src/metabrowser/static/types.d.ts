@@ -44,6 +44,16 @@ type MetabrowserRenderContext = {
   /** Told the validated comparison a view mounts, so a page that draws its Diff summary
    *  itself has the comparison's files however the diff came by them. */
   onDocument?: (document: Record<string, unknown>) => void;
+  /** A diff's File type choice the host kept, which mounts first, and how the host is told
+   *  each new choice (null for every type); a pull request's page keeps it across tabs. */
+  types?: Array<string> | null;
+  onTypes?: (types: Array<string> | null) => void;
+  /** A diff narrowed to one fixed File type group, `type:<id>`, with no File type chooser;
+   *  every fold drawn open (*unfold*); and what it says when the group holds no file
+   *  (*emptyText*). A pull request's Docs tab is `type:docs`, unfolded. */
+  group?: string | null;
+  unfold?: boolean;
+  emptyText?: string;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
@@ -1209,9 +1219,59 @@ type MetabrowserFilterPreset = {
   values: Array<string>;
 };
 
+/** One File type tally row: `[key, tracked, ignored]`, as /api/rollup and /api/tree send. */
+type MetabrowserTypeTallyRow = Readonly<[string, number, number]>;
+
+/** The File type counts a menu is built from (a comparison's `view=types` answer too). */
+type MetabrowserTypeTally = Readonly<{
+  extensions?: ReadonlyArray<MetabrowserTypeTallyRow>;
+  canonical_extensions?: ReadonlyArray<MetabrowserTypeTallyRow>;
+  type_families?: ReadonlyArray<MetabrowserTypeTallyRow>;
+  type_presets?: ReadonlyArray<MetabrowserTypeTallyRow>;
+}>;
+
+type MetabrowserTypeMenuOptions = {
+  /** Count the gitignored column too; true unless said otherwise. */
+  showIgnored?: boolean;
+  /** At most this many extension rows; `typeMenu.MAX_OPTIONS` unless said otherwise. */
+  max?: number;
+  /** A row's icon for a file name; the shell's `MetabrowserFileTypes.iconFor` by default. */
+  iconFor?: (name: string) => { svg: string; cls: string };
+  /** A group heading's icon; the icon registry's `withClass` by default. */
+  groupIcon?: (name: string, cls: string) => string;
+};
+
+type MetabrowserTypePresetSection = {
+  id: string;
+  label?: string;
+  icon?: string;
+  presets: Array<MetabrowserFilterPreset>;
+};
+
+/** The File type menu's rows, shared by the Files tab and a diff's toolbar. */
+type MetabrowserTypeMenu = Readonly<{
+  MAX_OPTIONS: number;
+  options(
+    tally: MetabrowserTypeTally,
+    options?: MetabrowserTypeMenuOptions,
+  ): Array<MetabrowserFilterOption>;
+  presetSections(
+    tally: MetabrowserTypeTally,
+    options?: MetabrowserTypeMenuOptions,
+  ): Array<MetabrowserTypePresetSection>;
+  /** The selection after a preset row is pressed: its values added, or removed when it was on. */
+  togglePreset(
+    current: ReadonlyArray<string> | null,
+    values: ReadonlyArray<string>,
+    wasOn: boolean,
+  ): Array<string> | null;
+}>;
+
 type MetabrowserFilterControls = {
   /** Choose a dropdown row as a click on it does; false when no bound container holds it. */
   activateMenuRow(row: HTMLElement): boolean;
+  /** The File type menu's rows, built from a tally. */
+  typeMenu: MetabrowserTypeMenu;
   bind(root: Element, handlers: MetabrowserFilterHandlers): () => void;
   checkHtml(spec: {
     checked?: boolean;
@@ -4348,6 +4408,11 @@ declare global {
   type MetabrowserPublicPluginShortcutsApi = MetabrowserPluginShortcutsApi;
   type MetabrowserPublicQueuedShortcut = MetabrowserQueuedShortcut;
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
+  type MetabrowserPublicFilterOption = MetabrowserFilterOption;
+  type MetabrowserPublicTypeTallyRow = MetabrowserTypeTallyRow;
+  type MetabrowserPublicTypeTally = MetabrowserTypeTally;
+  type MetabrowserPublicTypeMenuOptions = MetabrowserTypeMenuOptions;
+  type MetabrowserPublicTypePresetSection = MetabrowserTypePresetSection;
   type MetabrowserPublicPullRouteRuntime = MetabrowserPullRouteRuntime;
   type MetabrowserPublicPullStackNavigation = MetabrowserPullStackNavigation;
   type MetabrowserPublicPullsPanelHandle = MetabrowserPullsPanelHandle;

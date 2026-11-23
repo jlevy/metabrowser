@@ -4,6 +4,10 @@
 // (diff-structured.js). Source stays hydrated by the diff's existing scheduler, so a
 // refusal or a reader's Source selection has a patch ready. This module names no route:
 // the comparison carries the rendered route and the image route its images load from.
+//
+// Every changed file of a rendered format has the Rendered | Source chooser, whatever its
+// size and whatever the server answers. Where Rendered cannot be shown the file shows
+// Source, and its Rendered chip stays in place, unavailable, and says why (`REFUSALS`).
 
 import { isStructuredProjection, mountStructuredDiff } from "./diff-structured.js";
 
@@ -35,6 +39,27 @@ const RETRY_MAX_MS = 1600;
 // waits for its projection with Source hidden, so a ready answer paints Rendered first
 // and never replaces Source in view. Past it, Source shows and Rendered replaces it.
 const LOADING_DELAY_MS = 50;
+// Why a file's Rendered is unavailable, by the `reason` the server's refusal names
+// (`MarkdownRefusal` in diff/markdown_projection.py, `StructuredRefusal` in
+// diff/structured_projection.py) and, where it names none, by its `status`. Each is the
+// Rendered chip's tooltip and the end of its accessible name.
+/** @type {Readonly<Record<string, string>>} */
+const REFUSALS = {
+  no_changes: "This file's content did not change.",
+  task_list: "Rendered cannot show a file with a task list.",
+  raw_html: "Rendered cannot show a file with raw HTML.",
+  footnotes: "Rendered cannot show a file with footnotes.",
+  nesting: "This file is nested too deeply to show rendered.",
+  deadline: "Rendering this file took too long, so it was stopped. Reload to try again.",
+  too_large: "This file is too large to show rendered.",
+};
+// A refusal that names no reason: a file the projection could not read as its format.
+/** @type {Readonly<Record<RenderedFormat, string>>} */
+const UNREADABLE = {
+  markdown: "Rendered cannot match this file's changes to its Markdown.",
+  yaml: "Rendered cannot show YAML that does not parse, or has a key twice in one mapping.",
+  json: "Rendered cannot show JSON that does not parse, or has a key twice in one mapping.",
+};
 
 /** @typedef {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} KpressAssetManifest */
 /** @typedef {"markdown" | "yaml" | "json"} RenderedFormat */
@@ -44,28 +69,26 @@ const LOADING_DELAY_MS = 50;
 /** @typedef {"rendered" | "source"} Mode */
 /** @typedef {{kind: "context" | "removed" | "added", html: string, source_only?: boolean}} Block */
 /** @typedef {{
- *   section: HTMLElement, bar: HTMLElement, toggle: HTMLElement,
- *   source: HTMLElement, rendered: HTMLElement,
+ *   section: HTMLElement, source: HTMLElement, rendered: HTMLElement,
  *   progress: HTMLElement, progressLabel: HTMLElement,
  *   control: HTMLElement,
  *   id: string, format: RenderedFormat, mode: Mode, pending: boolean, expanded: boolean,
  *   holding: boolean, tree: {dispose: () => void} | null,
  *   retryAt: number, retries: number,
  *   folds: Map<string, () => void>,
- *   state: "idle" | "ready" | "unavailable"
- * }} FileView */
+ *   state: "idle" | "ready" | "unavailable", reason: string
+ * }} FileView
+ *   *reason* is why Rendered is unavailable, a sentence, while *state* says it is. */
 
 /**
  * The format a changed file renders as, when both its sides are files of one rendered
- * format. File kinds are admitted here, and source comparisons, rendering and repository
- * reads stay with their existing owners.
+ * format: the files that have the Rendered | Source chooser. Nothing else decides it,
+ * neither a file's size nor whether its changes loaded. File kinds are admitted here,
+ * and source comparisons, rendering and repository reads stay with their existing owners.
  * @param {Record<string, unknown>} change
  * @returns {RenderedFormat | null}
  */
 export function renderedFormat(change) {
-  if (change.availability !== "ready" && change.availability !== "deferred") {
-    return null;
-  }
   /** @type {Set<RenderedFormat | null>} */
   const formats = new Set();
   for (const side of [change.old, change.new]) {
@@ -84,9 +107,34 @@ export function renderedFormat(change) {
   return formats.size === 1 ? (only ?? null) : null;
 }
 
-/** @param {Record<string, unknown>} change */
+/**
+ * Whether a projection may be asked for a changed file: it has a rendered format, and
+ * its changes are ones the server reads a patch for. Any other file of a rendered format
+ * keeps its chooser, with Rendered unavailable for the reason its Source body gives.
+ * @param {Record<string, unknown>} change
+ */
 export function supportsRenderedChange(change) {
-  return renderedFormat(change) !== null;
+  return (
+    renderedFormat(change) !== null &&
+    (change.availability === "ready" || change.availability === "deferred")
+  );
+}
+
+/**
+ * Why the server refused a file's projection, as the sentence its Rendered chip says.
+ * @param {unknown} answer The route's answer, which is not a projection to draw.
+ * @param {RenderedFormat} format
+ * @returns {string}
+ */
+export function refusalReason(answer, format) {
+  const refusal = /** @type {{status?: unknown, reason?: unknown} | null} */ (
+    answer !== null && typeof answer === "object" ? answer : null
+  );
+  const reason = refusal?.reason;
+  if (typeof reason === "string" && Object.hasOwn(REFUSALS, reason)) {
+    return REFUSALS[reason];
+  }
+  return refusal?.status === "too_large" ? REFUSALS.too_large : UNREADABLE[format];
 }
 
 /** @param {RenderedFormat} format */
@@ -348,13 +396,15 @@ function blockRow(block, build) {
  * run is built only when it opens, so a long document mounts the blocks a reader sees
  * rather than all of them (review C of #349: at p90, 80% of blocks ended inside a fold).
  * A context block whose source says more never folds. Returns, for each heading id a
- * fold holds, the function that opens it.
+ * fold holds, the function that opens it. With *unfold* nothing folds: every block is
+ * drawn, for a page that shows its documents whole.
  * @param {DocumentFragment} fragment
  * @param {Block[]} blocks
  * @param {(html: string) => Node} build
+ * @param {boolean} [unfold]
  * @returns {Map<string, () => void>}
  */
-export function appendBlocks(fragment, blocks, build) {
+export function appendBlocks(fragment, blocks, build, unfold = false) {
   /** @type {Map<string, () => void>} */
   const folds = new Map();
   let index = 0;
@@ -369,7 +419,7 @@ export function appendBlocks(fragment, blocks, build) {
       index += 1;
     }
     const run = blocks.slice(first, index);
-    if (run.length <= 2 * CONTEXT_BLOCKS + 1) {
+    if (unfold || run.length <= 2 * CONTEXT_BLOCKS + 1) {
       fragment.append(...run.map((block) => blockRow(block, build)));
       continue;
     }
@@ -434,7 +484,8 @@ function stylesOnly(assets) {
  *
  * *holdMs* is how long the first screen's files wait for Rendered with Source hidden,
  * `LOADING_DELAY_MS` unless a page says otherwise. `firstScreen` settles once none of
- * them waits: each is drawn, Rendered or Source, or the wait is over. A page that keeps the
+ * them waits: each is drawn, Rendered or Source, or the wait is over. *unfold* draws every
+ * unchanged run open (`appendBlocks`). A page that keeps the
  * comparison out of sight until then shows its first screen at the heights it keeps.
  * @param {{
  *   load: (fileId: string, signal: AbortSignal) => Promise<unknown>,
@@ -447,6 +498,7 @@ function stylesOnly(assets) {
  *   now?: () => number,
  *   later?: (callback: () => void, ms: number) => unknown,
  *   cancel?: (handle: unknown) => void,
+ *   unfold?: boolean,
  *   holdMs?: number
  * }} deps
  */
@@ -522,22 +574,21 @@ export function createMarkdownViews(deps) {
     drawProgress(file);
   }
 
-  // A file that can only show Source has no format to choose. Its chooser, its progress
-  // mark and the bar's two-format layout go, so its bar lays out as any other file's, and
-  // focus the chooser held returns to the file's disclosure.
+  // The chooser stays for a file that can only show Source: its Rendered chip is
+  // unavailable and says why, as its tooltip and in its accessible name, which a keyboard
+  // and a screen reader reach. It is `aria-disabled`, not `disabled`: a disabled button
+  // takes no pointer and no focus, so nothing could say why. select() keeps it from
+  // being chosen.
   /** @param {FileView} file */
   function drawControl(file) {
     const restoreFocus = file.control.contains(document.activeElement);
-    const chooser = file.state !== "unavailable";
-    file.control.hidden = !chooser;
-    file.progress.hidden = !chooser;
-    file.bar.classList.toggle("diff-file-bar-markdown", chooser);
+    const unavailable = file.state === "unavailable";
     file.control.innerHTML = deps.controls.groupHtml({
       key: file.source.id,
       label: `${formatName(file.format)} diff format`,
       layout: "joined",
       options: [
-        { label: "Rendered", value: "rendered" },
+        { label: "Rendered", value: "rendered", ...(unavailable ? { tip: file.reason } : {}) },
         { label: "Source", value: "source" },
       ],
       select: "one",
@@ -547,15 +598,13 @@ export function createMarkdownViews(deps) {
       const button = /** @type {HTMLButtonElement} */ (chip);
       const mode = button.dataset.chipValue;
       button.setAttribute("aria-controls", mode === "rendered" ? file.rendered.id : file.source.id);
-      // Never seen: the chooser is hidden whenever this applies. Kept, with select()'s
-      // guard, so a file that can only show Source cannot be switched to Rendered.
-      button.disabled = mode === "rendered" && file.state === "unavailable";
-      if (restoreFocus && chooser && mode === file.mode) {
+      if (mode === "rendered" && unavailable) {
+        button.setAttribute("aria-disabled", "true");
+        button.setAttribute("aria-label", `Rendered, unavailable. ${file.reason}`);
+      }
+      if (restoreFocus && mode === file.mode) {
         button.focus();
       }
-    }
-    if (restoreFocus && !chooser) {
-      file.toggle.focus();
     }
   }
 
@@ -668,7 +717,7 @@ export function createMarkdownViews(deps) {
       }
       if (file.format !== "markdown") {
         if (!isStructuredProjection(projection)) {
-          fallBack(file, true);
+          fallBack(file, refusalReason(projection, file.format));
           return;
         }
         const tree = await ensureStructured();
@@ -694,7 +743,7 @@ export function createMarkdownViews(deps) {
         return;
       }
       if (!isProjection(projection)) {
-        fallBack(file, true);
+        fallBack(file, refusalReason(projection, file.format));
         return;
       }
       inertReady ??= deps.ensureInert();
@@ -723,8 +772,11 @@ export function createMarkdownViews(deps) {
       }
       const scratch = document.implementation.createHTMLDocument("");
       const template = document.createElement("template");
-      const folds = appendBlocks(content, projection.blocks, (html) =>
-        sanitizeBlock(html, inert, template, scratch, isTarget),
+      const folds = appendBlocks(
+        content,
+        projection.blocks,
+        (html) => sanitizeBlock(html, inert, template, scratch, isTarget),
+        deps.unfold === true,
       );
       settled = true;
       deps.mutate(() => {
@@ -742,7 +794,7 @@ export function createMarkdownViews(deps) {
           retryLater(file);
         } else {
           console.warn("metabrowser diff: a rendered file failed; showing Source", error);
-          fallBack(file, false);
+          fallBack(file, null);
         }
       }
     } finally {
@@ -755,13 +807,15 @@ export function createMarkdownViews(deps) {
     }
   }
 
-  // Source is what a file shows when it is not rendered, and nothing says so: a file
-  // that can only show Source loses its chooser, and one whose render failed keeps it, so
-  // choosing Rendered asks again.
-  /** @param {FileView} file @param {boolean} unsupported */
-  function fallBack(file, unsupported) {
+  // Source is what a file shows when it is not rendered, and nothing in its body says
+  // so. A file the server refused keeps its chooser with Rendered unavailable, for
+  // *reason*; one whose request failed, with no reason, keeps Rendered to choose, which
+  // asks again.
+  /** @param {FileView} file @param {string | null} reason */
+  function fallBack(file, reason) {
     deps.mutate(() => {
-      file.state = unsupported ? "unavailable" : "idle";
+      file.state = reason === null ? "idle" : "unavailable";
+      file.reason = reason ?? "";
       file.mode = "source";
       file.holding = false;
       drawControl(file);
@@ -790,13 +844,16 @@ export function createMarkdownViews(deps) {
   return {
     /**
      * @param {{
-     *   section: HTMLElement, bar: HTMLElement, end: HTMLElement, toggle: HTMLElement,
-     *   source: HTMLElement, id: string, format: RenderedFormat
+     *   section: HTMLElement, bar: HTMLElement, end: HTMLElement, source: HTMLElement,
+     *   id: string, format: RenderedFormat, unavailable?: string
      * }} input The file's section; its bar; the group of controls at the bar's end,
-     *   which the chooser leads; the bar's disclosure button, which takes focus when the
-     *   chooser goes; its Source body; and the format it renders as (`renderedFormat`).
+     *   which the chooser leads; its Source body; and the format it renders as
+     *   (`renderedFormat`).
+     *   *unavailable* is why no projection is asked for the file, a sentence, for one
+     *   whose changes the page has no patch of (`supportsRenderedChange`): it shows
+     *   Source, which says the same, from the start.
      */
-    add({ section, bar, end, toggle, source, id, format }) {
+    add({ section, bar, end, source, id, format, unavailable }) {
       const control = document.createElement("div");
       control.className = "diff-markdown-control";
       // Markdown is a KPress fragment; a tree is the structured plugin's own surface.
@@ -820,8 +877,6 @@ export function createMarkdownViews(deps) {
       /** @type {FileView} */
       const file = {
         section,
-        bar,
-        toggle,
         source,
         rendered,
         progress,
@@ -830,14 +885,15 @@ export function createMarkdownViews(deps) {
         format,
         tree: null,
         control,
-        mode: "rendered",
+        mode: unavailable === undefined ? "rendered" : "source",
         expanded: true,
         pending: false,
-        holding: true,
+        holding: unavailable === undefined,
         retryAt: 0,
         retries: 0,
         folds: new Map(),
-        state: "idle",
+        state: unavailable === undefined ? "idle" : "unavailable",
+        reason: unavailable ?? "",
       };
       // A fragment link into a folded run opens that fold before the browser looks.
       rendered.addEventListener("click", (event) => {
@@ -851,6 +907,7 @@ export function createMarkdownViews(deps) {
       });
       // The progress mark leads, on the side of the bar's free space, so the chooser
       // and whatever follows it stay where they are when it appears.
+      bar.classList.add("diff-file-bar-markdown");
       end.prepend(progress, control);
       source.before(rendered);
       files.set(section, file);
