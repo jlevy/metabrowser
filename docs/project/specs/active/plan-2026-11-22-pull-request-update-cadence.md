@@ -347,6 +347,8 @@ the transcripts, with no compatibility layer.
   An unchanged probe is one `POST` answered without a job, local to the machine.
   While probes vouch for the record the page asks for no catalog scan: the scan would
   only vouch for what the probes already did.
+  What else the scan fed, the stack the page shows and the list behind it, ages until
+  something else scans or Phase 2’s list probe gates the scan.
 - `pulls-panel.js`: the same, against `fresh_for_s` of the list envelope.
 - Visibility, focus, and coming back online wake both at once, as they do now.
 
