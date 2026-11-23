@@ -164,7 +164,9 @@ _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 # GitHub's token prefixes (ghp_, gho_, ghu_, ghs_, ghr_) and fine-grained tokens.
 _TOKEN = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{16,})\b")
-_URL_CREDENTIALS = re.compile(r"\b([a-z][a-z0-9+.-]*://)[^/\s@]+@", re.IGNORECASE)
+# To the last ``@`` before the host, as ``cache.lender.redact_userinfo`` reads a userinfo:
+# in ``https://me@example.com:token@host/`` the token is the userinfo's.
+_URL_CREDENTIALS = re.compile(r"\b([a-z][a-z0-9+.-]*://)[^/\s]+@", re.IGNORECASE)
 # A header's whole value; a scheme's credential; a named secret's value after : or =.
 _AUTH_HEADER = re.compile(r"(?i)\b((?:proxy-)?authorization)(\s*[:=]\s*)[^\r\n,;]*")
 _SCHEME_CREDENTIAL = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{4,}")

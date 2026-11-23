@@ -1003,6 +1003,51 @@ def test_a_background_job_waits_behind_every_other_and_holds_no_slot() -> None:
     assert asyncio.run(scenario()) == (["pull 7", "pull 9", "pull 8"], 2)
 
 
+def test_the_restart_of_a_pull_job_a_reader_joined_runs_however_many_reader_jobs_run_then() -> None:
+    """Review A5 of #762: the reader's job for 50 took its place among the reader's jobs
+    when the reader joined it as it stopped. By the time it has unwound,
+    :data:`MAX_PULL_JOBS` other reader jobs run, one of them a prefetch a reader promoted,
+    which no bound refuses. The restart is no new start, so it is not refused either."""
+
+    async def scenario() -> tuple[list[str], int, bool, list[str]]:
+        stand = _Stand()
+        session = stand.session
+        coordinator = stand.coordinator
+        key = stand.pulls.key(50)
+        assert session.request_pull_refresh(50, background=True) == "started"
+        await _spin()
+        assert stand.events == ["pull 50"]
+        # A reader's job for another pull request arrives: 50's is told to stop.
+        assert session.request_pull_refresh(1) == "started"
+        await asyncio.sleep(0)
+        stopped = coordinator.job(key)
+        assert stopped is not None and stopped.cancelling()
+        assert session.request_pull_refresh(50) == "joined"
+        # The reader's other jobs fill the bound with 50's...
+        starts = [session.request_pull_refresh(number) for number in range(2, MAX_PULL_JOBS)]
+        assert session.request_pull_refresh(99) == "too_many"
+        # ...and one more joins it, a prefetch a reader opened.
+        assert session.request_pull_refresh(100, background=True) == "started"
+        assert session.request_pull_refresh(100) == "joined"
+        others = len(session._pull_jobs - {key})
+        # Its done callbacks, the restart among them, run before this wait's.
+        await asyncio.wait({stopped}, timeout=5)
+        assert stopped.done()
+        restarted = coordinator.job(key)
+        for _ in range(MAX_PULL_JOBS + 3):
+            for pull in stand.pulls.by_number.values():
+                pull.gate.set()
+            await _spin()
+        await stand.finish()
+        return starts, others, restarted is not None and restarted is not stopped, stand.events
+
+    starts, others, restarted, events = asyncio.run(scenario())
+    assert starts == ["started"] * (MAX_PULL_JOBS - 2)
+    assert others == MAX_PULL_JOBS
+    assert restarted is True
+    assert events.count("pull 50") == 2, events
+
+
 def test_background_jobs_count_toward_no_bound() -> None:
     async def scenario() -> tuple[str, str]:
         stand = _Stand()
@@ -1564,7 +1609,10 @@ def test_a_page_ask_before_the_restart_of_a_stopped_idle_fetch_does_not_quiet_a_
 ):
     """Review B2 of #721: the reader's Refresh joined an idle fetch being stopped. A page's
     ask handled in the one loop step between that job's end and its restart started the
-    fetch as quiet, and the reader's refresh, which then joined it, showed nothing."""
+    fetch as quiet, and the reader's refresh, which then joined it, showed nothing.
+
+    Review C3 of #721: status is read in that step too, before the restart, so the page's
+    ask is what starts the fetch loud; the restart leaves the quiet alone."""
 
     async def scenario() -> tuple[list[object], list[str]]:
         events: list[str] = []
@@ -1580,6 +1628,7 @@ def test_a_page_ask_before_the_restart_of_a_stopped_idle_fetch_does_not_quiet_a_
                 asking.send(None)
             except StopIteration as answered:
                 seen.append(answered.value)
+            seen.append(("before the restart", session.refreshing(), session._refresh_quiet()))
 
         asyncio.get_running_loop().call_soon(a_page_asks)
         await _spin()
@@ -1589,7 +1638,7 @@ def test_a_page_ask_before_the_restart_of_a_stopped_idle_fetch_does_not_quiet_a_
         return seen, events
 
     seen, events = asyncio.run(scenario())
-    assert seen == ["joined", "started", (True, False)]
+    assert seen == ["joined", "started", ("before the restart", True, False), (True, False)]
     assert events.count("mirror start") == 2, "one fetch after the stopped one, not two"
 
 
@@ -1619,9 +1668,12 @@ def test_a_readers_request_that_joins_a_background_pull_being_stopped_gets_its_j
     """Bead mb-iz5l (review B3 of #721): a reader's job arrived at the store, so the
     prefetched pull request's job holding the turn was told to stop; before it had
     unwound the reader opened that pull request. The request was answered ``joined``,
-    the job ended cancelled, and nothing fetched the pull request."""
+    the job ended cancelled, and nothing fetched the pull request.
 
-    async def scenario() -> tuple[list[str], str, bool, bool]:
+    Review C3 of #721: the reader's job is counted before the stopped one has unwound,
+    from the join, as well as once it starts again."""
+
+    async def scenario() -> tuple[list[str], str, bool, bool, bool]:
         events: list[str] = []
         coordinator = RefreshCoordinator()
         stops = [True]
@@ -1647,19 +1699,21 @@ def test_a_readers_request_that_joins_a_background_pull_being_stopped_gets_its_j
         session.request_refresh(for_selection=True)
         await asyncio.sleep(0)
         joined = session.request_pull_refresh(7)
+        key = _Companion.key
+        assert coordinator.job(key) is not None, "the stopped job has not unwound"
+        counted_at_join = key in session._pull_jobs
         # Asked again before the stopped job has unwound: still one job after it.
         assert session.request_pull_refresh(7) == "joined"
         await _spin()
         running = session.pull_refreshing(7)
-        counted = session.pull_requests is not None and (
-            session.pull_requests.key(7) in session._pull_jobs
-        )
+        counted = key in session._pull_jobs
         await _settle(coordinator)
-        return events, joined, running, counted
+        return events, joined, running, counted_at_join, counted
 
-    events, joined, running, counted = asyncio.run(scenario())
+    events, joined, running, counted_at_join, counted = asyncio.run(scenario())
     assert joined == "joined"
     assert events == ["pull start", "pull stopped", "mirror", "pull start", "pull end"]
+    assert counted_at_join is True, "the reader's job counts from the join"
     assert counted is True, "the reader's job counts among the reader's jobs"
     # By then the reader's job has run or is running; it is never simply gone.
     assert running is True or events[-1] == "pull end"

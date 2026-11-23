@@ -800,8 +800,12 @@ GitHub points they cost, and the measurements behind the order.
 A background job takes no network slot, waits behind every other job at a store turn and
 is cancelled when one starts waiting, and is joined and promoted by a reader’s request
 for the same pull request.
-`GET pulls-prefetch` reports the lane, the caps, the governor, and recent outcomes, and
-`pulls-panel.js` chooses what to name and when.
+A reader who joins a pull job that was already told to stop, a background one or a
+checkout’s optional comparison, has it started again as theirs once the stopped one has
+unwound, on a mirror and on a folder’s checkout alike
+(`RefreshCoordinator.start_again_when_stopped`). `GET pulls-prefetch` reports the lane,
+the caps, the governor, and recent outcomes, and `pulls-panel.js` chooses what to name
+and when.
 
 ## The Comparison Keep
 
@@ -862,7 +866,8 @@ no store.
   current record’s comparison as optional work (`"prepare_comparison"` with the record
   revision). It fetches only that pull request’s head and base, never deepens, holds no
   network slot, and records no outcome; a reader’s Changes request promotes it, and
-  another pull request’s refresh cancels it.
+  another pull request’s refresh cancels it while it is still optional.
+  Once a reader’s request has promoted it, it runs on as theirs.
 - **Repair:** Changes offers Refresh for a displayed comparison even while the record is
   fresh. The request carries `"recovery": {"base": …, "head": …}`, which the server
   accepts only for a pair this session issued for that pull request (the last

@@ -50,6 +50,9 @@ GOLDEN = "cli-api-source-checkout-store.txt"
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="the fixture's Git environment is POSIX"),
     needs_git,
+    # The transcript is of the store, which the suite's environment keeps from every
+    # application (``tests/conftest.py``).
+    pytest.mark.usefixtures("keeps_origin_store"),
 ]
 
 _BODIES = {

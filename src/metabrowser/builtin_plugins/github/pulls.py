@@ -494,17 +494,29 @@ class _Unavailable:
     state: PullDataState
 
 
+# The apps whose REST login is not ``<GraphQL login>[bot]``, by GraphQL login. The Copilot
+# coding agent's pull requests, read 2026-11-23 (makr-code/ThemisDB#8365 and
+# t-h-omy/Volcanae#396, review C1 on #709): GraphQL ``author`` answers ``{"__typename":
+# "Bot", "login": "copilot-swe-agent"}`` and REST ``user`` answers ``{"login": "Copilot",
+# "type": "Bot"}``, with the same account id, 198982749, both ways.
+_REST_BOT_LOGINS: Final[dict[str, str]] = {"copilot-swe-agent": "Copilot"}
+
+
 def _rest_actor(actor: object) -> object:
     """*actor* as REST names it: GraphQL names an app by its slug (``dependabot``) and REST
-    by its bot account (``dependabot[bot]``), so a record read either way compares equal,
+    by its bot account (``dependabot[bot]``), or by the name :data:`_REST_BOT_LOGINS`
+    holds for an app that breaks that rule. A record read either way then compares equal,
     and a probe of a cold open's record does not find the author changed (review B2, #709).
+    An app that breaks the rule and is not listed is named ``<slug>[bot]`` until the first
+    REST read.
     """
 
     if not isinstance(actor, dict):
         return actor
     login = actor.get("login")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
     if actor.get("__typename") == "Bot" and isinstance(login, str) and not login.endswith("[bot]"):  # pyright: ignore[reportUnknownMemberType]
-        return {**actor, "login": f"{login}[bot]"}  # pyright: ignore[reportUnknownArgumentType]
+        rest_login = _REST_BOT_LOGINS.get(login, f"{login}[bot]")
+        return {**actor, "login": rest_login}  # pyright: ignore[reportUnknownArgumentType]
     return actor  # pyright: ignore[reportUnknownVariableType]
 
 

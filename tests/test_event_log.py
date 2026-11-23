@@ -340,6 +340,9 @@ def test_redaction_drops_tokens_credentials_and_escape_codes() -> None:
     assert "\x1b" not in cleaned and "\x07" not in cleaned
     assert cleaned.startswith("fatal: https://[credentials]@github.com/o/r")
     assert len(event_log.redact("x" * 5000)) == event_log.MAX_TEXT_CHARS
+    # A raw ``@`` in the userinfo: everything to the last one before the host goes.
+    cleaned = event_log.redact("fatal: https://me@example.com:secret@github.com/o/r failed")
+    assert cleaned == "fatal: https://[credentials]@github.com/o/r failed"
 
 
 @pytest.mark.parametrize(

@@ -559,8 +559,8 @@ account check and the bounds on probes.
 - [x] The envelope’s `probe_every_s`, the interval of the page’s asks, rather than
   `fresh_for_s`, which still says how long a record is fresh without probes.
 - [x] The page’s ask scheduling in `pull-page.js`: a current record is asked for every
-  `probe_every_s` while the page is visible, and a stale one a window after the last
-  ask.
+  `probe_every_s` while the page is visible, and a stale one a window after its last ask
+  for a stale one.
 - [x] The architecture documents: Serving Pull Requests and Freshness Verdicts in
   `arch-github-pull-requests.md`, and Refresh Cadence in
   `arch-mirror-acquisition-and-refresh.md`.
