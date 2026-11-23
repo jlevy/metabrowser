@@ -150,10 +150,11 @@ $ node tests/dom/github-pull-first-paint-behavior.js
       "tabColumn": "live",
       "live": [
         "conversation",
+        "docs",
         "files",
         "checks"
       ],
-      "badges": "Conversation C, Changes G, Checks E",
+      "badges": "Conversation C, Docs D, Changes G, Checks E",
       "g": "opened the files route",
       "stackMenus": 1,
       "stackKeys": "pulls.stack.top, pulls.stack.base",
@@ -165,10 +166,11 @@ $ node tests/dom/github-pull-first-paint-behavior.js
       "tabColumn": "live",
       "live": [
         "conversation",
+        "docs",
         "files",
         "checks"
       ],
-      "badges": "Conversation C, Changes G, Checks E",
+      "badges": "Conversation C, Docs D, Changes G, Checks E",
       "focus": "none",
       "g": "opened the files route",
       "stackMenus": 1,

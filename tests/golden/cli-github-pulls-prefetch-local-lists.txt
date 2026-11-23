@@ -77,7 +77,9 @@ status: 200
       "per_hour": 300,
       "hour_used": 0,
       "speculative_per_hour": 100,
-      "speculative_hour_used": 0
+      "speculative_hour_used": 0,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 0
     }
   },
   "recent": [
@@ -131,7 +133,9 @@ status: 200
       "per_hour": 300,
       "hour_used": 0,
       "speculative_per_hour": 100,
-      "speculative_hour_used": 0
+      "speculative_hour_used": 0,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 0
     }
   },
   "recent": [
@@ -298,7 +302,9 @@ status: 200
       "per_hour": 300,
       "hour_used": 1,
       "speculative_per_hour": 100,
-      "speculative_hour_used": 1
+      "speculative_hour_used": 1,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 0
     }
   },
   "recent": [
@@ -369,7 +375,9 @@ status: 200
       "per_hour": 300,
       "hour_used": 0,
       "speculative_per_hour": 100,
-      "speculative_hour_used": 0
+      "speculative_hour_used": 0,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 0
     }
   },
   "recent": [

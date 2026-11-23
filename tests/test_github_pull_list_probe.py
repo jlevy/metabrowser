@@ -304,9 +304,11 @@ def test_a_pull_request_changed_just_before_an_issue_is_found_though_the_pulls_p
 
 
 def test_the_slowest_probe_still_vouches_from_behind_the_lists_lag() -> None:
-    """The arithmetic beside ``MAX_PAID_PROBE_S``: an ask interval of the window to spare."""
+    """The arithmetic beside ``MAX_PAID_PROBE_S``: the next probe starts within an ask
+    interval of the gap, and 5 s of the window are left beside that (review B2 of #737)."""
 
-    assert MAX_PAID_PROBE_S + PULLS_LAG_S + LIST_PROBE_S <= FRESHNESS_WINDOW_S
+    spare = FRESHNESS_WINDOW_S - (MAX_PAID_PROBE_S + PULLS_LAG_S + LIST_PROBE_S)
+    assert spare >= 5, "a probe a moment late would let the last one's vouch lapse"
 
 
 def test_checked_at_is_when_the_probe_asked_not_when_github_answered(

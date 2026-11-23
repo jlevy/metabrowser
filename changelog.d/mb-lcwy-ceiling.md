@@ -8,6 +8,9 @@
   catalog’s backfill, descriptions for rows not on screen, and the label set, may spend
   only a third of those calls, so what is on screen keeps the rest: the prefetch now
   reads at most 12 records and 20 files lists from GitHub an hour, where it read 40 and
-  100\. `GET /api/plugin/github/pulls-prefetch` reports the ceiling, that share, and the
-  hour’s use of each under `governor.ceiling`. See
+  100\. Inside that third the prefetch goes first: the catalog’s backfill and the
+  descriptions for rows not on screen stop at what the prefetch’s caps leave of it, and
+  a changed-files list the local store gives, which costs GitHub nothing, is never held.
+  `GET /api/plugin/github/pulls-prefetch` reports the ceiling, that share, the catalog’s
+  part of it, and the hour’s use of each under `governor.ceiling`. See
   [The Provider Boundary](docs/project/architecture/arch-github-pull-requests.md#the-provider-boundary).

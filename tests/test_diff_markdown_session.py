@@ -18,6 +18,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from metabrowser.builtin_plugins.github.pull_rendered_diff import (
+    _fallback,  # pyright: ignore[reportPrivateUsage]
+)
 from metabrowser.builtin_plugins.github.pull_route import image_route, rendered_route
 from metabrowser.builtin_plugins.github.pull_snapshot import Snapshot
 from metabrowser.diff.markdown_projection import project_markdown_diff
@@ -48,11 +51,13 @@ _PLAIN_OLD = b"---\ntitle: Plain\ndraft: true\n---\n# Plain\n\nText.\n"
 _PLAIN_NEW = b"# Plain\n\nText.\n"
 
 
-def _file(file_id: str, path: str, *, old: bool = True, new: bool = True) -> dict[str, Any]:
+def _file(
+    file_id: str, path: str, *, old: bool = True, new: bool = True, availability: str = "ready"
+) -> dict[str, Any]:
     side = {"entry_type": "file", "path": path}
     return {
         "id": file_id,
-        "availability": "ready",
+        "availability": availability,
         "old": side if old else None,
         "new": side if new else None,
     }
@@ -75,10 +80,14 @@ def _recording() -> dict[str, Any]:
     answers = {
         "f1": _projection(_GUIDE_OLD, _GUIDE_NEW, "docs/guide.md"),
         "f2": _projection(None, b"- [ ] Try the tasks\n", "docs/tasks.md"),
-        "f3": _projection(None, b"A long line of prose that repeats.\n" * 1500, "docs/big.md"),
+        # Nested past what MarkdownIt parses whole, which the Markdown child refuses as a
+        # thread does. A file only past a thread's budgets is the child's, and renders.
+        "f3": _projection(None, (b"1. " * 40)[:-1] + b"\n", "docs/deep.md"),
         "f4": _projection(None, b"# Demo\n\nWelcome.\n", "README.md"),
         "f6": _projection(_NOTES_OLD, _NOTES_NEW, "docs/notes.md"),
         "f7": _projection(_PLAIN_OLD, _PLAIN_NEW, "docs/plain.md"),
+        # The route's own refusal of a pair past its read bound, which names no reason.
+        "f8": _fallback("too_large"),
     }
     trees = {
         block["html"]: html_tree(block["html"])
@@ -98,10 +107,13 @@ def _recording() -> dict[str, Any]:
             _file("f1", "docs/guide.md"),
             _file("f5", "src/app.py"),
             _file("f2", "docs/tasks.md", old=False),
-            _file("f3", "docs/big.md", old=False),
+            _file("f3", "docs/deep.md", old=False),
             _file("f4", "README.md", old=False),
             _file("f6", "docs/notes.md"),
             _file("f7", "docs/plain.md"),
+            _file("f8", "docs/huge.md"),
+            # Past the bound of one patch: the page holds no changes of it to render.
+            _file("f9", "docs/unread.md", availability="too_large"),
         ],
         "answers": answers,
         "trees": trees,
@@ -110,14 +122,18 @@ def _recording() -> dict[str, Any]:
 
 def test_recording_matches_the_production_projection() -> None:
     recording = _recording()
-    statuses = {key: answer["status"] for key, answer in recording["answers"].items()}
+    statuses = {
+        key: (answer["status"], answer.get("reason"))
+        for key, answer in recording["answers"].items()
+    }
     assert statuses == {
-        "f1": "ready",
-        "f2": "unsupported",
-        "f3": "too_large",
-        "f4": "ready",
-        "f6": "ready",
-        "f7": "ready",
+        "f1": ("ready", None),
+        "f2": ("unsupported", "task_list"),
+        "f3": ("too_large", "nesting"),
+        "f4": ("ready", None),
+        "f6": ("ready", None),
+        "f7": ("ready", None),
+        "f8": ("too_large", None),
     }
     check_recording(_RECORDING, recording, transcript="cli-ui-diff-markdown.tryscript.md")
 
@@ -139,9 +155,36 @@ def test_session_replays_the_recording() -> None:
     assert first["f1 docs/guide.md"]["shows"] == "rendered"
     after = steps["past the loading delay a waiting file shows Source"]["files"]
     assert after["f2 docs/tasks.md"]["shows"] == "source"
-    unsupported = steps["an unsupported file stays in Source and has no chooser"]["files"]
-    assert unsupported["f2 docs/tasks.md"]["chooser"] == "none"
+    # Every file of a rendered format keeps its chooser, and one Rendered cannot show says
+    # why (mb-rm40): the session itself fails on a chooser that is gone.
+    mounted = steps[
+        "mount: a Markdown file waits for Rendered with Source hidden; "
+        "one whose changes did not load shows Source"
+    ]["files"]
+    assert len(mounted) == 8
+    assert mounted["f9 docs/unread.md"] == {
+        "chooser": "Rendered (unavailable: This change is too large to show inline.) | *Source",
+        "shows": "source",
+    }
+    refused = steps["a file Rendered cannot show stays in Source, and its chooser says why"]
+    assert refused["files"]["f2 docs/tasks.md"] == {
+        "chooser": "Rendered (unavailable: Rendered cannot show a file with a task list.) | *Source",
+        "shows": "source",
+    }
+    again = steps["choosing an unavailable Rendered changes nothing and asks for nothing"]
+    assert again == {"step": again["step"], "requests": [], "files": {}}
     assert steps["the wait is over"]["requests"] == ["f3"]
+    large = steps[
+        "a file past the route's read bound says it is too large; "
+        "no projection is asked for a file whose changes did not load"
+    ]
+    assert large["requests"] == ["f8"]
+    assert large["files"]["f8 docs/huge.md"]["chooser"] == (
+        "Rendered (unavailable: This file is too large to show rendered.) | *Source"
+    )
+    assert not any(
+        "f9" in request for step in transcript["steps"] for request in step.get("requests", [])
+    )
     kept = steps["choosing Rendered again shows the kept answer without asking"]
     assert kept["requests"] == [] and kept["files"]["f4 README.md"]["shows"] == "rendered"
     front = steps[

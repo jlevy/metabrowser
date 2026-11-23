@@ -9,7 +9,8 @@ patterns:
 # Golden Test: Rendered Markdown in a Pull Request’s Changes
 
 A pull request’s Changes opens each changed Markdown file in **Rendered** when the
-server can map its Git hunks to the document.
+server can map its Git hunks to the document, and every changed Markdown file has the
+**Rendered** | **Source** chooser, whatever its size and whatever the server answers.
 The comparison names the route that answers a file’s rendered redline,
 `GET github/pull-rendered-diff`, and the route its images load from,
 `GET github/pull-image`; the diff plugin spells neither.
@@ -22,12 +23,16 @@ view; past it, Source shows and Rendered replaces it when it arrives.
 A file is asked for when it comes within a viewport of the screen, one request at a
 time, and its progress mark counts down to visible only while its request waits.
 A busy server is transient: the file keeps Rendered and asks again after 100 ms,
-doubling to 1.6 s. An unsupported or over-budget answer leaves the file in Source with
-no chooser, and a failed request leaves it in Source with the chooser, so choosing
-Rendered asks again.
-Neither says so: nothing but the rendered body is drawn beside Source.
-An answer that arrives after the reader chose Source is kept, and choosing Rendered
-again shows it without asking.
+doubling to 1.6 s. A file the server refuses shows Source and keeps its chooser, with
+Rendered unavailable: the chip says why, as its tooltip and in its accessible name, in
+the words of the reason the refusal names or, where it names none, of its status.
+Choosing it changes nothing and asks for nothing.
+A file whose changes did not load has the chooser too, with Rendered unavailable for the
+reason its Source body gives, and no projection is asked for it.
+A failed request leaves the file in Source with Rendered to choose, which asks again.
+None of these writes anything in the body: nothing but the rendered body is drawn beside
+Source. An answer that arrives after the reader chose Source is kept, and choosing
+Rendered again shows it without asking.
 
 Front matter is the Document view’s Frontmatter disclosure, keys sorted as it sorts
 them: open, with each changed key removed and added, when the front matter changed;
@@ -62,9 +67,10 @@ the comparison’s head, pinned at its merge base, beside a checkout at the head
 has no pin, and pinned at the head once another tab changed the pin.
 `links.opens` says which addresses in a rendered block open something on the page pinned
 at the head. Each step lists the requests the page made and each file whose state it
-changed: its chooser (`*` chosen, `none` when the file can show only Source), what its
-body shows (`nothing` while it waits within the loading delay), `progress` while its
-mark counts down, and its rendered rows.
+changed: its chooser (`*` chosen, and `unavailable` with the reason for a Rendered that
+cannot be chosen), what its body shows (`nothing` while it waits within the loading
+delay), `progress` while its mark counts down, and its rendered rows.
+The session fails if a file’s chooser is ever gone.
 
 ```console
 $ node tests/dom/diff-markdown-session.js
@@ -99,7 +105,7 @@ $ node tests/dom/diff-markdown-session.js
       "lookahead": "0px 0px 100% 0px"
     },
     {
-      "step": "mount: every Markdown file waits for Rendered with Source hidden",
+      "step": "mount: a Markdown file waits for Rendered with Source hidden; one whose changes did not load shows Source",
       "requests": [],
       "files": {
         "f1 docs/guide.md": {
@@ -110,7 +116,7 @@ $ node tests/dom/diff-markdown-session.js
           "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
-        "f3 docs/big.md": {
+        "f3 docs/deep.md": {
           "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
@@ -125,6 +131,14 @@ $ node tests/dom/diff-markdown-session.js
         "f7 docs/plain.md": {
           "chooser": "*Rendered | Source",
           "shows": "nothing"
+        },
+        "f8 docs/huge.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "nothing"
+        },
+        "f9 docs/unread.md": {
+          "chooser": "Rendered (unavailable: This change is too large to show inline.) | *Source",
+          "shows": "source"
         }
       }
     },
@@ -139,7 +153,7 @@ $ node tests/dom/diff-markdown-session.js
           "shows": "nothing",
           "progress": "counting"
         },
-        "f3 docs/big.md": {
+        "f3 docs/deep.md": {
           "chooser": "*Rendered | Source",
           "shows": "source"
         },
@@ -152,6 +166,10 @@ $ node tests/dom/diff-markdown-session.js
           "shows": "source"
         },
         "f7 docs/plain.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "source"
+        },
+        "f8 docs/huge.md": {
           "chooser": "*Rendered | Source",
           "shows": "source"
         }
@@ -202,14 +220,19 @@ $ node tests/dom/diff-markdown-session.js
       }
     },
     {
-      "step": "an unsupported file stays in Source and has no chooser",
+      "step": "a file Rendered cannot show stays in Source, and its chooser says why",
       "requests": [],
       "files": {
         "f2 docs/tasks.md": {
-          "chooser": "none",
+          "chooser": "Rendered (unavailable: Rendered cannot show a file with a task list.) | *Source",
           "shows": "source"
         }
       }
+    },
+    {
+      "step": "choosing an unavailable Rendered changes nothing and asks for nothing",
+      "requests": [],
+      "files": {}
     },
     {
       "step": "a busy server keeps Rendered and asks again after a wait",
@@ -224,7 +247,7 @@ $ node tests/dom/diff-markdown-session.js
         "f3"
       ],
       "files": {
-        "f3 docs/big.md": {
+        "f3 docs/deep.md": {
           "chooser": "*Rendered | Source",
           "shows": "source",
           "progress": "counting"
@@ -232,13 +255,13 @@ $ node tests/dom/diff-markdown-session.js
       }
     },
     {
-      "step": "a file over budget shows Source; Source chosen while a request runs",
+      "step": "a file nested too deeply shows Source and says why; Source chosen while a request runs",
       "requests": [
         "f4"
       ],
       "files": {
-        "f3 docs/big.md": {
-          "chooser": "none",
+        "f3 docs/deep.md": {
+          "chooser": "Rendered (unavailable: This file is nested too deeply to show rendered.) | *Source",
           "shows": "source"
         },
         "f4 README.md": {
@@ -339,6 +362,18 @@ $ node tests/dom/diff-markdown-session.js
             "context: <h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>",
             "context: <p>Text.</p>"
           ]
+        }
+      }
+    },
+    {
+      "step": "a file past the route's read bound says it is too large; no projection is asked for a file whose changes did not load",
+      "requests": [
+        "f8"
+      ],
+      "files": {
+        "f8 docs/huge.md": {
+          "chooser": "Rendered (unavailable: This file is too large to show rendered.) | *Source",
+          "shows": "source"
         }
       }
     },

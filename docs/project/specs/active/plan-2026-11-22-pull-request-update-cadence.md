@@ -212,8 +212,11 @@ Every automatic read of GitHub is one of three kinds, and each has its own caden
    It runs when a probe saw a change, when a reader asks, and otherwise once every
    `FULL_REFRESH_S` for what is visible.
 3. **Background preparation** is the prefetch of what the reader may open next.
-   It is unchanged: it runs only while the account is above `BACKGROUND_FLOOR` and
-   yields to the other two.
+   It runs only while the account is above `BACKGROUND_FLOOR` and yields to the other
+   two, as it did before this plan, and now also only inside speculative work’s share of
+   the self-ceiling, where it goes before the catalog’s backfill and cores walk (see
+   [Budget](#budget)). A files list the store gives costs GitHub nothing, so no budget
+   holds it.
 
 ### Cadence by What Is Visible
 
@@ -355,7 +358,19 @@ guards and adds one:
   The prefetch’s `RECORDS_PER_HOUR` and `FILES_PER_HOUR` are priced to fit the share,
   with the arithmetic beside them in `pull_prefetch.py`. Neither number has been
   measured against a real session: `GET pulls-prefetch` reports both and what the hour
-  has used of each under `governor.ceiling`.
+  has used of each under `governor.ceiling`. Inside the share the prefetch goes first
+  (review B1 of #737). The catalog’s backfill and cores walk run inside
+  `gh_budget.speculative(catalog=True)` and stop at `CATALOG_SPECULATIVE_CORE_PER_HOUR`,
+  the share less what the prefetch’s caps can spend: with one first-come share, a cold
+  catalog’s walk of 800 rows spent all of it and the prefetch was refused.
+  Their cost grows with the catalog, so no fixed part would cover a cold one, and the
+  rows on screen are prepared outside the share; a cold walk now takes hours, which the
+  constant’s comment works out.
+  The label set’s read is refused only at the whole share, as the prefetch is, since a
+  page’s chips wait on it.
+  A files list the store gives is not refused at all, since it costs GitHub nothing; a
+  list Git cannot give after all is read from GitHub only past the governor and inside
+  the hour’s cap, as any list from GitHub is.
 
 GitHub’s secondary limits count every request, `304`s included: at most 100 in flight,
 and 900 points a minute for each REST endpoint, a `GET` being one point.
@@ -582,7 +597,9 @@ account check and the bounds on probes.
   A job’s account check is a conditional `gh api user`, so it is counted as any answer
   is: nothing for a `304`, one for a `200`.
 - [x] `SPECULATIVE_CORE_PER_HOUR`, speculative work’s share of that ceiling, with the
-  prefetch’s caps priced to fit it (see [Budget](#budget)).
+  prefetch’s caps priced to fit it (see [Budget](#budget)), and
+  `CATALOG_SPECULATIVE_CORE_PER_HOUR`, the part of it the catalog’s backfill and cores
+  walk may spend, so the prefetch goes first (review B1 of #737).
 
 ### Phase 3: Metabrowser’s Own Stores
 
@@ -635,10 +652,13 @@ account check and the bounds on probes.
   probes would overlap their own latency.
 - Is 300 `core` an hour per server the right self-ceiling for automatic work, given how
   much of the account’s hour other tools use, and is a third of it the right share for
-  speculative work? Neither has been measured: `governor.ceiling` in `GET pulls-prefetch`
-  reports what an hour used, and a few real sessions’ readings should be recorded beside
-  the constants. Should the servers of one home share a ceiling instead, through a file
-  beside their event logs?
+  speculative work, with the catalog’s backfill and cores walk held to what the
+  prefetch’s caps leave of it?
+  None has been measured: `governor.ceiling` in `GET pulls-prefetch` reports what an
+  hour used, and a few real sessions’ readings, a repository’s first visit among them,
+  should be recorded beside the constants.
+  Should the servers of one home share a ceiling instead, through a file beside their
+  event logs?
 - Below the floor nothing automatic observes the GraphQL budget again: the catalog’s
   periodic scan was the only regular GraphQL read, and it now waits with the rest.
   The floor then lifts only at the budget’s reset, on a reader’s Reload, or when a list

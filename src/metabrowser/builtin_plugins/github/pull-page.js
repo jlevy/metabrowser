@@ -245,21 +245,50 @@ export const TIMELINE_RETRY_MS = 1000;
 // The longest wait the server may name for a timeline its budget refused (`retry_after_s`,
 // HELD_RETRY_S in pull_timeline.py): the schema's own bound, an hour.
 const TIMELINE_HELD_MAX_S = 3600;
-export const TABS = Object.freeze(["", "files", "checks"]);
+export const TABS = Object.freeze(["", "docs", "files", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
 const TITLE_OVERHANG_PX = 4;
 /**
- * Each tab's label and key, in `TABS` order. Every label starts with C, so Conversation, the
- * default, keeps it, and the others take a free letter of their label: chan-*g*es, and
- * ch-*e*-cks, whose H is the Commits tab's (History) and whose K moves a row up
- * (docs/design-system.md, "Keyboard Shortcuts"). `C` is also the Charts tab's, which is
- * never shown beside a page.
+ * Each tab's label and key, in `TABS` order. Conversation, the default, keeps its C, and
+ * Docs its D. The other two also start with C, so they take a free letter of their label:
+ * chan-*g*es, and ch-*e*-cks, whose H is the Commits tab's (History) and whose K moves a
+ * row up (docs/design-system.md, "Keyboard Shortcuts"). `C` is also the Charts tab's,
+ * which is never shown beside a page.
  */
 const PULL_TABS = Object.freeze([
   Object.freeze({ id: "", label: "Conversation", key: "c" }),
+  Object.freeze({ id: "docs", label: "Docs", key: "d" }),
   Object.freeze({ id: "files", label: "Changes", key: "g" }),
   Object.freeze({ id: "checks", label: "Checks", key: "e" }),
 ]);
+
+/**
+ * Whether *tab* shows the pull request's diff: Changes, every changed file, or Docs, its
+ * documents alone (`DOCS_GROUP`). Both read the comparison themselves and own its fetch.
+ *
+ * @param {string | undefined} tab
+ */
+export function diffTab(tab) {
+  return tab === "files" || tab === "docs";
+}
+
+/** The File type group the Docs tab shows, in the diff's `group=` vocabulary. */
+const DOCS_GROUP = "type:docs";
+
+/**
+ * Whether a diff document lists no changed file, and its list was not cut short at its
+ * bounds: a Docs tab with no document to show.
+ *
+ * @param {unknown} document_
+ */
+export function noFiles(document_) {
+  const manifest = /** @type {{manifest?: {files?: unknown, truncated?: unknown}} | null} */ (
+    document_
+  )?.manifest;
+  return (
+    Array.isArray(manifest?.files) && manifest.files.length === 0 && manifest.truncated !== true
+  );
+}
 
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
@@ -1228,7 +1257,7 @@ export function comparisonHeld(envelope, nowMs) {
  */
 export function comparisonQueued(envelope, page) {
   return (
-    page.tab === "files" &&
+    diffTab(page.tab) &&
     page.ownsChanges !== false &&
     page.comparisonAttempted !== true &&
     envelope?.record?.unavailable?.comparison === "no_store" &&
@@ -1399,7 +1428,7 @@ export function describePull(envelope, page) {
   }
   model.status = envelope.state;
   model.refreshing =
-    (envelope.refreshing && (page.tab === "files" || !envelope.preparing_comparison)) ||
+    (envelope.refreshing && (diffTab(page.tab) || !envelope.preparing_comparison)) ||
     page.refreshPending === true;
   model.revalidating = model.refreshing || page.refreshDue === true;
   const offline = page.online === false;
@@ -1453,7 +1482,7 @@ export function describePull(envelope, page) {
     // or failed one leaves nothing running, which the header's Refresh then starts.
     model.changesPending =
       model.refreshing ||
-      (page.tab === "files" && (page.fetching === true || page.fetchQueued === true));
+      (diffTab(page.tab) && (page.fetching === true || page.fetchQueued === true));
     model.filesUnavailable = model.changesPending
       ? "Changes are still being prepared."
       : "Changes are unavailable because the full pull request could not be loaded.";
@@ -1508,7 +1537,7 @@ export function describePull(envelope, page) {
     (envelope.state !== "stale" || !offline) &&
     (envelope.state === "stale" ||
       model.failure !== null ||
-      (page.tab === "files" &&
+      (diffTab(page.tab) &&
         typeof record.comparison?.base === "string" &&
         typeof record.comparison?.head === "string") ||
       (typeof record.unavailable?.comparison === "string" &&
@@ -1563,7 +1592,7 @@ export function describePull(envelope, page) {
     model.checkoutAtHead = "This checkout’s HEAD is this pull request’s head.";
   }
   model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
-  if (record.unavailable?.comparison === "no_store" && page.tab === "files") {
+  if (record.unavailable?.comparison === "no_store" && diffTab(page.tab)) {
     // Progress only for an attempt running or still to be sent, Retry changes only once one
     // failed or a recorded outcome holds it, and Fetch changes only when nothing will ask.
     // A failed read before any attempt waits for the next good one, which then asks.
@@ -1600,7 +1629,7 @@ export function describePull(envelope, page) {
   model.comparisonComing =
     model.comparison === null &&
     record.unavailable?.comparison === "no_store" &&
-    (envelope.preparing_comparison === true || (page.tab === "files" && model.changesPending));
+    (envelope.preparing_comparison === true || (diffTab(page.tab) && model.changesPending));
   return model;
 }
 
@@ -2170,7 +2199,7 @@ export function createPullController(deps, options) {
       askTimer !== null ||
       rateLimitHolds() ||
       (envelope.record?.unavailable?.comparison === "no_store" &&
-        (tab === "files" ||
+        (diffTab(tab) ||
           (tab === "" && deps.ownsConversation?.() === true && hasFreshComparisonMetadata())))
     ) {
       return null;
@@ -2419,7 +2448,7 @@ export function createPullController(deps, options) {
 
   function pollsFast() {
     // Optional comparison work says nothing to Conversation, so it is polled slowly there.
-    const quiet = envelope?.preparing_comparison === true && tab !== "files";
+    const quiet = envelope?.preparing_comparison === true && !diffTab(tab);
     return (
       envelope === null ||
       (envelope.refreshing && !quiet) ||
@@ -2960,7 +2989,7 @@ export function createPullController(deps, options) {
   async function requestComparison() {
     if (
       !disposed &&
-      tab === "files" &&
+      diffTab(tab) &&
       deps.isVisible() &&
       inFlightRefreshes === 0 &&
       envelope?.refreshing === false &&
@@ -4697,7 +4726,7 @@ export function mountPullPage(container, ctx, mb) {
   let bodyShows = "none";
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
-   *   settled: boolean, cacheMiss: boolean, retryPending: boolean, heldMs: number | null,
+   *   settled: boolean, cacheMiss: boolean, retryPending: boolean, heldUntil: number | null,
    *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
   let commitTimeline = null;
   // The allowlist a text's Markdown passes through before it is inserted; a text stays
@@ -4711,6 +4740,15 @@ export function mountPullPage(container, ctx, mb) {
   let diffFor = null;
   /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */
   let diffHandle = null;
+  /** The diff tab the mounted diff was drawn for (`diffTab`): Docs narrows it. */
+  let diffShows = "";
+  /**
+   * The File type choice of Changes, null for every type: the page's, kept while the reader
+   * is on another tab and given to each mount (the diff plugin's `ctx.types`).
+   *
+   * @type {Array<string> | null}
+   */
+  let diffTypes = null;
   /** @type {HTMLElement | null} */
   let diffHost = null;
   /** @type {Set<(file: Extract<import("../diff/diff-view.js").FileLookup, {kind: "file"}> | null) => void>} */
@@ -5706,7 +5744,7 @@ export function mountPullPage(container, ctx, mb) {
     if (listening.signal.aborted || shown?.canRefresh !== true) {
       return;
     }
-    const displayed = shown.tab === "files" ? diffFor : null;
+    const displayed = diffTab(shown.tab) ? diffFor : null;
     filesRefresh = displayed;
     void controller.requestRefresh(
       displayed === null ? undefined : { base: displayed.left, head: displayed.right },
@@ -6606,6 +6644,7 @@ export function mountPullPage(container, ctx, mb) {
     diffHandle = null;
     diffHost = null;
     diffFor = null;
+    diffShows = "";
     reportCurrentFile(null);
   }
 
@@ -6754,7 +6793,7 @@ export function mountPullPage(container, ctx, mb) {
    */
   function briefFor(model) {
     const compared =
-      model?.tab === "files" && diffFor !== null ? diffFor : (model?.comparison ?? null);
+      diffTab(model?.tab) && diffFor !== null ? diffFor : (model?.comparison ?? null);
     const summary =
       summaryBrief?.summary({
         head: compared?.right ?? model?.head ?? null,
@@ -7027,7 +7066,7 @@ export function mountPullPage(container, ctx, mb) {
       noteSummaryWait();
       return;
     }
-    const awaited = model === null ? null : model.tab === "files" ? diffFor : model.comparison;
+    const awaited = model === null ? null : diffTab(model.tab) ? diffFor : model.comparison;
     const waits =
       awaited === null
         ? model?.comparisonComing === true
@@ -7246,6 +7285,7 @@ export function mountPullPage(container, ctx, mb) {
    */
   function wantComparison(model) {
     if (model.pull !== null && model.tab !== "files" && model.comparison !== null) {
+      // Docs reads its narrowed diff itself, and the summary is the whole comparison's.
       prefetch.want(model.comparison);
     }
   }
@@ -7341,7 +7381,7 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /** @param {ShownComparison & {branch?: {ref: string | null} | null}} comparison */
-  async function mountDiff(comparison) {
+  async function mountDiff(comparison, tab = shown?.tab ?? "files") {
     if (listening.signal.aborted) {
       return;
     }
@@ -7351,8 +7391,16 @@ export function mountPullPage(container, ctx, mb) {
     diffFor = comparison;
     changesShown = shownComparison(comparison);
     rememberChanges();
-    // The page's Diff summary waits on this diff's read now, a Retry's too (mb-onr2).
-    summaryReading(comparison);
+    // Docs is the comparison's documents alone, drawn whole: the whole comparison, which
+    // the page's Diff summary describes, is read apart from it, as on Conversation.
+    const docs = tab === "docs";
+    diffShows = docs ? "docs" : "files";
+    if (docs) {
+      prefetch.want(comparison);
+    } else {
+      // The page's Diff summary waits on this diff's read now, a Retry's too (mb-onr2).
+      summaryReading(comparison);
+    }
     const owns = () => !listening.signal.aborted && diffHost === host;
     const loading = h(
       "div",
@@ -7368,8 +7416,10 @@ export function mountPullPage(container, ctx, mb) {
     // Whether the diff read its document, which the page's Diff summary is drawn from: a
     // diff that could not leaves the summary's row empty rather than pending (mb-onr2).
     let documented = false;
+    // Whether Docs found no document, which then points the reader to Changes.
+    let emptied = false;
     try {
-      const raw = prefetch.take(comparison);
+      const raw = docs ? Promise.resolve(undefined) : prefetch.take(comparison);
       await mb.ensureKindAssets("diff");
       if (!owns()) {
         return;
@@ -7377,7 +7427,9 @@ export function mountPullPage(container, ctx, mb) {
       const view = mb.getRegisteredView("diff", "diff");
       if (!view) {
         host.textContent = "The diff plugin is unavailable.";
-        summaryUnavailable(comparison);
+        if (!docs) {
+          summaryUnavailable(comparison);
+        }
         return;
       }
       const prefetched = await raw;
@@ -7413,10 +7465,29 @@ export function mountPullPage(container, ctx, mb) {
               ...(prefetched === undefined ? {} : { raw: prefetched }),
               // The page draws the Diff summary at its top; the diff draws none (mb-pb35).
               summary: false,
-              onDocument: (document_) => {
-                documented = true;
-                showSummary(comparison, document_);
-              },
+              ...(docs
+                ? {
+                    // Docs: the documents alone, every fold open, and no File type choice.
+                    group: DOCS_GROUP,
+                    unfold: true,
+                    emptyText: "No documents changed in this pull request.",
+                    onDocument: (/** @type {unknown} */ document_) => {
+                      documented = true;
+                      emptied = noFiles(document_);
+                    },
+                  }
+                : {
+                    // The File type choice is the page's: kept while the reader is on
+                    // another tab, and gone with the page, as the diff's place is.
+                    types: diffTypes,
+                    onTypes: (/** @type {Array<string> | null} */ types) => {
+                      diffTypes = types;
+                    },
+                    onDocument: (/** @type {unknown} */ document_) => {
+                      documented = true;
+                      showSummary(comparison, document_);
+                    },
+                  }),
               ...(comparison.rendered_route === undefined
                 ? {}
                 : { markdownHoldMs: CHANGES_FIRST_SCREEN_MS }),
@@ -7429,8 +7500,13 @@ export function mountPullPage(container, ctx, mb) {
         handle?.dispose?.();
         return;
       }
-      if (!documented) {
+      if (!documented && !docs) {
         summaryUnavailable(comparison);
+      }
+      if (emptied) {
+        host
+          .querySelector(".diff-type-empty")
+          ?.append(" ", pageLink({ number, tab: "files" }, "", ["Show every change"]));
       }
       diffHandle = handle;
       watchCurrentFileAfterPaint(host, handle);
@@ -7482,17 +7558,19 @@ export function mountPullPage(container, ctx, mb) {
       if (!owns()) {
         return;
       }
-      if (!documented) {
+      if (!documented && !docs) {
         summaryUnavailable(comparison);
       }
       host.classList.remove("github-pull-diff-holding");
       const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
       retry.addEventListener("click", () => {
         if (owns()) {
-          diffMounted = mountDiff(comparison);
+          diffMounted = mountDiff(comparison, tab);
         }
       });
-      host.replaceChildren(notice("error", ["Changes could not load. ", retry]));
+      host.replaceChildren(
+        notice("error", [docs ? "Docs could not load. " : "Changes could not load. ", retry]),
+      );
     } finally {
       loading.remove();
     }
@@ -7538,9 +7616,10 @@ export function mountPullPage(container, ctx, mb) {
     if (filesRefresh !== null) {
       const displayed = filesRefresh;
       if (model.refreshing) {
-        // Returning from Conversation still has to render Files while repair runs.
-        if (diffFor === null) {
-          diffMounted = mountDiff(displayed);
+        // Returning from Conversation still has to render Files while repair runs, and
+        // moving between Changes and Docs draws the other tab's diff of the same repair.
+        if (diffFor === null || diffShows !== model.tab) {
+          diffMounted = mountDiff(displayed, model.tab);
         }
         return;
       }
@@ -7558,7 +7637,7 @@ export function mountPullPage(container, ctx, mb) {
           place?.keeper.flush();
         }
         diffMounted = mountDiff(displayed).then(() => {
-          if (!listening.signal.aborted && shown?.tab === "files" && diffFor === displayed) {
+          if (!listening.signal.aborted && diffTab(shown?.tab) && diffFor === displayed) {
             paintFiles(shown);
             place?.keeper.land();
           }
@@ -7612,7 +7691,12 @@ export function mountPullPage(container, ctx, mb) {
     }
     if (action === "mount" || action === "follow") {
       showChanges(comparison, action === "follow");
-    } else if (action === "offer") {
+    } else if (diffFor !== null && diffShows !== model.tab) {
+      // Changes and Docs are two drawings of one comparison: moving between them draws the
+      // one shown again, an earlier one the reader chose included (mb-n9ra).
+      diffMounted = mountDiff(diffFor, model.tab);
+    }
+    if (action === "offer") {
       const offer = h("button", { type: "button", class: "btn github-pull-newer" }, [
         "Show the newer changes",
       ]);
@@ -7697,7 +7781,7 @@ export function mountPullPage(container, ctx, mb) {
       // Another tab holds the body now: the conversation paints as it is when it returns.
       releaseFirstPaint("closed");
     }
-    const conversation = model.pull !== null && model.tab !== "files" && model.tab !== "checks";
+    const conversation = model.pull !== null && !diffTab(model.tab) && model.tab !== "checks";
     const key = conversation ? conversationKey(model) : null;
     const action =
       key === null
@@ -7711,8 +7795,8 @@ export function mountPullPage(container, ctx, mb) {
     // Markdown, so the title shows as soon as the record is in hand (exp-099).
     paintHeader(model);
     paintStacks(model);
-    // Conversation and Checks use the reading column. Changes uses the full pane.
-    body.classList.toggle("page-reading-column", model.pull === null || model.tab !== "files");
+    // Conversation and Checks use the reading column. Changes and Docs use the full pane.
+    body.classList.toggle("page-reading-column", model.pull === null || !diffTab(model.tab));
     if (model.pull === null) {
       disposeDiff();
       paintSummaryWait(model);
@@ -7739,7 +7823,7 @@ export function mountPullPage(container, ctx, mb) {
       bodyShows = "loading";
       return;
     }
-    if (model.tab === "files") {
+    if (diffTab(model.tab)) {
       bodyKey = "";
       bodyShows = "files";
       discussion = null;
@@ -8025,9 +8109,9 @@ export function mountPullPage(container, ctx, mb) {
               settled: false,
               cacheMiss: false,
               retryPending: false,
-              // How long the server said to wait before asking again for a read its
-              // budget refused; null for a transient failure's one retry.
-              heldMs: null,
+              // When the wait the server named for a read its budget refused ends, in
+              // `Date.now()` time; null for a transient failure's one retry.
+              heldUntil: null,
               read: null,
             }
           : null;
@@ -8052,7 +8136,7 @@ export function mountPullPage(container, ctx, mb) {
     cancelTimeline();
     const retrying = held.retryPending;
     // A wait the server's budget asked for is not the transient failure's one retry.
-    const afterHold = retrying && held.heldMs !== null;
+    const afterHold = retrying && held.heldUntil !== null;
     if (held.settled || (retrying && !providerAllowed)) {
       return;
     }
@@ -8080,8 +8164,8 @@ export function mountPullPage(container, ctx, mb) {
         // The retry budget is spent when the provider request starts, even if it is aborted.
         // A read the server's budget held spent none: it is asked for until it is read.
         held.retryPending = false;
-        held.settled = held.heldMs === null;
-        held.heldMs = null;
+        held.settled = held.heldUntil === null;
+        held.heldUntil = null;
       }
       // Commits join a conversation that is already shown, so the age line breathes for
       // them as for a refresh; nothing spins in the description card.
@@ -8149,7 +8233,7 @@ export function mountPullPage(container, ctx, mb) {
         // says, for as long as it refuses and this record's page stays.
         held.settled = false;
         held.retryPending = true;
-        held.heldMs = projection.heldMs;
+        held.heldUntil = Date.now() + projection.heldMs;
         followTimeline();
       } else if (!cachedOnly && (!retrying || afterHold) && projection?.retryable) {
         held.retryPending = true;
@@ -8163,7 +8247,12 @@ export function mountPullPage(container, ctx, mb) {
       }
     };
     if (retrying) {
-      const timer = window.setTimeout(() => void load(), held.heldMs ?? TIMELINE_RETRY_MS);
+      // A paint during a refresh ask cancels the wait (`timelineAllowed`), and the next one
+      // waits only what is left of it, so the server's minute is a period, not a minimum
+      // that each refresh ask starts again (review B3 of #737).
+      const delay =
+        held.heldUntil === null ? TIMELINE_RETRY_MS : Math.max(0, held.heldUntil - Date.now());
+      const timer = window.setTimeout(() => void load(), delay);
       read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
     } else if (typeof window.requestAnimationFrame === "function") {
       let frame = window.requestAnimationFrame(() => {
@@ -8254,7 +8343,9 @@ export function mountPullPage(container, ctx, mb) {
       isOnline: () => navigator.onLine !== false,
       // A hold's lift time as the reader's clock says it, short (`holdLiftText`).
       formatHold: (liftMs, nowMs) => holdLiftText(liftMs, nowMs),
-      ownsChanges: () => onPageRoute(window.location.pathname, number, "files"),
+      ownsChanges: () =>
+        onPageRoute(window.location.pathname, number, "files") ||
+        onPageRoute(window.location.pathname, number, "docs"),
       ownsConversation: () =>
         active &&
         mb.sourceKind() === "filesystem" &&
@@ -8507,7 +8598,9 @@ export function mountPullPage(container, ctx, mb) {
         controller.setTab("files", { settling });
       }
       wantedFile = path;
-      return landFile() ?? { kind: "no_diff", path };
+      // Still on Docs, its diff holds the documents alone: the file lands once Changes
+      // has mounted the whole comparison.
+      return (diffShows === "docs" ? null : landFile()) ?? { kind: "no_diff", path };
     },
     /**
      * Whether Files changed holds a path, typed as `scrollToFile` is: `no_diff` while no
@@ -8517,6 +8610,11 @@ export function mountPullPage(container, ctx, mb) {
      * @returns {import("../diff/diff-view.js").FileLookup | {kind: "no_diff", path: string}}
      */
     fileForPath(path) {
+      if (diffShows === "docs") {
+        // Docs holds the documents alone, so its diff cannot say a path is not in the
+        // comparison; showing one moves to Changes, which can.
+        return { kind: "no_diff", path };
+      }
       const lookup =
         /** @type {{fileForPath?: (path: string) => import("../diff/diff-view.js").FileLookup} | null} */ (
           diffHandle
