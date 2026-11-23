@@ -3354,23 +3354,29 @@ export function placeAt(tops, scrollTop) {
  * pixels of rows, and a page opened again draws it closed, so the same offset would land
  * that far into the page.
  *
- * *fileBlock* is where the place's file is now, when the page has it: the place is in that
- * block, whichever block it was. A file the page no longer has leaves the place at its index.
+ * *fileBlock* is where the place's file is now, when the page can say: the place is in
+ * that block, whichever block it was. `-1` is a page that has no such file, a newer diff
+ * the file is not in: the place is the top of the block at its index, since the offset was
+ * a line of a file that is gone. Left out, the page cannot say, as before its diff has
+ * mounted, and the place is at its index as it was.
  *
  * @param {PanePlace} place
  * @param {number[]} tops
  * @param {number} [fileBlock]
  * @returns {number | null}
  */
-export function scrollTopOf(place, tops, fileBlock = -1) {
+export function scrollTopOf(place, tops, fileBlock) {
   if (tops.length === 0) {
     return null;
   }
   if (place.block < 0) {
     return Math.min(place.top, tops[0]);
   }
-  const block = fileBlock >= 0 && fileBlock < tops.length ? fileBlock : place.block;
-  return tops[Math.min(block, tops.length - 1)] + place.offset;
+  if (fileBlock !== undefined && fileBlock >= 0 && fileBlock < tops.length) {
+    return tops[fileBlock] + place.offset;
+  }
+  const top = tops[Math.min(place.block, tops.length - 1)];
+  return fileBlock === undefined ? top + place.offset : top;
 }
 
 /**
@@ -3490,7 +3496,11 @@ export function createScrollKeeper(deps) {
     },
     /**
      * Hold a place the page chose for the reader, as a landing's is held: where they were in
-     * a diff that Changes replaced. Written at once, so a reload lands there too.
+     * a diff that Changes is about to replace. Written at once, so a reload lands there
+     * too, and put when the page next changes height, which is the new diff arriving: the
+     * page is asked for nothing now, while it still shows the diff being replaced, and a
+     * scroll before then, the emptied pane's clamp to its top, is the hold's and writes
+     * nothing.
      *
      * @param {PanePlace} place
      */
@@ -3502,7 +3512,6 @@ export function createScrollKeeper(deps) {
       cancelSettle();
       holding = place;
       deps.write(place);
-      hold();
     },
     /** The page changed height. */
     contentChanged() {
@@ -3675,18 +3684,41 @@ export function followedNote(from, to) {
 
 /**
  * What a history entry remembers of Changes, read back from `history.state`, or null for
- * anything else. Pure.
+ * anything else: the comparison it showed, the one its note named, and whether the one
+ * shown is the earlier diff the reader went back to. Pure.
  *
  * @param {unknown} value
- * @returns {{shown: ShownComparison, from: ShownComparison | null} | null}
+ * @returns {{shown: ShownComparison, from: ShownComparison | null, chosen: boolean} | null}
  */
 export function rememberedChanges(value) {
-  const memory = /** @type {{shown?: unknown, from?: unknown} | null} */ (value);
+  const memory = /** @type {{shown?: unknown, from?: unknown, chosen?: unknown} | null} */ (value);
   if (typeof value !== "object" || memory === null) {
     return null;
   }
   const shown = shownComparison(memory.shown);
-  return shown === null ? null : { shown, from: shownComparison(memory.from) };
+  return shown === null
+    ? null
+    : { shown, from: shownComparison(memory.from), chosen: memory.chosen === true };
+}
+
+/**
+ * The earlier diff a reader went back to, which a page loaded again on the entry shows in
+ * place of the record's, or null. Pure.
+ *
+ * The choice stays until the reader takes the newer changes, and on a repository URL every
+ * later push reloads the page, so the entry holds it. A record that names the remembered
+ * commits again has nothing earlier to show.
+ *
+ * @param {{shown: ShownComparison, chosen: boolean} | null} memory
+ * @param {{left: string, right: string}} comparison The record's.
+ * @returns {ShownComparison | null}
+ */
+export function chosenEarlier(memory, comparison) {
+  if (memory === null || !memory.chosen) {
+    return null;
+  }
+  const { shown } = memory;
+  return shown.left === comparison.left && shown.right === comparison.right ? null : shown;
 }
 
 /**
@@ -6524,6 +6556,8 @@ export function mountPullPage(container, ctx, mb) {
   let changesFrom = null;
   /** Whether the reader went back to the diff shown, which then stays (`filesAction`). */
   let changesChosen = false;
+  /** Whether the keeper holds the place of a diff the one mounting replaces. */
+  let keptThrough = false;
 
   function disposeDiff() {
     cancelCurrentFileBridge();
@@ -7177,28 +7211,48 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
+  /** What this history entry remembers of Changes, for a page first mounting a diff on it. */
+  function entryMemory() {
+    // The entry's memory is kept with its place: by a page in the pane that scrolls.
+    return changesShown === null && pane !== null
+      ? rememberedChanges(window.history.state?.[CHANGES_KEY])
+      : null;
+  }
+
+  /**
+   * Hold the reader's place through a diff's replacement, in its file where the next diff
+   * has it. Held and written before the body is emptied: the pane then clamps to its top,
+   * which arrives as a scroll, and with nothing held that top would be written as the
+   * reader's place for as long as the next comparison takes to read, where the reload a
+   * followed pin makes would land on it (A3 of review A on #745).
+   */
+  function keepPlaceThrough() {
+    if (place !== null) {
+      place.keeper.holdAt(place.measure());
+      keptThrough = true;
+    }
+  }
+
   /**
    * Mount the record's comparison in Changes. One that replaces another diff, the one shown
    * or the one this history entry showed when the page was last loaded, is noted
-   * (`followedNote`). *keep* holds the reader's place through the replacement, in its file
-   * where the new diff has it.
+   * (`followedNote`). *keep* holds the reader's place through the replacement.
    *
    * @param {NonNullable<PullModel["comparison"]>} comparison
    * @param {boolean} keep
    */
   function showChanges(comparison, keep) {
-    // The entry's memory is kept with its place: by a page in the pane that scrolls.
-    const memory =
-      changesShown === null && pane !== null
-        ? rememberedChanges(window.history.state?.[CHANGES_KEY])
-        : null;
+    const memory = entryMemory();
     changesFrom = followedFrom(
       changesShown ?? memory?.shown ?? null,
       changesFrom ?? memory?.from ?? null,
       comparison,
     );
     changesChosen = false;
-    diffMounted = mountDiff(comparison, keep ? (place?.measure() ?? null) : null);
+    if (keep) {
+      keepPlaceThrough();
+    }
+    diffMounted = mountDiff(comparison);
   }
 
   /** The way back a followed diff's note offers: the diff it replaced, which then stays. */
@@ -7211,7 +7265,24 @@ export function mountPullPage(container, ctx, mb) {
     changesChosen = true;
     // An explicit choice of the earlier diff ends an older repair's hold on Changes.
     filesRefresh = null;
-    diffMounted = mountDiff(earlier, place?.measure() ?? null);
+    keepPlaceThrough();
+    diffMounted = mountDiff(earlier);
+  }
+
+  /**
+   * On a page loaded again on its entry: the earlier diff the reader had gone back to,
+   * mounted in place of the record's, so the choice outlives the reload each later push
+   * makes on a repository URL (`chosenEarlier`). The landing holds the place.
+   *
+   * @param {NonNullable<PullModel["comparison"]>} comparison
+   */
+  function restoreChosen(comparison) {
+    const earlier = chosenEarlier(entryMemory(), comparison);
+    if (earlier !== null) {
+      changesFrom = null;
+      changesChosen = true;
+      diffMounted = mountDiff(earlier);
+    }
   }
 
   /** What this entry's Changes shows, for a page loaded again on it (`rememberedChanges`). */
@@ -7219,17 +7290,17 @@ export function mountPullPage(container, ctx, mb) {
     // History can move on before this page is told, as for a place (`keepPlace`).
     if (pane !== null && onPageRoute(window.location.pathname, number, "files")) {
       window.history.replaceState(
-        { ...window.history.state, [CHANGES_KEY]: { shown: changesShown, from: changesFrom } },
+        {
+          ...window.history.state,
+          [CHANGES_KEY]: { shown: changesShown, from: changesFrom, chosen: changesChosen },
+        },
         "",
       );
     }
   }
 
-  /**
-   * @param {ShownComparison & {branch?: {ref: string | null} | null}} comparison
-   * @param {PanePlace | null} [keepAt] Where the reader was in the diff this one replaces.
-   */
-  async function mountDiff(comparison, keepAt = null) {
+  /** @param {ShownComparison & {branch?: {ref: string | null} | null}} comparison */
+  async function mountDiff(comparison) {
     if (listening.signal.aborted) {
       return;
     }
@@ -7325,13 +7396,15 @@ export function mountPullPage(container, ctx, mb) {
       // Landed before the wait, so the first screen the Markdown layer reports is the one the
       // reader lands on: a file the address names, not the top of the diff.
       if (landFile() === null) {
-        if (keepAt !== null) {
-          place?.keeper.holdAt(keepAt);
-        } else {
-          // A landing's hold can find its file now that the diff says where each one is.
-          place?.keeper.contentChanged();
-        }
+        // A held place, a landing's or one kept through a replaced diff, can find its file
+        // now that the diff says where each one is.
+        place?.keeper.contentChanged();
+      } else if (keptThrough) {
+        // The file the reader asked for is where they are now: a place kept through the
+        // replaced diff gives way to it, as it did when it was held only from here.
+        place?.keeper.readerMoved();
       }
+      keptThrough = false;
       const firstScreen = /** @type {{firstScreen?: () => Promise<void>} | null} */ (handle)
         ?.firstScreen;
       if (holds && typeof firstScreen === "function") {
@@ -7455,6 +7528,9 @@ export function mountPullPage(container, ctx, mb) {
       // Let the current route render normally instead of restoring the older repair.
     }
     const comparison = model.comparison;
+    if (diffFor === null && comparison !== null) {
+      restoreChosen(comparison);
+    }
     const action = filesAction(diffFor, comparison, changesChosen);
     if (comparison === null || action === "unavailable") {
       disposeDiff();
@@ -8241,10 +8317,12 @@ export function mountPullPage(container, ctx, mb) {
         /** @type {{pathForSection?: (section: Element) => string | null} | null} */ (
           diffHandle
         )?.pathForSection?.(block) ?? null,
-      sectionOf: (path) =>
-        /** @type {{sectionForPath?: (path: string) => Element | null} | null} */ (
+      sectionOf(path) {
+        const section = /** @type {{sectionForPath?: (path: string) => Element | null} | null} */ (
           diffHandle
-        )?.sectionForPath?.(path) ?? null,
+        )?.sectionForPath;
+        return typeof section === "function" ? section(path) : undefined;
+      },
     });
     place.keeper.land();
   }
@@ -8421,9 +8499,10 @@ export function mountPullPage(container, ctx, mb) {
  * @param {HTMLElement} body
  * @param {() => string} tab
  * @param {number} number
- * @param {{pathOf(block: Element): string | null, sectionOf(path: string): Element | null}} files
+ * @param {{pathOf(block: Element): string | null, sectionOf(path: string): Element | null | undefined}} files
  *   Which changed file a block of Changes is, and the block of a file, as the mounted diff
- *   says, so a place there is its file's whichever diff shows it (`PanePlace`).
+ *   says, so a place there is its file's whichever diff shows it (`PanePlace`). *sectionOf*
+ *   answers null for a file the diff lacks and undefined while no diff can say.
  */
 function keepPlace(pane, body, tab, number, files) {
   const blocks = () => Array.from(body.querySelectorAll(PLACE_BLOCKS));
@@ -8451,8 +8530,12 @@ function keepPlace(pane, body, tab, number, files) {
     measure,
     apply(place) {
       const of = blocks();
-      const section = place.file === undefined ? null : files.sectionOf(place.file);
-      const top = scrollTopOf(place, tops(of), section === null ? -1 : of.indexOf(section));
+      const section = place.file === undefined ? undefined : files.sectionOf(place.file);
+      const top = scrollTopOf(
+        place,
+        tops(of),
+        section === undefined ? undefined : section === null ? -1 : of.indexOf(section),
+      );
       if (top === null) {
         return false;
       }
