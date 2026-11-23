@@ -336,7 +336,7 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
         ),
     ]
     # Diff file bar: renderFileBar in the diff plugin, inside its host.
-    toggle = el(
+    toggle = box(
         "diff-file-toggle expanded",
         box("diff-file-chevron"),
         text("diff-file-kind diff-file-kind-modified"),
@@ -344,16 +344,23 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
         text("diff-file-stats", el("diff-stat-add"), el("diff-stat-del")),
         text("diff-file-note"),
     )
-    bar = el(
-        "diff-file-bar",
-        toggle,
-        # The View file or View on branch control: a box at the path's size, which centering
-        # puts on its baseline.
+    # The bar is two groups, each a centered row of boxes, and a box in the bar itself: the
+    # name's, the toggle with the copy control beside it, and its end's, a file's
+    # Rendered | Source chooser behind its progress mark (`add` in diff-markdown.js) and
+    # then the View file or View on branch control, a box at the path's size, which
+    # centering puts on its baseline.
+    lead = box("diff-file-lead", toggle, box("icon-btn icon-btn-reveal diff-file-copy"))
+    end = box(
+        "diff-file-end",
+        box("diff-markdown-progress"),
+        box("diff-markdown-control"),
         box("diff-file-view"),
-        box("icon-btn icon-btn-reveal diff-file-copy"),
     )
+    bar = el("diff-file-bar diff-file-bar-markdown", lead, end)
     el("content-body metabrowser-diff-host", el("diff-file", bar))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
+    rows.append(("Diff file bar", f"{diff_host} .diff-file-lead", lead))
+    rows.append(("Diff file bar", f"{diff_host} .diff-file-end", end))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-bar", bar))
     # Pull request row: buildRow in the GitHub plugin's pulls-panel.js. The chevron and the
     # state icon are boxes on the first line, centered, beside the number's line and the age,
@@ -544,6 +551,63 @@ def test_row_targets_share_the_hover_token() -> None:
     assert "background: var(--hover-bg);" in _rule(
         diff_css, ".metabrowser-diff-host .diff-file-bar:hover"
     )
+
+
+def test_diff_file_bar_keeps_copy_by_the_name_and_its_controls_at_its_end() -> None:
+    """A diff's file bar is two groups: the name with Copy path beside it, then its controls.
+
+    ``tests/dom/diff-view-behavior.js`` and ``tests/dom/diff-markdown-behavior.js`` hold what
+    each group contains, in order. Where they sit is layout, and these declarations are what
+    put them there (docs/design-system.md, "Diff File Bar"; mb-leg0). In headless Chrome, on
+    a pull request's Changes and a commit's page, in bars from 159 to 1,063 px wide, Copy
+    path started the name's group's gap after the toggle and the end group ended at the
+    bar's end pad on every bar, with no control cut off.
+    """
+
+    diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(
+        encoding="utf-8"
+    )
+    host = ".metabrowser-diff-host"
+    # The name's group and the toggle in it take their content's width and give way before
+    # anything else does, so Copy path sits right after the name at any width and a long
+    # path is cut short with the control still beside it.
+    for selector in (".diff-file-lead", ".diff-file-toggle"):
+        rule = _rule(diff_css, f"{host} {selector}")
+        assert "flex: 0 1 auto;" in rule, f"{selector} grows or keeps its width"
+        assert "min-width: 0;" in rule, f"{selector} cannot give way to a long path"
+    assert "flex: none;" in _rule(diff_css, f"{host} .diff-file-copy")
+    # The end group keeps its width, and its start margin takes the bar's free space, which
+    # holds it at the bar's end on a line of its own too.
+    end = _rule(diff_css, f"{host} .diff-file-end")
+    assert "flex: none;" in end
+    assert "margin-inline-start: auto;" in end
+    # Only a bar with a Rendered | Source chooser wraps, and its end group, where it alone is
+    # wider than the bar, wraps too, with each line at the bar's end.
+    assert "flex-wrap" not in _rule(diff_css, f"{host} .diff-file-bar")
+    assert "flex-wrap: wrap;" in _rule(diff_css, f"{host} .diff-file-bar-markdown")
+    wrapping_end = _rule(diff_css, f"{host} .diff-file-bar-markdown .diff-file-end")
+    assert "flex: 0 1 auto;" in wrapping_end
+    assert "flex-wrap: wrap;" in wrapping_end
+    assert "justify-content: flex-end;" in wrapping_end
+    # Copy path shows while the pointer is on the bar or the keyboard's focus is in it, the
+    # reveal contract of every `.icon-btn-reveal` ("Copyable Identifiers Use One Delegate"),
+    # and through its own "Copied!", as a file header's does. The focus is `:focus-visible`:
+    # in headless Chrome a mouse press on the name focused the disclosure, and under
+    # `:focus-within` the control stayed at full opacity with the pointer off the bar.
+    reveal = (
+        f"{host} .diff-file-bar:hover .diff-file-copy,\n"
+        f"{host} .diff-file-bar:has(:focus-visible) .diff-file-copy,\n"
+        f"{host} .diff-file-copy.copied {{\n"
+        "  opacity: 1;\n"
+        "  pointer-events: auto;\n"
+        "}"
+    )
+    assert reveal in diff_css, "the bar no longer reveals Copy path on hover and keyboard focus"
+    assert ":focus-within .diff-file-copy" not in diff_css, (
+        "a press on a bar's name would hold Copy path shown"
+    )
+    copied = f"{host} .diff-file-copy.copied {{\n  color: var(--status-success-text);\n}}"
+    assert copied in diff_css, "a copied path no longer shows in the success ink"
 
 
 def test_preview_navigation_arrival_motion_is_shared_and_reduced_motion_safe() -> None:

@@ -11,8 +11,8 @@
 //
 // 1. The tab and its key on the real shell: Guided PR leads the bar on a pull request whose
 //    description has a guide and is its front page, opened by the description; Conversation
-//    has its own address, where the guide's block is a card; D opens the guide once the page
-//    has attached its keys; and on one with no guide there is no tab and D opens nothing.
+//    has its own address, where the guide's block is a card; R opens the guide once the page
+//    has attached its keys; and on one with no guide there is no tab and R opens nothing.
 // 2. An excerpt's rows after the shell's highlighter has run over the page. The shell highlights
 //    every `pre code` that does not carry `no-highlight` (`highlightCode` in app.js), one row at a
 //    time as a one-line snippet, which gave each row a padded, gray block of its own inside the
@@ -84,7 +84,7 @@ try {
     await chrome.send("Input.dispatchKeyEvent", { type: "keyDown", text: key, ...code });
     await chrome.send("Input.dispatchKeyEvent", { type: "keyUp", ...code });
   };
-  const pressD = () => press("d");
+  const pressR = () => press("r");
   const settled = (title) =>
     waitFor(
       `document.querySelector(".github-pull-guide-step .github-pull-guide-title")?.textContent === ${JSON.stringify(title)}`,
@@ -101,12 +101,13 @@ try {
 
   // 1. A pull request with a guide: the tab leads the bar once its record is in, its front
   // page is the guide, opened by the description, and Conversation has an address of its own,
-  // where the description's block is a card. D opens the guide once the page has its keys.
+  // where the description's block is a card. R opens the guide once the page has its keys.
   await go("/pull/7");
   await waitFor(`${GUIDE_TAB} !== undefined`);
   same("the tabs of a pull request with a guide", await evaluate(TABS), [
     "Guided PR",
     "Conversation",
+    "Docs",
     "Changes",
     "Checks",
   ]);
@@ -143,7 +144,7 @@ try {
       `!document.querySelector(".github-pull-text").textContent.includes("softschema")`,
     ),
   );
-  await pressD();
+  await pressR();
   await waitFor(`location.pathname === "/pull/7/guided"`);
   await settled("Start with the count");
 
@@ -221,7 +222,7 @@ try {
     "/pull/7/files/docs/new.md",
   );
 
-  // 1. A pull request with none: no tab, D opens nothing, and its address says so in place.
+  // 1. A pull request with none: no tab, R opens nothing, and its address says so in place.
   await go("/pull/10");
   await waitFor(`document.querySelectorAll(".github-pull .tab-btn").length >= 3`);
   await waitFor(
@@ -229,12 +230,13 @@ try {
   );
   same("the tabs of a pull request with no guide", await evaluate(TABS), [
     "Conversation",
+    "Docs",
     "Changes",
     "Checks",
   ]);
-  await pressD();
+  await pressR();
   await evaluate("new Promise((resolve) => setTimeout(resolve, 500))");
-  same("D opens nothing there", await evaluate("location.pathname"), "/pull/10");
+  same("R opens nothing there", await evaluate("location.pathname"), "/pull/10");
   await go("/pull/10/guided");
   same("its guided address says so", await said(), "This pull request has no guide.");
   check("and keeps the tab it was asked for", (await evaluate(TABS)).includes("Guided PR"));

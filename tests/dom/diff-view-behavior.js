@@ -38,6 +38,14 @@ class FakeClassList {
     this.owner.className = [...set].join(" ");
   }
 
+  add(...names) {
+    const set = this._set();
+    for (const name of names) {
+      set.add(name);
+    }
+    this._write(set);
+  }
+
   toggle(name, force) {
     const set = this._set();
     const want = force === undefined ? !set.has(name) : force;
@@ -811,6 +819,12 @@ async function headLinkChecks(mountDiffView, byName) {
     before(...nodes) {
       this.#insert(0, nodes);
     }
+    prepend(...nodes) {
+      for (const node of nodes) {
+        node.parentNode = this;
+      }
+      this.children.unshift(...nodes);
+    }
     #insert(offset, nodes) {
       const siblings = this.parentNode.children;
       const at = siblings.indexOf(this) + offset;
@@ -974,6 +988,25 @@ async function headLinkChecks(mountDiffView, byName) {
     for (let turn = 0; turn < 20; turn += 1) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
+    // The bar the production view builds for a rendered file: the name's group, the
+    // disclosure and its copy control, then the group at the bar's end, the chooser
+    // behind its progress mark. This document offers no View file control, which would
+    // follow the chooser (tests/dom/diff-markdown-behavior.js).
+    const [fileBar] = container.find("diff-file-bar");
+    const groups = fileBar.children.map((group) =>
+      group.children.map((child) => String(child.className).split(" ").at(-1)),
+    );
+    check(
+      "a rendered file's bar puts copy beside the name and the chooser at its end",
+      JSON.stringify(fileBar.children.map((group) => group.className)) ===
+        JSON.stringify(["diff-file-lead", "diff-file-end"]) &&
+        JSON.stringify(groups) ===
+          JSON.stringify([
+            ["expanded", "diff-file-copy"],
+            ["diff-markdown-progress", "diff-markdown-control"],
+          ]),
+      JSON.stringify(groups),
+    );
     const drawn = () =>
       container.querySelectorAll("a").filter((link) => link.closest(".diff-markdown") !== null);
     const toHead = drawn().filter((link) => (link.getAttribute("href") ?? "").startsWith("/view/"));
@@ -992,6 +1025,67 @@ async function headLinkChecks(mountDiffView, byName) {
     );
     handle.dispose();
     check("disposal lets the page's pin-change news go", pinChanged === null);
+
+    // A Markdown file whose changes did not load has the chooser too: Source is chosen,
+    // Rendered is unavailable for the reason the file's body gives, and no projection is
+    // asked for it (mb-rm40).
+    const unread = structuredClone(byName.get("added-text-file"));
+    unread.manifest.files[0].availability = "too_large";
+    unread.patches = {};
+    const choosers = [];
+    const asked = requested.length;
+    const unreadContainer = new MarkupElement("div");
+    const unreadHandle = mountDiffView(
+      unreadContainer,
+      unread,
+      {
+        filterControls: {
+          groupHtml(spec) {
+            if (String(spec.label).endsWith(" diff format")) {
+              choosers.push(spec);
+            }
+            return "";
+          },
+          bind: () => () => {},
+        },
+        ensureAsset: async () => {},
+      },
+      {
+        viewFile,
+        markdownViews,
+        renderMarkdown: async (fileId) => {
+          requested.push(fileId);
+          return null;
+        },
+        markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
+        markdownHoldMs: 0,
+      },
+    );
+    for (const observer of observers) {
+      observer.callback(
+        [...observer.targets].map((target) => ({ target, isIntersecting: true })),
+        observer,
+      );
+    }
+    for (let turn = 0; turn < 20; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const chooser = choosers.at(-1);
+    const said = unreadContainer
+      .querySelectorAll("div")
+      .filter((node) => node.className === "diff-availability")
+      .map((node) => node.textContent);
+    check(
+      "a Markdown file whose changes did not load keeps its chooser, Rendered unavailable for the reason its body gives",
+      chooser?.value === "source" &&
+        chooser.options[0].value === "rendered" &&
+        chooser.options[0].tip === "This change is too large to show inline." &&
+        chooser.options[1].tip === undefined &&
+        said.includes("This change is too large to show inline.") &&
+        requested.length === asked,
+      JSON.stringify({ choosers, said, requested }),
+    );
+    unreadHandle.dispose();
   } finally {
     global.document = saved.document;
     global.window = saved.window;
@@ -1563,6 +1657,23 @@ async function main() {
     copy.getAttribute("data-mb-copy-text") === "a.py",
   );
   check("copy control is an icon button", copy.classList.contains("icon-btn"));
+  // The bar is two groups: what names the file, the disclosure with the copy control
+  // right after it, and the controls at its end, here none.
+  const bar = container.find("diff-file-bar")[0];
+  const [lead, end] = bar.children;
+  check(
+    "the bar leads with the name's group and ends with its controls' group",
+    bar.children.length === 2 &&
+      lead.classList.contains("diff-file-lead") &&
+      end.classList.contains("diff-file-end"),
+    JSON.stringify(bar.children.map((child) => child.className)),
+  );
+  check(
+    "copy control sits right after the disclosure, beside the name",
+    lead.children.length === 2 && lead.children[0] === toggle && lead.children[1] === copy,
+    JSON.stringify(lead.children.map((child) => child.className)),
+  );
+  check("a bar with nowhere to go ends with no control", end.children.length === 0);
   check(
     "stats sit beside the filename",
     toggle.children[2].classList.contains("diff-file-path") &&
@@ -1577,7 +1688,6 @@ async function main() {
 
   // The whole bar is one activation surface: bar clicks toggle, the
   // button's own (bubbled) click toggles, the copy control does not.
-  const bar = container.find("diff-file-bar")[0];
   bar.click();
   check("bar click collapses the body", body.classList.contains("diff-file-body-collapsed"));
   check("collapse flips aria-expanded", toggle.getAttribute("aria-expanded") === "false");
@@ -1934,6 +2044,25 @@ async function main() {
   check(
     "restored split fold stays visible",
     !switchingFold.find("diff-fold-group")[0].classList.contains("diff-fold-collapsed"),
+  );
+
+  // Unfolded, as a pull request's Docs tab draws, a long run is drawn open; one the reader
+  // closes stays closed when a layout change draws the file again.
+  const unfolded = new FakeElement("div");
+  mountDiffView(unfolded, longDoc, layoutApi, { unfold: true });
+  await nextTask();
+  check(
+    "an unfolded diff draws its long run open",
+    unfolded.find("diff-fold-control")[0].getAttribute("aria-expanded") === "true",
+  );
+  unfolded.find("diff-fold-control")[0].click();
+  await nextTask();
+  layoutChange("diff-layout", "unified", "one");
+  layoutChange("diff-layout", "split", "one");
+  await nextTask();
+  check(
+    "a fold the reader closed stays closed when the file is drawn again",
+    unfolded.find("diff-fold-control")[0].getAttribute("aria-expanded") === "false",
   );
 
   // Deferred data and syntax share one mount lifetime. Layout changes

@@ -387,7 +387,7 @@ a pull request, and a commit.
 | 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
 | 2. Heading row | The navigation row’s icon for its type, and its name and the metadata after it | The folder icon, or at the root its [kind mark](#source-kind-marks), and its name and the metadata after it | Its state icon, its title, and its number | The commit icon, its subject (planned) |
 | 3. Metadata | Its badges, size, and age, after its name | Its size, file count, and age, after its name | Its author line, branches, and ages, lines under the title ([Page Headers](#page-headers)) | Its author, revision, and age, lines under the title ([Page Headers](#page-headers)) |
-| 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Guided PR when present, then Conversation, Changes, and Checks | None |
+| 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Guided PR when present, then Conversation, Docs, Changes, and Checks | None |
 | The corner | [View on GitHub](#view-on-github) | The same | The same | The same |
 
 Files and folders draw these parts today (`viewHeaderHtml` in `static/view-header.js`,
@@ -1282,8 +1282,11 @@ Build a chip group with `metabrowser.filterControls.groupHtml` and `bind`, inclu
 outside a filter bar: an exclusive choice is the same control whatever it chooses.
 A consumer may repaint the group from its state on every change, and `bind` puts focus
 back on the chosen chip, so the arrow keys keep working.
-Show a Rendered | Source chooser only for a file with both formats available.
-A file that falls back permanently to Source has no format chooser.
+Every changed file of a rendered format has a Rendered | Source chooser, whatever its
+size and whatever the server answers.
+Where only Source can be shown, Rendered keeps its place, dimmed and `aria-disabled`,
+and its tooltip and accessible name say why: a disabled button takes no pointer and no
+focus, so nothing could say it.
 
 `test_a_toggle_cannot_fork_the_family` fails when a stylesheet or a source states a
 toggle’s ARIA outside this family, and
@@ -1509,7 +1512,7 @@ unsettled rather than consistently offset.
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | Pull request row, in [the Pulls tab](#the-pulls-tab) | The title, alone on the first line; the number’s line and the age, on the second | State icon, on the first line; chevron, on the change line |
-| Diff file bar | Change letter, path, change stats, and notes | Chevron, a Markdown, YAML, or JSON file’s **Rendered** \| **Source** chooser, View file or View on branch control, copy button |
+| Diff file bar | Change letter, path, change stats, and notes | Chevron, copy button, a Markdown, YAML, or JSON file’s **Rendered** \| **Source** chooser and its spinner, View file or View on branch control |
 
 The row keeps `align-items: center`, and each text child opts in with
 `align-self: baseline`. A box aligned to the baseline would sit its bottom edge on the
@@ -1530,9 +1533,12 @@ capitals. A run’s status badge is one, for Running, Live, Done, Failed, and Ru
 and a pull request’s state badge is another; `tests/dom/github-pull-header-chrome.mjs`
 checks both in Chrome.
 
-The diff file bar’s View file or View on branch control is a box beside the toggle, not
-text inside it, so it is set at the path’s own size and line height: text of one size
-and one line height centers onto one baseline.
+The diff file bar’s View file or View on branch control is a box at the bar’s end, not
+text inside the toggle, so it is set at the path’s own size and line height: text of one
+size and one line height centers onto one baseline.
+The bar’s two groups ([Diff File Bar](#diff-file-bar)) are centered rows of boxes too,
+and each is centered in the bar, so the toggle and the control still share the bar’s
+center.
 
 Two rows are deliberately not in the table.
 A [view header](#view-headers)’s eyebrow sets its text at one size and centers it.
@@ -2424,19 +2430,30 @@ control copies the path as it is.
 
 The diff view’s per-file bar is **a row, not a heading disclosure**: it leads with the
 same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
-`expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, hovers with
-`--hover-bg`, and reveals its `[data-mb-copy]` copy control on row hover or focus: the
-file-header copy affordance, present wherever a filename is.
-Its content is left-aligned reading order (chevron, kind letter, filename in the shell’s
-file-path typography, then the stat pair beside the name), and the whole bar is one
-activation surface, the folder-row rule applied to a section header: clicking anywhere
-toggles, with only the copy control, the View file or View on branch control, and a
-Markdown file’s **Rendered** | **Source** chooser opting out.
+`expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, and hovers with
+`--hover-bg`.
+
+The bar is two groups.
+It leads with what names the file, in left-aligned reading order: chevron, kind letter,
+filename in the shell’s file-path typography, the stat pair beside the name, and any
+note, then the `[data-mb-copy]` copy control right after them, the file-header copy
+affordance, present wherever a filename is.
+The bar reveals the copy control while the pointer is on it or the keyboard’s focus is
+in it; unseen, the control keeps its place, so nothing moves when it shows.
+The bar ends with what shows the file another way: a Markdown file’s **Rendered** |
+**Source** chooser, then the View file or View on branch control.
+A long path is cut short on one line with its copy control still beside it.
+
+The whole bar is one activation surface, the folder-row rule applied to a section
+header: clicking anywhere toggles, with only the copy control, the View file or View on
+branch control, and the Rendered | Source chooser opting out.
 On a pull request’s Changes, a changed Markdown file’s bar carries that chooser, a
-joined chip pair, after the chevron, and beside it a small spinner that keeps its place
-in the bar and appears only after the loading-state delay while the rendered view is on
-its way. A file that falls back permanently to Source loses the chooser and the spinner,
-and its bar lays out as any other file’s, with a long path truncated on one line.
+joined chip pair, and before it a small spinner that keeps its place in the bar and
+appears only after the loading-state delay while the rendered view is on its way.
+Such a bar wraps where its two groups do not fit one line: the name’s group keeps the
+first line, and the group at the bar’s end takes the next, still at the bar’s end.
+A file that falls back permanently to Source loses the chooser and the spinner, and its
+bar lays out as any other file’s, with a long path truncated on one line.
 Where the main UI can show the file the change makes, the bar ends with one quiet text
 action that opens it there, with the tree, the tabs, and the ref selector around it:
 **View file** on a commit’s diff, at the commit, and **View on branch** on a pull
@@ -2517,6 +2534,22 @@ opens under it with no line between them, as it does at a page’s top.
 The toolbar is not sticky, so nothing scrolls under it that a rule would separate.
 `tests/dom/diff-summary-chrome.mjs` reads in Chrome that a patch’s toolbar and a
 commit’s draw no rule and that the first card starts 12 px below them.
+
+### Diff File Type Control
+
+A diff of more than one file leads its layout control with the Files tab’s **File type**
+menu: the same [menu](#overlays-menus-and-dialogs) built by the same code
+(`filterControls.typeMenu`), with **Any type** first, then the Groups and each display
+group’s families, then the extensions most numerous first, each with how many of the
+comparison’s changed files it holds.
+Choosing types narrows the diff to their files and adds a muted note, “12 of 35 files”,
+and **Clear** after the menu; the [Diff summary](#diff-summary) still describes the
+whole change set. A choice shows in the menu at once, with the control `aria-busy` until
+its files arrive, so there is no spinner; a choice that keeps no file says so in muted
+text where the files would be, and one whose files do not load says so in an error
+[notice](#notices) at the toolbar’s height, an alert.
+`Y` opens the menu (`diff.type-filter`). `builtin_plugins/diff/diff-type-filter.js`
+holds the behavior, and `tests/dom/diff-type-filter-session.js` its session.
 
 ## The Pull Request Page
 

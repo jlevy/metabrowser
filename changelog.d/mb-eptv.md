@@ -1,1 +1,0 @@
-- Cloud mirrors use a folder with a cloud overlay in the browser and native Mac menus.

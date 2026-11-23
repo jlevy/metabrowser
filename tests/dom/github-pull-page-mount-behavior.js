@@ -1404,7 +1404,7 @@ async function tabKeys(page) {
       .map((command) => command.bindings.visible.join(""))
       .join(" ");
   const live = () =>
-    ["conversation", "files", "guided", "checks"].filter((id) =>
+    ["conversation", "docs", "files", "guided", "checks"].filter((id) =>
       registry.isLive(`plugin.github.pull.tab.${id}`),
     );
   /** Press `key`, and say what the page did: the route it opened, or the tab now shown. */
@@ -1565,8 +1565,8 @@ async function tabKeys(page) {
   steps.push(`the next read answers and paintHeader puts the column back: ${keyed().join(", ")}`);
   steps.push(`live: ${live().join(" ")}`);
   steps.push(result("g"));
-  // Guided PR is a tab only where the description opens a `guided-pr` fence, and D is its
-  // key: the link joins the bar between Changes and Checks when a record brings the fence,
+  // Guided PR is a tab only where the description opens a `guided-pr` fence, and R is its
+  // key (Docs holds D): the link leads the bar when a record brings the fence,
   // and leaves it when a record no longer has one, unless it is the tab shown. The key
   // waits while the link is out of the page, and the link's return retargets it, which is
   // what badges it at once while Shift is held. The page cannot tell a block from an example
@@ -1583,11 +1583,11 @@ async function tabKeys(page) {
   answer = described(1, "Counts to two.");
   await elapse();
   steps.push(`no block in the description: ${keyed().join(", ")}; live ${live().join(" ")}`);
-  steps.push(result("d"));
+  steps.push(result("r"));
   answer = described(2, GUIDE);
   await elapse();
   steps.push(`a block in the description: ${keyed().join(", ")}; live ${live().join(" ")}`);
-  steps.push(result("d"));
+  steps.push(result("r"));
   arrive("guided");
   steps.push(`the route arrives: ${shown()}`);
   answer = described(3, "Counts to two.");
@@ -1595,13 +1595,13 @@ async function tabKeys(page) {
   steps.push(`the block leaves while its tab is shown: ${keyed().join(", ")}; ${shown()}`);
   arrive("");
   await settle();
-  steps.push(`back on Conversation: ${keyed().join(", ")}; ${result("d")}`);
+  steps.push(`back on Conversation: ${keyed().join(", ")}; ${result("r")}`);
   registry.setRevealed(true);
   answer = described(4, GUIDE);
   await elapse();
   steps.push(`the block returns while Shift is held: badges ${badged().join(", ")}`);
   registry.setRevealed(false);
-  steps.push(result("d"));
+  steps.push(result("r"));
   arrive("");
   answer = described(5, EXAMPLE);
   await elapse();
@@ -3455,6 +3455,7 @@ async function run() {
         .map((tab) => [tab.textContent, tab.getAttribute("href")]),
       [
         ["Conversation", "/pull/7"],
+        ["Docs", "/pull/7/docs"],
         ["Changes", "/pull/7/files"],
         ["Checks", "/pull/7/checks"],
       ],

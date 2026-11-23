@@ -754,12 +754,12 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # corner's button, is not numbered (mb-4wqh).
         "tabKeys": [
             "before the record, the tab column in the page: "
-            "Conversation C, Changes G, Checks E; live conversation files checks",
+            "Conversation C, Docs D, Changes G, Checks E; live conversation docs files checks",
             "C: showed Conversation",
             "G: opened the files route",
             "the record arrives and paintHeader keeps the column: "
-            "Conversation C, Changes G, Checks E",
-            "live: conversation files checks",
+            "Conversation C, Docs D, Changes G, Checks E",
+            "live: conversation docs files checks",
             "numbered: 1 Browse code",
             "1: POST /api/source/pin "
             '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head",'
@@ -797,37 +797,37 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "Ctrl+G: not handled",
             "staged inert: G: not handled",
             "committed: G: opened the files route",
-            "disposed: Conversation none, Changes none, Checks none; keys none; G: not handled",
+            "disposed: Conversation none, Docs none, Changes none, Checks none; keys none; G: not handled",
             "a failed first read takes the column out: live none",
             "G: not handled",
             "on Changes, Shift held while it is out: badges none",
             "the next read answers, and the returning tabs are badged: "
-            "Conversation C, Changes G, Checks E",
+            "Conversation C, Docs D, Changes G, Checks E",
             "the next read answers and paintHeader puts the column back: "
-            "Conversation C, Changes G, Checks E",
-            "live: conversation files checks",
+            "Conversation C, Docs D, Changes G, Checks E",
+            "live: conversation docs files checks",
             "G: showed Changes",
-            # Guided PR's tab and its key D exist only where the description opens a
-            # `guided-pr` fence: the link joins the bar between Changes and Checks when a
-            # record brings one, stays while its tab is shown, and leaves the bar, and the
+            # Guided PR's tab and its key R (Docs holds D) exist only where the description
+            # opens a `guided-pr` fence: the link leads the bar when a record brings one, stays while its tab is shown, and leaves the bar, and the
             # key, otherwise. The page cannot tell a block from an example of one inside
             # another fence, which the server's parse can (mb-y0en), so the example shows
             # the tab too.
-            "no block in the description: Conversation C, Changes G, Checks E; "
-            "live conversation files checks",
-            "D: not handled",
-            "a block in the description: Guided PR D, Conversation C, Changes G, Checks E; "
-            "live conversation files guided checks",
-            "D: opened the guided route",
+            "no block in the description: Conversation C, Docs D, Changes G, Checks E; "
+            "live conversation docs files checks",
+            "R: not handled",
+            "a block in the description: "
+            "Guided PR R, Conversation C, Docs D, Changes G, Checks E; "
+            "live conversation docs files guided checks",
+            "R: opened the guided route",
             "the route arrives: Guided PR",
             "the block leaves while its tab is shown: "
-            "Guided PR D, Conversation C, Changes G, Checks E; Guided PR",
-            "back on Conversation: Conversation C, Changes G, Checks E; D: not handled",
+            "Guided PR R, Conversation C, Docs D, Changes G, Checks E; Guided PR",
+            "back on Conversation: Conversation C, Docs D, Changes G, Checks E; R: not handled",
             "the block returns while Shift is held: "
-            "badges Guided PR D, Conversation C, Changes G, Checks E",
-            "D: opened the guided route",
+            "badges Guided PR R, Conversation C, Docs D, Changes G, Checks E",
+            "R: opened the guided route",
             "an example of the block inside another fence: "
-            "Guided PR D, Conversation C, Changes G, Checks E",
+            "Guided PR R, Conversation C, Docs D, Changes G, Checks E",
             "disposed: keys none",
         ],
         # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):
@@ -913,7 +913,7 @@ def test_file_history_restores_place_and_fresh_selection_wins() -> None:
     }
 
 
-@pytest.mark.parametrize("scenario", ["history", "poll-order"])
+@pytest.mark.parametrize("scenario", ["history", "poll-order", "docs"])
 def test_explicit_repair_preserves_route_and_response_ownership(scenario: str) -> None:
     assert run_session("github-pull-repair-lifecycle-behavior.js", "--case", scenario) == {
         "case": scenario,
@@ -1041,14 +1041,14 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         # cancelled (review E1); before, the diff was shown and the wait recorded as met.
         | {"cancelled": {"held": True, "keptOutOfSight": True, "outcome": "cancelled"}},
         "bounded": True,
-        # The header does not wait with the held body (exp-099), so all three tab keys, the
+        # The header does not wait with the held body (exp-099), so all four tab keys, the
         # stack menu, and the stack keys are live while it waits, as at release (review E2).
         "tabKeysWhileHeld": {
             "whileHeld": {
                 "holding": True,
                 "tabColumn": "live",
-                "live": ["conversation", "files", "checks"],
-                "badges": "Conversation C, Changes G, Checks E",
+                "live": ["conversation", "docs", "files", "checks"],
+                "badges": "Conversation C, Docs D, Changes G, Checks E",
                 "g": "opened the files route",
                 "stackMenus": 1,
                 "stackKeys": "pulls.stack.top, pulls.stack.base",
@@ -1058,8 +1058,8 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
             "released": {
                 "holding": False,
                 "tabColumn": "live",
-                "live": ["conversation", "files", "checks"],
-                "badges": "Conversation C, Changes G, Checks E",
+                "live": ["conversation", "docs", "files", "checks"],
+                "badges": "Conversation C, Docs D, Changes G, Checks E",
                 # Nothing went inert, so focus never left the Changes link to be given back.
                 "focus": "none",
                 "g": "opened the files route",

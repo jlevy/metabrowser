@@ -129,7 +129,7 @@ A cached page shows at once and refreshes in the background; the
 
 ### Tabs
 
-- **Guided PR** (`D`), the first tab when the description includes a guide: the
+- **Guided PR** (`R`), the first tab when the description includes a guide: the
   description as the guide’s introduction, then ordered review steps with commentary
   above selected diff excerpts.
   The tab appears when the description has a line that opens a `guided-pr` fence; the
@@ -142,10 +142,20 @@ A cached page shows at once and refreshes in the background; the
   Commits that arrive while you read are added after what is shown.
   A short commit ID opens that commit on GitHub.
   **Review comments** lists the inline review comments with their files and diff hunks.
+- **Docs** (`D`): the changed documents alone (the File type menu’s Documentation group:
+  Markdown, plain text, reStructuredText, and the rest), each in its rendered view with
+  nothing folded, so you can read what the pull request says in its docs without the
+  code around it. A document with no rendered view shows its text diff, also unfolded.
+  A pull request that changes no document says so, with a link to Changes.
 - **Changes** (`G`): the diff from the merge base to the head, **Split** or **Unified**
   (`L` switches). Markdown files open as rendered changes, as the next section describes.
   The changed-file list on the Pulls tab moves through this diff, and the selected file
   follows the diff as you scroll.
+  The **File type** menu beside the layout control (`Y`) shows only the changed files of
+  the types you choose, as a commit’s does
+  ([A Commit’s Page](browsing-history.md#a-commits-page)); the page keeps the choice
+  while you visit the other tabs, and a file you jump to that it hides shows every type
+  again.
 - **Checks** (`E`): the check runs and commit statuses, with links to their details.
 
 ### Guided PR

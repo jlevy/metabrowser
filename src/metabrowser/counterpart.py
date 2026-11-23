@@ -400,8 +400,11 @@ async def _selection(
         case "pulls":
             return None
         case "pull":
+            # GitHub has no Docs tab: its documents are among the files it changes.
             return RepositorySelection(
-                kind="pull_request", pull_request=page.number, pull_tab=page.tab
+                kind="pull_request",
+                pull_request=page.number,
+                pull_tab="files" if page.tab == "docs" else page.tab,
             )
         case "pull_file":
             return RepositorySelection(

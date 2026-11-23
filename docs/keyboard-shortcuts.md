@@ -38,10 +38,12 @@ work.
 | `O` | Overview | A folder is shown |
 | `M` | Treemap, from its map | A folder is shown |
 | `C` | Conversation | A pull request page is shown |
+| `D` | Docs: the pull request’s changed documents, rendered and unfolded | A pull request page is shown |
 | `G` | Changes, from chan-*g*es | A pull request page is shown |
-| `D` | Guided PR, from gui-*d*-ed | The Guided PR tab is shown |
+| `R` | Guided PR, from guided P-*R*, a review | The Guided PR tab is shown |
 | `E` | Checks, from ch-*e*-cks | A pull request page is shown |
 | `L` | Diff layout: Split or Unified | A diff with a layout control is shown |
+| `Y` | Diff File type: which types of changed files a diff shows | A diff of more than one file is shown |
 | `1`–`9` | The numbered links and actions on this screen, in reading order | A numbered control is shown |
 
 A letter that appears twice, such as `C`, belongs to two screens never shown together.
