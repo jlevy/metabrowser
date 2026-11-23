@@ -183,11 +183,31 @@ def _deadline_from_environment() -> float:
 
 
 _RENDER_DEADLINE_S = _deadline_from_environment()
-# How long an inert render waits for the child to start: as long as a render may run,
-# whatever the environment sets the deadline to. A start, both jobs warmed, took 1.36 s
-# at load average 16 (2026-11-17; the projection alone 0.23 to 0.57 s at load average 4
-# in #349); past this the render is refused as unavailable, and that refusal is not kept.
-_START_WAIT_S = INERT_RENDER_DEADLINE_MS / 1000
+# How long an inert render waits for the child to start before it is refused as
+# unavailable, a refusal that is not kept. A start is not a render: it costs the
+# interpreter's start and the imports and warm-up of both jobs, the same for every
+# document, and it grows with the machine's load, not with what an author wrote. So the
+# wait is its own measured bound, and METABROWSER_INERT_RENDER_DEADLINE_MS does not move
+# it in either direction: a deadline shortened to refuse a slow document must not refuse
+# every document whose child starts cold (a one-shot `--api` command's always does), and
+# one lengthened for a large document says nothing of starts.
+#
+# Measured on an Apple M1 Pro (MacBookPro18,1, 10 cores), macOS 26.5.2, Python 3.14.7,
+# from `ProjectionWorker.start(renders=True)` to the ready frame, both jobs warmed:
+#
+# - 1.36 s at a load average of 16 (2026-11-17); the projection alone 0.23 to 0.57 s at
+#   a load average of 4 (#349).
+# - 2.71 to 6.81 s over twelve starts in a row at a load average of 356 to 372
+#   (2026-11-22): median 3.9 s, two of the twelve past 5 s (6.70 and 6.81 s).
+# - Under the same kind of load, at 300 to 400, renders were refused as unavailable 5.1
+#   to 8.3 s after they were asked (mb-xmte), when this wait was the render deadline's
+#   default of 5 s.
+#
+# Fifteen seconds is about twice the slowest start seen, and half of _START_TIMEOUT_S,
+# after which a start counts as failed. A start that fails ends the wait at once, so
+# only a child that is slow or hung costs a reader the whole of it, and the start goes
+# on after a refusal: a reload finds the child ready or still starting.
+_START_WAIT_S = 15.0
 # Starts in a row that did not become ready before the worker stops trying for
 # _START_COOL_OFF_S: projections stay in their thread, and inert renders are refused as
 # unavailable, until the cool-off passes, a start succeeds, or a stop counts again.
