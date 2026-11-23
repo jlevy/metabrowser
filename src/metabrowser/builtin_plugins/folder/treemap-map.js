@@ -908,13 +908,20 @@ export function createTreemapMap(mb, palette, viewport, options) {
       const made = { image, bitmap: null };
       sprite = made;
       iconSprites.set(key, made);
-      const xmlns = /^<svg\b[^>]*\sxmlns=/.test(icon.svg)
-        ? ""
-        : ' xmlns="http://www.w3.org/2000/svg"';
-      const svg = icon.svg.replace(
-        /^<svg\b/,
-        `<svg${xmlns} width="${size}" height="${size}" style="color:${color}"`,
-      );
+      // The registry's glyph, given a size and a color: its strokes are currentColor, and
+      // an image's SVG reads no stylesheet. Parsed as HTML it is an SVG element, which
+      // serializes with its namespace, as an image needs.
+      const holder = doc.createElement("div");
+      holder.innerHTML = icon.svg;
+      const glyph = holder.firstElementChild;
+      if (!glyph || typeof win.XMLSerializer !== "function") {
+        iconSprites.delete(key);
+        return null;
+      }
+      glyph.setAttribute("width", String(size));
+      glyph.setAttribute("height", String(size));
+      glyph.setAttribute("style", `color:${color}`);
+      const svg = new win.XMLSerializer().serializeToString(glyph);
       image.addEventListener("load", () => {
         const ready = (/** @type {CanvasImageSource} */ bitmap) => {
           made.bitmap = bitmap;
