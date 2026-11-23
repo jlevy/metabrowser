@@ -569,8 +569,11 @@ account check and the bounds on probes.
   A batch of cores the budget holds answers `held`. The floor holds only the background
   walk: cores for rows on screen are held by a rate-limit hold and the self-ceiling
   alone, by the owner’s floor rule.
-  A held timeline answers `unavailable` and `retryable`. The scan a list probe’s change
-  starts is not asked, as [Priority](#priority) says.
+  A held timeline answers `unavailable` and `retryable`, with `retry_after_s`
+  (`HELD_RETRY_S` in `pull_timeline.py`), and the page asks again that long after for as
+  long as the budget refuses; a transient failure is still retried once (review A4 of
+  #737). The scan a list probe’s change starts is not asked, as [Priority](#priority)
+  says.
 - [x] `AUTOMATIC_CORE_PER_HOUR` in `gh_budget.py`, counted by `gh_api` and `gh_graphql`
   as they answer; each query asks for `rateLimit { cost }`. A reader’s own action is
   told apart by the context its route starts the job in (`readers_own`), so a job a

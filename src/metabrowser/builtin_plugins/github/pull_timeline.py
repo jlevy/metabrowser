@@ -27,6 +27,7 @@ from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import run_lock_section, source_alias_lock
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_timeline
 from metabrowser.home import PrivateStorageError, write_private_file_atomic
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 
 # Public timeline samples and the 50/100 request comparison are in the Pulls plan.
 PAGE_SIZE: Final = 100
@@ -35,6 +36,12 @@ MAX_PROVIDER_BYTES: Final = 96 * 1024
 MAX_SIDECAR_BYTES: Final = 128 * 1024
 MAX_SUBJECT_BYTES: Final = 240
 TIMEOUT_S: Final = 12
+# How long a page waits before it asks again for a timeline the budget refused. The
+# refusal costs GitHub nothing, so the wait only bounds the page's own asks: a freshness
+# window, since the process's ceiling frees a minute's spending at a time, and a hold or
+# the floor lifts at a reset the page need not know. At most an hour, which the answer's
+# schema and the page both bound it to.
+HELD_RETRY_S: Final = int(FRESHNESS_WINDOW_S)
 _GRAPHQL_MAX_NUMBER: Final = (1 << 31) - 1
 
 _QUERY: Final = """
@@ -93,6 +100,11 @@ class _Timeline(_Model):
     state: Literal["complete", "partial", "unavailable"]
     events: tuple[_Event, ...] = Field(default=(), max_length=PAGE_SIZE * MAX_PAGES)
     retryable: Literal[True] | None = Field(default=None, exclude_if=lambda value: value is None)
+    # Set when the budget refused the read: how long the page waits before it asks again,
+    # which it does for as long as the answer says so (:data:`HELD_RETRY_S`).
+    retry_after_s: int | None = Field(
+        default=None, ge=1, le=3600, exclude_if=lambda value: value is None
+    )
 
 
 class _StoredTimeline(_Model):
@@ -115,8 +127,18 @@ def _discussion_revision(record: PullRecord) -> str:
     return hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
 
 
-def unavailable(ask: TimelineRequest, *, retryable: Literal[True] | None = None) -> _Timeline:
-    return _Timeline(record_revision=ask.record_revision, state="unavailable", retryable=retryable)
+def unavailable(
+    ask: TimelineRequest,
+    *,
+    retryable: Literal[True] | None = None,
+    retry_after_s: int | None = None,
+) -> _Timeline:
+    return _Timeline(
+        record_revision=ask.record_revision,
+        state="unavailable",
+        retryable=retryable,
+        retry_after_s=retry_after_s,
+    )
 
 
 def _event(raw: object) -> _Event | None:
@@ -291,8 +313,10 @@ async def read_timeline(served: ServedPulls, ask: TimelineRequest, gate: asyncio
         return unavailable(ask)
     if not gh_budget.admission(("graphql",), now=pulls.utc_now()).admitted:
         # The page asks for this by itself, once for each revision of the record: automatic
-        # work, held as the budget holds any, and asked for again later.
-        return unavailable(ask, retryable=True)
+        # work, held as the budget holds any, and asked for again later. The answer says
+        # when, and the page asks again then for as long as the budget refuses, where a
+        # transient failure is retried once.
+        return unavailable(ask, retryable=True, retry_after_s=HELD_RETRY_S)
     deadline = asyncio.get_running_loop().time() + TIMEOUT_S
     try:
         async with asyncio.timeout_at(deadline):

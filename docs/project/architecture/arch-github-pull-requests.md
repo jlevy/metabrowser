@@ -582,8 +582,10 @@ in `<n>.timeline.json`, bound to the inputs it orders (`_discussion_revision`): 
 source, number, reader, base branch, head, and the discussion’s identifiers.
 An advance of the base branch keeps it usable; a retarget or a new head needs a new one.
 It answers `complete`, `partial` with a retryable verified prefix, or `unavailable`,
-asks for no patch or Git object, and runs only after the selected Conversation paints,
-in a provider slot of its own once any metadata refresh settles.
+retryable with `retry_after_s` when the budget held the read, which the page asks again
+after for as long as the budget holds it; it asks for no patch or Git object, and runs
+only after the selected Conversation paints, in a provider slot of its own once any
+metadata refresh settles.
 
 ## Native Stacks
 
