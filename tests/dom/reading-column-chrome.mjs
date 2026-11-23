@@ -147,7 +147,7 @@ async function open(path) {
   await chrome.waitFor(
     `(() => {
       const pane = document.getElementById("preview-pane");
-      return document.documentElement.dataset.shellToolsReady === "true" &&
+      return document.documentElement?.dataset.shellToolsReady === "true" &&
         !!pane && !pane.classList.contains("preview-navigation-pending") &&
         !!pane.querySelector(":scope > .content-body .kpress-long-text, :scope > .content-body .folder-overview-panel-heading, :scope > .content-body .code-block");
     })()`,
