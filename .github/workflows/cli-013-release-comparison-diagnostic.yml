@@ -81,8 +81,8 @@ jobs:
           cd "$support/candidate"
           python_run=(uv --config-file uv.toml run --frozen python)
           bench=("${python_run[@]}" explorations/performance-loop/run.py)
-          control_label=exp-102-cli-013-v0120
-          candidate_label=exp-102-cli-013-candidate
+          control_label=exp-102-cli-013-http-ready-v0120
+          candidate_label=exp-102-cli-013-http-ready-candidate
           ledger=explorations/performance-loop/results/runs.jsonl
           pending=explorations/performance-loop/results/pending.json
           capture_driver="$GITHUB_WORKSPACE/explorations/performance-loop/capture-browser.js"
@@ -131,6 +131,32 @@ jobs:
             fi
           }
 
+          wait_for_http() {
+            local output="$1" socket_epoch="$2" origin probe timing first_request
+            local response_epoch spawned_epoch
+            origin="$(jq -er '.measurement_origin' "$pending")"
+            spawned_epoch="$(jq -er '.server_spawned_epoch_ms' "$pending")"
+            first_request="$(date +%s%3N)"
+            for probe in {1..15}; do
+              if timing="$(curl --silent --show-error --fail --output /dev/null \
+                --max-time 2 --write-out '%{http_code} %{time_starttransfer} %{time_total}' \
+                "$origin/api/routes" 2>"$output.stderr")" && [[ "$timing" == "200 "* ]]; then
+                response_epoch="$(date +%s%3N)"
+                jq -nc --argjson spawn "$spawned_epoch" --argjson socket "$socket_epoch" \
+                  --argjson first_request "$first_request" --argjson response "$response_epoch" \
+                  --argjson attempt "$probe" --arg timing "$timing" \
+                  '{server_spawned_epoch_ms:$spawn,socket_ready_observed_epoch_ms:$socket,
+                    first_http_probe_epoch_ms:$first_request,http_ready_epoch_ms:$response,
+                    probe_attempt:$attempt,http_curl_status_ttfb_total:$timing}' > "$output"
+                return 0
+              fi
+              sleep 0.05
+            done
+            cat "$output.stderr" >&2
+            printf 'No HTTP 200 response from /api/routes after TCP readiness.\n' >&2
+            return 1
+          }
+
           wait_for_idle
           launch control > "$results/serve-warmup.log" 2>&1
           "${bench[@]}" fingerprint >> "$results/serve-warmup.log" 2>&1
@@ -144,6 +170,8 @@ jobs:
               printf 'Starting pair %s: %s\n' "$pair" "$side"
               capture_stem="$results/browser-$side-$pair"
               launch "$side" > "$capture_stem.serve.log" 2>&1
+              socket_epoch="$(date +%s%3N)"
+              wait_for_http "$capture_stem.readiness.json" "$socket_epoch"
               capture_status=0
               profile_url="$(jq -er '.url' "$pending")"
               xvfb-run -a -s '-screen 0 1920x1200x24' node "$capture_driver" \
