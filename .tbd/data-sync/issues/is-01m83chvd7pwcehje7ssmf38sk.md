@@ -3,9 +3,9 @@ type: is
 id: is-01m83chvd7pwcehje7ssmf38sk
 title: Restore Linux TCP_NODELAY on reserved HTTP listening sockets
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 10
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45113677625
@@ -29,8 +29,12 @@ parent_id: is-01m83bbgeajzxhr6xkpabzgs0c
 hold: null
 hold_until: null
 created_at: 2026-11-23T05:02:41.062Z
-updated_at: 2026-11-23T05:43:09.372Z
+updated_at: 2026-11-23T06:05:39.217Z
 started_at: 2026-11-23T05:07:24.189Z
+closed_at: 2026-11-23T06:05:39.212Z
+close_reason: "Independent review, full PR CI 45117784551, and exact post-merge CI 45119777260 passed for #733 (3f132cb3442c0072a2762a93f635ca7133fa4968). The exact five-pair release comparison 45117924502 met all hard budgets and release tolerances. Median first row was 123 ms vs 142 ms, and the Linux socket proof passed 25 tests. Raw evidence and the explained comparator caveats are in exp-102."
+resolution: null
+duplicate_of: null
 ---
 Matched-HTTP browser startup on GitHub-hosted Linux retains a repeated 40–41 ms small-asset header/body gap. A prebound listener created with protocol 0 causes asyncio to skip TCP_NODELAY on accepted Linux sockets. Declare IPPROTO_TCP when reserving the port and test the adopted transport. Verify under the pinned 0.12.0 baseline and release candidate after the fix.
 

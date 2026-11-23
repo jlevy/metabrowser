@@ -3,9 +3,9 @@ type: is
 id: is-01m83bbgeajzxhr6xkpabzgs0c
 title: Restore CLI 0.13.0 first directory row below the browser release budget
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 10
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45112075401
@@ -31,8 +31,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-23T04:41:44.647Z
-updated_at: 2026-11-23T05:43:15.387Z
+updated_at: 2026-11-23T06:05:39.247Z
 started_at: 2026-11-23T04:41:48.946Z
+closed_at: 2026-11-23T06:05:39.247Z
+close_reason: "Independent review, full PR CI 45117784551, and exact post-merge CI 45119777260 passed for #733 (3f132cb3442c0072a2762a93f635ca7133fa4968). The exact five-pair release comparison 45117924502 met all hard budgets and release tolerances. Median first row was 123 ms vs 142 ms, and the Linux socket proof passed 25 tests. Raw evidence and the explained comparator caveats are in exp-102."
+resolution: null
+duplicate_of: null
 ---
 Five admitted foreground Chrome comparisons put the v0.13.0 candidate at 697–765 ms from navigation to the first directory row, versus 131–242 ms in v0.12.0 and the required 350 ms. The backend first-row median and ordered results match. Attribute the browser-side delay, fix a focused cause with the new startup font work accounted for, then rerun the exact candidate.
 
