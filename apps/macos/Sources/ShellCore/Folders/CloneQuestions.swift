@@ -74,6 +74,17 @@ public nonisolated struct CloneQuestions: Equatable, Sendable {
         return .lookUp
     }
 
+    /// An explicit native choice has already opened this repository. An older link into
+    /// it no longer needs its question. Returns whether the question was already up;
+    /// that modal can be dismissed without treating it as a decline.
+    public mutating func openedExplicitly(_ repository: SessionRoot) -> Bool {
+        waiting.removeValue(forKey: repository)
+        unasked.removeAll { $0 == repository }
+        guard asking == repository else { return false }
+        asking = nil
+        return true
+    }
+
     /// The cache holds it: the newest link into it, which opens now.
     public mutating func found(_ repository: SessionRoot) -> URL? {
         known.insert(repository)

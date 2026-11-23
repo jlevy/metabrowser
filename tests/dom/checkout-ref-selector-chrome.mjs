@@ -515,6 +515,31 @@ async function sampledLayout() {
   );
   return chrome.evaluate(LAYOUT);
 }
+
+async function clickRefChip(selector) {
+  const point = await chrome.evaluate(`(() => {
+    const box = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+    return {x: box.left + box.width / 2, y: box.top + box.height / 2};
+  })()`);
+  await chrome.send("Input.dispatchMouseEvent", { ...point, type: "mouseMoved" });
+  const sourceHit = await chrome.evaluate(
+    `document.elementFromPoint(${point.x}, ${point.y})?.closest("[data-ref-menu]") ===
+     document.querySelector(${JSON.stringify(selector)})`,
+  );
+  for (const type of ["mousePressed", "mouseReleased"]) {
+    await chrome.send("Input.dispatchMouseEvent", {
+      ...point,
+      type,
+      button: "left",
+      clickCount: 1,
+    });
+  }
+  return sourceHit;
+}
+
+const TAG_CHIP = ".source-ref-selector-label [data-ref-menu]";
+const TAG_MENU_TRIGGER = ".source-ref-selector-button button[data-ref-menu]";
+const REF_MENU = "[data-ref-action-menu]";
 const result = {};
 try {
   await chrome.send("Page.enable");
@@ -622,18 +647,47 @@ try {
       label: "forker:topic/nested", kind: "remote", repository: "forker/demo",
       ref: "refs/remotes/origin/topic/nested",
     });
+    fork.id = "test-inline-ref";
     document.querySelector(".header-path").after(fork);
-    fork.click();
-    const forkMenu = document.querySelector("[data-ref-action-menu]");
-    answer.fork = {
-      context: forkMenu.getAttribute("aria-label"),
-      url: forkMenu.querySelector("a").href,
-      actions: [...forkMenu.querySelectorAll(".menu-item")].map(item => item.textContent),
-    };
-    fork.click();
-    fork.remove();
     return answer;
   })()`);
+  await clickRefChip("#test-inline-ref");
+  result.tagMenu.fork = await chrome.evaluate(`(() => {
+    const menu = document.querySelector(${JSON.stringify(REF_MENU)});
+    return {
+      context: menu.getAttribute("aria-label"),
+      url: menu.querySelector("a").href,
+      actions: [...menu.querySelectorAll(".menu-item")].map(item => item.textContent),
+      focused: menu.contains(document.activeElement),
+    };
+  })()`);
+  await clickRefChip("#test-inline-ref");
+  result.tagMenu.fork.repeatClosed = await chrome.evaluate(`
+    !document.querySelector(${JSON.stringify(REF_MENU)}) &&
+    document.activeElement.id === "test-inline-ref"`);
+  await chrome.evaluate('document.getElementById("test-inline-ref").remove()');
+
+  const overlayHit = !(await clickRefChip(TAG_CHIP));
+  const overlayOpened = await chrome.evaluate(`
+    document.querySelector(${JSON.stringify(REF_MENU)})?.contains(document.activeElement) === true`);
+  await clickRefChip(TAG_CHIP);
+  const menuClosed = `!document.querySelector(${JSON.stringify(REF_MENU)}) &&
+    document.activeElement.matches(${JSON.stringify(TAG_MENU_TRIGGER)})`;
+  const overlayClosed = await chrome.evaluate(menuClosed);
+  await clickRefChip(TAG_CHIP);
+  // Expose the source chip at the same coordinates to exercise the row's forwarded click.
+  const overlay = `document.querySelector(${JSON.stringify(TAG_MENU_TRIGGER)})`;
+  await chrome.evaluate(`${overlay}.style.pointerEvents = "none"`);
+  const sourceHit = await clickRefChip(TAG_CHIP);
+  const sourceClosed = await chrome.evaluate(menuClosed);
+  await chrome.evaluate(`${overlay}.style.removeProperty("pointer-events")`);
+  result.tagMenu.repeatClick = {
+    overlayHit,
+    overlayOpened,
+    overlayClosed,
+    sourceHit,
+    sourceClosed,
+  };
   await openPanel();
   result.toWorkingTree = await switchBy(
     `document.querySelector(".source-ref-selector-working-tree")`,

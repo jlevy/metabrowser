@@ -22,9 +22,8 @@ class RepositoryContext(TypedDict):
     """Public-safe GitHub identity used to verify localizable repository URLs."""
 
     branch: str | None
-    # Whether ``origin`` has the branch, as far as the checkout last fetched: its
-    # ``refs/remotes/origin/<branch>``. A link to the branch on github.com exists only
-    # then; a mirror's branch is the origin's by construction.
+    # Whether the checked-out branch corresponds to the same-named branch at origin.
+    # Matching tips or explicit tracking establish it; a mirror's branch is origin's.
     branch_on_origin: bool
     host: str
     name: str
@@ -44,7 +43,10 @@ def discover_repository_context(served_root: Path) -> RepositoryContext | None:
     if git_dir is None:
         return None
     common_dir = resolve_common_dir(git_dir)
-    remote = _read_origin_remote(common_dir / "config")
+    config = _read_git_config(common_dir / "config")
+    if config is None:
+        return None
+    remote = _parse_github_remote(config.get('remote "origin"', "url", fallback="").strip())
     if remote is None:
         return None
     owner, name = remote
@@ -52,10 +54,17 @@ def discover_repository_context(served_root: Path) -> RepositoryContext | None:
     if head is None:
         return None
     branch, revision = head
-    on_origin = (
-        branch is not None
-        and _read_reference(git_dir, common_dir, f"refs/remotes/origin/{branch}") is not None
-    )
+    on_origin = False
+    if branch is not None:
+        remote_tip = _read_reference(git_dir, common_dir, f"refs/remotes/origin/{branch}")
+        tracking = f'branch "{branch}"'
+        on_origin = remote_tip is not None and (
+            remote_tip.lower() == revision.lower()
+            or (
+                config.get(tracking, "remote", fallback="") == "origin"
+                and config.get(tracking, "merge", fallback="") == f"refs/heads/{branch}"
+            )
+        )
     try:
         served_prefix = root.relative_to(git_root).as_posix()
     except ValueError:
@@ -117,17 +126,16 @@ def resolve_common_dir(git_dir: Path) -> Path:
     return (git_dir / raw_path).resolve() if raw_path and "\0" not in raw_path else git_dir
 
 
-def _read_origin_remote(config_path: Path) -> tuple[str, str] | None:
+def _read_git_config(config_path: Path) -> configparser.ConfigParser | None:
     source = read_bounded_text(config_path, MAX_GIT_CONFIG_BYTES)
     if source is None:
         return None
     parser = configparser.ConfigParser(interpolation=None, strict=False)
     try:
         parser.read_string(source)
-        remote = parser.get('remote "origin"', "url")
-    except (configparser.Error, KeyError, ValueError):
+    except (configparser.Error, ValueError):
         return None
-    return _parse_github_remote(remote.strip())
+    return parser
 
 
 def _parse_github_remote(remote: str) -> tuple[str, str] | None:

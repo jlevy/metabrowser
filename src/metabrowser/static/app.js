@@ -2225,6 +2225,8 @@ function initRootDetails() {
     location.textContent = mirrorLocation;
   }
   const actions = details.querySelector(".root-details-actions");
+  const branch = details.querySelector(".root-details-branch");
+  const revision = details.querySelector(".git-commit-revision[data-revision]");
   document.addEventListener(
     "pointerdown",
     (event) => {
@@ -2270,12 +2272,42 @@ function initRootDetails() {
       status.textContent = "";
       return;
     }
-    if (!url || !actions || actions.childElementCount) {
+    if (
+      !(url && actions && !actions.childElementCount) &&
+      !revision?.hasAttribute("data-revision")
+    ) {
       return;
     }
     try {
       await window.MetabrowserAssets?.ensureAsset("sdk-views");
-      if (actions.childElementCount) {
+      if (!details.open) {
+        return;
+      }
+      if (branch?.textContent && !branch.firstElementChild) {
+        const name = branch.textContent;
+        branch.replaceChildren(
+          window.metabrowser.refChip(name, {
+            ref: `refs/heads/${name}`,
+            head: true,
+            trunk: branch.hasAttribute("data-trunk"),
+          }),
+        );
+      }
+      const commit = revision?.getAttribute("data-revision");
+      if (revision && commit) {
+        const copy = document.createElement("button");
+        copy.className = "icon-btn icon-btn-reveal git-commit-revision-copy";
+        copy.type = "button";
+        copy.dataset.mbCopy = "text";
+        copy.dataset.mbCopyText = commit;
+        copy.dataset.mbCopyLabel = copy.dataset.tipText = "Copy revision";
+        copy.setAttribute("aria-label", "Copy revision");
+        copy.innerHTML = ICONS.copy ?? "";
+        window.metabrowser.ownDelegate(copy);
+        revision.append(copy);
+        revision.removeAttribute("data-revision");
+      }
+      if (!url || !actions || actions.childElementCount) {
         return;
       }
       const items = window.metabrowser.externalLinkMenuItems(url, {

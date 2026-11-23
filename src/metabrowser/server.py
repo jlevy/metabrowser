@@ -1760,9 +1760,19 @@ async def index(
     if root_kind == "git" and pin is None and tip_context is not None:
         branch = tip_context["branch"]
         if branch is not None:
-            root_checkout_meta += f"<div>Branch: {html_escape(branch)}</div>"
-        revision = html_escape(short_commit(tip_context["revision"]))
-        root_checkout_meta += f"<div>Commit: <code>{revision}</code></div>"
+            from metabrowser.git.log import is_trunk_ref
+
+            trunk = " data-trunk" if is_trunk_ref(branch, "local") else ""
+            root_checkout_meta += (
+                '<div class="root-details-ref-row"><span>Branch:</span>'
+                f'<span class="root-details-branch"{trunk}>{html_escape(branch)}</span></div>'
+            )
+        revision = tip_context["revision"]
+        root_checkout_meta += (
+            '<div>Commit: <span class="git-commit-revision"'
+            f' data-revision="{html_escape(revision, quote=True)}">'
+            f'<span class="git-commit-sha">{html_escape(short_commit(revision))}</span></span></div>'
+        )
     version_line = html_escape(display_version_line("metab", __version__))
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset-loader.js")
@@ -2495,7 +2505,7 @@ async def index(
           <span class="header-home-name" id="header-home-name">{initial_path}</span>
         </a>
         <span id="header-home-label" hidden>Home:</span>
-        <details id="root-details" class="root-details"{root_repository_attr}>
+        <details id="root-details" class="root-details" data-ref-menu-container{root_repository_attr}>
           <summary class="icon-btn root-details-trigger disclosure-toggle" aria-label="{root_kind_label} details"></summary>
           <div class="menu root-details-panel">
             <div class="root-details-info">
