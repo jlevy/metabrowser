@@ -301,6 +301,61 @@ The relative comparison above uses the three complete pairs only.
 [Combined font and TCP run](https://github.com/jlevy/metabrowser/actions/runs/45116045122)
 · [TCP fix](https://github.com/jlevy/metabrowser/pull/733)
 
+## Exact TCP Pull Request Head
+
+The final comparison measured `80fb76d63b8d19c2e5537ea6e9c9128506b3ad63`, the TCP fix on
+the merged sidebar font revision.
+Its wheel SHA-256 was
+`b3be120606fa26402b39950fe19e047b391501fa8f1800a0da4ffea1a1e838cd`. The control still
+used the published v0.12.0 wheel bytes.
+The [preregistered replacement workflow](exp-102-exact-pr-head-protocol.txt) recorded
+the same installed-wheel, synthetic-corpus, input, visibility, and hard-budget checks.
+It specified five complete interleaved pairs and allowed at most three additional whole
+pairs to replace a pair with a refused capture.
+A bounded retry for removing the Chrome profile ran after trusted input stopped, the
+profile was written, and Chrome exited.
+
+| Pair | Control first row, ms | Candidate first row, ms | Candidate / control | Control spawn to row, ms | Candidate spawn to row, ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2 | 135 | 129 | 0.956 | 2,601 | 2,621 |
+| 3 | 148 | 119 | 0.804 | 2,649 | 2,620 |
+| 4 | 151 | 123 | 0.815 | 2,624 | 2,650 |
+| 5 | 142 | 159 | 1.120 | 2,637 | 2,675 |
+| 6 | 142 | 117 | 0.824 | 2,577 | 2,616 |
+
+Pair 1’s control stayed visible, but its trusted input covered 72.6% of the measured
+window, below the 80% admission gate.
+Its raw first row was 151 ms and first contentful paint was 2,624 ms.
+That raw trace and its refusal are retained in the run artifact.
+Pair 6 made up the missed comparison.
+The admitted candidate half of pair 1 also passed every hard budget and stays in the
+ledger, outside the paired analysis.
+
+All five complete pairs were visible.
+Control input coverage ranged from 98.4% to 98.5%, and candidate coverage ranged from
+98.3% to 98.4%. Every admitted capture cleared all hard budgets.
+The paired candidate first-row median was 123 ms versus 142 ms for the control.
+All five ratios were within the 1.3× rough-cut release tolerance.
+Pair 5 alone exceeded the 1.1× careful tolerance, at 1.120×, while the other four
+candidates were faster than their paired control.
+The ranges overlap, and a single exceedance does not establish a repeatable wrong-way
+result. The careful protocol would rerun pair 5 before a fine-grained claim.
+Measured from process spawn, all five candidate times were within 1.6% of their matched
+control.
+
+Both builds delivered the two monitored script bodies within 0–1 ms after response start
+in the complete pairs.
+The Linux unit check again passed all 25 tests.
+The backend first-row medians were 10 ms in both conditions.
+Backend startup to an answered request was 1.608 s and 1.688 s at the median.
+The ordered rows matched and the raw tally check again flagged the nine explained
+registry and ordering differences.
+The stock comparator again refused the unequal locked KPress environments.
+The first-row ratios above describe whole installed releases from the admitted paired
+captures. The run artifact keeps the comparator statuses, raw traces, capture manifest,
+and per-capture hard-budget results.
+[Exact PR-head benchmark](https://github.com/jlevy/metabrowser/actions/runs/45117924502)
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

@@ -4601,6 +4601,116 @@ A run loaded during a walk and a run loaded after one are different regimes.
 
 ### 246,760 files — exp-102 / tree-fe8cdefa
 
+Corpus `59f866e7b73e386d`, shape `2`, harness `23`.
+
+**What a reader gets** — browser probe
+
+| metric | exp-102-cli-013-http-ready-final-selector-tcp-candidate (n=6) | exp-102-cli-013-http-ready-final-selector-tcp-v0120 (n=5) |
+| --- | ---: | ---: |
+| `ttfb_ms` | 16 (13-23) | 19 (13-24) |
+| `response_download_ms` | 1 (1-1) | 1 (1-2) |
+| `dom_interactive_ms` | 133 (118-160) | 149 (139-161) |
+| `first_row_ms` | 126 (117-159) | 142 (135-151) |
+| `first_row_render_ms` | 3 (2-4) | 1 (1-2) |
+| `load_tree_ms` | 10 (7-34) | 24 (7-45) |
+| `tree_fetch_srv_ms` | 4 (2-26) | 4 (3-40) |
+| `tree_fetch_wait_ms` | 5 (4-27) | 5 (4-41) |
+| `tree_fetch_total_ms` | 6 (4-28) | 6 (5-42) |
+| `tree_fetch_kb` | 1 (1-1) | 1 (1-1) |
+| `dcl_ms` | 139 (127-171) | 156 (146-168) |
+| `load_ms` | 140 (128-172) | 158 (148-169) |
+| `last_resource_ms` | 15,802 (15,272-16,380) | 17,697 (17,134-18,236) |
+| `subtree_requests` | 6 (0-13) | 13 (0-13) |
+| `tree_items` | 10 (10-10) | 10 (10-10) |
+| `lazy_stubs` | 10 (10-10) | 10 (10-10) |
+| `collapsed_diff_rows_materialized` | 0 (0-0) | 0 (0-0) |
+| `dom_nodes` | 1,198 (1,198-1,198) | 1,167 (1,167-1,167) |
+| `transferred_kb` | 1,343 (1,082-1,596) | 1,203 (707-1,213) |
+| `vendor_first_start_ms` | 150 (134-184) | 163 (152-186) |
+| `fcp_ms` | 104 (92-116) | 96 (88-108) |
+| `lcp_ms` | 104 (92-116) | 96 (88-108) |
+| `cls` | 0 (0-0) | 0 (0-0) |
+| `cls_shifts` | 1 (0-1) | 0 (0-0) |
+| `frame_missing_px` | 680 (680-680) | 220 (220-220) |
+| `filter_bar_shift_px` | 0 (0-0) | 0 (0-0) |
+| `summary_shift_px` | 0 (0-0) | 23 (23-23) |
+| `reserved_region_shift_px` | 0 (0-0) | 23 (23-23) |
+| `tree_region_repaints` | 1 (1-1) | 1 (1-1) |
+| `long_tasks` | 0 (0-0) | 0 (0-0) |
+| `long_task_ms_total` | 0 (0-0) | 0 (0-0) |
+| `total_blocking_time_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms_first_5s` | 0 (0-0) | 0 (0-0) |
+| `long_tasks_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `main_thread_blocked_pct` | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_attribution_missing` | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_batches` | 1,058 (1,049-1,060) | 1,055 (1,055-1,063) |
+| `inventory_delivery_items` | 243,226 (242,864-243,512) | 243,354 (243,282-243,830) |
+| `inventory_delivery_batch_items_max` | 4,096 (4,096-4,096) | 4,096 (4,096-4,096) |
+| `inventory_delivery_max_ms` | 4 (4-8) | 5 (4-7) |
+| `inventory_delivery_work_ms_total` | 523 (503-581) | 575 (531-579) |
+| `inventory_delivery_work_pct` | 3 (3.3-3.6) | 3 (3.1-3.3) |
+| `animation_frames` | 1 (0-1) | 0 (0-1) |
+| `animation_frame_max_ms` | 54 (0-65) | 0 (0-53) |
+| `animation_frames_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_total` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_max` | 0 (0-0) | 0 (0-0) |
+| `animation_frames_blocking_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `forced_style_layout_ms_max` | 0 (0-0) | 0 (0-0) |
+| `interactions` | 58 (56-59) | 63 (60-66) |
+| `interaction_inputs` | 59 (57-61) | 66 (64-68) |
+| `interaction_input_first_ms` | 158 (137-166) | 164 (157-171) |
+| `interaction_input_last_ms` | 15,612 (15,083-16,190) | 17,508 (16,947-18,047) |
+| `interaction_input_span_ms` | 15,464 (14,930-16,029) | 17,336 (16,789-17,883) |
+| `interaction_input_coverage_pct` | 98 (98.3-98.4) | 98 (98.4-98.5) |
+| `interaction_samples_retained` | 58 (56-59) | 63 (60-66) |
+| `interaction_p50_ms` | 16 (16-16) | 16 (16-16) |
+| `interaction_p95_ms` | 16 (16-32) | 16 (16-16) |
+| `interaction_max_ms` | 32 (16-56) | 16 (16-24) |
+| `render_spans` | 2 (2-2) | 2 (2-2) |
+| `render_ms_total` | 6 (5-9) | 3 (3-4) |
+| `tree_reprobe_ms` | 3 (3-4) | 3 (3-4) |
+| `tree_reprobe_srv_ms` | 1 (1-1) | 1 (1-1) |
+| `walk_elapsed_ms` | 14,747 (14,213-15,606) | 15,620 (15,037-16,039) |
+| `spawn_to_profile_start_ms` | 2,504 (2,492-2,527) | 2,473 (2,435-2,501) |
+| `requests` | 118 (110-126) | 108 (97-108) |
+| `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
+| `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
+| `fetch_aborts` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_4xx` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_5xx` | 0 (0-0) | 0 (0-0) |
+| `rendered_preview_errors` | 0 (0-0) | 0 (0-0) |
+| `page_exceptions` | 0 (0-0) | 0 (0-0) |
+| `resource_timing_capacity` | 500 (500-500) | 500 (500-500) |
+| `resource_timing_buffer_full` | 0 (0-0) | 0 (0-0) |
+| `script_transfer_kb` | 571 (571-571) | 388 (388-388) |
+| `startup_script_requests` | 20 (20-20) | 20 (20-20) |
+| `startup_script_transfer_kb` | 220 (220-220) | 174 (174-174) |
+| `startup_script_loopback_transfer_kb` | 220 (220-220) | 174 (174-174) |
+| `startup_script_last_response_ms` | 111 (103-136) | 135 (128-143) |
+| `startup_script_duration_max_ms` | 86 (82-111) | 109 (97-119) |
+| `startup_style_server_ms_max` | 31 (27.1-38.4) | 16 (12-18.9) |
+| `startup_style_wait_ms_max` | 42 (38-47) | 27 (23-32) |
+| `startup_style_last_response_ms` | 65 (60-76) | 74 (63-79) |
+| `style_transfer_kb` | 128 (128-128) | 82 (82-82) |
+| `image_transfer_kb` | 0 (0-0) | 0 (0-0) |
+| `api_transfer_kb` | 461 (201-715) | 704 (208-714) |
+| `largest_resource_kb` | 171 (168-183) | 176 (168-178) |
+| `resource_duration_max_ms` | 736 (612-828) | 1,988 (1,940-2,071) |
+| `js_heap_mb` | 42 (27.6-46.3) | 42 (17.2-44.5) |
+| `js_heap_after_gc_mb` | 14 (14.3-14.3) | 14 (13.8-13.8) |
+| `plugin_view_containers` | 2 (2-2) | 2 (2-2) |
+| `plugin_view_nonempty` | 1 (1-1) | 1 (1-1) |
+| `shell_tools_missing` | 0 (0-0) | 0 (0-0) |
+| `file_catalog_incomplete` | 0 (0-0) | 0 (0-0) |
+| `viewport_w` | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) |
+| `viewport_h` | 1,040 (1,040-1,040) | 1,040 (1,040-1,040) |
+
+Walk elapsed across these runs: 14,213-16,039 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
+
+### 246,760 files — exp-102 / tree-fe8cdefa
+
 Corpus `9151cb4f11e978a4`, shape `2`, harness `23`.
 
 **What a reader gets** — browser probe
@@ -5143,6 +5253,17 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | exp-102 | exp-102-cli-013-http-ready-font-tcp-v0120 | python | inventory-provider-v1 | 2026-11-23T05:19 | metab 0.12.0 | `wheel:sha256:5f080045c5416c82b007996f86e3bfd9f8309c98e0331c833379b7cd584332bc` | 87b8ec812774bb12a4d9f5f29901719b8b66d323 | tree-fe8cdefa | 2 | 23 | 14,734 ms |
 | exp-102 | exp-102-cli-013-http-ready-font-tcp-v0120 | python | inventory-provider-v1 | 2026-11-23T05:20 | metab 0.12.0 | `wheel:sha256:5f080045c5416c82b007996f86e3bfd9f8309c98e0331c833379b7cd584332bc` | 87b8ec812774bb12a4d9f5f29901719b8b66d323 | tree-fe8cdefa | 2 | 23 | 14,495 ms |
 | exp-102 | exp-102-cli-013-http-ready-font-tcp-candidate | python | inventory-provider-v1 | 2026-11-23T05:20 | metab 0.13.0.dev3021+ed7e1f1 | `wheel:sha256:90ba47f82e5f52651f07f76ca834c68fcc07757cb215b79e9c465937192405e8` | ed7e1f10ffcd7be3524113edd6dc940cfe74c708 | tree-fe8cdefa | 2 | 23 | 14,413 ms |
+| exp-102 | exp-102-cli-013-http-ready-final-selector-tcp-candidate | python | inventory-provider-v1 | 2026-11-23T05:33 | metab 0.13.0.dev3023+80fb76d | `wheel:sha256:b3be120606fa26402b39950fe19e047b391501fa8f1800a0da4ffea1a1e838cd` | 80fb76d63b8d19c2e5537ea6e9c9128506b3ad63 | tree-fe8cdefa | 2 | 23 | 14,790 ms |
+| exp-102 | exp-102-cli-013-http-ready-final-selector-tcp-candidate | python | inventory-provider-v1 | 2026-11-23T05:34 | metab 0.13.0.dev3023+80fb76d | `wheel:sha256:b3be120606fa26402b39950fe19e047b391501fa8f1800a0da4ffea1a1e838cd` | 80fb76d63b8d19c2e5537ea6e9c9128506b3ad63 | tree-fe8cdefa | 2 | 23 | 14,357 ms |
+| exp-102 | exp-102-cli-013-http-ready-final-selector-tcp-v0120 | python | inventory-provider-v1 | 2026-11-23T05:34 | metab 0.12.0 | `wheel:sha256:5f080045c5416c82b007996f86e3bfd9f8309c98e0331c833379b7cd584332bc` | 87b8ec812774bb12a4d9f5f29901719b8b66d323 | tree-fe8cdefa | 2 | 23 | 15,570 ms |
+| exp-102 | exp-102-cli-013-http-ready-final-selector-tcp-v0120 | python | inventory-provider-v1 | 2026-11-23T05:35 | metab 0.12.0 | `wheel:sha256:5f080045c5416c82b007996f86e3bfd9f8309c98e0331c833379b7cd584332bc` | 87b8ec812774bb12a4d9f5f29901719b8b66d323 | tree-fe8cdefa | 2 | 23 | 16,039 ms |
+| exp-102 | exp-102-cli-013-http-ready-final-selector-tcp-candidate | python | inventory-provider-v1 | 2026-11-23T05:36 | metab 0.13.0.dev3023+80fb76d | `wheel:sha256:b3be120606fa26402b39950fe19e047b391501fa8f1800a0da4ffea1a1e838cd` | 80fb76d63b8d19c2e5537ea6e9c9128506b3ad63 | tree-fe8cdefa | 2 | 23 | 14,704 ms |
+| exp-102 | exp-102-cli-013-http-ready-final-selector-tcp-candidate | python | inventory-provider-v1 | 2026-11-23T05:36 | metab 0.13.0.dev3023+80fb76d | `wheel:sha256:b3be120606fa26402b39950fe19e047b391501fa8f1800a0da4ffea1a1e838cd` | 80fb76d63b8d19c2e5537ea6e9c9128506b3ad63 | tree-fe8cdefa | 2 | 23 | 15,606 ms |
+| exp-102 | exp-102-cli-013-http-ready-final-selector-tcp-v0120 | python | inventory-provider-v1 | 2026-11-23T05:37 | metab 0.12.0 | `wheel:sha256:5f080045c5416c82b007996f86e3bfd9f8309c98e0331c833379b7cd584332bc` | 87b8ec812774bb12a4d9f5f29901719b8b66d323 | tree-fe8cdefa | 2 | 23 | 15,673 ms |
+| exp-102 | exp-102-cli-013-http-ready-final-selector-tcp-v0120 | python | inventory-provider-v1 | 2026-11-23T05:37 | metab 0.12.0 | `wheel:sha256:5f080045c5416c82b007996f86e3bfd9f8309c98e0331c833379b7cd584332bc` | 87b8ec812774bb12a4d9f5f29901719b8b66d323 | tree-fe8cdefa | 2 | 23 | 15,620 ms |
+| exp-102 | exp-102-cli-013-http-ready-final-selector-tcp-candidate | python | inventory-provider-v1 | 2026-11-23T05:38 | metab 0.13.0.dev3023+80fb76d | `wheel:sha256:b3be120606fa26402b39950fe19e047b391501fa8f1800a0da4ffea1a1e838cd` | 80fb76d63b8d19c2e5537ea6e9c9128506b3ad63 | tree-fe8cdefa | 2 | 23 | 14,213 ms |
+| exp-102 | exp-102-cli-013-http-ready-final-selector-tcp-candidate | python | inventory-provider-v1 | 2026-11-23T05:39 | metab 0.13.0.dev3023+80fb76d | `wheel:sha256:b3be120606fa26402b39950fe19e047b391501fa8f1800a0da4ffea1a1e838cd` | 80fb76d63b8d19c2e5537ea6e9c9128506b3ad63 | tree-fe8cdefa | 2 | 23 | 14,849 ms |
+| exp-102 | exp-102-cli-013-http-ready-final-selector-tcp-v0120 | python | inventory-provider-v1 | 2026-11-23T05:40 | metab 0.12.0 | `wheel:sha256:5f080045c5416c82b007996f86e3bfd9f8309c98e0331c833379b7cd584332bc` | 87b8ec812774bb12a4d9f5f29901719b8b66d323 | tree-fe8cdefa | 2 | 23 | 15,037 ms |
 
 <!-- Generated file.
 Regenerate with `explorations/performance-loop/run.py report`. -->
