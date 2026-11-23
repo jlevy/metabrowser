@@ -170,6 +170,116 @@ async function click(selector, button = "left") {
 const TRIGGER = "#root-details > summary";
 const MENU_OPEN = 'document.getElementById("root-details").open';
 
+async function checkCheckoutDetails() {
+  const chip = "#root-details .root-details-branch button";
+  const revisionCopy = "#root-details .git-commit-revision-copy";
+  const menu = "#root-details > [data-ref-action-menu]";
+  const state = await browser.evaluate(`(() => {
+    const chip = document.querySelector(${JSON.stringify(chip)});
+    const id = document.querySelector("#root-details .git-commit-sha");
+    const copy = document.querySelector(${JSON.stringify(revisionCopy)});
+    const { branch, revision } = window.METABROWSER_REPOSITORY_CONTEXT;
+    return {
+      chip: chip.matches(".git-ref-local.git-ref-head"),
+      branch, revision,
+      text: id.textContent,
+      shortRevision: window.metabrowser.shortCommit(revision),
+      font: getComputedStyle(id).fontFamily,
+      ariaLabel: copy.getAttribute("aria-label"),
+      owned: window.MetabrowserPluginHost.isOwnedDelegate(copy),
+    };
+  })()`);
+  check(
+    "checkout details show the shared local branch chip and short monospace commit",
+    state.chip &&
+      state.text === state.shortRevision &&
+      state.font.includes("monospace") &&
+      state.ariaLabel === "Copy revision" &&
+      state.owned,
+    JSON.stringify(state),
+  );
+  const narrow = await browser.evaluate(`(() => {
+    const pane = document.getElementById("tree-pane");
+    const width = pane.style.width;
+    pane.style.width = "180px";
+    const chip = document.querySelector(${JSON.stringify(chip)});
+    const label = chip.querySelector(".git-ref-label");
+    const panel = chip.closest(".root-details-panel");
+    const fits = chip.getBoundingClientRect().right <= panel.getBoundingClientRect().right;
+    const clipped = label.scrollWidth > label.clientWidth;
+    pane.style.width = width;
+    return fits && clipped;
+  })()`);
+  check("a long branch stays inside the narrow folder details", narrow);
+  await hover("#root-details .git-commit-sha");
+  await browser.waitFor(
+    `getComputedStyle(document.querySelector(${JSON.stringify(revisionCopy)})).opacity === "1"`,
+    STEP_MS,
+  );
+  await browser.evaluate(`Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async (text) => { window.rootDetailsClipboard = text; } },
+  })`);
+  await click(revisionCopy);
+  check(
+    "the commit copy button copies the full revision and leaves the menu open",
+    (await browser.evaluate("window.rootDetailsClipboard")) === state.revision &&
+      (await browser.evaluate(MENU_OPEN)),
+  );
+  await click(chip);
+  await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) !== null`, STEP_MS);
+  const menuState = await browser.evaluate(`(() => {
+    const root = document.getElementById("root-details");
+    const menu = document.querySelector(${JSON.stringify(menu)});
+    return {
+      open: root.open && menu.contains(document.activeElement),
+      label: menu.getAttribute("aria-label"),
+      labels: [...menu.querySelectorAll(".menu-item")].map(item => item.textContent),
+      url: menu.querySelector("a")?.href,
+    };
+  })()`);
+  check(
+    "the nested branch menu has its context, focus, and shared actions",
+    menuState.open &&
+      menuState.label === `Local branch ${state.branch}` &&
+      menuState.labels.join("|") === "Copy Branch Name|View This Branch|Open on GitHub" &&
+      menuState.url === `https://github.com/Octo/Demo/tree/refs/heads/${state.branch}`,
+    JSON.stringify(menuState),
+  );
+  await click(`${menu} button`);
+  check(
+    "copying the branch from the nested menu keeps the root details open",
+    (await browser.evaluate("window.rootDetailsClipboard")) === state.branch &&
+      (await browser.evaluate(MENU_OPEN)),
+  );
+  const escaped = await browser.evaluate(`(() => {
+    document.activeElement.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape", bubbles: true, cancelable: true,
+    }));
+    return ${MENU_OPEN} && document.activeElement.matches(${JSON.stringify(chip)}) &&
+      document.querySelector(${JSON.stringify(menu)}) === null;
+  })()`);
+  check("the first Escape closes only the branch menu and restores chip focus", escaped);
+  await click(chip);
+  await click(chip);
+  check(
+    "clicking the same branch chip closes only its menu",
+    await browser.evaluate(
+      `${MENU_OPEN} && document.querySelector(${JSON.stringify(menu)}) === null`,
+    ),
+  );
+  await click(chip);
+  await click(TRIGGER);
+  await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) === null`, STEP_MS);
+  check(
+    "closing folder details clears the nested menu and its expanded state",
+    await browser.evaluate(`!(${MENU_OPEN}) &&
+      document.querySelector(${JSON.stringify(chip)}).getAttribute("aria-expanded") === "false"`),
+  );
+  await browser.evaluate("delete navigator.clipboard");
+  await click(TRIGGER);
+}
+
 const TOOLTIP = `(() => {
   const tip = document.querySelector(".custom-tooltip");
   return tip && tip.classList.contains("visible") ? tip.innerText.trim() : null;
@@ -351,8 +461,8 @@ for (const theme of ["light", "dark"]) {
       );
       const links = await browser.evaluate(`(async () => {
         const panel = document.querySelector(".root-details-panel");
-        const copy = panel.querySelector("button");
-        const link = panel.querySelector("a");
+        const copy = panel.querySelector(".root-details-actions button");
+        const link = panel.querySelector(".root-details-actions a");
         let copied;
         Object.defineProperty(navigator, "clipboard", {
           configurable: true,
@@ -385,6 +495,9 @@ for (const theme of ["light", "dark"]) {
           links.result === "Link copied",
         JSON.stringify(links),
       );
+      if (theme === "light") {
+        await checkCheckoutDetails();
+      }
     } else {
       const hasActions = await browser.evaluate(
         'document.querySelector("#root-details").hasAttribute("data-repository-url")',

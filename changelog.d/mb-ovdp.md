@@ -1,0 +1,1 @@
+- The checkout’s folder details show a monospace commit ID and can copy the full ID.
