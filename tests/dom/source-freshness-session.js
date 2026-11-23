@@ -1403,7 +1403,7 @@ async function run() {
         followed.follow.commit === onHead.pin &&
         followed.offer === null &&
         followed.label === "Updating to pull request #7…" &&
-        followed.detail.startsWith("pull request #7 is now at "),
+        followed.detail.startsWith("Pull request #7 is now at "),
       `a pull request's head is followed, and named: ${JSON.stringify(followed)}`,
     );
     const byId = { ...onHead, follows: false, pin: recorded.stale.pin };
@@ -1415,13 +1415,30 @@ async function run() {
       offered.follow === null &&
         offered.offer?.kind === "switch" &&
         offered.offer.ref === byId.ref &&
-        offered.offer.text === "pull request #7 is now at" &&
+        offered.offer.text === "Pull request #7 is now at" &&
         offered.offer.button === "Switch",
       `a commit opened by its ID is offered its ref's new tip: ${JSON.stringify(offered)}`,
     );
+    // The row's own words start a sentence capitalized, and a ref's name stays its own.
+    const gone = { ...byId, latest: byId.pin, ref_on_origin: false };
+    const goneRow = freshness.describe(gone, {
+      shown: { pin: gone.pin, ref: gone.ref },
+      nowMs: NOW_MS,
+    });
+    const branchGone = freshness.describe(
+      { ...gone, ref: "refs/heads/topic", ref_name: "topic" },
+      { shown: { pin: gone.pin, ref: "refs/heads/topic" }, nowMs: NOW_MS },
+    );
+    assert(
+      goneRow.detail.includes(" Pull request #7 is no longer on the origin;") &&
+        branchGone.detail.includes(" topic is no longer on the origin;"),
+      `a sentence the label starts: ${JSON.stringify({ goneRow, branchGone })}`,
+    );
 
-    // Taking the offer asks for the ref by name, which the server follows from then on, and
-    // reloads; a refusal says so and keeps the offer.
+    // Taking the offer asks for the ref by name, which the server follows from then on,
+    // naming the page's address, and lands where the answer says the page is, as a follow
+    // does (B2 of review B on #745): in place on a file the new tip has, the root on one it
+    // lacks. A refusal says so and keeps the offer.
     const page = createPage();
     page.setStatus(byId);
     const controller = freshness.createController(page.deps, {
@@ -1432,19 +1449,28 @@ async function run() {
     page.answerPost("/api/source/pin", 409, { code: "ref_moved" });
     await controller.acceptOffer();
     const refused = page.observe("the switch is refused");
-    page.answerPost("/api/source/pin", 200, { changed: true, status: onHead });
+    page.answerPost("/api/source/pin", 200, { changed: true, status: onHead, view_href: "/view/" });
     await controller.acceptOffer();
     const taken = page.observe("the switch is taken");
+    const lacked = recorded.followed_elsewhere;
+    page.setAddress(lacked.view);
+    page.answerPost("/api/source/pin", 200, { ...lacked.answer, status: onHead });
+    await controller.acceptOffer();
+    const elsewhere = page.observe("the switch from a file the new tip lacks");
     controller.dispose();
-    const asked = `POST /api/source/pin ${JSON.stringify({ ref: byId.ref })}`;
+    const asked = (view) => `POST /api/source/pin ${JSON.stringify({ ref: byId.ref, view })}`;
     assert(
-      refused.requests.includes(asked) &&
+      refused.requests.includes(asked("/view/")) &&
         refused.reloads === 0 &&
         refused.paint.error === "Could not switch to that commit." &&
-        refused.paint.offer?.startsWith("pull request #7 is now at ") &&
-        taken.requests.includes(asked) &&
-        taken.reloads === 1,
-      `the offer switches to the ref by name: ${JSON.stringify({ refused, taken })}`,
+        refused.paint.offer?.startsWith("Pull request #7 is now at ") &&
+        taken.requests.includes(asked("/view/")) &&
+        taken.reloads === 1 &&
+        taken.navigated === undefined &&
+        elsewhere.requests.includes(asked(lacked.view)) &&
+        elsewhere.reloads === 1 &&
+        JSON.stringify(elsewhere.navigated) === JSON.stringify([lacked.answer.view_href]),
+      `the offer switches to the ref by name and lands as a follow does: ${JSON.stringify({ refused, taken, elsewhere })}`,
     );
   }
 
