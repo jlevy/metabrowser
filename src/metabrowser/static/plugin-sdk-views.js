@@ -1268,7 +1268,12 @@
     if (url) {
       menu.insertBefore(destination, items.at(-1) ?? status);
     }
-    doc.body.append(menu);
+    // A nested menu stays inside its native disclosure's focus boundary but outside
+    // the scrolling panel, so it can still be positioned and read at the viewport.
+    const disclosure = /** @type {HTMLDetailsElement | null} */ (
+      trigger.closest("details[data-ref-menu-container]")
+    );
+    (disclosure ?? doc.body).append(menu);
 
     const controller = new AbortController();
     const signal = controller.signal;
@@ -1291,6 +1296,15 @@
       }
     }
     activeRefMenu = { trigger, menu, close };
+    disclosure?.addEventListener(
+      "toggle",
+      () => {
+        if (!disclosure.open) {
+          close(false);
+        }
+      },
+      { signal },
+    );
     trigger.setAttribute("aria-expanded", "true");
     const rect = trigger.getBoundingClientRect();
     const viewport = doc.documentElement;

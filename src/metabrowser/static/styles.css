@@ -1833,6 +1833,10 @@ body {
 .root-details {
   margin-inline-start: -4px;
   flex: none;
+  color: var(--text);
+  font-weight: var(--weight-normal);
+  letter-spacing: normal;
+  text-transform: none;
 }
 .root-details-trigger {
   list-style: none;
@@ -1856,10 +1860,16 @@ body {
   inset-inline: 8px;
   max-height: min(60vh, 28rem);
   overflow: auto;
-  color: var(--text);
-  font-weight: var(--weight-normal);
-  letter-spacing: normal;
-  text-transform: none;
+}
+.root-details-ref-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.root-details-branch {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 .root-details:not([open]) > .root-details-panel,
 .root-details-panel [hidden],
@@ -1886,7 +1896,7 @@ body {
 .root-details-links {
   border-top: 1px solid var(--border);
 }
-.app-header .root-details-panel a.menu-item {
+.app-header .root-details a.menu-item {
   color: var(--text);
 }
 /* ── Text buttons — shared labelled action primitive ─────────────
