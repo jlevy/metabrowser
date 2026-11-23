@@ -1508,7 +1508,7 @@ unsettled rather than consistently offset.
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | Pull request row, in [the Pulls tab](#the-pulls-tab) | The title, alone on the first line; the number’s line and the age, on the second | State icon, on the first line; chevron, on the change line |
-| Diff file bar | Change letter, path, change stats, and notes | Chevron, a Markdown, YAML, or JSON file’s **Rendered** \| **Source** chooser, View file or View on branch control, copy button |
+| Diff file bar | Change letter, path, change stats, and notes | Chevron, copy button, a Markdown, YAML, or JSON file’s **Rendered** \| **Source** chooser and its spinner, View file or View on branch control |
 
 The row keeps `align-items: center`, and each text child opts in with
 `align-self: baseline`. A box aligned to the baseline would sit its bottom edge on the
@@ -1529,9 +1529,12 @@ capitals. A run’s status badge is one, for Running, Live, Done, Failed, and Ru
 and a pull request’s state badge is another; `tests/dom/github-pull-header-chrome.mjs`
 checks both in Chrome.
 
-The diff file bar’s View file or View on branch control is a box beside the toggle, not
-text inside it, so it is set at the path’s own size and line height: text of one size
-and one line height centers onto one baseline.
+The diff file bar’s View file or View on branch control is a box at the bar’s end, not
+text inside the toggle, so it is set at the path’s own size and line height: text of one
+size and one line height centers onto one baseline.
+The bar’s two groups ([Diff File Bar](#diff-file-bar)) are centered rows of boxes too,
+and each is centered in the bar, so the toggle and the control still share the bar’s
+center.
 
 Two rows are deliberately not in the table.
 A [view header](#view-headers)’s eyebrow sets its text at one size and centers it.
@@ -2423,19 +2426,30 @@ control copies the path as it is.
 
 The diff view’s per-file bar is **a row, not a heading disclosure**: it leads with the
 same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
-`expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, hovers with
-`--hover-bg`, and reveals its `[data-mb-copy]` copy control on row hover or focus: the
-file-header copy affordance, present wherever a filename is.
-Its content is left-aligned reading order (chevron, kind letter, filename in the shell’s
-file-path typography, then the stat pair beside the name), and the whole bar is one
-activation surface, the folder-row rule applied to a section header: clicking anywhere
-toggles, with only the copy control, the View file or View on branch control, and a
-Markdown file’s **Rendered** | **Source** chooser opting out.
+`expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, and hovers with
+`--hover-bg`.
+
+The bar is two groups.
+It leads with what names the file, in left-aligned reading order: chevron, kind letter,
+filename in the shell’s file-path typography, the stat pair beside the name, and any
+note, then the `[data-mb-copy]` copy control right after them, the file-header copy
+affordance, present wherever a filename is.
+The bar reveals the copy control while the pointer is on it or the keyboard’s focus is
+in it; unseen, the control keeps its place, so nothing moves when it shows.
+The bar ends with what shows the file another way: a Markdown file’s **Rendered** |
+**Source** chooser, then the View file or View on branch control.
+A long path is cut short on one line with its copy control still beside it.
+
+The whole bar is one activation surface, the folder-row rule applied to a section
+header: clicking anywhere toggles, with only the copy control, the View file or View on
+branch control, and the Rendered | Source chooser opting out.
 On a pull request’s Changes, a changed Markdown file’s bar carries that chooser, a
-joined chip pair, after the chevron, and beside it a small spinner that keeps its place
-in the bar and appears only after the loading-state delay while the rendered view is on
-its way. A file that falls back permanently to Source loses the chooser and the spinner,
-and its bar lays out as any other file’s, with a long path truncated on one line.
+joined chip pair, and before it a small spinner that keeps its place in the bar and
+appears only after the loading-state delay while the rendered view is on its way.
+Such a bar wraps where its two groups do not fit one line: the name’s group keeps the
+first line, and the group at the bar’s end takes the next, still at the bar’s end.
+A file that falls back permanently to Source loses the chooser and the spinner, and its
+bar lays out as any other file’s, with a long path truncated on one line.
 Where the main UI can show the file the change makes, the bar ends with one quiet text
 action that opens it there, with the tree, the tabs, and the ref selector around it:
 **View file** on a commit’s diff, at the commit, and **View on branch** on a pull

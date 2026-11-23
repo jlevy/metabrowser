@@ -242,6 +242,9 @@ const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
 const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 // Give a transient queue or provider failure one chance to clear while the reader stays.
 export const TIMELINE_RETRY_MS = 1000;
+// The longest wait the server may name for a timeline its budget refused (`retry_after_s`,
+// HELD_RETRY_S in pull_timeline.py): the schema's own bound, an hour.
+const TIMELINE_HELD_MAX_S = 3600;
 export const TABS = Object.freeze(["", "files", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
 const TITLE_OVERHANG_PX = 4;
@@ -365,7 +368,7 @@ const TRUNCATED = Object.freeze({
 /**
  * @typedef {{kind: "commit", oid: string, subject: string, committed_at: string | null}} TimelineCommit
  * @typedef {{kind: "comment" | "review", id: string} | TimelineCommit} TimelineEvent
- * @typedef {{state: "complete" | "partial" | "unavailable", events: TimelineEvent[], retryable: boolean}} TimelineProjection
+ * @typedef {{state: "complete" | "partial" | "unavailable", events: TimelineEvent[], retryable: boolean, heldMs: number | null}} TimelineProjection
  */
 
 /**
@@ -851,7 +854,19 @@ function readTimelineProjection(value, revision) {
       events.push({ kind: event.kind, id: event.id });
     }
   }
-  return { state, events, retryable: state !== "complete" && answer.retryable === true };
+  const retryable = state !== "complete" && answer.retryable === true;
+  const wait = answer.retry_after_s;
+  // The budget refused the read: the server says how long to wait before asking again.
+  const heldMs =
+    retryable &&
+    state === "unavailable" &&
+    typeof wait === "number" &&
+    Number.isInteger(wait) &&
+    wait >= 1 &&
+    wait <= TIMELINE_HELD_MAX_S
+      ? wait * 1000
+      : null;
+  return { state, events, retryable, heldMs };
 }
 
 /** The exact PR's GitHub commit page, built from the held record's source. @param {string} source @param {number} number @param {string} oid */
@@ -4658,7 +4673,7 @@ export function mountPullPage(container, ctx, mb) {
   let bodyShows = "none";
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
-   *   settled: boolean, cacheMiss: boolean, retryPending: boolean,
+   *   settled: boolean, cacheMiss: boolean, retryPending: boolean, heldMs: number | null,
    *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
   let commitTimeline = null;
   // The allowlist a text's Markdown passes through before it is inserted; a text stays
@@ -7984,6 +7999,9 @@ export function mountPullPage(container, ctx, mb) {
               settled: false,
               cacheMiss: false,
               retryPending: false,
+              // How long the server said to wait before asking again for a read its
+              // budget refused; null for a transient failure's one retry.
+              heldMs: null,
               read: null,
             }
           : null;
@@ -8007,6 +8025,8 @@ export function mountPullPage(container, ctx, mb) {
     }
     cancelTimeline();
     const retrying = held.retryPending;
+    // A wait the server's budget asked for is not the transient failure's one retry.
+    const afterHold = retrying && held.heldMs !== null;
     if (held.settled || (retrying && !providerAllowed)) {
       return;
     }
@@ -8032,8 +8052,10 @@ export function mountPullPage(container, ctx, mb) {
       }
       if (retrying) {
         // The retry budget is spent when the provider request starts, even if it is aborted.
+        // A read the server's budget held spent none: it is asked for until it is read.
         held.retryPending = false;
-        held.settled = true;
+        held.settled = held.heldMs === null;
+        held.heldMs = null;
       }
       // Commits join a conversation that is already shown, so the age line breathes for
       // them as for a refresh; nothing spins in the description card.
@@ -8096,7 +8118,14 @@ export function mountPullPage(container, ctx, mb) {
       if (cachedOnly && held.projection === null) {
         held.cacheMiss = true;
         followTimeline();
-      } else if (!cachedOnly && !retrying && projection?.retryable) {
+      } else if (!cachedOnly && projection?.retryable && projection.heldMs !== null) {
+        // The server's budget refused the read, at no cost to GitHub: ask again when it
+        // says, for as long as it refuses and this record's page stays.
+        held.settled = false;
+        held.retryPending = true;
+        held.heldMs = projection.heldMs;
+        followTimeline();
+      } else if (!cachedOnly && (!retrying || afterHold) && projection?.retryable) {
         held.retryPending = true;
         followTimeline();
       } else {
@@ -8108,7 +8137,7 @@ export function mountPullPage(container, ctx, mb) {
       }
     };
     if (retrying) {
-      const timer = window.setTimeout(() => void load(), TIMELINE_RETRY_MS);
+      const timer = window.setTimeout(() => void load(), held.heldMs ?? TIMELINE_RETRY_MS);
       read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
     } else if (typeof window.requestAnimationFrame === "function") {
       let frame = window.requestAnimationFrame(() => {

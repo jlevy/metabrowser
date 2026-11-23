@@ -34,7 +34,7 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh_budget
+from metabrowser.builtin_plugins.github import gh_budget, pull_timeline
 from metabrowser.builtin_plugins.github.gh_status import SIGN_IN_STATES
 from metabrowser.cache import pull_refs
 from metabrowser.cache.urls import GitSource
@@ -434,7 +434,8 @@ def test_golden_pull_timeline_fetch_and_offline(
     session.blocks.append(
         "## GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter automatic "
         "work leaves to the reader. The page's own ask for the timeline waits: nothing is "
-        "asked of GitHub, and the answer says to ask again.\n"
+        "asked of GitHub, and the answer says to ask again in a minute, which the page does "
+        "for as long as the budget refuses.\n"
     )
     gh_budget.observe(
         {
@@ -450,6 +451,7 @@ def test_golden_pull_timeline_fetch_and_offline(
         "record_revision": revision,
         "state": "unavailable",
         "retryable": True,
+        "retry_after_s": pull_timeline.HELD_RETRY_S,
         "events": [],
     }, session.blocks[-1]
     assert "gh api graphql timeline" not in session.blocks[-1]

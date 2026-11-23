@@ -20,8 +20,8 @@ import Foundation
 ///
 /// The claim is an exclusive `flock` on a hidden lock file beside the log, so rotating the
 /// log does not move it. A lock belongs to its open file, so two claims of one process
-/// exclude each other too. The kernel releases it when this lease goes away, and when the
-/// process ends however it ends, so a crashed copy holds no claim.
+/// exclude each other too. The lease unlocks it when it goes away, and the kernel does when
+/// the process ends however it ends, so a crashed copy holds no claim.
 public nonisolated final class ServerLogLease: Sendable {
     /// How many logs named for one process a claim tries. Each one held but the newest is
     /// a session of the folder still stopping, and a stop takes at most
@@ -39,7 +39,16 @@ public nonisolated final class ServerLogLease: Sendable {
         self.lock = lock
     }
 
-    deinit { close(lock) }
+    /// Unlocks before closing, because closing alone releases the lock only once no
+    /// descriptor refers to the open file. `posix_spawn` copies the descriptor table into
+    /// the child and closes the close-on-exec ones as it execs, so a child any thread is
+    /// spawning at that moment still refers to it, and the next claim, made before that
+    /// child's exec, would find the log held by a session that has gone.
+    /// `spawningAChildDoesNotKeepAReleasedClaimHeld` runs that race.
+    deinit {
+        flock(lock, LOCK_UN)
+        close(lock)
+    }
 
     /// Claims the folder's log in `directory`, or, if another claim holds it, the first
     /// free log named for `owner`, this process.

@@ -790,13 +790,13 @@ export function createMarkdownViews(deps) {
   return {
     /**
      * @param {{
-     *   section: HTMLElement, bar: HTMLElement, toggle: HTMLElement, source: HTMLElement,
-     *   id: string, format: RenderedFormat
-     * }} input The file's section, its bar, the bar's disclosure button, which the
-     *   chooser follows and which takes focus when the chooser goes, its Source body, and
-     *   the format it renders as (`renderedFormat`).
+     *   section: HTMLElement, bar: HTMLElement, end: HTMLElement, toggle: HTMLElement,
+     *   source: HTMLElement, id: string, format: RenderedFormat
+     * }} input The file's section; its bar; the group of controls at the bar's end,
+     *   which the chooser leads; the bar's disclosure button, which takes focus when the
+     *   chooser goes; its Source body; and the format it renders as (`renderedFormat`).
      */
-    add({ section, bar, toggle, source, id, format }) {
+    add({ section, bar, end, toggle, source, id, format }) {
       const control = document.createElement("div");
       control.className = "diff-markdown-control";
       // Markdown is a KPress fragment; a tree is the structured plugin's own surface.
@@ -849,7 +849,9 @@ export function createMarkdownViews(deps) {
           file.folds.get(href.slice(1))?.();
         }
       });
-      toggle.after(control, progress);
+      // The progress mark leads, on the side of the bar's free space, so the chooser
+      // and whatever follows it stay where they are when it appears.
+      end.prepend(progress, control);
       source.before(rendered);
       files.set(section, file);
       controls.set(source.id, file);

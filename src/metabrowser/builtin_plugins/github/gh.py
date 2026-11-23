@@ -827,19 +827,19 @@ def _is_one_read_only_query(document: str) -> bool:
 _MAX_GRAPHQL_COST: Final = 5000
 
 
-def _graphql_cost(response: GhResponse) -> int:
+def _graphql_cost(payload: object) -> int:
     """What GitHub says the query cost, ``rateLimit { cost }``, or one when it does not say.
 
+    *payload* is the answer already parsed, ``None`` for one that could not be: a catalog
+    page is the largest body the plugin reads, so it is parsed once (review A10 of #737).
     Each of the plugin's queries asks for it, and each reported 1 on 2026-11-22: a catalog
     page by either order, core batches of 8 and of 25, a timeline page, and one core
     (cli/cli and jlevy/metabrowser, gh 2.98.0).
     """
 
-    try:
-        payload = json.loads(response.body)
-        cost = payload["data"]["rateLimit"]["cost"]
-    except (ValueError, KeyError, TypeError):
-        return 1
+    data = payload.get("data") if isinstance(payload, dict) else None
+    limit = data.get("rateLimit") if isinstance(data, dict) else None
+    cost = limit.get("cost") if isinstance(limit, dict) else None
     return cost if type(cost) is int and 0 <= cost <= _MAX_GRAPHQL_COST else 1
 
 
@@ -881,11 +881,12 @@ async def gh_graphql(
         if refused.state == "rate_limited":
             gh_budget.hold(refused.reset_at, now=moment)
         raise refused
+    payload: object = None
     try:
         payload = response.json()
     finally:
         # Counted before anything below can refuse the answer: GitHub charged for it.
-        gh_budget.spent(_graphql_cost(response), now=moment)
+        gh_budget.spent(_graphql_cost(payload), now=moment)
     if not isinstance(payload, dict):
         raise GhError("GitHub answered with an unreadable GraphQL response")
     errors = payload.get("errors")

@@ -644,6 +644,26 @@ async function probeStory(panel) {
   await settle();
   look("the tab is not shown: no timer waits to ask");
   controller.dispose();
+  // Pausing or disposing the panel clears an ask that waits (review A12 of #737).
+  for (const stop of ["pause", "dispose"]) {
+    const other = createPage();
+    other.clock.now = page.clock.now;
+    const stopped = panel.createPullsController(other.deps, { filter: "all", current: null });
+    void stopped.start({ shown: true });
+    await settle();
+    await other.answer(recorded.refreshed);
+    await other.answer(recorded.more_window);
+    await other.fireProbe();
+    await other.answer(recorded.probe_unchanged);
+    const waited = other.probeDelay();
+    stopped[stop]();
+    await settle();
+    story.push({
+      step: `${stop} while the next ask waits ${waited} ms: no timer waits to ask`,
+      probeInMs: other.probeDelay(),
+    });
+    stopped.dispose();
+  }
   return story;
 }
 
