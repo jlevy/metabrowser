@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shlex
 import socket
 import subprocess
@@ -82,6 +83,42 @@ def test_a_port_a_server_listens_on_is_held_against_the_next_search() -> None:
             pass
 
 
+def test_an_adopted_listener_preserves_tcp_nodelay_on_accepted_connections() -> None:
+    """The adopted listener should match asyncio's ordinary host/port bind."""
+
+    async def read_nodelay(listener: socket.socket | None = None) -> int:
+        nodelay: asyncio.Future[int] = asyncio.get_running_loop().create_future()
+
+        def connected(_reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            try:
+                accepted = writer.get_extra_info("socket")
+                nodelay.set_result(accepted.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY))
+            finally:
+                writer.close()
+
+        if listener is None:
+            server = await asyncio.start_server(connected, "127.0.0.1", 0)
+        else:
+            server = await asyncio.start_server(connected, sock=listener)
+        async with server:
+            port = int(server.sockets[0].getsockname()[1])
+            _reader, client = await asyncio.open_connection("127.0.0.1", port)
+            try:
+                return await asyncio.wait_for(nodelay, timeout=5)
+            finally:
+                client.close()
+                await client.wait_closed()
+
+    async def compare_bindings() -> None:
+        ordinary = await read_nodelay()
+        if sys.platform == "linux":
+            assert ordinary == 1
+        with server_utils.listen_on_available_local_port("127.0.0.1", (0,)) as listener:
+            assert await read_nodelay(listener) == ordinary
+
+    asyncio.run(compare_bindings())
+
+
 def test_a_listener_takes_a_port_held_only_by_a_lingering_connection() -> None:
     """As ``local_port_is_free`` answers, for the reason its test below gives."""
 
@@ -159,6 +196,7 @@ def test_an_ipv4_host_gets_an_ipv4_listener_as_before() -> None:
         ports = server_utils.port_search_range(start)
         with server_utils.listen_on_available_local_port(host, ports) as listener:
             assert listener.family == socket.AF_INET, host
+            assert listener.proto == socket.IPPROTO_TCP, host
             assert listener.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR), host
             assert server_utils.url_host(host, listener) == "127.0.0.1", host
 
@@ -186,6 +224,7 @@ def test_an_ipv6_loopback_host_gets_an_ipv6_listener_that_holds_its_port(host: s
     ports = server_utils.port_search_range(start)
     with server_utils.listen_on_available_local_port(host, ports) as first:
         assert first.family == socket.AF_INET6
+        assert first.proto == socket.IPPROTO_TCP
         assert first.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR)
         held = int(first.getsockname()[1])
         assert server_utils.url_host(host, first) == "[::1]"
