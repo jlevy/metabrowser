@@ -2522,6 +2522,10 @@ shared semantic model without re-fetching or re-running syntax highlighting.
 A diff too narrow for Split draws Unified, and the control shows what is drawn, with a
 tip on **Split** saying why; the stored choice is not touched, so Split returns when
 there is room, and choosing **Split** there draws it with a sideways scroll.
+A pull request’s Docs tab has no layout control and no `L`: a rendered document has no
+layout, so the tab draws a document’s text diff in **Unified**, one column as its
+rendered view is, whatever the stored choice, and with nothing else in its toolbar it
+draws none.
 
 The diff’s toolbar, which holds the control, draws no rule under itself.
 The first file card’s own border, at the cards’ 12 px gap below the toolbar’s padding,

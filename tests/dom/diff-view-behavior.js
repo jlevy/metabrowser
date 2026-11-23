@@ -1801,6 +1801,30 @@ async function main() {
     hosted.find("diff-summary").length === 0,
   );
   check("revision-hosted change sets keep their toolbar", hosted.find("diff-toolbar").length === 1);
+  // A layout the host fixes has no layout control, and leaves the toolbar what else it holds:
+  // a change set's totals, here; with nothing else, as on a pull request's Docs tab, there is
+  // no toolbar, and the files follow at once.
+  const fixedApi = { filterControls: { groupHtml: () => "", bind: () => () => {} } };
+  const fixedTotals = new FakeElement("div");
+  mountDiffView(fixedTotals, twoFiles, fixedApi, { layout: "unified" });
+  check(
+    "a fixed layout keeps the toolbar for the totals, without the layout control",
+    fixedTotals.find("diff-toolbar").length === 1 &&
+      fixedTotals.find("diff-summary").length === 1 &&
+      fixedTotals.find("diff-layout-control").length === 0 &&
+      fixedTotals.find("diff-root")[0]?.dataset.layout === "unified",
+  );
+  const fixedBare = new FakeElement("div");
+  mountDiffView(fixedBare, twoFiles, fixedApi, { showSummary: false, layout: "unified" });
+  const fixedRoot = fixedBare.find("diff-root")[0];
+  check(
+    "a fixed layout with nothing else for the toolbar draws none",
+    fixedBare.find("diff-toolbar").length === 0 &&
+      fixedBare.find("diff-layout-control").length === 0 &&
+      fixedRoot?.children[0]?.classList.contains("diff-hydration-failure") === true &&
+      fixedRoot.children[1]?.classList.contains("diff-file") === true,
+    JSON.stringify(fixedRoot?.children.map((child) => child.className) ?? null),
+  );
   const singleSummarized = new FakeElement("div");
   mountDiffView(singleSummarized, byName.get("modified-with-heading"), undefined, {
     changedFiles: sharedTree,

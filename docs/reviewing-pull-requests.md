@@ -138,6 +138,8 @@ The page has up to four tabs:
   Markdown, plain text, reStructuredText, and the rest), each in its rendered view with
   nothing folded, so you can read what the pull request says in its docs without the
   code around it. A document with no rendered view shows its text diff, also unfolded.
+  Docs has no Split or Unified choice: its text diffs, a document’s **Source** among
+  them, are always Unified.
   The tab shows only when the pull request changes a document: it appears at once and
   goes when the comparison’s File type counts say no document changed.
   An address on Docs still opens it, and says so, with a link to Changes.

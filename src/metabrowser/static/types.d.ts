@@ -54,6 +54,9 @@ type MetabrowserRenderContext = {
   group?: string | null;
   unfold?: boolean;
   emptyText?: string;
+  /** A layout the host fixes, which the diff draws whatever the reader's stored choice, with
+   *  no layout control and no `L`: a pull request's Docs tab draws `"unified"`. */
+  layout?: "unified" | "split";
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
