@@ -556,8 +556,9 @@ const ROLLUP = {
   );
   transcript["the legend under the tally bars, at rest"] = atRest;
 
-  // A legend entry marks every cell of its family, the files of its type and the folder it
-  // is the dominant type of, the family's segment in each tally row, and itself.
+  // A legend entry marks every cell of its family, the files of its type and the folders it
+  // is the dominant type of, the family's segment in each tally row, and itself. The map's
+  // outer box is the folder itself, whose dominant type is Python too.
   entry("Python").emit("mouseenter");
   const onEntry = read();
   assert(
@@ -567,6 +568,7 @@ const ROLLUP = {
         "Ignored family:python",
         "Total family:python",
         "legend family:python",
+        "cell docs (family)",
         "cell docs/c.py (family)",
         "cell docs/build (family)",
         "cell docs/build/d.py (family)",
@@ -709,6 +711,7 @@ const ROLLUP = {
           "Ignored family:python",
           "Total family:python",
           "legend family:python",
+          "cell docs (family)",
           "cell docs/c.py (family)",
         ]) &&
       filesOnly.tooltip === "1 file · 300 B",

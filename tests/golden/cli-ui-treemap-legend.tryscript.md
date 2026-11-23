@@ -42,6 +42,7 @@ $ node tests/dom/treemap-legend-session.js
       "Ignored family:python",
       "Total family:python",
       "legend family:python",
+      "cell docs (family)",
       "cell docs/c.py (family)",
       "cell docs/build (family)",
       "cell docs/build/d.py (family)"
@@ -111,6 +112,7 @@ $ node tests/dom/treemap-legend-session.js
       "Ignored family:python",
       "Total family:python",
       "legend family:python",
+      "cell docs (family)",
       "cell docs/c.py (family)",
       "cell docs/build (family)",
       "cell docs/build/d.py (family)"
@@ -173,6 +175,7 @@ $ node tests/dom/treemap-legend-session.js
       "Ignored family:python",
       "Total family:python",
       "legend family:python",
+      "cell docs (family)",
       "cell docs/c.py (family)"
     ],
     "tooltip": "1 file · 300 B",
@@ -193,6 +196,7 @@ $ node tests/dom/treemap-legend-session.js
       "Ignored family:python",
       "Total family:python",
       "legend family:python",
+      "cell docs (family)",
       "cell docs/c.py (family)"
     ],
     "tooltip": "1 file · 300 B",

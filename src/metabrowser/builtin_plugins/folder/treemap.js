@@ -39,6 +39,7 @@ import {
   TREEMAP_VIEW_ID,
   treemapAvailability,
   treemapRollupQuery,
+  withOuterBox,
 } from "./treemap-map.js";
 import { parentNavigation } from "./treemap-model.js";
 
@@ -282,7 +283,7 @@ export function registerTreemap(mb, palette, rollupControls) {
         });
         return;
       }
-      map.render(envelope?.node ?? null, {
+      map.render(envelope?.node ? withOuterBox(envelope.node) : null, {
         // A box too small to draw in yet is a map still arriving.
         placeholderHtml: TREEMAP_LOADING_HTML,
         emptyHtml:

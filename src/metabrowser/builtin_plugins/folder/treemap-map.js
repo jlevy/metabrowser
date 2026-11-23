@@ -111,6 +111,20 @@ export function treemapAvailability(snapshot, failed) {
 }
 
 /**
+ * The folder as a map's one top-level cell: an outer box, labelled with the
+ * folder's name, around everything in it. The Treemap view and the Overview's
+ * compact map both draw it, so the two maps of one folder match. On the compact
+ * map a click on its frame opens the Treemap view at the folder (mb-olmt); the
+ * view is already there, so it opens nothing (mb-85bh). Its totals are the
+ * folder's, so every share inside is what it would be without the box.
+ * @param {Record<string, any>} node
+ * @returns {Record<string, any>}
+ */
+export function withOuterBox(node) {
+  return { ...node, children: [node], rest: null };
+}
+
+/**
  * @typedef {object} TreemapMapOptions
  * @property {"full" | "compact"} [size]
  * @property {() => TreemapState} getState

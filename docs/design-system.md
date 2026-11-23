@@ -4824,15 +4824,18 @@ fills the pane, and a compact map at a fixed height under File Overview’s type
 (`treemap-compact.js`). The compact map draws the same tree with the same cells, colors,
 and tooltip, follows the section’s measure and Show ignored, and joins the section’s
 hover, so a legend entry marks its family’s cells there too.
-Its tree sits inside an outer box for the folder itself, labelled with the folder’s
-name. Activating a cell opens the Treemap view: the outer box at the folder, a folder’s
-cell at that folder, and a file’s or a remainder’s at the folder that holds it.
-It leaves out value lines and remainder glyphs, which its small cells cannot hold.
-Its box follows the breakdown’s answer, so it is there or not from the section’s first
-paint: it shows a skeleton while the index scans, and asks for its own tree only once
-the index has settled; it is left out when the breakdown’s request failed, the index
-stopped at its cap before finishing the folder, or the folder holds no files in the
-population shown, since the breakdown above already says why.
+At both sizes the tree sits inside an outer box for the folder itself, labelled with the
+folder’s name (`withOuterBox`), so the two maps of one folder match.
+On the compact map, activating a cell opens the Treemap view: the outer box at the
+folder, a folder’s cell at that folder, and a file’s or a remainder’s at the folder that
+holds it. In the Treemap view the outer box opens nothing, since the view is already at
+that folder.
+It leaves out value lines and remainder glyphs, which its small cells cannot
+hold. Its box follows the breakdown’s answer, so it is there or not from the section’s
+first paint: it shows a skeleton while the index scans, and asks for its own tree only
+once the index has settled; it is left out when the breakdown’s request failed, the
+index stopped at its cap before finishing the folder, or the folder holds no files in
+the population shown, since the breakdown above already says why.
 A map whose own request fails keeps its box, says the treemap is unavailable, and tries
 again with the breakdown’s Retry.
 

@@ -28,6 +28,7 @@ import {
   TREEMAP_VIEW_ID,
   treemapAvailability,
   treemapRollupQuery,
+  withOuterBox,
 } from "./treemap-map.js";
 
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} TreemapPalette */
@@ -48,18 +49,6 @@ function treemapFolderOf(cell) {
   }
   const slash = cell.path.lastIndexOf("/");
   return slash === -1 ? "" : cell.path.slice(0, slash);
-}
-
-/**
- * The folder as the map's one top-level cell: an outer box, labelled with the
- * folder's name, around everything in it, so one click on its frame opens the
- * Treemap view at the folder itself (mb-olmt). Its totals are the folder's, so
- * every share inside is what it would be without the box.
- * @param {Record<string, any>} node
- * @returns {Record<string, any>}
- */
-function withOuterBox(node) {
-  return { ...node, children: [node], rest: null };
 }
 
 /**
