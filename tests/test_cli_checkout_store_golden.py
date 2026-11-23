@@ -58,6 +58,8 @@ _BODIES = {
     "pin-origin-trunk.json": '{"ref": "refs/remotes/origin/trunk"}',
     "pin-local-trunk.json": '{"ref": "refs/heads/trunk"}',
     "pin-origin-tag.json": '{"ref": "refs/tags/v2"}',
+    "pin-short-origin.json": '{"ref": "origin/trunk"}',
+    "pin-short-local.json": '{"ref": "trunk"}',
 }
 
 # Each section's words, then its commands: the arguments after ``metab`` and the exit
@@ -74,6 +76,11 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
         ),
     ),
     (
+        "With no store, --ref origin/trunk opens the checkout's own remote-tracking branch, "
+        "at M5, and says on standard error that it read the checkout.",
+        ((("checkout", "--ref", "origin/trunk", "--api", "/api/source/status"), 0),),
+    ),
+    (
         "A refresh asked of a folder makes the store: it borrows the checkout's objects and "
         "fetches what the checkout lacks. The answer is 202 and names the store's state; the "
         "status after it is the folder's, whose working tree is still served.",
@@ -81,7 +88,8 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
     ),
     (
         "With the store, the list of remote-tracking branches has the origin's branches as "
-        "Metabrowser fetched them: origin/trunk at M6 and origin/feature, which the checkout "
+        "Metabrowser fetched them: origin/trunk at M6, first and marked as the origin's "
+        "default branch, and origin/feature, which the checkout "
         "never fetched. The checkout's own origin/* is not a second list. origin says when "
         "the store was last fetched.",
         ((("checkout", "--api", "/api/source/refs?kind=remote"), 0),),
@@ -98,15 +106,27 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
         "An origin branch is served from the store, at a commit the checkout does not have. "
         "It is a folder's page still, named and placed as the folder is, and its freshness "
         "is the store's: refreshable, following its branch, and probed while a page is "
-        "visible, as a mirror's pin is.",
+        "visible, as a mirror's pin is. read_from says the store was read.",
         ((("checkout", "--api", "/api/source/pin", "--data", "pin-origin-trunk.json"), 0),),
     ),
     (
         "The checkout's own branch is read from the checkout, at M5, and nothing fetches "
-        "into it: not refreshable. A tag the origin has is the store's.",
+        "into it: it follows nothing and is not probed, and its status says only how fresh "
+        "the store of the origin is. A tag the origin has is the store's.",
         (
             (("checkout", "--api", "/api/source/pin", "--data", "pin-local-trunk.json"), 0),
             (("checkout", "--api", "/api/source/pin", "--data", "pin-origin-tag.json"), 0),
+        ),
+    ),
+    (
+        "A short name is read as --ref reads one: origin/trunk and a tag the origin has "
+        "from the store, and the checkout's own branch of a name from the checkout. The "
+        "answer says which in read_from. --ref origin/trunk now opens the origin's trunk, "
+        "at M6, and says it read the store.",
+        (
+            (("checkout", "--api", "/api/source/pin", "--data", "pin-short-origin.json"), 0),
+            (("checkout", "--api", "/api/source/pin", "--data", "pin-short-local.json"), 0),
+            (("checkout", "--ref", "origin/trunk", "--api", "/api/source/status"), 0),
         ),
     ),
     (

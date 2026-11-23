@@ -171,7 +171,8 @@ class SourceStatus(TypedDict):
     origin knows it by; both are ``None`` when no ref is known. A filesystem subject
     has no pin, so all three are ``None``. The freshness fields are described by
     :class:`~metabrowser.mirror_refresh.FreshnessFields`; they are empty and
-    ``refreshable`` is false unless the subject is a served mirror.
+    ``refreshable`` is false unless the subject is a served mirror, or a folder that
+    keeps a store of its checkout's origin, once that store is open.
 
     ``name``, ``origin``, and ``location`` are what a served mirror's page shows where
     a folder's shows its name and path, from
@@ -189,12 +190,13 @@ class SourceStatus(TypedDict):
 
     A revision a folder's server shows of its own checkout is a pin with no origin:
     ``name`` is the folder's name, ``location`` the checkout's path, shown as a folder's
-    is, and ``origin`` is ``None``. One read from the checkout is not refreshable, since
-    Metabrowser fetches nothing into a checkout. One of the origin's branches or tags is
-    read from the store Metabrowser keeps beside the checkout
-    (:mod:`metabrowser.checkout_store`), and its freshness fields are that store's, as a
-    mirror's pin's are. ``GET /api/identity`` says such a subject's ``kind`` is still
-    ``folder``.
+    is, and ``origin`` is ``None``. Metabrowser fetches nothing into a checkout. What is
+    refreshable in a folder is the store Metabrowser keeps of the checkout's origin
+    (:mod:`metabrowser.checkout_store`): once it is open, the working tree's status and
+    that of a revision read from the checkout say when that store was fetched, with
+    nothing followed or probed, and one of the origin's branches or tags, read from the
+    store, has its freshness fields as a mirror's pin has. ``GET /api/identity`` says
+    such a subject's ``kind`` is still ``folder``.
     """
 
     subject: str
@@ -255,9 +257,11 @@ def source_status(
             borrows=None,
             shallow=store.shallow() if store is not None and of_store else checkout.shallow,
             **(
-                store.freshness_fields(pin)
-                if store is not None and of_store
-                else UNSERVED_FRESHNESS
+                UNSERVED_FRESHNESS
+                if store is None
+                else store.freshness_fields(pin)
+                if of_store
+                else store.unpinned_fields()
             ),
         )
     if pin is not None:
@@ -291,7 +295,12 @@ def source_status(
         location=None,
         borrows=None,
         shallow=False,
-        **UNSERVED_FRESHNESS,
+        # A folder that keeps a store of its checkout's origin says how fresh that is.
+        **(
+            checkout.origin.unpinned_fields()
+            if checkout is not None and checkout.origin is not None
+            else UNSERVED_FRESHNESS
+        ),
     )
 
 
@@ -438,6 +447,9 @@ def source_refs(
 
     needle = query.casefold()
     of_checkout = working_tree is not None
+    # A checkout's first-listed branch is the one checked out. Its first-listed
+    # remote-tracking branch is its origin's default, as the origin's store has it.
+    checked_out = of_checkout and kind == "branch"
     served_ref = subject.ref if subject is not None else None
     found = pulls.matching(query) if pulls is not None and needle else frozenset[str]()
     rows: list[SourceRef] = []
@@ -450,8 +462,8 @@ def source_refs(
             ref=entry.ref,
             commit=entry.commit,
             committed_at=entry.committed_at,
-            default=entry.default and not of_checkout,
-            checked_out=entry.default and of_checkout,
+            default=entry.default and not checked_out,
+            checked_out=entry.default and checked_out,
             current=served_ref is not None and entry.ref == served_ref,
         )
         if pulls is not None and head is not None and (shown := pulls.pulls(head, query)):
@@ -1339,6 +1351,10 @@ async def api_source_pin(request: Request) -> JSONResponse:
         log.warning("switching the pin failed: %s", exc)
         return _error("the selection could not be opened", exc.code, exc.http_status)
     answer: dict[str, Any] = {"changed": changed, "status": status()}
+    if checkout is not None:
+        # Where the revision is read from: the store Metabrowser keeps of the origin, or
+        # the checkout itself; null on the working tree.
+        answer["read_from"] = checkout.read_from
     switched = as_git_revision_subject(session.subject)
     if identity is not None:
         if switched is not None:

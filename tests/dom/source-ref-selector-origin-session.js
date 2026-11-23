@@ -44,16 +44,17 @@ async function run() {
   await page.answer(recording.branches);
   await opening;
   await settle();
-  steps.push(page.observe("an open list of a checkout makes a visible page's own ask, once"));
-  await page.answer(recording.ask_fresh);
-  steps.push(page.observe("the store was just fetched, so nothing is due and nothing is asked"));
+  steps.push(page.observe("the checkout's own branches read no store, so their list asks nothing"));
 
   const remotes = selector.setKind("remote");
   await page.answer(recording.remotes);
   await remotes;
+  await settle();
   steps.push(
     page.observe("the origin's branches are the store's, and the list says when it was fetched"),
   );
+  await page.answer(recording.ask_fresh);
+  steps.push(page.observe("the store was just fetched, so nothing is due and nothing is asked"));
   const tags = selector.setKind("tag");
   await page.answer(recording.tags);
   await tags;
@@ -116,11 +117,12 @@ async function run() {
     await page.answer(recording.branches);
     await opening;
     await settle();
-    await page.answer(recording.ask_refused);
     page.observe("opened");
     const listed = selector.setKind("remote");
     await page.answer(answer);
     await listed;
+    await settle();
+    await page.answer(recording.ask_refused);
     steps.push(page.observe(step));
     selector.dispose();
   }

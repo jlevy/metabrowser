@@ -96,6 +96,41 @@ status: 200
 }
 --- stderr ---
 
+== With no store, --ref origin/trunk opens the checkout's own remote-tracking branch, at M5, and says on standard error that it read the checkout.
+
+# metab checkout --ref origin/trunk --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 2,
+  "pin": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+  "ref": "refs/remotes/origin/trunk",
+  "ref_name": "origin/trunk",
+  "name": "checkout",
+  "origin": null,
+  "location": "<ROOT>",
+  "borrows": null,
+  "shallow": false,
+  "refreshable": false,
+  "follows": false,
+  "latest": null,
+  "ref_on_origin": null,
+  "last_fetch_at": null,
+  "last_outcome": null,
+  "refreshing": false,
+  "refresh_quiet": false,
+  "stale": false,
+  "probe_every_s": null,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+--- stderr ---
+ref: origin/trunk is read from the checkout; Metabrowser has no store of the origin with it
+
 == A refresh asked of a folder makes the store: it borrows the checkout's objects and fetches what the checkout lacks. The answer is 202 and names the store's state; the status after it is the folder's, whose working tree is still served.
 
 # metab checkout --api /api/source/refresh --data refresh.json
@@ -153,12 +188,16 @@ status: 200
   "location": null,
   "borrows": null,
   "shallow": false,
-  "refreshable": false,
+  "refreshable": true,
   "follows": false,
   "latest": null,
   "ref_on_origin": null,
-  "last_fetch_at": null,
-  "last_outcome": null,
+  "last_fetch_at": "2026-09-17T12:00:00Z",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "2026-09-17T12:00:00Z"
+  },
   "refreshing": false,
   "refresh_quiet": false,
   "stale": false,
@@ -169,7 +208,7 @@ status: 200
 }
 --- stderr ---
 
-== With the store, the list of remote-tracking branches has the origin's branches as Metabrowser fetched them: origin/trunk at M6 and origin/feature, which the checkout never fetched. The checkout's own origin/* is not a second list. origin says when the store was last fetched.
+== With the store, the list of remote-tracking branches has the origin's branches as Metabrowser fetched them: origin/trunk at M6, first and marked as the origin's default branch, and origin/feature, which the checkout never fetched. The checkout's own origin/* is not a second list. origin says when the store was last fetched.
 
 # metab checkout --api '/api/source/refs?kind=remote'
 exit: 0
@@ -213,18 +252,18 @@ status: 200
   },
   "refs": [
     {
-      "name": "origin/feature",
-      "ref": "refs/remotes/origin/feature",
-      "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
+      "name": "origin/trunk",
+      "ref": "refs/remotes/origin/trunk",
+      "commit": "92e9b451b02f7c11307e9e61ec47425fde5b4b6f",
       "committed_at": 1577836800.0,
-      "default": false,
+      "default": true,
       "checked_out": false,
       "current": false
     },
     {
-      "name": "origin/trunk",
-      "ref": "refs/remotes/origin/trunk",
-      "commit": "92e9b451b02f7c11307e9e61ec47425fde5b4b6f",
+      "name": "origin/feature",
+      "ref": "refs/remotes/origin/feature",
+      "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
       "committed_at": 1577836800.0,
       "default": false,
       "checked_out": false,
@@ -349,7 +388,7 @@ status: 200
 }
 --- stderr ---
 
-== An origin branch is served from the store, at a commit the checkout does not have. It is a folder's page still, named and placed as the folder is, and its freshness is the store's: refreshable, following its branch, and probed while a page is visible, as a mirror's pin is.
+== An origin branch is served from the store, at a commit the checkout does not have. It is a folder's page still, named and placed as the folder is, and its freshness is the store's: refreshable, following its branch, and probed while a page is visible, as a mirror's pin is. read_from says the store was read.
 
 # metab checkout --api /api/source/pin --data pin-origin-trunk.json
 exit: 0
@@ -386,11 +425,12 @@ status: 200
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
-  }
+  },
+  "read_from": "origin"
 }
 --- stderr ---
 
-== The checkout's own branch is read from the checkout, at M5, and nothing fetches into it: not refreshable. A tag the origin has is the store's.
+== The checkout's own branch is read from the checkout, at M5, and nothing fetches into it: it follows nothing and is not probed, and its status says only how fresh the store of the origin is. A tag the origin has is the store's.
 
 # metab checkout --api /api/source/pin --data pin-local-trunk.json
 exit: 0
@@ -410,12 +450,16 @@ status: 200
     "location": "<ROOT>",
     "borrows": null,
     "shallow": false,
-    "refreshable": false,
+    "refreshable": true,
     "follows": false,
     "latest": null,
     "ref_on_origin": null,
-    "last_fetch_at": null,
-    "last_outcome": null,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
     "refreshing": false,
     "refresh_quiet": false,
     "stale": false,
@@ -423,7 +467,8 @@ status: 200
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
-  }
+  },
+  "read_from": "checkout"
 }
 --- stderr ---
 
@@ -462,9 +507,129 @@ status: 200
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
-  }
+  },
+  "read_from": "origin"
 }
 --- stderr ---
+
+== A short name is read as --ref reads one: origin/trunk and a tag the origin has from the store, and the checkout's own branch of a name from the checkout. The answer says which in read_from. --ref origin/trunk now opens the origin's trunk, at M6, and says it read the store.
+
+# metab checkout --api /api/source/pin --data pin-short-origin.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "92e9b451b02f7c11307e9e61ec47425fde5b4b6f",
+    "ref": "refs/remotes/origin/trunk",
+    "ref_name": "origin/trunk",
+    "name": "checkout",
+    "origin": null,
+    "location": "<ROOT>",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "92e9b451b02f7c11307e9e61ec47425fde5b4b6f",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": 5.0,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "read_from": "origin"
+}
+--- stderr ---
+
+# metab checkout --api /api/source/pin --data pin-short-local.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+    "ref": "refs/heads/trunk",
+    "ref_name": "trunk",
+    "name": "checkout",
+    "origin": null,
+    "location": "<ROOT>",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "read_from": "checkout"
+}
+--- stderr ---
+
+# metab checkout --ref origin/trunk --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 2,
+  "pin": "92e9b451b02f7c11307e9e61ec47425fde5b4b6f",
+  "ref": "refs/remotes/origin/trunk",
+  "ref_name": "origin/trunk",
+  "name": "checkout",
+  "origin": null,
+  "location": "<ROOT>",
+  "borrows": null,
+  "shallow": false,
+  "refreshable": true,
+  "follows": true,
+  "latest": "92e9b451b02f7c11307e9e61ec47425fde5b4b6f",
+  "ref_on_origin": true,
+  "last_fetch_at": "2026-09-17T12:00:00Z",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "refreshing": false,
+  "refresh_quiet": false,
+  "stale": false,
+  "probe_every_s": 5.0,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+--- stderr ---
+ref: origin/trunk is read from Metabrowser's store of the origin, as last fetched
 
 == A visible page's own ask on the working tree fetches the store only when it is older than the freshness window. It was just fetched, so nothing is due.
 
@@ -499,12 +664,16 @@ status: 200
     "location": null,
     "borrows": null,
     "shallow": false,
-    "refreshable": false,
+    "refreshable": true,
     "follows": false,
     "latest": null,
     "ref_on_origin": null,
-    "last_fetch_at": null,
-    "last_outcome": null,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
     "refreshing": false,
     "refresh_quiet": false,
     "stale": false,

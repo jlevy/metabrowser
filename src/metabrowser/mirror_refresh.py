@@ -1728,6 +1728,30 @@ class MirrorSession(StoreSession):
             "selection_href": self._selection_href if self._selection_state == "found" else None,
         }
 
+    def unpinned_fields(self) -> FreshnessFields:
+        """The freshness half of the status envelope while nothing of this store is served.
+
+        A folder's page on its working tree, or on one of its checkout's own revisions:
+        the store of its origin is refreshable and has a last fetch, and no pin follows
+        or is probed.
+        """
+
+        return {
+            "refreshable": True,
+            "follows": False,
+            "latest": None,
+            "ref_on_origin": None,
+            "last_fetch_at": self.last_fetch_at(),
+            "last_outcome": self._last_outcome(),
+            "refreshing": self.refreshing(),
+            "refresh_quiet": self._refresh_quiet(),
+            "stale": self._mirror_stale(_now_utc()),
+            "probe_every_s": None,
+            "pull_request": None,
+            "selection_state": None,
+            "selection_href": None,
+        }
+
     # ── Refresh ─────────────────────────────────────────────────
 
     def request_refresh(self, *, for_selection: bool = False) -> RefreshStart:

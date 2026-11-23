@@ -114,6 +114,10 @@ Click it or press `W` to see any other branch or tag without checking it out.
   checkout’s objects and holds only what the checkout lacks, and fetches it in the
   background while the folder is served, so `origin/main` there is where the origin is,
   not where your own last `git fetch` left it.
+  The origin’s default branch is first and marked “default”.
+  The row at the foot of the navigation pane says when the origin was last fetched and
+  has **Refresh**, on your working tree’s page too; it fetches Metabrowser’s store,
+  never your checkout.
   A line under the list says when it was fetched, or why it was not: an origin that
   needs a password Metabrowser does not have is listed from your checkout instead, and
   nothing asks for one.

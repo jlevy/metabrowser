@@ -299,12 +299,13 @@ cost alone
   reads the origin and the store the cache has in the background as it starts, acquires
   a store it lacks, and then runs the idle timer, so with no page visible the store is
   at most `STORE_IDLE_REFRESH_S` old.
-  A visible page asks as a mirror’s does: an open chooser sends its own ask once,
-  `POST /api/source/refresh` with `{"for": "page"}`, which fetches a store older than
-  `FRESHNESS_WINDOW_S`, and a page on one of the origin’s branches has that branch
-  probed every `STORE_PROBE_S`. A one-shot `--show` or `--api` reads the store the cache
-  has, at the request that needs it, and reaches the network only through an explicit
-  `POST /api/source/refresh`, which makes the store when there is none.
+  A visible page asks as a mirror’s does: an open chooser sends its own ask once, with
+  the first list that reads the store, Remotes or Tags, and not for the checkout’s own
+  branches, `POST /api/source/refresh` with `{"for": "page"}`, which fetches a store
+  older than `FRESHNESS_WINDOW_S`, and a page on one of the origin’s branches has that
+  branch probed every `STORE_PROBE_S`. A one-shot `--show` or `--api` reads the store
+  the cache has, at the request that needs it, and reaches the network only through an
+  explicit `POST /api/source/refresh`, which makes the store when there is none.
 - **The session** is a `MirrorSession` over that store, made once the store exists.
   `mirror_refresh.py` splits what belongs to the store, its fetch, its turn, its probe
   and hold rules, its idle timer, and its last outcome (`StoreSession`), from what
@@ -331,10 +332,25 @@ cost alone
   ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)). The
   pin route reads a selection from the store when it names a full ref of one of the
   origin’s branches, or a tag the store holds, and a commit ID while a revision of the
-  store is served (`CheckoutRevisions._of_origin`); anything else, a short name
-  included, is the checkout’s. The status of such a pin has the store’s freshness,
-  `refreshable` and `follows`, and is still a folder’s, named and placed as the folder
-  is.
+  store is served (`CheckoutRevisions._of_origin`). A short name, as `--ref` gives one,
+  is read in a checkout’s order with the origin’s taken from the store: the checkout’s
+  own branch of that name, then a tag the store holds, then a tag only the checkout has,
+  then `origin/<branch>` as the store has it.
+  The pin route’s answer says which was read in `read_from`, `origin` or `checkout`, and
+  `--ref` says so on standard error.
+  A switch opens the store first, which adopts a cached one with no network, so
+  `metab PATH --ref origin/topic` reads the store once the cache has it and the checkout
+  until then. The status of such a pin has the store’s freshness, `refreshable` and
+  `follows`, and is still a folder’s, named and placed as the folder is.
+- **The origin’s default branch** lists first in Remotes and is marked `default`, as a
+  mirror’s is, from the store’s record of it.
+- **The freshness row** is on every page of a folder that keeps a store, its working
+  tree’s too: the status of the working tree, and of one of the checkout’s own
+  revisions, has the store’s last fetch and is `refreshable`, with nothing followed or
+  probed (`MirrorSession.unpinned_fields`). The row says what was fetched is
+  Metabrowser’s store of the origin and never the checkout, asks for one refresh when
+  the store has grown old, as a mirror’s page does, and leaves the reload offer to the
+  ref selector (`describe` with `checkout` in `static/source-freshness.js`).
 - **Refresh:** `POST /api/source/refresh` on a folder that keeps a store fetches the
   store, whatever the folder shows, and the listing reads the checkout’s refs again each
   time it is asked for.
@@ -343,9 +359,10 @@ cost alone
   why. An origin that needs credentials the provider’s helper lacks is
   `not_found_or_private`: the origin is shown as not fetched, with that reason.
   Nothing prompts, since the acquisition policy gives Git no terminal and no askpass
-  program. A server tries the acquisition again each `STORE_IDLE_REFRESH_S`, unless it
-  was the checkout that could not lend, and a page’s own ask starts none within
-  `FRESHNESS_WINDOW_S` of one that failed.
+  program. A server tries the acquisition again each `STORE_IDLE_REFRESH_S`, also when it
+  was the checkout that could not lend, since a partial clone can be made whole; the
+  chooser keeps the reason while it tries.
+  A page’s own ask starts none within `FRESHNESS_WINDOW_S` of one that failed.
 - **Never written:** `tests/test_checkout_store.py` compares every entry under the
   checkout’s `.git`, and its working tree, before and after the store is made, an origin
   branch served and read, a probe, a reader’s fetch, and the idle fetch.
@@ -364,18 +381,8 @@ The defaults this was built on, recorded 2026-11-22 with the implementation:
 - A checkout whose origin is not a network remote, or that has no origin, keeps its
   earlier behavior.
 
-Not built:
-
-- **A row that marks where the reader’s own `origin/<branch>` differs from the
-  origin’s,** so a branch the reader has not pulled is visible.
-  Open, as before.
-- **A freshness row and a Refresh control on the working tree’s page.** The store is
-  kept by the idle timer and the chooser’s own ask; only a page on one of the origin’s
-  branches has the row, whose words still say “mirror”.
-- **`--ref` and a short name read the checkout.** `metab PATH --ref origin/topic` opens
-  the checkout’s own remote-tracking branch, since the store is opened after the folder
-  is up.
-- **The origin’s default branch is not marked** in a folder’s list.
+Not built: a row that marks where the reader’s own `origin/<branch>` differs from the
+origin’s, so a branch the reader has not pulled is visible (bead `mb-h7mv`).
 
 ## What Is Never Written
 
@@ -710,7 +717,7 @@ A pull request that builds a part updates its row.
 | GitHub links opened in the app, and `SessionRoot` | Built: one mirror per repository, which opens every link into it in its running server | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0`; `mb-30xb` |
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Built | [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout); [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
-| A repository folder’s origin branches and tags from Metabrowser’s store beside it | Built; a row that marks where the reader’s own `origin/<branch>` differs, and a freshness row on the working tree’s page, are not | [Origin Branches in a Repository Folder](#origin-branches-in-a-repository-folder), `mb-ay84` |
+| A repository folder’s origin branches and tags from Metabrowser’s store beside it | Built; a row that marks where the reader’s own `origin/<branch>` differs is not (`mb-h7mv`) | [Origin Branches in a Repository Folder](#origin-branches-in-a-repository-folder), `mb-ay84` |
 | Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |
 | File > Open URL… | Built, without the offer of a known checkout, which waits for a way to tell that an open folder is a checkout of the URL’s repository | [#560](https://github.com/jlevy/metabrowser/pull/560), `mb-m4mg`; the offer is `mb-bkk2` |
 | View on GitHub on files, folders, pull requests, and commits | Built; the app’s native popover is its own | `mb-4wqh` |

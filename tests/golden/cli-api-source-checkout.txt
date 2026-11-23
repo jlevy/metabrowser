@@ -220,6 +220,7 @@ status: 200
     "selection_state": null,
     "selection_href": null
   },
+  "read_from": "checkout",
   "view_href": "/view/g1-UkVBRE1FLm1k"
 }
 --- stderr ---
@@ -258,6 +259,7 @@ status: 200
     "selection_state": null,
     "selection_href": null
   },
+  "read_from": "checkout",
   "view_href": "/view/"
 }
 --- stderr ---
@@ -295,7 +297,8 @@ status: 200
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
-  }
+  },
+  "read_from": "checkout"
 }
 --- stderr ---
 
@@ -330,7 +333,8 @@ status: 200
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
-  }
+  },
+  "read_from": "checkout"
 }
 --- stderr ---
 
@@ -367,7 +371,8 @@ status: 200
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
-  }
+  },
+  "read_from": null
 }
 --- stderr ---
 

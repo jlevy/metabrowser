@@ -165,7 +165,7 @@ def test_a_served_checkout_lists_its_origins_refs_from_metabrowsers_own_store(
     assert pinned_git(folder.checkout, "rev-parse", _ORIGIN_TRUNK) == folder.behind
     assert remote == {"origin/trunk": folder.ahead, "origin/feature": folder.feature}
     assert all(row["ref"].startswith("refs/remotes/origin/") for row in listing["refs"])
-    assert not any(row["checked_out"] or row["default"] for row in listing["refs"])
+    assert not any(row["checked_out"] for row in listing["refs"])
     tags = _by_name(_refs(served, "tag"))
     assert tags == {"v2": folder.replica["M4"], "local-only": folder.behind}
     # The checkout's own branches are read from the checkout, as before.
@@ -309,12 +309,12 @@ def test_an_origin_branch_is_served_from_the_store_inert_and_follows_a_fetch(
     # The checkout's own branch is read from the checkout, and nothing fetches into it.
     local = _post(served, "/api/source/pin", {"ref": "refs/heads/trunk"}).json()["status"]
     assert local["pin"] == folder.behind
-    assert local["refreshable"] is False and local["probe_every_s"] is None
+    assert local["follows"] is False and local["probe_every_s"] is None
     # A tag only the checkout has is the checkout's; one the origin has is the store's.
     own = _post(served, "/api/source/pin", {"ref": "refs/tags/local-only"}).json()["status"]
-    assert own["pin"] == folder.behind and own["refreshable"] is False
+    assert own["pin"] == folder.behind and own["follows"] is False
     theirs = _post(served, "/api/source/pin", {"ref": "refs/tags/v2"}).json()["status"]
-    assert theirs["pin"] == folder.replica["M4"] and theirs["refreshable"] is True
+    assert theirs["pin"] == folder.replica["M4"] and theirs["follows"] is True
     back = _post(served, "/api/source/pin", {"working_tree": True}).json()
     assert back["changed"] is True and back["status"]["subject"] == "attached_filesystem"
 
@@ -572,3 +572,143 @@ def test_an_acquisition_that_ends_as_the_application_stops_leaves_no_session_beh
         return store.session is None, CheckoutRevisions(folder.checkout).origin is None
 
     assert asyncio.run(scenario()) == (True, True)
+
+
+# ── Follow-ups: the default branch, short names, the row, and the retry ──
+
+
+def test_the_origins_default_branch_lists_first_and_is_marked(
+    folder: _Folder, served: TestClient
+) -> None:
+    """The Remotes list marks the origin's default branch, as a mirror's list does; the
+    checkout's own branches still mark the one checked out."""
+
+    listing = _ready(served)
+    assert [(row["name"], row["default"], row["checked_out"]) for row in listing["refs"]] == [
+        ("origin/trunk", True, False),
+        ("origin/feature", False, False),
+    ]
+    branch = _refs(served, "branch")["refs"][0]
+    assert (branch["default"], branch["checked_out"]) == (False, True)
+
+
+def test_a_short_name_is_read_from_the_store_and_the_answer_says_which(
+    folder: _Folder, served: TestClient
+) -> None:
+    """``origin/trunk`` and a tag the origin has are the store's; the checkout's own
+    branch of a name, and a tag only it has, are the checkout's."""
+
+    _ready(served)
+    for name, commit, where in (
+        ("origin/trunk", folder.ahead, "origin"),
+        ("origin/feature", folder.feature, "origin"),
+        ("v2", folder.replica["M4"], "origin"),
+        ("trunk", folder.behind, "checkout"),
+        ("local-only", folder.behind, "checkout"),
+        (folder.behind[:12], folder.behind, "checkout"),
+    ):
+        answer = _post(served, "/api/source/pin", {"ref": name})
+        assert answer.status_code == 200, (name, answer.text)
+        assert (answer.json()["status"]["pin"], answer.json()["read_from"]) == (commit, where), name
+    back = _post(served, "/api/source/pin", {"working_tree": True}).json()
+    assert back["read_from"] is None
+    missing = _post(served, "/api/source/pin", {"ref": "origin/gone"})
+    assert missing.status_code == 404
+
+
+def test_ref_opens_an_origin_branch_from_the_store_once_the_cache_has_one(
+    folder: _Folder,
+) -> None:
+    """``metab PATH --ref origin/trunk`` reads the checkout while there is no store, and
+    the store once there is one, and says which on standard error."""
+
+    from tests.golden_harness import run_metab
+
+    command = [str(folder.checkout), "--ref", "origin/trunk", "--api", "/api/source/status"]
+    before = run_metab(command)
+    assert before.exit_code == 0, before.stderr
+    assert f'"pin": "{folder.behind}"' in before.stdout
+    assert "is read from the checkout" in before.stderr
+    server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
+    serve_checkout_store()
+    with TestClient(server.app) as client:
+        _ready(client)
+    after = run_metab(command)
+    assert after.exit_code == 0, after.stderr
+    assert f'"pin": "{folder.ahead}"' in after.stdout
+    assert '"refreshable": true' in after.stdout
+    assert "is read from Metabrowser's store of the origin" in after.stderr
+    # The checkout's own branch says nothing: it was never the origin's to read.
+    local = run_metab([str(folder.checkout), "--ref", "trunk", "--api", "/api/source/status"])
+    assert f'"pin": "{folder.behind}"' in local.stdout and "ref:" not in local.stderr
+
+
+def test_every_page_of_a_folder_with_a_store_has_the_freshness_row_and_its_status(
+    folder: _Folder, served: TestClient
+) -> None:
+    """The working tree's page and a local branch's say when the origin's store was
+    fetched and can refresh it; nothing of theirs follows or is probed."""
+
+    _ready(served)
+    assert 'id="source-freshness"' in served.get("/view/").text
+    status = served.get("/api/source/status").json()
+    assert status["subject"] == "attached_filesystem"
+    assert status["refreshable"] is True and status["last_fetch_at"] is not None
+    assert (status["follows"], status["probe_every_s"], status["pin"]) == (False, None, None)
+    assert status["stale"] is False
+    folder.clock.advance(3600)
+    assert served.get("/api/source/status").json()["stale"] is True
+    local = _post(served, "/api/source/pin", {"ref": "refs/heads/trunk"}).json()["status"]
+    assert local["refreshable"] is True and local["follows"] is False
+    assert local["probe_every_s"] is None
+
+
+def test_a_checkout_that_keeps_no_store_has_no_freshness_row(folder: _Folder) -> None:
+    pinned_git(folder.checkout, "remote", "set-url", "origin", folder.replica.url)
+    server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as client:
+        assert _refs(client, "remote")["origin"] is None
+        assert 'id="source-freshness"' not in client.get("/view/").text
+        assert client.get("/api/source/status").json()["refreshable"] is False
+
+
+def test_a_checkout_that_could_not_lend_is_tried_again_on_the_idle_timer(
+    folder: _Folder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A partial clone made whole later gets its store with no request asking, and until
+    then the chooser keeps saying why there is none, the retry included."""
+
+    import threading
+
+    attempts: list[str] = []
+    retrying = threading.Event()
+    release = threading.Event()
+    acquire = checkout_store.acquire_checkout_store
+
+    async def refused_once(*args: Any, **kwargs: Any) -> Any:
+        attempts.append("acquire")
+        if len(attempts) == 1:
+            raise CheckoutStoreError("lender_missing", "the checkout cannot lend its objects")
+        retrying.set()
+        await asyncio.to_thread(release.wait)
+        return await acquire(*args, **kwargs)
+
+    monkeypatch.setattr(checkout_store, "acquire_checkout_store", refused_once)
+    monkeypatch.setattr(checkout_store, "STORE_IDLE_REFRESH_S", 0.3)
+    server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
+    serve_checkout_store()
+    try:
+        with TestClient(server.app) as client:
+            assert retrying.wait(240), "the acquisition was never tried again"
+            during = _refs(client, "remote")["origin"]
+            assert (during["state"], during["reason"]) == ("absent", "lender_missing")
+            assert during["refreshing"] is True
+            release.set()
+            deadline = time.monotonic() + 240
+            while (listing := _refs(client, "remote"))["origin"]["state"] != "ready":
+                assert time.monotonic() < deadline, listing["origin"]
+                time.sleep(0.05)
+            assert _by_name(listing)["origin/trunk"] == folder.ahead
+    finally:
+        release.set()
+    assert attempts == ["acquire", "acquire"]

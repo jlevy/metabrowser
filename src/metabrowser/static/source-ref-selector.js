@@ -29,7 +29,8 @@
 //   (`origin` in the listing; metabrowser/checkout_store.py). Once that store exists, the
 //   Remotes list has the origin's branches as Metabrowser last fetched them, in place of
 //   the checkout's own `origin/*`, and the Tags list the origin's tags; a line under the
-//   list says so and when, or why the origin is not fetched. An open list of a checkout
+//   list says so and when, or why the origin is not fetched. The origin's default branch
+//   is first there and marked. An open list of a checkout, once it shows Remotes or Tags,
 //   makes a visible page's own ask once (`{"for": "page"}`), which fetches a store older
 //   than the server's freshness window, and asks for the list again while that runs.
 //
@@ -617,6 +618,8 @@
     /** The wait before the next ask for pull requests the server was still filling. */
     /** @type {unknown} */
     let pullsTimer = null;
+    // Whether the visible page's own ask went out since the list was opened.
+    let askedForOrigin = false;
     let disposed = false;
 
     function render() {
@@ -753,14 +756,25 @@
     /**
      * A visible page's own ask, for a checkout that keeps a store of its origin: the server
      * fetches the store when it is older than its freshness window, and makes it when it
-     * has none. Sent once each time the list opens, after its first answer, and never
+     * has none. Sent once each time the list opens, with the first list that reads the
+     * store, the Remotes or the Tags, and never
      * waited for: when the server says a fetch runs, the list is asked for again and then
      * watched until it ends. The reader did not ask, so a refusal says nothing.
      */
     async function askForOrigin() {
-      if (!checkout || disposed || !state.open || (state.listing?.origin ?? null) === null) {
+      // Only for a list that reads the store, the origin's branches or its tags: the
+      // checkout's own branches are read from the checkout, and a fetch moves none.
+      if (
+        !checkout ||
+        disposed ||
+        !state.open ||
+        askedForOrigin ||
+        state.kind === "branch" ||
+        (state.listing?.origin ?? null) === null
+      ) {
         return;
       }
+      askedForOrigin = true;
       try {
         const response = await deps.request("POST", REFRESH_ROUTE, { for: "page" });
         const answer = /** @type {{refresh?: unknown} | null} */ (
@@ -781,6 +795,7 @@
       }
       state.open = true;
       state.error = null;
+      askedForOrigin = false;
       return load().then(() => {
         void askForOrigin();
       });
@@ -815,7 +830,9 @@
       }
       state.kind = kind;
       state.listing = null;
-      return load();
+      return load().then(() => {
+        void askForOrigin();
+      });
     }
 
     /** @param {string} query */

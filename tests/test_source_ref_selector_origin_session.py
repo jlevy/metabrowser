@@ -129,8 +129,12 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
     update = served_mirror.update_store
 
+    failing: list[bool] = []
+
     async def held_fetch(*args: Any, **kwargs: Any) -> Any:
         await asyncio.to_thread(fetch_gate.wait)
+        if failing:
+            raise OSError("the fetch could not run")
         return await update(*args, **kwargs)
 
     monkeypatch.setattr(checkout_store, "acquire_checkout_store", held)
@@ -146,19 +150,36 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["tags"] = listing(client, "tag")
             # Just fetched: a visible page's own ask finds nothing due.
             recorded["ask_fresh"] = post(client, "/api/source/refresh", {"for": "page"})
+            # What the freshness row of the folder's pages reads: the working tree's
+            # status, which says how fresh the store of the origin is.
+            recorded["status_working_tree"] = client.get("/api/source/status").json()
             # An hour on, the origin has moved: the ask starts a fetch, held while the
             # list is asked for again.
             recorded["moved"] = _push(work, replica.origin, "m7\n")
             isolated.clock.advance(3600)
+            recorded["status_stale"] = client.get("/api/source/status").json()
             fetch_gate.clear()
             recorded["ask_started"] = post(client, "/api/source/refresh", {"for": "page"})
             recorded["remotes_fetching"] = listing(client, "remote")
             fetch_gate.set()
             recorded["remotes_fetched"] = _until(client, "ready")
+            # A reader's own Refresh on the working tree's page, held and then let end.
+            fetch_gate.clear()
+            recorded["refresh_started"] = post(client, "/api/source/refresh", {})
+            fetch_gate.set()
+            _until(client, "ready")
+            recorded["status_refreshed"] = client.get("/api/source/status").json()
             recorded["switch_origin_branch"] = post(
                 client, "/api/source/pin", {"ref": ORIGIN_TRUNK, "view": VIEW}
             )
             recorded["remotes_on_origin_branch"] = listing(client, "remote")
+            # Back on the working tree, a Refresh that fails.
+            post(client, "/api/source/pin", {"working_tree": True})
+            failing.append(True)
+            post(client, "/api/source/refresh", {})
+            _until(client, "ready")
+            recorded["status_refresh_failed"] = client.get("/api/source/status").json()
+            failing.clear()
     finally:
         gate.set()
         fetch_gate.set()
@@ -178,10 +199,16 @@ def test_recording_is_what_a_served_checkout_with_a_store_answers(
     assert recorded["acquiring_remotes"]["body"]["origin"]["refreshing"] is True
     ready = recorded["remotes"]["body"]
     assert ready["origin"]["state"] == "ready"
-    # The replica's commits share one pinned date, so the rows read by name. The origin's
-    # trunk is where the origin has it, not where the checkout's last fetch left it.
-    assert [row["name"] for row in ready["refs"]] == ["origin/feature", "origin/trunk"]
-    assert ready["refs"][1]["commit"] != absent["refs"][0]["commit"]
+    # The origin's default branch first, and marked. Its trunk is where the origin has it,
+    # not where the checkout's last fetch left it.
+    assert [(row["name"], row["default"]) for row in ready["refs"]] == [
+        ("origin/trunk", True),
+        ("origin/feature", False),
+    ]
+    assert ready["refs"][0]["commit"] != absent["refs"][0]["commit"]
+    # The working tree's status says how fresh the store is, and can refresh it.
+    assert recorded["ask_fresh"]["body"]["status"]["refreshable"] is True
+    assert recorded["ask_fresh"]["body"]["status"]["subject"] == "attached_filesystem"
     assert [row["name"] for row in recorded["tags"]["body"]["refs"]] == ["local-only", "v2"]
     assert (recorded["ask_fresh"]["status"], recorded["ask_fresh"]["body"]["refresh"]) == (
         200,
@@ -193,11 +220,16 @@ def test_recording_is_what_a_served_checkout_with_a_store_answers(
     )
     assert recorded["remotes_fetching"]["body"]["origin"]["refreshing"] is True
     fetched = recorded["remotes_fetched"]["body"]
-    assert fetched["refs"][1]["commit"] == recorded["moved"]
+    assert fetched["refs"][0]["commit"] == recorded["moved"]
     assert fetched["origin"]["last_fetch_at"] != ready["origin"]["last_fetch_at"]
+    assert recorded["status_stale"]["stale"] is True
+    started = recorded["refresh_started"]["body"]
+    assert (started["refresh"], started["status"]["refreshing"]) == ("started", True)
+    assert started["status"]["refresh_quiet"] is False
+    assert recorded["status_refresh_failed"]["last_outcome"]["outcome"] == "failed"
     switched = recorded["switch_origin_branch"]["body"]
     assert switched["status"]["pin"] == recorded["moved"]
-    assert switched["status"]["refreshable"] is True
+    assert switched["status"]["refreshable"] is True and switched["read_from"] == "origin"
     assert switched["status"]["location"] == "/sandbox/checkout"
     on_branch = recorded["remotes_on_origin_branch"]["body"]
     assert [row["name"] for row in on_branch["refs"] if row["current"]] == ["origin/trunk"]
@@ -208,12 +240,8 @@ def test_the_session_reads_the_origin_from_the_store_and_asks_as_a_visible_page(
     session = run_session("source-ref-selector-origin-session.js")
     recording = read_recording(RECORDING)
     by_name = {step["step"]: step for step in session["steps"]}
-    opened = by_name["an open list of a checkout makes a visible page's own ask, once"]
-    assert opened["requests"] == [
-        "GET /api/source/refs?kind=branch",
-        'POST /api/source/refresh {"for":"page"}',
-    ]
-    # The checkout's own branches read no store, so that list says nothing of one.
+    opened = by_name["the checkout's own branches read no store, so their list asks nothing"]
+    assert opened["requests"] == ["GET /api/source/refs?kind=branch"]
     assert "origin" not in opened["paint"]
     remotes = by_name[
         "the origin's branches are the store's, and the list says when it was fetched"
@@ -222,16 +250,24 @@ def test_the_session_reads_the_origin_from_the_store_and_asks_as_a_visible_page(
     assert remotes["paint"]["origin"] == (
         f"The origin's branches are as Metabrowser last fetched them (fetched {fetched_at}) [quiet]"
     )
-    assert [row.split(" ")[0] for row in remotes["paint"]["rows"]] == [
-        "origin/feature",
-        "origin/trunk",
+    # The list that reads the store makes the visible page's own ask, once for the opening.
+    assert remotes["requests"] == [
+        "GET /api/source/refs?kind=remote",
+        'POST /api/source/refresh {"for":"page"}',
     ]
+    tags = by_name["the origin's tags are the store's, beside the tag only the checkout has"]
+    assert tags["requests"] == ["GET /api/source/refs?kind=tag"]
+    assert [row.split(" ")[0] for row in remotes["paint"]["rows"]] == [
+        "origin/trunk",
+        "origin/feature",
+    ]
+    assert "[default]" in remotes["paint"]["rows"][0]
     asked = by_name["a fetch the ask started is followed: the list is asked for again"]
     assert asked["requests"] == ["GET /api/source/refs?kind=remote"]
     waiting = by_name["while the store is fetched, the open list asks again after a wait"]
     assert waiting["pullsPending"] is True
     moved = by_name["the fetch ended: the origin's branch moved, and nothing more is asked"]
-    assert recording["moved"].startswith(moved["paint"]["rows"][1].split(" ")[1])
+    assert recording["moved"].startswith(moved["paint"]["rows"][0].split(" ")[1])
     assert "pullsPending" not in moved
     chosen = by_name["an origin branch is asked for by its ref"]
     assert chosen["requests"] == [

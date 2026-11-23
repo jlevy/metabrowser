@@ -25,7 +25,8 @@ the chooser says so.
 **When it is fetched.** By the rules of every store Metabrowser keeps
 (:class:`~metabrowser.mirror_refresh.StoreSession`): from the moment a server serves the
 folder, the idle refresh keeps it at most ``STORE_IDLE_REFRESH_S`` old with no page
-visible, and a visible page's own ask fetches it once it is older than the freshness
+visible (it tries a failed acquisition again as often, a checkout that could not lend
+included), and a visible page's own ask fetches it once it is older than the freshness
 window and probes a served origin branch every ``STORE_PROBE_S``. A one-shot command
 reads the store the cache has and fetches only when it asks. Nothing prompts: the
 acquisition policy gives Git no terminal, so an origin that needs credentials the
@@ -54,7 +55,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
-from metabrowser.checkout_revisions import checkout_revisions, set_origin_session
+from metabrowser.checkout_revisions import (
+    checkout_revisions,
+    set_origin_opener,
+    set_origin_session,
+)
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
     STORE_IDLE_REFRESH_S,
@@ -377,7 +382,8 @@ class CheckoutStore:
                 last_outcome=fields["last_outcome"],
                 refreshing=fields["refreshing"],
             )
-        if self.acquiring():
+        failed = self._absent if self._failed_at is not None else None
+        if self.acquiring() and failed is None:
             return OriginStore(
                 state="acquiring",
                 reason=None,
@@ -395,7 +401,8 @@ class CheckoutStore:
             address=address,
             last_fetch_at=None,
             last_outcome=None,
-            refreshing=False,
+            # Tried again now, with why the last try failed still said.
+            refreshing=failed is not None and self.acquiring(),
         )
 
     # ── Opening and acquiring ───────────────────────────────────
@@ -448,6 +455,12 @@ class CheckoutStore:
                 await self.open()
             except Exception:
                 log.warning("could not open the checkout's store of its origin", exc_info=True)
+
+    async def opened_fetchable(self) -> bool:
+        """Open, and say whether this checkout has an origin Metabrowser fetches."""
+
+        await self.ensure_open()
+        return self._fetchable()
 
     def _fetchable(self) -> bool:
         origin = self._origin
@@ -538,14 +551,16 @@ class CheckoutStore:
         """Try the acquisition again each idle interval until the store exists, then keep it.
 
         An origin that could not be reached when the folder opened is asked again no more
-        often than a store with no page visible is fetched.
+        often than a store with no page visible is fetched. So is a checkout that could
+        not lend: a partial clone can be made whole, and one that borrowed objects can
+        repack, and the check that refused it reads a few of its files.
         """
 
         while self.session is None:
             try:
                 await asyncio.wait_for(self._made.wait(), STORE_IDLE_REFRESH_S)
             except TimeoutError:
-                if self.session is None and self._absent != "lender_missing":
+                if self.session is None:
                     try:
                         self.request_acquisition()
                     except RuntimeError:
@@ -600,6 +615,7 @@ class CheckoutStore:
                 if checkout is not None:
                     await checkout.serve_working_tree()
         set_origin_session(self.root, None)
+        set_origin_opener(self.root, None)
 
 
 # Whether the next application lifespan is a server's; see :func:`serve_checkout_store`.
@@ -637,9 +653,10 @@ def checkout_store(app: Any) -> CheckoutStore | None:
 async def lifespan_checkout_store(app: Any) -> AsyncGenerator[None]:
     """Own the store a folder's server keeps beside its checkout.
 
-    Entered after the refresh coordinator and the checkout's revisions, and so left
-    before them: a revision read from the store is closed, and the folder served again,
-    while the coordinator still runs. A server opens the store in the background, so its
+    Entered after the refresh coordinator and before the checkout's revisions, so a ref
+    named with ``--ref`` finds the store's opener set; a revision read from the store is
+    closed, and the folder served again, as the checkout's lifespan is left, while the
+    coordinator still runs. A server opens the store in the background, so its
     first page waits for no file read here; a one-shot command opens it at the request
     that reads it (:meth:`CheckoutStore.ensure_open`), so one that never asks about the
     origin loads nothing of the cache.
@@ -654,6 +671,9 @@ async def lifespan_checkout_store(app: Any) -> AsyncGenerator[None]:
         set_origin_session(checkout.root, None)
         store = CheckoutStore(checkout.root, coordinator, serving=_serving)
         app.state.checkout_store = store
+        # A switch of what the folder serves opens the store first, so a ref named as
+        # the application starts reads the origin's from it.
+        set_origin_opener(checkout.root, store.opened_fetchable)
         if _serving:
             store.start()
     try:

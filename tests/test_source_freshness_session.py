@@ -636,6 +636,26 @@ def test_recording_is_what_a_served_mirror_answers(
     check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
 
 
+def test_a_folders_row_names_its_store_of_the_origin_on_every_page() -> None:
+    """The row on a repository folder's pages, its working tree's among them: it asks for
+    one refresh of a store grown old, says what was fetched is Metabrowser's store, and
+    leaves the reload offer to the ref selector."""
+
+    folder = run_session("source-freshness-session.js", "folder")
+    by_name = {step["step"]: step for step in folder["steps"]}
+    stale = by_name["the working tree's page, its origin's store grown old, asks once"]
+    assert stale["requests"] == ["GET /api/source/status", "POST /api/source/refresh {}"]
+    assert stale["paint"]["label"] == "Refreshing…"
+    fetched = by_name["the store was fetched; the row says when, and nothing reloads"]
+    assert fetched["paint"]["label"].startswith("Origin fetched ")
+    assert "never fetched into" in fetched["paint"]["detail"]
+    failed = by_name["a fetch that failed says the checkout is unchanged"]
+    assert failed["paint"]["label"].startswith("Refresh failed · origin fetched ")
+    for step in folder["steps"]:
+        assert "mirror" not in json.dumps(step["paint"]), step["step"]
+        assert step["paint"]["offer"] is None and step.get("reloads", 0) == 0, step["step"]
+
+
 def test_the_session_runs_on_the_recording() -> None:
     transcript = run_session("source-freshness-session.js")
     asks = run_session("source-freshness-session.js", "asks")

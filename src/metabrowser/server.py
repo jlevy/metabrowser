@@ -89,7 +89,7 @@ from metabrowser.capabilities import (
     untrusted_shell_csp,
 )
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
-from metabrowser.checkout_store import lifespan_checkout_store
+from metabrowser.checkout_store import checkout_store, lifespan_checkout_store
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.commit_ids import short_commit
 from metabrowser.content_sniff import (
@@ -1852,12 +1852,15 @@ async def index(
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
-    # A pin's freshness row, filled by static/source-freshness.js. A folder has none.
+    # A pin's freshness row, filled by static/source-freshness.js. A plain folder has
+    # none. A checkout that keeps a store of its origin has one on every page, its
+    # working tree's too, saying when that store was fetched and offering Refresh.
+    origin_store = checkout_store(request.app) if checkout is not None else None
     # It sits above the keyboard shortcut strip, so the strip stays the pane's last row
     # (owner, 2026-11-20).
     source_freshness_row = (
         '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
-        if git_pin
+        if git_pin or (origin_store is not None and origin_store.fetchable)
         else ""
     )
     # The branch and tag selector, filled by static/source-ref-selector.js: on a pin
@@ -5737,16 +5740,16 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
     # refresh jobs start once the pin is attached and are cancelled before it closes.
     # What a folder's server keeps for its checkout comes last, so it is left first: a
     # revision of the checkout still served at shutdown is closed while the rest is up.
-    # The store a folder keeps of its checkout's origin is last of all: it needs the
-    # refresh jobs and the checkout's revisions, and a revision read from it is closed first.
+    # The store a folder keeps of its checkout's origin needs the refresh jobs, and comes
+    # before the checkout's revisions, whose `--ref` may name a ref read from it.
     # A served process's event log pings this loop, so a turn that blocks it is on record.
     event_log.watch_loop(asyncio.get_running_loop())
     async with (
         lifespan_subject(),
         build_lifespan(app=app, root_provider=_inventory_root_provider),
         lifespan_refresh(app),
-        lifespan_checkout(),
         lifespan_checkout_store(app),
+        lifespan_checkout(),
     ):
         try:
             if not get_capabilities().active_content:

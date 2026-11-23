@@ -219,18 +219,18 @@
       },
       "refs": [
         {
-          "name": "origin/feature",
-          "ref": "refs/remotes/origin/feature",
-          "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
+          "name": "origin/trunk",
+          "ref": "refs/remotes/origin/trunk",
+          "commit": "38a3045250895d3802f69658b82e47479a65c64a",
           "committed_at": 1577836800.0,
-          "default": false,
+          "default": true,
           "checked_out": false,
           "current": false
         },
         {
-          "name": "origin/trunk",
-          "ref": "refs/remotes/origin/trunk",
-          "commit": "38a3045250895d3802f69658b82e47479a65c64a",
+          "name": "origin/feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
           "committed_at": 1577836800.0,
           "default": false,
           "checked_out": false,
@@ -372,12 +372,16 @@
         "location": null,
         "borrows": null,
         "shallow": false,
-        "refreshable": false,
+        "refreshable": true,
         "follows": false,
         "latest": null,
         "ref_on_origin": null,
-        "last_fetch_at": null,
-        "last_outcome": null,
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        },
         "refreshing": false,
         "refresh_quiet": false,
         "stale": false,
@@ -388,7 +392,65 @@
       }
     }
   },
+  "status_working_tree": {
+    "subject": "attached_filesystem",
+    "generation": 3,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
   "moved": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+  "status_stale": {
+    "subject": "attached_filesystem",
+    "generation": 3,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": true,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
   "ask_started": {
     "status": 202,
     "body": {
@@ -417,15 +479,19 @@
         "location": null,
         "borrows": null,
         "shallow": false,
-        "refreshable": false,
+        "refreshable": true,
         "follows": false,
         "latest": null,
         "ref_on_origin": null,
-        "last_fetch_at": null,
-        "last_outcome": null,
-        "refreshing": false,
-        "refresh_quiet": false,
-        "stale": false,
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        },
+        "refreshing": true,
+        "refresh_quiet": true,
+        "stale": true,
         "probe_every_s": null,
         "pull_request": null,
         "selection_state": null,
@@ -472,18 +538,18 @@
       },
       "refs": [
         {
-          "name": "origin/feature",
-          "ref": "refs/remotes/origin/feature",
-          "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
+          "name": "origin/trunk",
+          "ref": "refs/remotes/origin/trunk",
+          "commit": "38a3045250895d3802f69658b82e47479a65c64a",
           "committed_at": 1577836800.0,
-          "default": false,
+          "default": true,
           "checked_out": false,
           "current": false
         },
         {
-          "name": "origin/trunk",
-          "ref": "refs/remotes/origin/trunk",
-          "commit": "38a3045250895d3802f69658b82e47479a65c64a",
+          "name": "origin/feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
           "committed_at": 1577836800.0,
           "default": false,
           "checked_out": false,
@@ -531,6 +597,15 @@
       },
       "refs": [
         {
+          "name": "origin/trunk",
+          "ref": "refs/remotes/origin/trunk",
+          "commit": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+          "committed_at": 1577836800.0,
+          "default": true,
+          "checked_out": false,
+          "current": false
+        },
+        {
           "name": "origin/feature",
           "ref": "refs/remotes/origin/feature",
           "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
@@ -538,18 +613,86 @@
           "default": false,
           "checked_out": false,
           "current": false
-        },
-        {
-          "name": "origin/trunk",
-          "ref": "refs/remotes/origin/trunk",
-          "commit": "9ba2923c729806c02f3be25e89656a4af1f40db3",
-          "committed_at": 1577836800.0,
-          "default": false,
-          "checked_out": false,
-          "current": false
         }
       ]
     }
+  },
+  "refresh_started": {
+    "status": 202,
+    "body": {
+      "refresh": "started",
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": true
+      },
+      "status": {
+        "subject": "attached_filesystem",
+        "generation": 3,
+        "pin": null,
+        "ref": null,
+        "ref_name": null,
+        "name": null,
+        "origin": null,
+        "location": null,
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": false,
+        "latest": null,
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": true,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": null,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "status_refreshed": {
+    "subject": "attached_filesystem",
+    "generation": 3,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": "2026-09-17T13:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-17T13:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   },
   "switch_origin_branch": {
     "status": 200,
@@ -584,6 +727,7 @@
         "selection_state": null,
         "selection_href": null
       },
+      "read_from": "origin",
       "view_href": "/view/g1-bQ"
     }
   },
@@ -622,6 +766,15 @@
       "pull_requests": null,
       "refs": [
         {
+          "name": "origin/trunk",
+          "ref": "refs/remotes/origin/trunk",
+          "commit": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+          "committed_at": 1577836800.0,
+          "default": true,
+          "checked_out": false,
+          "current": true
+        },
+        {
           "name": "origin/feature",
           "ref": "refs/remotes/origin/feature",
           "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
@@ -629,17 +782,37 @@
           "default": false,
           "checked_out": false,
           "current": false
-        },
-        {
-          "name": "origin/trunk",
-          "ref": "refs/remotes/origin/trunk",
-          "commit": "9ba2923c729806c02f3be25e89656a4af1f40db3",
-          "committed_at": 1577836800.0,
-          "default": false,
-          "checked_out": false,
-          "current": true
         }
       ]
     }
+  },
+  "status_refresh_failed": {
+    "subject": "attached_filesystem",
+    "generation": 5,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": "2026-09-17T13:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "failed",
+      "at": "2026-09-17T13:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
   }
 }

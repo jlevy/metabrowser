@@ -32,36 +32,10 @@ $ node tests/dom/source-ref-selector-origin-session.js
 {
   "steps": [
     {
-      "step": "an open list of a checkout makes a visible page's own ask, once",
+      "step": "the checkout's own branches read no store, so their list asks nothing",
       "requests": [
-        "GET /api/source/refs?kind=branch",
-        "POST /api/source/refresh {\"for\":\"page\"}"
+        "GET /api/source/refs?kind=branch"
       ],
-      "filterPending": false,
-      "paint": {
-        "button": "Working tree",
-        "open": true,
-        "pullRequests": "none cached",
-        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
-        "lists": [
-          "branch",
-          "tag",
-          "remote"
-        ],
-        "kind": "branch",
-        "query": "",
-        "loading": false,
-        "switching": false,
-        "rows": [
-          "trunk 0b51e01 2020-01-01T00:00:00Z [checked out] (local chip)"
-        ],
-        "note": "",
-        "error": null
-      }
-    },
-    {
-      "step": "the store was just fetched, so nothing is due and nothing is asked",
-      "requests": [],
       "filterPending": false,
       "paint": {
         "button": "Working tree",
@@ -87,7 +61,8 @@ $ node tests/dom/source-ref-selector-origin-session.js
     {
       "step": "the origin's branches are the store's, and the list says when it was fetched",
       "requests": [
-        "GET /api/source/refs?kind=remote"
+        "GET /api/source/refs?kind=remote",
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
       "filterPending": false,
       "paint": {
@@ -105,8 +80,35 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
-          "origin/trunk 38a3045 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
+        ],
+        "note": "",
+        "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
+        "error": null
+      }
+    },
+    {
+      "step": "the store was just fetched, so nothing is due and nothing is asked",
+      "requests": [],
+      "filterPending": false,
+      "paint": {
+        "button": "Working tree",
+        "open": true,
+        "pullRequests": "none cached",
+        "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
+        "lists": [
+          "branch",
+          "tag",
+          "remote"
+        ],
+        "kind": "remote",
+        "query": "",
+        "loading": false,
+        "switching": false,
+        "rows": [
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
@@ -162,8 +164,8 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
-          "origin/trunk 38a3045 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
@@ -189,8 +191,8 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
-          "origin/trunk 38a3045 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
@@ -219,8 +221,8 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
-          "origin/trunk 9ba2923 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
@@ -248,8 +250,8 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": true,
         "rows": [
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
-          "origin/trunk 9ba2923 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
@@ -275,8 +277,8 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": true,
         "rows": [
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)",
-          "origin/trunk 9ba2923 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
@@ -298,7 +300,8 @@ $ node tests/dom/source-ref-selector-origin-session.js
     {
       "step": "while the store is first fetched, the list is the checkout's own",
       "requests": [
-        "GET /api/source/refs?kind=remote"
+        "GET /api/source/refs?kind=remote",
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
       "filterPending": false,
       "paint": {
@@ -327,7 +330,8 @@ $ node tests/dom/source-ref-selector-origin-session.js
     {
       "step": "with no store, the list is the checkout's own, and says so",
       "requests": [
-        "GET /api/source/refs?kind=remote"
+        "GET /api/source/refs?kind=remote",
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
       "filterPending": false,
       "paint": {
@@ -355,7 +359,8 @@ $ node tests/dom/source-ref-selector-origin-session.js
     {
       "step": "an origin that needs credentials is not fetched, and the list says why",
       "requests": [
-        "GET /api/source/refs?kind=remote"
+        "GET /api/source/refs?kind=remote",
+        "POST /api/source/refresh {\"for\":\"page\"}"
       ],
       "filterPending": false,
       "paint": {
