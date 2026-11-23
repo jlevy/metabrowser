@@ -104,6 +104,11 @@ class FakeElement {
   addEventListener(type, listener) {
     this.listeners[type] = listener;
   }
+  removeEventListener(type, listener) {
+    if (this.listeners[type] === listener) {
+      delete this.listeners[type];
+    }
+  }
   closest() {
     return null;
   }
@@ -329,27 +334,32 @@ const rollupError = (status) =>
         },
       },
       viewState: { isActive: () => true, subscribeActive: () => () => {} },
+      // The section's compact treemap (treemap-compact.js) watches its own deep rollup, the
+      // tree alone. This session follows the breakdown's rollup, the one that asks for no
+      // tree (depth 0), so the treemap's watch is inert here and takes none of the answers.
       watchRollup: (scope, options, onUpdate) =>
-        window.MetabrowserInventoryScope.createInventoryWatch(
-          scope,
-          {
-            active: options.active,
-            debounceMs: 0,
-            fetch: async () => {
-              requests += 1;
-              const answer = answers.next;
-              if (typeof answer === "function") {
-                return answer();
-              }
-              if (answer instanceof Error) {
-                throw answer;
-              }
-              return JSON.parse(JSON.stringify(answer));
-            },
-            onError: options.onError,
-          },
-          onUpdate,
-        ),
+        options.depth !== 0
+          ? { dispose() {}, refresh: async () => {}, stale: () => false }
+          : window.MetabrowserInventoryScope.createInventoryWatch(
+              scope,
+              {
+                active: options.active,
+                debounceMs: 0,
+                fetch: async () => {
+                  requests += 1;
+                  const answer = answers.next;
+                  if (typeof answer === "function") {
+                    return answer();
+                  }
+                  if (answer instanceof Error) {
+                    throw answer;
+                  }
+                  return JSON.parse(JSON.stringify(answer));
+                },
+                onError: options.onError,
+              },
+              onUpdate,
+            ),
     };
     const controls = createFolderRollupControls(mb);
     const container = new FakeElement("div");

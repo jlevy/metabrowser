@@ -22,11 +22,16 @@
 // the totals' bars, so pointing at an entry lifts that bar's segment: the
 // section holds the hover, the totals draw it, and both say where the pointer
 // is (distribution-hover.js).
+//
+// Under the breakdown, a compact treemap (treemap-compact.js) shows where in
+// the folder those files sit. It follows the same controls and joins the same
+// hover, so pointing at a legend entry marks that family's cells as well.
 
 import { createDistributionHover } from "./distribution-hover.js";
 import { mountFileTotalsPanel } from "./file-totals-panel.js";
 import { mountFileTypeSummary } from "./file-type-summary.js";
 import { notIndexedStatement } from "./folder-totals.js";
+import { mountCompactTreemap } from "./treemap-compact.js";
 
 /** @typedef {{mount: (container: HTMLElement) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} FolderRollupControls */
 
@@ -68,7 +73,8 @@ export function mountFileOverviewPanel(
   const controls = document.createElement("div");
   const totalsContainer = document.createElement("div");
   const breakdownContainer = document.createElement("div");
-  container.append(controls, totalsContainer, breakdownContainer);
+  const treemapContainer = document.createElement("div");
+  container.append(controls, totalsContainer, breakdownContainer, treemapContainer);
   // This row is both halves of the rollup controls, which is the whole point
   // of the section.
   const unmountControls = rollupControls.mount(controls);
@@ -101,6 +107,13 @@ export function mountFileOverviewPanel(
     },
   );
 
+  // Last: where the files sit, below what they are. It holds no first paint,
+  // since its box keeps a fixed height whether or not its rollup has answered.
+  const treemap = mountCompactTreemap(treemapContainer, context, mb, palette, rollupControls, {
+    ...options,
+    hover,
+  });
+
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let waiting;
   const ready = Promise.race([
@@ -121,6 +134,7 @@ export function mountFileOverviewPanel(
     clearTimeout(waiting);
     // Bodies first, then the controls they subscribe to. Each body lets go of the hover
     // it shares as it goes, so nothing is left holding or hearing it.
+    treemap.dispose();
     breakdown.dispose();
     totals.dispose();
     unmountControls();

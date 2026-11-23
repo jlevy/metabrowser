@@ -4736,10 +4736,11 @@ The **File Overview** section begins expanded: one control row with the Files / 
 measure and the `.filter-check` **Show ignored** checkbox, the same as navigation’s,
 then three tally rows, **Files**, **Ignored**, and **Total** set off by a hairline, then
 the legend and the Details table, under no heading of their own, since they ask the same
-question at a finer resolution.
-Each tally shows one absolute value and a track segmented by the top-level families in
-their colors, in one order across the three rows; `buildFolderTotalsComposition` in
-`folder-totals.js` explains the three rows, the order, and the pending fill.
+question at a finer resolution, and last a compact treemap of where those files sit
+([Folder Treemap](#folder-treemap)). Each tally shows one absolute value and a track
+segmented by the top-level families in their colors, in one order across the three rows;
+`buildFolderTotalsComposition` in `folder-totals.js` explains the three rows, the order,
+and the pending fill.
 The bars of the tallies and of Details start at one place, in every row, with Details
 closed or open and with Files or Bytes.
 What they stand to the right of is a label column of one width,
@@ -4818,8 +4819,17 @@ Folders/Types grouping choice.
 File types already answers which extensions make up the population, while Treemap
 answers where space or file count sits and keeps folder and file cells navigable.
 
+The map is one component (`treemap-map.js`) drawn at two sizes: the Treemap view, which
+fills the pane, and a compact map at a fixed height under File Overview’s type breakdown
+(`treemap-compact.js`). The compact map draws the same tree with the same cells, colors,
+tooltip, and activation, follows the section’s measure and Show ignored, and joins the
+section’s hover, so a legend entry marks its family’s cells there too.
+It leaves out value lines and remainder glyphs, which its small cells cannot hold, shows
+a skeleton until the index has finished, and steps out of the section when the folder is
+empty or its rollup fails, since the breakdown above already says why.
+
 The map goes as deep as it has room for.
-The Treemap asks the rollup for its deepest and widest tree, and the server spends its
+Both sizes ask the rollup for its deepest and widest tree, and the server spends its
 node budget on the heaviest folders first (`inventory_rollup.py`), so the nodes go where
 the map can draw them.
 The layout fills the largest pending folder next, from a share of the remaining cell

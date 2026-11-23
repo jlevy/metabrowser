@@ -179,6 +179,22 @@
   padding: 0;
 }
 
+/* The compact map under File Overview's type breakdown (treemap-compact.js):
+   the same cells at a fixed height, a figure below the bars rather than a
+   view filling the pane. */
+.tm-compact {
+  margin: 14px 0 0;
+}
+
+.tm-viewport-compact {
+  height: 220px;
+  min-height: 0;
+}
+
+.tm-compact .tm-cell {
+  padding: 0 3px;
+}
+
 .tm-cell-title {
   display: flex;
   align-items: baseline;

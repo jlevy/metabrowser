@@ -1,11 +1,17 @@
-// Folder treemap map: the drawn cells of a rollup tree.
+// Folder treemap map: the drawn cells of a rollup tree, at any size.
 //
-// The map behind the Treemap view (treemap.js). It owns the cells and
+// One component behind both surfaces that draw a folder as a treemap: the
+// Treemap view (treemap.js), which fills the pane, and the compact map under
+// File Overview's type breakdown (treemap-compact.js). It owns the cells and
 // everything a cell does — layout through treemap-layout.js, labels,
 // tooltip, pointer and keyboard activation, and the hover the map shares
 // with its tally bars and legend — and nothing about where the rollup comes
 // from or what surrounds the map. Its host hands it a node and asks for a
 // layout; the map measures its own drawable box.
+//
+// A compact map draws the same tree with smaller bounds: fewer cells, no
+// value lines, and smaller label thresholds, since its cells are small and
+// the tooltip carries every name.
 
 import { layoutTree } from "./treemap-layout.js";
 
@@ -27,6 +33,16 @@ const SIZE_PRESETS = Object.freeze({
     values: true,
     restLabels: true,
   }),
+  // The same cell cap: the smaller box already culls by geometry, and a
+  // lower cap only turned files that had room into remainder cells. Headers
+  // need a wider folder, so small folders frame rather than spend a line.
+  compact: Object.freeze({
+    layout: Object.freeze({ nestMinW: 96, nestMinH: 40, frameNestMinPx: 12 }),
+    labelMinW: 44,
+    labelMinH: 14,
+    values: false,
+    restLabels: false,
+  }),
 });
 
 /**
@@ -43,7 +59,7 @@ export function treemapRollupQuery() {
 
 /**
  * @typedef {object} TreemapMapOptions
- * @property {"full"} [size]
+ * @property {"full" | "compact"} [size]
  * @property {() => TreemapState} getState
  * @property {(cell: Record<string, any>) => void} onActivate  a folder or file cell was chosen
  * @property {DistributionHover} [hover]  the hover the map shares with its bars and legend

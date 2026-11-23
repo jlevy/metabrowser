@@ -17,10 +17,11 @@
 // its family's entry (docs/design-system.md, "Aggregate Distributions").
 //
 // The cells themselves, their layout, labels, tooltip, activation, and their
-// part of the shared hover, are the map component (treemap-map.js). Toggle
-// state comes from the shared folder rollup controls, persists through
-// mb.prefs (host-only cookies, shared across per-root ports), and live
-// refresh rides mb.watchRollup's debounced /api/events signal.
+// part of the shared hover, are the map component (treemap-map.js), which the
+// Overview's compact map mounts too. Toggle state comes from the shared
+// folder rollup controls, persists through mb.prefs (host-only cookies,
+// shared across per-root ports), and live refresh rides mb.watchRollup's
+// debounced /api/events signal.
 
 import { createDistributionHover } from "./distribution-hover.js";
 import { createDistributionLegend } from "./distribution-legend.js";
