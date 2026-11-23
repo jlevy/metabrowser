@@ -85,9 +85,9 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/labels?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/labels
 exit: 0
 --- stdout ---
@@ -424,14 +424,14 @@ status: 200
 --- body ---
 {"number": 7, "retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=7'
 exit: 0
 --- stdout ---
@@ -951,9 +951,9 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/labels?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/labels
 exit: 0
 --- stdout ---

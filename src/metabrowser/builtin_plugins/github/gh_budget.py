@@ -15,11 +15,11 @@ more than :data:`BACKGROUND_FLOOR` of its limit remaining and no hold applies
 observed. A reader's own work is never asked.
 
 The observations and the hold are this process's, and belong to the account the last
-account check named (:func:`note_account`, called by :func:`~.gh.gh_active_account`): a switch to
-another account forgets both, since its token has its own budget. A response already in
-flight when the account changed can still be observed for the new one until its next
-check, at most one refresh's requests. ``remaining`` is the account's, so several servers
-on one account stop together.
+account check named (:func:`note_account`, called by :func:`~.gh.gh_account` and
+:func:`~.gh.gh_active_account`): a switch to another account forgets both, since its
+token has its own budget. A response already in flight when the account changed can
+still be observed for the new one until its next check, at most one refresh's requests.
+``remaining`` is the account's, so several servers on one account stop together.
 """
 
 from __future__ import annotations

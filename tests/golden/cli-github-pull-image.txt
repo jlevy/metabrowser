@@ -14,14 +14,14 @@ cloned <PATH> in 0.0 s
 --- gh ---
 gh auth status
 gh api repos/octo/demo --jq .size
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab <PATH>/pull/7 --api '/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA'
 exit: 1
 --- stdout ---
@@ -502,14 +502,14 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/de22d10b6b8d1dd5f87861fb532b0ab66af5f408/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/de22d10b6b8d1dd5f87861fb532b0ab66af5f408/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # sources/<SLUG>/pulls/7.snapshots.json
 [{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"},{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"de22d10b6b8d1dd5f87861fb532b0ab66af5f408"}]
 

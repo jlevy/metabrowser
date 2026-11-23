@@ -218,14 +218,14 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
 gh auth status
 gh api repos/octo/demo --jq .size
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/7 --no-serve
 exit: 0
 --- stdout ---
@@ -239,14 +239,14 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh --data reader.json
 exit: 0
 --- stdout ---
@@ -325,14 +325,14 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/7/commits/f7c5a99 --show src/app.txt
 exit: 0
 --- stdout ---
@@ -400,6 +400,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refre
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
+gh api user
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 ## A repository URL, and a pull request no URL named: asked for by a request that is not a reader's, nothing starts; asked for by a reader's, it is fetched.
@@ -613,14 +614,14 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/10
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
 gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data automatic.json
 exit: 0
 --- stdout ---
@@ -713,14 +714,14 @@ pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/8
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
 gh api repos/octo/demo/issues/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/8/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/9 --no-serve
 exit: 0
 --- stdout ---
@@ -734,14 +735,14 @@ pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/9
 gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1
 gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/8 --api '/api/plugin/github/pull?number=8'
 exit: 0
 --- stdout ---
@@ -890,7 +891,7 @@ pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: G
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/11
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
@@ -904,6 +905,7 @@ revision: c691256511d05858850bc7684ae062fea0d41132
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 Error: pull request 11 of https://github.com/octo/demo: GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry. (not_logged_in)
 --- gh ---
+gh api user
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
 exit: 1
@@ -916,6 +918,7 @@ revision: c691256511d05858850bc7684ae062fea0d41132
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 Error: pull request 11 of https://github.com/octo/demo: This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com. (gh_too_old)
 --- gh ---
+gh api user
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
 exit: 0
@@ -930,7 +933,7 @@ pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: G
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/11
 # metab https://github.com/octo/demo/pull/11 --no-serve
 exit: 0
@@ -945,7 +948,7 @@ pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: G
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/11
 # metab https://github.com/octo/demo/pull/11 --no-serve
 exit: 0
@@ -960,7 +963,7 @@ pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: G
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/11
 # metab https://github.com/octo/demo/pull/11 --no-serve
 exit: 0
@@ -975,6 +978,7 @@ pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: G
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
+gh api user
 gh auth status
 gh api repos/octo/demo/pulls/11
 # metab https://github.com/octo/demo/pull/11 --api '/api/plugin/github/pull?number=11'
@@ -1018,7 +1022,7 @@ selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub's API rate limit is exhausted; try again in a few minutes (rate_limited); the pin is the default branch)
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/11
 ## Git's fetch of refs/pull/7/head is answered here with the text Git printed for a repository GitHub does not show.
 # metab https://github.com/octo/demo/pull/7 --no-serve
@@ -1034,14 +1038,14 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refre
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/7 --no-serve
 exit: 0
 --- stdout ---
@@ -1055,14 +1059,14 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refre
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/7 --no-serve
 exit: 0
 --- stdout ---
@@ -1076,22 +1080,22 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refre
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
-gh auth status
+gh api user (If-None-Match)
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo/pull/11 --api '/api/plugin/github/pull?number=11'
 exit: 1
 --- stdout ---

@@ -102,7 +102,7 @@ status: 200
 --- body ---
 {"target": 500}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=open cursor=open-100
 gh api graphql catalog state=open cursor=open-200
@@ -738,7 +738,7 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=2'
 exit: 0
@@ -954,6 +954,7 @@ Error: the refresh ended with network_error
 --- body ---
 {"retry": true}
 --- gh ---
+gh api user
 gh auth status
 gh api graphql catalog state=open cursor=start
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
@@ -1074,7 +1075,7 @@ status: 200
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=all cursor=start
 ## A visible pull request prepares its description from one GraphQL batch.
@@ -1481,7 +1482,7 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=open cursor=open-100
 gh api graphql catalog state=open cursor=open-200

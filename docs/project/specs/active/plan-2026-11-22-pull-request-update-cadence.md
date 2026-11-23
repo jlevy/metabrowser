@@ -306,12 +306,16 @@ per record refresh and one per catalog scan, each about once a minute.
 
 ### Server Changes
 
-- **`gh_lists.py` and `gh.py`:** a conditional account check.
-  `gh_lists.active_account`, over `gh.gh_account` and `gh.gh_active_account`, reads
-  `gh api user` with the ETag of the last answer for that host, treats `304` as “the
-  same login”, and still names the account to `gh_budget.note_account`. `gh_api` admits
-  only `repos/…` paths today, so it gains `user`. The status route keeps
-  `gh auth status`, which alone reports the token’s source and scopes.
+- **`gh_lists.py` and `gh.py`** (built): a conditional account check.
+  `gh_lists.active_account` is `gh.gh_account`, which reads `gh api user` with the ETag
+  of this process’s last answer for the host, treats `304` as “the same login”, and
+  still names the account to `gh_budget.note_account`. `gh_api` admits `user` beside
+  `repos/…` paths. The status route keeps `gh.gh_active_account` and `gh auth status`,
+  which alone reports the token’s source and scopes; the account check asks it too when
+  it finds no account, so the failure names what to do as before, and when GitHub cannot
+  be reached, since gh names its saved account without the network.
+  A `gh` too old for `auth status --json` now passes the account check, and only the
+  status check reports it.
 - **`served_pull.py`:** `ServedPull` keeps `probed_at`, when a probe last found the
   record unchanged, and `full_read_at`, when it was last read in full.
   `automatic_due` decides each automatic ask: a full read when the record is stale or
@@ -431,8 +435,8 @@ account check and the bounds on probes.
 - [x] The architecture documents: Serving Pull Requests and Freshness Verdicts in
   `arch-github-pull-requests.md`, and Refresh Cadence in
   `arch-mirror-acquisition-and-refresh.md`.
-- [ ] A conditional account check in `gh_lists.active_account`, which every job’s
-  account check uses.
+- [x] A conditional account check in `gh_lists.active_account`, which every job’s
+  account check uses (bead `mb-1bir`).
 - [ ] The `BACKGROUND_FLOOR` rule for probes (see [Priority](#priority)): below the
   floor, a change a probe finds on the page on screen still starts its full read, and
   the `FULL_REFRESH_S` reads stop (bead `mb-qngw`).

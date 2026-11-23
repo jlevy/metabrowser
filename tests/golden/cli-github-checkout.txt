@@ -166,7 +166,7 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=all cursor=start
 gh api graphql catalog state=all cursor=all-100
@@ -338,14 +338,14 @@ status: 200
 --- body ---
 {"number": 10, "retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/10
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
 gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab checkout --show /pull/10
 exit: 0
 --- stdout ---
@@ -575,9 +575,9 @@ status: 200
 --- body ---
 {"number": 7}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7/files?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 ## A subdirectory of the checkout, and an SSH remote, name the same repository
 # metab checkout/src --api '/api/plugin/github/pulls?limit=0'
 exit: 0
@@ -755,7 +755,7 @@ Error: the refresh ended with not_found_or_private
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 ## A remote the plugin's grammar refuses, and one that is not GitHub, list nothing
 # metab odd-checkout --api '/api/plugin/github/pulls?limit=0'
@@ -1226,14 +1226,14 @@ status: 200
 --- body ---
 {"number": 10}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/10 (If-None-Match)
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/issues/10/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 ## The checkout's server offers no Files changed for that record: it has no store
 # metab checkout --api '/api/plugin/github/pull?number=10'
 exit: 0

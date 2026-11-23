@@ -2,7 +2,8 @@
 
 :func:`refresh_pull_request` is the whole network job for one pull request:
 
-1. the active github.com account, from ``gh auth status``;
+1. the active github.com account, from a conditional ``gh api user``
+   (:func:`~.gh_lists.active_account`);
 2. the pull request, its issue comments, reviews, review comments, and the head
    commit's check runs and combined status, each with ``gh api``, 100 per page up to
    each list's cap, sending ``If-None-Match`` where the previous record by the same

@@ -42,6 +42,7 @@ from metabrowser.builtin_plugins.github.gh import (
     parse_included_response,
     rate_limit_reset,
 )
+from metabrowser.builtin_plugins.github.gh_lists import active_account
 from metabrowser.builtin_plugins.github.pull_file_anchor import path_digest
 from metabrowser.builtin_plugins.github.pull_markdown import render_part
 from metabrowser.builtin_plugins.github.pull_record import (
@@ -288,10 +289,22 @@ def test_gh_api_runs_isolated_with_fixed_arguments(
 
 
 @pytest.mark.parametrize(
-    "path", ["../repos/x", "repos/octo/../demo", "repos/octo/demo --paginate", "-X"]
+    "path",
+    [
+        "../repos/x",
+        "repos/octo/../demo",
+        "repos/octo/demo --paginate",
+        "-X",
+        # Only ``user`` itself is admitted outside a repository (the account check).
+        "users/octo",
+        "user/repos",
+        "user?per_page=1",
+        "user/",
+        "rate_limit",
+    ],
 )
 def test_gh_api_refuses_a_path_it_did_not_build(path: str) -> None:
-    with pytest.raises(ValueError, match="not a repository API path"):
+    with pytest.raises(ValueError, match="not an API path Metabrowser reads"):
         asyncio.run(gh_api(path))
 
 
@@ -345,6 +358,115 @@ def test_account_is_the_active_login_even_in_an_error_state() -> None:
     assert parse_active_account(json.dumps(inactive).encode()) is None
     with pytest.raises(GhError):
         parse_active_account(b'{"hosts":{"github.com":[{"active":true,"login":"bad login"}]}}')
+
+
+def _gh_commands(stand: _Stand) -> list[str]:
+    """Each logged gh call as its command, with the ETag a conditional one sent."""
+
+    commands: list[str] = []
+    for call in stand.calls():
+        args: list[str] = call["args"]
+        sent = next((arg for arg in args if arg.startswith("If-None-Match: ")), None)
+        named = "auth status" if args[:2] == ["auth", "status"] else f"api {args[-1]}"
+        commands.append(named + (f" [{sent.split(': ', 1)[1]}]" if sent else ""))
+    return commands
+
+
+def test_the_account_check_is_a_conditional_read_that_a_304_answers(stand: _Stand) -> None:
+    """mb-1bir: ``gh auth status`` cost one core call each time; a ``304`` costs none."""
+
+    assert asyncio.run(active_account()) == READER
+    assert asyncio.run(active_account()) == READER
+    # The second carries the first's ETag, GitHub answers 304, and the login stands.
+    assert _gh_commands(stand) == ["api user", 'api user ["user-octo-reader"]']
+    # Another account's token gets a 200 for the old ETag, and its own from then on.
+    stand.answer({**scenario(stand.origin), "auth": account("someone-else")})
+    assert asyncio.run(active_account()) == "someone-else"
+    assert asyncio.run(active_account()) == "someone-else"
+    assert _gh_commands(stand) == [
+        'api user ["user-octo-reader"]',
+        'api user ["user-someone-else"]',
+    ]
+
+
+def test_an_account_check_that_finds_no_account_asks_gh_auth_status_why(stand: _Stand) -> None:
+    stand.answer({**scenario(stand.origin), "auth": {"stdout": '{"hosts":{}}\n', "exit": 0}})
+    with pytest.raises(PullDataError) as signed_out:
+        asyncio.run(active_account())
+    assert signed_out.value.state == "not_logged_in"
+    assert "gh auth login --hostname github.com" in str(signed_out.value)
+    assert _gh_commands(stand) == ["api user", "auth status"]
+    # A refused token in the environment: only gh auth status names the variable.
+    refused = {
+        "active": True,
+        "login": "",
+        "state": "error",
+        "error": "HTTP 401: Bad credentials",
+        "tokenSource": "GH_TOKEN",
+    }
+    stand.answer(
+        {
+            **scenario(stand.origin),
+            "auth": {"stdout": json.dumps({"hosts": {"github.com": [refused]}}), "exit": 0},
+        }
+    )
+    with pytest.raises(PullDataError) as token:
+        asyncio.run(active_account())
+    assert token.value.state == "not_logged_in"
+    assert "replace the token in GH_TOKEN" in str(token.value)
+
+
+def test_an_account_check_that_cannot_reach_github_names_the_account_gh_has_saved(
+    stand: _Stand,
+) -> None:
+    """Offline, ``gh auth status`` still names the saved account, so a switch is seen."""
+
+    assert asyncio.run(active_account()) == READER
+    stand.calls()
+    offline = {"stderr": "error connecting to api.github.com\n", "exit": 1}
+    stand.answer(
+        {**scenario(stand.origin), "auth": account("someone-else"), "api_failure": offline}
+    )
+    assert asyncio.run(active_account()) == "someone-else"
+    assert _gh_commands(stand) == ['api user ["user-octo-reader"]', "auth status"]
+
+
+def test_a_gh_too_old_for_auth_status_json_still_passes_the_account_check(
+    stand: _Stand,
+) -> None:
+    old = {"stderr": "unknown flag: --json\n\nUsage: gh auth status\n", "exit": 1}
+    named = {"status": 200, "headers": {"Etag": '"old"'}, "body": {"login": READER}}
+    stand.answer(_api({**scenario(stand.origin), "auth": old}, "user", named))
+    assert asyncio.run(active_account()) == READER
+    assert _gh_commands(stand) == ["api user"]
+    # Signed out, it is asked why and cannot say: the status check's own state.
+    stand.answer({**scenario(stand.origin), "auth": old})
+    with pytest.raises(PullDataError) as too_old:
+        asyncio.run(active_account())
+    assert too_old.value.state == "gh_too_old"
+    assert _gh_commands(stand) == ['api user ["old"]', "auth status"]
+
+
+def test_an_account_check_github_refuses_keeps_the_last_login_for_the_next(
+    stand: _Stand,
+) -> None:
+    assert asyncio.run(active_account()) == READER
+    limited = {
+        "status": 403,
+        "headers": {"X-Ratelimit-Remaining": "0", "X-Ratelimit-Reset": "1790181960"},
+        "body": {"message": "API rate limit exceeded"},
+    }
+    stand.answer(_api(scenario(stand.origin), "user", limited))
+    with pytest.raises(PullDataError) as refused:
+        asyncio.run(active_account())
+    assert (refused.value.state, refused.value.reset_at) == (
+        "rate_limited",
+        "2026-09-23T16:46:00Z",
+    )
+    stand.answer(scenario(stand.origin))
+    stand.calls()
+    assert asyncio.run(active_account()) == READER
+    assert _gh_commands(stand) == ['api user ["user-octo-reader"]']
 
 
 @pytest.mark.parametrize(
@@ -402,7 +524,13 @@ def test_etags_are_not_sent_for_another_reader(stand: _Stand) -> None:
     stand.calls()
     record = stand.refresh(7)
     assert record.reader == "gh:someone-else"
-    sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    # The pull request's own reads; the account check's ``user`` is conditional on the
+    # account, not on a record.
+    sent = [
+        call["args"]
+        for call in stand.calls()
+        if call["args"][0] == "api" and call["args"][-1] != "user"
+    ]
     assert not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
 
 
@@ -2704,13 +2832,23 @@ def test_author_and_merger_avatars_come_from_existing_detail_responses(stand: _S
     assert upgraded.projection_version == PULL_RECORD_PROJECTION
     assert upgraded.pull.author_avatar_url == wanted
     assert all(item.author_avatar_url == wanted for item in upgraded.issue_comments)
-    sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    # The pull request's own reads; the account check's ``user`` is conditional on the
+    # account, not on a record.
+    sent = [
+        call["args"]
+        for call in stand.calls()
+        if call["args"][0] == "api" and call["args"][-1] != "user"
+    ]
     assert sent and not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
     assert not any("users/" in str(args) for args in sent)
     warm = stand.refresh(7)
     assert warm.pull.author_avatar_url == wanted
     assert warm.projection_version == PULL_RECORD_PROJECTION
-    reused = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    reused = [
+        call["args"]
+        for call in stand.calls()
+        if call["args"][0] == "api" and call["args"][-1] != "user"
+    ]
     assert len(reused) == len(sent) == 6
     assert all(any(arg.startswith("If-None-Match: ") for arg in args) for args in reused)
 
@@ -2749,7 +2887,13 @@ def test_a_record_of_bare_label_names_is_shown_neutral_until_its_refresh_colors_
     upgraded = stand.refresh(7)
     assert upgraded.projection_version == PULL_RECORD_PROJECTION
     assert upgraded.pull.labels == record.pull.labels
-    sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    # The pull request's own reads; the account check's ``user`` is conditional on the
+    # account, not on a record.
+    sent = [
+        call["args"]
+        for call in stand.calls()
+        if call["args"][0] == "api" and call["args"][-1] != "user"
+    ]
     assert sent and not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
 
 
@@ -3804,15 +3948,15 @@ def test_h80_initial_graph_core_then_real_rest_etag_then_304(
     first = stand.record(7)
     assert isinstance(first, PullRecord) and path not in first.etags and replies == []
     initial_calls = stand.calls()
-    assert sum(c["args"][:2] == ["auth", "status"] for c in initial_calls) == 2
+    assert sum(c["args"][-1] == "user" for c in initial_calls) == 2
     assert sum("graphql" in c["args"] for c in initial_calls) == 1
     second = stand.refresh(7)
     assert replies == [(200, None)] and second.etags[path]
-    assert sum(c["args"][:2] == ["auth", "status"] for c in stand.calls()) == 2
+    assert sum(c["args"][-1] == "user" for c in stand.calls()) == 2
     third = stand.refresh(7)
     assert replies == [(200, None), (304, second.etags[path])]
     assert third.pull == first.pull
-    assert sum(c["args"][:2] == ["auth", "status"] for c in stand.calls()) == 2
+    assert sum(c["args"][-1] == "user" for c in stand.calls()) == 2
 
 
 @pytest.mark.parametrize("state,draft", [("open", False), ("open", True), ("closed", False)])
@@ -6039,7 +6183,10 @@ def test_a_catalog_scan_does_not_send_a_polled_record_again(
 
 
 def _api_paths(stand: _Stand) -> list[str]:
-    return sorted(call["args"][-1] for call in stand.calls() if call["args"][:1] == ["api"])
+    """The repository paths asked for, leaving out the account check's ``user``."""
+
+    asked = (call["args"][-1] for call in stand.calls() if call["args"][:1] == ["api"])
+    return sorted(path for path in asked if path != "user")
 
 
 def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
@@ -6131,7 +6278,9 @@ def test_a_probe_asks_only_the_pull_and_never_the_account(stand: _Stand) -> None
     assert found == pulls.PullProbe("unchanged", {})
     calls = stand.calls()
     assert [call["args"][-1] for call in calls] == ["repos/octo/demo/pulls/7"]
-    assert not any(call["args"][:2] == ["auth", "status"] for call in calls)
+    assert not any(
+        call["args"][-1] == "user" or call["args"][:2] == ["auth", "status"] for call in calls
+    )
 
 
 def test_a_probe_tells_a_change_from_a_new_etag_for_the_same_pull(stand: _Stand) -> None:

@@ -357,11 +357,15 @@ def _reset_rate_budget() -> Generator[None, None, None]:  # pyright: ignore[repo
     The governor keeps them per process, so a refusal one test replays would otherwise hold
     background work in every test after it until the replayed reset time.
     """
-    from metabrowser.builtin_plugins.github import gh_budget
+    from metabrowser.builtin_plugins.github import gh, gh_budget
 
+    # The account check's last answer is per process too (gh.gh_account): a test starts
+    # with none, so its first check is unconditional whatever ran before it.
     gh_budget.forget()
+    gh.forget_account()
     yield
     gh_budget.forget()
+    gh.forget_account()
 
 
 @pytest.fixture(autouse=True)

@@ -418,7 +418,11 @@ def test_actual_gh_transport_keeps_only_lightweight_metadata(
         json.loads(line)["args"]
         for line in (tmp_path / "fake-gh-log.jsonl").read_text().splitlines()
     ]
-    assert [args[:2] for args in log if args[0] == "api"] == [["api", "graphql"]]
+    # The account check, then the one catalog page: no REST read of a pull request.
+    assert [args[-1] if args[-1] == "user" else args[1] for args in log if args[0] == "api"] == [
+        "user",
+        "graphql",
+    ]
     assert any("avatar_url:avatarUrl(size:40)" in arg for args in log for arg in args)
     assert not list((repository.home / "repos").iterdir())
 

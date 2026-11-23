@@ -635,7 +635,12 @@ def test_golden_pull_list_failures(
     refused_catalog = _after(refused)
     assert refused_catalog["last_refresh"]["outcome"] == "network_error"
     assert refused_catalog["fetched"] == baseline["fetched"]
-    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == ["gh auth status"]
+    # The account check cannot reach GitHub, and gh auth status cannot name the token's
+    # login without it.
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        "gh api user",
+        "gh auth status",
+    ]
 
     session.say("A reconnect can refresh metadata immediately once GitHub is reachable.")
     session.answer(online)
@@ -643,7 +648,7 @@ def test_golden_pull_list_failures(
     assert recovered.exit_code == 0
     assert _after(recovered)["last_refresh"]["outcome"] == "succeeded"
     assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
-        "gh auth status",
+        "gh api user",
         "gh api graphql catalog state=updated cursor=start",
     ]
 

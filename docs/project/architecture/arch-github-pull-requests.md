@@ -55,10 +55,18 @@ redirect it cleared, a deadline and an output cap (`GH_API_TIMEOUT_S`,
 hangup kills it too.
 `gh_api` issues one REST request and returns status, headers, and body; `gh_graphql`
 runs only a read-only query document, checked by its structure; `gh_active_account`
-reads the active account, its token source, and its scopes, and `gh_version` the
-version.
-Nothing there paginates or caches, because `--paginate` and `--cache` would hide
-page caps, ETags, and rate-limit headers.
+reads the active account, its token source, and its scopes from `gh auth status`, and
+`gh_version` the version.
+`gh_account` is every job’s account check (`gh_lists.active_account`): a conditional
+`gh api user` carrying the ETag of this process’s last answer, which GitHub answers
+`304` without spending rate limit while the login is the same, where `gh auth status`
+spent one `core` call each time.
+When it finds no account it asks `gh auth status` why, so a failure still names a
+refused environment token or the sign-in command; when it cannot reach GitHub it takes
+the account `gh auth status` names from what gh has saved, so a switch of account is
+still seen offline. `gh_api` reads `user` and paths under `repos/` and nothing else.
+Nothing there paginates or caches, because `--paginate` and `--cache` would hide page
+caps, ETags, and rate-limit headers.
 `gh api` refuses every request while signed out, so every record is read by an account
 and names its reader as `gh:<login>`.
 

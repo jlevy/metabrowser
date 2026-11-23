@@ -133,14 +133,14 @@ def test_the_account_check_names_the_account_to_the_governor(
 
     from metabrowser.builtin_plugins.github import gh
 
-    def hosts(login: str) -> bytes:
-        account = {"state": "success", "active": True, "host": "github.com", "login": login}
-        return json.dumps({"hosts": {"github.com": [account]}}).encode()
+    def named(login: str) -> bytes:
+        body = json.dumps({"login": login}).encode()
+        return b'HTTP/2.0 200 OK\nEtag: "' + login.encode() + b'"\r\n\r\n' + body
 
     logins = ["octo-reader", "someone-else"]
 
     async def run(*_args: object, **_kwargs: object) -> object:
-        return SimpleNamespace(stdout=hosts(logins.pop(0)), stderr=b"", returncode=0)
+        return SimpleNamespace(stdout=named(logins.pop(0)), stderr=b"", returncode=0)
 
     monkeypatch.setattr(gh, "_run", run)
     assert asyncio.run(gh.gh_account()) == "octo-reader"

@@ -1441,13 +1441,13 @@
   ],
   "cold cache reads": [],
   "catalog backfill": [
-   "gh auth status",
+   "gh api user",
    "gh api graphql catalog state=all cursor=start",
    "gh api graphql catalog state=all cursor=all-100"
   ],
   "cached windows, filters, scrolling and reopen": [],
   "due metadata refresh": [
-   "gh auth status",
+   "gh api user (If-None-Match)",
    "gh api graphql catalog state=updated cursor=start"
   ],
   "fresh cached revisit": [],

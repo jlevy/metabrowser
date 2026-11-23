@@ -256,7 +256,7 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     assert delta.exit_code == 0, delta.stderr
     calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
     # One scan of what changed: one account check and one GraphQL page.
-    assert calls == ["gh auth status", "gh api graphql catalog state=updated cursor=start"]
+    assert calls == ["gh api user", "gh api graphql catalog state=updated cursor=start"]
     vouched = session.run(CANONICAL, "--api", f"{PULL}?number=8").payload()
     assert (vouched["state"], vouched["verified_by"], vouched["verified_at"]) == (
         "current",
