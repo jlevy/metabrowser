@@ -41,7 +41,7 @@
       "old": null,
       "new": {
         "entry_type": "file",
-        "path": "docs/big.md"
+        "path": "docs/deep.md"
       }
     },
     {
@@ -75,6 +75,30 @@
       "new": {
         "entry_type": "file",
         "path": "docs/plain.md"
+      }
+    },
+    {
+      "id": "f8",
+      "availability": "ready",
+      "old": {
+        "entry_type": "file",
+        "path": "docs/huge.md"
+      },
+      "new": {
+        "entry_type": "file",
+        "path": "docs/huge.md"
+      }
+    },
+    {
+      "id": "f9",
+      "availability": "too_large",
+      "old": {
+        "entry_type": "file",
+        "path": "docs/unread.md"
+      },
+      "new": {
+        "entry_type": "file",
+        "path": "docs/unread.md"
       }
     }
   ],
@@ -194,13 +218,15 @@
       "version": "markdown-diff-v1",
       "status": "unsupported",
       "blocks": [],
-      "source_only": false
+      "source_only": false,
+      "reason": "task_list"
     },
     "f3": {
       "version": "markdown-diff-v1",
       "status": "too_large",
       "blocks": [],
-      "source_only": false
+      "source_only": false,
+      "reason": "nesting"
     },
     "f4": {
       "version": "markdown-diff-v1",
@@ -289,6 +315,12 @@
           }
         ]
       }
+    },
+    "f8": {
+      "version": "markdown-diff-v1",
+      "status": "too_large",
+      "blocks": [],
+      "source_only": false
     }
   },
   "trees": {

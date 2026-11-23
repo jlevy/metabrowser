@@ -2836,6 +2836,14 @@ html.theme-anim .menu {
   position: relative;
   z-index: var(--z-pane);
 }
+/* The navigation frame and Files list keep their first font for this page.
+   A late Source Sans response cannot reposition the tabs, folder menu, or filter bar. */
+html:not([data-app-font="system"]) .tree-pane
+  > :where(.app-header, .nav-tab-bar, [data-nav-toolbar], .nav-metadata-band),
+html:not([data-app-font="system"]) .tree-pane #tab-files {
+  --font-sans: "Metabrowser Sidebar Sans", var(--app-sans-system);
+  font-family: var(--font-sans);
+}
 /* No top padding: the chrome over the scroller, a toolbar or the metadata band
    under it (`.nav-metadata-band`), ends in its own rule and spacing, and what
    leads the scroller under it makes up the rest (the first tree row's margin,
@@ -4128,6 +4136,17 @@ a.tab-btn {
   background: var(--highlight-bg);
   color: var(--link);
   font-weight: var(--weight-medium);
+}
+/* A choice that cannot be made keeps its place, dimmed, and answers neither the pointer
+   nor a press. Its tooltip and its accessible name say why, so it is `aria-disabled`,
+   which leaves it the pointer and focus, and never `disabled`. A changed file's Rendered
+   is one, where only Source can be shown (builtin_plugins/diff/diff-markdown.js). */
+.chip-group > .chip[aria-disabled="true"],
+.chip-group > .chip[aria-disabled="true"]:hover {
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+  opacity: var(--dimmed-content-opacity);
 }
 /* Multi-select: neutral fill plus its own inset frame, so a row of
    them reads as several independent switches rather than one

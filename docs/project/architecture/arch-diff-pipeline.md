@@ -252,10 +252,15 @@ hardening. `tests/test_markdown_diff_projection.py` checks the joined blocks aga
 KPress’s own render.
 Changed words are marked by a bounded word diff.
 
-- **Fallback:** a side with raw HTML other than comments, with footnotes, or past the
-  projection’s budgets (`MARKDOWN_DIFF_MAX_BYTES` and the bounds beside it, each with
-  its measurement) is refused, and the file shows Source.
-  The projection renders with math and diagrams off and without code highlighting.
+- **Fallback:** a side with raw HTML other than comments, a task list, footnotes, or
+  nesting past what MarkdownIt keeps is refused with that `reason`, and the file shows
+  Source with its Rendered chip unavailable and saying why.
+  The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement, bound only a
+  projection in a thread, which nothing can stop; past them the pair goes to the
+  Markdown child, whose deadline bounds it (`markdown_projection_worker.py`), and the
+  pull request route reads a pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
+  `builtin_plugins/github/pull_rendered_diff.py` (mb-rm40). The projection renders with
+  math and diagrams off and without code highlighting.
 - **Hidden signature:** whatever a block’s source says that its render does not show,
   such as a link destination, a title, alt text, or a fence’s info string.
   A changed block whose hidden signature differs is flagged `source_only`, as is a file

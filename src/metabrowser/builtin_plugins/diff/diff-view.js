@@ -5,11 +5,11 @@
 //
 // Each file renders as a section under a bar: the section-disclosure
 // primitive carrying the filename (styled as a filename, not a
-// heading), change notes, the inline +N −N stat pair, the View file
-// controls of diff-view-file.js when the page can open a file at a
-// commit, and a copy-path control riding the shared [data-mb-copy]
-// delegation. Sections start expanded; the bar collapses the body
-// without disposing it.
+// heading), the inline +N −N stat pair, and change notes; beside it a
+// copy-path control riding the shared [data-mb-copy] delegation; and,
+// at the bar's end, the View file controls of diff-view-file.js when
+// the page can open a file at a commit. Sections start expanded; the
+// bar collapses the body without disposing it.
 // Every availability state has exactly one rendering path — an absent
 // patch is a labeled state, never an empty box. Rendering is
 // deliberately dumber than the model: the data plane is tested by the
@@ -196,6 +196,9 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   stale: "The comparison changed underneath this file. Refresh to reload it.",
   unsupported: "This change cannot be shown as a text diff.",
 });
+
+// What a file whose availability the table does not name says.
+const UNAVAILABLE_COPY = "These changes are unavailable.";
 
 // A single file's answer owes the file or a reason. `deferred` there is neither, so it is
 // said as what it is and not as a failure of this page; in a document with no source to
@@ -1072,15 +1075,17 @@ function repaintViewFileControls(view) {
 }
 
 /**
- * The per-file bar: one disclosure trigger (kind, path, notes, stats)
- * plus sibling View file and copy controls, per the section-disclosure
- * and icon button primitives in the design system.
+ * The per-file bar, in two groups, per the section-disclosure and icon button primitives
+ * in the design system. It leads with what names the file: one disclosure trigger (kind,
+ * path, stats, notes) and the copy control beside it. It ends with what shows the file
+ * another way: the View file controls, which a file's Rendered | Source chooser leads
+ * (diff-markdown.js).
  *
  * @param {Record<string, unknown>} change
  * @param {string} toggleId
  * @param {string} bodyId
  * @param {MountedDiffState} view
- * @returns {{bar: HTMLElement, toggle: HTMLElement, notice: HTMLElement | null}}
+ * @returns {{bar: HTMLElement, end: HTMLElement, toggle: HTMLElement, notice: HTMLElement | null}}
  */
 function renderFileBar(change, toggleId, bodyId, view) {
   const api = view.api;
@@ -1125,21 +1130,11 @@ function renderFileBar(change, toggleId, bodyId, view) {
   for (const note of notes) {
     toggle.append(el("span", "diff-file-note", note));
   }
-  bar.append(toggle);
-
-  /** @type {HTMLElement | null} */
-  let notice = null;
-  const actions = view.viewFile?.actions(change, view.resolved) ?? [];
-  if (actions.length > 0) {
-    notice = el("div", "diff-availability diff-file-notice");
-    notice.setAttribute("role", "status");
-    notice.hidden = true;
-    const said = { element: notice, timer: 0 };
-    const controls = actions.map((action) => renderViewFileControl(action, view, said));
-    bar.append(...controls);
-    view.viewFileBars.push({ change, controls, said });
-  }
-
+  // Each group is one flex item: a bar that wraps or cuts a long path short never parts
+  // the copy control from the name it copies, and its end group moves as one.
+  const lead = el("div", "diff-file-lead");
+  const end = el("div", "diff-file-end");
+  lead.append(toggle);
   const side = /** @type {Record<string, unknown> | undefined} */ (change.new ?? change.old);
   if (side !== undefined) {
     const copy = el("button", "icon-btn icon-btn-reveal diff-file-copy");
@@ -1151,9 +1146,23 @@ function renderFileBar(change, toggleId, bodyId, view) {
     copy.setAttribute("data-tip-text", "Copy path");
     copy.setAttribute("aria-label", "Copy path");
     copy.innerHTML = shellIcon("copy");
-    bar.append(copy);
+    lead.append(copy);
   }
-  return { bar, toggle, notice };
+  bar.append(lead, end);
+
+  /** @type {HTMLElement | null} */
+  let notice = null;
+  const actions = view.viewFile?.actions(change, view.resolved) ?? [];
+  if (actions.length > 0) {
+    notice = el("div", "diff-availability diff-file-notice");
+    notice.setAttribute("role", "status");
+    notice.hidden = true;
+    const said = { element: notice, timer: 0 };
+    const controls = actions.map((action) => renderViewFileControl(action, view, said));
+    end.append(...controls);
+    view.viewFileBars.push({ change, controls, said });
+  }
+  return { bar, end, toggle, notice };
 }
 
 /** @param {DiffViewApi | undefined} api @returns {"unified" | "split"} */
@@ -2947,7 +2956,7 @@ function renderFileSection(change, patch, context, view, draw) {
   const bodyId = `diff-file-body-${sectionSequence}`;
   const section = el("section", "diff-file");
   section.setAttribute("aria-labelledby", toggleId);
-  const { bar, toggle, notice } = renderFileBar(change, toggleId, bodyId, view);
+  const { bar, end, toggle, notice } = renderFileBar(change, toggleId, bodyId, view);
   const body = el("div", "diff-file-body");
   body.setAttribute("id", bodyId);
   if (notice) {
@@ -2958,19 +2967,25 @@ function renderFileSection(change, patch, context, view, draw) {
 
   // The whole bar is one activation surface, like a tree row; the
   // button stays the semantic trigger for focus and keyboard, whose
-  // synthesized click bubbles here. Only the copy and View file
-  // controls opt out.
+  // synthesized click bubbles here. Only the copy control, a file's
+  // Rendered | Source chooser, and the View file controls opt out.
   const format = view.markdown?.format(change) ?? null;
+  const availability = String(change.availability);
   const markdown =
     format === null
       ? null
       : view.markdown?.controller.add({
           section,
           bar,
-          toggle,
+          end,
           source: body,
           id: String(change.id),
           format,
+          // A file whose changes did not load has no Rendered either, for the reason its
+          // body gives below.
+          ...(availability === "ready" || availability === "deferred"
+            ? {}
+            : { unavailable: AVAILABILITY_COPY[availability] || UNAVAILABLE_COPY }),
         });
   let expanded = true;
   /** @param {boolean} next */
@@ -3002,13 +3017,12 @@ function renderFileSection(change, patch, context, view, draw) {
     }
   });
 
-  const availability = String(change.availability);
   if (availability === "deferred" && context.revision) {
     queueDeferredHydration(section, body, change, context.revision, view);
     return section;
   }
   if (availability !== "ready" || patch === undefined) {
-    const copy = AVAILABILITY_COPY[availability] || "These changes are unavailable.";
+    const copy = AVAILABILITY_COPY[availability] || UNAVAILABLE_COPY;
     body.append(el("div", "diff-availability", copy));
     return section;
   }

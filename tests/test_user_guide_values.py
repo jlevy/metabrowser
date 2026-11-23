@@ -465,17 +465,17 @@ def test_the_watcher_keeps_the_filter_the_guide_describes() -> None:
     )
 
 
-def test_the_app_guides_say_whether_its_minimum_is_released() -> None:
-    released = _swift(
-        APP_SOURCES / "Setup" / "MetabVersion.swift", r"static let isReleased = (true|false)"
-    ).group(1)
-    for name in ("docs/installation.md", "skills/metabrowser/SKILL.md"):
-        guide = (REPO_ROOT / name).read_text(encoding="utf-8")
-        says_unreleased = "no release on PyPI has it yet" in " ".join(guide.split())
-        assert says_unreleased == (released == "false"), (
-            f"MetabRequirement.isReleased changed: update {name}, Release Status in "
-            "docs/installation.md, and the steps in docs/macos-app.md, then this test"
-        )
+def test_cli_release_docs_keep_the_preview_runtime_guidance_conditional() -> None:
+    installation = (REPO_ROOT / "docs/installation.md").read_text(encoding="utf-8")
+    app_section = installation.split("## The macOS App\n", 1)[1].split("\n## ", 1)[0]
+    app_section = " ".join(app_section.split())
+    assert "If the published CLI meets the app’s minimum" in app_section
+    assert "`uv tool install metabrowser`" in app_section
+    assert "If your preview needs a newer runtime" in app_section
+    assert "`.venv/bin/metab`" in app_section
+    skill = (REPO_ROOT / "skills/metabrowser/SKILL.md").read_text(encoding="utf-8")
+    assert "a skill installed from a release tag matches that release" in skill
+    assert "If you need an unreleased feature" in skill
 
 
 def _reason_codes(guide: str, heading: str) -> list[str]:
