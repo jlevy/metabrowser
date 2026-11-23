@@ -89,9 +89,9 @@ uv --config-file uv.toml run --frozen metab ./path/to/directory
 - **The macOS app:** an alpha preview that you build from source.
   Its release pipeline can build a disk image and a Homebrew cask, but neither is
   published, so there is no signed, notarized download.
-- **The `metab` the app runs:** the app needs `metab` 0.13.0 or later, and no release on
-  PyPI has it yet. Until one does, the app runs the `metab` of a source checkout, as
-  [The macOS App](#the-macos-app) describes.
+- **The `metab` the app runs:** the app needs `metab` 0.13.0 or later.
+  [The macOS App](#the-macos-app) shows how to select a published CLI or the checkout’s
+  own `metab`.
 
 ## Git and GitHub Setup
 
@@ -186,14 +186,13 @@ make macos-app
 ```
 
 `make macos-app` prints where it put the app; open it from there, or build and open a
-folder in one step with `make macos-run FOLDER=path/to/folder`. While no release meets
-the app’s minimum ([Release Status](#release-status)), point the app at the checkout’s
-`metab`: Settings > Choose metab… and the checkout’s `.venv/bin/metab`.
-
-Once a release meets it, install the CLI first with `uv tool install metabrowser`, then
-open the app. The app finds `metab` in uv’s tool directory without needing it on `PATH`,
-so `uv tool update-shell` is only for your terminal.
-Without a usable `metab`, the app shows its runtime requirement and links to the
+folder in one step with `make macos-run FOLDER=path/to/folder`. If the published CLI
+meets the app’s minimum ([Release Status](#release-status)), install it with
+`uv tool install metabrowser`. The app finds `metab` in uv’s tool directory without
+needing it on `PATH`, so `uv tool update-shell` is only for your terminal.
+If your preview needs a newer runtime, open **Settings → Choose metab…** and select the
+checkout’s `.venv/bin/metab`. Without a usable `metab`, the app shows its runtime
+requirement and links to the
 [README for setup help](https://github.com/jlevy/metabrowser#installation).
 
 The app has no updater: rebuild it from a newer checkout.
