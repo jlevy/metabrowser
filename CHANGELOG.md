@@ -8,6 +8,9 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
 
 ## 0.13.0
 
+- Preserve the HTTP server’s low-latency TCP settings on Linux when the CLI reserves its
+  port before startup.
+
 - Keep the navigation steady when its font arrives after the first paint.
   On a slow load, the sidebar keeps the system font for that page so the tabs, filter
   bar, and folder menu stay in place.
