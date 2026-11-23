@@ -5,14 +5,14 @@ title: "PR #737 D1: the catalog's part holds a first visit's backfill and cores 
 kind: bug
 status: open
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 labels: []
 dependencies: []
 created_at: 2026-11-23T16:04:03.050Z
-updated_at: 2026-11-23T16:05:11.288Z
+updated_at: 2026-11-23T16:08:04.331Z
 ---
-Review D1 (Medium) of PR #737, a post-merge follow-up review: https://github.com/jlevy/metabrowser/pull/737 (review D).
+Review D1 (Medium) of PR #737, a post-merge follow-up review: https://github.com/jlevy/metabrowser/pull/737#pullrequestreview-6024990059 (review D).
 
 CATALOG_SPECULATIVE_CORE_PER_HOUR (8, gh_budget.py), added by 267e15c30 for review B1, holds the catalog's backfill and its cores walk together to 8 points a rolling hour. Before #737 (its base 08c42f59e) the backfill asked only the floor and a rate hold, and the cores walk asked no governor, so a cold 800-row catalog (8 backfill pages, 100 walk batches) was read in minutes. Now it takes about 13.5 hours; 5,000 rows about 84 hours.
 

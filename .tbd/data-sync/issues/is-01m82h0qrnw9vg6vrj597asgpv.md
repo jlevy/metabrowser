@@ -5,7 +5,7 @@ title: "Live GitHub updates: what is on screen updates within seconds, everythin
 kind: epic
 status: closed
 priority: 1
-version: 37
+version: 39
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 refs:
   - kind: pr
@@ -49,8 +49,10 @@ child_order_hints:
   - is-01m83zhd3kfcv0c4tgvgd43h4p
   - is-01m84gfbk5cbef8e6yendxw6z9
   - is-01m84ht1zmc4vptskz3e6vdp71
+  - is-01m84jp3n8fvsryvh03cwc4388
+  - is-01m84jpbs7staabvpby1qp2bnr
 created_at: 2026-11-22T21:01:28.721Z
-updated_at: 2026-11-23T15:53:47.246Z
+updated_at: 2026-11-23T16:09:14.790Z
 closed_at: 2026-11-23T13:47:01.557Z
 close_reason: "All agreed phases and follow-ups merged in stack #710 (PRs #696-#747, main b68cc9571). Open follow-ups: mb-pgru, mb-m3gp, mb-mg37."
 resolution: null
