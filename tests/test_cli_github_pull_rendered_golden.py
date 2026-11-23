@@ -101,6 +101,9 @@ _STRUCTURED_BASE = {
     "config/sized.json": _sized(800, 1),
     "config/sized.yaml": _sized(800, 1),
     "config/huge.json": _sized(2_000, 1),
+    "config/twice.json": b'{"admin": false, "level": 1}\n',
+    # Latin-1, which is not UTF-8, and a heading ended by a carriage return alone.
+    "wiki/legacy.md": b"# Fa\xe7ade\rA na\xefve old line.\n\nThe end.\n",
     # A Markdown file the head renames and does not change.
     "docs/old-name.md": b"# Renamed\n\nThe same words under another name.\n",
     # Raw HTML as a README writes it, whose `<details>` the head edits.
@@ -113,6 +116,9 @@ _STRUCTURED_HEAD = {
     "config/sized.json": _sized(800, 2),
     "config/sized.yaml": _sized(800, 2),
     "config/huge.json": _sized(2_000, 2),
+    # The tree draws the last `admin`; the one before it is a change only Source shows.
+    "config/twice.json": b'{"admin": true, "admin": false, "level": 2}\n',
+    "wiki/legacy.md": b"# Fa\xe7ade\rA na\xefve new line.\n\nThe end.\n",
 }
 
 
@@ -302,6 +308,22 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
     }
     assert rendered(f"&file={ids['config/huge.json']}")["version"] == "structured-diff-v1"
     assert rendered(f"&file={ids['config/broken.yaml']}")["status"] == "unsupported"
+    twice = rendered(f"&file={ids['config/twice.json']}")
+    assert (twice["status"], twice["source_only"]) == ("ready", True)
+    assert [  # pyright: ignore[reportUnknownVariableType]
+        (entry["change"], entry["key"], entry["value"])  # pyright: ignore[reportIndexIssue]
+        for entry in twice["root"][0]["entries"]  # pyright: ignore[reportIndexIssue, reportUnknownVariableType, reportGeneralTypeIssues]
+    ] == [("context", "admin", False), ("removed", "level", 1), ("added", "level", 2)]
+    # Kept out of the transcript, which its assets list would take past its line budget.
+    legacy = run_metab((selected, "--api", f"{route}&file={ids['wiki/legacy.md']}")).payload()
+    assert (legacy["status"], legacy["source_only"]) == ("ready", False)
+    assert [block["kind"] for block in legacy["blocks"]] == [  # pyright: ignore[reportUnknownVariableType, reportGeneralTypeIssues]
+        "context",
+        "removed",
+        "added",
+        "context",
+    ]
+    assert legacy["blocks"][2]["html"] == "<p>A na\ufffdve <ins>new</ins> line.</p>"  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportGeneralTypeIssues]
     assert rendered(f"&file={ids['src/app.txt']}")["status"] == "unsupported"
     assert rendered("&file=absent")["status"] == "unsupported"
     assert rendered("", ok=False)["code"] == "invalid_rendered_diff"

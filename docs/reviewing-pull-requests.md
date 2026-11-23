@@ -203,7 +203,9 @@ A footnote’s reference shows its number where it is written, numbered as the D
 view numbers it, and its note shows where its definition is written rather than at the
 end; an inline note shows after the paragraph that holds it.
 
-Files too large for the rendered view open in **Source**.
+A file with bytes that are not UTF-8, a NUL, or lines that end at a carriage return
+alone renders as the Document view renders it, a byte it cannot read as `�`. Files too
+large for the rendered view open in **Source**.
 
 Rendered also shows math and Mermaid diagrams as their source text, and does not
 highlight code blocks.
@@ -238,11 +240,14 @@ The tree reads YAML 1.2, where `no`, `off`, and `y` are strings, so a change bet
 **Source** too. A value whose type changed and whose text did not, such as a date that
 became the string that spells it, or the key `1` that became `"1"`, is drawn unchanged,
 and the tree says above it that **Source** shows a change it draws as unchanged.
+JSON with a key twice in one object shows the key once, with its last value, as the file
+view’s tree does, and a change to a value the repeated key hides is one **Source**
+shows.
 
 These files open in **Source**:
 
 - YAML or JSON that does not parse
-- a file with a key twice in one mapping, which two programs may read differently
+- YAML with a key twice in one mapping
 - files too large, or too deeply nested, for the rendered view
 
 ## Find a Pull Request with Quick Search

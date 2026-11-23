@@ -15,6 +15,12 @@ where its definition is written, numbered as the Document view numbers it
 the joined blocks equal KPress's own ``parse_markdown`` render, notes compared by their
 numbers, so a KPress release that changes this pipeline fails there rather than here.
 
+Each side reads as the Document view reads it: a byte that is not UTF-8 is U+FFFD, and
+MarkdownIt itself makes a NUL U+FFFD. Git counts lines by line feeds and MarkdownIt also
+ends one at a carriage return no line feed follows, so a Git line that holds such a
+return is that many of the projection's lines, changed or unchanged as Git says the
+whole line is (:func:`_markdown_lines`).
+
 Whatever a block's source says that its render does not show -- a link or image
 destination, a title, alt text under a shown image, an HTML comment, an attribute,
 raw HTML the allowlist drops, or a fence's info string -- is its *hidden* signature. A changed block whose hidden signature
@@ -27,6 +33,8 @@ visible counterpart shows only in the Source view.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import re
 from collections import Counter
@@ -142,6 +150,9 @@ _FENCE_LANGUAGES = frozenset(
 )
 # A line that opens or closes a container block (`:::`), after any quote or list marker.
 _CONTAINER_LINE = re.compile(rb"^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*:::", re.MULTILINE)
+# A carriage return that ends a line for MarkdownIt, as for KPress, and not for Git.
+_LONE_CR = re.compile(rb"\r(?!\n)")
+_LONE_CR_TEXT = re.compile(r"\r(?!\n)")
 _DEFINITION = re.compile(r"^\s*(?:(?:>|[-*+]|\d{1,9}[.)])\s*)*\[(?:[^\]\\]|\\.)+\]:")
 _WORDS = re.compile(r"\w+(?:[-’']\w+)*|[^\w\s]+|\s+")
 _SPACE = re.compile(r"\s+")
@@ -1198,11 +1209,49 @@ def _lines(data: bytes | None) -> list[bytes]:
     return [line + b"\n" for line in result[:-1]] + (result[-1:] if result[-1] else [])
 
 
+def _markdown_lines(lines: Sequence[bytes]) -> tuple[list[bytes], list[range]]:
+    """*lines*, Git's, split where MarkdownIt also ends a line, and each Git line's range
+    of the lines that makes: a carriage return no line feed follows ends one."""
+
+    split: list[bytes] = []
+    ranges: list[range] = []
+    for line in lines:
+        start, cut = len(split), 0
+        for found in _LONE_CR.finditer(line):
+            split.append(line[cut : found.end()])
+            cut = found.end()
+        if cut < len(line):
+            split.append(line[cut:])
+        ranges.append(range(start, len(split)))
+    return split, ranges
+
+
+def _decoded(data: bytes) -> str:
+    """*data* as the Document view reads it: a byte that is not UTF-8 is U+FFFD, and a
+    carriage return no line feed follows is a line feed, so the text's lines are the
+    projection's (:func:`_markdown_lines`).
+
+    A CRLF stays, where the file view's read makes it a line feed too
+    (:func:`metabrowser.structured_text.decode_text`), since MarkdownIt reads both alike."""
+
+    text = data.decode("utf-8", errors="replace")
+    return _LONE_CR_TEXT.sub("\n", text) if "\r" in text else text
+
+
 def _verify_line(record: LineRecord, lines: Sequence[bytes], index: int) -> None:
-    if record.text_b64 is not None or index >= len(lines):
+    if index >= len(lines):
         raise _Unsupported("patch does not match the snapshot")
-    expected = record.text.encode() + (b"" if record.no_newline else b"\n")
-    if lines[index] != expected:
+    try:
+        # A line that is not UTF-8 carries its exact bytes; a text no file holds, such as
+        # an unpaired surrogate, or bytes that are not base64, match no snapshot.
+        body = (
+            record.text.encode()
+            if record.text_b64 is None
+            else base64.b64decode(record.text_b64, validate=True)
+        )
+    except (UnicodeEncodeError, binascii.Error) as error:
+        raise _Unsupported("patch does not match the snapshot") from error
+    if lines[index] != body + (b"" if record.no_newline else b"\n"):
         raise _Unsupported("patch does not match the snapshot")
 
 
@@ -1896,8 +1945,8 @@ class _Projector:
         inline = _inline_change(
             old.node,
             new.node,
-            b"".join(self.old_lines[line] for line in old_changed).decode(),
-            b"".join(self.new_lines[line] for line in new_changed).decode(),
+            _decoded(b"".join(self.old_lines[line] for line in old_changed)),
+            _decoded(b"".join(self.new_lines[line] for line in new_changed)),
             _MAX_INLINE_WORK - self.work,
         )
         if inline is None or not self.spend(inline.nodes):
@@ -2022,20 +2071,35 @@ def _project(
         raise _OverBudget("Markdown input bytes")
     if max(before.count(b"["), after.count(b"[")) > limits.link_openers:
         raise _OverBudget("Markdown link-label work")
+    split = [_LONE_CR.search(data) is not None for data in (before, after)]
     if (
         limits.container_lines != inf
-        and max(len(_CONTAINER_LINE.findall(data)) for data in (before, after))
+        and max(
+            # Counted where MarkdownIt starts a line, a lone carriage return's included.
+            len(_CONTAINER_LINE.findall(_LONE_CR.sub(b"\n", data) if lone else data))
+            for data, lone in zip((before, after), split, strict=True)
+        )
         > limits.container_lines
     ):
         raise _OverBudget("Markdown container lines")
     old_lines, new_lines = _lines(old), _lines(new)
-    if patch.truncated or any(
-        b"\0" in data or b"\r" in data.replace(b"\r\n", b"") for data in (before, after)
-    ):
-        raise _Unsupported("unmapped Markdown source")
+    if patch.truncated:
+        # No adapter cuts one file's patch today; a cut one cannot vouch for its lines.
+        raise _Unsupported("truncated patch")
     unchanged, removed, added = _correspondence(old_lines, new_lines, patch)
-    old_side = _parse(before.decode(), limits.tokens)
-    new_side = _parse(after.decode(), limits.tokens)
+    if any(split):
+        old_lines, old_at = _markdown_lines(old_lines)
+        new_lines, new_at = _markdown_lines(new_lines)
+        # An unchanged Git line is the same bytes on both sides, so the same lines.
+        unchanged = {
+            left: right
+            for old_line, new_line in unchanged.items()
+            for left, right in zip(old_at[old_line], new_at[new_line], strict=True)
+        }
+        removed = {line for git in removed for line in old_at[git]}
+        added = {line for git in added for line in new_at[git]}
+    old_side = _parse(_decoded(before), limits.tokens)
+    new_side = _parse(_decoded(after), limits.tokens)
     shown = _frontmatter_diff(old_side.frontmatter, new_side.frontmatter)
     frontmatter = shown.diff
     if old_side.elements + new_side.elements > limits.nodes:
@@ -2130,8 +2194,6 @@ def prepare_markdown_diff(
         return unavailable_markdown_diff("too_large", refused.reason)
     except _Unsupported as refused:
         return unavailable_markdown_diff("unsupported", refused.reason)
-    except UnicodeError:
-        return unavailable_markdown_diff("unsupported")
 
 
 def bind_markdown_diff(

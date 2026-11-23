@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import difflib
 import random
 import time
@@ -21,16 +22,31 @@ from metabrowser.diff.markdown_projection import (
 )
 
 
+def _git_lines(data: bytes | None) -> list[bytes]:
+    """*data*'s lines as Git counts them, each ending at a line feed."""
+
+    pieces = (data or b"").split(b"\n")
+    return [piece + b"\n" for piece in pieces[:-1]] + ([pieces[-1]] if pieces[-1] else [])
+
+
+def _record(line: bytes, op: LineOp) -> LineRecord:
+    """A patch line as the patch adapters write it: text, and the bytes of one that is not
+    UTF-8 (`_display` in `diff/adapters/patch_file.py`)."""
+
+    body = line.removesuffix(b"\n")
+    try:
+        text, exact = body.decode(), None
+    except UnicodeDecodeError:
+        text, exact = body.decode(errors="replace"), base64.b64encode(body).decode()
+    return LineRecord(op=op, text=text, text_b64=exact, no_newline=not line.endswith(b"\n"))
+
+
 def _patch(old: bytes | None, new: bytes | None, context: int = 3) -> FilePatch:
-    before = (old or b"").decode().splitlines(keepends=True)
-    after = (new or b"").decode().splitlines(keepends=True)
+    before, after = _git_lines(old), _git_lines(new)
     hunks: list[Hunk] = []
 
-    def records(part: Sequence[str], op: LineOp) -> list[LineRecord]:
-        return [
-            LineRecord(op=op, text=line.removesuffix("\n"), no_newline=not line.endswith("\n"))
-            for line in part
-        ]
+    def records(part: Sequence[bytes], op: LineOp) -> list[LineRecord]:
+        return [_record(line, op) for line in part]
 
     for group in difflib.SequenceMatcher(None, before, after, autojunk=False).get_grouped_opcodes(
         context
@@ -1307,6 +1323,124 @@ def test_a_render_holding_every_separator_is_one_block(monkeypatch: pytest.Monke
     assert "<ins>new</ins>" in result["blocks"][1]["html"]
 
 
+# ── Sources as the Document view reads them ─────────────────────
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "kinds", "shown"),
+    [
+        pytest.param(
+            b"# Title\rA paragraph.\n\nThe old end.\n",
+            b"# Title\rA paragraph.\n\nThe new end.\n",
+            ["context", "context", "removed", "added"],
+            "<p>A paragraph.</p>",
+            id="a return inside a line Git counts",
+        ),
+        pytest.param(
+            b"# Title\rA paragraph.\n\nThe end.\n",
+            b"# Title\rA new paragraph.\n\nThe end.\n",
+            ["context", "removed", "added", "context"],
+            "<p>A <ins>new</ins> paragraph.</p>",
+            id="an edit to one of the lines a Git line holds",
+        ),
+        pytest.param(
+            b"# Title\r\rOne old line.\r\rThe end.\r",
+            b"# Title\r\rOne new line.\r\rThe end.\r",
+            ["context", "removed", "added", "context"],
+            "<p>One <ins>new</ins> line.</p>",
+            id="a file of returns alone, one line to Git",
+        ),
+    ],
+)
+def test_a_carriage_return_alone_ends_a_line_as_the_document_view_reads_it(
+    old: bytes, new: bytes, kinds: list[str], shown: str
+) -> None:
+    """MarkdownIt ends a line at a carriage return no line feed follows, and Git does not:
+    a Git line holding one is that many lines, changed or unchanged as Git says it is, and
+    a block on one of them that kept its bytes is unchanged."""
+
+    result = _project(old, new)
+    assert result["status"] == "ready"
+    assert [block["kind"] for block in result["blocks"]] == kinds
+    assert shown in [block["html"] for block in result["blocks"]]
+    assert result["source_only"] is False
+
+
+def test_a_side_with_carriage_returns_alone_joins_to_kpress() -> None:
+    from kpress.format import parse_markdown
+
+    raw = "# Title\rA paragraph.\r\r- One\r- Two\r\r> Quoted\r> on.\r\rThe end.\n"
+    text = markdown_projection._decoded(raw.encode())  # pyright: ignore[reportPrivateUsage]
+
+    def render(source: str) -> str:
+        return parse_markdown(
+            source, title="", trust_mode="sanitized", diagrams="off", math="off"
+        ).html
+
+    # MarkdownIt reads a return alone as the line feed the projection's text writes.
+    assert render(raw) == render(text)
+    assert _joins_to_kpress(text) == [(0, 1), (1, 2), (3, 6), (6, 8), (9, 10)]
+
+
+def test_container_lines_a_carriage_return_alone_starts_count_toward_their_bound() -> None:
+    lines = b"\r".join([b":::"] * (markdown_projection._MAX_CONTAINER_LINES + 1)) + b"\n"  # pyright: ignore[reportPrivateUsage]
+    assert _project(None, lines)["status"] == "too_large"
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        pytest.param(b"\0", id="written"),
+        pytest.param(b"&#0;", id="a reference"),
+        pytest.param(b"<b>&#0;</b>", id="a reference in raw HTML"),
+    ],
+)
+def test_a_nul_renders_as_the_document_view_renders_it(written: bytes) -> None:
+    """MarkdownIt makes a NUL, and a reference to one, U+FFFD, so a source cannot write
+    the projection's own `\\0<n>\\0` reference markers."""
+
+    old = b"# Title\n\nA " + written + b"0" + written + b" here.\n\nThe old end.\n"
+    result = _project(old, old.replace(b"old", b"new"))
+    assert result["status"] == "ready"
+    assert [block["kind"] for block in result["blocks"]] == [
+        "context",
+        "context",
+        "removed",
+        "added",
+    ]
+    shown = result["blocks"][1]["html"]
+    assert "\x00" not in shown
+    assert shown.count("\ufffd") == 2
+
+
+def test_bytes_that_are_not_utf8_render_as_the_document_view_reads_them() -> None:
+    old = b"# Fa\xe7ade\n\nA na\xefve old line.\n\nThe end.\n"
+    result = _project(old, old.replace(b"old", b"new"))
+    assert result["status"] == "ready"
+    assert [block["kind"] for block in result["blocks"]] == [
+        "context",
+        "removed",
+        "added",
+        "context",
+    ]
+    assert result["blocks"][0]["html"].endswith(">Fa\ufffdade</h1>")
+    assert result["blocks"][2]["html"] == "<p>A na\ufffdve <ins>new</ins> line.</p>"
+
+
+def test_a_patch_is_checked_against_the_exact_bytes_of_a_line_that_is_not_utf8() -> None:
+    old, new = b"A na\xefve old line.\n", b"A na\xefve new line.\n"
+    # Both sides' lines read as the same text; only their bytes differ.
+    other = old.replace(b"\xef", b"\xf0")
+    result = project_markdown_diff(
+        old=other,
+        new=new,
+        patch=_patch(old, new),
+        namespace="comparison/file",
+        rewrite_local=lambda href, _image: href,
+    )
+    assert result["status"] == "unsupported"
+
+
 # ── The pipeline is KPress's own ────────────────────────────────
 
 
@@ -1629,10 +1763,6 @@ def test_hostile_markdown_projects_only_allowlisted_snapshot_markup(
             namespace="comparison/file",
             rewrite_local=lambda href, image: snapshot.reference(source, href, image),
         )
-        if b"\r" in chunk.replace(b"\r\n", b""):
-            # A lone carriage return, which Git's line numbers do not count as a line.
-            assert result["status"] == "unsupported" and result["blocks"] == [], name
-            continue
         # Raw HTML renders, as the Document view renders it, through the same allowlist.
         assert result["status"] == "ready", name
         for block in result["blocks"]:

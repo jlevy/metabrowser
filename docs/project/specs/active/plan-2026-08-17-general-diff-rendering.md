@@ -464,11 +464,12 @@ so a block’s source range is the token map that rendered it; a test checks the
 blocks against KPress’s `parse_markdown`. One changed list item or quoted paragraph is
 shown on its own, and changed words are marked by a bounded word diff whose span must
 occur exactly once in the changed source lines.
-Documents past the projection’s budgets remain readable only in Source: 48 KiB of
-Markdown across both sides, 256 `[` per side, 2,000 tokens per side, 2,400 rendered
-nodes, and nesting 32 deep, each measured beside its constant in
-`diff/markdown_projection.py`. A footnote’s note renders where its definition is
-written, numbered as the Document view numbers it.
+Documents past the projection’s budgets, each measured beside its constant in
+`diff/markdown_projection.py`, remain readable only in Source.
+A footnote’s note renders where its definition is written, numbered as the Document view
+numbers it.
+Each side reads as the Document view reads it, so bytes that are not UTF-8, a
+NUL, and lines that end at a carriage return alone render too.
 
 Math (`$…$`) and Mermaid sources render as literal text, because the projection renders
 with math and diagrams off, and code blocks are not highlighted, because the inert

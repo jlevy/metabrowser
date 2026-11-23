@@ -260,6 +260,16 @@ Changed words are marked by a bounded word diff.
   pull request route reads a pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
   `builtin_plugins/github/pull_rendered_diff.py` (mb-rm40). The projection renders with
   math and diagrams off and without code highlighting.
+  The rest of its refusals guard what it checks rather than what a file holds: a patch
+  that does not match the two sides’ bytes or cover their differences, and a hardened
+  render it cannot read back as one tree; no file of this repository, added, edited or
+  cut, reaches one (mb-ueqx).
+- **Source text:** each side reads as the Document view reads it.
+  A byte that is not UTF-8 is U+FFFD, and a patch line that is not carries its exact
+  bytes, which the projection checks; MarkdownIt makes a NUL U+FFFD. MarkdownIt also
+  ends a line at a carriage return no line feed follows, which Git does not, so a Git
+  line holding one is that many lines, changed or unchanged as Git says the whole line
+  is (`_markdown_lines`).
 - **Raw HTML:** renders as the Document view renders it, through the same sanitizer and
   allowlist. The blocks are rendered together with a numbered marker at each boundary,
   written with a private-use character the render does not hold (`_separator`), and a
@@ -332,10 +342,15 @@ a “more” row, and leaving unchanged ones closed with the tree view’s previ
 Rows are keyed by position, not key text, and a click redraws only the rows under the
 row it changes.
 
-- **Fallback:** a side that does not parse, a key twice in one mapping, or a pair past
-  the byte, node, nesting, and entry budgets beside each constant is refused, and the
-  file shows Source; a refusal of the route itself answers in the same format.
-  Aliases and merge keys load within the loader’s budget on the value written out.
+- **Fallback:** a side that does not parse, YAML with a key twice in one mapping, or a
+  pair past the byte, node, nesting, and entry budgets beside each constant is refused,
+  and the file shows Source; a refusal of the route itself answers in the same format.
+  The tree view refuses both of the first two as well, and shows its parse error.
+  The YAML loader also refuses two keys one text spells, such as `1` and `"1"`, which
+  the tree view reads as two keys and draws as the last.
+  JSON with a key twice in one object reads as the tree view reads it, the last value at
+  the key’s first place, and a change to a value it hides is `source_only`. Aliases and
+  merge keys load within the loader’s budget on the value written out.
   [The structured diff measurement](../../../explorations/structured-diff/README.md)
   records the budgets over this repository’s history and the worst shapes.
 - **Source only:** the projection reads no patch.

@@ -55,7 +55,7 @@ const REFUSALS = {
 const UNREADABLE = {
   markdown: "Rendered cannot match this file's changes to its Markdown.",
   yaml: "Rendered cannot show YAML that does not parse, or has a key twice in one mapping.",
-  json: "Rendered cannot show JSON that does not parse, or has a key twice in one mapping.",
+  json: "Rendered cannot show JSON that does not parse.",
 };
 
 /** @typedef {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} KpressAssetManifest */
