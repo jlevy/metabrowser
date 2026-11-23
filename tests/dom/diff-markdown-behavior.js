@@ -700,18 +700,20 @@ async function main() {
   const source4 = make("div");
   source4.id = "h";
   const toggle4 = make("button");
-  bar4.append(toggle4);
+  const end4 = make("div");
+  bar4.append(toggle4, end4);
   section4.append(bar4, source4);
   view4.add({
     section: section4,
     bar: bar4,
+    end: end4,
     toggle: toggle4,
     source: source4,
     id: "h",
     format: "yaml",
     unavailable: "This change is too large to show inline.",
   });
-  const [, control4] = bar4.children;
+  const [, control4] = end4.children;
   assert.equal(source4.hidden, false, "it shows Source at once, with no wait for Rendered");
   assert.equal(control4.children[1].attributes.get("aria-checked"), "true");
   assert.equal(control4.children[0].attributes.get("aria-disabled"), "true");

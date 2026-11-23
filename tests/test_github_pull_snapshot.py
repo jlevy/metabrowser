@@ -782,7 +782,7 @@ def test_one_git_diff_hydrates_the_markdown_files_after_the_one_asked_for() -> N
 
 
 def test_a_request_ahead_of_changes_starts_the_projection_process(
-    pinned_pull: tuple[_Stand, TestClient],
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from metabrowser.diff.markdown_projection_worker import ProjectionWorker
 
@@ -801,7 +801,12 @@ def test_a_request_ahead_of_changes_starts_the_projection_process(
         if change["new"]["path"] == "docs/guide.md"
     )
     application: Any = client.app
-    application.state.pull_rendered_diff_worker = Recording(processes=False)
+    # The served app is the process's own, so a worker set on it without monkeypatch
+    # would answer every later in-process request on this xdist worker, `metab --api`
+    # runs included, with a child that never starts.
+    monkeypatch.setattr(
+        application.state, "pull_rendered_diff_worker", Recording(processes=False), raising=False
+    )
     address = f"{envelope['rendered_route']}&file={file['id']}"
     assert client.get(address).json()["status"] == "ready"
     assert starts == [], "one request does not start a child"

@@ -104,7 +104,10 @@ def test_session_replays_the_recording() -> None:
     assert files["package.json"]["chooser"] == "JSON diff format: *Rendered | Source"
     assert files["data/swap.json"]["rows"][0].startswith("removed open")
     assert files["deploy/anchors.yaml"]["shows"] == "rendered"
-    assert files["deploy/duplicate.yaml"] == {"chooser": "none", "shows": "source"}
+    assert files["deploy/duplicate.yaml"] == {
+        "chooser": "YAML diff format: Rendered | *Source",
+        "shows": "source",
+    }
     comments = files["config/comments.yaml"]["rows"]
     assert comments[0] == "note: The tree shows no change. Source shows what changed in the text."
     assert comments[1].startswith("context closed ")
