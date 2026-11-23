@@ -652,6 +652,11 @@ class CheckoutStore:
             try:
                 await asyncio.wait_for(self._settled.wait(), wait)
             except TimeoutError:
+                # A try that ended in the same loop iteration as the timeout, one a page's
+                # own ask started, still times the wait out: its end moved when the next
+                # is due, so that is worked out again before anything starts.
+                if self._settled.is_set():
+                    continue
                 if self.session is None:
                     try:
                         self.request_acquisition()
