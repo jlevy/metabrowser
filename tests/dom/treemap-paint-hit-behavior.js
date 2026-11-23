@@ -162,6 +162,36 @@ async function main() {
           rects.some((r) => r.cell === i && r.tone === "edge"),
       ),
     );
+    // Children draw short only on their right and bottom, so the interior reaches a
+    // device pixel above and left of them wherever the folder's header or frame keeps
+    // a pixel of its own there: the first row and column then have an edge too.
+    let edgeless = 0;
+    let measured = 0;
+    for (let i = 0; i < cells.length; i += 1) {
+      const c = cells[i];
+      const edge = rects.find((r) => r.cell === i && r.tone === "edge");
+      const fill = rects.find((r) => r.cell === i && r.tone === "fill");
+      if (!c.nested || !c.inner || !edge || !fill) {
+        continue;
+      }
+      const inner = paint.snapRect(c.inner, dpr);
+      for (const [gap, start, want] of [
+        [inner.y - fill.y, edge.y, inner.y - 1],
+        [inner.x - fill.x, edge.x, inner.x - 1],
+      ]) {
+        if (gap >= 2) {
+          measured += 1;
+          if (start !== want) {
+            edgeless += 1;
+          }
+        }
+      }
+    }
+    check(
+      `a nesting folder's first row and column have an edge against its header and frame ${at}`,
+      measured > 0 && edgeless === 0,
+      `${edgeless} of ${measured} sides`,
+    );
 
     // ── Paint order, and which cell each device pixel shows ──────────────────────
     // Each cell paints in a style of its own, so a fill names its cell; painting

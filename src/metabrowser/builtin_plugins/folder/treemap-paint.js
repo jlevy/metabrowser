@@ -13,7 +13,9 @@
 // keeps two files of one type side by side two cells. Here a nesting folder
 // paints its children's region in its edge tone, and each child large enough
 // draws one device pixel short on its right and bottom, so the edge tone shows
-// between neighbours; a smaller child draws edge to edge.
+// between neighbours; a smaller child draws edge to edge. The interior reaches
+// one device pixel past the children on the top and left (interiorRect), so the
+// first row and column have an edge against the folder's header and frame.
 
 /**
  * A cell at least this many device pixels on each side draws one device pixel
@@ -81,6 +83,22 @@ function intersect(a, b) {
 }
 
 /**
+ * A nesting folder's interior: its children's region, one device pixel more on
+ * the top and on the left wherever the folder's header or frame keeps at least
+ * one of its own pixels there. Children draw short only on their right and
+ * bottom, so without that pixel the first row met the header, and the first
+ * column the frame, with no edge between (mb-39p0).
+ * @param {DeviceRect} inner  the children's region, snapped
+ * @param {DeviceRect} fill  the folder's own fill
+ * @returns {DeviceRect}
+ */
+function interiorRect(inner, fill) {
+  const top = inner.y - fill.y >= 2 ? 1 : 0;
+  const left = inner.x - fill.x >= 2 ? 1 : 0;
+  return { x: inner.x - left, y: inner.y - top, w: inner.w + left, h: inner.h + top };
+}
+
+/**
  * The paint list for `cells`, parent first: each cell's fill, and before a
  * nesting folder's children its interior in the folder's edge tone, inside its
  * fill, so a folder drawn edge to edge keeps its own separator. A cell whose
@@ -105,7 +123,7 @@ export function paintList(cells, styleOf, dpr, separatorMinDevicePx = SEPARATOR_
     const style = styleOf(cell);
     rects.push({ ...fill, cell: i, style, tone: "fill", depth: cell.depth });
     if (cell.nested && cell.inner) {
-      const inner = intersect(snapRect(cell.inner, dpr), fill);
+      const inner = intersect(interiorRect(snapRect(cell.inner, dpr), fill), fill);
       if (inner) {
         rects.push({ ...inner, cell: i, style, tone: "edge", depth: cell.depth });
       }
