@@ -706,6 +706,94 @@ def test_a_running_prefetch_does_not_cost_the_open_pull_request_its_idle_compari
 
 
 @pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("joining", ["metadata", "comparison", "eager_revision", "optional"])
+def test_a_readers_start_that_joins_a_job_being_stopped_gets_its_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, joining: str
+) -> None:
+    """Bead mb-ql28 (review C1 of #721): a reader's job for pull request 11 arrived at the
+    checkout's store, so the job for 12 was told to stop: a prefetch's that held the turn,
+    or the optional comparison, which a reader's start for another pull request ends.
+    Before 12's job had unwound the reader opened 12. The start was answered ``joined``,
+    the job ended cancelled, and nothing refreshed 12 after the join."""
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.served_pull import ServedPull
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    events: list[str] = []
+    repository, started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
+    prefetching = asyncio.Event()
+    # The first refresh of a prefetched 12 runs until it is told to stop.
+    stops = [] if joining == "optional" else [True]
+
+    async def refresh(companion: ServedPull) -> None:
+        events.append(f"refresh {companion.number}")
+        if companion.number == 12 and stops:
+            stops.pop()
+            prefetching.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                events.append(f"refresh {companion.number} cancelled")
+                raise
+        await asyncio.sleep(0.01)
+        events.append(f"refresh {companion.number} ends")
+
+    monkeypatch.setattr(ServedPull, "refresh", refresh)
+
+    def start(number: int, **kwargs: Any) -> str:
+        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+
+    joins: dict[str, dict[str, Any]] = {
+        "metadata": {},
+        "comparison": {"comparison": True},
+        "eager_revision": {"comparison": True, "eager_revision": "a" * 64},
+        "optional": {},
+    }
+    answers: list[str] = []
+    counted: list[bool] = []
+
+    async def run() -> None:
+        key = checkout_module.checkout_job_key(repository, 12)
+        try:
+            if joining == "optional":
+                assert start(12, comparison=True, eager_revision="a" * 64) == "started"
+                await asyncio.wait_for(started.wait(), 5)
+            else:
+                assert start(12, background=True) == "started"
+                await asyncio.wait_for(prefetching.wait(), 5)
+            # A reader's job for another pull request: 12's job is told to stop.
+            answers.append(start(11))
+            await asyncio.sleep(0)
+            # The reader opens 12 before its job has unwound.
+            assert coordinator.job(key) is not None
+            answers.append(start(12, **joins[joining]))
+            # The reader's job counts from the join, in the place it takes now.
+            counted.append(key in checkout_module._PULL_JOBS)  # pyright: ignore[reportPrivateUsage]
+            # Asked again before the stopped job has unwound: still one job after it.
+            answers.append(start(12, **joins[joining]))
+            for _ in range(3):
+                await coordinator.drain(timeout_s=5)
+        finally:
+            release.set()
+            await coordinator.aclose()
+
+    coordinator = RefreshCoordinator()
+    asyncio.run(run())
+    # An optional start asked again finds the reader's jobs, and is not due.
+    again = "not_due" if joining == "eager_revision" else "joined"
+    assert answers == ["started", "joined", again]
+    assert counted == [True]
+    stopped = (
+        ["idle 12 starts", "idle 12 cancelled"]
+        if joining == "optional"
+        else ["refresh 12", "refresh 12 cancelled"]
+    )
+    # The reader's job for 12 waits its turn behind 11's, and runs once.
+    after = ["comparison 12"] if joining == "comparison" else ["refresh 12", "refresh 12 ends"]
+    assert events == [*stopped, "refresh 11", "refresh 11 ends", *after]
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
 def test_idle_comparison_is_never_queued_with_or_ahead_of_a_readers_job(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:

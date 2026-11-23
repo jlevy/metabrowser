@@ -1564,7 +1564,10 @@ def test_a_page_ask_before_the_restart_of_a_stopped_idle_fetch_does_not_quiet_a_
 ):
     """Review B2 of #721: the reader's Refresh joined an idle fetch being stopped. A page's
     ask handled in the one loop step between that job's end and its restart started the
-    fetch as quiet, and the reader's refresh, which then joined it, showed nothing."""
+    fetch as quiet, and the reader's refresh, which then joined it, showed nothing.
+
+    Review C3 of #721: status is read in that step too, before the restart, so the page's
+    ask is what starts the fetch loud; the restart leaves the quiet alone."""
 
     async def scenario() -> tuple[list[object], list[str]]:
         events: list[str] = []
@@ -1580,6 +1583,7 @@ def test_a_page_ask_before_the_restart_of_a_stopped_idle_fetch_does_not_quiet_a_
                 asking.send(None)
             except StopIteration as answered:
                 seen.append(answered.value)
+            seen.append(("before the restart", session.refreshing(), session._refresh_quiet()))
 
         asyncio.get_running_loop().call_soon(a_page_asks)
         await _spin()
@@ -1589,7 +1593,7 @@ def test_a_page_ask_before_the_restart_of_a_stopped_idle_fetch_does_not_quiet_a_
         return seen, events
 
     seen, events = asyncio.run(scenario())
-    assert seen == ["joined", "started", (True, False)]
+    assert seen == ["joined", "started", ("before the restart", True, False), (True, False)]
     assert events.count("mirror start") == 2, "one fetch after the stopped one, not two"
 
 
@@ -1619,9 +1623,12 @@ def test_a_readers_request_that_joins_a_background_pull_being_stopped_gets_its_j
     """Bead mb-iz5l (review B3 of #721): a reader's job arrived at the store, so the
     prefetched pull request's job holding the turn was told to stop; before it had
     unwound the reader opened that pull request. The request was answered ``joined``,
-    the job ended cancelled, and nothing fetched the pull request."""
+    the job ended cancelled, and nothing fetched the pull request.
 
-    async def scenario() -> tuple[list[str], str, bool, bool]:
+    Review C3 of #721: the reader's job is counted before the stopped one has unwound,
+    from the join, as well as once it starts again."""
+
+    async def scenario() -> tuple[list[str], str, bool, bool, bool]:
         events: list[str] = []
         coordinator = RefreshCoordinator()
         stops = [True]
@@ -1647,19 +1654,21 @@ def test_a_readers_request_that_joins_a_background_pull_being_stopped_gets_its_j
         session.request_refresh(for_selection=True)
         await asyncio.sleep(0)
         joined = session.request_pull_refresh(7)
+        key = _Companion.key
+        assert coordinator.job(key) is not None, "the stopped job has not unwound"
+        counted_at_join = key in session._pull_jobs
         # Asked again before the stopped job has unwound: still one job after it.
         assert session.request_pull_refresh(7) == "joined"
         await _spin()
         running = session.pull_refreshing(7)
-        counted = session.pull_requests is not None and (
-            session.pull_requests.key(7) in session._pull_jobs
-        )
+        counted = key in session._pull_jobs
         await _settle(coordinator)
-        return events, joined, running, counted
+        return events, joined, running, counted_at_join, counted
 
-    events, joined, running, counted = asyncio.run(scenario())
+    events, joined, running, counted_at_join, counted = asyncio.run(scenario())
     assert joined == "joined"
     assert events == ["pull start", "pull stopped", "mirror", "pull start", "pull end"]
+    assert counted_at_join is True, "the reader's job counts from the join"
     assert counted is True, "the reader's job counts among the reader's jobs"
     # By then the reader's job has run or is running; it is never simply gone.
     assert running is True or events[-1] == "pull end"

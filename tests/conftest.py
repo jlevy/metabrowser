@@ -41,6 +41,11 @@ os.environ["METABROWSER_EVENT_LOG"] = "0"
 # Nor does a gh that fails make a test probe the network (metabrowser.network_cause): a
 # test of the probe names a local target itself.
 os.environ["METABROWSER_NETWORK_PROBE"] = "0"
+# Nor does a `metab` server a test starts as a process keep a store of a checkout's
+# origin (metabrowser.checkout_store), which would fetch that origin, a GitHub address in
+# most fixtures, from the network (bead mb-i4x0). A test of the store keeps one in
+# process, with `serve_checkout_store()` and `remote_url_for` naming a local origin.
+os.environ["METABROWSER_ORIGIN_STORE"] = "0"
 os.environ["METABROWSER_STATE_DIR"] = os.path.join(
     tempfile.gettempdir(), f"metabrowser-test-state-{os.getpid()}"
 )

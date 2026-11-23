@@ -785,8 +785,12 @@ GitHub points they cost, and the measurements behind the order.
 A background job takes no network slot, waits behind every other job at a store turn and
 is cancelled when one starts waiting, and is joined and promoted by a reader’s request
 for the same pull request.
-`GET pulls-prefetch` reports the lane, the caps, the governor, and recent outcomes, and
-`pulls-panel.js` chooses what to name and when.
+A reader who joins a pull job that was already told to stop, a background one or a
+checkout’s optional comparison, has it started again as theirs once the stopped one has
+unwound, on a mirror and on a folder’s checkout alike
+(`RefreshCoordinator.start_again_when_stopped`). `GET pulls-prefetch` reports the lane,
+the caps, the governor, and recent outcomes, and `pulls-panel.js` chooses what to name
+and when.
 
 ## The Comparison Keep
 

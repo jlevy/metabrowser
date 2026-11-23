@@ -299,12 +299,13 @@ def run_serve(
 
     def attach_root() -> None:
         from metabrowser import server
-        from metabrowser.checkout_store import serve_checkout_store
+        from metabrowser.checkout_store import origin_store_wanted, serve_checkout_store
 
         server._set_root_dir(resolved)
         # After the root is chosen, which forgets it: a server keeps the store of its
-        # checkout's origin fresh, where a one-shot command only reads it.
-        serve_checkout_store()
+        # checkout's origin fresh, where a one-shot command only reads it, unless the
+        # environment says to keep none.
+        serve_checkout_store(keep=origin_store_wanted())
 
     serve_until_interrupted(
         served=str(resolved),

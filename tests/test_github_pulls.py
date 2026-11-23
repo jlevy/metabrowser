@@ -6780,6 +6780,11 @@ def test_an_app_authored_pull_reads_the_same_through_graphql_and_rest(stand: _St
     graph["author"] = {"__typename": "Bot", "login": "dependabot"}
     graph["mergedBy"] = {"__typename": "Bot", "login": "renovate"}
     assert pulls._graph_pull(graph, 7) == pulls._pull(rest, 7)  # pyright: ignore[reportPrivateUsage]
+    # Review C1 on #709: the Copilot coding agent is not named <slug>[bot] through REST.
+    rest["user"] = {"login": "Copilot", "type": "Bot"}
+    graph["author"] = {"__typename": "Bot", "login": "copilot-swe-agent"}
+    assert pulls._graph_pull(graph, 7) == pulls._pull(rest, 7)  # pyright: ignore[reportPrivateUsage]
+    assert pulls._graph_pull(graph, 7).author == "Copilot"  # pyright: ignore[reportPrivateUsage]
     # A person is named the same both ways, whatever their login.
     graph["author"] = {"__typename": "User", "login": "octocat"}
     assert pulls._graph_pull(graph, 7).author == "octocat"  # pyright: ignore[reportPrivateUsage]

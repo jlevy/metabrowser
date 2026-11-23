@@ -21,6 +21,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from starlette.testclient import TestClient
@@ -684,6 +685,61 @@ def test_a_checkout_with_a_local_origin_or_none_keeps_no_store_and_is_served_as_
         assert not folder.home.exists()
 
 
+@pytest.mark.parametrize("environment", ["unset", "0"])
+def test_the_serve_command_keeps_no_store_where_the_environment_says_to_keep_none(
+    folder: _Folder, monkeypatch: pytest.MonkeyPatch, environment: str
+) -> None:
+    """Bead mb-i4x0: a server a test starts as a process of its own cannot be pointed at a
+    local origin, so it fetched the fixture's GitHub address from the network. With
+    ``METABROWSER_ORIGIN_STORE=0``, which the suite sets, the serve command keeps no store
+    and the folder is served as before; unset, it keeps one, as ``metab PATH`` does."""
+
+    from typer.testing import CliRunner
+
+    from metabrowser.checkout_store import ORIGIN_STORE_ENV
+    from metabrowser.cli.main import _app
+    from tests.held_port import listener_on
+
+    attempts: list[str] = []
+
+    async def acquired(*_args: Any, **_kwargs: Any) -> Any:
+        attempts.append("acquire")
+        raise CheckoutStoreError("network_error", "never reached")
+
+    monkeypatch.setattr(checkout_store, "acquire_checkout_store", acquired)
+    if environment == "unset":
+        monkeypatch.delenv(ORIGIN_STORE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(ORIGIN_STORE_ENV, environment)
+        # Short enough that a store kept after all would be tried again below.
+        monkeypatch.setattr(checkout_store, "STORE_IDLE_REFRESH_S", 0.05)
+    with (
+        patch("metabrowser.cli.serve._QuietForceExitServer"),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
+    ):
+        result = CliRunner().invoke(_app, [str(folder.checkout), "--no-open"])
+    assert result.exit_code == 0, result.output
+    with TestClient(server.app) as client:
+        if environment == "unset":
+            deadline = time.monotonic() + 30
+            while (origin := _refs(client, "remote")["origin"])["state"] != "absent":
+                assert time.monotonic() < deadline, origin
+                time.sleep(0.05)
+            assert origin["reason"] == "network_error"
+        else:
+            assert _refs(client, "remote")["origin"] is None
+            # On the working tree, a page's ask and a reader's refresh are both refused, as
+            # on a checkout whose origin is on this machine.
+            for body in ({"for": "page"}, None):
+                refused = _post(client, "/api/source/refresh", body)
+                assert refused.status_code == 409, refused.text
+                assert refused.json()["code"] == "unsupported_for_subject"
+            time.sleep(0.3)
+    assert attempts == ([] if environment == "0" else ["acquire"])
+
+
 @pytest.mark.parametrize(
     ("spelled", "shown"),
     [
@@ -695,6 +751,12 @@ def test_a_checkout_with_a_local_origin_or_none_keeps_no_store_and_is_served_as_
         ("http://host/a/b.git?token=secret", "http://host/a/b.git"),
         ("http://host/a/b.git#fragment", "http://host/a/b.git"),
         ("git://tok@host/a/b.git#x?token=secret", "git://host/a/b.git"),
+        # Review C1 on #740: a userinfo holding a raw ``?``, ``#``, or ``@`` is no prefix.
+        ("http://user:pa?ss@host.example/octo/demo.git", "http://host.example/octo/demo.git"),
+        ("http://user:pa#ss@host.example/octo/demo.git", "http://host.example/octo/demo.git"),
+        ("http://tok?en@host.example/octo/demo.git", "http://host.example/octo/demo.git"),
+        ("git://user:s3cr#t@host.example/octo/demo.git", "git://host.example/octo/demo.git"),
+        ("http://a@b@host/x.git", "http://host/x.git"),
     ],
 )
 def test_an_origin_reached_another_way_is_one_metabrowser_cannot_fetch(

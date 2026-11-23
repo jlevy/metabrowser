@@ -87,9 +87,11 @@ _MAX_PACK_ENTRIES: Final = 65_536
 # Remotes a refusal lists; a checkout with more has a reader who knows them.
 _MAX_REMOTES_NAMED: Final = 8
 # The userinfo of a URL with a scheme (``ssh://user:token@host/…``), and of the scp form
-# (``user:token@host:path``), whose host is followed by a colon before any slash.
-_SCHEME_USERINFO: Final = re.compile(r"^([a-z][a-z0-9+.-]*://)[^/@]*@", re.IGNORECASE)
-_SCP_USERINFO: Final = re.compile(r"^[^/@]*@(?=[^/]*:)")
+# (``user:token@host:path``), whose host is followed by a colon before any slash. Each
+# runs to the last ``@`` before the host, through any ``?``, ``#``, or ``@`` a token
+# holds raw: ``http://a@b@host/x.git`` keeps no ``b`` (review C1 on #740).
+_SCHEME_USERINFO: Final = re.compile(r"^([a-z][a-z0-9+.-]*://)[^/]*@", re.IGNORECASE)
+_SCP_USERINFO: Final = re.compile(r"^[^/]*@(?=[^/@]*:)")
 _SCHEME: Final = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
 _SCP_FORM: Final = re.compile(r"^[^/]+:")
 _REMOTE_SECTION: Final = re.compile(r'^remote\s+"(.*)"$', re.IGNORECASE | re.DOTALL)
@@ -556,7 +558,9 @@ def unfetched_origin_address(root: Path) -> str | None:
         return None
     # The grammar never vetted this address, and a token can ride in its query string
     # as well as in its userinfo, so it is shown only up to the first ``?`` or ``#``.
-    return redact_userinfo(re.split(r"[?#]", url, maxsplit=1)[0])
+    # The userinfo goes first: one holding a raw ``?`` or ``#`` would otherwise be cut
+    # there and shown, for want of the ``@`` that ends it (review C1 on #740).
+    return re.split(r"[?#]", redact_userinfo(url), maxsplit=1)[0]
 
 
 def _write_atomic(path: Path, text: str) -> None:

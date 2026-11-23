@@ -51,6 +51,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import weakref
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -714,20 +715,39 @@ class CheckoutStore:
         set_origin_opener(self.root, None)
 
 
-# Whether the next application lifespan is a server's; see :func:`serve_checkout_store`.
+# ``0`` (or ``false``, ``no``, ``off``) keeps a server from keeping any store of its
+# checkout's origin: the folder is served as one whose origin is on this machine, with
+# its own remote-tracking branches listed, and nothing is fetched for it. The serve
+# command reads it (:func:`origin_store_wanted`). The test suite sets it, so that no
+# server a test starts as a process of its own reaches a repository's origin, as none
+# in process does, through ``remote_url_for`` (``tests/conftest.py``, bead mb-i4x0).
+ORIGIN_STORE_ENV: Final = "METABROWSER_ORIGIN_STORE"
+_OFF: Final = frozenset({"0", "false", "no", "off"})
+
+# Whether the next application lifespan is a server's, and whether it keeps a store at
+# all; see :func:`serve_checkout_store`.
 _serving = False
+_keeping = True
 
 
-def serve_checkout_store(serving: bool = True) -> None:
+def origin_store_wanted() -> bool:
+    """Whether a server keeps a store of its checkout's origin (:data:`ORIGIN_STORE_ENV`)."""
+
+    return os.environ.get(ORIGIN_STORE_ENV, "").strip().lower() not in _OFF
+
+
+def serve_checkout_store(serving: bool = True, *, keep: bool = True) -> None:
     """Say that the next application lifespan serves its folder, so its store is kept fresh.
 
     A server acquires the store its checkout lacks and fetches it on the idle timer. A
     one-shot ``--show`` or ``--api`` says nothing, so it reads the store the cache has
-    and reaches the network only through an explicit ``POST /api/source/refresh``.
+    and reaches the network only through an explicit ``POST /api/source/refresh``. With
+    *keep* false the server keeps no store, and reads none.
     """
 
-    global _serving
+    global _serving, _keeping
     _serving = serving
+    _keeping = keep
 
 
 def _forget_serving() -> None:
@@ -762,7 +782,7 @@ async def lifespan_checkout_store(app: Any) -> AsyncGenerator[None]:
     store: CheckoutStore | None = None
     coordinator = refresh_coordinator(app)
     checkout = checkout_revisions() if mirror_session(app) is None else None
-    if checkout is not None and coordinator is not None:
+    if checkout is not None and coordinator is not None and _keeping:
         # Nothing an earlier application in this process kept for the root is this one's.
         set_origin_session(checkout.root, None)
         store = CheckoutStore(checkout.root, coordinator, serving=_serving)
@@ -783,6 +803,7 @@ async def lifespan_checkout_store(app: Any) -> AsyncGenerator[None]:
 __all__ = [
     "ABSENCE_DETAIL",
     "ACQUISITION_RETRY_CAP_S",
+    "ORIGIN_STORE_ENV",
     "AcquisitionFailure",
     "CheckoutStore",
     "CheckoutStoreError",
@@ -792,6 +813,7 @@ __all__ = [
     "acquire_checkout_store",
     "checkout_store",
     "lifespan_checkout_store",
+    "origin_store_wanted",
     "serve_checkout_store",
     "store_turn",
 ]
