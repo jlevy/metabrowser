@@ -284,7 +284,7 @@ export function createTypeFilter(deps) {
           availability: String(change.availability),
         };
       },
-      // A host keeps a reader's place in its file, whichever diff shows it (mb-owwk): it
+      // A host keeps a reader's place in its file, whichever diff shows it (mb-riqt): it
       // asks the diff mounted now where that file's section is, and whose a section is.
       sectionForPath: (path) => current.sectionForPath(path),
       pathForSection: (section) => current.pathForSection(section),
