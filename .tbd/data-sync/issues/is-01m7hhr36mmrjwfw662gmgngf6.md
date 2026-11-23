@@ -5,7 +5,7 @@ title: "Release 0.13: previous-release performance comparison (v0.12.0 vs exact 
 kind: task
 status: in_progress
 priority: 1
-version: 10
+version: 11
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45109522719
@@ -25,6 +25,9 @@ refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45116045122
     at: 2026-11-23T05:11:14.331Z
+  - kind: other
+    url: https://github.com/jlevy/metabrowser/actions/runs/45117924502
+    at: 2026-11-23T05:29:05.445Z
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -34,7 +37,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:08.755Z
-updated_at: 2026-11-23T05:11:14.331Z
+updated_at: 2026-11-23T05:29:05.458Z
 started_at: 2026-11-23T03:13:34.430Z
 ---
 
