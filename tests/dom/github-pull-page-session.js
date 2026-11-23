@@ -788,7 +788,9 @@ function placeStory(runtime) {
   stage.files = ["new.py", "a.py", "c.py"];
   stage.heights = [250, 900, 500];
   reopen(stage.heights);
-  step("loaded again on a diff without the file: the top of the block at its index", () => keeper.land());
+  step("loaded again on a diff without the file: the top of the block at its index", () =>
+    keeper.land(),
+  );
   keeper.readerMoved();
   stage.files = null;
   stage.entry = { block: 1, offset: 5, top: 400, file: 7 };
