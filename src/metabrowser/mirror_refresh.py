@@ -996,9 +996,10 @@ class MirrorSession:
         self._idle_fetch = False
         # The earliest the idle fetch may start again after a reader's job stopped one.
         self._idle_not_before: float | None = None
-        # Whether a request joined the idle fetch after it was told to stop, so its fetch
-        # is started again, as the request's own, once the stopped one has unwound.
-        self._restart_stopped_idle = False
+        # The keys of background jobs, the idle fetch or a prefetched pull request's, that
+        # a request joined after they were told to stop: each is started again, as the
+        # request's own, once the stopped one has unwound (:meth:`_start_again_when_stopped`).
+        self._restarts: set[str] = set()
         # Whether a reader's request, not only a page's ask, waits for that restart.
         self._restart_loud = False
         # Whether the fetch running is one no reader asked for, the idle one or a visible
@@ -1234,9 +1235,7 @@ class MirrorSession:
         if job is not None and job.cancelling():
             if not quiet:
                 self._restart_loud = True
-            if not self._restart_stopped_idle:
-                self._restart_stopped_idle = True
-                job.add_done_callback(self._restart_after_stopped_idle)
+            self._start_again_when_stopped(job, self.mirror.key, self._restart_stopped_idle)
             return
         if not self._idle_fetch:
             return
@@ -1244,19 +1243,40 @@ class MirrorSession:
         self._idle_fetch = False
         self._store_turn.promoted()
 
-    def _restart_after_stopped_idle(self, _stopped: asyncio.Task[None]) -> None:
-        self._restart_stopped_idle = False
+    def _start_again_when_stopped(
+        self, job: asyncio.Task[None], key: str, start: Callable[[], object]
+    ) -> None:
+        """Call *start* once *job*, which was told to stop, has unwound; once for *key*.
+
+        A background job is stopped with ``Task.cancel()``, which is delivered a loop step
+        after it is asked for, and unwinding can take longer, since it kills the job's Git.
+        A request that joins the job meanwhile is answered ``joined``, so the work it
+        joined must still be done: *start* starts it again as the request's own. It runs
+        after the coordinator's own callback, added first, has forgotten the job. A request
+        handled since the job ended may have started the work already, and *start* then
+        joins it. At shutdown, which stops every job, the coordinator starts nothing.
+        """
+
+        if key in self._restarts:
+            return
+        self._restarts.add(key)
+
+        def restart(_stopped: asyncio.Task[None]) -> None:
+            self._restarts.discard(key)
+            try:
+                start()
+            except RuntimeError:
+                log.debug("a stopped job was not started again: the server is closing")
+
+        job.add_done_callback(restart)
+
+    def _restart_stopped_idle(self) -> None:
         try:
-            # After the coordinator's own callback, added first, has forgotten the job. A
-            # request handled since the job ended may have started the fetch already, and
-            # this then joins it.
             self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
-        except RuntimeError:
-            # The server is shutting down, which is what stopped the fetch.
-            log.debug("a stopped idle fetch was not started again: the server is closing")
-        if self._restart_loud:
-            self._quiet_fetch = False
-        self._restart_loud = False
+        finally:
+            if self._restart_loud:
+                self._quiet_fetch = False
+            self._restart_loud = False
 
     def _refresh_mirror(self, *, companion_stale: bool, quiet: bool = False) -> StartedOrJoined:
         """Start or join the mirror's fetch; *quiet* is a fetch no reader asked for."""
@@ -1510,14 +1530,26 @@ class MirrorSession:
 
         A *background* job, a prefetch's, counts toward neither bound, takes no network
         slot, and gives way at the store turn (:class:`StoreTurn`). A reader's request that
-        joins one promotes it: from then on it is the reader's, and counts.
+        joins one promotes it: from then on it is the reader's, and counts. One that joins
+        after the job was told to stop has its job started again once that one has unwound
+        (:meth:`_start_again_when_stopped`), so ``joined`` is never an answer for work
+        that is then dropped.
         """
 
         pulls = self.pull_requests
         assert pulls is not None
         key = pulls.key(number)
-        if self._coordinator.running(key):
-            if not background and key in self._background_pulls:
+        running = self._coordinator.job(key)
+        if running is not None:
+            if not background and running.cancelling():
+                # Only a background job is told to stop, short of shutdown, and one that
+                # was cannot be kept: the reader's job starts once it has unwound, in the
+                # place it takes among the reader's jobs now.
+                self._pull_jobs.add(key)
+                self._start_again_when_stopped(
+                    running, key, partial(self._restart_stopped_pull, number, key)
+                )
+            elif not background and key in self._background_pulls:
                 self._background_pulls.discard(key)
                 self._pull_jobs.add(key)
                 self._store_turn.promoted()
@@ -1531,6 +1563,11 @@ class MirrorSession:
             return "too_many"
         self._pull_jobs.add(key)
         return self._coordinator.start(key, partial(self._pull_job, number), network=False)
+
+    def _restart_stopped_pull(self, number: int, key: str) -> None:
+        # The stopped job has taken its key out of the background ones as it ended.
+        self._pull_jobs.add(key)
+        self._coordinator.start(key, partial(self._pull_job, number), network=False)
 
     def background_store_turn(
         self, preempt: Callable[[], object]

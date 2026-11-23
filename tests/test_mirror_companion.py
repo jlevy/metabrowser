@@ -1609,3 +1609,53 @@ def test_the_restart_of_a_stopped_fetch_does_not_depend_on_the_idle_flag() -> No
     events, outcome = asyncio.run(scenario())
     assert "mirror end" in events
     assert isinstance(outcome, dict) and outcome["outcome"] == "succeeded"
+
+
+def test_a_readers_request_that_joins_a_background_pull_being_stopped_gets_its_job() -> None:
+    """Bead mb-iz5l (review B3 of #721): a reader's job arrived at the store, so the
+    prefetched pull request's job holding the turn was told to stop; before it had
+    unwound the reader opened that pull request. The request was answered ``joined``,
+    the job ended cancelled, and nothing fetched the pull request."""
+
+    async def scenario() -> tuple[list[str], str, bool, bool]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        stops = [True]
+
+        class _Stoppable(_Companion):
+            async def refresh(self) -> None:
+                events.append("pull start")
+                if stops:
+                    stops.pop()
+                    try:
+                        await asyncio.Event().wait()
+                    except asyncio.CancelledError:
+                        events.append("pull stopped")
+                        raise
+                events.append("pull end")
+
+        session = await _attending(
+            _Mirror(events, fetched_at=_now()), coordinator, _Stoppable(events, stale=True)
+        )
+        assert session.request_pull_refresh(7, background=True) == "started"
+        await _spin()
+        # A reader's Refresh of the mirror arrives: the background job is told to stop.
+        session.request_refresh(for_selection=True)
+        await asyncio.sleep(0)
+        joined = session.request_pull_refresh(7)
+        # Asked again before the stopped job has unwound: still one job after it.
+        assert session.request_pull_refresh(7) == "joined"
+        await _spin()
+        running = session.pull_refreshing(7)
+        counted = session.pull_requests is not None and (
+            session.pull_requests.key(7) in session._pull_jobs
+        )
+        await _settle(coordinator)
+        return events, joined, running, counted
+
+    events, joined, running, counted = asyncio.run(scenario())
+    assert joined == "joined"
+    assert events == ["pull start", "pull stopped", "mirror", "pull start", "pull end"]
+    assert counted is True, "the reader's job counts among the reader's jobs"
+    # By then the reader's job has run or is running; it is never simply gone.
+    assert running is True or events[-1] == "pull end"
