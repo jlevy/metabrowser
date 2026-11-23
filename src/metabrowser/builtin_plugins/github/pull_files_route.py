@@ -712,7 +712,8 @@ def start_files_refresh(
     starts nothing. A *background* job, a prefetch's, counts toward no bound and holds no
     network slot for its requests; a reader's request that joins it makes it count. Its
     *fallback* says whether GitHub's list may be read when *local* gives none, which the
-    job asks only then (:func:`~.pull_files_refresh.refresh_pull_files`).
+    job asks only then (:func:`~.pull_files_refresh.refresh_pull_files`); once a reader's
+    request has joined the job, the list is read without asking it.
     """
 
     repository, coordinator = view.repository, view.coordinator
@@ -729,8 +730,22 @@ def start_files_refresh(
         if len(_FILE_JOBS) >= MAX_PULL_JOBS:
             return "too_many"
         _FILE_JOBS.add(key)
+    else:
+        # No job runs under the key, so a reader's mark an earlier one left is not this one's.
+        _FILE_JOBS.discard(key)
+    admits = fallback
+    if fallback is not None:
+        asked = fallback
+
+        async def joined_or_asked() -> bool:
+            # A reader who joined waits on this job for the list, which their own request
+            # would have read from GitHub had the job not been running; refused, they had
+            # none until their tree asked again (review D3 of #737).
+            return key in _FILE_JOBS or await asked()
+
+        admits = joined_or_asked
     slot: _Slot = _no_slot if background else coordinator.slot
-    work = partial(_run_files_refresh, repository, ask.number, local, slot, fallback)
+    work = partial(_run_files_refresh, repository, ask.number, local, slot, admits)
     return coordinator.start(key, work, network=False)
 
 

@@ -38,6 +38,7 @@ from metabrowser.cache.lender import (
     check_lender,
     negotiation_tips,
     own_boundary,
+    redact_userinfo,
     suggested_checkout,
 )
 from metabrowser.cache.paths import store_directory
@@ -1823,8 +1824,10 @@ def test_a_path_that_is_no_checkout_is_refused_the_same_way_on_every_hit(
         "GHP_SUPERSECRET_TOKEN@example.com:a/b.git",
         "https://GHP_SUPERSECRET_TOKEN@github.com/a/b.git",
         "git://GHP_SUPERSECRET_TOKEN:x@example.com/a/b.git",
+        # A raw ``@`` in the userinfo: everything to the last one before the host goes.
+        "https://me@example.com:GHP_SUPERSECRET_TOKEN@example.org/a/b.git",
     ],
-    ids=["ssh-password", "scp-user", "https-user", "git-userinfo"],
+    ids=["ssh-password", "scp-user", "https-user", "git-userinfo", "https-at-user"],
 )
 def test_a_refusal_never_prints_a_remotes_credentials(linear: _Stand, spelling: str) -> None:
     checkout = clone_checkout(linear.replica, linear.tmp_path / "other")
@@ -1833,6 +1836,29 @@ def test_a_refusal_never_prints_a_remotes_credentials(linear: _Stand, spelling: 
     assert "is not a checkout of https://github.com/octo/demo" in result.error
     assert "GHP_SUPERSECRET_TOKEN" not in result.stderr + result.stdout
     assert "a/b" in result.error
+
+
+@pytest.mark.parametrize(
+    ("spelled", "shown"),
+    [
+        ("https://user:token@example.org/a/b.git", "https://example.org/a/b.git"),
+        ("user:token@example.com:a/b.git", "example.com:a/b.git"),
+        # Review C1 on #740: the userinfo runs to the last ``@`` before the host, through
+        # any ``@``, ``?``, or ``#`` a token holds raw.
+        ("https://me@example.com:token@example.org/a/b.git", "https://example.org/a/b.git"),
+        ("http://user:pa?ss@example.org/a/b.git", "http://example.org/a/b.git"),
+        ("git://user:s3cr#t@example.org/a/b.git", "git://example.org/a/b.git"),
+        ("me@token@example.com:a/b.git", "example.com:a/b.git"),
+        # An ``@`` past the host is the path's or the query's, and stays.
+        ("example.com:a@b/c.git", "example.com:a@b/c.git"),
+        ("git@example.com:a@b/c.git", "example.com:a@b/c.git"),
+        ("http://example.org/a.git?u=a@b", "http://example.org/a.git?u=a@b"),
+    ],
+)
+def test_a_remotes_userinfo_is_removed_to_the_last_at_before_its_host(
+    spelled: str, shown: str
+) -> None:
+    assert redact_userinfo(spelled) == shown
 
 
 def test_an_ssh_spelling_keeps_its_user_for_the_match(linear: _Stand) -> None:

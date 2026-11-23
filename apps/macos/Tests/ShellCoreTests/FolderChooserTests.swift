@@ -188,7 +188,18 @@ import Testing
         #expect(rows[0].section == .open)
     }
 
-    @Test func eachChoiceDoesWhatTheTableSays() {
+    @Test func theTitleMenuFocusesOpenTargetsAndOpensRecentTargetsSeparately() {
+        typealias C = FolderChooser
+        let folder = URL(filePath: "/d", directoryHint: .isDirectory)
+        let mirror = URL(string: "https://github.com/o/r")!
+        #expect(C.menuAction(for: .open("/a", .here)) == .nothing)
+        #expect(C.menuAction(for: .open("/b", .background)) == .bringForward("/b"))
+        #expect(C.menuAction(for: .open("/c", .inAnotherWindow)) == .bringForward("/c"))
+        #expect(C.menuAction(for: .recent(folder)) == .openInNewWindow(folder))
+        #expect(C.menuAction(for: .recent(mirror)) == .openInNewWindow(mirror))
+    }
+
+    @Test func eachChoiceInTheSwitchFolderPanelDoesWhatTheTableSays() {
         typealias C = FolderChooser
         let url = URL(filePath: "/d", directoryHint: .isDirectory)
         #expect(C.action(for: .open("/a", .here), newWindow: false) == .nothing)

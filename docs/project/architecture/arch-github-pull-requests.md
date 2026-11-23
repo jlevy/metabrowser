@@ -101,12 +101,19 @@ ceiling, `SPECULATIVE_CORE_PER_HOUR`: the prefetch, the backfill past every read
 prefix, the cores walk past the rows on screen, and the label set’s periodic read run
 inside `gh_budget.speculative`, which counts what they spend toward the share too, and
 are refused with `self_ceiling` once it is spent.
-Inside the share the prefetch goes first: the backfill and the cores walk, whose cost
-grows with the catalog, also stop at `CATALOG_SPECULATIVE_CORE_PER_HOUR`, the share less
-what the prefetch’s caps can spend, so they cannot take that part before the prefetch
-asks. What is on screen is never refused for the share, so it keeps the rest of the
-ceiling. `GET pulls-prefetch` reports the ceiling and the share and what the hour has
-used of each under `governor.ceiling`, beside the governor’s other state.
+Inside the share the backfill and the prefetch go before the cores walk, whose cost
+grows with the catalog.
+The walk asks with part of the share reserved (`pull_prefetch.reserved`): what the
+prefetch’s caps can still spend this hour while a lane has work queued or running, a
+scan’s records while a page has asked for the lane within `ASKED_WITHIN_S`, and nothing
+for a lane no page asks for, so it cannot take that part between a page’s asks.
+It also waits while the backfill has pages the budget admits
+(`pull_cores._backfill_first`). The backfill past every reader’s prefix reserves
+nothing, since Quick Search across every state and the ref chooser’s pull requests by
+branch are complete only once it is, and it costs a point a page once per catalog epoch.
+What is on screen is never refused for the share, so it keeps the rest of the ceiling.
+`GET pulls-prefetch` reports the ceiling and the share and what the hour has used of
+each under `governor.ceiling`, beside the governor’s other state.
 
 ### The GitHub Status Check
 
@@ -592,7 +599,10 @@ The owner set this on 2026-11-22 (bead `mb-6a6w`), replacing the diff that staye
 **Show the newer changes**: with a visible page probed every few seconds, that offer
 appeared seconds after every push of a review.
 The served code follows the same head
-([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)).
+([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)). Docs
+draws the same comparison, its documents alone, through the same `paintFiles`: it
+follows and notes a moved head and keeps the reader’s place as Changes does, and its
+history entry remembers what it showed (bead `mb-mzcj`).
 
 - **The decision:** `filesAction` in `pull-page.js` answers `follow` for a mounted diff
   whose comparison is no longer the record’s. A refresh the reader asked for that finds
@@ -604,15 +614,25 @@ The served code follows the same head
   two immutable commits.
   That diff is the reader’s choice, so `filesAction` answers `offer` for it and it stays
   until **Show the newer changes**, also through a reload, since the history entry
-  remembers the choice (`chosenEarlier`); leaving Changes ends it.
+  remembers the choice (`chosenEarlier`). A move between Changes and Docs draws the diff
+  the reader chose, or else the record’s comparison as read now (bead `mb-825n`);
+  leaving both for another tab ends the choice, since that tab’s paint disposes the diff
+  and the next one mounts the record’s.
 - **Across a reload:** on a repository URL the page reloads when the served pin follows
   the head, because a page names its pin on every data request
-  ([Source Sessions and Pins](arch-source-sessions-and-pins.md)). So the history entry
-  remembers the comparison Changes last showed and the one its note named
+  ([Source Sessions and Pins](arch-source-sessions-and-pins.md)). So the history entry,
+  on Changes or Docs, remembers the comparison last shown and the one its note named
   (`rememberedChanges`), and whether the reader chose the earlier one, beside the
   reader’s place. A page loaded again on an entry that showed another comparison says so
   in the same line, and one whose reader chose the earlier diff shows it again with the
   offer of the newer. An entry reached by Back after the head moved says it too.
+  The page writes the memory when it mounts a diff and when the page host lands it on an
+  address of its own (`setTab`, `land`, `showFile`), since the shell writes each entry
+  it makes with no state.
+  A key’s walk of the Pulls tab’s changed files replaces the entry once it stops, and a
+  click on a file pushes one, neither mounting a diff (bead `mb-eg5f`). Writing the
+  memory in the page, rather than having the shell keep a replaced entry’s state, covers
+  the push too, and keeps the page the only writer of what it put there.
 - **The reader’s place:** a place in Changes names its file (`PanePlace`), which the
   mounted diff maps to a block and back, so the place held through a replacement, or
   landed on after a reload, is in the same file, at the same offset, where the new diff
@@ -630,8 +650,10 @@ and the place; `tests/dom/github-pull-repair-lifecycle-behavior.js` and
 `tests/dom/github-pull-changes-follow-behavior.js` drives the join: a mounted page with
 a history entry, whose diff view answers `sectionForPath` and `pathForSection` from its
 own sections, follows a head, keeps the place through the emptied pane, and is mounted
-again on the entry; `tests/dom/diff-file-jump-session.js` pins the two accessors of the
-production diff view.
+again on the entry, on Changes and on Docs, moves between the two, and is landed on a
+file through the production page host by a walk and by a click;
+`tests/dom/diff-file-jump-session.js` pins the two accessors of the production diff
+view.
 
 ## Conversation Timeline
 
@@ -785,8 +807,12 @@ GitHub points they cost, and the measurements behind the order.
 A background job takes no network slot, waits behind every other job at a store turn and
 is cancelled when one starts waiting, and is joined and promoted by a reader’s request
 for the same pull request.
-`GET pulls-prefetch` reports the lane, the caps, the governor, and recent outcomes, and
-`pulls-panel.js` chooses what to name and when.
+A reader who joins a pull job that was already told to stop, a background one or a
+checkout’s optional comparison, has it started again as theirs once the stopped one has
+unwound, on a mirror and on a folder’s checkout alike
+(`RefreshCoordinator.start_again_when_stopped`). `GET pulls-prefetch` reports the lane,
+the caps, the governor, and recent outcomes, and `pulls-panel.js` chooses what to name
+and when.
 
 ## The Comparison Keep
 
@@ -847,7 +873,8 @@ no store.
   current record’s comparison as optional work (`"prepare_comparison"` with the record
   revision). It fetches only that pull request’s head and base, never deepens, holds no
   network slot, and records no outcome; a reader’s Changes request promotes it, and
-  another pull request’s refresh cancels it.
+  another pull request’s refresh cancels it while it is still optional.
+  Once a reader’s request has promoted it, it runs on as theirs.
 - **Repair:** Changes offers Refresh for a displayed comparison even while the record is
   fresh. The request carries `"recovery": {"base": …, "head": …}`, which the server
   accepts only for a pair this session issued for that pull request (the last

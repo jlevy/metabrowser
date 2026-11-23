@@ -493,42 +493,44 @@ window of its own. Each step starts where the one before it ends.
    `quarterly-reports`, after `c`, shows its path on one line, cut in the middle with an
    ellipsis, its mark still on the name’s line, and resting the pointer on the row shows
    the whole path in a tooltip.
-   Holding Option turns each row into “Open … in New Window”, its mark still on the
-   name’s line and its subtitle the same.
    Escape closes it.
 4. **A folder another window shows.** Choosing `b` in `a`’s chooser brings `b`’s window
-   forward and changes nothing in `a`’s.
-5. **A recent folder, in place.** In `a`’s window choose `c`: the same window, at the
-   same frame and in the same Space, shows `c`, its server starts, and the log says `a`
-   stays open in the background.
-6. **Back, instantly.** Choose `a` from the chooser: its page shows at once, where you
-   left it, with no reload and no new server (`pgrep -f -- "--no-open"` counts three).
-   `c` is now in the background.
-7. **Option.** Option-choosing `c`, in the background, moves its page into a new window.
-   In `a`’s window, Option-choosing `a` opens a second window on it; Command-W closes
-   that second window, and `a` stays open in its first.
-8. **Close Background Folders.** In `c`’s window choose `d`, so `c` is in the
-   background. The chooser’s Close Background Folders is now enabled, and choosing it
-   stops `c`’s server (`pgrep -fl 'metab /private/tmp/mb-check/c'` lists nothing) and
-   removes `c` from Open.
+   forward and keeps `a` in its window.
+   Choosing `b` again leaves one window for `b`.
+5. **A recent folder.** Set Settings > Open folders in to Tabs.
+   Choose `c` in `a`’s chooser.
+   A separate window opens on `c`, and `a` keeps its window.
+6. **A background folder.** In `c`’s window, open the Switch Folder panel and choose
+   `d`, so `c` is open in the background.
+   Choose `c` in `d`’s title menu.
+   A separate window shows `c`’s page where you left it, with the same server.
+   The original window still shows `d`. Set the setting back to Windows.
+7. **Option-Return.** In `a`’s window, select `a` in the Switch Folder panel and press
+   Option-Return. Command-W closes the second window, and `a` stays open in its first.
+8. **Close Background Folders.** In `c`’s window use the Switch Folder panel to choose
+   `quarterly-reports`, leaving `c` in the background.
+   Choose Close Background Folders in the title menu.
+   It stops `c`’s server and removes it from Open.
+   Reopen `c` from Recent.
 9. **Close Folder.** In `d`’s window, with no folder in the background, File > Close
    Folder closes the window and stops `d`’s server.
-   In `b`’s window choose `c`, so `b` is in the background: File > Close Folder there
-   shows `b` in that window again and stops `c`’s server.
+   In `b`’s window, use the Switch Folder panel to reopen `d`. File > Close Folder then
+   restores `b` in that window and stops `d`’s server.
 10. **Close Folder across windows and tabs.** Set Settings > Open folders in to Tabs,
-    Option-choose `a` in `b`’s window, which adds a tab of `a` to it, and select `b`’s
-    tab again, so `a`’s tab is hidden; set the setting back to Windows, and
-    Option-choose `a` in `a`’s window for a second window on it.
+    choose `a` with Option-Return in the Switch Folder panel over `b`’s window, which
+    adds a tab of `a` to it, and select `b`’s tab again, so `a`’s tab is hidden; set the
+    setting back to Windows, and choose `a` with Option-Return in the panel over `a`’s
+    window for a second window on it.
     With no folder in the background, File > Close Folder in `a`’s first window closes
     both of `a`’s windows and its hidden tab, leaves `b`’s window with only `b`’s tab,
     and stops `a`’s server.
     Open `a` again and give it a second window and a hidden tab the same way, then open
-    `c` and choose `d` in its window, so `c` is in the background.
+    `c` and use the panel to choose `d`, so `c` is in the background.
     File > Close Folder in `a`’s first window now shows `c` in one of the windows that
     showed `a`, closes the others and the hidden tab, and stops `a`’s server; no window
     shows `a`. Then close every window but `b`’s, and open `a` again.
-11. **Switch Folder…, there and back.** Click `a`’s window and choose `c` from its
-    chooser, so `a` is in the background.
+11. **Switch Folder…, there and back.** In `a`’s window, choose `c` from the Switch
+    Folder panel, so `a` is in the background.
     Shift-Command-O opens the panel over the window, centered a little below its title,
     with an empty field that has the focus.
     It lists `a` first and selected, then `b` subtitled “In another window”, then the
@@ -536,8 +538,8 @@ window of its own. Each step starts where the one before it ends.
     Each row shows the page’s folder glyph on the line of its name, as the chooser does,
     the selected row is drawn in the accent color, and the check mark sits at the row’s
     trailing edge, centered on the row.
-    Return shows `a` in the window at once, as in step 6; Shift-Command-O, then Return,
-    shows `c` again.
+    Return shows `a` in the same window.
+    Shift-Command-O, then Return, shows `c` again.
 12. **The panel’s keys.** In `c`’s window press Shift-Command-O, then:
     - Down twice, then Up, selects `b`, the first recent folder, then `b` again; Up on
       the first row and Down on the last stay put.
@@ -555,29 +557,30 @@ window of its own. Each step starts where the one before it ends.
       Shift-Command-O, then a click in `b`’s window: the panel closes.
 13. **A new window from the panel.** In `c`’s window press Shift-Command-O, and
     Option-Return with `a` selected: `a`, which was in the background, moves its page
-    into a new window, as in step 7.
+    into a new window.
 14. **Closing from the panel.** In `b`’s window press Shift-Command-O. With the field
     empty and no folder in the background, Command-Delete on the selected first row,
     `a`, closes `a`’s window and stops its server, and the panel stays open, no longer
     listing `a` as open.
     Click `b`’s own row, last and checked, and press Command-Delete: `b`’s window
     closes, and the panel with it.
-    In `c`’s window choose `d`, so `c` is in the background, and press Shift-Command-O;
-    click `d`’s own row, last and checked, and press Command-Delete: the window shows
-    `c`, `d`’s server stops, and the panel stays, listing `c` checked.
-15. **Folders closed under the panel.** In `c`’s window choose `d`, so `c` is in the
-    background, and press Shift-Command-O. With the panel open, choose File > Close
-    Folder in the menu bar: the window shows `c`, and the panel stays, listing `c`
-    checked and `d` no longer open.
+    In `c`’s window use the Switch Folder panel to choose `d`, so `c` is in the
+    background, and press Shift-Command-O; click `d`’s own row, last and checked, and
+    press Command-Delete: the window shows `c`, `d`’s server stops, and the panel stays,
+    listing `c` checked.
+15. **Folders closed under the panel.** In `c`’s window use the Switch Folder panel to
+    choose `d`, so `c` is in the background, and press Shift-Command-O. With the panel
+    open, choose File > Close Folder in the menu bar: the window shows `c`, and the
+    panel stays, listing `c` checked and `d` no longer open.
     File > Close Folder again closes the window, and the panel with it.
 16. **Sheets, full screen, and the screen’s edges.** Open `a`. With File > Print…’s
     sheet open over its page, View > Switch Folder… and File > Close Folder are
     disabled, and Shift-Command-O beeps and opens no panel; if a click on the title
-    still opens the chooser, choosing a recent folder in it beeps and opens that folder
-    in a window of its own, since this window cannot switch while the sheet is open.
-    Cancel the sheet, Option-choose `a` for a second window on it, and open the print
-    sheet in that window: File > Close Folder in `a`’s first window beeps and changes
-    nothing. Cancel the sheet and close the second window.
+    still opens the chooser, choosing a recent folder opens that folder in a separate
+    window. Cancel the sheet, choose `a` with Option-Return in the panel for a second
+    window on it, and open the print sheet in that window: File > Close Folder in `a`’s
+    first window beeps and changes nothing.
+    Cancel the sheet and close the second window.
     With the window in full screen (View > Enter Full Screen), Shift-Command-O opens the
     panel over it, in its Space.
     Leave full screen, make the window about 300 points tall, and drag it to the bottom

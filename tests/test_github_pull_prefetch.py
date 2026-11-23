@@ -8,6 +8,8 @@ the governor, a reader's work, and preemption are each pinned without Git.
 from __future__ import annotations
 
 import asyncio
+import logging
+import re
 from collections import deque
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -27,9 +29,13 @@ from metabrowser.builtin_plugins.github import (
 from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_prefetch import (
+    ASKED_WITHIN_S,
     FILES_PER_HOUR,
+    POINTS_PER_FILES_LIST,
+    POINTS_PER_RECORD,
     RECORDS_PER_HOUR,
     RECORDS_PER_SCAN,
+    Item,
     PrefetchRequest,
     PrefetchRequestError,
     lane_of,
@@ -38,8 +44,12 @@ from metabrowser.builtin_plugins.github.pull_prefetch import (
     prefetch_request,
     request_prefetch,
 )
-from metabrowser.builtin_plugins.github.served_pull import PullRefreshOutcome, ServedPull
-from metabrowser.mirror_refresh import RefreshCoordinator
+from metabrowser.builtin_plugins.github.served_pull import (
+    FULL_REFRESH_S,
+    PullRefreshOutcome,
+    ServedPull,
+)
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
 
 SOURCE = "https://github.com/octo/demo"
 NOW = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
@@ -75,6 +85,10 @@ class _Host:
         # Set when the number's background refresh starts, for a test that waits for it.
         self.entered: dict[int, asyncio.Event] = {}
         self.on_refresh: dict[int, Any] = {}
+        # No checkout store, so the lane makes no list local (``_prepare_lists``): without
+        # it each files ask took the lane's bug path and logged a traceback (review A7 of
+        # #761).
+        self.store_turn = None
 
     def job_key(self, number: int) -> str:
         return f"store:pull/{number}"
@@ -93,8 +107,9 @@ class _Host:
             if number in self.on_refresh:
                 self.on_refresh[number]()
             held = await self.pulls.companion(number)
+            # At the stand's clock, so a refresh after the clock moves is this one's.
             held.last = PullRefreshOutcome(
-                outcome="succeeded", message=None, reset_at=None, at=_stamp(NOW)
+                outcome="succeeded", message=None, reset_at=None, at=_stamp(pulls.utc_now())
             )
 
         return self.coordinator.start(self.job_key(number), work, network=False)
@@ -110,6 +125,17 @@ def _verdict(kind: str) -> RecordFreshness:
     return RecordFreshness("unverified", FETCHED, "fetch", False, False)
 
 
+class _Logged(logging.Handler):
+    """What the lane logged as a bug, which no test of the stand expects."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.ERROR)
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
+
+
 @pytest.fixture
 def stand(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -117,9 +143,13 @@ def stand(
     """A host, each number's verdict (absent: no record), and the catalog's publication.
 
     A publication is one scan's ``fetched_at``; ``host.pages`` is the checkpoint's revision,
-    which moves with each page a scan publishes.
+    which moves with each page a scan publishes. A test fails on anything the lane logs as
+    a bug: the lane goes on after one, so a stand that took its bug path still passed
+    (review A7 of #761, B4).
     """
 
+    logged = _Logged()
+    pull_prefetch.log.addHandler(logged)
     gh_budget.forget()
     host = _Host(tmp_path)
     verdicts: dict[int, str] = {}
@@ -147,8 +177,12 @@ def stand(
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
     host.clock = clock  # pyright: ignore[reportAttributeAccessIssue]
     host.pages = pages  # pyright: ignore[reportAttributeAccessIssue]
-    yield host, verdicts, revision
-    gh_budget.forget()
+    try:
+        yield host, verdicts, revision
+    finally:
+        gh_budget.forget()
+        pull_prefetch.log.removeHandler(logged)
+    assert logged.messages == []
 
 
 def _run(host: _Host, ask: PrefetchRequest) -> tuple[str, str | None, int]:
@@ -252,40 +286,81 @@ def test_the_lane_leaves_what_is_on_screen_the_ceiling_it_needs(
 
 
 def test_the_caps_priced_at_a_page_a_part_fit_speculative_works_share() -> None:
-    """The arithmetic beside the caps: 6 points a record and 1 a list (A1, review A of #737),
-    and what the catalog's part of the share leaves them (B1, review B of #737)."""
+    """The arithmetic beside the caps: 6 points a record and 1 a list (A1, review A of #737)."""
 
-    priced = RECORDS_PER_HOUR * 6 + FILES_PER_HOUR * 1
+    priced = RECORDS_PER_HOUR * POINTS_PER_RECORD + FILES_PER_HOUR * POINTS_PER_FILES_LIST
     assert priced <= gh_budget.SPECULATIVE_CORE_PER_HOUR
-    assert priced + gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR <= (
-        gh_budget.SPECULATIVE_CORE_PER_HOUR
-    )
-    assert gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR > 0
     assert RECORDS_PER_SCAN <= RECORDS_PER_HOUR
+
+
+_PRICED = RECORDS_PER_HOUR * POINTS_PER_RECORD + FILES_PER_HOUR * POINTS_PER_FILES_LIST
 
 
 def _walk(batches: int) -> int:
     """A cores walk of *batches* of rows, each one GraphQL point, as ``pull_cores`` admits
-    and counts them: how many it was let read."""
+    and counts them: how many it was let read. ``tests/test_github_pulls.py`` runs the
+    walk's own path."""
 
     read = 0
     for _batch in range(batches):
-        if not gh_budget.admission(("graphql",), now=NOW, speculative=True, catalog=True).admitted:
+        now = pulls.utc_now()
+        if not gh_budget.admission(
+            ("graphql",), now=now, speculative=True, reserved=pull_prefetch.reserved(now)
+        ).admitted:
             break
-        with gh_budget.speculative(catalog=True):
-            gh_budget.spent(1, now=NOW)
+        with gh_budget.speculative(walk=True):
+            gh_budget.spent(1, now=now)
         read += 1
     return read
 
 
-def test_a_cold_walk_that_spends_first_leaves_the_prefetch_its_caps(
+def test_what_the_walk_leaves_a_lane_is_what_its_caps_can_still_spend_while_it_has_work(
+    stand: tuple[_Host, dict[int, str], list[int]],
+) -> None:
+    """D1 of review D on #737: nothing for a lane no page asks for, and for one with work
+    what its caps have left this hour, with the price of the item running, which its cap
+    counted when it started and which may not have spent yet. An idle lane a page asked
+    for within ``ASKED_WITHIN_S`` keeps a scan's records, at most what the hour's cap has
+    left (review A1 of #761)."""
+
+    host, _verdicts, _revision = stand
+    lane = lane_of(host.pulls)  # pyright: ignore[reportArgumentType]
+    assert pull_prefetch.reserved(NOW) == 0
+    lane.asked_at = NOW
+    assert pull_prefetch.reserved(NOW) == RECORDS_PER_SCAN * POINTS_PER_RECORD
+    lane.record_starts.extend([NOW] * (RECORDS_PER_HOUR - 2))
+    assert pull_prefetch.reserved(NOW) == 2 * POINTS_PER_RECORD
+    lane.record_starts.clear()
+    late = NOW + timedelta(seconds=ASKED_WITHIN_S)
+    assert pull_prefetch.reserved(late) == RECORDS_PER_SCAN * POINTS_PER_RECORD
+    assert pull_prefetch.reserved(late + timedelta(seconds=1)) == 0
+    # An ask dated after now, as a wall clock stepped back leaves one, keeps nothing either,
+    # so the reserve cannot outlast its window by the step (review B6 of #761).
+    assert pull_prefetch.reserved(NOW - timedelta(seconds=1)) == 0
+    lane.asked_at = None
+    lane.queue.append(Item("files", 4))
+    assert pull_prefetch.reserved(NOW) == _PRICED
+    lane.record_starts.extend([NOW] * 3)
+    lane.file_starts.extend([NOW] * 5)
+    left = _PRICED - 3 * POINTS_PER_RECORD - 5 * POINTS_PER_FILES_LIST
+    assert pull_prefetch.reserved(NOW) == left
+    lane.queue.clear()
+    lane.running = Item("record", 2)
+    assert pull_prefetch.reserved(NOW) == left + POINTS_PER_RECORD
+    # An hour on, those starts no longer count against the caps.
+    assert pull_prefetch.reserved(NOW + timedelta(hours=1)) == _PRICED + POINTS_PER_RECORD
+    lane.running = None
+    assert pull_prefetch.reserved(NOW) == 0
+
+
+def test_a_walk_that_spends_while_the_lane_has_work_leaves_the_lane_its_caps(
     stand: tuple[_Host, dict[int, str], list[int]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """B1 of review B on #737: with one first-come share, a cold catalog's walk of 800 rows,
     100 batches of 8, spent all of it, and the prefetch was then refused with
-    ``self_ceiling``. The walk now stops at the catalog's part of the share, and the lane
-    asked after it reads every record and list its caps allow, each at the price the caps
-    are set at."""
+    ``self_ceiling``. A walk while the lane has work stops at the share less what the caps
+    can still spend, and the lane reads every record and list its caps allow, each at the
+    price the caps are set at."""
 
     host, verdicts, revision = stand
     listed = _stub_files(host, monkeypatch)
@@ -293,57 +368,211 @@ def test_a_cold_walk_that_spends_first_leaves_the_prefetch_its_caps(
 
     def paid(*args: Any, **kwargs: Any) -> str:
         # In the lane's context, so counted as the lane's, as the job's requests would be.
-        gh_budget.spent(1, now=NOW)
+        gh_budget.spent(POINTS_PER_FILES_LIST, now=NOW)
         return stubbed(*args, **kwargs)
 
     monkeypatch.setattr(pull_files_route, "start_files_refresh", paid)
-    assert _walk(800 // 8) == gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR
-    assert not gh_budget.over_speculative_share(NOW)
     records = tuple(range(700, 700 + RECORDS_PER_HOUR))
     verdicts.update(dict.fromkeys(records, "changed"))
     for number in records:
-        host.on_refresh[number] = lambda: gh_budget.spent(6, now=NOW)
+        host.on_refresh[number] = lambda: gh_budget.spent(POINTS_PER_RECORD, now=NOW)
     files = tuple(range(1, FILES_PER_HOUR + 1))
     asks = (
         PrefetchRequest(records=records[:RECORDS_PER_SCAN], files=files[:8]),
         PrefetchRequest(records=records[RECORDS_PER_SCAN:], files=files[8:16]),
         PrefetchRequest(files=files[16:]),
     )
-    for ask in asks:
+    walked: list[int] = []
+
+    async def first_ask_with_a_walk_beside_it() -> tuple[str, str | None, int]:
+        host.gates[700], host.entered[700] = asyncio.Event(), asyncio.Event()
+        answer = await request_prefetch(None, host, asks[0])  # pyright: ignore[reportArgumentType]
+        await host.entered[700].wait()
+        # What ``GET`` reports the walk leaves the lane while its first record is read: what
+        # the caps have left, with that record counted, and its price.
+        reported = (await prefetch_envelope(host))["governor"]["ceiling"]  # pyright: ignore[reportArgumentType]
+        assert reported["prefetch_reserved"] == _PRICED
+        # The panel's walk asks while the lane's first record is being read.
+        walked.append(_walk(800 // 8))
+        host.gates[700].set()
+        await host.coordinator.drain(timeout_s=10)
+        await host.coordinator.drain(timeout_s=10)
+        return answer
+
+    revision[0] += 1
+    assert asyncio.run(first_ask_with_a_walk_beside_it())[:2] == ("started", None)
+    assert walked == [gh_budget.SPECULATIVE_CORE_PER_HOUR - _PRICED]
+    for ask in asks[1:]:
         revision[0] += 1
         assert _run(host, ask)[:2] == ("started", None)
     assert [number for number in host.started if number > 0] == list(records)
     assert listed == list(files)
     assert not [entry for entry in _recent(host) if entry[2].startswith("deferred")]
     ceiling = _report(host)["governor"]["ceiling"]
-    assert (ceiling["speculative_hour_used"], ceiling["catalog_hour_used"]) == (
-        gh_budget.SPECULATIVE_CORE_PER_HOUR,
-        gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR,
-    )
-    # The walk, which is refused, got none of it.
+    assert (
+        ceiling["speculative_hour_used"],
+        ceiling["walk_hour_used"],
+        ceiling["prefetch_reserved"],
+    ) == (gh_budget.SPECULATIVE_CORE_PER_HOUR, gh_budget.SPECULATIVE_CORE_PER_HOUR - _PRICED, 0)
+    # The share is spent: the walk, which is refused, got no more of it.
     assert _walk(1) == 0
 
 
-def test_the_catalogs_part_holds_the_walk_and_the_backfill_and_not_the_lane_or_the_labels() -> None:
-    """The order inside the share: the lane and the label set are refused only at all of it."""
+def test_a_walk_that_spends_first_leaves_a_lane_a_page_asks_for_its_next_scans_records(
+    stand: tuple[_Host, dict[int, str], list[int]],
+) -> None:
+    """B1 of review B on #737 asked to "pin the order with a test in which the walk spends
+    first and the prefetch's next record is still admitted". Reserving only while the lane
+    had work, a walk between two of the page's asks took the whole share, and the next ask
+    was refused with ``self_ceiling`` until the hour rolled (review A1 of #761). A lane the
+    page has asked for keeps a scan's records, so the walk stops short of them and the next
+    scan's records are read in the same hour. A lane no page has asked for within
+    ``ASKED_WITHIN_S`` keeps nothing, so a cold walk is not held to 8 points an hour
+    (review D1 of #737)."""
 
-    with gh_budget.speculative(catalog=True):
-        gh_budget.spent(gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR, now=NOW)
-    assert gh_budget.admission(
-        ("graphql",), now=NOW, speculative=True, catalog=True
-    ) == gh_budget.Admission(False, "self_ceiling")
-    assert gh_budget.admission(("core",), now=NOW, speculative=True).admitted
-    assert gh_budget.speculative_spent(NOW) == gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR
-    # What the lane spends counts toward the share, not the catalog's part of it.
+    host, verdicts, revision = stand
+    first, later = 700, (701, 702)
+    verdicts.update(dict.fromkeys((first, *later), "changed"))
+    for number in (first, *later):
+        host.on_refresh[number] = lambda: gh_budget.spent(POINTS_PER_RECORD, now=host.clock[0])  # pyright: ignore[reportAttributeAccessIssue]
+    assert _run(host, PrefetchRequest(records=(first,)))[:2] == ("started", None)
+    # Between the page's asks the lane is idle, and the walk spends first.
+    kept = RECORDS_PER_SCAN * POINTS_PER_RECORD
+    share = gh_budget.SPECULATIVE_CORE_PER_HOUR
+    assert _walk(800 // 8) == share - POINTS_PER_RECORD - kept
+    assert gh_budget.walk_spent(NOW) == share - POINTS_PER_RECORD - kept
+    revision[0] += 1
+    assert _run(host, PrefetchRequest(records=later))[:2] == ("started", None)
+    assert host.started == [first, *later]
+    assert not [entry for entry in _recent(host) if entry[2].startswith("deferred")]
+    assert _walk(1) == 0
+
+    # Past the window with no ask, the lane keeps nothing: the walk spends the rest.
+    host.clock[0] = NOW + timedelta(seconds=ASKED_WITHIN_S + 1)  # pyright: ignore[reportAttributeAccessIssue]
+    spent = gh_budget.speculative_spent(host.clock[0])  # pyright: ignore[reportAttributeAccessIssue]
+    assert _walk(800 // 8) == share - spent
+    assert pull_prefetch.reserved(host.clock[0]) == 0  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_a_walk_longer_than_an_hours_share_leaves_the_prefetch_its_records_every_hour(
+    stand: tuple[_Host, dict[int, str], list[int]],
+) -> None:
+    """A1 of review A on #761: past one hour's share, the walk took the share between the
+    page's asks as the rolling hour freed it, so in review A's model the prefetch read 2
+    records an hour while a walk of 5,000 rows ran for about 7 hours. Here a walk that
+    reads up to 15 batches every 30 s, one for each 2 s, whenever it is admitted, runs for
+    three hours beside a page that asks for one changed record every scan, 120 s apart, the
+    walk first whenever both ask: each hour the lane reads its records, its cap once the
+    first hour has rolled, and the walk the rest."""
+
+    host, verdicts, revision = stand
+    clock = host.clock  # pyright: ignore[reportAttributeAccessIssue]
+    scan_s, tick_s, hours = 120, 30, 3
+    read, walked = [0] * hours, [0] * hours
+    outcomes: list[set[str]] = [set() for _hour in range(hours)]
+    for tick in range(hours * 3600 // tick_s):
+        seconds = tick * tick_s
+        clock[0] = NOW + timedelta(seconds=seconds)
+        hour = seconds // 3600
+        walked[hour] += _walk(tick_s // 2)
+        if seconds % scan_s == 0:
+            revision[0] += 1
+            number = 1000 + seconds // scan_s
+            verdicts[number] = "changed"
+            host.on_refresh[number] = lambda: gh_budget.spent(POINTS_PER_RECORD, now=clock[0])
+            before = len(host.started)
+            answer = _run(host, PrefetchRequest(records=(number,)))
+            outcomes[hour].add(
+                f"{answer[0]}:{answer[1]}" if answer[0] == "deferred" else _recent(host)[-1][2]
+            )
+            read[hour] += len(host.started) - before
+    # The first hour the walk spent before the page's first ask was read, and the lane
+    # kept a scan's records past it; each hour after, its cap. The share, not the cap, is
+    # what refuses the asks past it, since the walk stops at what the lane keeps.
+    assert read == [1 + RECORDS_PER_SCAN] + [RECORDS_PER_HOUR] * (hours - 1)
+    assert all(hour <= {"refreshed", "deferred:self_ceiling"} for hour in outcomes)
+    assert all("refreshed" in hour for hour in outcomes)
+    assert sum(walked) > gh_budget.SPECULATIVE_CORE_PER_HOUR
+    assert all(walked)
+
+
+def test_a_lane_stopped_mid_item_keeps_back_only_what_an_idle_lane_does(
+    stand: tuple[_Host, dict[int, str], list[int]],
+) -> None:
+    """A4 of review A on #761: a lane cancelled while it reads, as at shutdown, runs nothing
+    it had queued, so it keeps back from the walk only a scan's records, as any idle lane
+    a page asked for does, not what its caps can still spend."""
+
+    host, verdicts, _revision = stand
+    records = (801, 802, 803)
+    verdicts.update(dict.fromkeys(records, "changed"))
+
+    async def scenario() -> tuple[int, int]:
+        host.gates[801], host.entered[801] = asyncio.Event(), asyncio.Event()
+        await request_prefetch(None, host, PrefetchRequest(records=records))  # pyright: ignore[reportArgumentType]
+        await host.entered[801].wait()
+        busy = pull_prefetch.reserved(NOW)
+        job = host.coordinator.cancel(pull_prefetch._key(host.pulls))  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+        assert job is not None
+        await asyncio.wait([job], timeout=10)
+        host.gates[801].set()
+        await host.coordinator.drain(timeout_s=10)
+        return busy, pull_prefetch.reserved(NOW)
+
+    busy, stopped = asyncio.run(scenario())
+    lane = lane_of(host.pulls)  # pyright: ignore[reportArgumentType]
+    assert busy == _PRICED
+    assert (list(lane.queue), lane.running) == ([], None)
+    left = RECORDS_PER_HOUR - lane.used(lane.record_starts, NOW)
+    assert stopped == min(RECORDS_PER_SCAN, left) * POINTS_PER_RECORD
+
+
+def test_a_live_panel_asks_within_the_window_the_lane_keeps_its_scans_records_for() -> None:
+    """``ASKED_WITHIN_S`` covers the longest gap between a live panel's asks, less the
+    difference between two scans' run times: a scan is due ``FULL_REFRESH_S`` after the
+    last started while the list probe vouches, a freshness window otherwise; the panel
+    starts it at its next ask, at most ``SLOW_POLL_MS`` later, and sees it end within
+    ``FAST_POLL_MS``, both in pull-page.js (review B5 of #761). The slack past that sum is
+    a judgment, which this does not pin."""
+
+    page = Path(pull_prefetch.__file__).with_name("pull-page.js").read_text(encoding="utf-8")
+
+    def stated_s(name: str) -> float:
+        stated = re.search(rf"^export const {name} = (\d+);$", page, re.MULTILINE)
+        assert stated is not None, name
+        return int(stated.group(1)) / 1000
+
+    started_within = stated_s("SLOW_POLL_MS")
+    seen_within = stated_s("FAST_POLL_MS")
+    assert max(FULL_REFRESH_S, FRESHNESS_WINDOW_S) + started_within + seen_within <= ASKED_WITHIN_S
+
+
+def test_only_the_walk_leaves_the_lane_its_reserve_and_only_its_batches_count_as_its() -> None:
+    """The order inside the share: the walk asks with what the lane's caps can still spend
+    reserved, and the lane, the backfill, and the label set ask with nothing reserved, so
+    they are refused only at the whole share. ``tests/test_github_pull_list.py`` runs the
+    backfill's own path."""
+
+    share = gh_budget.SPECULATIVE_CORE_PER_HOUR
+    with gh_budget.speculative(walk=True):
+        gh_budget.spent(10, now=NOW)
+    # What the lane spends counts toward the share, and not as the walk's.
     with gh_budget.speculative():
         gh_budget.spent(1, now=NOW)
-    assert gh_budget.catalog_spent(NOW) == gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR
-    # And the whole share, spent, refuses the catalog's work as well as the lane.
+    assert (gh_budget.speculative_spent(NOW), gh_budget.walk_spent(NOW)) == (11, 10)
+    assert gh_budget.admission(
+        ("graphql",), now=NOW, speculative=True, reserved=share - 11
+    ) == gh_budget.Admission(False, "self_ceiling")
+    assert gh_budget.admission(
+        ("graphql",), now=NOW, speculative=True, reserved=share - 12
+    ).admitted
+    assert gh_budget.admission(("core",), now=NOW, speculative=True).admitted
+    # And the whole share, spent, refuses the walk as well as the lane.
     gh_budget.forget()
     with gh_budget.speculative():
-        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR, now=NOW)
-    assert gh_budget.catalog_spent(NOW) == 0
-    assert not gh_budget.admission(("graphql",), now=NOW, speculative=True, catalog=True).admitted
+        gh_budget.spent(share, now=NOW)
+    assert gh_budget.walk_spent(NOW) == 0
+    assert not gh_budget.admission(("graphql",), now=NOW, speculative=True).admitted
     gh_budget.forget()
 
 
@@ -364,8 +593,9 @@ def test_what_the_lanes_jobs_spend_is_speculative_and_the_lane_stops_at_its_shar
         "hour_used": 6,
         "speculative_per_hour": share,
         "speculative_hour_used": 6,
-        "catalog_per_hour": gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR,
-        "catalog_hour_used": 0,
+        # The page asked a moment ago: the lane keeps a scan's records (review A4 of #761).
+        "prefetch_reserved": RECORDS_PER_SCAN * POINTS_PER_RECORD,
+        "walk_hour_used": 0,
     }
     # 10's read spends the rest of the share, and the lane stops there, dropping 11.
     assert _run(host, PrefetchRequest(records=(10, 11, 12))) == ("started", None, 3)
@@ -725,6 +955,12 @@ def test_a_request_outside_its_shape_is_refused(body: dict[str, Any]) -> None:
 
 
 def test_nothing_named_starts_nothing(stand: tuple[_Host, dict[int, str], list[int]]) -> None:
+    """An ask that names nothing reads nothing, but it is a page looking at the list, so
+    the lane keeps its next scan's records from the cores walk: a quiet repository's asks
+    name nothing, and the reserve must outlast them (B4 of review B on #761)."""
+
     host, _verdicts, _revision = stand
     assert prefetch_request({}) == PrefetchRequest()
+    assert pull_prefetch.reserved(NOW) == 0
     assert _run(host, PrefetchRequest()) == ("not_due", None, 0)
+    assert pull_prefetch.reserved(NOW) == RECORDS_PER_SCAN * POINTS_PER_RECORD

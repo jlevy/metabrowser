@@ -21,6 +21,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from starlette.testclient import TestClient
@@ -41,7 +42,9 @@ from tests.required_tools import needs_git
 from tests.source_checkout_fixture import read_refs_at_every_ask
 from tests.test_serve_pin import posix_only
 
-pytestmark = [posix_only, needs_git]
+# Every test here keeps a store, which the suite's environment keeps from any application
+# (``tests/conftest.py``); those of the environment itself set it as they need.
+pytestmark = [posix_only, needs_git, pytest.mark.usefixtures("keeps_origin_store")]
 
 _JSON = {"content-type": "application/json"}
 _ORIGIN_TRUNK = "refs/remotes/origin/trunk"
@@ -552,6 +555,65 @@ def test_a_failing_acquisition_is_tried_again_less_often_each_time(
     )
 
 
+def _hold_the_loop_until(when: float) -> None:
+    """Keep the running loop from turning until *when* on its clock, as load can: what fell
+    due meanwhile runs in the turns after the caller's next ``await``, together."""
+
+    while time.monotonic() < when:
+        time.sleep(0.01)
+
+
+def test_a_try_a_page_starts_as_the_timer_falls_due_is_the_only_one(
+    folder: _Folder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The timer's wait and a visible page's ask fall due in one turn of the loop. The ask
+    starts the try, which fails before the timer looks again, and the timer then waits
+    from that try's end rather than starting a second at once (mb-0tw5)."""
+
+    from metabrowser.checkout_store import CheckoutStore
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    idle = 0.5
+    attempts: list[float] = []
+
+    async def unreachable(*_args: Any, **_kwargs: Any) -> Any:
+        attempts.append(time.monotonic())
+        raise CheckoutStoreError("network_error", "the repository could not be read")
+
+    monkeypatch.setattr(checkout_store, "acquire_checkout_store", unreachable)
+    monkeypatch.setattr(checkout_store, "STORE_IDLE_REFRESH_S", idle)
+
+    async def scenario() -> str:
+        coordinator = RefreshCoordinator()
+        store = CheckoutStore(folder.checkout, coordinator, serving=True)
+        try:
+            await store.open()
+            deadline = time.monotonic() + 30
+            while (due := store.retry_at()) is None:
+                assert time.monotonic() < deadline, attempts
+                await asyncio.sleep(0.01)
+            # The timer has looked at the first failure and waits for the try it makes due.
+            for _ in range(5):
+                await asyncio.sleep(0)
+            _hold_the_loop_until(due + 0.05)
+            asked, _ = await store.refresh("page")
+            # The try the ask started, the end of the timer's wait, and what the timer does
+            # then each take a turn or two of the loop.
+            for _ in range(10):
+                await asyncio.sleep(0)
+            return asked
+        finally:
+            await store.aclose()
+            await coordinator.aclose()
+
+    assert asyncio.run(scenario()) == "started"
+    waits = [later - earlier for earlier, later in itertools.pairwise(attempts)]
+    # Lower bounds: the page's try came an idle interval after the first, and any the timer
+    # made before it stopped, which only load lets it reach, twice the wait before.
+    least = (idle * 2**at for at in itertools.count())
+    assert waits and all(wait >= bound for wait, bound in zip(waits, least, strict=False)), waits
+
+
 def test_an_acquisition_that_ran_out_its_deadline_waits_for_a_reader_to_ask(
     folder: _Folder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -625,6 +687,114 @@ def test_a_checkout_with_a_local_origin_or_none_keeps_no_store_and_is_served_as_
         assert not folder.home.exists()
 
 
+@pytest.mark.parametrize("environment", ["unset", "0"])
+def test_the_serve_command_keeps_no_store_where_the_environment_says_to_keep_none(
+    folder: _Folder, monkeypatch: pytest.MonkeyPatch, environment: str
+) -> None:
+    """Bead mb-i4x0: a server a test starts as a process of its own cannot be pointed at a
+    local origin, so it fetched the fixture's GitHub address from the network. With
+    ``METABROWSER_ORIGIN_STORE=0``, which the suite sets, the serve command keeps no store
+    and the folder is served as before; unset, it keeps one, as ``metab PATH`` does."""
+
+    from typer.testing import CliRunner
+
+    from metabrowser.checkout_store import ORIGIN_STORE_ENV
+    from metabrowser.cli.main import _app
+    from tests.held_port import listener_on
+
+    attempts: list[str] = []
+
+    async def acquired(*_args: Any, **_kwargs: Any) -> Any:
+        attempts.append("acquire")
+        raise CheckoutStoreError("network_error", "never reached")
+
+    monkeypatch.setattr(checkout_store, "acquire_checkout_store", acquired)
+    if environment == "unset":
+        monkeypatch.delenv(ORIGIN_STORE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(ORIGIN_STORE_ENV, environment)
+        # Short enough that a store kept after all would be tried again below.
+        monkeypatch.setattr(checkout_store, "STORE_IDLE_REFRESH_S", 0.05)
+    with (
+        patch("metabrowser.cli.serve._QuietForceExitServer"),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
+    ):
+        result = CliRunner().invoke(_app, [str(folder.checkout), "--no-open"])
+    assert result.exit_code == 0, result.output
+    with TestClient(server.app) as client:
+        if environment == "unset":
+            deadline = time.monotonic() + 30
+            while (origin := _refs(client, "remote")["origin"])["state"] != "absent":
+                assert time.monotonic() < deadline, origin
+                time.sleep(0.05)
+            assert origin["reason"] == "network_error"
+        else:
+            assert _refs(client, "remote")["origin"] is None
+            # On the working tree, a page's ask and a reader's refresh are both refused, as
+            # on a checkout whose origin is on this machine.
+            for body in ({"for": "page"}, None):
+                refused = _post(client, "/api/source/refresh", body)
+                assert refused.status_code == 409, refused.text
+                assert refused.json()["code"] == "unsupported_for_subject"
+            time.sleep(0.3)
+    assert attempts == ([] if environment == "0" else ["acquire"])
+
+
+def test_a_one_shot_command_keeps_no_store_where_a_serve_keeps_none(
+    folder: _Folder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review A3 of #762: ``METABROWSER_ORIGIN_STORE=0`` reached the serve command only, so
+    ``metab FOLDER --api`` still read a store, and a one-shot ``POST /api/source/refresh``
+    made one, where the served page had none. Every open mode now reads it as the
+    application starts, so a transcript answers what a browser sees."""
+
+    import json
+
+    from typer.testing import CliRunner
+
+    from metabrowser.checkout_store import ORIGIN_STORE_ENV
+    from metabrowser.cli.main import _app
+
+    attempts: list[str] = []
+
+    async def acquired(*_args: Any, **_kwargs: Any) -> Any:
+        attempts.append("acquire")
+        raise CheckoutStoreError("network_error", "never reached")
+
+    monkeypatch.setattr(checkout_store, "acquire_checkout_store", acquired)
+
+    def one_shot_refs() -> Any:
+        result = CliRunner().invoke(
+            _app,
+            [str(folder.checkout), "--api", "/api/source/refs?kind=remote", "--format", "json"],
+        )
+        assert result.exit_code == 0, result.output
+        return json.loads(result.output)["origin"]
+
+    def answers(serving: bool) -> dict[str, Any]:
+        server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
+        if serving:
+            serve_checkout_store()
+        with TestClient(server.app) as client:
+            refused = _post(client, "/api/source/refresh")
+            return {
+                "origin": _refs(client, "remote")["origin"],
+                "refresh": (refused.status_code, refused.json().get("code")),
+            }
+
+    # Unset, as outside the suite, a one-shot command reads the store the cache has.
+    monkeypatch.delenv(ORIGIN_STORE_ENV, raising=False)
+    assert one_shot_refs()["reason"] == "not_fetched"
+    monkeypatch.setenv(ORIGIN_STORE_ENV, "0")
+    assert one_shot_refs() is None
+    one_shot = answers(serving=False)
+    assert one_shot == answers(serving=True)
+    assert one_shot == {"origin": None, "refresh": (409, "unsupported_for_subject")}
+    assert attempts == []
+
+
 @pytest.mark.parametrize(
     ("spelled", "shown"),
     [
@@ -636,6 +806,12 @@ def test_a_checkout_with_a_local_origin_or_none_keeps_no_store_and_is_served_as_
         ("http://host/a/b.git?token=secret", "http://host/a/b.git"),
         ("http://host/a/b.git#fragment", "http://host/a/b.git"),
         ("git://tok@host/a/b.git#x?token=secret", "git://host/a/b.git"),
+        # Review C1 on #740: a userinfo holding a raw ``?``, ``#``, or ``@`` is no prefix.
+        ("http://user:pa?ss@host.example/octo/demo.git", "http://host.example/octo/demo.git"),
+        ("http://user:pa#ss@host.example/octo/demo.git", "http://host.example/octo/demo.git"),
+        ("http://tok?en@host.example/octo/demo.git", "http://host.example/octo/demo.git"),
+        ("git://user:s3cr#t@host.example/octo/demo.git", "git://host.example/octo/demo.git"),
+        ("http://a@b@host/x.git", "http://host/x.git"),
     ],
 )
 def test_an_origin_reached_another_way_is_one_metabrowser_cannot_fetch(

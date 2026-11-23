@@ -62,12 +62,18 @@ timeline, is never refused for the share, so it keeps the rest of the ceiling wh
 speculative work spent (the owner's rule on review A1 of #737: what is on screen updates
 within seconds, everything else every minute or two, inside the rate limit).
 
-Inside the share the prefetch goes first. The catalog's own speculative work, the backfill
-and the cores walk, whose cost grows with the catalog, runs inside
-``speculative(catalog=True)`` and asks with ``catalog=True`` as well, which also refuses it
-once it has spent :data:`CATALOG_SPECULATIVE_CORE_PER_HOUR`, the share less what the
-prefetch's caps can spend; so whatever the catalog's work spends first, the prefetch is not
-refused for the share before its own caps stop it (review B1 of #737).
+Inside the share the catalog's backfill past every reader's prefix and the prefetch go
+before the cores walk past the rows on screen, whose cost grows with the catalog. The walk
+runs inside ``speculative(walk=True)`` and asks with ``reserved`` set to what the
+prefetch's caps can still spend this hour while a lane has work queued or running, to a
+scan's records while a page has asked for the lane lately, and to nothing for a lane no
+page asks for (:func:`.pull_prefetch.reserved`). So a walk that spends first does not
+refuse the prefetch before its own caps do (review B1 of #737, review A1 of #761), and a
+walk nobody's prefetch is asked beside spends the rest of the share (review D1 of #737).
+The walk also waits while the backfill has pages the budget admits (review A2 of #761).
+The backfill reserves nothing for anyone: it reads a page of rows a GraphQL point, once
+per catalog epoch, and Quick Search across every state and the ref chooser's pull
+requests by branch are complete only once it has.
 """
 
 from __future__ import annotations
@@ -109,23 +115,13 @@ AUTOMATIC_CORE_PER_HOUR: Final = 300
 # comment above prices one busy visible page at, with 40 beside it. Past its share
 # speculative work is refused (``admission(..., speculative=True)``) and resumes as the
 # hour rolls. The prefetch's caps are priced against this number beside
-# ``RECORDS_PER_HOUR`` in ``pull_prefetch.py``. No session's spending has been measured
-# against either number: ``GET /api/plugin/github/pulls-prefetch`` reports both, and what
-# the hour has used of each, under ``governor.ceiling``, for ``metab --api`` to read.
+# ``RECORDS_PER_HOUR`` in ``pull_prefetch.py``, and the cores walk leaves the prefetch that
+# price, less what the caps have used, while it has work, and a scan's records while a page
+# asks for it (``reserved`` there). Only a scripted first visit has been measured against
+# either number (the plan named above): ``GET /api/plugin/github/pulls-prefetch`` reports
+# both, and what the hour has used of each, under ``governor.ceiling``, for ``metab --api``
+# to read.
 SPECULATIVE_CORE_PER_HOUR: Final = 100
-# The part of that share the catalog's own speculative work may spend, the backfill past
-# every reader's prefix and the cores walk past the rows on screen: the share less the 92
-# the prefetch's caps can spend at most (priced beside ``RECORDS_PER_HOUR`` in
-# ``pull_prefetch.py``). With one first-come share a cold catalog's walk spent all of it,
-# a batch of 8 rows a point and so 100 points for 800 rows, and the prefetch was then
-# refused (review B1 of #737). The prefetch goes first because what it reads is what the
-# reader is likely to open next and its caps bound what it costs; the walk's and the
-# backfill's cost grows with the catalog, so no fixed part would cover a cold one, and the
-# rows on screen are prepared outside the share. At 8 an hour a cold walk of 800 rows takes
-# about 12 hours, and the backfill shares those points. The label set's read stays with the
-# prefetch: a page's chips wait on it, and it is one read in ``LABEL_FRESHNESS_S``.
-# ``tests/test_github_pull_prefetch.py`` pins the sum. Not measured on a real first visit.
-CATALOG_SPECULATIVE_CORE_PER_HOUR: Final = 8
 # How far apart automatic full reads of one thing are held while the process is over its
 # ceiling: the plan's five minutes, 12 reads an hour for each visible record or list.
 CEILING_FULL_READ_S: Final = 300.0
@@ -180,8 +176,8 @@ _account: str | None = None
 _SPENT: dict[int, int] = {}
 # The part of it speculative work spent, counted in both.
 _SPECULATIVE_SPENT: dict[int, int] = {}
-# The part of that the catalog's speculative work spent, counted in all three.
-_CATALOG_SPENT: dict[int, int] = {}
+# The part of that the cores walk spent, counted in all three, which only reports it.
+_WALK_SPENT: dict[int, int] = {}
 # The event loop counts and worker threads read (``refresh_wanted`` of the list, stacks,
 # labels, and files asks :func:`admission` in one), so both hold this, and a reader sums a
 # copy: a bucket added during an iteration would raise ``RuntimeError``.
@@ -190,9 +186,9 @@ _SPENT_LOCK: Final = threading.Lock()
 # inside :func:`readers_own` inherits it, as the refresh job a reader's click starts does.
 _READERS_OWN: ContextVar[bool] = ContextVar("metabrowser_gh_readers_own", default=False)
 # Whether the work running in this context is speculative, inherited the same way, and
-# whether it is the catalog's.
+# whether it is the cores walk's.
 _SPECULATIVE: ContextVar[bool] = ContextVar("metabrowser_gh_speculative", default=False)
-_CATALOG: ContextVar[bool] = ContextVar("metabrowser_gh_catalog", default=False)
+_WALK: ContextVar[bool] = ContextVar("metabrowser_gh_walk", default=False)
 
 
 def note_account(login: str) -> None:
@@ -281,21 +277,21 @@ def readers_own() -> Generator[None]:
 
 
 @contextmanager
-def speculative(*, catalog: bool = False) -> Generator[None]:
+def speculative(*, walk: bool = False) -> Generator[None]:
     """Mark the work started inside as speculative, counted toward its share of the ceiling.
 
     A lane enters it around work nobody is looking at; a task created inside copies the
     context, so a job the lane starts is speculative too. A reader's own action stays
-    uncounted inside it. The *catalog*'s own work, the backfill and the cores walk, is
-    counted toward :data:`CATALOG_SPECULATIVE_CORE_PER_HOUR` as well.
+    uncounted inside it. The cores *walk*'s batches are counted as the walk's as well, for
+    :func:`walk_spent` to report.
     """
 
     token = _SPECULATIVE.set(True)
-    catalog_token = _CATALOG.set(catalog)
+    walk_token = _WALK.set(walk)
     try:
         yield
     finally:
-        _CATALOG.reset(catalog_token)
+        _WALK.reset(walk_token)
         _SPECULATIVE.reset(token)
 
 
@@ -307,14 +303,14 @@ def _forget_spending() -> None:
     with _SPENT_LOCK:
         _SPENT.clear()
         _SPECULATIVE_SPENT.clear()
-        _CATALOG_SPENT.clear()
+        _WALK_SPENT.clear()
 
 
 def spent(cost: int, *, now: datetime) -> None:
     """Count *cost* this process just spent at *now*, unless a reader's own action spent it.
 
-    Speculative work's is counted toward its share as well, and the catalog's toward its
-    part of that (:func:`speculative`).
+    Speculative work's is counted toward its share as well, and the cores walk's as the
+    walk's (:func:`speculative`).
     """
 
     if cost <= 0 or _READERS_OWN.get():
@@ -322,7 +318,7 @@ def spent(cost: int, *, now: datetime) -> None:
     minute = _minute(now)
     counts: tuple[dict[int, int], ...] = (_SPENT,)
     if _SPECULATIVE.get():
-        counts = (_SPENT, _SPECULATIVE_SPENT, *((_CATALOG_SPENT,) if _CATALOG.get() else ()))
+        counts = (_SPENT, _SPECULATIVE_SPENT, *((_WALK_SPENT,) if _WALK.get() else ()))
     with _SPENT_LOCK:
         for count in counts:
             for old in [each for each in count if each <= minute - _SPEND_BUCKETS]:
@@ -349,22 +345,16 @@ def speculative_spent(now: datetime) -> int:
     return _hour(_SPECULATIVE_SPENT, now)
 
 
-def catalog_spent(now: datetime) -> int:
-    """What this process's catalog work, the backfill and the cores walk, spent in the hour."""
+def walk_spent(now: datetime) -> int:
+    """What this process's cores walk, past the rows on screen, spent in the hour."""
 
-    return _hour(_CATALOG_SPENT, now)
+    return _hour(_WALK_SPENT, now)
 
 
 def over_ceiling(now: datetime) -> bool:
     """Whether automatic work has spent :data:`AUTOMATIC_CORE_PER_HOUR` in the last hour."""
 
     return automatic_spent(now) >= AUTOMATIC_CORE_PER_HOUR
-
-
-def over_speculative_share(now: datetime) -> bool:
-    """Whether speculative work has spent :data:`SPECULATIVE_CORE_PER_HOUR` in the last hour."""
-
-    return speculative_spent(now) >= SPECULATIVE_CORE_PER_HOUR
 
 
 def full_read_interval(usual_s: float, *, now: datetime) -> float:
@@ -380,17 +370,17 @@ def admission(
     floor: float = BACKGROUND_FLOOR,
     ceiling: bool = True,
     speculative: bool = False,
-    catalog: bool = False,
+    reserved: int = 0,
 ) -> Admission:
     """Whether background work that spends *resources* may start at *now*.
 
     Not during a hold, below the floor of a resource it spends, nor, unless *ceiling* is
     false, while this process is over its own ceiling. A periodic full read of what is
     visible passes ``ceiling=False`` and slows itself instead (:func:`full_read_interval`).
-    *speculative* work is refused as well once it has spent its own share of that ceiling
-    (:data:`SPECULATIVE_CORE_PER_HOUR`), with the ceiling's reason, and the *catalog*'s
-    speculative work once it has spent its part of the share
-    (:data:`CATALOG_SPECULATIVE_CORE_PER_HOUR`).
+    *speculative* work is refused as well, with the ceiling's reason, once speculative work
+    has spent its own share of that ceiling (:data:`SPECULATIVE_CORE_PER_HOUR`) less
+    *reserved*, the part of it the caller leaves to other speculative work: what the cores
+    walk leaves the prefetch (:func:`.pull_prefetch.reserved`).
     """
 
     if held_until(now) is not None:
@@ -403,8 +393,7 @@ def admission(
             return Admission(False, "below_floor")
     if ceiling and (
         over_ceiling(now)
-        or (speculative and over_speculative_share(now))
-        or (speculative and catalog and catalog_spent(now) >= CATALOG_SPECULATIVE_CORE_PER_HOUR)
+        or (speculative and speculative_spent(now) + max(0, reserved) >= SPECULATIVE_CORE_PER_HOUR)
     ):
         return Admission(False, "self_ceiling")
     return Admission(True)
@@ -423,7 +412,6 @@ def forget() -> None:
 __all__ = [
     "AUTOMATIC_CORE_PER_HOUR",
     "BACKGROUND_FLOOR",
-    "CATALOG_SPECULATIVE_CORE_PER_HOUR",
     "CEILING_FULL_READ_S",
     "SPECULATIVE_CORE_PER_HOUR",
     "UNKNOWN_RESET_HOLD_S",
@@ -433,7 +421,6 @@ __all__ = [
     "RateObservation",
     "admission",
     "automatic_spent",
-    "catalog_spent",
     "forget",
     "full_read_interval",
     "held_until",
@@ -442,9 +429,9 @@ __all__ = [
     "observations",
     "observe",
     "over_ceiling",
-    "over_speculative_share",
     "readers_own",
     "speculative",
     "speculative_spent",
     "spent",
+    "walk_spent",
 ]

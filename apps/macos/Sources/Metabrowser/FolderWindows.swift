@@ -49,14 +49,15 @@ final class FolderWindows {
     // MARK: - Placement
 
     /// Shows a newly opened folder's first window as a tab of the front folder window or
-    /// as a window of its own, as Settings says.
-    func place(_ controller: BrowserWindowController) {
+    /// as a window of its own, as Settings says. A title-menu selection opens separately.
+    func place(_ controller: BrowserWindowController, separately: Bool = false) {
         guard let window = controller.window else { return }
         let front = NSApp.orderedWindows.first {
             $0 !== window && $0.isVisible && $0.windowController is BrowserWindowController
         }
         let frontKind = front.map { $0.styleMask.contains(.fullScreen) ? FrontWindow.fullScreen : .window }
-        switch preferences.placement.placement(system: Self.systemTabbing, front: frontKind) {
+        let placement = separately ? .window : preferences.placement.placement(system: Self.systemTabbing, front: frontKind)
+        switch placement {
         case .tab:
             front?.addTabbedWindow(window, ordered: .above)
             window.makeKeyAndOrderFront(nil)

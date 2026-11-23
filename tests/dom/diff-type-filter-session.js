@@ -366,7 +366,7 @@ async function main() {
     mounts.filter((mount) => mount.disposed).every((mount) => mount.listeners.size === 0),
     "a replaced diff kept the host's file listener",
   );
-  // A host's place is kept in its file (mb-owwk): its section lookups go to the diff mounted
+  // A host's place is kept in its file (mb-riqt): its section lookups go to the diff mounted
   // now, and a section of a replaced diff is no file's.
   const section = facade.sectionForPath("README.md");
   assert(

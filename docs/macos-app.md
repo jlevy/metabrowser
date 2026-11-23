@@ -200,14 +200,11 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   same marks as at the top of the page’s navigation column, and the row’s location, or
   “In another window”, is the line below the name; a location too long for that line is
   cut in the middle, and its tooltip gives all of it.
-  Choosing a folder shows it in this window, and the folder the window showed stays open
-  in the background, its page kept, so switching back is instant; a folder another
-  window shows brings that window forward instead.
-  Hold Option to open the chosen folder in a new window.
-  A recent GitHub repository opens in a window of its own, as its link would.
-  **Close Background Folders** at the foot of the chooser closes every folder no window
-  shows. Dragging the title still moves the window; a double-click on it opens the
-  chooser too, where the rest of the title bar zooms the window.
+  Choosing a folder or repository brings its window forward or opens a separate window
+  for it. A folder open in the background keeps its page and server when it gets a window
+  of its own. **Close Background Folders** at the foot of the chooser closes every folder
+  no window shows. Dragging the title still moves the window; a double-click on it opens
+  the chooser too, where the rest of the title bar zooms the window.
 - **Switching by keyboard:** View > Switch Folder… (Shift-Command-O) opens a panel over
   the window that lists the same folders, the one you looked at last first, so
   Shift-Command-O then Return goes back to it.

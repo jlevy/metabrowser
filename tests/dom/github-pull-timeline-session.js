@@ -656,6 +656,41 @@ async function run() {
       Date.now = wallClock;
     }
   }
+  // The end is wall-clock time, so a clock that steps back while the page waits would
+  // lengthen what is left by the step: the page waits no more than the server asked
+  // (review D4 of #737).
+  {
+    const wallClock = Date.now;
+    let now = wallClock();
+    Date.now = () => now;
+    try {
+      const stepped = mount(mountPullPage, fixture());
+      await stepped.handle.ready;
+      await settle();
+      stepped.handle.activate();
+      stepped.frame();
+      stepped.frame();
+      stepped.timelines[0].answer("unavailable", [], firstRevision, true, 60);
+      await settle();
+      assert.ok(stepped.hasTimer(60_000));
+      now -= 30_000;
+      stepped.timer(0);
+      await settle();
+      stepped.timer(SLOW_POLL_MS);
+      await settle();
+      stepped.frame();
+      await settle();
+      stepped.acknowledgeRefresh();
+      await settle();
+      stepped.frame();
+      await settle();
+      assert.equal(stepped.hasTimer(90_000), false, "the step does not lengthen the wait");
+      assert.ok(stepped.hasTimer(60_000), "the page waits what the server asked, no more");
+      stepped.handle.dispose();
+    } finally {
+      Date.now = wallClock;
+    }
+  }
 
   // Every review's heading is its author, "reviewed", and its age, and a chip after the age
   // only for a state the verb does not say (mb-novh): Approved, Changes requested, and
