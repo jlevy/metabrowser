@@ -7448,7 +7448,7 @@ export function mountPullPage(container, ctx, mb) {
       );
   }
 
-  /** What this history entry remembers of Changes, for a page first mounting a diff on it. */
+  /** What this history entry remembers of its diff, for a page first mounting one on it. */
   function entryMemory() {
     // The entry's memory is kept with its place: by a page in the pane that scrolls.
     return changesShown === null && pane !== null
@@ -7524,10 +7524,22 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /** What this entry's Changes shows, for a page loaded again on it (`rememberedChanges`). */
+  /** Whether the address is this page's entry on a tab that shows the diff (`diffTab`). */
+  function onDiffRoute() {
+    return (
+      onPageRoute(window.location.pathname, number, "files") ||
+      onPageRoute(window.location.pathname, number, "docs")
+    );
+  }
+
+  /**
+   * What this entry's diff shows, for a page loaded again on it (`rememberedChanges`).
+   * Changes and Docs draw one comparison and both follow a moved head, so an entry on
+   * either remembers it, the diff its note names, and the reader's choice (mb-mzcj).
+   */
   function rememberChanges() {
     // History can move on before this page is told, as for a place (`keepPlace`).
-    if (pane !== null && onPageRoute(window.location.pathname, number, "files")) {
+    if (pane !== null && onDiffRoute()) {
       window.history.replaceState(
         {
           ...window.history.state,
@@ -7851,7 +7863,7 @@ export function mountPullPage(container, ctx, mb) {
       showChanges(comparison, action === "follow");
     } else if (diffFor !== null && diffShows !== model.tab) {
       // Changes and Docs are two drawings of one comparison: moving between them draws it
-      // again, the record's as it is now, or an earlier one the reader chose (mb-n9ra).
+      // again, the record's as it is now, or an earlier one the reader chose (mb-825n).
       diffMounted = mountDiff(action === "offer" ? diffFor : comparison, model.tab);
     }
     if (action === "offer") {
@@ -8512,9 +8524,7 @@ export function mountPullPage(container, ctx, mb) {
       isOnline: () => navigator.onLine !== false,
       // A hold's lift time as the reader's clock says it, short (`holdLiftText`).
       formatHold: (liftMs, nowMs) => holdLiftText(liftMs, nowMs),
-      ownsChanges: () =>
-        onPageRoute(window.location.pathname, number, "files") ||
-        onPageRoute(window.location.pathname, number, "docs"),
+      ownsChanges: () => onDiffRoute(),
       ownsConversation: () =>
         active &&
         mb.sourceKind() === "filesystem" &&

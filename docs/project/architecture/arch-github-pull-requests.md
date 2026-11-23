@@ -592,7 +592,10 @@ The owner set this on 2026-11-22 (bead `mb-6a6w`), replacing the diff that staye
 **Show the newer changes**: with a visible page probed every few seconds, that offer
 appeared seconds after every push of a review.
 The served code follows the same head
-([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)).
+([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)). Docs
+draws the same comparison, its documents alone, through the same `paintFiles`: it
+follows and notes a moved head and keeps the reader’s place as Changes does, and its
+history entry remembers what it showed (bead `mb-mzcj`).
 
 - **The decision:** `filesAction` in `pull-page.js` answers `follow` for a mounted diff
   whose comparison is no longer the record’s. A refresh the reader asked for that finds
@@ -604,11 +607,14 @@ The served code follows the same head
   two immutable commits.
   That diff is the reader’s choice, so `filesAction` answers `offer` for it and it stays
   until **Show the newer changes**, also through a reload, since the history entry
-  remembers the choice (`chosenEarlier`); leaving Changes ends it.
+  remembers the choice (`chosenEarlier`). A move between Changes and Docs draws the diff
+  the reader chose, or else the record’s comparison as read now (bead `mb-825n`);
+  leaving both for another tab ends the choice, since that tab’s paint disposes the diff
+  and the next one mounts the record’s.
 - **Across a reload:** on a repository URL the page reloads when the served pin follows
   the head, because a page names its pin on every data request
-  ([Source Sessions and Pins](arch-source-sessions-and-pins.md)). So the history entry
-  remembers the comparison Changes last showed and the one its note named
+  ([Source Sessions and Pins](arch-source-sessions-and-pins.md)). So the history entry,
+  on Changes or Docs, remembers the comparison last shown and the one its note named
   (`rememberedChanges`), and whether the reader chose the earlier one, beside the
   reader’s place. A page loaded again on an entry that showed another comparison says so
   in the same line, and one whose reader chose the earlier diff shows it again with the
@@ -630,8 +636,9 @@ and the place; `tests/dom/github-pull-repair-lifecycle-behavior.js` and
 `tests/dom/github-pull-changes-follow-behavior.js` drives the join: a mounted page with
 a history entry, whose diff view answers `sectionForPath` and `pathForSection` from its
 own sections, follows a head, keeps the place through the emptied pane, and is mounted
-again on the entry; `tests/dom/diff-file-jump-session.js` pins the two accessors of the
-production diff view.
+again on the entry, on Changes and on Docs, and moves between the two;
+`tests/dom/diff-file-jump-session.js` pins the two accessors of the production diff
+view.
 
 ## Conversation Timeline
 

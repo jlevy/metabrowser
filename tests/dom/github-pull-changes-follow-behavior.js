@@ -1,5 +1,6 @@
 // Production page, mounted in a pane with a history entry: Changes follows a moved head,
-// and what joins that to the reader's place and to the entry's memory.
+// and what joins that to the reader's place and to the entry's memory, and Docs, which
+// draws the same comparison, does the same.
 //
 // The pure halves are in github-pull-page-session.js: `filesAction`, `followedNote`,
 // `rememberedChanges`, and the keeper on a stage of names. This is the join (A4 of review A
@@ -106,13 +107,15 @@ async function run() {
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
   );
   const mounted = [];
+  /** Each comparison a diff was drawn with, as the view was given it. */
+  const drawn = [];
   /** A gate the next render waits at, for a comparison that takes a while to read. */
   let gate = null;
-  const mount = (body, files = FILES) => {
+  const mount = (body, tab = "files") => {
     const container = new Element("main");
     const handle = page.mountPullPage(
       container,
-      { number: 7, tab: "files", reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
+      { number: 7, tab, reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
       {
         perf,
         ensureAsset: async () => {},
@@ -121,12 +124,13 @@ async function run() {
         getRegisteredView: () => ({
           render: async (host, options) => {
             mounted.push(options.comparison.right);
+            drawn.push(options.comparison);
             if (gate !== null) {
               await gate;
             }
             const sections = new Map();
             let top = HEADER;
-            for (const [name, height] of files[
+            for (const [name, height] of FILES[
               options.comparison.right === earlier ? "earlier" : "newer"
             ]) {
               const section = new Element("section");
@@ -374,6 +378,80 @@ async function run() {
   assert.equal(mounted.at(-1), earlier, "and Changes draws it again");
   assert.equal(entry().pullChanges.chosen, true, "the choice stays the reader's");
   handle.dispose();
+
+  // Where nothing was chosen, a move to Docs draws the record's comparison as it is now,
+  // not the one Changes mounted (C2 of review C on #745). The record is read again at the
+  // same commits after the pull request's head moved on, before its comparison was read:
+  // the diff is of a commit that is no longer the branch's tip, so it has no View on branch.
+  window.history.state = null;
+  pane.scrollTop = 0;
+  current = first;
+  ({ container, handle } = mount(first));
+  await painted(handle);
+  assert.deepEqual(drawn.at(-1).branch, { ref: "refs/pull/7/head" });
+  const draws = drawn.length;
+  const aheadOfDiff = structuredClone(first);
+  aheadOfDiff.record.pull.head.sha = NEWER;
+  aheadOfDiff.fetched_at = "2026-09-17T12:00:01Z";
+  current = aheadOfDiff;
+  fire("visibilitychange");
+  await settle();
+  await painted(handle);
+  assert.equal(drawn.length, draws, "Changes keeps the diff of the same commits");
+  window.location.pathname = "/pull/7/docs";
+  handle.setTab("docs");
+  await painted(handle);
+  assert.deepEqual(
+    [drawn.at(-1).right, drawn.at(-1).branch],
+    [earlier, null],
+    "Docs draws the record's comparison as it is now",
+  );
+  handle.dispose();
+
+  // Docs draws the same comparison and follows a moved head as Changes does, so its entry
+  // remembers what it shows as Changes's does (C1 of review C on #745): the reload a
+  // followed pin makes says the note and lands in the reader's file, and an earlier diff
+  // the reader chose there stays through a reload, with the newer offered.
+  window.history.state = null;
+  pane.scrollTop = 0;
+  current = first;
+  ({ container, handle } = mount(first, "docs"));
+  await painted(handle);
+  pane.events.get("wheel")();
+  pane.scrollTop = inEarlier;
+  scrolledAndStill();
+  assert.deepEqual(entry().pullPlace, inC);
+  assert.equal(entry().pullChanges?.shown.right, earlier, "Docs's entry remembers what it shows");
+  current = moved;
+  fire("visibilitychange");
+  await settle();
+  await painted(handle);
+  assert.equal(mounted.at(-1), NEWER, "Docs follows the newer head");
+  assert.equal(said(container, ".github-pull-followed"), note);
+  assert.equal(pane.scrollTop, inNewer, "in the reader's file");
+  handle.dispose();
+  pane.scrollTop = 0;
+  ({ container, handle } = mount(moved, "docs"));
+  await painted(handle);
+  assert.equal(said(container, ".github-pull-followed"), note, "a reloaded Docs says it too");
+  assert.equal(pane.scrollTop, inNewer, "and lands in the reader's file");
+  pane.events.get("wheel")();
+  container.querySelector(".github-pull-earlier").events.get("click")();
+  await painted(handle);
+  assert.equal(mounted.at(-1), earlier);
+  assert.deepEqual([entry().pullChanges.shown.right, entry().pullChanges.chosen], [earlier, true]);
+  handle.dispose();
+  pane.scrollTop = 0;
+  ({ container, handle } = mount(moved, "docs"));
+  await painted(handle);
+  assert.equal(mounted.at(-1), earlier, "a reloaded Docs keeps the diff the reader went back to");
+  assert.equal(said(container, ".github-pull-followed"), null);
+  assert.equal(
+    said(container, ".github-pull-newer-offer"),
+    "The pull request now ends at 9999999. Show the newer changes",
+  );
+  assert.equal(pane.scrollTop, inEarlier);
+  handle.dispose();
   assert.equal(resize.size, 0, "a disposed page left an observer");
   return {
     placeNamesItsFile: true,
@@ -385,6 +463,8 @@ async function run() {
     secondFollowDuringReadKeepsTheFile: true,
     followDuringReloadReadKeepsTheFile: true,
     wayBackDuringReadKeepsTheFile: true,
+    docsDrawsTheRecordsComparison: true,
+    docsRemembersWhatItShows: true,
   };
 }
 run()

@@ -274,13 +274,16 @@ missing or signed out, which waits for **Refresh**. The Pulls tab’s **Reload**
 a new check of the list.
 
 The page follows the pull request.
-When new commits are pushed, the conversation and checks update, and **Changes** shows
-the new head’s diff, with a line above it such as
+When new commits are pushed, the conversation and checks update, and **Changes** and
+**Docs** show the new head’s diff, with a line above it such as
 `The pull request’s head moved from 1a2b3c4 to 5d6e7f8.` You stay in the file you were
 reading, at the same place in it, when the new diff still has that file.
 **Show the earlier changes** on that line goes back to the diff you were reading, which
-then stays until you choose **Show the newer changes**. While the new commits are still
-being fetched, Changes says `New commits were pushed; updating.` over the diff it has.
+then stays, also when you move between Changes and Docs, until you choose **Show the
+newer changes** or leave both for another tab.
+The line and your choice outlast a reload of the page.
+While the new commits are still being fetched, both tabs say
+`New commits were pushed; updating.` over the diff they have.
 
 On a repository URL, code served on the pull request’s head follows it too, as a branch
 does, and the page reloads on the new head.
