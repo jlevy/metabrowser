@@ -3,14 +3,18 @@ type: is
 id: is-01m82kqa2v7tyt1xy7kxd0j129
 title: "Repository folder: list the origin's branches and tags from Metabrowser's own store beside the checkout, fetched as often as is useful; never fetch into the checkout"
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
+hold: null
+hold_until: null
 created_at: 2026-11-22T21:48:45.526Z
-updated_at: 2026-11-22T21:48:45.526Z
+updated_at: 2026-11-23T04:51:12.752Z
+started_at: 2026-11-23T04:51:12.749Z
 ---
 Owner, 2026-11-22: Metabrowser's own store should be fetched often, since fetching into it is safe to repeat, and "whenever possible, not out of date"; asked whether folder mode should also show origin branches fetched into that store: "Yes, plan it". This supersedes option (a) of mb-gkq1 for what the folder shows: Refresh in folder mode fetches Metabrowser's store, and still never the checkout.
 

@@ -5,7 +5,7 @@ title: "T5: File type chooser in the diff toolbar"
 kind: task
 status: open
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -14,9 +14,11 @@ dependencies:
     target: is-01m8399315x37fjk00trntbhq6
   - type: blocks
     target: is-01m83998g7gxxf0k2vh9qk14j9
+  - type: blocks
+    target: is-01m839z1p2d8zv8x6hjt31rh0w
 parent_id: is-01m83968ry3rs287s3mgg0r93y
 created_at: 2026-11-23T04:05:24.873Z
-updated_at: 2026-11-23T04:06:08.895Z
+updated_at: 2026-11-23T04:17:59.132Z
 ---
 In `renderDiffToolbar` (`builtin_plugins/diff/diff-view.js`), for a diff of more than
 one file, draw the File type menu with `filterControls.menuGroupHtml` (multi-select,
