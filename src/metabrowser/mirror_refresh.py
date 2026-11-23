@@ -27,6 +27,13 @@ refresh finds another process refreshing the store, a served mirror follows that
 and observes the store again once it ends. Switching the pin resolves a selection in
 the mirror, opens the new subject, and replaces the served one under a new generation.
 
+The two halves are two classes. :class:`StoreSession` is the store's: its fetch, its
+turn, its probe, its idle timer, and its last outcome, which read no served subject.
+:class:`MirrorSession` adds the pin served from the store. A folder's server keeps a
+store beside its checkout (``checkout_store.py``) with a session that owns only the
+revisions read from that store, so while the working tree is served it is the store's
+half alone.
+
 A mirror is fetched as often as it usefully can be, since a fetch into Metabrowser's own
 store is safe to repeat and spends no rate limit. A visible page on one of the origin's
 branches makes its own ask every :data:`STORE_PROBE_S` (:meth:`MirrorSession.page_ask`):
@@ -495,6 +502,15 @@ class LastOutcome(TypedDict):
     at: str
 
 
+class StoreFields(TypedDict):
+    """What a store's session says of the store alone (:meth:`StoreSession.store_fields`)."""
+
+    last_fetch_at: str | None
+    last_outcome: LastOutcome | None
+    refreshing: bool
+    refresh_quiet: bool
+
+
 type SelectionState = Literal["pending", "found", "not_found", "fetch_failed", "superseded"]
 
 
@@ -936,8 +952,23 @@ class RefreshCoordinator:
         self._jobs.clear()
 
 
-class MirrorSession:
-    """The served mirror, its refresh jobs, and what status reports about them."""
+class StoreSession:
+    """One store this server keeps fresh: its fetch, its turn, its probe, and its record.
+
+    The half of a served mirror that belongs to the store and not to what is served from
+    it: the single refresh job and whose turn it is at the store (:class:`StoreTurn`),
+    the probe of one of the origin's branches and the rules that hold it, the idle timer,
+    and the last outcome with the store's own record of its last fetch. It reads no
+    served subject, so a server can keep a store that serves nothing, as a folder's does
+    beside its checkout while the working tree is served.
+
+    :class:`MirrorSession` adds what is served from the store, through the hooks here:
+    :meth:`_observe_pin`, :meth:`_probed_branch`, :meth:`_observed_tip`,
+    :meth:`_fetch_asked`, :meth:`_after_fetch`, and :meth:`_beside_refreshing`.
+
+    *store_turn* is the turn this store's fetches take, when something else in the server
+    fetches into the same store and made it first; without one the session makes its own.
+    """
 
     def __init__(
         self,
@@ -946,49 +977,22 @@ class MirrorSession:
         *,
         window_s: float = FRESHNESS_WINDOW_S,
         follow_elsewhere: bool = False,
-        pending_selection: SelectionOpener | None = None,
-        fetch_on_miss: bool = False,
-        pull_requests: PullRequestSet | None = None,
+        store_turn: StoreTurn | None = None,
     ) -> None:
         self.mirror = mirror
-        self.pull_requests = pull_requests
-        # The attended pull request and its refresh; see :meth:`attend`.
-        self._pull_request: int | None = None
-        self.companion: CompanionRefresh | None = None
-        self._fetch_on_miss = fetch_on_miss
         self._coordinator = coordinator
         self._window_s = window_s
         self._follow_elsewhere = follow_elsewhere
-        self._pending_selection = pending_selection
-        self._selection_state: SelectionState | None = (
-            "pending" if pending_selection is not None else None
-        )
-        self._selection_href: str | None = None
-        # Fetches that ran to the end, and the outcome of the last refresh that ended.
-        self._fetches_ran = 0
-        self._last_fetch_outcome = "succeeded"
-        # Refresh jobs that have ended, and for each missing selection the count when it
-        # was found missing: a later count means a fetch ran since.
-        self._refreshes_ended = 0
-        self._misses: dict[tuple[str | None, str | None], _Miss] = {}
         self._recorded = RecordedFreshness(None, None, None, None)
         self._last_result: RefreshResult | None = None
         # The record as last observed when that result was set, to break a tie.
         self._recorded_with_result: RecordedFreshness | None = None
         self._last_success_at: str | None = None
-        self._tip: tuple[str, str | None] | None = None
         # Refs an overlay's sweep deleted and no fetch has named since. Absent from the
         # store by its own hand, not the origin's, so the status says nothing about them
         # until a fetch brings one back, which a pull request's own fetch does.
         self._swept: set[str] = set()
-        # The ref last served, kept while a commit pinned by ID is served under none.
-        self._last_ref: str | None = None
-        self._pin_lock = asyncio.Lock()
-        self._store_turn = StoreTurn()
-        # The keys of the pull-request jobs started, some of which may have ended.
-        self._pull_jobs: set[str] = set()
-        # The keys of background pull-request jobs not yet promoted; each removes its own.
-        self._background_pulls: set[str] = set()
+        self._store_turn = store_turn if store_turn is not None else StoreTurn()
         # Probes of the served branch at its origin (:meth:`page_ask`), on the monotonic
         # clock: the one running, when one last started, when one last failed, and the
         # origin's tip the last probe started a fetch for, and when.
@@ -1014,83 +1018,39 @@ class MirrorSession:
         # page's once a window, which status reports as ``refresh_quiet``.
         self._quiet_fetch = False
 
-    # ── The attended pull request ───────────────────────────────
+    # ── What a served pin adds ──────────────────────────────────
 
-    async def attend(self, number: int) -> None:
-        """Make pull request *number* the one this session attends to.
+    async def _observe_pin(self) -> None:
+        """Read again what is served from the store; a store that serves nothing reads nothing."""
 
-        Its refresh is what :meth:`is_stale`, :meth:`request_refresh`,
-        :meth:`request_commit_fetch`, and a pin the mirror lacks use, and status and
-        :meth:`_refs_to_keep` report its number.
-        """
+    def _probed_branch(self) -> str | None:
+        """The served ref that is one of the origin's branches and has been observed, or ``None``."""
 
-        companion = self.companion
-        if self.pull_requests is not None:
-            companion = await self.pull_requests.attend(number)
-        # Both at once, after the read: nothing sees one's number with another's staleness.
-        self._pull_request, self.companion = number, companion
+        return None
+
+    def _observed_tip(self) -> tuple[str, str | None] | None:
+        """The served ref and the commit it names in the store, as last observed."""
+
+        return None
+
+    def _fetch_asked(self, *, companion_stale: bool) -> None:
+        """A fetch of the store was started or joined on a request's account."""
+
+    async def _after_fetch(self, outcome: str) -> None:
+        """A refresh ended with *outcome*, this process's or one it followed."""
+
+    def _beside_refreshing(self) -> bool:
+        """Whether data served beside the store is refreshing, which is never quiet."""
+
+        return False
 
     # ── Observation ─────────────────────────────────────────────
 
     async def observe(self) -> None:
-        """Read the mirror's record and the pinned ref's tip again, and follow the ref.
-
-        A pin on a branch or tag (:func:`follows_moves`) whose ref a fetch moved, by a
-        push or a force-push, is replaced by the ref's new tip under a new generation, so
-        the server never serves a branch behind where the mirror has it. Any other pin
-        stays, and status reports the ref's new tip as ``latest``.
-        """
+        """Read the store's record again, and what is served from it (:meth:`_observe_pin`)."""
 
         self._recorded = await self.mirror.recorded_freshness()
-        await self._observe_tip()
-        await self._follow_ref()
-
-    async def _follow_ref(self) -> None:
-        # Under the pin lock, as a switch is: a reader's switch that ran meanwhile is the
-        # pin now, and this follows only the pin it finds.
-        async with self._pin_lock:
-            subject = _served_revision()
-            tip = self._tip
-            if (
-                subject is None
-                or not follows_moves(subject.ref)
-                or tip is None
-                or tip[0] != subject.ref
-                or tip[1] is None
-                or tip[1] == subject.commit_oid
-            ):
-                return
-            try:
-                moved = await self.mirror.open_selection(ref=subject.ref, oid=None)
-            except Exception:
-                # The pin stays, and status reports the tip as latest, where the page
-                # asks for the switch itself.
-                log.warning("could not follow the served ref to its new tip", exc_info=True)
-                return
-            if moved.ref != subject.ref or moved.commit_oid == subject.commit_oid:
-                await moved.aclose()
-                return
-            await replace_owned_subject(moved)
-            self._tip = (tip[0], moved.commit_oid)
-            if self._selection_state == "found":
-                # The URL's address was served on the commit before; a page that follows
-                # stays where its reader is rather than going back to it.
-                self._selection_state = "superseded"
-            log.info("followed %s to %s", subject.ref, moved.commit_oid)
-
-    async def _observe_tip(self) -> None:
-        # One observation or switch at a time: a refresh that ends while a switch is
-        # resolving observes the new pin's ref after it, never the old one over it.
-        async with self._pin_lock:
-            subject = _served_revision()
-            if subject is None or subject.ref is None:
-                self._tip = None
-                return
-            tip = await self.mirror.ref_tip(subject.ref)
-            if tip is not None:
-                self._swept.discard(subject.ref)
-            # A ref the store swept is unobserved, never reported as gone from the origin.
-            self._tip = None if tip is None and subject.ref in self._swept else (subject.ref, tip)
+        await self._observe_pin()
 
     def shallow(self) -> bool:
         """Whether the store had a shallow boundary when it was last observed."""
@@ -1106,13 +1066,19 @@ class MirrorSession:
         return max(recorded, self._last_success_at)
 
     def is_stale(self, now: datetime | None = None) -> bool:
-        """Whether the mirror, or the data served beside it, is older than the window."""
+        """Whether the store is older than the freshness window."""
 
-        moment_now = now or _now_utc()
-        return self._companion_stale(moment_now) or self._mirror_stale(moment_now)
+        return self._mirror_stale(now or _now_utc())
 
-    def _companion_stale(self, now: datetime) -> bool:
-        return self.companion is not None and self.companion.is_stale(now, window_s=self._window_s)
+    def store_fields(self) -> StoreFields:
+        """What status reports of the store alone, whatever is served: from memory."""
+
+        return {
+            "last_fetch_at": self.last_fetch_at(),
+            "last_outcome": self._last_outcome(),
+            "refreshing": self.refreshing(),
+            "refresh_quiet": self._refresh_quiet(),
+        }
 
     def _mirror_stale(self, now: datetime) -> bool:
         fetched = self.last_fetch_at()
@@ -1120,30 +1086,6 @@ class MirrorSession:
         if moment is None:
             return True
         return (now - moment).total_seconds() > self._window_s
-
-    def freshness_fields(self, subject: GitRevisionSubject) -> FreshnessFields:
-        """The freshness half of the status envelope, from memory alone."""
-
-        latest: str | None = None
-        on_origin: bool | None = None
-        if self._tip is not None and subject.ref is not None and self._tip[0] == subject.ref:
-            latest = self._tip[1]
-            on_origin = latest is not None
-        return {
-            "refreshable": True,
-            "follows": follows_moves(subject.ref),
-            "latest": latest,
-            "ref_on_origin": on_origin,
-            "last_fetch_at": self.last_fetch_at(),
-            "last_outcome": self._last_outcome(),
-            "refreshing": self.refreshing() or self.companion_refreshing(),
-            "refresh_quiet": self._refresh_quiet(),
-            "stale": self.is_stale(),
-            "probe_every_s": STORE_PROBE_S if probes_origin(subject.ref) else None,
-            "pull_request": self._pull_request,
-            "selection_state": self._selection_state,
-            "selection_href": self._selection_href if self._selection_state == "found" else None,
-        }
 
     def _refresh_quiet(self) -> bool:
         """Whether all that is refreshing is a fetch of the mirror that no reader asked for.
@@ -1153,7 +1095,7 @@ class MirrorSession:
         ends the quiet (:meth:`_join_running`) and starts its own job.
         """
 
-        return self._quiet_fetch and self.refreshing() and not self.companion_refreshing()
+        return self._quiet_fetch and self.refreshing() and not self._beside_refreshing()
 
     def refreshing(self) -> bool:
         """Whether this server is refreshing, or following another process's refresh."""
@@ -1201,26 +1143,6 @@ class MirrorSession:
     def _set_result(self, result: RefreshResult) -> None:
         self._last_result = result
         self._recorded_with_result = self._recorded
-
-    # ── Refresh ─────────────────────────────────────────────────
-
-    def request_refresh(self, *, for_selection: bool = False) -> RefreshStart:
-        """Start a background refresh of the mirror, or join the one running.
-
-        A URL selection still waiting, as after a fetch that failed, waits for this one.
-        The data served beside the mirror is refreshed as its own job when it is stale,
-        and in a server, when only it is stale, only it is refreshed, which a full queue
-        can refuse (``"too_many"``). *for_selection* is the fetch a pin the mirror lacks
-        waits for: the mirror's alone.
-        """
-
-        now = _now_utc()
-        companion_stale = not for_selection and self._companion_stale(now)
-        # Only a server skips a fresh mirror; a one-shot command asked for its refresh.
-        skip_mirror = self._fetch_on_miss and self._pending_selection is None
-        if companion_stale and skip_mirror and not self._mirror_stale(now):
-            return self.request_companion_refresh() or "joined"
-        return self._refresh_mirror(companion_stale=companion_stale)
 
     def _join_running(self, *, quiet: bool) -> None:
         """Make the mirror's fetch that is running, if one is, a request's own.
@@ -1295,10 +1217,7 @@ class MirrorSession:
             # Not quiet while a reader's request waits for the restart of a stopped idle
             # fetch: a page's ask handled first starts the fetch that request then joins.
             self._quiet_fetch = quiet and not self._restart_loud
-        if self._pending_selection is not None:
-            self._selection_state = "pending"
-        if companion_stale:
-            self.request_companion_refresh()
+        self._fetch_asked(companion_stale=companion_stale)
         return started
 
     # ── A visible page's own asks ───────────────────────────────
@@ -1322,12 +1241,8 @@ class MirrorSession:
         ask.
         """
 
-        subject = _served_revision()
-        if subject is None or not probes_origin(subject.ref):
-            return None
-        ref = subject.ref
-        assert ref is not None
-        if self._tip is None or self._tip[0] != ref:
+        ref = self._probed_branch()
+        if ref is None:
             return None
         if self.refreshing() or self._probe_running() or self._fetch_held(at):
             return None
@@ -1398,7 +1313,7 @@ class MirrorSession:
             self._probe_failed = _monotonic()
             return "failed"
         self._probe_failed = None
-        held = self._tip
+        held = self._observed_tip()
         if held is None or held[0] != ref:
             # The pin moved to another ref while the origin was asked.
             return "held"
@@ -1492,6 +1407,336 @@ class MirrorSession:
         self._quiet_fetch = True
         return self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
 
+    def background_store_turn(
+        self, preempt: Callable[[], object]
+    ) -> contextlib.AbstractAsyncContextManager[None]:
+        """The store's turn for background work outside a pull request's job, the
+        prefetch's fetch of many heads: it goes when no other job waits, and *preempt* is
+        called when one starts waiting (:class:`StoreTurn`)."""
+
+        return self._store_turn(lambda: False, background=lambda: True, preempt=preempt)
+
+    async def _refresh_job(self) -> None:
+        baseline: RecordedFreshness | None = None
+
+        def idle() -> bool:
+            return self._idle_fetch
+
+        try:
+            # The idle fetch is background work: it goes when nothing else waits at the
+            # store, holds no network slot, and is cancelled when a reader's job starts
+            # waiting. A reader's or a page's fetch goes first, as a page of code waits on it.
+            async with (
+                self._store_turn(
+                    lambda: not idle(),
+                    background=idle,
+                    preempt=partial(self._coordinator.cancel, self.mirror.key),
+                ),
+                contextlib.nullcontext() if idle() else self._coordinator.slot(),
+            ):
+                # The record just before this attempt, to tell whether another process's
+                # refresh this one may follow rewrote it. Read here so the job has its place
+                # in the queue from the moment it was asked for, and the record is not one
+                # from before a long wait.
+                if self._follow_elsewhere:
+                    baseline = await self._read_baseline()
+                result = await self.mirror.refresh()
+        except asyncio.CancelledError:
+            self._probe_fetched = None
+            if idle():
+                # Stopped to let a reader's job go, or by shutdown: nobody asked for it, so
+                # status reports no refresh of theirs as cancelled. A request that joined
+                # it since it was told to stop has its fetch started again
+                # (:meth:`_join_running`).
+                self._idle_fetch = False
+                self._idle_not_before = _monotonic() + self._window_s
+            else:
+                self._fetch_ended = _monotonic()
+                self._set_result(RefreshResult("cancelled", _utc_timestamp()))
+            raise
+        except Exception:
+            log.exception("refreshing the served mirror failed")
+            result = RefreshResult("failed", _utc_timestamp())
+        self._idle_fetch = False
+        self._fetch_ended = _monotonic()
+        self._fetch_failed = None if result.outcome in _UNHELD_OUTCOMES else self._fetch_ended
+        if result.outcome not in _FETCHED_OUTCOMES:
+            # The fetch a probe started did not run, so it holds no probe of that tip.
+            self._probe_fetched = None
+        self._swept.update(result.swept)
+        self._set_result(result)
+        if result.outcome in _FETCHED_OUTCOMES:
+            self._last_success_at = result.at
+        # Another process's refresh is the fetch a waiting selection needs; follow it.
+        following = result.outcome == "refreshing_elsewhere" and self._follow_elsewhere
+        if not following:
+            await self._after_fetch(result.outcome)
+        try:
+            await self.observe()
+        except Exception:
+            # The fetch already ended; only the report of it is behind.
+            log.warning("could not observe the mirror after a refresh", exc_info=True)
+        if following:
+            self._coordinator.start(
+                self._elsewhere_key, partial(self._follow, result, baseline), network=False
+            )
+
+    async def _read_baseline(self) -> RecordedFreshness | None:
+        try:
+            return await self.mirror.recorded_freshness()
+        except Exception:
+            log.debug("could not read the mirror's record before a refresh", exc_info=True)
+            return None
+
+    async def _follow(self, busy: RefreshResult, baseline: RecordedFreshness | None) -> None:
+        """Wait for another process's refresh to end, then observe the store again.
+
+        Without this, a server that found the store busy would report the old tip and
+        fetch time until its own next refresh. Once the other refresh has ended, *busy*
+        is no longer true, so it stops being this process's last outcome; the record
+        then reports what the other refresh wrote, or what was there before when it
+        wrote nothing.
+        """
+
+        waited = 0.0
+        ended = False
+        while waited < ELSEWHERE_WAIT_S:
+            await asyncio.sleep(ELSEWHERE_POLL_S)
+            waited += ELSEWHERE_POLL_S
+            if not await self.mirror.refresh_running_elsewhere():
+                ended = True
+                break
+        try:
+            await self.observe()
+        except Exception:
+            log.warning("could not observe the mirror after another refresh", exc_info=True)
+        await self._after_fetch(
+            followed_outcome(self._recorded, baseline=baseline, since=busy.at, ended=ended)
+        )
+        if ended and self._last_result is busy:
+            self._last_result = None
+
+
+class MirrorSession(StoreSession):
+    """The served mirror: a :class:`StoreSession` and the pin served from its store.
+
+    *owns* says which served revisions are this store's. A mirror's server serves nothing
+    else, so every revision is. A folder's server also serves its working tree and its
+    checkout's own revisions, which this session then leaves alone: it follows, probes,
+    and reports only a revision read from its own store.
+    """
+
+    def __init__(
+        self,
+        mirror: ServedMirror,
+        coordinator: RefreshCoordinator,
+        *,
+        window_s: float = FRESHNESS_WINDOW_S,
+        follow_elsewhere: bool = False,
+        pending_selection: SelectionOpener | None = None,
+        fetch_on_miss: bool = False,
+        pull_requests: PullRequestSet | None = None,
+        store_turn: StoreTurn | None = None,
+        owns: Callable[[GitRevisionSubject], bool] | None = None,
+    ) -> None:
+        super().__init__(
+            mirror,
+            coordinator,
+            window_s=window_s,
+            follow_elsewhere=follow_elsewhere,
+            store_turn=store_turn,
+        )
+        self._owns = owns
+        self.pull_requests = pull_requests
+        # The attended pull request and its refresh; see :meth:`attend`.
+        self._pull_request: int | None = None
+        self.companion: CompanionRefresh | None = None
+        self._fetch_on_miss = fetch_on_miss
+        self._pending_selection = pending_selection
+        self._selection_state: SelectionState | None = (
+            "pending" if pending_selection is not None else None
+        )
+        self._selection_href: str | None = None
+        # Fetches that ran to the end, and the outcome of the last refresh that ended.
+        self._fetches_ran = 0
+        self._last_fetch_outcome = "succeeded"
+        # Refresh jobs that have ended, and for each missing selection the count when it
+        # was found missing: a later count means a fetch ran since.
+        self._refreshes_ended = 0
+        self._misses: dict[tuple[str | None, str | None], _Miss] = {}
+        self._tip: tuple[str, str | None] | None = None
+        # The ref last served, kept while a commit pinned by ID is served under none.
+        self._last_ref: str | None = None
+        self._pin_lock = asyncio.Lock()
+        # The keys of the pull-request jobs started, some of which may have ended.
+        self._pull_jobs: set[str] = set()
+        # The keys of background pull-request jobs not yet promoted; each removes its own.
+        self._background_pulls: set[str] = set()
+
+    def owns(self, subject: GitRevisionSubject) -> bool:
+        """Whether *subject* is a revision read from this session's store."""
+
+        return self._owns is None or self._owns(subject)
+
+    def served(self) -> GitRevisionSubject | None:
+        """The revision served from this session's store now, or ``None``."""
+
+        subject = _served_revision()
+        if subject is None or not self.owns(subject):
+            return None
+        return subject
+
+    # ── The attended pull request ───────────────────────────────
+
+    async def attend(self, number: int) -> None:
+        """Make pull request *number* the one this session attends to.
+
+        Its refresh is what :meth:`is_stale`, :meth:`request_refresh`,
+        :meth:`request_commit_fetch`, and a pin the mirror lacks use, and status and
+        :meth:`_refs_to_keep` report its number.
+        """
+
+        companion = self.companion
+        if self.pull_requests is not None:
+            companion = await self.pull_requests.attend(number)
+        # Both at once, after the read: nothing sees one's number with another's staleness.
+        self._pull_request, self.companion = number, companion
+
+    # ── Observation ─────────────────────────────────────────────
+
+    async def _observe_pin(self) -> None:
+        """Read the pinned ref's tip again, and follow the ref.
+
+        A pin on a branch or tag (:func:`follows_moves`) whose ref a fetch moved, by a
+        push or a force-push, is replaced by the ref's new tip under a new generation, so
+        the server never serves a branch behind where the mirror has it. Any other pin
+        stays, and status reports the ref's new tip as ``latest``.
+        """
+
+        await self._observe_tip()
+        await self._follow_ref()
+
+    def _probed_branch(self) -> str | None:
+        subject = self.served()
+        if subject is None or not probes_origin(subject.ref):
+            return None
+        ref = subject.ref
+        assert ref is not None
+        # Not before its tip in the mirror is observed.
+        return ref if self._tip is not None and self._tip[0] == ref else None
+
+    def _observed_tip(self) -> tuple[str, str | None] | None:
+        return self._tip
+
+    def _fetch_asked(self, *, companion_stale: bool) -> None:
+        if self._pending_selection is not None:
+            self._selection_state = "pending"
+        if companion_stale:
+            self.request_companion_refresh()
+
+    def _beside_refreshing(self) -> bool:
+        return self.companion_refreshing()
+
+    async def _follow_ref(self) -> None:
+        # Under the pin lock, as a switch is: a reader's switch that ran meanwhile is the
+        # pin now, and this follows only the pin it finds.
+        async with self._pin_lock:
+            subject = self.served()
+            tip = self._tip
+            if (
+                subject is None
+                or not follows_moves(subject.ref)
+                or tip is None
+                or tip[0] != subject.ref
+                or tip[1] is None
+                or tip[1] == subject.commit_oid
+            ):
+                return
+            try:
+                moved = await self.mirror.open_selection(ref=subject.ref, oid=None)
+            except Exception:
+                # The pin stays, and status reports the tip as latest, where the page
+                # asks for the switch itself.
+                log.warning("could not follow the served ref to its new tip", exc_info=True)
+                return
+            if moved.ref != subject.ref or moved.commit_oid == subject.commit_oid:
+                await moved.aclose()
+                return
+            await replace_owned_subject(moved)
+            self._tip = (tip[0], moved.commit_oid)
+            if self._selection_state == "found":
+                # The URL's address was served on the commit before; a page that follows
+                # stays where its reader is rather than going back to it.
+                self._selection_state = "superseded"
+            log.info("followed %s to %s", subject.ref, moved.commit_oid)
+
+    async def _observe_tip(self) -> None:
+        # One observation or switch at a time: a refresh that ends while a switch is
+        # resolving observes the new pin's ref after it, never the old one over it.
+        async with self._pin_lock:
+            subject = self.served()
+            if subject is None or subject.ref is None:
+                self._tip = None
+                return
+            tip = await self.mirror.ref_tip(subject.ref)
+            if tip is not None:
+                self._swept.discard(subject.ref)
+            # A ref the store swept is unobserved, never reported as gone from the origin.
+            self._tip = None if tip is None and subject.ref in self._swept else (subject.ref, tip)
+
+    def is_stale(self, now: datetime | None = None) -> bool:
+        """Whether the mirror, or the data served beside it, is older than the window."""
+
+        moment_now = now or _now_utc()
+        return self._companion_stale(moment_now) or self._mirror_stale(moment_now)
+
+    def _companion_stale(self, now: datetime) -> bool:
+        return self.companion is not None and self.companion.is_stale(now, window_s=self._window_s)
+
+    def freshness_fields(self, subject: GitRevisionSubject) -> FreshnessFields:
+        """The freshness half of the status envelope, from memory alone."""
+
+        latest: str | None = None
+        on_origin: bool | None = None
+        if self._tip is not None and subject.ref is not None and self._tip[0] == subject.ref:
+            latest = self._tip[1]
+            on_origin = latest is not None
+        return {
+            "refreshable": True,
+            "follows": follows_moves(subject.ref),
+            "latest": latest,
+            "ref_on_origin": on_origin,
+            "last_fetch_at": self.last_fetch_at(),
+            "last_outcome": self._last_outcome(),
+            "refreshing": self.refreshing() or self.companion_refreshing(),
+            "refresh_quiet": self._refresh_quiet(),
+            "stale": self.is_stale(),
+            "probe_every_s": STORE_PROBE_S if probes_origin(subject.ref) else None,
+            "pull_request": self._pull_request,
+            "selection_state": self._selection_state,
+            "selection_href": self._selection_href if self._selection_state == "found" else None,
+        }
+
+    # ── Refresh ─────────────────────────────────────────────────
+
+    def request_refresh(self, *, for_selection: bool = False) -> RefreshStart:
+        """Start a background refresh of the mirror, or join the one running.
+
+        A URL selection still waiting, as after a fetch that failed, waits for this one.
+        The data served beside the mirror is refreshed as its own job when it is stale,
+        and in a server, when only it is stale, only it is refreshed, which a full queue
+        can refuse (``"too_many"``). *for_selection* is the fetch a pin the mirror lacks
+        waits for: the mirror's alone.
+        """
+
+        now = _now_utc()
+        companion_stale = not for_selection and self._companion_stale(now)
+        # Only a server skips a fresh mirror; a one-shot command asked for its refresh.
+        skip_mirror = self._fetch_on_miss and self._pending_selection is None
+        if companion_stale and skip_mirror and not self._mirror_stale(now):
+            return self.request_companion_refresh() or "joined"
+        return self._refresh_mirror(companion_stale=companion_stale)
+
     def request_commit_fetch(self, *, retry: bool) -> CommitFetchAnswer:
         """Ask for the fetch a commit the mirror lacks waits for.
 
@@ -1577,15 +1822,6 @@ class MirrorSession:
         self._pull_jobs.add(key)
         self._coordinator.start(key, partial(self._pull_job, number), network=False)
 
-    def background_store_turn(
-        self, preempt: Callable[[], object]
-    ) -> contextlib.AbstractAsyncContextManager[None]:
-        """The store's turn for background work outside a pull request's job, the
-        prefetch's fetch of many heads: it goes when no other job waits, and *preempt* is
-        called when one starts waiting (:class:`StoreTurn`)."""
-
-        return self._store_turn(lambda: False, background=lambda: True, preempt=preempt)
-
     def pull_refreshing(self, number: int) -> bool:
         """Whether the refresh of pull request *number* is running, with no read."""
 
@@ -1628,71 +1864,6 @@ class MirrorSession:
         except Exception:
             log.warning("could not observe the mirror after a refresh", exc_info=True)
 
-    async def _refresh_job(self) -> None:
-        baseline: RecordedFreshness | None = None
-
-        def idle() -> bool:
-            return self._idle_fetch
-
-        try:
-            # The idle fetch is background work: it goes when nothing else waits at the
-            # store, holds no network slot, and is cancelled when a reader's job starts
-            # waiting. A reader's or a page's fetch goes first, as a page of code waits on it.
-            async with (
-                self._store_turn(
-                    lambda: not idle(),
-                    background=idle,
-                    preempt=partial(self._coordinator.cancel, self.mirror.key),
-                ),
-                contextlib.nullcontext() if idle() else self._coordinator.slot(),
-            ):
-                # The record just before this attempt, to tell whether another process's
-                # refresh this one may follow rewrote it. Read here so the job has its place
-                # in the queue from the moment it was asked for, and the record is not one
-                # from before a long wait.
-                if self._follow_elsewhere:
-                    baseline = await self._read_baseline()
-                result = await self.mirror.refresh()
-        except asyncio.CancelledError:
-            self._probe_fetched = None
-            if idle():
-                # Stopped to let a reader's job go, or by shutdown: nobody asked for it, so
-                # status reports no refresh of theirs as cancelled. A request that joined
-                # it since it was told to stop has its fetch started again
-                # (:meth:`_join_running`).
-                self._idle_fetch = False
-                self._idle_not_before = _monotonic() + self._window_s
-            else:
-                self._fetch_ended = _monotonic()
-                self._set_result(RefreshResult("cancelled", _utc_timestamp()))
-            raise
-        except Exception:
-            log.exception("refreshing the served mirror failed")
-            result = RefreshResult("failed", _utc_timestamp())
-        self._idle_fetch = False
-        self._fetch_ended = _monotonic()
-        self._fetch_failed = None if result.outcome in _UNHELD_OUTCOMES else self._fetch_ended
-        if result.outcome not in _FETCHED_OUTCOMES:
-            # The fetch a probe started did not run, so it holds no probe of that tip.
-            self._probe_fetched = None
-        self._swept.update(result.swept)
-        self._set_result(result)
-        if result.outcome in _FETCHED_OUTCOMES:
-            self._last_success_at = result.at
-        # Another process's refresh is the fetch a waiting selection needs; follow it.
-        following = result.outcome == "refreshing_elsewhere" and self._follow_elsewhere
-        if not following:
-            await self._after_fetch(result.outcome)
-        try:
-            await self.observe()
-        except Exception:
-            # The fetch already ended; only the report of it is behind.
-            log.warning("could not observe the mirror after a refresh", exc_info=True)
-        if following:
-            self._coordinator.start(
-                self._elsewhere_key, partial(self._follow, result, baseline), network=False
-            )
-
     async def _after_fetch(self, outcome: str) -> None:
         """Serve a waiting URL selection if the fetch brought it, and count the fetch.
 
@@ -1713,41 +1884,6 @@ class MirrorSession:
             self._fetches_ran += int(ran)
             self._last_fetch_outcome = outcome
             self._refreshes_ended += 1
-
-    async def _read_baseline(self) -> RecordedFreshness | None:
-        try:
-            return await self.mirror.recorded_freshness()
-        except Exception:
-            log.debug("could not read the mirror's record before a refresh", exc_info=True)
-            return None
-
-    async def _follow(self, busy: RefreshResult, baseline: RecordedFreshness | None) -> None:
-        """Wait for another process's refresh to end, then observe the store again.
-
-        Without this, a server that found the store busy would report the old tip and
-        fetch time until its own next refresh. Once the other refresh has ended, *busy*
-        is no longer true, so it stops being this process's last outcome; the record
-        then reports what the other refresh wrote, or what was there before when it
-        wrote nothing.
-        """
-
-        waited = 0.0
-        ended = False
-        while waited < ELSEWHERE_WAIT_S:
-            await asyncio.sleep(ELSEWHERE_POLL_S)
-            waited += ELSEWHERE_POLL_S
-            if not await self.mirror.refresh_running_elsewhere():
-                ended = True
-                break
-        try:
-            await self.observe()
-        except Exception:
-            log.warning("could not observe the mirror after another refresh", exc_info=True)
-        await self._after_fetch(
-            followed_outcome(self._recorded, baseline=baseline, since=busy.at, ended=ended)
-        )
-        if ended and self._last_result is busy:
-            self._last_result = None
 
     async def _open_pending_selection(self) -> None:
         """After the fetch a URL selection waited for: serve it, or say it is not there.
@@ -1815,7 +1951,7 @@ class MirrorSession:
                 # longer describes what the reader asked for.
                 self._pending_selection = None
                 self._selection_state = "superseded"
-            current = _served_revision()
+            current = self.served()
             if (
                 current is not None
                 and current.commit_oid == subject.commit_oid
@@ -1844,7 +1980,7 @@ class MirrorSession:
         request's head, GitHub's own ref for it.
         """
 
-        current = _served_revision()
+        current = self.served()
         if current is not None and current.ref is not None:
             self._last_ref = current.ref
         pull_head = (
@@ -2064,6 +2200,8 @@ __all__ = [
     "SelectionRefMovedError",
     "SelectionState",
     "ServedMirror",
+    "StoreFields",
+    "StoreSession",
     "StoreTurn",
     "drain_refreshes",
     "followed_outcome",
