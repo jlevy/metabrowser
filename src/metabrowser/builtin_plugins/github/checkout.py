@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, overload
 
 from metabrowser import event_log
-from metabrowser.builtin_plugins.github.gh_lists import PullDataError
+from metabrowser.builtin_plugins.github.gh_lists import PullDataError, PullDataState
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.mirror_refresh import MAX_PULL_JOBS, PullJobStart, StoreTurn, mirror_session
 from metabrowser.source import get_source_session
@@ -526,7 +526,10 @@ async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource
             repository.git_source, home=repository.home, checkout=repository.checkout_root
         )
     except CheckoutStoreError as exc:
-        raise PullDataError(exc.code, _ACQUISITION_FAILURE.get(exc.code, str(exc))) from exc
+        # A comparison has no state of its own for an acquisition that ran out its
+        # deadline, which core tells apart for its timer: it is the Git failure it was.
+        state: PullDataState = "git_failed" if exc.code == "timed_out" else exc.code
+        raise PullDataError(state, _ACQUISITION_FAILURE.get(state, str(exc))) from exc
 
 
 async def _keep_comparison_failure(
