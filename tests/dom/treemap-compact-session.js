@@ -737,6 +737,15 @@ async function main() {
   // the separators between its files, cleared, so no edge between them changes.
   page.pointAt("src/lib");
   steps.push({ step: "the pointer on the lib folder's header", pointer: pointer(page) });
+  // The same tree again under the still pointer lays the map out again and enters the
+  // same cell: its lift stays on the canvas that shows it, with no fade out and in.
+  const liftBefore = pointer(page).marks;
+  page.watch.apply({ index_status: "done", node: TREE });
+  assert.deepEqual(
+    pointer(page).marks,
+    liftBefore,
+    "a relayout keeps an unchanged lift where it is",
+  );
   page.viewport.dispatch("mouseleave");
   assert.equal(page.tooltip.anchor, null, "leaving the map puts the tooltip away");
   assert.equal(page.hover.current(), null, "and lets go of the cell's hover");

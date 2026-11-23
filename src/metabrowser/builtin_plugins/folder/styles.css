@@ -64,8 +64,10 @@
 }
 
 /* The map's layers (treemap-map.js, createTreemapMap): the paint canvas holds
-   every cell's fill and edge; the marks canvas copies of the marked cells'
-   pixels, lifted by the filter a marked cell always had; the hover anchor is a
+   every cell's fill and edge; the two marks canvases copies of the marked
+   cells' pixels, lifted by the filter a marked cell always had, one fading in as
+   the other fades out; the icons canvas the icons of the cells too small for
+   their names; the hover anchor is a
    transparent cell over the one under the pointer, which carries the shimmer
    under the labels, which are text alone; the focus proxy is the map's one
    focusable control.
@@ -264,10 +266,15 @@
 .tm-cell-title {
   display: flex;
   align-items: baseline;
-  /* Sized with the label, as its glyph is (labelIconGapPx, treemap-layout.js). */
-  gap: var(--tm-title-gap);
+  gap: 6px;
   max-width: 100%;
   min-width: 0;
+}
+
+/* A file's title gap is sized with its label, as its glyph is (labelIconGapPx,
+   treemap-layout.js); a folder's keeps 6px before its inline value. */
+.tm-file > .tm-cell-title {
+  gap: var(--tm-title-gap);
 }
 
 /* A file's icon sits on its name's line, its glyph and box sized to the name

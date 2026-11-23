@@ -51,7 +51,7 @@ import { applyMarkOps, iconList, markOps, paintCells, paintList } from "./treema
  * Chrome's time at every cap from 5,000 to 33,000 cells (medians 70 and 65 ms
  * at 25,000), so WebKit asks for no lower bound. That tree costs more a cell
  * than the one above, and the load leaves the two-frame budget unconfirmed in
- * either engine. A family hover's marks, at most one op a cell, took 1.2 to
+ * either engine. A family hover's marks, then at most one op a cell, took 1.2 to
  * 2.0 times Chrome's (14 and 8 ms at 25,000); most of WebKit's was the palette
  * key drawCellHover looked up for every cell on every hover, not the cell count.
  * With each extension's key looked up once a layout (cellPaletteKey), a run of
@@ -59,6 +59,9 @@ import { applyMarkOps, iconList, markOps, paintCells, paintList } from "./treema
  * hover's handler 3 ms in both engines, its frame work 0.81 to 0.85 times
  * Chrome's, the metric switch 1.01 to 1.21 times, and the layout at 25,000
  * cells 0.88 to 0.94 times (56 and 61 ms).
+ * A marked nested folder now adds a second op, the clear of its interior
+ * (markOps), so a hover makes at most a copy a cell and a clear a folder; that
+ * count has not been measured again in either engine.
  */
 export const PAINT_MAX_CELLS = 25_000;
 
@@ -256,8 +259,10 @@ export function inspectTreemap(viewport) {
  * Mount a treemap map on `viewport`, which the map fills with its layers.
  *
  * Layers, bottom to top (docs/design-system.md, "Folder Treemap"): the paint
- * canvas, every cell's fill and edge; the hover canvas, copies of the marked
- * cells' pixels under the lift filter; the hover anchor, a transparent cell
+ * canvas, every cell's fill and edge; two marks canvases, copies of the marked
+ * cells' pixels under the lift filter, one fading in as the other fades out; the
+ * icons canvas, the icons of the cells too small for their names; the hover anchor,
+ * a transparent cell
  * over the cell under the pointer, which carries the shimmer and anchors the
  * tooltip; the labels, text only; and the focus proxy, the one focusable control,
  * which the arrow keys move over every folder and file cell. The viewport takes
@@ -349,6 +354,9 @@ export function createTreemapMap(mb, palette, viewport, options) {
   let shownMarks = 0;
   /** @type {number[]} */
   let shownMarked = [];
+  /** The cells the canvas fading out marks, while it fades. */
+  /** @type {number[]} */
+  let fadingMarked = [];
   /** The hover the cell under the pointer entered, until the pointer leaves the cell. */
   /** @type {DistributionHoverTarget | null} */
   let cellHover = null;
@@ -924,6 +932,14 @@ export function createTreemapMap(mb, palette, viewport, options) {
       const svg = new win.XMLSerializer().serializeToString(glyph);
       image.addEventListener("load", () => {
         const ready = (/** @type {CanvasImageSource} */ bitmap) => {
+          // A sprite let go while it loaded (dropIconSprites) keeps nothing.
+          if (iconSprites.get(key) !== made || disposed) {
+            const made = /** @type {any} */ (bitmap);
+            if (made !== image && typeof made.close === "function") {
+              made.close();
+            }
+            return;
+          }
           made.bitmap = bitmap;
           scheduleIconPaint();
         };
@@ -994,6 +1010,15 @@ export function createTreemapMap(mb, palette, viewport, options) {
   // ---- Hover -----------------------------------------------------------------
 
   /**
+   * Whether two lists of cell indexes are the same, in the same order.
+   * @param {ReadonlyArray<number>} a
+   * @param {ReadonlyArray<number>} b
+   */
+  function sameIndexes(a, b) {
+    return a.length === b.length && a.every((index, i) => index === b[i]);
+  }
+
+  /**
    * Draw the hover on the map's cells: a legend entry's hover marks every cell of its
    * family, the files of its types and the folders it is the dominant type of, the cells
    * it colors, as `family`; a cell's own hover marks that cell as `self`. The legend
@@ -1029,10 +1054,11 @@ export function createTreemapMap(mb, palette, viewport, options) {
     // New marks go on the canvas not shown, which fades in as the shown one fades out;
     // no marks fade the shown one out where it is, so a pointer that leaves one cell
     // for the next, a leave and then an enter, fades the old lift out as the new one
-    // fades in.
-    const changed =
-      markedIndexes.length !== shownMarked.length ||
-      markedIndexes.some((index, i) => index !== shownMarked[i]);
+    // fades in. The marks the fading canvas held, entered again at once, as a relayout
+    // under a still pointer leaves its cell and enters it again, are shown again on
+    // that canvas, so the lift does not dip.
+    const changed = !sameIndexes(markedIndexes, shownMarked);
+    const previous = shownMarked;
     shownMarked = markedIndexes;
     if (!layers) {
       return;
@@ -1040,15 +1066,19 @@ export function createTreemapMap(mb, palette, viewport, options) {
     const front = layers.marks[shownMarks];
     if (markedIndexes.length === 0) {
       if (changed) {
+        fadingMarked = previous;
         front.classList.remove("tm-marks-shown");
         fadeOut(front);
       }
       return;
     }
-    if (!changed) {
+    if (!changed || sameIndexes(markedIndexes, fadingMarked)) {
+      fadingMarked = [];
       drawMarks(front);
+      front.classList.add("tm-marks-shown");
       return;
     }
+    fadingMarked = [];
     const back = layers.marks[1 - shownMarks];
     drawMarks(back);
     back.classList.add("tm-marks-shown");
@@ -1075,8 +1105,8 @@ export function createTreemapMap(mb, palette, viewport, options) {
 
   /**
    * Clear a marks canvas once it has faded out, so a hidden canvas holds no lift: at
-   * once where it does not fade (reduced motion), or when its fade ends, unless it
-   * was shown again first.
+   * once where it does not fade (reduced motion), or when its fade ends or is cut off,
+   * unless it was shown again first.
    * @param {HTMLCanvasElement} canvas
    */
   function fadeOut(canvas) {
@@ -1093,6 +1123,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
       return;
     }
     canvas.addEventListener("transitionend", clear, { once: true });
+    canvas.addEventListener("transitioncancel", clear, { once: true });
   }
   const unsubscribeCellHover = hover ? hover.subscribe(drawCellHover) : () => {};
 
