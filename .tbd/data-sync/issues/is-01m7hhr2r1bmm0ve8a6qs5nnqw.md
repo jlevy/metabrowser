@@ -5,7 +5,7 @@ title: "Release 0.13: make verify, opt-in tiers, installed-wheel checkpoint and 
 kind: task
 status: in_progress
 priority: 1
-version: 10
+version: 12
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45095985926
@@ -22,6 +22,9 @@ refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45111635471
     at: 2026-11-23T04:27:15.971Z
+  - kind: other
+    url: https://github.com/jlevy/metabrowser/actions/runs/45111575033
+    at: 2026-11-23T04:52:31.248Z
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -32,7 +35,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:08.288Z
-updated_at: 2026-11-23T04:29:48.013Z
+updated_at: 2026-11-23T04:52:31.251Z
 started_at: 2026-11-23T03:13:34.119Z
 ---
 
@@ -43,3 +46,5 @@ Current stabilization baseline: main ed952387f673f59d1c662f36125d6f1297c40518 in
 The previous main passed hosted CI. Its local make verify passed lint, types, parity and the app contract, then was stopped when the recorded source was superseded midway through the test tier. Treat the hosted runs as stabilization evidence. The complete local gate, opt-in tiers and release QA still belong to the final 0.13.0 commit, after the release prep and remaining cache decision. The arm64 release-variant DMG rehearsal passed on the earlier matching stabilization tree with an ad hoc signature. Production signing and clean-account checks remain open.
 
 CLI-first release kickoff: #727 includes the reviewed SDK 0.8 correction (mb-smxw) and is updated to main after #730, the live GitHub smoke test correction (mb-mvwg). The authoritative Files pin and repository-wide Commits HEAD remain separate. The prior opt-in run passed 70 checks and found that stale assertion; the corrected live case passed independently. The local distribution check passed on e2b69be74, including exact candidate wheel, source archive, isolated console scripts, packaged contracts, setup doctor and navigation API. The newer release draft changes only the live test, so the runtime artifacts and measurements remain representative. Run the complete gate against the exact new draft and again verify final main after the prep lands.
+
+The CLI baseline draft at 3d3533af3e4c73be92e3e4f1c12dacf54cc4fedf completed the full isolated Linux make verify, including lint and parity, 9,393 parallel tests, 66 serial plus 66 Chrome tests, all 133 golden files, dependency audits, distribution checks, and installed-wheel smoke. Runner log confirms the checkout SHA. Ordinary exact #727 CI also passed. This is the pre-font-fix baseline; verify the actual final release candidate separately.
