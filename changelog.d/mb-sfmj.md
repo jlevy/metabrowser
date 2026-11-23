@@ -1,1 +1,0 @@
-- Branch and tag chip chevrons fade in over a translucent backdrop.
