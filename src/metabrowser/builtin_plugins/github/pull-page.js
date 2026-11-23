@@ -5331,7 +5331,7 @@ export function mountPullPage(container, ctx, mb) {
    * source.
    *
    * The Markdown plugin owns the host for KPress's diagrams (markdown/diagrams.js) and
-   * exports it as `drawDiagrams`, which this plugin, declaring `requires = ["markdown"]`,
+   * exports it as `drawDiagrams`, which this plugin, declaring markdown in `requires`,
    * gets from `mb.plugins.load("markdown")` (docs/plugins.md, "Declared Dependencies"),
    * so it neither imports another plugin's files nor keeps a second copy of the adapter.
    * That plugin's static modules come with the first diagram, beside KPress's diagram

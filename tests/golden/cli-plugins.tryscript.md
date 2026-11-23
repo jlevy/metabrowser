@@ -45,7 +45,7 @@ structured     builtin  structured              table          3      parsed
 table          builtin  -                       -              0      tables,schema,rows,record,card
 text           builtin  -                       -              1      -
 unknown-jsonl  builtin  -                       agents         2      -
-? 0 
+? 0
 ```
 
 ## Test: --plugins --json
