@@ -10,8 +10,8 @@
 //   1. opens the chooser and reads the list: how many rows it says it has, the names
 //      drawn, the note, the list's and a row's height, and how many rows are drawn;
 //   2. scrolls the list to its middle and reads which row is under the list's center;
-//   3. focuses the first row and presses End, draws the Files toolbar again around the
-//      list, as a tally refresh does, and presses Home;
+//   3. focuses the first row, draws the Files toolbar again around the list, as a tally
+//      refresh does, and presses End; draws the toolbar again, and presses Home;
 //   4. moves focus down to row KEPT, scrolls the list far from it, and reads that it
 //      keeps focus, that Tab from the filter box reaches it, and that ArrowDown brings
 //      the next row into view;
@@ -182,6 +182,12 @@ async function press(key, code, keyCode) {
 }
 
 try {
+  // A reader's page is focused. A headless one is not until its first key, so it fires no
+  // focus events before then, and a redraw of the Files toolbar, which takes the selector
+  // out of the page and puts it back (`keepAcrossRefills`), would not know which control
+  // to give focus back to: one between step 3's focus and its first key puts focus in the
+  // filter box, and End moves nothing, as it did in the pulls session (mb-nbyu, mb-gsz5).
+  await chrome.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await chrome.send("Page.navigate", { url: `${server.base}/view/` });
   await chrome.waitFor(
     `${MOUNTED} && document.querySelectorAll("#tree-content .tree-item").length > 0`,
@@ -269,6 +275,10 @@ try {
     ${LIST}.scrollTop = 0;
     await ${FRAMES};
     ${LIST}.querySelector("button").focus();
+    // A redraw of the toolbar before the key, as the index's tallies arriving makes one,
+    // leaves focus on the row the key moves from.
+    renderNavFilterBar();
+    await ${FRAMES};
     return true;
   })()`);
   started = Date.now();

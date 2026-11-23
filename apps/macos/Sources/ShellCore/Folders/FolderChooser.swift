@@ -1,7 +1,7 @@
 import Foundation
 
-/// The rows of the title's folder chooser and of the Switch Folder panel, and what
-/// choosing each does. Both read this one model, so they never disagree.
+/// The shared rows and selection rules for the title's folder chooser and the
+/// Switch Folder panel.
 ///
 /// The chooser lists the open folders in the order they opened (`OpenFolders`), so a row
 /// stays where the hand expects it, then `metab`'s recent targets that are not open, in
@@ -141,8 +141,17 @@ public nonisolated enum FolderChooser {
         return others.map(row) + recentRows(recent, excluding: Set(open.map(\.key)), home: home) + here.map(row)
     }
 
-    /// What choosing `target` does, in a new window when `newWindow`: the chooser's
-    /// Option alternates, and the panel's Option-Return.
+    /// The title menu raises an existing window or opens a separate one for the target.
+    public static func menuAction(for target: Target) -> Action {
+        switch target {
+        case .open(_, .here): .nothing
+        case .open(let key, _): .bringForward(key)
+        case .recent(let url): .openInNewWindow(url)
+        }
+    }
+
+    /// The Switch Folder panel replaces the current folder when it can, and opens a new
+    /// window on Option-Return.
     public static func action(for target: Target, newWindow: Bool) -> Action {
         switch (target, newWindow) {
         case (.open(let key, _), true): .newWindow(key)

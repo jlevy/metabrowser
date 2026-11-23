@@ -947,7 +947,16 @@ def test_changes_follows_a_moved_head_in_the_readers_file_and_entry() -> None:
     (A5), and a file the newer diff lacks lands on a block's top (A8). While a followed diff
     is read, what replaces it keeps the place already kept: a second push, a push on a page
     loaded again on its entry, and **Show the earlier changes** pressed over the read (B1 of
-    review B).
+    review B). A move to Docs draws the record's comparison as read now where nothing was
+    chosen (C2 of review C), and Docs's entry remembers what it shows as Changes's does, so
+    its note and the reader's choice outlast a reload (C1). Through the production page
+    host, a walk of the Pulls tab's files and a click on a file land the page on an entry
+    with no state, which the page writes its memory into, so the choice outlasts the next
+    reload (A1 of review A on #758); Back to an entry the page left gets what the diff
+    shows now, its note and choice included (B1 of review B). Both diff tabs say new
+    commits are on their way and
+    Conversation does not (A2), and Docs asks for a missing comparison by itself only at
+    its own address (A3).
     """
 
     assert run_session("github-pull-changes-follow-behavior.js") == {
@@ -960,6 +969,12 @@ def test_changes_follows_a_moved_head_in_the_readers_file_and_entry() -> None:
         "secondFollowDuringReadKeepsTheFile": True,
         "followDuringReloadReadKeepsTheFile": True,
         "wayBackDuringReadKeepsTheFile": True,
+        "docsDrawsTheRecordsComparison": True,
+        "docsRemembersWhatItShows": True,
+        "walkAndClickKeepTheChoice": True,
+        "backKeepsTheChoice": True,
+        "newCommitsOnBothDiffTabs": True,
+        "docsAsksForTheComparison": True,
     }
 
 

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The window each folder waiting for a runtime was asked to open in, so it still opens
-/// there once one is found. A recent folder chosen in a window's folder chooser shows in
+/// there once one is found. A recent folder chosen in the Switch Folder panel shows in
 /// that window, and a choice made while `metab` is checked again, as it is after every
 /// upgrade, waits like any other request (`RuntimeSelection.setupForOpening`); without
 /// its window it would open in a new one.
