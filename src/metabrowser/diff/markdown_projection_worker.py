@@ -228,10 +228,11 @@ _START_COOL_OFF_S = 10.0
 # page's first renders. A document holds the child for one exchange and a restart, or,
 # when its first child ends before answering, for a second exchange on a fresh child too
 # (the retry in _render_flight): at most two deadlines and two starts. So a render
-# admitted behind a full queue of hostile documents waits at most seven of those, about
-# 90 s at the default (5 s deadlines, starts of up to 1.4 s measured under load), and
-# about 37 s when they only run long; past that the reader's reload is the better retry,
-# as pull_rendered_diff's _Slot reasons for diffs.
+# admitted behind a full queue of hostile documents waits at most seven of those: about
+# 90 s at the default with starts of 1.4 s (load average 16), about 165 s with the
+# 6.8 s starts measured at a load average near 370, and about 37 s when they only run
+# long. A start that hangs costs up to _START_WAIT_S instead. Past that the reader's
+# reload is the better retry, as pull_rendered_diff's _Slot reasons for diffs.
 _MAX_RENDERS: Final = 8
 # When the deadline fires, an answer the loop has already read, or reads in its next turn,
 # is taken, however late the deadline ran (review E of #527, E3). A deadline that fired
