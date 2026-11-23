@@ -127,7 +127,7 @@ async function run() {
             const sections = new Map();
             let top = HEADER;
             for (const [name, height] of files[
-              options.comparison.right === NEWER ? "newer" : "earlier"
+              options.comparison.right === earlier ? "earlier" : "newer"
             ]) {
               const section = new Element("section");
               section.setAttribute("class", "diff-file");
@@ -269,6 +269,100 @@ async function run() {
   await painted(handle);
   assert.equal(pane.scrollTop, HEADER + 310 + 500, "the top of the third file");
   handle.dispose();
+
+  // While a followed diff is read the body is emptied, with nothing in it to measure, so
+  // what replaces it then keeps the place already kept (B1 of review B on #745). A third
+  // head, laid out as the newer one, so c.py is a file further down again.
+  const NEWEST = "8".repeat(40);
+  const newest = structuredClone(moved);
+  newest.record.comparison.head = NEWEST;
+  newest.record.pull.head.sha = NEWEST;
+  newest.comparison_route = newest.comparison_route.replace(/right=[0-9a-f]+/, `right=${NEWEST}`);
+  newest.fetched_at = "2026-09-17T12:00:02Z";
+  const inEarlier = HEADER + 1000 + 120;
+  const inC = { block: 2, offset: 120, top: 1220, file: "c.py" };
+  /** The next renders wait until the answer is called, as a comparison read slowly does. */
+  const slowRead = () => {
+    let open;
+    gate = new Promise((resolve) => {
+      open = resolve;
+    });
+    return () => {
+      gate = null;
+      open();
+    };
+  };
+  /** A page on a new entry, the reader 120 px into c.py of the earlier diff. */
+  const readingC = async () => {
+    window.history.state = null;
+    pane.scrollTop = 0;
+    current = first;
+    const opened = mount(first);
+    await painted(opened.handle);
+    pane.events.get("wheel")();
+    pane.scrollTop = inEarlier;
+    scrolledAndStill();
+    assert.deepEqual(entry().pullPlace, inC);
+    return opened;
+  };
+  /** The head moves while the pane shows c.py, and Changes follows it into a slow read. */
+  const followedSlowly = async () => {
+    const read = slowRead();
+    current = moved;
+    fire("visibilitychange");
+    await settle();
+    assert.equal(mounted.at(-1), NEWER);
+    pane.scrollTop = 0;
+    scrolledAndStill();
+    return read;
+  };
+
+  // A second push read while the first followed diff is still read: Changes follows again,
+  // from the emptied body.
+  ({ container, handle } = await readingC());
+  release = await followedSlowly();
+  current = newest;
+  fire("visibilitychange");
+  await settle();
+  assert.equal(mounted.at(-1), NEWEST, "Changes follows the second push too");
+  assert.deepEqual(entry().pullPlace, inC, "a second follow during the read keeps the place");
+  release();
+  await painted(handle);
+  assert.equal(pane.scrollTop, inNewer, "and the newest diff lands in c.py");
+  handle.dispose();
+
+  // The same on a page loaded again on its entry, as a followed pin reloads it on a
+  // repository URL: a push read while its first diff is read keeps the place it landed on.
+  ({ container, handle } = await readingC());
+  handle.dispose();
+  pane.scrollTop = 0;
+  release = slowRead();
+  ({ container, handle } = mount(first));
+  await settle();
+  current = newest;
+  fire("visibilitychange");
+  await settle();
+  assert.equal(mounted.at(-1), NEWEST, "the reloaded page follows the push");
+  assert.deepEqual(entry().pullPlace, inC, "a follow during a reload's first read keeps it");
+  release();
+  await painted(handle);
+  assert.equal(pane.scrollTop, inNewer, "and the reloaded page lands in c.py");
+  handle.dispose();
+
+  // Show the earlier changes, painted over the emptied body, pressed during the read. The
+  // press ends the hold first, as any input in the pane does, so the place kept is the one
+  // the entry has.
+  ({ container, handle } = await readingC());
+  release = await followedSlowly();
+  assert.equal(said(container, ".github-pull-followed"), note, "the note is over the read");
+  pane.events.get("pointerdown")();
+  container.querySelector(".github-pull-earlier").events.get("click")();
+  assert.deepEqual(entry().pullPlace, inC, "the way back during the read keeps the place");
+  release();
+  await painted(handle);
+  assert.equal(mounted.at(-1), earlier);
+  assert.equal(pane.scrollTop, inEarlier, "and the earlier diff lands in c.py");
+  handle.dispose();
   assert.equal(resize.size, 0, "a disposed page left an observer");
   return {
     placeNamesItsFile: true,
@@ -277,6 +371,9 @@ async function run() {
     reloadSaysAndLands: true,
     choiceSurvivesReload: true,
     missingFileLandsOnABlockTop: true,
+    secondFollowDuringReadKeepsTheFile: true,
+    followDuringReloadReadKeepsTheFile: true,
+    wayBackDuringReadKeepsTheFile: true,
   };
 }
 run()

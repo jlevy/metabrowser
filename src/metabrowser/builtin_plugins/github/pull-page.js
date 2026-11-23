@@ -3488,6 +3488,25 @@ export function createScrollKeeper(deps) {
     }, LANDING_SETTLE_MS);
   }
 
+  /**
+   * Hold a place the page chose for the reader, as a landing's is held: where they were in a
+   * diff that Changes is about to replace. Written at once, so a reload lands there too, and
+   * put when the page next changes height, which is the new diff arriving: the page is asked
+   * for nothing now, while it still shows the diff being replaced, and a scroll before then,
+   * the emptied pane's clamp to its top, is the hold's and writes nothing.
+   *
+   * @param {PanePlace} place
+   */
+  function holdAt(place) {
+    if (disposed) {
+      return;
+    }
+    cancelWrite();
+    cancelSettle();
+    holding = place;
+    deps.write(place);
+  }
+
   return Object.freeze({
     /** History arrived at an entry, or the page opened on one. */
     land() {
@@ -3509,24 +3528,29 @@ export function createScrollKeeper(deps) {
         deps.toTop();
       }
     },
+    /** Hold a place the page chose for the reader (`holdAt`). */
+    holdAt,
     /**
-     * Hold a place the page chose for the reader, as a landing's is held: where they were in
-     * a diff that Changes is about to replace. Written at once, so a reload lands there
-     * too, and put when the page next changes height, which is the new diff arriving: the
-     * page is asked for nothing now, while it still shows the diff being replaced, and a
-     * scroll before then, the emptied pane's clamp to its top, is the hold's and writes
-     * nothing.
+     * Hold the reader's place through a diff's replacement, as `holdAt`: where they are now,
+     * or, when the page has nothing to measure (*measurable* false, as while the diff being
+     * replaced is itself still being read), the place held, else the one the entry has, which
+     * a landing there would hold. Measured then, the emptied page says only that the pane is
+     * at its top. A second follow during the read finds the place still held, and a press of
+     * a button over the read, the followed note's, finds it in the entry: the press ended
+     * the hold first, as any input in the pane does (B1 of review B on #745).
      *
-     * @param {PanePlace} place
+     * @param {boolean} measurable
      */
-    holdAt(place) {
+    holdThrough(measurable) {
       if (disposed) {
         return;
       }
-      cancelWrite();
-      cancelSettle();
-      holding = place;
-      deps.write(place);
+      if (measurable) {
+        holdAt(deps.measure());
+        return;
+      }
+      const kept = holding ?? deps.read();
+      holdAt(isPanePlace(kept) ? kept : deps.measure());
     },
     /** The page changed height. */
     contentChanged() {
@@ -7239,11 +7263,13 @@ export function mountPullPage(container, ctx, mb) {
    * has it. Held and written before the body is emptied: the pane then clamps to its top,
    * which arrives as a scroll, and with nothing held that top would be written as the
    * reader's place for as long as the next comparison takes to read, where the reload a
-   * followed pin makes would land on it (A3 of review A on #745).
+   * followed pin makes would land on it (A3 of review A on #745). While no diff is mounted,
+   * as while the one being replaced is still read, the body has nothing to measure, and the
+   * place is the one already kept (`holdThrough`).
    */
   function keepPlaceThrough() {
     if (place !== null) {
-      place.keeper.holdAt(place.measure());
+      place.keeper.holdThrough(diffHandle !== null);
       keptThrough = true;
     }
   }
