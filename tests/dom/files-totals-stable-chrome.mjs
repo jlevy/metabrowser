@@ -53,6 +53,9 @@
 // (styles.css, the rule after `.nav-filter-bar`). Its result is `failOpen`, apart from
 // the thirty.
 //
+// One load holds Source Sans until the first visible tree rows. Its fallback layout
+// stays in place after the slow font arrives.
+//
 // Each step writes `phase <name> <ms since start>` to stderr, so a slow run says where.
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -77,6 +80,7 @@ const ENTRY_AFTER_MS = 1500;
 const SERVING = /Serving .* at http:\/\/127\.0\.0\.1:(\d+)\/view\//;
 const TALLY = /\/api\/tree\?depth=0(&|$)/;
 const CONTROLS = /\/static\/filter-controls\.js(\?|$)/;
+const CHROME_SANS = /\/source-sans-3-latin-wght-normal\.woff2(\?|$)/;
 
 /** Start one server searching from port *at*, resolving once it says where it serves. */
 async function serve(root, at, dir) {
@@ -212,6 +216,8 @@ async function main() {
   });
   const results = [];
   /** @type {any[]} */
+  const lateFonts = [];
+  /** @type {any[]} */
   const failed = [];
   try {
     phase("chrome");
@@ -230,6 +236,9 @@ async function main() {
     let streamsReleased = true;
     // A load whose filter-controls.js fails, so the filter bar is never filled.
     let failControls = false;
+    let holdingSans = false;
+    /** @type {string | null} */
+    let heldSans = null;
     const releaseStreams = async () => {
       streamsReleased = true;
       for (const requestId of heldStreams.splice(0)) {
@@ -259,6 +268,11 @@ async function main() {
     browser.on("Fetch.requestPaused", async (params) => {
       try {
         const url = params.request.url;
+        if (holdingSans && CHROME_SANS.test(url)) {
+          holdingSans = false;
+          heldSans = params.requestId;
+          return;
+        }
         if (failControls && CONTROLS.test(url)) {
           await browser.send("Fetch.failRequest", {
             requestId: params.requestId,
@@ -318,10 +332,14 @@ async function main() {
       strip,
       early = false,
       failing = false,
+      lateFont = false,
       into = results,
     }) => {
       holdMs = slow ? SLOW_MS : 0;
       failControls = failing;
+      holdingSans = lateFont;
+      heldSans = null;
+      let releasedSans = false;
       answered = 0;
       provisional = early;
       tallies = 0;
@@ -347,6 +365,9 @@ async function main() {
       await browser.send("Fetch.enable", {
         patterns: [
           { urlPattern: "*/api/tree*", requestStage: "Request" },
+          ...(lateFont
+            ? [{ urlPattern: "*source-sans-3-latin-wght-normal.woff2*", requestStage: "Request" }]
+            : []),
           ...(strip
             ? [
                 { urlPattern: "*/view/*", requestStage: "Response", resourceType: "Document" },
@@ -367,6 +388,11 @@ async function main() {
         const now = await browser.evaluate(
           "({ now: performance.now(), painted: (window.__frames?.length ?? 0) > 0, last: window.__frames?.at(-1)?.at ?? null, held: window.__frames?.at(-1)?.ignoredLine === 'held' })",
         );
+        if (now.painted && heldSans !== null) {
+          await browser.send("Fetch.continueRequest", { requestId: heldSans });
+          heldSans = null;
+          releasedSans = true;
+        }
         // An unknown load's stream goes once first paint is recorded, so the root's
         // finished entry reaches the page after it, as its `fs.change` does from a server
         // still walking the root: an order, not a margin. A provisional load's goes on its
@@ -379,6 +405,7 @@ async function main() {
         if (
           answered > 0 &&
           streamsReleased &&
+          (!lateFont || releasedSans) &&
           now.last !== null &&
           !now.held &&
           now.now - now.last > QUIET_MS
@@ -389,9 +416,15 @@ async function main() {
       }
       await releaseStreams();
       await browser.send("Fetch.disable");
+      if (lateFont) {
+        await browser.evaluate(
+          "document.fonts.ready.then(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))",
+        );
+      }
       const page = await browser.evaluate(
         `({
           frames: window.__frames,
+          sansResponseEnd: performance.getEntriesByType("resource").find((entry) => entry.name.includes("source-sans-3-latin-wght-normal.woff2"))?.responseEnd ?? null,
           shifts: window.__shifts,
           treeAt: window.__treeAt ?? null,
           barPending: !!document.querySelector('#nav-filter-bar .tally-pending'),
@@ -423,6 +456,7 @@ async function main() {
         unknown: strip,
         provisional: early,
         settled,
+        fontArrivedAfterRows: releasedSans && first !== null && page.sansResponseEnd > first.at,
         inline: page.inline,
         paneWidth: page.paneWidth,
         scheme: page.scheme,
@@ -509,6 +543,16 @@ async function main() {
         early: true,
       });
     }
+    await load({
+      server: ignoring,
+      name: "ignored late font 300px dark",
+      theme: "dark",
+      width: 300,
+      slow: false,
+      strip: false,
+      lateFont: true,
+      into: lateFonts,
+    });
     // The hold's bound: with filter-controls.js failed the bar is never filled, and the
     // tree, held while the bar holds its placeholder, is shown at the bound (styles.css).
     await load({
@@ -527,7 +571,9 @@ async function main() {
     await wide.stop();
     await clean.stop();
   }
-  process.stdout.write(`${JSON.stringify({ results, failOpen: failed[0] ?? null })}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ results, lateFont: lateFonts[0] ?? null, failOpen: failed[0] ?? null })}\n`,
+  );
 }
 
 main().catch((error) => {

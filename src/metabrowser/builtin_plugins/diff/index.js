@@ -673,7 +673,7 @@ mb.registerView("diff", "diff", {
     const rendered =
       markdown !== null &&
       markdownViews !== null &&
-      files.some((file) => markdownViews.supportsRenderedChange(file));
+      files.some((file) => markdownViews.renderedFormat(file) !== null);
     ctx.onDocument?.(result.document);
     // A commit's page and a pull request's keep the Diff summary at their own top
     // (mb-pb35): a commit's asks for it there (`summaryHost`), and a pull request's draws it
