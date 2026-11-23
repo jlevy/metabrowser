@@ -180,8 +180,20 @@ function fileNode(name, pathStr, size, extras) {
   );
   check(
     "font sizes stay within the documented bounds",
-    tiny.labelPx === 11 && large.labelPx === 24 && tiny.valuePx === 10 && large.valuePx === 18,
+    tiny.labelPx === 9 && large.labelPx === 24 && tiny.valuePx === 9 && large.valuePx === 18,
     JSON.stringify({ tiny, large }),
+  );
+  // A folder's name is a heading over its files: it stops at the navigation's sizes, and
+  // its header strip with it, however large the folder.
+  const largeFolder = layout.cellTypography({ w: 900, h: 600 }, "dir");
+  const smallFolder = layout.cellTypography({ w: 40, h: 20 }, "dir");
+  check(
+    "a folder's label and value stop at the navigation's sizes",
+    largeFolder.labelPx === 13 &&
+      largeFolder.valuePx === 12 &&
+      largeFolder.headerPx === 20 &&
+      smallFolder.labelPx === tiny.labelPx,
+    JSON.stringify({ largeFolder, smallFolder }),
   );
   check(
     "a narrow sliver cannot claim large type from area alone",
@@ -393,7 +405,7 @@ function fileNode(name, pathStr, size, extras) {
   check("a nesting folder records the interior its children tile", interiors);
   // A folder the map would label is labelled, not framed: framing it hid the
   // names of folders that had room for them.
-  const labelMin = { w: 56, h: 16 };
+  const labelMin = { w: layout.LAYOUT_DEFAULTS.labelMinW, h: layout.LAYOUT_DEFAULTS.labelMinH };
   check(
     "only folders too small for a label are framed",
     framed.every((f) => f.w < labelMin.w || f.h < labelMin.h),

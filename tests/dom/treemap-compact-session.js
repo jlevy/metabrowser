@@ -215,6 +215,14 @@ const TREE = dir("src", "src", [
   file("README.md", "src/README.md", 2500, ".md"),
   file("cache.md", "src/cache.md", 9000, ".md", true),
 ]);
+// One large file and smaller ones, halving: the larger have room for their names, the
+// smaller for their icons alone, and the smallest for neither.
+const DWINDLING = dir("src", "src", [
+  file("main.py", "src/main.py", 64000, ".py"),
+  ...Array.from({ length: 10 }, (_, n) =>
+    file(`part${n}.md`, `src/part${n}.md`, Math.round(16000 / 2 ** n), ".md"),
+  ),
+]);
 const ONLY_IGNORED = dir("src", "src", [file("cache.md", "src/cache.md", 9000, ".md", true)]);
 const EMPTY = dir("src", "src", []);
 
@@ -314,11 +322,18 @@ async function main() {
     const mb = {
       escapeHtml: (value) =>
         String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;"),
-      fileTypeIcon: () => ({ svg: "", className: "" }),
+      fileTypeIcon: (name) => ({
+        svg: `<svg class="${name.split(".").pop()}"></svg>`,
+        className: "",
+      }),
       fileTypes: { distributionKeyForExtension: (ext) => EXTENSION_FAMILIES[ext] ?? "other" },
       formatFileCount: (count) => `${count} files`,
       formatSize: (bytes) => `${bytes} B`,
       formatTimestamp: () => "then",
+      formatAge: () => ({ label: "then", className: "age-old" }),
+      countClass: () => "",
+      sizeHtml: (bytes) => `<span class="size">${bytes} B</span>`,
+      icons: { folder: '<svg class="folder"></svg>' },
       navigation: { open: (...args) => navigation.push(args) },
       sourceKind: () => "filesystem",
       tooltip: {
@@ -463,6 +478,7 @@ async function main() {
     // A relayout keeps the labels it can and appends the new ones, so the layer's order is
     // not the layout's; each label is placed by its own box.
     const indexes = layer.children
+      .filter((element) => !element.className.split(" ").includes("tm-icon-cell"))
       .map((element) => {
         const index = Number(element.dataset.tmCell);
         const cell = map.cells[index];
@@ -475,6 +491,28 @@ async function main() {
       })
       .sort((a, b) => a - b);
     assert.deepEqual(indexes, map.labels, "the label layer holds the labels the map reports");
+    return indexes.map((index) => map.cells[index].path);
+  };
+
+  /** The cells too small for a label that show their icon alone, by path. */
+  const iconsOnly = (page) => {
+    const map = page.inspect();
+    const layer = page.viewport.find("tm-labels");
+    if (!map || !layer) {
+      return [];
+    }
+    const indexes = layer.children
+      .filter((element) => element.className.split(" ").includes("tm-icon-cell"))
+      .map((element) => {
+        const index = Number(element.dataset.tmCell);
+        const cell = map.cells[index];
+        assert.deepEqual(styleBox(element), cellBox(cell), `${cell.path}'s icon sits on its cell`);
+        assert.ok(element.innerHTML.includes("file-identity-icon"), "it holds the cell's icon");
+        assert.ok(!map.labels.includes(index), `${cell.path} has no label too`);
+        return index;
+      })
+      .sort((a, b) => a - b);
+    assert.deepEqual(indexes, map.icons, "the label layer holds the icons the map reports");
     return indexes.map((index) => map.cells[index].path);
   };
 
@@ -519,7 +557,10 @@ async function main() {
       shimmers: anchor.dataset.hovered === "self",
       tooltip:
         page.tooltip.anchor === anchor
-          ? page.tooltip.html.replace(/<br>/g, " / ").replace(/<[^>]*>/g, "")
+          ? page.tooltip.html
+              .replace(/<br>/g, " / ")
+              .replace(/<\/div><div/g, " / <div")
+              .replace(/<[^>]*>/g, "")
           : null,
       marked: map.marked.map((index) => map.cells[index].path),
       cursor: page.viewport.style.cursor,
@@ -769,6 +810,26 @@ async function main() {
   ignored.setControls({ metric: "size", includeIgnored: true });
   steps.push({ step: "Show ignored is turned on", ...summary(ignored) });
   ignored.handle.dispose();
+
+  // ── files too small for their names ───────────────────────────
+  const dwindling = mount();
+  dwindling.setControls({ metric: "size", includeIgnored: false });
+  dwindling.handle.follow(breakdownAnswer("done", DWINDLING));
+  dwindling.watch.apply({ index_status: "done", node: DWINDLING });
+  const shown = summary(dwindling);
+  const iconCells = iconsOnly(dwindling);
+  steps.push({
+    step: "files too small for their names show their icons, and the smallest neither",
+    cells: shown.cells,
+    labelled: shown.labelled,
+    iconsOnly: iconCells,
+    bare: shown.cells
+      .map((each) => each.split(" ")[1])
+      .filter(
+        (each) => each !== "src" && !shown.labelled.includes(each) && !iconCells.includes(each),
+      ),
+  });
+  dwindling.handle.dispose();
 
   // ── a box too small to draw in yet ────────────────────────────
   const narrow = mount({ width: 6 });

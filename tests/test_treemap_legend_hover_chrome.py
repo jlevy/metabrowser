@@ -195,6 +195,6 @@ def test_the_treemap_legend_hovers_its_familys_cells_in_chrome(
     assert anchor["scaleY"] == 1 and anchor["scaleX"] == 1, cell
     _entry_marked(cell, "the f1.py cell")
     assert sorted(cell["shimmer"]["on"]) == sorted(cell["marked"]), cell
-    assert cell["tooltip"] is not None and cell["tooltip"].startswith("f1.py 1 file · 3 B"), cell
+    assert cell["tooltip"] is not None and cell["tooltip"].startswith("f1.py 3 B modified "), cell
     assert cell["layout"] == rest["layout"], "the f1.py cell moved the view"
     _nothing(measured["cellLeft"], "off the cell")

@@ -25,6 +25,8 @@ The arrow keys move the one focus proxy along the folder and file cells in layou
 Enter opens the cell it is on, and Backspace, with no enclosing folder for the compact
 map, is not taken. A change of measure or of Show ignored lays the map out again, and a
 layout under a still pointer points at the cell now under it.
+A file too small for its name shows its icon alone when it is large enough, and the
+smallest show neither.
 A refresh that fails keeps the map; a first rollup that fails shows that the map is
 unavailable and recovers on Retry.
 The box is left out when the breakdown failed, the index stopped at its cap before
@@ -96,15 +98,15 @@ $ node tests/dom/treemap-compact-session.js
       "asked": true,
       "cells": [
         "dir src 600x218",
-        "dir src/lib 257x189",
-        "file src/cache.md 179x189",
-        "dir src/docs 161x131",
-        "file src/README.md 161x58",
-        "file src/lib/app.py 138x163",
-        "file src/lib/util.py 115x98",
-        "file src/lib/cli.py 115x65",
-        "file src/docs/guide.md 104x108",
-        "file src/docs/notes.md 52x108"
+        "dir src/lib 253x196",
+        "file src/cache.md 181x196",
+        "dir src/docs 161x135",
+        "file src/README.md 161x61",
+        "file src/lib/app.py 136x174",
+        "file src/lib/util.py 113x104",
+        "file src/lib/cli.py 113x70",
+        "file src/docs/guide.md 105x113",
+        "file src/docs/notes.md 52x113"
       ],
       "labelled": [
         "src",
@@ -138,7 +140,7 @@ $ node tests/dom/treemap-compact-session.js
         "on": "src/lib/app.py",
         "anchor": "tm-cell tm-hover-anchor tm-file",
         "shimmers": true,
-        "tooltip": "src/lib/app.py / 1 files · 6000 B / modified then",
+        "tooltip": "src/lib/app.py / 6000 B / modified then",
         "marked": [
           "src/lib/app.py"
         ],
@@ -151,7 +153,7 @@ $ node tests/dom/treemap-compact-session.js
         "on": "src/README.md",
         "anchor": "tm-cell tm-hover-anchor tm-file",
         "shimmers": true,
-        "tooltip": "src/README.md / 1 files · 2500 B / modified then",
+        "tooltip": "src/README.md / 2500 B / modified then",
         "marked": [
           "src/README.md"
         ],
@@ -251,7 +253,7 @@ $ node tests/dom/treemap-compact-session.js
         "on": "src/cache.md",
         "anchor": "tm-cell tm-hover-anchor tm-file",
         "shimmers": true,
-        "tooltip": "src/cache.md / 1 files · 9000 B / modified then / gitignored",
+        "tooltip": "src/cache.md / 9000 B / modified then / gitignored",
         "marked": [
           "src/cache.md"
         ],
@@ -261,7 +263,7 @@ $ node tests/dom/treemap-compact-session.js
         "on": "src/docs/guide.md",
         "anchor": "tm-cell tm-hover-anchor tm-file",
         "shimmers": true,
-        "tooltip": "src/docs/guide.md / 1 files · 3000 B / modified then",
+        "tooltip": "src/docs/guide.md / 3000 B / modified then",
         "marked": [
           "src/docs/guide.md"
         ],
@@ -273,15 +275,15 @@ $ node tests/dom/treemap-compact-session.js
       "asked": true,
       "cells": [
         "dir src 600x218",
-        "dir src/lib 266x189",
-        "dir src/docs 178x189",
-        "file src/README.md 151x94",
-        "file src/cache.md 151x95",
-        "file src/lib/app.py 87x163",
-        "file src/lib/cli.py 87x163",
-        "file src/lib/util.py 87x163",
-        "file src/docs/guide.md 87x164",
-        "file src/docs/notes.md 87x164"
+        "dir src/lib 264x196",
+        "dir src/docs 178x196",
+        "file src/README.md 154x98",
+        "file src/cache.md 154x98",
+        "file src/lib/app.py 173x87",
+        "file src/lib/cli.py 173x87",
+        "file src/lib/util.py 87x174",
+        "file src/docs/guide.md 174x87",
+        "file src/docs/notes.md 174x87"
       ],
       "labelled": [
         "src",
@@ -304,14 +306,14 @@ $ node tests/dom/treemap-compact-session.js
       "asked": true,
       "cells": [
         "dir src 600x218",
-        "dir src/lib 305x189",
-        "dir src/docs 204x189",
-        "file src/README.md 87x189",
-        "file src/lib/app.py 100x163",
-        "file src/lib/cli.py 100x163",
-        "file src/lib/util.py 100x163",
-        "file src/docs/guide.md 100x164",
-        "file src/docs/notes.md 100x164"
+        "dir src/lib 303x196",
+        "dir src/docs 204x196",
+        "file src/README.md 89x196",
+        "file src/lib/app.py 100x174",
+        "file src/lib/cli.py 100x174",
+        "file src/lib/util.py 100x174",
+        "file src/docs/guide.md 100x174",
+        "file src/docs/notes.md 100x174"
       ],
       "labelled": [
         "src",
@@ -337,14 +339,14 @@ $ node tests/dom/treemap-compact-session.js
       "asked": true,
       "cells": [
         "dir src 600x218",
-        "dir src/lib 305x189",
-        "dir src/docs 204x189",
-        "file src/README.md 87x189",
-        "file src/lib/app.py 100x163",
-        "file src/lib/cli.py 100x163",
-        "file src/lib/util.py 100x163",
-        "file src/docs/guide.md 100x164",
-        "file src/docs/notes.md 100x164"
+        "dir src/lib 303x196",
+        "dir src/docs 204x196",
+        "file src/README.md 89x196",
+        "file src/lib/app.py 100x174",
+        "file src/lib/cli.py 100x174",
+        "file src/lib/util.py 100x174",
+        "file src/docs/guide.md 100x174",
+        "file src/docs/notes.md 100x174"
       ],
       "labelled": [
         "src",
@@ -434,6 +436,41 @@ $ node tests/dom/treemap-compact-session.js
       "asked": true,
       "cells": [],
       "labelled": []
+    },
+    {
+      "step": "files too small for their names show their icons, and the smallest neither",
+      "cells": [
+        "dir src 600x218",
+        "file src/main.py 397x196",
+        "file src/part0.md 99x196",
+        "file src/part1.md 99x98",
+        "file src/part2.md 50x98",
+        "file src/part3.md 49x49",
+        "file src/part4.md 25x49",
+        "file src/part5.md 24x25",
+        "file src/part6.md 13x23",
+        "file src/part7.md 11x13",
+        "file src/part8.md 8x10",
+        "file src/part9.md 4x10"
+      ],
+      "labelled": [
+        "src",
+        "src/main.py",
+        "src/part0.md",
+        "src/part1.md",
+        "src/part2.md",
+        "src/part3.md"
+      ],
+      "iconsOnly": [
+        "src/part4.md",
+        "src/part5.md"
+      ],
+      "bare": [
+        "src/part6.md",
+        "src/part7.md",
+        "src/part8.md",
+        "src/part9.md"
+      ]
     },
     {
       "step": "the box is too narrow to draw in",

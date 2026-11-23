@@ -14,8 +14,10 @@ the Treemap tab and reads it at a wide and a narrow window. This holds that:
 - in the other theme the map paints every cell again, in that theme's fills;
 - no label passes its cell or the viewport's padding box;
 - the DOM stays small: one label per labelled cell, one focus proxy, no element per cell;
-- the pointer on a small unlabelled file hovers it, names it in the tooltip, and a click
-  opens it;
+- the pointer on a small unlabelled file hovers it, names it in the tooltip with its
+  icon, size, and age in the navigation's classes, and a click opens it;
+- measured by bytes, files too small for their names show their icons, inside their cells;
+- a name with no break in it wraps inside the tooltip;
 - the focus proxy is the one focusable element, named, and ArrowRight moves it.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``), and CI runs
@@ -38,8 +40,8 @@ from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_gro
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "treemap-containment-chrome.mjs"
-# A server start, one Chrome, two page loads, two switches to the Treemap tab, three
-# readings, a hover, a click, and a key: the Treemap legend's Chrome test's bound (set out
+# A server start, one Chrome, two page loads, two switches to the Treemap tab, five
+# readings, two hovers, a click, and a key: the Treemap legend's Chrome test's bound (set out
 # there) for one load and switch, and as much again for the second, each wait inside it
 # bounded at 30 s or less.
 SESSION_TIMEOUT_S = 150
@@ -70,9 +72,22 @@ def _tree(folder: Path, depth: int, seed: int) -> int:
     return written
 
 
+# A file whose name has nowhere a line may break, large enough for a cell
+# to point at, so its tooltip has a name to wrap.
+_LONG_NAME = "AFileNameWithNoBreak" * 6 + ".md"
+_SIZED = 8
+
+
 def _served_folder(root: Path) -> int:
     (root / ".git").mkdir(parents=True)
-    return sum(_tree(root / f"top{t}", _DEPTH, t + 1) for t in range(_TOP))
+    (root / "top0").mkdir(parents=True)
+    (root / "top0" / _LONG_NAME).write_bytes(b"x" * 60_000)
+    # Files a little larger than the tree's, which the wide window draws about 24 px on a
+    # side: past the icon's 16 px and short of a label's 40, so they show their icons.
+    (root / "sized").mkdir()
+    for n in range(_SIZED):
+        (root / "sized" / f"s{n}.py").write_bytes(b"x" * 20_000)
+    return 1 + _SIZED + sum(_tree(root / f"top{t}", _DEPTH, t + 1) for t in range(_TOP))
 
 
 def _free_port() -> int:
@@ -86,6 +101,8 @@ def _contained(reading: dict[str, Any], label: str, *, small: bool) -> None:
     assert reading["tiny"] >= (50 if small else 0), (label, reading)
     assert reading["deepest"] >= 3, (label, reading)
     assert reading["escapes"] == 0, (label, reading)
+    assert reading["iconElements"] == reading["icons"], (label, reading)
+    assert reading["iconEscapes"] == 0, (label, reading)
     assert reading["sampled"] >= 20, (label, reading)
     assert reading["wrongFill"] == 0, (label, reading)
     assert reading["distinct"] == reading["styles"] >= 2, (label, reading)
@@ -133,4 +150,11 @@ def test_treemap_paints_labels_and_answers_the_pointer_and_keys_in_chrome(
     assert measured["pointer"]["hovered"], measured["pointer"]
     assert measured["pointer"]["tooltip"], measured["pointer"]
     assert measured["pointer"]["opened"], measured["pointer"]
+    assert measured["pointer"]["parts"] == {"icon": True, "size": True, "age": True}, measured
+    by_bytes = measured["bytes"]
+    assert by_bytes["icons"] >= _SIZED, by_bytes
+    assert by_bytes["iconElements"] == by_bytes["icons"] and by_bytes["iconEscapes"] == 0, by_bytes
+    long_name = measured["longName"]
+    assert long_name["found"] and long_name["shown"], long_name
+    assert not long_name["overflows"] and long_name["lines"] >= 2, long_name
     assert measured["keyboard"] == {"focused": True, "moved": True, "named": True}, measured

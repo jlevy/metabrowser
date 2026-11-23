@@ -63,25 +63,43 @@ export const PAINT_MAX_CELLS = 25_000;
  */
 const MAX_BACKING_PIXELS = 4096 * 4096;
 
+/**
+ * A cell with no room for its label shows its icon when it is at least this
+ * size on both sides: the icon's box (--icon-box, static/styles.css), so the
+ * glyph sits inside the cell's edge. Laid out in Node on this repository at
+ * 1100 by 560 (2026-11-23, label bounds 40 by 13), that
+ * is 135 cells by bytes and none by file count; with its ignored files, 30.
+ */
+const ICON_CELL_MIN_PX = 16;
+
+/**
+ * A labelled file shows its icon before its name when its cell is this much
+ * wider than the label needs: the icon's box and the title's 6 px gap
+ * (.tm-cell-title, styles.css). Narrower, the name alone keeps the room.
+ */
+const LABEL_ICON_PX = 16 + 6;
+
+// The label bounds hold the smallest label, at labelMinPx (treemap-layout.js), inside
+// its cell. Measured in Chrome at 1400 by 900 on this repository (2026-11-23): a 9 px
+// label's title box is 10.8 px tall. A cell's box is 1 px smaller than its cell
+// (boxStyle), and its padding is 2px 5px in the full map, 1px 4px in the compact one
+// (styles.css), so the title fits below 14 px and 13 px. At 40 px and 32 px wide, 29 px
+// and 23 px of text show about five and four characters before the ellipsis.
 const SIZE_PRESETS = Object.freeze({
   full: Object.freeze({
     layout: Object.freeze({ maxCells: PAINT_MAX_CELLS }),
-    labelMinW: 56,
-    labelMinH: 16,
+    labelMinW: 40,
+    labelMinH: 14,
     values: true,
     restLabels: true,
   }),
   // The same cell cap: the smaller box already culls by geometry, and a
-  // lower cap only turned files that had room into remainder cells. A
-  // folder's label is smaller here, so the label bounds are lower.
-  // The compact cell's label is the full map's 12 px type with 1 px of padding
-  // (styles.css): measured in Chrome, its title box is 13.6 to 14.5 px tall and
-  // its ink ends inside 14 px, and 44 px leaves 36 px of text, about five
-  // characters before the ellipsis.
+  // lower cap only turned files that had room into remainder cells. The
+  // compact cell's padding is smaller, so its label bounds are lower.
   compact: Object.freeze({
     layout: Object.freeze({ maxCells: PAINT_MAX_CELLS }),
-    labelMinW: 44,
-    labelMinH: 14,
+    labelMinW: 32,
+    labelMinH: 13,
     values: false,
     restLabels: false,
   }),
@@ -204,6 +222,7 @@ export function withOuterBox(node) {
  * @property {ReadonlyArray<import("./treemap-paint.js").PaintRect>} paint
  * @property {number} empty  cells whose snapped rectangle is empty, painted nowhere
  * @property {ReadonlyArray<number>} labels  indexes of the labelled cells
+ * @property {ReadonlyArray<number>} icons  indexes of the cells that show their icon alone
  * @property {ReadonlyArray<number>} focusOrder  indexes the focus proxy walks
  * @property {number} focused  index of the cell the focus proxy is on, or -1
  * @property {number} hovered  index of the cell under the pointer, or -1
@@ -551,22 +570,42 @@ export function createTreemapMap(mb, palette, viewport, options) {
       !cell.nested;
     const inline =
       preset.values && showLabel && cell.nested && cell.kind === "dir" && cell.w >= 140;
-    return { showLabel, stacked, inline };
+    const icon = showLabel && cell.kind === "file" && cell.w >= preset.labelMinW + LABEL_ICON_PX;
+    // Too small for its name, a file or a solid folder shows its icon alone. A nested
+    // folder's children cover it, and a remainder has no one icon.
+    const iconOnly =
+      !showLabel &&
+      (cell.kind === "file" || (cell.kind === "dir" && !cell.nested)) &&
+      cell.w >= ICON_CELL_MIN_PX &&
+      cell.h >= ICON_CELL_MIN_PX;
+    return { showLabel, stacked, inline, icon, iconOnly };
+  }
+
+  /**
+   * A cell's icon as the navigation draws it: its file type's, or a folder's.
+   * @param {Record<string, any>} cell
+   * @param {string} [extraClass]
+   */
+  function cellIconHtml(cell, extraClass) {
+    const icon =
+      cell.kind === "dir" ? { svg: mb.icons.folder, className: "" } : mb.fileTypeIcon(cell.name);
+    if (!icon.svg) {
+      return "";
+    }
+    const cls = ["file-identity-icon", extraClass || "", icon.className].filter(Boolean).join(" ");
+    return `<span class="${mb.escapeHtml(cls)}" aria-hidden="true">${icon.svg}</span>`;
   }
 
   /**
    * A labelled cell's text, the markup the DOM cells drew inside themselves.
    * @param {Record<string, any>} cell
    * @param {TreemapState} state
-   * @param {{stacked: boolean, inline: boolean}} plan
+   * @param {{stacked: boolean, inline: boolean, icon: boolean}} plan
    */
   function labelInnerHtml(cell, state, plan) {
     const sub = cellValueText(cell, state);
     const visibleName = cell.kind === "dir" ? `${cell.name}/` : cell.name;
-    const fileIcon = cell.kind === "file" ? mb.fileTypeIcon(cell.name) : null;
-    const fileIconHtml = fileIcon?.svg
-      ? `<span class="file-identity-icon tm-cell-file-icon ${mb.escapeHtml(fileIcon.className)}" aria-hidden="true">${fileIcon.svg}</span>`
-      : "";
+    const fileIconHtml = plan.icon ? cellIconHtml(cell, "tm-cell-file-icon") : "";
     return `<span class="tm-cell-title">${fileIconHtml}<span class="tm-cell-label">${mb.escapeHtml(visibleName)}</span>${
       plan.inline ? `<span class="tm-cell-sub tm-cell-sub-inline">${mb.escapeHtml(sub)}</span>` : ""
     }</span>${plan.stacked ? `<span class="tm-cell-sub">${mb.escapeHtml(sub)}</span>` : ""}`;
@@ -614,6 +653,10 @@ export function createTreemapMap(mb, palette, viewport, options) {
     for (let i = 0; i < cells.length; i += 1) {
       const cell = cells[i];
       const plan = labelPlan(cell);
+      if (plan.iconOnly) {
+        reconcileIcon(cell, i, state, seen);
+        continue;
+      }
       if (!plan.showLabel) {
         continue;
       }
@@ -651,33 +694,87 @@ export function createTreemapMap(mb, palette, viewport, options) {
   }
 
   /**
+   * Keep, move, or add the icon a cell too small for its label shows, centered in it,
+   * in the label layer, keyed apart from a label of the same cell.
+   * @param {Record<string, any>} cell
+   * @param {number} index
+   * @param {TreemapState} state
+   * @param {Set<string>} seen
+   */
+  function reconcileIcon(cell, index, state, seen) {
+    const { labels, labelElements } = ensureLayers();
+    const key = `icon\u0000${cell.kind}\u0000${cell.path}`;
+    seen.add(key);
+    let element = labelElements.get(key);
+    if (!element) {
+      element = doc.createElement("div");
+      labels.appendChild(element);
+      labelElements.set(key, element);
+    }
+    const className = `tm-icon-cell${cell.gitignored && state.includeIgnored ? " tm-ignored" : ""}`;
+    if (element.className !== className) {
+      element.className = className;
+    }
+    const style = boxStyle(cell);
+    if (element.getAttribute("style") !== style) {
+      element.setAttribute("style", style);
+    }
+    const html = cellIconHtml(cell);
+    if (element.dataset.tmHtml !== html) {
+      element.innerHTML = html;
+      element.dataset.tmHtml = html;
+    }
+    element.dataset.tmCell = String(index);
+  }
+
+  /**
+   * The tooltip, in the navigation's terms (docs/design-system.md, "Folder Treemap"):
+   * the cell's icon and path, then its size and file count as the navigation's columns
+   * write them, in their hues, and its age with its freshness class.
    * @param {Record<string, any>} cell
    * @param {TreemapState} state
    * @returns {string}
    */
   function tooltipHtml(cell, state) {
-    const rows = [];
+    /** @param {number} n */
+    const count = (n) =>
+      `<span class="${`count ${mb.countClass(n)}`.trim()}">${mb.escapeHtml(mb.formatFileCount(n))}</span>`;
+    /** @param {string} html */
+    const detail = (html) => `<div class="tip-detail">${html}</div>`;
     if (cell.kind === "rest") {
-      rows.push(`<strong>${mb.formatFileCount(cell.files || 0)} in the remainder</strong>`);
-      rows.push(cellValueText(cell, state));
-    } else {
-      const pathLabel =
-        window.MetabrowserNavigationRoute?.displayPath?.(cell.path || "", mb.sourceKind()) ||
-        cell.path ||
-        cell.name;
-      rows.push(`<strong>${mb.escapeHtml(pathLabel)}</strong>`);
-      rows.push(`${mb.formatFileCount(cell.files || 0)} · ${mb.formatSize(cell.bytes || 0)}`);
-      if (typeof cell.mtime === "number" && cell.mtime > 0) {
-        rows.push(`modified ${mb.formatTimestamp(cell.mtime)}`);
-      }
-      if (cell.gitignored) {
-        rows.push("gitignored");
-      }
-      if (cell.state === "pending") {
-        rows.push("still scanning");
-      }
+      return (
+        `<div class="tip-name">${count(cell.files || 0)} in the remainder</div>` +
+        detail(state.metric === "files" ? count(cell.files || 0) : mb.sizeHtml(cell.bytes || 0))
+      );
     }
-    return rows.join("<br>");
+    const pathLabel =
+      window.MetabrowserNavigationRoute?.displayPath?.(cell.path || "", mb.sourceKind()) ||
+      cell.path ||
+      cell.name;
+    const rows = [
+      `<div class="tip-name tm-tip-name">${cellIconHtml(cell, "tm-tip-icon")}<span>${mb.escapeHtml(pathLabel)}</span></div>`,
+      detail(
+        cell.kind === "dir"
+          ? `${count(cell.files || 0)} · ${mb.sizeHtml(cell.bytes || 0)}`
+          : mb.sizeHtml(cell.bytes || 0),
+      ),
+    ];
+    const age =
+      typeof cell.mtime === "number" ? mb.formatAge(cell.mtime, { style: "relative" }) : null;
+    if (age?.label) {
+      rows.push(
+        detail(
+          `modified <span class="${mb.escapeHtml(age.className)}">${mb.escapeHtml(age.label)}</span>`,
+        ),
+      );
+    }
+    if (cell.gitignored) {
+      rows.push(detail("gitignored"));
+    }
+    if (cell.state === "pending") {
+      rows.push(detail("still scanning"));
+    }
+    return rows.join("");
   }
 
   /**
@@ -1116,6 +1213,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
       paint: paintRects,
       empty: emptyCells,
       labels: cells.flatMap((cell, i) => (labelPlan(cell).showLabel ? [i] : [])),
+      icons: cells.flatMap((cell, i) => (labelPlan(cell).iconOnly ? [i] : [])),
       focusOrder: actionableIndexes,
       focused: actionableIndexes[focusPos] ?? -1,
       hovered: hoveredIndex,

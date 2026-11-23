@@ -50,8 +50,8 @@ const LAYOUT_DEFAULTS = {
    * folder the map would label is never framed instead, which hid the names
    * of folders that had room for them.
    */
-  labelMinW: 56,
-  labelMinH: 16,
+  labelMinW: 40,
+  labelMinH: 14,
   /**
    * A folder with room for its label nests its children under the label
    * strip when it is at least this tall: the strip, the padding, and a row of
@@ -119,10 +119,22 @@ const LAYOUT_DEFAULTS = {
 };
 
 const TYPOGRAPHY_DEFAULTS = Object.freeze({
-  labelMinPx: 11,
+  /**
+   * The smallest label and value a cell draws, so a small cell still names
+   * itself; a cell too small even for these shows its icon (treemap-map.js).
+   */
+  labelMinPx: 9,
   labelMaxPx: 24,
-  valueMinPx: 10,
+  valueMinPx: 9,
   valueMaxPx: 18,
+  /**
+   * A folder's label and value stop growing at the navigation's sizes for a
+   * name and its size (--nav-font-size and --ui-small-font-size,
+   * static/styles.css): a folder's name is a heading over its files, and at
+   * a file's 24 px it outweighed the map. Its header strip stops with it.
+   */
+  folderLabelMaxPx: 13,
+  folderValueMaxPx: 12,
   /** Floor for the label strip derived by `cellTypography`; not a layout override. */
   headerMinPx: 16,
   basisMinPx: 24,
@@ -151,11 +163,12 @@ function clamp(value, min, max) {
  * prevents a wide sliver from receiving oversized text, while the
  * area term lets genuinely large cells grow smoothly. Values are
  * rounded only for stable inline CSS and remain continuous between
- * the documented bounds.
+ * the documented bounds. A folder's sizes stop at the folder caps.
  *
  * @param {{w: number, h: number}} rect
+ * @param {string} [kind]  the cell's kind; "dir" caps the sizes
  */
-function cellTypography(rect) {
+function cellTypography(rect, kind) {
   const width = Math.max(0, Number(rect.w) || 0);
   const height = Math.max(0, Number(rect.h) || 0);
   const shortSide = Math.min(width, height);
@@ -165,8 +178,15 @@ function cellTypography(rect) {
   const progress = clamp((basis - TYPOGRAPHY_DEFAULTS.basisMinPx) / span, 0, 1);
   /** @param {number} min @param {number} max */
   const interpolate = (min, max) => Number((min + (max - min) * progress).toFixed(2));
-  const labelPx = interpolate(TYPOGRAPHY_DEFAULTS.labelMinPx, TYPOGRAPHY_DEFAULTS.labelMaxPx);
-  const valuePx = interpolate(TYPOGRAPHY_DEFAULTS.valueMinPx, TYPOGRAPHY_DEFAULTS.valueMaxPx);
+  const folder = kind === "dir";
+  const labelPx = Math.min(
+    interpolate(TYPOGRAPHY_DEFAULTS.labelMinPx, TYPOGRAPHY_DEFAULTS.labelMaxPx),
+    folder ? TYPOGRAPHY_DEFAULTS.folderLabelMaxPx : Infinity,
+  );
+  const valuePx = Math.min(
+    interpolate(TYPOGRAPHY_DEFAULTS.valueMinPx, TYPOGRAPHY_DEFAULTS.valueMaxPx),
+    folder ? TYPOGRAPHY_DEFAULTS.folderValueMaxPx : Infinity,
+  );
   return Object.freeze({
     labelPx,
     valuePx,
@@ -412,9 +432,12 @@ function packLevel(items, rect, capacity, minPx) {
  * labelled, and most cells of a dense map are smaller.
  * @param {{w: number, h: number}} rect
  * @param {Record<string, any>} opts
+ * @param {string} [kind]
  */
-function typographyFor(rect, opts) {
-  return rect.w >= opts.labelMinW && rect.h >= opts.labelMinH ? cellTypography(rect) : NO_LABEL;
+function typographyFor(rect, opts, kind) {
+  return rect.w >= opts.labelMinW && rect.h >= opts.labelMinH
+    ? cellTypography(rect, kind)
+    : NO_LABEL;
 }
 
 /**
@@ -448,7 +471,7 @@ function nestGeometry(cell, depth, node, opts) {
     : Math.min(cell.w, cell.h) >= opts.frameNestMinPx
       ? Math.ceil(opts.padPx * opts.frameDecay ** depth)
       : 0;
-  const top = labelled ? cellTypography(cell).headerPx : inset;
+  const top = labelled ? cellTypography(cell, "dir").headerPx : inset;
   const inner = {
     x: cell.x + inset,
     y: cell.y + top,
@@ -747,7 +770,7 @@ function layoutPass(rootNode, viewport, opts, chrome, perValue) {
     const packed = packLevel(items, rect, capacity, opts.minCellPx);
     for (const p of packed.placed) {
       const node = p.item.node;
-      const typography = typographyFor(p, opts);
+      const typography = typographyFor(p, opts, p.item.node.type);
       const cell = {
         kind: node.type,
         name: node.name,

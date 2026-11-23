@@ -82,7 +82,7 @@ $ node tests/dom/treemap-legend-session.js
     ],
     "pointer": "cell docs/c.py",
     "shimmers": true,
-    "tooltip": "docs/c.py / 1 file · 300 B / modified 2023-11-14",
+    "tooltip": "docs/c.py / 300 B / modified 3y ago",
     "anchoredOn": "the anchor over docs/c.py"
   },
   "pointer moved within the c.py cell, over its label": {
@@ -94,7 +94,7 @@ $ node tests/dom/treemap-legend-session.js
     ],
     "pointer": "cell docs/c.py",
     "shimmers": true,
-    "tooltip": "docs/c.py / 1 file · 300 B / modified 2023-11-14",
+    "tooltip": "docs/c.py / 300 B / modified 3y ago",
     "anchoredOn": "the anchor over docs/c.py"
   },
   "left the map": {
@@ -126,7 +126,7 @@ $ node tests/dom/treemap-legend-session.js
     ],
     "pointer": "cell docs/build/d.py",
     "shimmers": true,
-    "tooltip": "docs/build/d.py / 1 file · 300 B / modified 2023-11-14 / gitignored",
+    "tooltip": "docs/build/d.py / 300 B / modified 3y ago / gitignored",
     "anchoredOn": "the anchor over docs/build/d.py"
   },
   "clicked the d.py cell, the build folder's frame, and the e.json cell": [
@@ -150,7 +150,7 @@ $ node tests/dom/treemap-legend-session.js
     ],
     "pointer": "cell docs/c.py",
     "shimmers": true,
-    "tooltip": "docs/c.py / 1 file · 300 B / modified 2023-11-14",
+    "tooltip": "docs/c.py / 300 B / modified 3y ago",
     "anchoredOn": "the anchor over docs/c.py"
   },
   "the folder's sums redrew the bars under the Python entry": {
@@ -205,7 +205,7 @@ $ node tests/dom/treemap-legend-session.js
     ],
     "pointer": "cell docs/e.json",
     "shimmers": true,
-    "tooltip": "docs/e.json / 1 file · 50 B / modified 2023-11-14",
+    "tooltip": "docs/e.json / 50 B / modified 3y ago",
     "anchoredOn": "the anchor over docs/e.json"
   },
   "the measure switched to Bytes under the still pointer": {
@@ -217,7 +217,7 @@ $ node tests/dom/treemap-legend-session.js
     ],
     "pointer": "cell docs/b.md",
     "shimmers": true,
-    "tooltip": "docs/b.md / 1 file · 100 B / modified 2023-11-14",
+    "tooltip": "docs/b.md / 100 B / modified 3y ago",
     "anchoredOn": "the anchor over docs/b.md"
   },
   "the measure switched back to Files under the still pointer": {
@@ -229,7 +229,7 @@ $ node tests/dom/treemap-legend-session.js
     ],
     "pointer": "cell docs/e.json",
     "shimmers": true,
-    "tooltip": "docs/e.json / 1 file · 50 B / modified 2023-11-14",
+    "tooltip": "docs/e.json / 50 B / modified 3y ago",
     "anchoredOn": "the anchor over docs/e.json"
   },
   "the keyboard on the focus proxy": {

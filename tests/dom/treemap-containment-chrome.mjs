@@ -111,6 +111,16 @@ const read = (selector) => `(async () => {
     const over = Math.max(past(box, own), past(box, inner));
     if (over > SLACK) escapes.push({ path: cell.path, over: Math.round(over * 100) / 100 });
   }
+  // A cell too small for its label shows its icon, an element per such cell, its glyph
+  // inside the cell.
+  const iconElements = [...viewport.querySelectorAll(".tm-icon-cell")];
+  let iconEscapes = 0;
+  for (const element of iconElements) {
+    const cell = map.cells[Number(element.dataset.tmCell)];
+    const glyph = element.querySelector("svg");
+    const own = { left: inner.left + cell.x, top: inner.top + cell.y, right: inner.left + cell.x + cell.w, bottom: inner.top + cell.y + cell.h };
+    if (!glyph || past(glyph.getBoundingClientRect(), own) > SLACK) iconEscapes += 1;
+  }
   // The paint canvas's pixel at each sampled cell's center, against the fill its probe
   // resolved, drawn once on a scratch canvas.
   const scratch = document.createElement("canvas");
@@ -168,6 +178,9 @@ const read = (selector) => `(async () => {
     tiny,
     deepest,
     labels: viewport.querySelectorAll(".tm-label-cell").length,
+    icons: map.icons.length,
+    iconElements: iconElements.length,
+    iconEscapes,
     escapes: escapes.length,
     sample: escapes.slice(0, 8),
     sampled,
@@ -263,6 +276,16 @@ try {
       () => false,
     ),
   };
+  // The tooltip in the navigation's terms: the file's icon by its path, its size in the
+  // size hue, and its age in its freshness class.
+  result.pointer.parts = await chrome.evaluate(`(() => {
+    const tip = document.querySelector(".custom-tooltip");
+    return {
+      icon: tip.querySelector(".tip-name .file-identity-icon svg") !== null,
+      size: tip.querySelector(".tip-detail .size") !== null,
+      age: [...tip.querySelectorAll(".tip-detail span")].some((s) => /^age-/.test(s.className)),
+    };
+  })()`);
   // A click opens it: the view navigates to the file.
   for (const type of ["mousePressed", "mouseReleased"]) {
     await chrome.send("Input.dispatchMouseEvent", {
@@ -288,6 +311,36 @@ try {
   await chrome.waitFor(`${TAB} !== null`, 30000);
   await chrome.evaluate(`${TAB}.click()`);
   await chrome.waitFor(drawn(FULL, 100), 30000);
+  // The file with a long name: its tooltip wraps the name inside its box.
+  const long = await chrome.evaluate(`(async () => {
+    const { inspectTreemap } = await import(${MAP_MODULE});
+    const viewport = document.querySelector(${JSON.stringify(FULL)});
+    const map = inspectTreemap(viewport);
+    const index = map.cells.findIndex((c) => c.kind === "file" && c.name.length > 100);
+    const cell = map.cells[index];
+    const rect = viewport.getBoundingClientRect();
+    return { index, path: cell?.path, x: rect.left + viewport.clientLeft + cell.x + cell.w / 2, y: rect.top + viewport.clientTop + cell.y + cell.h / 2 };
+  })()`);
+  await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: long.x, y: long.y });
+  const longNamed = `document.querySelector(".custom-tooltip.visible")?.textContent.includes(${JSON.stringify(long.path)}) === true`;
+  result.longName = {
+    found: long.index >= 0,
+    shown: await chrome.waitFor(longNamed, 10000).then(
+      () => true,
+      () => false,
+    ),
+    ...(await chrome.evaluate(`(() => {
+      const tip = document.querySelector(".custom-tooltip");
+      const box = tip.getBoundingClientRect();
+      const name = tip.querySelector(".tip-name");
+      return {
+        width: Math.round(box.width),
+        overflows: tip.scrollWidth > tip.clientWidth + 1 || name.getBoundingClientRect().right > box.right + 0.5,
+        lines: Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight)),
+      };
+    })()`)),
+  };
+  await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 0, y: 0 });
   // The keyboard: the focus proxy takes focus, and ArrowRight moves it to the next cell.
   result.keyboard = await chrome.evaluate(`(async () => {
     const { inspectTreemap } = await import(${MAP_MODULE});
@@ -313,6 +366,19 @@ try {
   });
   await chrome.evaluate(`new Promise((resolve) => setTimeout(resolve, 800))`);
   result.narrow = await chrome.evaluate(read(FULL));
+  // By bytes, at the wide window: files of different sizes, some too small for a label and
+  // large enough for an icon, which they show.
+  await chrome.send("Emulation.setDeviceMetricsOverride", {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await chrome.evaluate(
+    `[...document.querySelectorAll("#preview-pane .folder-rollup-controls button")].find((b) => b.textContent.trim() === "Bytes" && b.offsetParent !== null).click()`,
+  );
+  await chrome.evaluate(`new Promise((resolve) => setTimeout(resolve, 800))`);
+  result.bytes = await chrome.evaluate(read(FULL));
   phase("measured");
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {

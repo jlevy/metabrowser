@@ -4887,14 +4887,16 @@ Its layers, bottom to top:
 - **The marks canvas** holds copies of the marked cells’ pixels under the lift filter.
 - **The hover anchor** is a transparent cell over the cell under the pointer.
   It carries that cell’s shimmer and anchors its tooltip.
-- **The labels** are text alone, one element per labelled cell, positioned in the map’s
-  padding box.
+- **The labels** are one element per labelled cell, and one per cell that shows its icon
+  alone, positioned in the map’s padding box.
 - **The focus proxy** is the map’s one focusable control.
 
 The map lays out to its padding box, and a label lies inside its cell and the map’s
 border; `tests/test_treemap_containment_chrome.py` measures it, with the canvas’s fill
-at each cell. A cell too small for any text, a framed folder’s included, names itself in
-its tooltip.
+at each cell. A file or solid folder too small for its name shows its icon alone,
+centered, when the cell is at least `ICON_CELL_MIN_PX` (`treemap-map.js`) on each side;
+a smaller cell, or a framed or nested folder, shows nothing and names itself in its
+tooltip.
 
 The Files context above the map mounts the same reusable folder-rollup controls used by
 Overview. The metric control appears before Files and Ignored; the scope control appears
@@ -4981,10 +4983,14 @@ Cell typography grows continuously with usable rectangle geometry.
 The scale combines the short side with the square root of area, which lets a genuinely
 large box grow while preventing a long, thin sliver from claiming display type.
 Folder and file labels, and value labels, stay between the bounds in
-`TYPOGRAPHY_DEFAULTS` (`builtin_plugins/folder/treemap-layout.js`). Geometry-derived
-inline custom properties are allowed here because they encode layout data, just as
-inline bar widths encode percentages; theme colors still come only from tokens and
-shared utility classes.
+`TYPOGRAPHY_DEFAULTS` (`builtin_plugins/folder/treemap-layout.js`). A folder’s label and
+value stop at the navigation’s own sizes there, `folderLabelMaxPx` and
+`folderValueMaxPx`: a folder’s name heads the files drawn inside it, and display type
+over them competed with the files for attention.
+A file’s label keeps growing with its cell.
+Geometry-derived inline custom properties are allowed here because they encode layout
+data, just as inline bar widths encode percentages; theme colors still come only from
+tokens and shared utility classes.
 
 Large nested folders place their formatted aggregate value in the reserved header row.
 Non-nested cells place the value below the name when both lines fit.
@@ -4996,8 +5002,11 @@ allowed to overlap child cells.
 Visible folder labels end in `/`, while file labels carry the same file-identity icon as
 the navigation tree.
 The slash is a visual kind cue and is not added to the folder’s accessible name or path.
-The accessible name preserves the cell name, kind, and visible value; the tooltip
-retains the complete name, counts, bytes, and modification time.
+The accessible name preserves the cell name, kind, and visible value.
+The tooltip names the cell as the navigation does: its icon, its complete path, which
+wraps inside the tooltip however long, then a folder’s file count and size or a file’s
+size, and its age, through the navigation columns’ own formatters, hues, and freshness
+classes (`mb.formatFileCount` and `mb.countClass`, `mb.sizeHtml`, and `mb.formatAge`).
 
 Treemap navigation preserves the user’s spatial context.
 Activating a folder cell opens that folder with Treemap selected, and Backspace opens
@@ -5690,6 +5699,11 @@ size a side effect of a decision about chrome, so the next adjustment to small c
 text moves every tooltip with it.
 A tooltip is prose the reader has stopped to read.
 `devtools/check_tooltips.py` holds this alongside the rule above.
+
+**A tooltip’s text stays inside it.** A long path or file name has no space to break at,
+so every line of the tooltip may break anywhere (`.custom-tooltip` in `styles.css`), and
+a name breaks anywhere already (`.tip-name`). `tests/test_treemap_containment_chrome.py`
+holds it on a name with no break in it.
 
 KPress’s own tooltip inside an embedded document is not this tooltip and keeps its own
 ramp; see the note beside the radius bridge in `styles.css` for why the app flattens

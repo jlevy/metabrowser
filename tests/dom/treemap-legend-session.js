@@ -542,6 +542,10 @@ function ownPointOf(cells, index) {
       `${value.toLocaleString("en-US")} ${value === 1 ? "file" : "files"}`,
     formatSize: (value) => `${value.toLocaleString("en-US")} B`,
     formatTimestamp: () => "2023-11-14",
+    // The age the SDK's formatter gives the fixtures' 2023-11-14 timestamps, fixed so the
+    // session reads the same on any day.
+    formatAge: () => ({ label: "3y ago", className: "age-old" }),
+    icons: { folder: '<svg class="folder"></svg>' },
     navigation: {
       open: async (target, options) => {
         navigation.push(options ? [target.path, options.viewId] : [target.path]);
@@ -552,6 +556,7 @@ function ownPointOf(cells, index) {
       render = view.render;
     },
     sizeClass: () => "",
+    sizeHtml: (value) => `<span class="size">${value.toLocaleString("en-US")} B</span>`,
     sourceKind: () => "filesystem",
     tooltip: {
       hide(within) {
@@ -706,6 +711,7 @@ function ownPointOf(cells, index) {
           ? null
           : tooltip.html
               .replace(/<br>/g, " / ")
+              .replace(/<\/div><div/g, " / <div")
               .replace(/<[^>]*>/g, "")
               .trim(),
       anchoredOn: name(tooltip.anchor),
@@ -759,7 +765,7 @@ function ownPointOf(cells, index) {
       onCell.pointer === "cell docs/c.py" &&
       onCell.shimmers &&
       onCell.anchoredOn === "the anchor over docs/c.py" &&
-      onCell.tooltip.startsWith("docs/c.py / 1 file · 300 B"),
+      onCell.tooltip === "docs/c.py / 300 B / modified 3y ago",
     `the c.py cell: ${JSON.stringify(onCell)}`,
   );
   const python = map().cells[cellIndex("docs/c.py")];

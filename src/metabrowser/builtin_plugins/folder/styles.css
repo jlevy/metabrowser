@@ -264,6 +264,34 @@
   align-self: center;
 }
 
+/* A cell too small for its name shows its icon alone, centered in the cell
+   (ICON_CELL_MIN_PX, treemap-map.js), as the navigation draws it. */
+.tm-icon-cell {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* The tooltip's first line: the cell's icon, then its path, which wraps
+   (.tip-name) with the icon beside its first line. */
+.tm-tip-name {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.tm-tip-name > .tm-tip-icon {
+  margin-top: 2px;
+}
+
+.tm-tip-name > span:last-child {
+  min-width: 0;
+}
+
 .tm-cell-label {
   min-width: 0;
   font-size: var(--tm-label-size);
