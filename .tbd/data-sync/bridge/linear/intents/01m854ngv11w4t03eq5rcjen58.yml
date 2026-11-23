@@ -1,0 +1,17 @@
+created_at: 2026-11-23T21:23:21.570Z
+ops:
+  - bead_id: is-01m26hjjvhpcf49p2x1c3390kk
+    block: |-
+      ⟦tbd⟧
+      `mb-n9xg` · epic · open · P2
+      Spec: [plan-2026-09-10-functional-ui-cli-parity.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md)
+      Children: 12 (12 ready)
+      Bead: `tbd show mb-n9xg`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: b5547486-4b75-4916-b8ea-90d52974dfb2
+    kind: splice_description
+provider: linear
+run_id: 01m854ngv11w4t03eq5rcjen58
+type: in
