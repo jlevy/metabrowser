@@ -946,7 +946,7 @@ async def _start_refresh(
             # A visible page asks every ATTENDED_PROBE_S; most asks end here, in a free
             # conditional read that finds nothing new (:meth:`ServedPull.probe`).
             try:
-                await served.probe(held)
+                await served.probe(held, coordinator=host.coordinator)
             except TimeoutError:
                 return "not_due"
             due = served.automatic_due(pulls.utc_now())

@@ -35,6 +35,7 @@ import logging
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
@@ -47,10 +48,10 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullRequest,
     read_pull_record,
 )
-from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from metabrowser.builtin_plugins.github.pull_catalog import CatalogState
     from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreAttempt, CoreWindow
@@ -99,6 +100,26 @@ FULL_REFRESH_S: Final = 90.0
 # second; past this the request answers ``not_due`` and the probe ends on its own, so a
 # slow network never holds the page's request for gh's own 30 s deadline.
 PROBE_WAIT_S: Final = 3.0
+# Probes running at once in one server, across every pull request; an automatic ask past
+# it answers ``not_due`` and the page asks again at its next interval, so nothing queues.
+# Each probe is one ``gh`` process, three while checks settle (the pull, its check runs,
+# and its status), and one conditional ``gh api`` used 45 MB for 0.6 s (three runs,
+# 2026-11-22, load average 295). A probe is one pull request's, one at a time, so the
+# bound is on pull requests probed in the same second: a reader's visible pages, and a
+# script asking many cached numbers, which ran that many ``gh`` at once before this
+# (review K3 on #709). Four is more visible pull request pages than one server's reader
+# keeps in view, and holds the worst case to twelve processes and about 540 MB for under
+# a second, 180 MB when no checks settle. It is a cost argument, not a measured limit.
+MAX_PROBES_IN_FLIGHT: Final = 4
+# The probes running in this process, which is one server.
+_PROBES: set[asyncio.Future[None]] = set()
+
+
+def probes_in_flight() -> int:
+    """How many probes run now in this server, against :data:`MAX_PROBES_IN_FLIGHT`."""
+
+    return sum(not task.done() for task in _PROBES)
+
 
 # A measured selected-core path is about 1.7 s. This bounds only the POST's wait,
 # never the provider job; a late core remains available through the ordinary GET.
@@ -329,6 +350,12 @@ class ServedPull:
         return f"{_job_prefix(self.published)}:pull/{self.number}"
 
     @property
+    def probe_key(self) -> str:
+        """The coordinator's key for its probe, beside :attr:`key`, its refresh's."""
+
+        return f"{self.key}:probe"
+
+    @property
     def refreshing(self) -> bool:
         """Whether its refresh is running now, so its state is about to change."""
 
@@ -496,7 +523,8 @@ class ServedPull:
         Not while a refresh or another probe runs, while GitHub's limit holds, within a
         freshness window of a failed refresh or a failed probe (so a missing ``gh`` or a
         lost network is asked once a window, not every few seconds), nor within
-        :data:`PROBE_FLOOR_S` of the last probe, however many pages ask.
+        :data:`PROBE_FLOOR_S` of the last probe, however many pages ask, nor while
+        :data:`MAX_PROBES_IN_FLIGHT` probes of other pull requests run in this server.
         """
 
         window = timedelta(seconds=FRESHNESS_WINDOW_S)
@@ -511,20 +539,42 @@ class ServedPull:
                 self._probe_attempt is not None
                 and now - self._probe_attempt < timedelta(seconds=PROBE_FLOOR_S)
             )
+            or probes_in_flight() >= MAX_PROBES_IN_FLIGHT
         )
 
-    async def probe(self, record: PullRecord) -> None:
+    async def probe(
+        self, record: PullRecord, *, coordinator: RefreshCoordinator | None = None
+    ) -> None:
         """Probe *record*, the record held, when :meth:`probe_due` says one may start.
 
         Waits at most :data:`PROBE_WAIT_S` and then raises :class:`TimeoutError`, leaving
         the probe to end on its own; cancelling the wait never cancels the probe.
+
+        With *coordinator*, the server's, the probe is its job under :attr:`probe_key`, so
+        shutdown cancels it with every other job, which kills its ``gh``; it takes no
+        network slot and no turn at the store. A probe shutdown cancelled ends the wait
+        without an error: it found nothing, and nothing is due from it.
         """
 
         if self._probe_task is not None and not self._probe_task.done():
             raise AssertionError("probe_due holds a second probe while one runs")
-        task = asyncio.ensure_future(self._probe(record))
+        work: Callable[[], Awaitable[None]] = partial(self._probe, record)
+        task: asyncio.Future[None] | None = None
+        if coordinator is not None:
+            coordinator.start(self.probe_key, work, network=False)
+            task = coordinator.job(self.probe_key)
+        if task is None:
+            task = asyncio.ensure_future(work())
         self._probe_task = task
-        await asyncio.wait_for(asyncio.shield(task), PROBE_WAIT_S)
+        _PROBES.add(task)
+        task.add_done_callback(_PROBES.discard)
+        try:
+            await asyncio.wait_for(asyncio.shield(task), PROBE_WAIT_S)
+        except asyncio.CancelledError:
+            waiter = asyncio.current_task()
+            if not task.cancelled() or (waiter is not None and waiter.cancelling()):
+                # The wait was cancelled, as a request is; the probe goes on.
+                raise
 
     @property
     def probing(self) -> bool:
@@ -1046,12 +1096,14 @@ __all__ = [
     "CHECKS_PROBE_S",
     "FULL_REFRESH_S",
     "MAX_KEPT_PULLS",
+    "MAX_PROBES_IN_FLIGHT",
     "PROBE_WAIT_S",
     "PullRefreshOutcome",
     "ServedPull",
     "ServedPulls",
     "cached_comparison_record",
     "last_refresh",
+    "probes_in_flight",
     "record_revision",
     "served_pull",
     "written_without_store",

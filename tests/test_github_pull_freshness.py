@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh_budget, pulls
+from metabrowser.builtin_plugins.github import gh_budget, pulls, served_pull
 from metabrowser.builtin_plugins.github.pull_catalog import CatalogState
 from metabrowser.builtin_plugins.github.pull_freshness import (
     NO_CHECKS_GRACE_S,
@@ -37,7 +37,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
     ServedPull,
     ServedPulls,
 )
-from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
 
 SOURCE = "https://github.com/octo/demo"
 READER = "gh:octo-reader"
@@ -983,3 +983,83 @@ def test_a_rate_limit_hold_stops_the_read_of_a_change_a_probe_found_below_the_fl
     assert held.automatic_due(NOW) == "full"
     gh_budget.hold(_stamp(NOW + timedelta(minutes=10)), now=NOW)
     assert held.automatic_due(NOW) is None
+
+
+# ── Probes in flight ───────────────────────────────────────────
+
+
+def test_probes_in_flight_are_capped_across_pull_requests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """mb-et0k: each probe is a ``gh`` process, so a server runs a bounded number at once,
+    and a pull request past the bound is not due until one ends."""
+
+    record = _record(state="closed", fetched=NOW)
+    published = ListedRepository(home=tmp_path, slug="demo", owner="octo", repo="demo")
+    cap = served_pull.MAX_PROBES_IN_FLIGHT
+    running: list[int] = []
+    monkeypatch.setattr(pulls, "utc_now", lambda: NOW)
+
+    async def run() -> None:
+        release = asyncio.Event()
+
+        async def probe(*_args: object, **_kwargs: object) -> pulls.PullProbe:
+            running.append(1)
+            await release.wait()
+            return pulls.PullProbe("unchanged", {})
+
+        monkeypatch.setattr(pulls, "probe_pull_request", probe)
+        held = [
+            ServedPull(published=published, number=number, fetched_at=record.fetched_at)
+            for number in range(1, cap + 2)
+        ]
+        waits = [asyncio.ensure_future(pull.probe(record)) for pull in held[:cap]]
+        for _turn in range(3):
+            await asyncio.sleep(0)
+        assert served_pull.probes_in_flight() == cap == len(running)
+        extra = held[-1]
+        assert not extra.probe_due(NOW) and extra.automatic_due(NOW) is None
+        release.set()
+        await asyncio.gather(*waits)
+        assert served_pull.probes_in_flight() == 0
+        assert extra.automatic_due(NOW) == "probe"
+
+    asyncio.run(run())
+
+
+def test_a_probe_is_a_job_of_the_coordinator_so_shutdown_cancels_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """mb-et0k: nothing cancelled a running probe when the server shut down."""
+
+    record = _record(state="closed", fetched=NOW)
+    held = _held(record, tmp_path)
+    ended: list[str] = []
+    monkeypatch.setattr(pulls, "utc_now", lambda: NOW)
+
+    async def probe(*_args: object, **_kwargs: object) -> pulls.PullProbe:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            ended.append("cancelled")
+            raise
+        raise AssertionError("unreachable")
+
+    monkeypatch.setattr(pulls, "probe_pull_request", probe)
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator()
+        asking = asyncio.ensure_future(held.probe(record, coordinator=coordinator))
+        for _turn in range(3):
+            await asyncio.sleep(0)
+        assert held.probing and coordinator.running(held.probe_key)
+        assert served_pull.probes_in_flight() == 1
+        await coordinator.aclose()
+        assert ended == ["cancelled"]
+        assert not held.probing and served_pull.probes_in_flight() == 0
+        # The request that waited on it ends without an error of its own.
+        await asking
+
+    asyncio.run(run())
+    # A cancelled probe found nothing and failed nothing.
+    assert held.probed_at is None and held.probe_due(NOW + timedelta(seconds=ATTENDED_PROBE_S))

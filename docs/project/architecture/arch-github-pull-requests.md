@@ -238,6 +238,10 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   Settling checks a probe cannot see (`checks_probe_paths`) leave the record to the
   window, unvouched. However many pages ask, probes of one pull request are one at a time
   and `PROBE_FLOOR_S` apart, and a rate-limit hold stops them all.
+  A server runs at most `MAX_PROBES_IN_FLIGHT` at once across its pull requests, each a
+  `gh` process or three, and an ask past that answers `not_due`. A probe is a
+  coordinator job under the pull request’s key with `:probe`, taking no network slot and
+  no turn at the store, so shutdown cancels it.
 - **Below `BACKGROUND_FLOOR`:** probes go on, since a `304` is free, and a change one
   finds, or the catalog reports, still starts its read.
   The `FULL_REFRESH_S` read and an open record’s once-a-window checks read wait until

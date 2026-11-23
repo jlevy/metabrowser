@@ -444,7 +444,8 @@ account check and the bounds on probes.
   the `FULL_REFRESH_S` reads stop (bead `mb-qngw`).
 - [ ] The bound on paid probes (see [Budget](#budget)): a key’s probe interval doubles
   after consecutive `200`s that changed nothing (bead `mb-y7ut`).
-- [ ] A per-server cap on probes in flight (bead `mb-et0k`).
+- [x] A per-server cap on probes in flight, `MAX_PROBES_IN_FLIGHT` in `served_pull.py`,
+  and probes as coordinator jobs, which shutdown cancels (bead `mb-et0k`).
 
 ### Phase 2: Lists and Everything Else
 

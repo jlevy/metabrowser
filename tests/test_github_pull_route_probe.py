@@ -197,3 +197,14 @@ def test_below_the_floor_an_overdue_full_read_waits_while_probes_vouch_and_find_
     above = _Route(stand, monkeypatch)
     above.now += timedelta(seconds=FULL_REFRESH_S + 1)
     assert above.ask() == "started" and above.probes == []
+
+
+def test_an_automatic_ask_past_the_cap_on_probes_in_flight_answers_not_due(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """mb-et0k: the page asks again at its next interval; nothing queues."""
+
+    route = _Route(stand, monkeypatch)
+    monkeypatch.setattr(served_pull, "MAX_PROBES_IN_FLIGHT", 0)
+    assert route.ask() == "not_due"
+    assert route.probes == [] and route.started == []
