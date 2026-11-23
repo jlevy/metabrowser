@@ -3,10 +3,11 @@ type: is
 id: is-01m8397pq43tfbxt7vbn8hp2wv
 title: "T1: One file-type matcher shared by the Files tree and diff narrowing"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
+delegate: claude-code@spud10
 labels:
   - diff
 dependencies:
@@ -15,8 +16,11 @@ dependencies:
   - type: blocks
     target: is-01m83989qdepvtpwd91pqdr5er
 parent_id: is-01m83968ry3rs287s3mgg0r93y
+hold: null
+hold_until: null
 created_at: 2026-11-23T04:04:42.850Z
-updated_at: 2026-11-23T04:05:53.838Z
+updated_at: 2026-11-23T04:10:31.343Z
+started_at: 2026-11-23T04:10:31.314Z
 ---
 Move `_matches_types`, `_semantic_extension_tokens`, and the basename/tail-extension
 helpers they use out of `git/content_routes.py` into a shared module (beside
