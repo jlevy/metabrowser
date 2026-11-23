@@ -1107,9 +1107,12 @@ page builds a github.com URL itself.
 `PAGES` in that module is this table, and `tests/test_counterpart.py` holds the two
 together.
 
-Each counterpart is `https://github.com/<owner>/<repository>/` followed by the shape
-below. `<sha>` is the commit the page shows its content from: a pin’s, or, for the
-working tree, the newest commit origin has in `HEAD`’s history.
+Each counterpart starts with `https://github.com/<owner>/<repository>`. At the
+repository root, the default branch opens that URL and a named nondefault branch opens
+its branch tree.
+For a file or folder, `<ref>` is the branch or tag when the last fetched
+version has the path, and otherwise the commit.
+For a working tree, that commit is the newest one origin has in `HEAD`’s history.
 That is `HEAD`’s own commit once it is pushed, and before then its merge base with the
 upstream branch, or else with origin’s default branch.
 So neither unpushed commits nor a file’s local edits take a page’s button away: it links
@@ -1121,9 +1124,9 @@ Every page also has none when the served folder has no repository on github.com
 
 | Page | Counterpart | Other reasons it has none |
 | --- | --- | --- |
-| `/view/<path>` | `blob/<sha>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
-| `/view/<path>/` | `tree/<sha>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
-| `/view/` | `tree/<sha>/<served prefix>`, or `tree/<sha>` at the repository root | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/<path>` | `blob/<ref>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/<path>/` | `tree/<ref>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/` | `tree/<ref>/<served prefix>`, or repository URL or `tree/<name>` at the repository root | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
 | `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | `pull/<n>`, `pull/<n>/files`, `pull/<n>/checks` | None |
 | `/pull/<n>/files/<path>` | `pull/<n>/files#diff-<hash>` | None |
 | `/commit/<sha>` | `commit/<sha>` | `not_on_origin` |
@@ -2212,8 +2215,6 @@ A plugin reaches them as `metabrowser.changeSizeLine` and
   pull request’s page its row is as tall as the summary’s and holds the shell’s pending
   placeholder while the summary waits, so neither row moves the tabs, and it is one
   line, cut short at the row’s end in a narrow pane.
-  A Pulls row, which has room for no second line, ends its change line with the size
-  alone, “· 1.8 MB”, the patch’s size in its tooltip ([The Pulls Tab](#the-pulls-tab)).
 
 `tests/dom/git-panel-behavior.js` pins its words on a commit’s page and hover card,
 `tests/test_git_commit_summary_chrome.py` its ink and weight in both themes, and
@@ -2956,9 +2957,10 @@ opens the page and expands nothing
 there, or Space, Right, or Left on the item, keeps the row where it is, under the
 pointer or the focus, even above a row a reveal placed, whose place gives way to it.
 No row expands on its own: not when it opens, not when it is selected, and not on a
-key’s walk, so Up, Down, J, and K walk the pull requests and each row shows the size of
-its change. A walk or a reveal brings the whole item into view, its three lines and the
-focus ring round them, clear of the sticky filters, not only its link’s two lines.
+key’s walk, so Up, Down, J, and K walk the pull requests and each row shows its file
+statuses and line totals.
+A walk or a reveal brings the whole item into view, its three lines and the focus ring
+round them, clear of the sticky filters, not only its link’s two lines.
 An address naming a changed file opens its owner’s tree if needed
 ([Navigation Reveals the Item](#navigation-reveals-the-item)). Moving to another PR
 closes a tree opened only for that address; trees the reader opened stay open.
@@ -2970,10 +2972,6 @@ for the rows it draws, in one request when the browser is idle, from the cache a
 (`GET pull-files-summary`): it asks GitHub for nothing, and the lists are the ones the
 tab already reads behind the reader, the changed files of the rows in view, and those of
 trees the reader opens.
-Where the list was made from the store, its line ends with what the pull request pushes,
-“· **1.8 MB**”, a bold number in the line’s ink, its tooltip saying it and the patch’s
-size ([Change Size Line](#change-size-line)); the refresh that lists the files measures
-it, so it arrives with the counts, and a list GitHub gave has none.
 A row’s line is read again only when something says its list changed: the list of pull
 requests names a new head commit for it, the prefetch lane reports it listed the row’s
 files, or the row’s tree reads a list of another refresh

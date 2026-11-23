@@ -305,6 +305,12 @@ async function laneStory(lines, prefetch) {
  */
 async function rowStory(lines) {
   const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
+  const rowSummaries = recordedRows("summed");
+  // A comparison already has its measured size when the navigation reads its totals.
+  rowSummaries.set(106, {
+    ...rowSummaries.get(106),
+    size: { state: "measured", pushed_bytes: 22_528, diff_bytes: 60_314 },
+  });
   let filterOptions = [];
   class PanelElement extends FakeElement {
     set innerHTML(markup) {
@@ -375,7 +381,7 @@ async function rowStory(lines) {
       if (route.startsWith(`${ROUTE}?`)) {
         requests.push(route);
         const numbers = new URL(route, "http://x").searchParams.get("numbers").split(",");
-        const answer = answerFor(recordedRows("summed"), numbers.map(Number));
+        const answer = answerFor(rowSummaries, numbers.map(Number));
         return respond(answer.body, answer.status);
       }
       if (route.startsWith("/api/plugin/github/pull-files?")) {
