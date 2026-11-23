@@ -31,8 +31,8 @@ const SIZE_PRESETS = Object.freeze({
 
 /**
  * The rollup a treemap requests: the deepest tree the server returns, with
- * the most children per folder (the SDK resolves "max" to ROLLUP_MAX_DEPTH and
- * ROLLUP_MAX_TOP, settings.py). The server's node budget, not these, bounds
+ * the most children per folder (the route resolves "max" to ROLLUP_MAX_DEPTH
+ * and ROLLUP_MAX_TOP, settings.py). The server's node budget, not these, bounds
  * the response, and the layout folds whatever has no room into remainder
  * cells.
  * @returns {{depth: "max", top: "max"}}

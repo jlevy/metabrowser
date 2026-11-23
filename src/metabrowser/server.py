@@ -749,6 +749,9 @@ def _query_bounded_int(
     minimum: int,
     maximum: int,
 ) -> int:
+    # "max" asks for the bound itself, so a client need not know its value.
+    if request.query_params.get(name) == "max":
+        return maximum
     return max(minimum, min(_query_int(request, name, default), maximum))
 
 
@@ -3268,7 +3271,8 @@ async def api_rollup(request: Request) -> Response:
     """Bounded treemap rollup for a directory subtree.
 
     `GET /api/rollup?path=&depth=&top=&ext_top=&filename_top=&remaining_top=`
-    clamps parameters to the ROLLUP_* settings bounds. `node` is null while the
+    clamps parameters to the ROLLUP_* settings bounds, and `max` asks for the
+    bound itself (the Treemap asks for `depth=max&top=max`). `node` is null while the
     index cannot serve the path yet (cold start); the client renders that as a
     pending treemap and refreshes off `/api/events` activity. Totals always
     cover the full subtree. `children: null`, without a rest bucket, means the

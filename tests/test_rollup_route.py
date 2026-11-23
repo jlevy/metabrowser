@@ -26,7 +26,7 @@ from metabrowser.inventory_engine.contract import (
 )
 from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostCursor, HostVersion
 from metabrowser.inventory_engine.runtime import default_inventory_config
-from metabrowser.settings import ROLLUP_MAX_TOP
+from metabrowser.settings import ROLLUP_MAX_DEPTH, ROLLUP_MAX_TOP
 from metabrowser.wire_models import validate_rollup_envelope, validate_rollup_node
 from tests.inventory_harness import InventoryHarness, inventory_harness
 from tests.loop_gate import held_until
@@ -224,6 +224,28 @@ def test_rollup_route_clamps_params(tmp_path: Path) -> None:
     remaining = body["file_type_breakdown"]["remaining_types"]
     assert remaining["extensions"] == []
     assert remaining["others"]["omitted_distinct_values"] == 5
+
+
+def test_rollup_route_resolves_max_to_the_bounds(tmp_path: Path) -> None:
+    folder = tmp_path
+    for level in range(ROLLUP_MAX_DEPTH + 2):
+        folder = folder / f"d{level}"
+        folder.mkdir()
+        (folder / "f.py").write_text("x")
+    server._set_root_dir(tmp_path)
+
+    async def run(query: dict[str, str]) -> dict[str, Any]:
+        async with inventory_harness(tmp_path) as harness:
+            return await _body(harness, {"path": "", **query})
+
+    def deepest(node: dict[str, Any], level: int = 0) -> int:
+        dirs = [child for child in node.get("children") or [] if child["type"] == "dir"]
+        return max([level, *(deepest(child, level + 1) for child in dirs)])
+
+    asked_max = asyncio.run(run({"depth": "max", "top": "max"}))
+    asked_bound = asyncio.run(run({"depth": str(ROLLUP_MAX_DEPTH), "top": str(ROLLUP_MAX_TOP)}))
+    assert deepest(asked_max["node"]) == ROLLUP_MAX_DEPTH
+    assert asked_max["node"] == asked_bound["node"]
 
 
 def test_rollup_route_supports_summary_only_dual_rank(tmp_path: Path) -> None:

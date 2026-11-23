@@ -5080,8 +5080,6 @@ declare global {
       ROLLUP_FILE_TYPE_FILENAME_LIMIT?: number;
       ROLLUP_FILE_TYPE_REMAINING_LIMIT?: number;
       ROLLUP_DEFAULT_TOP?: number;
-      ROLLUP_MAX_DEPTH?: number;
-      ROLLUP_MAX_TOP?: number;
       ROLLUP_WATCH_DEBOUNCE_MS?: number;
       SYNTAX_HIGHLIGHT_MAX_BYTES?: number;
       TREE_AUTO_EXPAND_FALLBACK_ROWS?: number;

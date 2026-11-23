@@ -1201,21 +1201,14 @@ sandbox.MetabrowserNavigationRoute.attachController({
     overrideUrl.search,
   );
 
-  // "max" asks for the route's deepest and widest tree, which the SDK reads from the
-  // page's settings so that a plugin does not; without them it asks for the defaults.
-  sandbox.METABROWSER_SETTINGS = { ROLLUP_MAX_DEPTH: 12, ROLLUP_MAX_TOP: 200 };
+  // "max" asks for the route's deepest and widest tree; the route resolves it
+  // (tests/test_rollup_route.py), so neither the SDK nor a plugin knows the bounds.
   await mb.fetchRollup("deep", { depth: "max", top: "max" });
   const maxUrl = new URL(fetchCalls.at(-1));
-  delete sandbox.METABROWSER_SETTINGS;
-  await mb.fetchRollup("deep", { depth: "max", top: "max" });
-  const bareUrl = new URL(fetchCalls.at(-1));
   check(
-    '"max" depth and top resolve to the route\'s maxima, or to its defaults without settings',
-    maxUrl.searchParams.get("depth") === "12" &&
-      maxUrl.searchParams.get("top") === "200" &&
-      bareUrl.searchParams.get("depth") === null &&
-      bareUrl.searchParams.get("top") === null,
-    `${maxUrl.search} ${bareUrl.search}`,
+    '"max" depth and top reach the route as asked',
+    maxUrl.searchParams.get("depth") === "max" && maxUrl.searchParams.get("top") === "max",
+    maxUrl.search,
   );
 
   if (failures.length > 0) {
