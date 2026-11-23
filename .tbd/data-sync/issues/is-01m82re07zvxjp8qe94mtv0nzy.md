@@ -3,9 +3,9 @@ type: is
 id: is-01m82re07zvxjp8qe94mtv0nzy
 title: Make the separate nav folder menu dismiss on repeat and outside clicks
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 5
+version: 6
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/713
@@ -17,8 +17,12 @@ parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 hold: null
 hold_until: null
 created_at: 2026-11-22T23:11:03.413Z
-updated_at: 2026-11-23T00:02:34.067Z
+updated_at: 2026-11-23T00:25:25.603Z
 started_at: 2026-11-22T23:12:01.412Z
+closed_at: 2026-11-23T00:25:25.601Z
+close_reason: "Independently reviewed and merged in #713 at 0261d8ae3. Hosted Chrome and pinned-mirror integration passed at exact #713 head; installed preview verified the running runtime."
+resolution: null
+duplicate_of: null
 ---
 Keep the navigation folder name and icon as Home, with the 0 shortcut, and keep the current separate details chevron and hover target. Clicking the separate trigger again closes the open menu. Clicking anywhere outside dismisses it. Preserve menu content, actions, and keyboard and screen-reader behavior.
 
