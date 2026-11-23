@@ -1532,12 +1532,12 @@ capitals. A run’s status badge is one, for Running, Live, Done, Failed, and Ru
 and a pull request’s state badge is another; `tests/dom/github-pull-header-chrome.mjs`
 checks both in Chrome.
 
-The diff file bar’s View file or View on branch control is a box at the bar’s end, not
-text inside the toggle, so it is set at the path’s own size and line height: text of one
-size and one line height centers onto one baseline.
+The diff file bar’s View file or View on branch control is a box after the copy control,
+not text inside the toggle, so it is set at the path’s own size and line height: text of
+one size and one line height centers onto one baseline.
 The bar’s two groups ([Diff File Bar](#diff-file-bar)) are centered rows of boxes too,
-and each is centered in the bar, so the toggle and the control still share the bar’s
-center.
+and each is centered in the bar, so the toggle, the control, and the chooser share the
+bar’s center.
 
 Two rows are deliberately not in the table.
 A [view header](#view-headers)’s eyebrow sets its text at one size and centers it.
@@ -2433,15 +2433,16 @@ same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
 `--hover-bg`.
 
 The bar is two groups.
-It leads with what names the file, in left-aligned reading order: chevron, kind letter,
-filename in the shell’s file-path typography, the stat pair beside the name, and any
-note, then the `[data-mb-copy]` copy control right after them, the file-header copy
-affordance, present wherever a filename is.
+It leads with what names the file and where it opens, in left-aligned reading order:
+chevron, kind letter, filename in the shell’s file-path typography, the stat pair beside
+the name, and any note, then the `[data-mb-copy]` copy control right after them, the
+file-header copy affordance, present wherever a filename is, and then the View file or
+View on branch control.
 The bar reveals the copy control while the pointer is on it or the keyboard’s focus is
 in it; unseen, the control keeps its place, so nothing moves when it shows.
-The bar ends with what shows the file another way: a Markdown file’s **Rendered** |
-**Source** chooser, then the View file or View on branch control.
-A long path is cut short on one line with its copy control still beside it.
+The bar ends with a file’s **Rendered** | **Source** chooser alone, so the chooser is at
+the far end of every bar that has one, on Docs and Changes alike.
+A long path is cut short on one line with its copy control and View file still after it.
 
 The whole bar is one activation surface, the folder-row rule applied to a section
 header: clicking anywhere toggles, with only the copy control, the View file or View on
@@ -2453,12 +2454,13 @@ Such a bar wraps where its two groups do not fit one line: the name’s group ke
 first line, and the group at the bar’s end takes the next, still at the bar’s end.
 A file that falls back permanently to Source loses the chooser and the spinner, and its
 bar lays out as any other file’s, with a long path truncated on one line.
-Where the main UI can show the file the change makes, the bar ends with one quiet text
-action that opens it there, with the tree, the tabs, and the ref selector around it:
-**View file** on a commit’s diff, at the commit, and **View on branch** on a pull
-request’s Changes, at the pull request’s head, on a mirror or beside a checkout whose
-`HEAD` is the head. Its label is a constant, since a branch name is the author’s, long,
-and on every bar; its tooltip says the commit and whether the pin switches.
+Where the main UI can show the file the change makes, the name’s group ends with one
+quiet text action that opens it there, with the tree, the tabs, and the ref selector
+around it: **View file** on a commit’s diff, at the commit, and **View on branch** on a
+pull request’s Changes and Docs, at the pull request’s head, on a mirror or beside a
+checkout whose `HEAD` is the head.
+Its label is a constant, since a branch name is the author’s, long, and on every bar;
+its tooltip says the commit and whether the pin switches.
 It stays visible rather than revealing on hover, because it is how a reader leaves the
 diff for the file. It is a [text action](#control-families), so it is a link or a button
 by whether it first switches the served pin, and looks the same either way.

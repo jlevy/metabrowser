@@ -469,10 +469,10 @@ async function main() {
     later: time.later,
     cancel: time.cancel,
   });
-  // A bar as diff-view.js builds it: the disclosure, then the group of controls at its
-  // end, which holds a View file control before the chooser arrives. `lead` puts another
-  // control before the disclosure, so a test can tell the disclosure the module was
-  // handed from whatever happens to lead the bar.
+  // A bar as diff-view.js builds it: the disclosure and a View file control, then the
+  // group at its end, empty until the chooser arrives. `lead` puts another control before
+  // the disclosure, so a test can tell the disclosure the module was handed from whatever
+  // happens to lead the bar.
   function file(id, { lead = false } = {}) {
     const section = make("section");
     root.append(section);
@@ -483,16 +483,16 @@ async function main() {
     const toggle = make("button");
     const end = make("div");
     const viewFile = make("a");
-    end.append(viewFile);
-    bar.append(...(lead ? [make("span"), toggle, end] : [toggle, end]));
+    bar.append(...(lead ? [make("span"), toggle, viewFile, end] : [toggle, viewFile, end]));
     const state = view.add({ section, bar, end, source, id, format: "markdown" });
     assert.equal(section.children.length, 3, "Rendered is all that goes beside Source");
     const [, rendered] = section.children;
     assert.equal(bar.children.at(-1), end, "the chooser adds nothing to the bar itself");
-    const [progress, control, last] = end.children;
-    assert.equal(end.children.length, 3);
+    const [progress, control] = end.children;
+    assert.equal(end.children.length, 2);
     assert.equal(progress.getAttribute("role"), "status", "the progress mark leads its chooser");
-    assert.equal(last, viewFile, "the chooser leads the controls at the bar's end");
+    assert.equal(end.children.at(-1), control, "the chooser is last, at the bar's far end");
+    assert.equal(bar.children.at(-2), viewFile, "View file stays where the bar put it");
     return {
       section,
       bar,

@@ -846,9 +846,9 @@ export function createMarkdownViews(deps) {
      * @param {{
      *   section: HTMLElement, bar: HTMLElement, end: HTMLElement, source: HTMLElement,
      *   id: string, format: RenderedFormat, unavailable?: string
-     * }} input The file's section; its bar; the group of controls at the bar's end,
-     *   which the chooser leads; its Source body; and the format it renders as
-     *   (`renderedFormat`).
+     * }} input The file's section; its bar; the group at the bar's end, which the
+     *   chooser ends, so it is at the bar's far end; its Source body; and the format it
+     *   renders as (`renderedFormat`).
      *   *unavailable* is why no projection is asked for the file, a sentence, for one
      *   whose changes the page has no patch of (`supportsRenderedChange`): it shows
      *   Source, which says the same, from the start.
@@ -905,10 +905,10 @@ export function createMarkdownViews(deps) {
           file.folds.get(href.slice(1))?.();
         }
       });
-      // The progress mark leads, on the side of the bar's free space, so the chooser
-      // and whatever follows it stay where they are when it appears.
+      // The progress mark leads the chooser, on the side of the bar's free space, so the
+      // chooser stays where it is when the mark appears.
       bar.classList.add("diff-file-bar-markdown");
-      end.prepend(progress, control);
+      end.append(progress, control);
       source.before(rendered);
       files.set(section, file);
       controls.set(source.id, file);

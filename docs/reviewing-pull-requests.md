@@ -161,10 +161,10 @@ The page has up to four tabs:
 | A repository or pull-request URL | **Browse code** opens the pinned code, first switching the pin to this pull request’s head when another commit is served. Code served on the pull request’s head follows it: when new commits are pushed, the page moves to the new head by itself, as a page on a branch does. |
 | A checkout or a folder in one | Files and Commits keep showing your checkout, which may differ from the pull request, so there is no **Browse code**. When the checkout’s `HEAD` is the pull request’s head, the page says so and offers **Browse the checkout**. |
 
-In **Changes**, a changed file offers **View on branch**, which opens the file at the
-pull request’s head in the main view, with the file tree, tabs, and ref selector around
-it, as **Browse code** opens the whole tree.
-Where it opens follows the table above:
+In **Changes** and **Docs**, a changed file offers **View on branch**, after its name
+and line counts, which opens the file at the pull request’s head in the main view, with
+the file tree, tabs, and ref selector around it, as **Browse code** opens the whole
+tree. Where it opens follows the table above:
 
 - Opened with a repository or pull-request URL, it first switches the pin to the head
   when another commit is served, as Browse code does.

@@ -345,16 +345,20 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
         text("diff-file-note"),
     )
     # The bar is two groups, each a centered row of boxes, and a box in the bar itself: the
-    # name's, the toggle with the copy control beside it, and its end's, a file's
-    # Rendered | Source chooser behind its progress mark (`add` in diff-markdown.js) and
-    # then the View file or View on branch control, a box at the path's size, which
-    # centering puts on its baseline.
-    lead = box("diff-file-lead", toggle, box("icon-btn icon-btn-reveal diff-file-copy"))
+    # name's, the toggle with the copy control beside it and then the View file or View on
+    # branch control, a box at the path's size, which centering puts on its baseline; and
+    # its end's, a file's Rendered | Source chooser behind its progress mark (`add` in
+    # diff-markdown.js).
+    lead = box(
+        "diff-file-lead",
+        toggle,
+        box("icon-btn icon-btn-reveal diff-file-copy"),
+        box("diff-file-view"),
+    )
     end = box(
         "diff-file-end",
         box("diff-markdown-progress"),
         box("diff-markdown-control"),
-        box("diff-file-view"),
     )
     bar = el("diff-file-bar diff-file-bar-markdown", lead, end)
     el("content-body metabrowser-diff-host", el("diff-file", bar))
@@ -553,8 +557,8 @@ def test_row_targets_share_the_hover_token() -> None:
     )
 
 
-def test_diff_file_bar_keeps_copy_by_the_name_and_its_controls_at_its_end() -> None:
-    """A diff's file bar is two groups: the name with Copy path beside it, then its controls.
+def test_diff_file_bar_keeps_its_actions_by_the_name_and_its_chooser_at_its_end() -> None:
+    """A diff's file bar is two groups: the name with Copy path and View file, then a chooser.
 
     ``tests/dom/diff-view-behavior.js`` and ``tests/dom/diff-markdown-behavior.js`` hold what
     each group contains, in order. Where they sit is layout, and these declarations are what
@@ -570,12 +574,13 @@ def test_diff_file_bar_keeps_copy_by_the_name_and_its_controls_at_its_end() -> N
     host = ".metabrowser-diff-host"
     # The name's group and the toggle in it take their content's width and give way before
     # anything else does, so Copy path sits right after the name at any width and a long
-    # path is cut short with the control still beside it.
+    # path is cut short with the control still beside it, and View file after them both.
     for selector in (".diff-file-lead", ".diff-file-toggle"):
         rule = _rule(diff_css, f"{host} {selector}")
         assert "flex: 0 1 auto;" in rule, f"{selector} grows or keeps its width"
         assert "min-width: 0;" in rule, f"{selector} cannot give way to a long path"
-    assert "flex: none;" in _rule(diff_css, f"{host} .diff-file-copy")
+    for selector in (".diff-file-copy", ".diff-file-view"):
+        assert "flex: none;" in _rule(diff_css, f"{host} {selector}"), f"{selector} gives way"
     # The end group keeps its width, and its start margin takes the bar's free space, which
     # holds it at the bar's end on a line of its own too.
     end = _rule(diff_css, f"{host} .diff-file-end")

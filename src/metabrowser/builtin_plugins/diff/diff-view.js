@@ -6,10 +6,11 @@
 // Each file renders as a section under a bar: the section-disclosure
 // primitive carrying the filename (styled as a filename, not a
 // heading), the inline +N −N stat pair, and change notes; beside it a
-// copy-path control riding the shared [data-mb-copy] delegation; and,
-// at the bar's end, the View file controls of diff-view-file.js when
-// the page can open a file at a commit. Sections start expanded; the
-// bar collapses the body without disposing it.
+// copy-path control riding the shared [data-mb-copy] delegation; then
+// the View file controls of diff-view-file.js when the page can open a
+// file at a commit; and, at the bar's end, a file's Rendered | Source
+// chooser (diff-markdown.js). Sections start expanded; the bar
+// collapses the body without disposing it.
 // Every availability state has exactly one rendering path — an absent
 // patch is a labeled state, never an empty box. Rendering is
 // deliberately dumber than the model: the data plane is tested by the
@@ -1076,10 +1077,10 @@ function repaintViewFileControls(view) {
 
 /**
  * The per-file bar, in two groups, per the section-disclosure and icon button primitives
- * in the design system. It leads with what names the file: one disclosure trigger (kind,
- * path, stats, notes) and the copy control beside it. It ends with what shows the file
- * another way: the View file controls, which a file's Rendered | Source chooser leads
- * (diff-markdown.js).
+ * in the design system. It leads with what names the file and where it opens: one
+ * disclosure trigger (kind, path, stats, notes), the copy control beside it, and the View
+ * file controls. Its end group holds a file's Rendered | Source chooser alone
+ * (diff-markdown.js), at the bar's far end.
  *
  * @param {Record<string, unknown>} change
  * @param {string} toggleId
@@ -1159,7 +1160,7 @@ function renderFileBar(change, toggleId, bodyId, view) {
     notice.hidden = true;
     const said = { element: notice, timer: 0 };
     const controls = actions.map((action) => renderViewFileControl(action, view, said));
-    end.append(...controls);
+    lead.append(...controls);
     view.viewFileBars.push({ change, controls, said });
   }
   return { bar, end, toggle, notice };

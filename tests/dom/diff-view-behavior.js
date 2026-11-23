@@ -991,7 +991,7 @@ async function headLinkChecks(mountDiffView, byName) {
     // The bar the production view builds for a rendered file: the name's group, the
     // disclosure and its copy control, then the group at the bar's end, the chooser
     // behind its progress mark. This document offers no View file control, which would
-    // follow the chooser (tests/dom/diff-markdown-behavior.js).
+    // end the name's group (tests/dom/diff-view-file-session.js).
     const [fileBar] = container.find("diff-file-bar");
     const groups = fileBar.children.map((group) =>
       group.children.map((child) => String(child.className).split(" ").at(-1)),

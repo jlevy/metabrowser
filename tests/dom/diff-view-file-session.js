@@ -429,12 +429,17 @@ function bars(container) {
   for (const section of container.find("diff-file")) {
     const bar = section.find("diff-file-bar")[0];
     const controls = bar.find("diff-file-view");
-    // The controls are the group at the bar's end, after the name's.
-    const end = bar.children.at(-1);
+    // The controls end the name's group, after its copy control, and the group at the bar's
+    // end is left to a Rendered | Source chooser.
+    const [lead, end] = bar.children;
+    const after = lead.children.length - controls.length;
     assert(
-      end.classList.contains("diff-file-end") &&
-        controls.every((each, index) => end.children[index] === each),
-      `${barLabel(bar)}: a View file control is not at the bar's end`,
+      lead.classList.contains("diff-file-lead") &&
+        end.classList.contains("diff-file-end") &&
+        controls.every((each, index) => lead.children[after + index] === each) &&
+        (controls.length === 0 ||
+          lead.children[after - 1]?.classList.contains("diff-file-copy") === true),
+      `${barLabel(bar)}: a View file control is not after the name's copy control`,
     );
     shown[barLabel(bar)] = controls.map(describeControl);
   }
