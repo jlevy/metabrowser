@@ -515,3 +515,28 @@ def test_the_page_loop_follows_githubs_continuation(
     assert snapshot is not None and snapshot.complete
     assert snapshot.reader == f"gh:{reader}"
     assert (_names(repository), len(snapshot.pages), github.calls) == (after, pages, calls)
+
+
+def test_an_automatic_read_waits_for_the_budget_and_a_readers_retry_does_not(
+    repository: ListedRepository,
+) -> None:
+    from metabrowser.builtin_plugins.github import gh_budget
+
+    now = pull_list.utc_now()
+    low = {
+        "x-ratelimit-limit": "5000",
+        "x-ratelimit-remaining": "1000",
+        "x-ratelimit-reset": str(int((now + timedelta(minutes=30)).timestamp())),
+    }
+    try:
+        assert refresh_wanted(repository)
+        gh_budget.observe(low, resource="core")
+        assert not refresh_wanted(repository)
+        assert refresh_wanted(repository, retry=True)
+        gh_budget.forget()
+        # Past the process's own ceiling too: only chip colors wait on the set.
+        gh_budget.spent(gh_budget.AUTOMATIC_CORE_PER_HOUR, now=now)
+        assert not refresh_wanted(repository)
+        assert refresh_wanted(repository, retry=True)
+    finally:
+        gh_budget.forget()

@@ -535,7 +535,11 @@ account check and the bounds on probes.
   files list ages by it only when no catalog row vouches for it: a list the row or the
   record vouches for is a function of the head and base it names, is read at once when
   either moves, and is not read again on a clock.
-- [ ] Budget admission for the cores walk, stacks, labels, and the timeline.
+- [x] Budget admission for the cores walk, stacks, labels, and the timeline, and for the
+  catalog’s periodic scan and a files list’s periodic read.
+  A batch of cores the budget holds answers `held`, in either lane, since both prepare
+  rows a reader may open; a held timeline answers `unavailable` and `retryable`. The
+  scan a list probe’s change starts is not asked, as [Priority](#priority) says.
 - [x] `AUTOMATIC_CORE_PER_HOUR` in `gh_budget.py`, counted by `gh_api` and `gh_graphql`
   as they answer; each query asks for `rateLimit { cost }`. A reader’s own action is
   told apart by the context its route starts the job in (`readers_own`), so a job a

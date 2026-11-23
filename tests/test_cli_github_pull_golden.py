@@ -28,11 +28,13 @@ import json
 import os
 import re
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from metabrowser.builtin_plugins.github import gh_budget
 from metabrowser.builtin_plugins.github.gh_status import SIGN_IN_STATES
 from metabrowser.cache import pull_refs
 from metabrowser.cache.urls import GitSource
@@ -429,6 +431,30 @@ def test_golden_pull_timeline_fetch_and_offline(
     body = tmp_path / "timeline.json"
     body.write_text(json.dumps({"number": 7, "record_revision": revision}), encoding="utf-8")
     args = (selected, "--api", f"{ROUTE}-timeline", "--data", str(body))
+    session.blocks.append(
+        "## GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter automatic "
+        "work leaves to the reader. The page's own ask for the timeline waits: nothing is "
+        "asked of GitHub, and the answer says to ask again.\n"
+    )
+    gh_budget.observe(
+        {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "1000",
+            "x-ratelimit-reset": str(int((datetime.now(UTC) + timedelta(hours=1)).timestamp())),
+        },
+        resource="graphql",
+    )
+    waiting = session.run(*args)
+    assert waiting.exit_code == 0, waiting.stderr
+    assert waiting.payload() == {
+        "record_revision": revision,
+        "state": "unavailable",
+        "retryable": True,
+        "events": [],
+    }, session.blocks[-1]
+    assert "gh api graphql timeline" not in session.blocks[-1]
+    gh_budget.forget()
+    session.blocks.append("## With the budget above the floor again, it is read.\n")
     live = session.run(*args)
     assert live.exit_code == 0, live.stderr
     assert live.payload() == {

@@ -506,7 +506,12 @@ def refresh_wanted(view: ListView, ask: RefreshRequest) -> ListRefreshWanted:
         return "reconnect" if ask.reconnect and stamp.outcome == "network_error" else False
     listed = read_catalog(repository.home, repository.slug)
     probe = view.probe
-    if listed is None or scan_is_due(stamp, probe, now=now):
+    if listed is None:
+        return True
+    # The periodic scan is automatic work, admitted as background work is; below the floor
+    # it stops, and a change a probe finds is still scanned for, just below.
+    admitted = gh_budget.admission(("graphql", "core"), now=now, ceiling=False).admitted
+    if admitted and scan_is_due(stamp, probe, now=now):
         return True
     if probe is not None and probe.saw is not None:
         # A probe that outlasted its request's wait found a change: its scan is due now.

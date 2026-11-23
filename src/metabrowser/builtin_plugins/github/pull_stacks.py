@@ -179,8 +179,21 @@ def _rate_hold(repository: ListedRepository) -> PullRefreshStamp | None:
 
 
 def refresh_wanted(repository: ListedRepository, *, retry: bool = False) -> bool:
-    return _rate_hold(repository) is None and (
-        retry or remaining_freshness(last_refresh(repository, read_stacks(repository))) == 0
+    """Whether an ask reads the stacks now. Blocking and bounded; never contacts GitHub.
+
+    A reader's *retry* does unless GitHub's limit holds. An automatic ask does once the
+    last refresh has aged out (:func:`remaining_freshness`), and only while the budget
+    admits it (:func:`.gh_budget.admission`), as other automatic work is admitted; the
+    process's own ceiling slows it rather than stopping it.
+    """
+
+    if _rate_hold(repository) is not None:
+        return False
+    if retry:
+        return True
+    return (
+        remaining_freshness(last_refresh(repository, read_stacks(repository))) == 0
+        and gh_budget.admission(("core",), now=pull_list.utc_now(), ceiling=False).admitted
     )
 
 

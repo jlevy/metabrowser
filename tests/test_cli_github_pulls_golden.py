@@ -33,7 +33,7 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh, pull_list, pull_list_route, pulls
+from metabrowser.builtin_plugins.github import gh, gh_budget, pull_list, pull_list_route, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import CATALOG_PROJECTION, read_catalog
 from metabrowser.builtin_plugins.github.pull_record import (
     MAX_REFRESH_MESSAGE_CHARS,
@@ -467,6 +467,28 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
     }
     assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
 
+    session.say(
+        "GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter automatic work "
+        "leaves to the reader. A batch that would read GitHub is held, with no request; one "
+        "the cache covers is still answered."
+    )
+    gh_budget.observe(
+        {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "1000",
+            "x-ratelimit-reset": str(int((session.now + timedelta(hours=1)).timestamp())),
+        },
+        resource="graphql",
+    )
+    window = {"id": "held-8", "generation": current_catalog.generation("all")}
+    held_batch = session.post({"state": "all", "window": window, "numbers": [8]}, route=PREPARE)
+    assert held_batch.exit_code == 0, held_batch.stderr
+    assert held_batch.payload()["preparation"] == "held"
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
+    covered = session.post({"state": "all", "window": window, "numbers": [7]}, route=PREPARE)
+    assert covered.payload()["preparation"] == "ready"
+    gh_budget.forget()
+
     cached = session.local(f"/api/cache/source/{origin_identity(CANONICAL).slug}")
     assert cached.exit_code == 0, cached.stderr
 
@@ -739,11 +761,17 @@ def test_golden_pull_list_backfill_waits_for_the_budget_floor_and_pages_past_eve
 
     session.advance(61)
     session.say(
-        "The scan that keeps the list current observes 4,000 points left, and the backfill "
-        "resumes from the top to the oldest pull request in the same job."
+        "The scan that keeps the list current is automatic work too, and waits below the "
+        "floor: an ask a window later starts nothing."
     )
     session.answer(_budget(online, 4000))
-    resumed = session.post({"state": "closed", "target": 400}, summarize=True)
+    waiting = session.post({"state": "closed", "target": 400, "background": True})
+    assert json.loads(waiting.stdout.split("status: 200\n")[1])["refresh"] == "not_due"
+    session.say(
+        "A reader's Reload is never held. Its scan observes 4,000 points left, and the "
+        "backfill resumes from the top to the oldest pull request in the same job."
+    )
+    resumed = session.post({"state": "closed", "target": 400, "retry": True}, summarize=True)
     assert resumed.exit_code == 0, resumed.stderr
     calls = _graphql(session)
     assert calls[0] == "gh api graphql catalog state=updated cursor=start"

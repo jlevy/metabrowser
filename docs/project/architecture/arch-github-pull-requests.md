@@ -74,12 +74,16 @@ and names its reader as `gh:<login>`.
 resource every response carries, and holds every resource after a `rate_limited` refusal
 until its `reset_at`. Background work is admitted only while each resource it spends has
 more than `BACKGROUND_FLOOR` of its limit left and no hold applies; a reader’s own work
-is never asked. Below the floor a visible page’s pull request is still probed, and a
-change a probe or the catalog finds on it is still read in full, while the reads its
-clock alone asks for stop (`ServedPull.below_floor`); the module’s docstring has the
-rule. The observations belong to the account the last account check named, and another
-account forgets them; since `remaining` is the account’s, several servers on one account
-stop together.
+is never asked. Everything automatic asks: the catalog’s backfill and its periodic scan,
+the prefetch, the preparation of cores in either lane, the periodic reads of stacks and
+of a files list, the label set, and Conversation’s timeline.
+Held, each waits and is asked for again, and none records a failure.
+Below the floor a visible page’s pull request and a visible list are still probed, and a
+change a probe or the catalog finds is still read in full, while the reads a clock alone
+asks for stop (`ServedPull.below_floor`); the module’s docstring has the rule.
+The observations belong to the account the last account check named, and another account
+forgets them; since `remaining` is the account’s, several servers on one account stop
+together.
 
 The same module keeps a ceiling on the process’s own automatic work,
 `AUTOMATIC_CORE_PER_HOUR`, counted from what the process spends itself: one for each

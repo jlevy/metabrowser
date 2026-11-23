@@ -26,7 +26,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
-from metabrowser.builtin_plugins.github import pulls
+from metabrowser.builtin_plugins.github import gh_budget, pulls
 from metabrowser.builtin_plugins.github.gh import GhError, gh_graphql
 from metabrowser.builtin_plugins.github.gh_lists import READ_FAILURES, as_dict
 from metabrowser.builtin_plugins.github.pull_catalog import (
@@ -598,6 +598,10 @@ async def request_preparation(
             if current is not None and current.ask == ask and current.failure is not None
             else "held"
         )
+    if not gh_budget.admission(("graphql",), now=pulls.utc_now()).admitted:
+        # Cores are prepared for rows a reader may open: background work, in either lane,
+        # which the budget holds. What is cached was answered above, with no request.
+        return "held"
     current = pulls_set.core_window
     if current is not None and current.failure is not None:
         pulls_set.core_window = None

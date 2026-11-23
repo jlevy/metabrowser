@@ -1202,3 +1202,44 @@ def test_absent_file_cache_repairs_a_recent_success_but_preserves_failure_holds(
         outcome == "succeeded",
         None,
     )
+
+
+def test_an_aged_lists_automatic_read_waits_for_the_budget_and_a_readers_retry_does_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    from metabrowser.builtin_plugins.github import gh_budget
+    from metabrowser.builtin_plugins.github.pull_files_route import (
+        FilesRefreshRequest,
+        files_refresh_wanted,
+    )
+    from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    _refresh(repository, TREE_PULL)
+    view = FilesView(TREE_PULL, repository, None, False, None)
+    fetched = pull_list.parse_stamp(
+        pull_files_envelope(view, FilesWindow(TREE_PULL, limit=0))["fetched_at"]  # pyright: ignore[reportArgumentType]
+    )
+
+    def wanted(seconds: float, *, retry: bool = False) -> bool:
+        monkeypatch.setattr(pull_list, "utc_now", lambda: fetched + timedelta(seconds=seconds))
+        return files_refresh_wanted(view, FilesRefreshRequest(TREE_PULL, retry))[0]
+
+    assert not wanted(FULL_REFRESH_S)
+    assert wanted(FULL_REFRESH_S + 1)
+    low = {
+        "x-ratelimit-limit": "5000",
+        "x-ratelimit-remaining": "1000",
+        "x-ratelimit-reset": str(int((fetched + timedelta(minutes=30)).timestamp())),
+    }
+    try:
+        gh_budget.observe(low, resource="core")
+        assert not wanted(FULL_REFRESH_S + 1)
+        assert wanted(FULL_REFRESH_S + 1, retry=True)
+        gh_budget.forget()
+        # Past the process's own ceiling it is read five minutes after the last.
+        gh_budget.spent(gh_budget.AUTOMATIC_CORE_PER_HOUR, now=fetched)
+        assert not wanted(FULL_REFRESH_S + 1)
+        assert wanted(gh_budget.CEILING_FULL_READ_S + 1)
+    finally:
+        gh_budget.forget()

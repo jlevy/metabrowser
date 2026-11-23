@@ -11,6 +11,7 @@ from typing import Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
+from metabrowser.builtin_plugins.github import gh_budget, pulls
 from metabrowser.builtin_plugins.github.gh import GhError, gh_graphql
 from metabrowser.builtin_plugins.github.gh_lists import UnreadableItemError, as_dict
 from metabrowser.builtin_plugins.github.pull_record import (
@@ -288,6 +289,10 @@ async def read_timeline(served: ServedPulls, ask: TimelineRequest, gate: asyncio
         return cached
     if ask.cached_only or record is None or ask.number > _GRAPHQL_MAX_NUMBER:
         return unavailable(ask)
+    if not gh_budget.admission(("graphql",), now=pulls.utc_now()).admitted:
+        # The page asks for this by itself, once for each revision of the record: automatic
+        # work, held as the budget holds any, and asked for again later.
+        return unavailable(ask, retryable=True)
     deadline = asyncio.get_running_loop().time() + TIMEOUT_S
     try:
         async with asyncio.timeout_at(deadline):

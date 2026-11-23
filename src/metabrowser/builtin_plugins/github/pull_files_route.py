@@ -61,7 +61,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal, TypedDict
 
-from metabrowser.builtin_plugins.github import pull_list
+from metabrowser.builtin_plugins.github import gh_budget, pull_list
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, utc_stamp
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_PULL_FILES,
@@ -676,6 +676,15 @@ def files_refresh_wanted(
             seconds=FRESHNESS_WINDOW_S
         )
         return due, local
+    if isinstance(listed, PullFileList) and listed.complete and stamp is not None:
+        # A whole list from GitHub, read again because it aged or its pull request changed
+        # with its head where it was: automatic work, admitted as background work is, and
+        # five minutes apart over the process's own ceiling.
+        apart = gh_budget.full_read_interval(FRESHNESS_WINDOW_S, now=now)
+        if not gh_budget.admission(
+            ("core",), now=now, ceiling=False
+        ).admitted or now - pull_list.parse_stamp(stamp.at) <= timedelta(seconds=apart):
+            return False, local
     return refresh_is_due(stamp, now=now), local
 
 

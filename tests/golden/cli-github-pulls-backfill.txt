@@ -118,7 +118,56 @@ status: 200 succeeded, 400 cached PRs
 gh api user
 gh api graphql catalog state=closed cursor=closed-300
 ## The clock moves on 61 s, to 2026-09-17T12:01:01Z.
-## The scan that keeps the list current observes 4,000 points left, and the backfill resumes from the top to the oldest pull request in the same job.
+## The scan that keeps the list current is automatic work too, and waits below the floor: an ask a window later starts nothing.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pulls": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "closed",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": "2026-09-17T12:01:01Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "total": 1085,
+    "repository_total": 1205,
+    "filter_totals": {
+      "all": 1205,
+      "open": 120,
+      "closed": 1085
+    },
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 400,
+    "generation": "<CATALOG_EPOCH_1>:0",
+    "fetched": 400,
+    "complete": false,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=closed&limit=0"
+}
+--- stderr ---
+--- body ---
+{"state": "closed", "target": 400, "background": true}
+--- gh ---
+gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
+## A reader's Reload is never held. Its scan observes 4,000 points left, and the backfill resumes from the top to the oldest pull request in the same job.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -126,7 +175,7 @@ status: 202 started
 status: 200 succeeded, 1085 cached PRs
 --- stderr ---
 --- body ---
-{"state": "closed", "target": 400}
+{"state": "closed", "target": 400, "retry": true}
 --- gh ---
 gh api user
 gh api graphql catalog state=updated cursor=start
