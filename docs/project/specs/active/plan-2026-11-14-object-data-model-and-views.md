@@ -123,6 +123,9 @@ It has no place for the same thing shown as a row, or for many things shown toge
 - **The one list in the pane is a placeholder.** The `pull-request-list` view mounts
   twice: in the Pulls tab with a host context, and in the pane at `/pulls`, where it
   draws “Select a pull request.”
+  Since `21dc39da7`, two lists that are not object lists draw in the pane: the table
+  plugin’s Data Tables grid (`builtin_plugins/table/table-view.js`) and the `agents`
+  plugin’s Sessions list.
   (`github/index.js:28`, `github/pulls-panel.js:5789`).
 
 ### How Each Object Is Modeled Today
@@ -206,10 +209,12 @@ page opened from a row asks for nothing (`github/pull-summary-brief.js`).
 ### How Each Object Is Drawn Today
 
 Every surface builds its own rows.
-There is no shared row or list helper; the design system’s
-[Descriptor Contract](../../../design-system.md#descriptor-contract) describes keyboard
-commands, not rows. Below the row, three drawings are shared: a page header, an author,
-and change totals.
+There is no shared object row or list helper.
+(The Data Tables grid, added since `21dc39da7`, is one component for every table of
+records, and a record is not an object; see the Tabular plan’s “Rows are not objects”.)
+The design system’s [Descriptor Contract](../../../design-system.md#descriptor-contract)
+describes keyboard commands, not rows.
+Below the row, three drawings are shared: a page header, an author, and change totals.
 
 | Surface | Builder | Notes |
 | --- | --- | --- |
@@ -238,8 +243,9 @@ the change-totals sub-object.
 Long lists are windowed three ways: a fixed-height window for Git history
 (`static/git-history-window.js:172`), a variable-height one for pull requests
 (`github/pulls-window.js:8`), and a third for a pull request’s changed files
-(`github/pull-files-view.js:306`). The Files tree pages by `TREE_PAGE_SIZE`
-(`static/app.js:16`) and does not window.
+(`github/pull-files-view.js:306`). The Data Tables grid, since `21dc39da7`, windows its
+rows a fourth way (`windowRange` in `builtin_plugins/table/table-view.js`). The Files
+tree pages by `TREE_PAGE_SIZE` (`static/app.js:16`) and does not window.
 
 The keyboard rules for these lists are one contract,
 [Navigational Row Collections](../../../design-system.md#navigational-row-collections),
@@ -247,8 +253,10 @@ implemented four times (`static/tree-keyboard-navigation.js:491`,
 `static/git-panel.js:2202`, `static/pulls-nav.js:466`, and the changed-files tree) and
 held together by a source-text check,
 `test_nav_like_row_sets_share_the_vertical_keyboard_contract`
-(`tests/test_design_vocabulary.py:563`). In the Pulls tab, Right moves to a row’s change
-line, Space on the row is consumed and does nothing, and Up and Down never expand.
+(`tests/test_design_vocabulary.py:563`); since `21dc39da7` the Data Tables grid is a
+fifth in the same check.
+In the Pulls tab, Right moves to a row’s change line, Space on the row is consumed and
+does nothing, and Up and Down never expand.
 
 ### Browser Stores Today
 
@@ -353,8 +361,10 @@ Four facts shape what follows:
 - **One composition contract exists already.** Folder Overview panels register with
   `resolve`, `mount`, and `update`, and a composer owns order and layout
   ([Folder Overview Contributions](../../../plugins.md#folder-overview-contributions)).
-- **A container is the one list a plugin supplies.** A kind declared with
-  `container = { children = "<route>" }` answers
+- **A container is the one object list a plugin supplies.** A `[[table_source]]`, since
+  `21dc39da7`, serves a paged table of records that the table plugin’s `mountTable`
+  draws, and SQLite tables are a container’s children, but records are not objects.
+  A container, a kind declared with `container = { children = "<route>" }`, answers
   `{children: [{name, path, badge?, muted?}]}`, and the tree draws those as rows
   ([Navigation Containers](../../architecture/arch-plugin-system.md#navigation-containers)).
 - **Pull requests reach past the plugin boundary.** The Pulls tab’s host and the
@@ -452,9 +462,10 @@ Four facts shape what follows:
    and kept consistent by tests over source text.
 5. The contract machinery for a named, versioned, corpus-checked model exists and has
    one user.
-6. A plugin can add a kind, a tab in the pane, a data route, and an Overview panel, but
-   not a row, a list, or a navigation panel, which is why pull requests live partly in
-   core.
+6. A plugin can add a kind, a tab in the pane, a data route, an Overview panel, and,
+   since `21dc39da7`, a table of records (`[[table_source]]`, drawn by the table
+   plugin’s `mountTable`), but not an object row, an object list, or a navigation panel,
+   which is why pull requests live partly in core.
 
 ### Work in Flight
 
@@ -740,7 +751,7 @@ Three levels of modeling, chosen by what a thing must do:
 | Branch, tag | Core, from `GitRef` (`git/wire.py:72`) or the chooser’s `SourceRef` and `WorkingTree` (`source_routes.py:292`, `:331`) | Now: #559’s branch and tag chooser is a branches list, with a second model of a ref beside `GitRef`; the type picks one of the two |
 | Changed file | Diff plugin, from File Diff Format’s file entry | A changes list is drawn outside a comparison. Its row is not always a link: “View on branch” is a link only where the served revision is the diff’s head, and otherwise a button that switches the revision first (#511) |
 | Issue | GitHub plugin | Issues are added at all |
-| Agent session | The `agent-log` plugin | Sessions are listed |
+| Agent session | The `agents` plugin | Now: its Sessions view lists them through `sessions`, in an envelope of its own (`sessions`, `offset`, `next_offset`) |
 
 A new type is a contract, a projection, and a feed.
 With no view of its own it still draws in every summary shape from its header; a view is
@@ -1075,7 +1086,7 @@ mb.objects.put(object, { feed, generation })        // hold a summary or facets,
 
 | Type | Freshness mechanism it keeps |
 | --- | --- |
-| File, folder | Pushed by the event stream within its scope; refetched on an intersecting change beyond it; fixed on a pin |
+| File, folder | Pushed by the event stream within its scope; a shown file’s content through `watchFile` and `file.changed` beyond it (File Watches, since `21dc39da7`); refetched on an intersecting change otherwise; fixed on a pin |
 | Commit | Immutable; its `refs` facet moves with the history generation |
 | Pull request | The catalog’s content generation, entity tags, and polling |
 
@@ -1490,6 +1501,11 @@ convention.
   string for the cache, and is passed back as `after`. `generation` is the one name for
   a token that changes when a thing changes: a collection’s here, a facet loader’s, and
   a view state’s. “Revision” stays a commit, as Open Modes uses it.
+  Since `21dc39da7`, the table plugin’s `/api/plugin/table/rows` answers all five keys,
+  with a string cursor passed back as `after` (`page_wire` in `table_source.py`): the
+  convention’s first full user.
+  The `agents` plugin’s `sessions` (`offset`, `next_offset`) and `records` (`cursor`),
+  also since then, are two more renames when they join it.
 - **B. A `Collection` contract** wrapping the rows.
   Uniform and validated.
   It makes every list route’s freshness, counts, and cursors part of a versioned
@@ -1900,6 +1916,8 @@ both rules for each kind of change.
 
 **Decided 2026-11-18: A,** as a new design-system section beside Navigational Row
 Collections, with the list host registered in the same check.
+Since `21dc39da7` the Data Tables grid is a precedent, a pane list whose arrows move and
+whose Enter opens, registered in that check; the new section extends its rule.
 A wide row with a facet line under it takes the Pulls tab’s rule for that line: Right
 moves to it, and Enter or Space there toggles what it owns.
 
@@ -2105,6 +2123,8 @@ contract half for every type.
 - [ ] Add Files to
   [Folder Views Are Tabs](../../../design-system.md#folder-views-are-tabs), which names
   only Overview, Treemap, and a future Files, with its key.
+  Since `21dc39da7` the folder kind also has the `agents` plugin’s offered Agents (`a`,
+  its default where offered) and Sessions (`s`) views.
   `F` is the Files tab’s shell letter (`keymap.py:68`), so the Files view takes the next
   free letter of its label by
   [Scopes and Collisions](../../../design-system.md#scopes-and-collisions), `I`. The

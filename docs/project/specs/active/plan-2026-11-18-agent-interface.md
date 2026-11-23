@@ -577,8 +577,8 @@ sessions’ golden in V8.
   [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands) A puts ahead
   of the token.
 - [ ] `--present` sends the intent and reports `confirmed: true`, and the skill’s recipe
-  becomes that one command: the host mode plan’s step H5 (`mb-idri`, `mb-ko5d`, with the
-  lock `mb-5xi4` and idle exit `mb-k3yz`).
+  becomes that one command: the host mode plan’s step H5 (`mb-idri`, with the lock
+  `mb-5xi4` and idle exit `mb-k3yz`; `mb-ko5d` closed with #562).
 - [ ] The same records over the owner-only socket: the host mode plan’s step H7
   (`mb-1zyp`), with step H6’s reload on a new boot ID (`mb-54r1`).
 - [ ] A recipe for each of the parent’s later slices, none of which adds a surface.

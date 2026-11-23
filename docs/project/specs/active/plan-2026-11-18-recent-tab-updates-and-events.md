@@ -194,10 +194,11 @@ and R1 ships with the limit.
 
 **Live.** The server watches what the sources read, coalesces, and sends one
 `recent.change` event with the collection’s `generation` on the page’s stream.
-A shown tab then asks for its first page again, and a hidden one waits until shown.
-The newest update of each subject is marked `open`, and an `open` row already drawn is
-patched in place: its counts, its time, and its change line.
-Everything else is offered, as “Show 3 new”, the way late rows are in
+A shown tab then asks for its first page again, and a hidden one waits until shown, as
+`file.changed` does for a watched file and as the live table defers rows above the
+reader (both on `main` since `21dc39da7`). The newest update of each subject is marked
+`open`, and an `open` row already drawn is patched in place: its counts, its time, and
+its change line. Everything else is offered, as “Show 3 new”, the way late rows are in
 [The Pulls Tab](../../../design-system.md#the-pulls-tab), so rows already drawn never
 move without input.
 
