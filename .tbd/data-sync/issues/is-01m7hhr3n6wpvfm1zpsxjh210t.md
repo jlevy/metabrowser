@@ -5,7 +5,7 @@ title: "Release 0.13.0: changelog, candidate review, and owner approval"
 kind: task
 status: in_progress
 priority: 1
-version: 11
+version: 12
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/727
@@ -23,7 +23,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:09.221Z
-updated_at: 2026-11-23T05:54:47.469Z
+updated_at: 2026-11-23T06:28:46.432Z
 started_at: 2026-11-23T03:14:00.397Z
 ---
 
@@ -38,3 +38,5 @@ started_at: 2026-11-23T03:14:00.397Z
 2026-11-22: Refreshed draft #727 at 29f9f8c36661ffde18d02990873771088522e662, based on merged #728 at ed952387f673f59d1c662f36125d6f1297c40518. Folded mb-rdwj into the 0.13.0 release. Verified that the 319 entries from the previous Unreleased section and 116 fragments all survived, and the previous release history is byte-identical. The 67 focused tests, public hygiene, changelog checks, and pre-commit checks passed on the refreshed head. Hosted CI run 45107154662 passed, including ci-ok job 137471966193. The draft is ready for review and remains pending final candidate quality, measured performance, the f02 cache decision, and approval of the exact release commit and notes.
 
 Reviewed corrected release-prep head a7e85ff98e4ed474845b6219172bca105ced7877, after folding the 118 fragments and preserving v0.12.0+ byte-for-byte. Exact Review D https://github.com/jlevy/metabrowser/pull/727#pullrequestreview-6017123166 . PR CI 45120576350 and isolated full make verify 45120609494 are pending. Earlier 96c06c77 gates caught a public hygiene label in exp-102. Latest local whole-repository public hygiene and changelog checks pass. Exact 0.13.0 tag and notes approval will follow landed main CI.
+
+Release-prep #727 merged at 51ca65a3ecf58bee890ad9c8ec724c8f15840267. Exact full make verify 45120609494 tested the identical a7e85ff tree and exact landed main CI 45123419039 passed. Approval still required for this SHA and release notes with SHA-256 f86937e202650e47c0ca039483b030f2ffad0ffd823c31dfebf49514ea8310bf. Live tag preflight returned 404 and public PyPI and GitHub latest remain 0.12.0. No tag created.

@@ -5,7 +5,7 @@ title: "Release 0.13: make verify, opt-in tiers, installed-wheel checkpoint and 
 kind: task
 status: in_progress
 priority: 1
-version: 14
+version: 15
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45095985926
@@ -35,7 +35,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:08.288Z
-updated_at: 2026-11-23T05:54:50.827Z
+updated_at: 2026-11-23T06:28:51.342Z
 started_at: 2026-11-23T03:13:34.119Z
 ---
 
@@ -54,3 +54,5 @@ Project-local Agent Skill rehearsal passed against the reviewed draft commit 3d3
 The public exact-commit installation to .agents/skills/metabrowser/SKILL.md in the fresh scratch project matched the source Git blob byte for byte. The installed SHA-256 was 20b76561c6f65b82e01efecac529d6b07288f5f824cb6fd56f1336824900c99e. The skill kept its local metab preference and uvx metabrowser@latest fallback. For the required post-release smoke, follow publishing.md step 10 with the full approved landed RELEASE_COMMIT and the reviewed skills@1.7.6 lock. Run the installed skills entry point as add "jlevy/metabrowser@$RELEASE_COMMIT" --skill metabrowser --agent codex --copy --yes in a fresh project with DISABLE_TELEMETRY=1, then cmp against git show "$RELEASE_COMMIT:skills/metabrowser/SKILL.md". Record the exact absolute install path and hash in the release evidence.
 
 TCP #733 and sidebar #731 merged reviewed. Combined focused release tests: 348 passed on 96c06c77. In a7e85ff only the changelog and benchmark explanation changed, with local public-hygiene and changelog gates green. Exact hosted full release gate https://github.com/jlevy/metabrowser/actions/runs/45120609494 is running. Baseline and Agent Skill evidence retained outside scratch.
+
+Exact staged full verify 45120609494 passed (9397 parallel, 66 serial, 66 Chrome, goldens, audits and installed distribution); final main 51ca65a3ecf58bee890ad9c8ec724c8f15840267 has the identical tree and main CI 45123419039 passed. Exact project-local Agent Skill install matched bytes, the active dev app and server restarted, and the saved window was restored. The full earlier opt-in run used the earlier stabilization tree, with its original live-smoke failure fixed and eight live reruns passing there. Repeat published-artifact checks after approval and publishing.
