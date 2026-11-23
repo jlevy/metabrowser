@@ -554,8 +554,8 @@ Applications.
   and from the path until then (`FolderIdentity.localFolder`). `window.title` is the
   short name too, or the full name while two open folders share a short name
   (`WindowTitle.windowTitles`). The page’s own `<title>` is for a browser’s tab.
-- **Size.** `NewWindowFrame` sizes a new window as a share of its screen’s visible frame
-  and cascades the next one from the window placed last.
+- **Size.** `NewWindowFrame` sizes new windows to 92% of the screen’s visible height and
+  cascades the next window from the window placed last.
 - **Navigation.** `NavigationPolicy` keeps the server’s origin in the window.
   A clicked link to another `http`, `https`, or `mailto` URL opens in the default
   browser; the same URL reached by script, redirect, or history is cancelled, and so are
