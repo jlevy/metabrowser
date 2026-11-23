@@ -5536,8 +5536,9 @@ a.tab-btn {
 }
 /* A page's header, a commit's summary and a pull request's (docs/design-system.md, "Page
    Headers"): its title, then its lines, the first `--page-title-gap` under the title, as a
-   view header's metadata line is after its title, and each after it 6 px under the one
-   before. The title is as tall as its lines: a commit's subject held two lines, so the
+   view header's metadata line is after its title. The remaining rows use the line gap.
+   A size line can use additional margin on both sides, drawn from the end padding.
+   The title is as tall as its lines: a commit's subject held two lines, so the
    diff under a one-line subject started where it starts under a two-line one, and the
    held line stood between the subject and its author, 34 px of space where a two-line
    subject had 4 (mb-wcbc). Every line under the title is a `.page-header-line` at the body
@@ -5548,6 +5549,8 @@ a.tab-btn {
    takes the line's, as a short commit ID does everywhere (Short Commit IDs). */
 .page-header {
   --page-header-line-gap: 6px;
+  --page-header-size-margin: 0px;
+  --page-header-end-padding: calc(var(--content-padding-y) - 2 * var(--page-header-size-margin));
   display: flex;
   flex-direction: column;
   gap: var(--page-header-line-gap);
@@ -5558,6 +5561,9 @@ a.tab-btn {
 .page-header-line {
   min-height: 1lh;
   font-size: var(--body-font-size);
+}
+.page-header > .page-header-size {
+  margin-block: var(--page-header-size-margin);
 }
 
 /* Reading width: the one bridge from --doc-measure (the app's resolved reading
@@ -7989,11 +7995,8 @@ pre.code-block.metabrowser-source-lines > code {
   --icon-btn-size: 20px;
 }
 
-/* The page's lines under its subject, each a page header's line at the body size
-   (`.page-header-line`), in a pull request's header's order (docs/design-system.md, "Page
-   Headers"): the author, as the shell's identity; the revision and its refs, where a pull
-   request has its branches, which wrap under it when there are many; and the age, muted,
-   "Committed 3d ago", where a pull request has its row of ages. */
+/* The author, revision and refs, and committed age each use the shared page-header
+   line at the body size (docs/design-system.md, "Page Headers"). */
 .git-commit-byline,
 .git-commit-revision-line,
 .git-commit-ages {

@@ -4205,9 +4205,8 @@ export function mountPullPage(container, ctx, mb) {
   const number = typeof ctx.number === "number" ? ctx.number : 0;
   const open = typeof ctx.open === "function" ? ctx.open : () => {};
   container.classList.add("github-pull");
-  // A page header, as a commit's summary is (docs/design-system.md, "Page Headers"): the
-  // title, then lines at the body size, 6 px apart, the author's first and the Diff summary
-  // last, in the order a commit's page has the parts the two share.
+  // The shared page header's lines start with state and ages beneath the title and end
+  // with the Diff summary (docs/design-system.md, "Page Headers").
   const header = h("div", { class: "github-pull-header page-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
   // The header's box is decided at first paint: every row is there in every state, at one
@@ -4297,7 +4296,7 @@ export function mountPullPage(container, ctx, mb) {
   // (docs/design-system.md, "Change Size Line"): "2 commits · 36 files changed · 1.8 MB
   // compressed (6.2 MB raw diff)". It is there whenever the summary's row is, holding the
   // same pending placeholder while the summary waits, so neither row moves the tabs.
-  const sizeRow = h("div", { class: "github-pull-size page-header-line" });
+  const sizeRow = h("div", { class: "github-pull-size page-header-line page-header-size" });
   const sizePending = h("span", { class: "mb-delayed-loading github-pull-size-pending" }, [
     h("span", { class: "tally-pending", "aria-hidden": "true" }),
   ]);
@@ -5628,9 +5627,8 @@ export function mountPullPage(container, ctx, mb) {
         });
       }
       placeChildren(openedRow, [stateBadge, opened.row, refresh]);
-      children.push(title, counterpartCorner, paintStateRow(pull), branchesRow, openedRow);
-      // A pull request with no labels has no labels row, and no gap for it: the next row
-      // shown follows the row of ages as the next metadata line (mb-2u08). Its labels come
+      children.push(title, counterpartCorner, openedRow, paintStateRow(pull), branchesRow);
+      // The labels follow the branches and take no row or gap if absent. They come
       // with its record or core, so the row is decided with the record's first paint; a
       // label's color and tooltip, which the repository's set may bring later, change no
       // chip's box.
@@ -5677,7 +5675,7 @@ export function mountPullPage(container, ctx, mb) {
           refresh,
         ]);
         placeChildren(labelList, []);
-        children.push(stateRow, branchesRow, openedRow, labelsRow);
+        children.push(openedRow, stateRow, branchesRow, labelsRow);
       }
     }
     status.dataset.status = model.status;

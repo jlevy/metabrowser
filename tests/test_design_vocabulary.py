@@ -1115,7 +1115,7 @@ def test_git_commit_summary_is_one_component() -> None:
     # A on #470).
     assert "html += renderCommitChangeStats(stats, options.size ?? null);" in panel
     assert (
-        'html += `<div class="git-commit-size page-header-line">'
+        'html += `<div class="git-commit-size page-header-line page-header-size">'
         "${commitSizeLineHtml(stats, kept)}</div>`;"
     ) in panel
     assert (
@@ -1183,7 +1183,7 @@ def test_git_commit_summary_is_one_component() -> None:
 
 
 # The lines under a page header's title, by the class each page's line has: the commit page's
-# author, revision, and age, and the pull request's author, branches, ages, and status.
+# author, revision, and age, and the pull request's state and ages, author, branches, and status.
 _PAGE_HEADER_LINES = (
     "page-header-line",
     "git-commit-byline",
@@ -1199,9 +1199,10 @@ _PAGE_HEADER_LINES = (
 def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     """A commit's page and a pull request's have one header (mb-26zj, "Page Headers").
 
-    Each is a `.page-header`, its title, then its lines, the first `--page-title-gap` under
-    the title and the rest 6 px apart, and every line under the title but the labels, a row of chips, is a `.page-header-line` at `--body-font-size`, an
-    age in it and the Diff summary's row included, whose header the diff plugin sets at the
+    Each is a `.page-header`, with its first line `--page-title-gap` under the title and
+    the common line gap beneath it. The pull request adds half a gap on each side of its
+    size line. Every line under the title but the labels is a `.page-header-line` at
+    `--body-font-size`, including the ages and Diff summary, whose text the diff plugin sets at the
     same token: the owner found the summary and the pull request's
     rows of ages and status a step smaller than the lines above them (mb-kisi). No rule sets
     another size on a line or its text; a chip keeps its own (Branch Chips, Label Colors) and
@@ -1215,6 +1216,10 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     shell = dict(_rules_of(STATIC / "styles.css"))
     assert shell[".page-header"] == {
         "--page-header-line-gap": "6px",
+        "--page-header-size-margin": "0px",
+        "--page-header-end-padding": (
+            "calc(var(--content-padding-y) - 2 * var(--page-header-size-margin))"
+        ),
         "display": "flex",
         "flex-direction": "column",
         "gap": "var(--page-header-line-gap)",
@@ -1228,6 +1233,9 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
         "var(--page-title-gap)"
     )
     assert shell[".page-header-line"]["font-size"] == "var(--body-font-size)"
+    assert shell[".page-header > .page-header-size"]["margin-block"] == (
+        "var(--page-header-size-margin)"
+    )
     # An age in a line takes the line's size because the age primitive sets none
     # (test_age_is_one_primitive_everywhere), so no rule restates it here.
     assert not any(":is(.age-live" in selector for selector in shell if ".page-header" in selector)
