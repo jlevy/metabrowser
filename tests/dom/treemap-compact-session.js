@@ -235,6 +235,17 @@ const DWINDLING = dir("src", "src", [
     file(`part${n}.md`, `src/part${n}.md`, Math.round(16000 / 2 ** n), ".md"),
   ),
 ]);
+// Files of one size in a mixed order, with one larger: the larger leads, and the rest,
+// tied, group by extension, the one without any last, then by name whatever its case.
+const TIED = dir("src", "src", [
+  file("zeta.py", "src/zeta.py", 1000, ".py"),
+  file("Makefile", "src/Makefile", 1000, ""),
+  file("beta.md", "src/beta.md", 1000, ".md"),
+  file("big.py", "src/big.py", 4000, ".py"),
+  file("Alpha.py", "src/Alpha.py", 1000, ".py"),
+  file("alpha.md", "src/alpha.md", 1000, ".md"),
+  file("data.json", "src/data.json", 1000, ".json"),
+]);
 const ONLY_IGNORED = dir("src", "src", [file("cache.md", "src/cache.md", 9000, ".md", true)]);
 const EMPTY = dir("src", "src", []);
 
@@ -927,6 +938,29 @@ async function main() {
       ),
   });
   dwindling.handle.dispose();
+
+  // ── files of one size, grouped by type ─────────────────────────
+  // Value orders the cells, so no size changes; a tie breaks by extension, then by name,
+  // so one type's cells, in one color, sit together. The same files sent in reverse lay
+  // out alike.
+  const tied = mount();
+  tied.setControls({ metric: "size", includeIgnored: false });
+  tied.handle.follow(breakdownAnswer("done", TIED));
+  tied.watch.apply({ index_status: "done", node: TIED });
+  const tiedOrder = summary(tied).cells.filter((each) => each.startsWith("file "));
+  tied.handle.dispose();
+  const reversed = mount();
+  reversed.setControls({ metric: "size", includeIgnored: false });
+  const TIED_REVERSED = { ...TIED, children: [...TIED.children].reverse() };
+  reversed.handle.follow(breakdownAnswer("done", TIED_REVERSED));
+  reversed.watch.apply({ index_status: "done", node: TIED_REVERSED });
+  assert.deepEqual(
+    summary(reversed).cells.filter((each) => each.startsWith("file ")),
+    tiedOrder,
+    "the rollup's order changes nothing",
+  );
+  reversed.handle.dispose();
+  steps.push({ step: "files of one size group by type, then by name", cells: tiedOrder });
 
   // ── a box too small to draw in yet ────────────────────────────
   const narrow = mount({ width: 6 });

@@ -24,7 +24,7 @@ const source = fs
   )
   .replace(/^export\s*\{[^}]*\};$/gm, "")
   .concat(
-    "\nglobalThis.MetabrowserTreemapLayout = { LAYOUT_DEFAULTS, ICON_DEFAULTS, TYPOGRAPHY_DEFAULTS, cellTypography, iconOnlyPx, labelIconGapPx, labelIconPx, labelIconRoomPx, squarify, packLevel, layoutTree, worstAspect };",
+    "\nglobalThis.MetabrowserTreemapLayout = { LAYOUT_DEFAULTS, ICON_DEFAULTS, TYPOGRAPHY_DEFAULTS, cellTypography, compareChildren, iconOnlyPx, labelIconGapPx, labelIconPx, labelIconRoomPx, squarify, packLevel, layoutTree, typeKey, worstAspect };",
   );
 vm.runInContext(source, sandbox, { filename: "treemap-layout.js" });
 
@@ -160,6 +160,62 @@ function fileNode(name, pathStr, size, extras) {
     "unchecked ignored scope drops gitignored",
     !hiddenCells.some((c) => c.path === "ignored.log"),
     JSON.stringify(hiddenCells.map((c) => c.path)),
+  );
+}
+
+// ── Child order: value first; ties by type, then by name ────────
+{
+  const item = (name, value, ext, extras) => ({
+    value,
+    node: { name, path: name, type: "file", ext },
+    sortType: ext.toLowerCase(),
+    sortName: name.toLowerCase(),
+    ...extras,
+  });
+  const items = [
+    item("z.py", 5, ".py"),
+    item("big.txt", 9, ".txt"),
+    item("README", 5, ""),
+    item("B.md", 5, ".MD"),
+    item("a.md", 5, ".md"),
+    { value: 5, rest: true },
+    item("tiny.md", 1, ".md"),
+  ];
+  const order = items
+    .slice()
+    .sort(layout.compareChildren)
+    .map((each) => (each.rest ? "(rest)" : each.node.name));
+  check(
+    "value leads, ties group by extension then name, none and the remainder last",
+    order.join(",") === "big.txt,a.md,B.md,z.py,README,(rest),tiny.md",
+    order.join(","),
+  );
+  // A folder sorts by its dominant extension, which colors it; a file by its own, case
+  // folded.
+  check(
+    "a folder's type is its dominant extension, a file's its own",
+    layout.typeKey({ type: "dir", dominant_ext: ".MD", ext: ".py" }) === ".md" &&
+      layout.typeKey({ type: "file", ext: ".Py" }) === ".py" &&
+      layout.typeKey({ type: "file" }) === "",
+  );
+  // By Files every file ties, so a flat folder lays out by type, then by name.
+  const root = dirNode("root", "", {
+    total_files: 4,
+    children: [
+      fileNode("b.py", "b.py", 100),
+      fileNode("NOTES", "NOTES", 100, { ext: "" }),
+      fileNode("x.MD", "x.MD", 100, { ext: ".MD" }),
+      fileNode("a.json", "a.json", 100, { ext: ".json" }),
+    ],
+  });
+  const top = layout
+    .layoutTree(root, { w: 300, h: 100 }, { metric: "files" })
+    .filter((cell) => cell.depth === 0)
+    .map((cell) => cell.path);
+  check(
+    "a flat folder by Files lays out by type",
+    top.join(",") === "a.json,x.MD,b.py,NOTES",
+    top.join(","),
   );
 }
 

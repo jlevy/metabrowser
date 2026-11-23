@@ -31,6 +31,7 @@ shrinks with the cell, and the smallest files show neither.
 A cell’s hover is drawn on one of two marks canvases while the other fades out; a
 folder’s copies its fill and clears its interior, so its header and frame lift and the
 edges between its files do not.
+Files of one size sit by type, then by name, in whatever order the rollup sent them.
 A refresh that fails keeps the map; a first rollup that fails shows that the map is
 unavailable and recovers on Retry.
 The box is left out when the breakdown failed, the index stopped at its cap before
@@ -331,8 +332,8 @@ $ node tests/dom/treemap-compact-session.js
         "dir src 600x218",
         "dir src/lib 264x196",
         "dir src/docs 178x196",
-        "file src/README.md 154x98",
         "file src/cache.md 154x98",
+        "file src/README.md 154x98",
         "file src/lib/app.py 173x87",
         "file src/lib/cli.py 173x87",
         "file src/lib/util.py 87x174",
@@ -343,8 +344,8 @@ $ node tests/dom/treemap-compact-session.js
         "src",
         "src/lib",
         "src/docs",
-        "src/README.md",
         "src/cache.md",
+        "src/README.md",
         "src/lib/app.py",
         "src/lib/cli.py",
         "src/lib/util.py",
@@ -531,6 +532,18 @@ $ node tests/dom/treemap-compact-session.js
       ],
       "bare": [
         "src/part9.md"
+      ]
+    },
+    {
+      "step": "files of one size group by type, then by name",
+      "cells": [
+        "file src/big.py 238x196",
+        "file src/data.json 119x98",
+        "file src/alpha.md 119x98",
+        "file src/beta.md 119x98",
+        "file src/Alpha.py 119x98",
+        "file src/zeta.py 119x98",
+        "file src/Makefile 119x98"
       ]
     },
     {

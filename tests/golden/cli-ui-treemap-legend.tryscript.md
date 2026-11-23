@@ -212,13 +212,13 @@ $ node tests/dom/treemap-legend-session.js
     "legend": "Python 70.6% Markdown 23.5% JSON 5.9%",
     "legendName": "Share of Total (850 B)",
     "marked": [
-      "legend family:markdown",
-      "cell docs/b.md"
+      "legend family:python",
+      "cell docs/build/d.py"
     ],
-    "pointer": "cell docs/b.md",
+    "pointer": "cell docs/build/d.py",
     "shimmers": true,
-    "tooltip": "docs/b.md / 100 B / modified 3y ago",
-    "anchoredOn": "the anchor over docs/b.md"
+    "tooltip": "docs/build/d.py / 300 B / modified 3y ago / gitignored",
+    "anchoredOn": "the anchor over docs/build/d.py"
   },
   "the measure switched back to Files under the still pointer": {
     "legend": "Markdown 40% Python 40% JSON 20%",
@@ -241,10 +241,10 @@ $ node tests/dom/treemap-legend-session.js
     },
     "focusOrder": [
       "docs/build",
+      "docs/e.json",
       "docs/a.md",
       "docs/b.md",
       "docs/c.py",
-      "docs/e.json",
       "docs/build/d.py"
     ],
     "keys": [
@@ -255,18 +255,18 @@ $ node tests/dom/treemap-legend-session.js
       },
       {
         "key": "ArrowRight",
-        "on": "docs/a.md",
-        "label": "a.md (file, 100 B)"
+        "on": "docs/e.json",
+        "label": "e.json (file, 50 B)"
       },
       {
         "key": "ArrowRight",
-        "on": "docs/b.md",
-        "label": "b.md (file, 100 B)"
+        "on": "docs/a.md",
+        "label": "a.md (file, 100 B)"
       },
       {
         "key": "ArrowLeft",
-        "on": "docs/a.md",
-        "label": "a.md (file, 100 B)"
+        "on": "docs/e.json",
+        "label": "e.json (file, 50 B)"
       },
       {
         "key": "ArrowLeft",

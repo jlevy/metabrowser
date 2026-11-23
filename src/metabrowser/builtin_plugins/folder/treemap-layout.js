@@ -235,6 +235,50 @@ const NO_LABEL = Object.freeze({
  * @typedef {{value: number, actual?: number, bytes?: number, count?: number} & Record<string, any>} WeightedItem
  */
 
+/**
+ * The type a child sorts by among children of equal value: a file's extension, or a
+ * folder's dominant one, which colors a solid folder's cell, case folded; "" for none.
+ * @param {Record<string, any>} node
+ */
+function typeKey(node) {
+  const ext = node.type === "dir" ? node.dominant_ext : node.ext;
+  return typeof ext === "string" ? ext.toLowerCase() : "";
+}
+
+/** Code-unit order, the same in every engine, as a locale's order is not. */
+function compareText(/** @type {unknown} */ a, /** @type {unknown} */ b) {
+  const x = String(a ?? "");
+  const y = String(b ?? "");
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
+/**
+ * The order a folder's children are laid out in. Value comes first, largest first, as
+ * the squarified layout needs, so the order changes no cell's size. Children of equal
+ * value, as every file is by Files and same-sized files are by Bytes, break by type, so
+ * cells of one color sit together: by extension (typeKey), with none after every
+ * extension, then by name case folded, then by path. The remainder comes after every
+ * child of its value. The order is total, so the map draws the same whichever order the
+ * rollup sent the children in, as the compact encoding sends a folder's files after its
+ * folders (treemap-rollup-decode.js).
+ * @param {WeightedItem} a
+ * @param {WeightedItem} b
+ */
+function compareChildren(a, b) {
+  if (b.value !== a.value) {
+    return b.value - a.value;
+  }
+  if (Boolean(a.rest) !== Boolean(b.rest)) {
+    return a.rest ? 1 : -1;
+  }
+  return (
+    Number(a.sortType === "") - Number(b.sortType === "") ||
+    compareText(a.sortType, b.sortType) ||
+    compareText(a.sortName, b.sortName) ||
+    compareText(a.node?.path, b.node?.path)
+  );
+}
+
 /** @param {number} value @param {number} min @param {number} max */
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -825,6 +869,8 @@ function layoutPass(rootNode, viewport, opts, chrome, perValue) {
           count:
             child.type === "dir" ? (excludeIgnored ? child.unignored_files : child.total_files) : 1,
           node: child,
+          sortType: typeKey(child),
+          sortName: String(child.name ?? "").toLowerCase(),
         });
       }
     }
@@ -837,16 +883,7 @@ function layoutPass(rootNode, viewport, opts, chrome, perValue) {
         rest: true,
       });
     }
-    // Equal values break by path, and the remainder after every child, so the order is
-    // total: the map draws the same whichever order the rollup sent the children in, as
-    // the compact encoding sends a folder's files after its folders
-    // (treemap-rollup-decode.js).
-    items.sort(
-      (a, b) =>
-        b.value - a.value ||
-        Number(Boolean(a.rest)) - Number(Boolean(b.rest)) ||
-        (a.node?.path < b.node?.path ? -1 : a.node?.path > b.node?.path ? 1 : 0),
-    );
+    items.sort(compareChildren);
 
     const before = cells.length;
     const packed = packLevel(items, rect, capacity, opts.minCellPx);
@@ -938,6 +975,7 @@ function layoutPass(rootNode, viewport, opts, chrome, perValue) {
 
 export {
   cellTypography,
+  compareChildren,
   ICON_DEFAULTS,
   iconOnlyPx,
   LAYOUT_DEFAULTS,
@@ -948,5 +986,6 @@ export {
   packLevel,
   squarify,
   TYPOGRAPHY_DEFAULTS,
+  typeKey,
   worstAspect,
 };

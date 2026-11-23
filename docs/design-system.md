@@ -4872,7 +4872,9 @@ enough for it to be cheap (`chromeRounds`, `chromePasses`, and `chromePassMaxCel
 `treemap-layout.js`, with their measurements).
 A folder’s own rectangle is therefore larger than its value alone: its area is its
 files’ and its chrome’s. Every cell lies inside its parent’s cell and inside the map’s
-border.
+border. A folder’s children are laid out largest first, which sets every cell’s size;
+children of equal value, as every file is by Files, sit by type, then by name, so cells
+of one color sit together (`compareChildren` in `treemap-layout.js`).
 
 The map paints its cells on a canvas rather than drawing an element for each, so it
 draws cells down to a device pixel, up to `PAINT_MAX_CELLS` (`treemap-map.js`, with its
