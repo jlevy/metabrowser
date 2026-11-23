@@ -200,7 +200,8 @@ def listen_on_available_local_port(host: str, ports: Iterable[int]) -> socket.so
     for family, address in _listen_addresses(host):
         for port in ports:
             try:
-                sock = socket.socket(family, socket.SOCK_STREAM)
+                # asyncio uses the accepted socket's protocol to enable TCP_NODELAY.
+                sock = socket.socket(family, socket.SOCK_STREAM, socket.IPPROTO_TCP)
             except OSError as exc:
                 refusal = exc
                 break
