@@ -1965,12 +1965,11 @@
 }
 
 /* Each excerpt is the diff plugin's file card and rows (guided-pr.js, `renderReference`),
-   which set its type and fills. An excerpt's bar names its file and does not fold it. */
-.metabrowser-diff-host .github-pull-guide-reference-header {
-  cursor: auto;
-}
-
-.metabrowser-diff-host .github-pull-guide-reference-header .diff-file-toggle {
+   which set its type and fills. An excerpt's bar names its file and does not fold it, so it
+   takes no pointer. Three classes outrank the plugin's two-class bar rules, which load after
+   this sheet, and every selector here stays the page's own. */
+.github-pull-guided-pr .github-pull-guide-references .github-pull-guide-reference-header,
+.github-pull-guided-pr .github-pull-guide-reference-header .diff-file-toggle {
   cursor: auto;
 }
 

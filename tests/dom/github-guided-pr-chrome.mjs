@@ -9,8 +9,8 @@
 // What only a browser holds, and the browserless sessions cannot (github-guided-pr-session.js,
 // github-guided-pr-mount-behavior.js, and the tab and key in github-pull-page-mount-behavior.js):
 //
-// 1. The tab and its key on the real shell: Guided PR sits between Changes and Checks on a pull
-//    request whose description has a guide, D opens it once the page has attached its keys, and on
+// 1. The tab and its key on the real shell: Guided PR leads the bar on a pull request whose
+//    description has a guide, D opens it once the page has attached its keys, and on
 //    one with no guide there is no tab and D opens nothing.
 // 2. An excerpt's rows after the shell's highlighter has run over the page. The shell highlights
 //    every `pre code` that does not carry `no-highlight` (`highlightCode` in app.js), one row at a
@@ -98,9 +98,9 @@ try {
   await go("/pull/7");
   await waitFor(`${GUIDE_TAB} !== undefined`);
   same("the tabs of a pull request with a guide", await evaluate(TABS), [
+    "Guided PR",
     "Conversation",
     "Changes",
-    "Guided PR",
     "Checks",
   ]);
   await waitFor(`${GUIDE_TAB}.getAttribute("aria-keyshortcuts") !== null`);

@@ -128,9 +128,11 @@ def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
     assert "inert.sanitizeHtml(" in source
     assert 'shown?.pull?.htmlUrl ?? "https://github.com/"' in source
     assert 'ensureAsset("inert-html")' in source
-    # The route's one list of KPress's stylesheets, and nothing a text could name.
+    # The routes' one list of KPress's stylesheets, loaded in one place, and nothing a text
+    # could name: a description's from the Markdown route, Guided PR's from the guide route.
     assert source.count("mb.loadKpressAssets(") == 1
-    assert "mb.loadKpressAssets(rendered.assets)" in source
+    assert "documentStyles = mb.loadKpressAssets(assets)" in source
+    assert "textStyles(rendered.assets)" in source
     # A failure to load them leaves the text readable under the shell's rules, and is said.
     assert 'console.warn("metabrowser github: the text styles did not load", error);' in source
     # Only shell-owned icon constants are parsed; every use takes an inert copy.

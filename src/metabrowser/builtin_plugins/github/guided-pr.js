@@ -142,7 +142,7 @@ function element(tag, content = "", className = "") {
 /**
  * The guide's own text in a KPress article, as the page sets a description
  * (`kpressHost` in pull-page.js): KPress's prose element sets the headings, paragraphs, and
- * the space between them, and `.chrome-prose` keeps it in the chrome's sans
+ * the space between them, and the chrome prose class keeps it in the chrome's sans
  * (docs/design-system.md, "Serif Is for Documents"). The text is the author's, set as text.
  *
  * @param {HTMLElement} prose The `.kpress-prose` element the caller fills.

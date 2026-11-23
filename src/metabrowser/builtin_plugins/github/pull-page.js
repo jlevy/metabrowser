@@ -4780,6 +4780,29 @@ export function mountPullPage(container, ctx, mb) {
   let documentStyles = null;
 
   /**
+   * Load KPress's stylesheets for the page's texts, once, from the manifest a route answers
+   * with: the Markdown route's for a description or comment, the guide's for Guided PR. Both
+   * are `kpress_adapter.document_stylesheets`, so no text chooses what the page loads.
+   *
+   * @param {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} assets
+   * @returns {Promise<void>}
+   */
+  function textStyles(assets) {
+    if (documentStyles === null) {
+      // Only a load that succeeded lets later pages insert kept renders without asking again.
+      documentStyles = mb.loadKpressAssets(assets).then(
+        () => {
+          kpressStylesSettled = true;
+        },
+        (error) => {
+          console.warn("metabrowser github: the text styles did not load", error);
+        },
+      );
+    }
+    return documentStyles;
+  }
+
+  /**
    * Whether *rendered* can be inserted in this task: the allowlist and the stylesheets an
    * earlier render loaded are in place, so it is final when it first shows.
    *
@@ -4927,18 +4950,7 @@ export function mountPullPage(container, ctx, mb) {
   function renderMarkdown(part, rendered, text) {
     const element = texts.get(part);
     inserting.set(part, text);
-    if (documentStyles === null) {
-      // Only a load that succeeded lets later pages insert kept renders without asking again.
-      documentStyles = mb.loadKpressAssets(rendered.assets).then(
-        () => {
-          kpressStylesSettled = true;
-        },
-        (error) => {
-          console.warn("metabrowser github: the text styles did not load", error);
-        },
-      );
-    }
-    void Promise.all([inertReady, documentStyles]).then(([inert]) => {
+    void Promise.all([inertReady, textStyles(rendered.assets)]).then(([inert]) => {
       if (inserting.get(part) === text) {
         inserting.delete(part);
       }
@@ -7312,7 +7324,7 @@ export function mountPullPage(container, ctx, mb) {
         // The guide's text is KPress prose and its excerpts are the diff plugin's rows.
         mount.view = mountGuidedPR(host, number, openChangedFile, (assets) =>
           Promise.all([
-            mb.loadKpressAssets(
+            textStyles(
               /** @type {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} */ (assets),
             ),
             mb.ensureKindAssets("diff"),
