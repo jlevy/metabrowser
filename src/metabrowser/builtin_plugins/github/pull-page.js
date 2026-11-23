@@ -266,13 +266,18 @@ export function diffTab(tab) {
 const DOCS_GROUP = "type:docs";
 
 /**
- * Whether a diff document lists no changed file: a Docs tab with no document to show.
+ * Whether a diff document lists no changed file, and its list was not cut short at its
+ * bounds: a Docs tab with no document to show.
  *
  * @param {unknown} document_
  */
 export function noFiles(document_) {
-  const manifest = /** @type {{manifest?: {files?: unknown}} | null} */ (document_)?.manifest;
-  return Array.isArray(manifest?.files) && manifest.files.length === 0;
+  const manifest = /** @type {{manifest?: {files?: unknown, truncated?: unknown}} | null} */ (
+    document_
+  )?.manifest;
+  return (
+    Array.isArray(manifest?.files) && manifest.files.length === 0 && manifest.truncated !== true
+  );
 }
 
 /** @type {Readonly<Record<string, string>>} */
@@ -7239,9 +7244,10 @@ export function mountPullPage(container, ctx, mb) {
     if (filesRefresh !== null) {
       const displayed = filesRefresh;
       if (model.refreshing) {
-        // Returning from Conversation still has to render Files while repair runs.
-        if (diffFor === null) {
-          diffMounted = mountDiff(displayed);
+        // Returning from Conversation still has to render Files while repair runs, and
+        // moving between Changes and Docs draws the other tab's diff of the same repair.
+        if (diffFor === null || diffShows !== model.tab) {
+          diffMounted = mountDiff(displayed, model.tab);
         }
         return;
       }
@@ -8141,7 +8147,9 @@ export function mountPullPage(container, ctx, mb) {
         controller.setTab("files", { settling });
       }
       wantedFile = path;
-      return landFile() ?? { kind: "no_diff", path };
+      // Still on Docs, its diff holds the documents alone: the file lands once Changes
+      // has mounted the whole comparison.
+      return (diffShows === "docs" ? null : landFile()) ?? { kind: "no_diff", path };
     },
     /**
      * Whether Files changed holds a path, typed as `scrollToFile` is: `no_diff` while no
@@ -8151,6 +8159,11 @@ export function mountPullPage(container, ctx, mb) {
      * @returns {import("../diff/diff-view.js").FileLookup | {kind: "no_diff", path: string}}
      */
     fileForPath(path) {
+      if (diffShows === "docs") {
+        // Docs holds the documents alone, so its diff cannot say a path is not in the
+        // comparison; showing one moves to Changes, which can.
+        return { kind: "no_diff", path };
+      }
       const lookup =
         /** @type {{fileForPath?: (path: string) => import("../diff/diff-view.js").FileLookup} | null} */ (
           diffHandle

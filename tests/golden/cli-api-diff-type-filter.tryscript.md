@@ -429,10 +429,12 @@ status: 200
 ? 0
 ```
 
-## Test: a deferred file’s own request is narrowed too
+## Test: one file’s own request is narrowed too
 
-The view asks for one file with the same parameters it asked for the list with.
-A file the selection does not keep is not in that answer.
+A request for one file narrows as a request for the list does, so a file the selection
+does not keep is not in that answer.
+The diff view asks for a deferred file without the narrowing: it asks only for files its
+narrowed list holds.
 
 ```console
 $ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&types=.md&file=src/app.py'

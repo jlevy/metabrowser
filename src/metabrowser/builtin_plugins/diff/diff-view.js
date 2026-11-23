@@ -47,6 +47,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Set<string>} expandedFolds
  * @property {boolean} unfold Whether every fold of the file opens as it is drawn, as a
  *   pull request's Docs tab shows its documents whole (`mountDiffView`'s *unfold*).
+ * @property {Set<string>} foldsOpened The folds *unfold* has opened: each opens the first
+ *   time it is drawn, so one the reader closes stays closed when the file is drawn again.
  * @property {Map<string, {timer: number}>} foldTasks
  * @property {Record<string, unknown>} patch
  * @property {DiffViewApi} api
@@ -582,8 +584,10 @@ function appendFoldedRows(section, rows, changedRunOf, renderRow, state, hunkInd
     }
     section.append(...run.slice(0, FOLD_VISIBLE).map(renderRow));
     const key = `${String(state.change.id)}:${hunkIndex}:${changedRun}`;
-    if (state.unfold) {
-      // Drawn open, its rows materialized in batches as a reader's opening does.
+    if (state.unfold && !state.foldsOpened.has(key)) {
+      // Drawn open, its rows materialized in batches as a reader's opening does; once,
+      // so a fold the reader closed stays closed when a layout change draws it again.
+      state.foldsOpened.add(key);
       state.expandedFolds.add(key);
     }
     const expanded = state.expandedFolds.has(key);
@@ -653,6 +657,7 @@ export function createFileState(change, patch, api, body, unfold = false) {
     expandedFolds: new Set(),
     foldTasks: new Map(),
     unfold,
+    foldsOpened: new Set(),
     patch,
     renderModel: measureProjection(
       api,
@@ -3317,7 +3322,9 @@ export function mountDiffView(container, document_, api, options = {}) {
     options.toolbarControl ?? null,
   );
   root.append(toolbar);
-  if (manifest.files.length === 0 && options.emptyText) {
+  // A list cut short at its bounds may have left out what was asked for: the truncation
+  // notice below says so, and "none" would not be true.
+  if (manifest.files.length === 0 && manifest.truncated !== true && options.emptyText) {
     root.append(el("div", "diff-availability diff-type-empty", options.emptyText));
   }
   // What the source could not model is left out of the files below, so it is said above them.

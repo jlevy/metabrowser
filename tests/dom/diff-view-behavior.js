@@ -1936,6 +1936,25 @@ async function main() {
     !switchingFold.find("diff-fold-group")[0].classList.contains("diff-fold-collapsed"),
   );
 
+  // Unfolded, as a pull request's Docs tab draws, a long run is drawn open; one the reader
+  // closes stays closed when a layout change draws the file again.
+  const unfolded = new FakeElement("div");
+  mountDiffView(unfolded, longDoc, layoutApi, { unfold: true });
+  await nextTask();
+  check(
+    "an unfolded diff draws its long run open",
+    unfolded.find("diff-fold-control")[0].getAttribute("aria-expanded") === "true",
+  );
+  unfolded.find("diff-fold-control")[0].click();
+  await nextTask();
+  layoutChange("diff-layout", "unified", "one");
+  layoutChange("diff-layout", "split", "one");
+  await nextTask();
+  check(
+    "a fold the reader closed stays closed when the file is drawn again",
+    unfolded.find("diff-fold-control")[0].getAttribute("aria-expanded") === "false",
+  );
+
   // Deferred data and syntax share one mount lifetime. Layout changes
   // only alter the projection; pending work is neither restarted nor
   // allowed to mutate state after disposal.

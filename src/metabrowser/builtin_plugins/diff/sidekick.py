@@ -427,7 +427,8 @@ async def comparison_at(
     revalidate = False
     if kept_key is not None:
         # A narrowed answer is kept apart from the whole one. With no types and no group the
-        # key is the one it was, so a whole comparison's tag does not move. The counts depend
+        # key is the one it was, so a whole comparison's tag does not move. Each narrowing
+        # is named, since a type token may hold `=` or `:` and so spell the other one. The counts depend
         # on the listing alone, so every request for them shares one key.
         answer_key = (
             (*kept_key, "", "view=types")
@@ -436,7 +437,7 @@ async def comparison_at(
                 *kept_key,
                 wanted_file,
                 str(max_initial_files),
-                *((",".join(types),) if types else ()),
+                *((f"types={','.join(types)}",) if types else ()),
                 *((f"group={group.key}",) if group is not None else ()),
             )
         )

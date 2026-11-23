@@ -36,6 +36,9 @@ async function story({ delaySecondMount = false } = {}) {
     disposed = 0,
     reads = 0;
   const mounted = [];
+  // Each mount's File type group (Docs asks for `type:docs`), and each jump, by that group.
+  const groups = [];
+  const jumps = [];
   globalThis.fetch = async (route, options = {}) => {
     if (route === "/api/plugin/github/stacks") {
       return {
@@ -68,13 +71,22 @@ async function story({ delaySecondMount = false } = {}) {
       getRegisteredView: () => ({
         render: async (host, context) => {
           mounted.push(context.comparison);
+          const group = context.group ?? null;
+          groups.push(group);
           if (delaySecondMount && mounted.length === 2) {
             await new Promise((resolve) => {
               releaseMount = resolve;
             });
           }
           host.textContent = "Displayed changes";
+          // A Docs diff holds the documents alone, as the diff plugin narrowed by group does.
+          const holds = (path) => group === null || path.endsWith(".md");
           return {
+            fileForPath: (path) => ({ kind: holds(path) ? "file" : "not_in_comparison", path }),
+            scrollToFile(path) {
+              jumps.push([group, path]);
+              return { kind: holds(path) ? "jumped" : "not_in_comparison", path };
+            },
             dispose() {
               disposed += 1;
             },
@@ -103,6 +115,8 @@ async function story({ delaySecondMount = false } = {}) {
     handle,
     container,
     mounted,
+    groups,
+    jumps,
     button,
     reads: () => reads,
     disposed: () => disposed,
@@ -121,7 +135,7 @@ async function story({ delaySecondMount = false } = {}) {
       await settle();
     },
     async land(tab) {
-      window.location.pathname = `/pull/7${tab === "files" ? "/files" : ""}`;
+      window.location.pathname = `/pull/7${tab === "" ? "" : `/${tab}`}`;
       handle.land({ tab });
       await settle();
     },
@@ -245,6 +259,33 @@ async function pollOrder() {
   run.handle.dispose();
 }
 
+// Changes and Docs are two drawings of one comparison: a Refresh under way still draws the
+// tab the reader moved to, and a file shown from Docs lands on Changes, not in Docs' list.
+async function docs() {
+  const run = await story();
+  await run.refresh();
+  await run.acknowledge(true);
+  await run.land("docs");
+  await run.handle.whenFilesReady();
+  assert.deepEqual(run.groups, [null, "type:docs"], "Docs is drawn while the refresh runs");
+  await run.land("files");
+  await run.handle.whenFilesReady();
+  assert.deepEqual(run.groups, [null, "type:docs", null], "and Changes again, whole");
+  await run.land("docs");
+  await run.handle.whenFilesReady();
+  assert.equal(
+    run.handle.fileForPath("src/app.py").kind,
+    "no_diff",
+    "Docs does not say a file outside its group is outside the comparison",
+  );
+  run.handle.showFile("src/app.py");
+  await settle();
+  await run.handle.whenFilesReady();
+  assert.equal(run.groups.at(-1), null, "showing a file moves to Changes");
+  assert.deepEqual(run.jumps, [[null, "src/app.py"]], "and lands on it there, not in Docs");
+  run.handle.dispose();
+}
+
 const selected = process.argv.includes("--case") ? process.argv.at(-1) : "all";
 (async () => {
   if (selected === "all" || selected === "history") {
@@ -252,6 +293,9 @@ const selected = process.argv.includes("--case") ? process.argv.at(-1) : "all";
   }
   if (selected === "all" || selected === "poll-order") {
     await pollOrder();
+  }
+  if (selected === "all" || selected === "docs") {
+    await docs();
   }
   process.stdout.write(`${JSON.stringify({ case: selected, passed: true })}\n`);
 })().catch((error) => {
