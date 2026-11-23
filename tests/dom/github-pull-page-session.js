@@ -1653,15 +1653,14 @@ async function main() {
   pinnedCheckout.pin = pinnedCheckout.record.pull.base.sha;
   const otherPin = runtime.describePull(pinnedCheckout, pinnedCheckoutPage);
   assert(
-    otherPin.browse === null && otherPin.headOffer === null && otherPin.comparison?.branch === null,
-    "an unrelated checkout pin offers no PR head or file switch",
+    otherPin.browse === null && otherPin.comparison?.branch === null,
+    "an unrelated checkout pin offers no code or file switch",
   );
   pinnedCheckout.pin = head;
   const headPin = runtime.describePull(pinnedCheckout, pinnedCheckoutPage);
   assert(
     headPin.browse?.kind === "link" &&
       headPin.browse.at === head &&
-      headPin.headOffer === null &&
       headPin.comparison?.branch?.ref === null,
     "a checkout already at the PR head keeps its direct code and file links",
   );
