@@ -1,10 +1,12 @@
 # Feature: Git Status and Working-Tree Diffs
 
-**Date:** 2026-08-26 (last updated 2026-11-14)
+**Date:** 2026-08-26 (last updated 2026-11-18)
 
 **Author:** Joshua Levy (with LLM assistance)
 
 **Status:** Draft; no phase started.
+On 2026-11-18 it gained two
+[requirements from the Recent tab plan](#requirements-from-the-recent-tab-plan).
 Epic `mb-097x`: Phase 0 `mb-r5gn`, Phase 1 `mb-u4mf`, Phase 2 `mb-vibn`, and the status
 goldens `mb-y06t` are open.
 
@@ -45,6 +47,35 @@ accessibility change.
 No phase adds a speculative compatibility layer.
 The Git API, built-in diff data hook, browser shell, and built-in assets ship together
 and may change together as internal contracts.
+
+## Requirements From the Recent Tab Plan
+
+[The Recent Tab](plan-2026-11-18-recent-tab-updates-and-events.md), decided on
+2026-11-18, makes a checkout’s uncommitted changes one object with one page
+([Working-Tree Changes](plan-2026-11-18-recent-tab-updates-and-events.md#working-tree-changes)),
+and adds two requirements to this plan.
+Both come from that plan, and nothing else here is redesigned for it.
+
+1. **A manifest of every path.** Beside the one-entry comparisons this plan designs, a
+   File Diff Format manifest of every path that differs between `HEAD` and the working
+   tree, staged, unstaged, and untracked together, with hunks deferred and hydrated for
+   one file at a time. On an unborn branch its left side is `empty`. It is the diff of
+   the working-tree changes object and the document its page draws.
+   [File Diff Format projection](#file-diff-format-projection) keeps its one-entry
+   documents and its `entry` key; the manifest is a second document from the same
+   source, and its cost over the dirty-tree corpus is measured in
+   [Phase 0](#implementation-plan) with the rest.
+2. **The address, by that plan’s
+   [RT-3](plan-2026-11-18-recent-tab-updates-and-events.md#rt-3-the-working-trees-address).**
+   `/status` is the whole comparison, `/status/<path>` is one file in it, in the
+   `/view/` codec, and `?scope=` tells a staged row from an unstaged one at the same
+   path. This replaces the `/status/<scope>/<entry-id>` address under
+   [Selection and canonical route](#selection-and-canonical-route) and
+   [Browser route](#browser-route), so the page and its entry in the Recent tab share
+   one address and the grammar keeps its container and inner path.
+   RT-3 keeps the digest address as its fallback: if Phase 0 finds a path in the corpus
+   that the `/view/` codec cannot spell, such as a name that is not valid UTF-8, the
+   address designed below stands.
 
 ## Goals
 
@@ -321,6 +352,12 @@ history with Changes both expanded and collapsed, asserting the resolved logical
 unaffected by the Changes block’s height.
 
 ### Selection and canonical route
+
+> The Recent tab plan replaces the address in this section with `/status` and
+> `/status/<path>`; see
+> [Requirements From the Recent Tab Plan](#requirements-from-the-recent-tab-plan).
+> What follows is the address that stands if Phase 0 finds a path that address cannot
+> spell.
 
 Selecting a status row replaces the main content with that row’s one-file diff and
 selects the Commits tab.
@@ -980,6 +1017,10 @@ and failed states.
 
 ### Browser route
 
+> Replaced by `/status` and `/status/<path>`, as
+> [Requirements From the Recent Tab Plan](#requirements-from-the-recent-tab-plan) says,
+> with the same restore behavior.
+
 `/status/<scope>/<entry-id>` restores the Commits tab, current status, row selection,
 and main-pane one-file diff.
 It is a live address: reload resolves the current entry and reports stale if the working
@@ -1004,6 +1045,10 @@ than to choose it — and its result is never separately reviewed.
   the special-case table, including the stat-dirty content-identical population.
 - [ ] Record command-level status and one-file-diff latency and output bytes across the
   corpus — everything measurable without the parser or the panel.
+- [ ] For the
+  [requirements from the Recent tab plan](#requirements-from-the-recent-tab-plan),
+  record what a manifest of every path costs with hunks deferred, and whether the
+  `/view/` codec spells every path in the corpus.
 - [ ] Defer the measurements that need code to the phase that writes it: peak retained
   parser bytes and projection cost during Phase 1, browser time-to-first-row and DOM
   cost during Phase 2, both against this same corpus.
@@ -1048,6 +1093,9 @@ See [CLI-first delivery](../done/plan-2026-08-28-cli-first-delivery-map.md).
   binary, symlink, submodule, too-large, and stale cases.
 - [ ] Add the built-in diff `working-tree` data hook and keep the immutable comparison
   hook unchanged.
+- [ ] Add the manifest of every path, with hunks deferred, that the
+  [requirements from the Recent tab plan](#requirements-from-the-recent-tab-plan) ask
+  for.
 - [ ] Validate every produced document against the File Diff Format schema and apply
   oracle where both sides can be reconstructed.
 - [ ] Add unit, property, fixture-repository, route, wire, timeout, truncation,
@@ -1063,7 +1111,8 @@ operation changes `git status --porcelain` or index metadata.
 
 ### Phase 2: Git panel, live invalidation, and delivery (`mb-vibn`)
 
-- [ ] Add the status URL codec and restore path.
+- [ ] Add the status URL codec and restore path, at the address the
+  [requirements from the Recent tab plan](#requirements-from-the-recent-tab-plan) give.
 - [ ] Add the strict, on-demand `git-status-model.js` asset and browser wire types.
 - [ ] Restructure the Git panel into Changes and History without changing history graph
   topology, paging, hover, or commit-detail behavior.

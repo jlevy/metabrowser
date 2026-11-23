@@ -6,7 +6,7 @@ File > Open Recent, which lists what `metab --recent --json` answers.
 Planned: the `target` a mirror was opened at (its web URL, which waits for
 `ProviderUrlReducer.web_url` in jlevy/metabrowser#540), a folder’s root resolved to its
 repository’s (`mb-2wfk`), and a route for a switcher in the page, in the
-[native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md#phase-4-recent-targets-the-switcher-and-the-mcp-adapter).
+[native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md#phase-4-recent-targets-and-the-switcher).
 The modes, roots, and views are those of [Open Modes](arch-open-modes.md).
 
 Metabrowser keeps one list of what the user opened lately, and every shell reads it

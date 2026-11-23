@@ -83,7 +83,7 @@ links describe what was built.
     decision’s `preference_unreadable`, not a failure, so the app’s link check never
     depends on a setting it does not use.
   - Each browser delivery starts a new server; finding a running one waits on the server
-    registry (`mb-5xi4`).
+    registry (`mb-baee`, split from `mb-5xi4`) and the find-or-start lock (`mb-5xi4`).
 - **Clone progress and GitHub failure states** (jlevy/metabrowser#571): a repository’s
   start shows the newest line of `metab`’s clone report under “Starting…”, and a start
   that fails on GitHub shows the reason, `metab`’s message, the `gh` commands each with
@@ -250,9 +250,16 @@ that own them.
 Phase 3 of the native app plan has host mode (`mb-qzny`), the live-server registry
 (`mb-5xi4`), control verbs on an owner-only socket (`mb-1zyp`), pages that follow
 `navigate` (`mb-54r1`), the front door (`mb-idri`), the `metabrowser://` scheme with a
-rendezvous reply and in-app confirmation (`mb-rtgh`), and the skill (`mb-ko5d`). The
-front door depends on all of the server-side work, so nothing reaches the app from an
-agent until host mode ships.
+rendezvous reply and in-app confirmation (`mb-rtgh`), and the skill (`mb-ko5d`). As
+planned on 2026-11-17, the front door depended on all of the server-side work, so
+nothing reached the app from an agent until host mode shipped.
+The [host mode plan](plan-2026-11-18-host-mode.md) designs that phase for any host.
+By its [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands) A, which
+the owner took on 2026-11-19, finding a running server lands ahead of host mode’s
+credential, and those beads were split to match: the registry is now `mb-baee` and
+`--live` `mb-77x9`, `mb-5xi4` keeps the find-or-start lock, and `mb-qzny` keeps the
+token. The front door now waits on discovery, `--live`, the lock, and idle exit
+(`mb-k3yz`), and not on the socket or the token.
 The [topology brief](../../research/research-2026-11-10-native-app-server-topology.md)
 (“Show X” End to End, Control Plane) has the reasoning, including why an agent must
 reach the app through LaunchServices and never by executing its binary.
@@ -300,8 +307,8 @@ to measure against).
    `/commit/…` or `#anchor`) goes to the browser, and the report says why.
 4. **Deliver to a browser:** today’s path, a server started detached with the browser
    opened once it answers, so the agent need not hold a background process.
-   Until host mode’s idle exit (`mb-qzny`) ships, the report names the pid and how to
-   stop it.
+   Until host mode’s idle exit (`mb-k3yz`, split from `mb-qzny`) ships, the report names
+   the pid and how to stop it.
 5. **Report.** One line by default, and with `--json` an object with the resolved root,
    the selection, `delivered_to` (`app`, `browser`, or `none`), whether delivery is
    confirmed, the URL when there is one, and a reason code when it fell back or failed.
@@ -452,12 +459,14 @@ transport.
 
 ### Phase 2: Round Trip, Live Pages, and Named Commands
 
-Builds on the native app plan’s Phase 3 beads, which keep their scope.
+Builds on the native app plan’s Phase 3 beads, which the host mode plan’s HM-1 A split
+on 2026-11-19; its
+[Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan) orders them.
 
 - [ ] `--present` delivers through the `metabrowser://` rendezvous (`mb-rtgh`) and the
-  live-server registry (`mb-5xi4`), so the app replies with the window and URL, a page
-  already open navigates (`mb-54r1`), local route addresses reach the app, and a new
-  root waits for the in-app confirmation.
+  live-server registry (`mb-baee`, with `mb-5xi4`’s find-or-start lock), so the app
+  replies with the window and URL, a page already open navigates (`mb-54r1`), local
+  route addresses reach the app, and a new root waits for the in-app confirmation.
 - [ ] The command catalog, `/api/commands`, and the handler-coverage session test.
 - [ ] `present` carries a command id, and the reply reports what ran.
 - [ ] `_mb_view` puts the view tab in the URL.
