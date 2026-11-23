@@ -385,7 +385,12 @@ guards and adds one:
   A cold catalog of 800 rows is then 8 points of backfill, read as fast as its pages
   come, and 100 walk batches, of which an idle prefetch leaves the walk about 90 at once
   and the rest as the hour rolls.
-  That is arithmetic, not a measurement.
+  A cold first visit to this repository measured on 2026-11-23, at 712 pull requests,
+  read the backfill’s 8 pages in 10 seconds and walked all 89 batches in 4.5 minutes
+  without a hold, ending at 97 of the share’s 100: 8 for the backfill, 89 for the walk.
+  The driver asked for the open list and walked every row in the background lane, a
+  batch a second, so it asked no prefetch, cores of rows on screen or labels, and the
+  machine was heavily loaded.
   The cost of the order is that a walk which ran while the prefetch was idle can leave a
   prefetch asked later that hour less than its caps, until the hour rolls.
   The label set’s read is refused only at the whole share, as the prefetch is, since a
@@ -677,9 +682,9 @@ account check and the bounds on probes.
   much of the account’s hour other tools use, and is a third of it the right share for
   speculative work, with the cores walk leaving the prefetch its caps while it has work,
   and the backfill reserving nothing?
-  None has been measured: `governor.ceiling` in `GET pulls-prefetch` reports what an
-  hour used, and a few real sessions’ readings, a repository’s first visit among them,
-  should be recorded beside the constants.
+  Only a scripted first visit has been measured (see [Budget](#budget)), and it asked no
+  prefetch: `governor.ceiling` in `GET pulls-prefetch` reports what an hour used, and a
+  few real sessions’ readings should be recorded beside the constants.
   Should the servers of one home share a ceiling instead, through a file beside their
   event logs?
 - Below the floor nothing automatic observes the GraphQL budget again: the catalog’s
