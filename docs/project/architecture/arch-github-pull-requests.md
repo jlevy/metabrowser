@@ -767,12 +767,13 @@ are in the [design system](../../design-system.md#the-pulls-tab).
 ### Guided PR
 
 `guided_pr.py` extracts a top-level fence from the raw, bounded PR description and
-validates its artifact against the installed `GuidedPR/v1` SoftSchema.
+validates its artifact against the installed `Collection/v1` SoftSchema
+(`metabrowser.collection:Collection/v1`), whose ordered `items` are the guide’s steps.
 The request names a PR and an optional one-based step.
 The handler checks both comparison endpoints, rejects a known newer head, and hydrates
 just the paths that the chosen step needs through the same manifest and diff adapter as
 Changes. It reports unresolved references in place.
-The limits in `guided_pr.py` (`MAX_STEPS`, `MAX_REFERENCES`, and `MAX_EXCERPT_BYTES`)
+The limits in `guided_pr.py` (`MAX_ITEMS`, `MAX_REFERENCES`, and `MAX_EXCERPT_BYTES`)
 cap the guide’s steps, the per-step hydration, and the excerpt text, each with the
 measurement that set it beside the constant.
 The parse is kept for each pull request by record revision, so a step click reads the

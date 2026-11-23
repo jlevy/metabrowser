@@ -156,24 +156,27 @@ Give the agent the PR description and the diff from its merge base to its head.
 Ask it to explain the feature, trace the main components, and choose the code to review
 in dependency or execution order.
 Each step should explain why the reviewer is looking there and what to verify.
-Write every guide field as plain text: the page shows it as typed and keeps its line
-breaks, so Markdown such as backticks, lists, and links prints literally.
+The block is a collection (`metabrowser.collection:Collection/v1`): a `summary`, shown
+under “What this changes”, an `overview`, shown under “Architecture”, and ordered
+`items`, each a step with a `title`, a `note` saying what to verify, and its
+`references`. Write every guide field as plain text: the page shows it as typed and
+keeps its line breaks, so Markdown such as backticks, lists, and links prints literally.
 
 ````markdown
 ```guided-pr
 softschema:
-  contract: metabrowser.github:GuidedPR/v1
-  envelope: guide
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
   status: enforced
-guide:
+collection:
   comparison:
     merge_base: "<full merge-base commit ID>"
     head: "<full PR head commit ID>"
-  feature: Readers can keep using cached data while a refresh runs.
-  architecture: A request serves the last snapshot while a worker builds the next one.
-  steps:
+  summary: Readers can keep using cached data while a refresh runs.
+  overview: A request serves the last snapshot while a worker builds the next one.
+  items:
     - title: Inspect the request path
-      commentary: Does the request return the snapshot before the worker finishes?
+      note: Does the request return the snapshot before the worker finishes?
       references:
         - {path: src/cache.py, side: new, start_line: 42, end_line: 51}
 ```
@@ -188,8 +191,8 @@ it replaced. A step’s excerpts share one size budget (`MAX_EXCERPT_BYTES` in
 `guided_pr.py`); an excerpt past it says it is too large to show.
 A `path` alone links to the file, including binary changes and renames without a text
 diff. The
-[compiled SoftSchema](../src/metabrowser/builtin_plugins/github/guided-pr-v1.schema.yaml)
-describes the payload, and `MAX_STEPS` and `MAX_REFERENCES` in `guided_pr.py` bound its
+[compiled SoftSchema](../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
+describes the payload, and `MAX_ITEMS` and `MAX_REFERENCES` in `guided_pr.py` bound its
 steps and each step’s references.
 
 The guide is read from the cached description and its excerpts come from the cached

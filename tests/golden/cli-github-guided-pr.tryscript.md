@@ -27,10 +27,10 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-pr?number=7
 status: 200
 {
-  "record_revision": "71400f7bb985694857b558672d5a9e6bd7ae344fe74d929f622d9f5fb4407e40",
+  "record_revision": "eecb696cd6a2d4032d6da4feeb8ffaaf7847044f30d5d0d85ac9e98a6194ec60",
   "state": "ready",
-  "feature": "Teach the app to count to two.",
-  "architecture": "The app's count and its explanation live in separate files.",
+  "summary": "Teach the app to count to two.",
+  "overview": "The app's count and its explanation live in separate files.",
   "comparison": {
     "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
     "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
@@ -38,7 +38,7 @@ status: 200
   "step_count": 2,
   "step": 1,
   "title": "Start with the count",
-  "commentary": "Check that the original value is preserved.",
+  "note": "Check that the original value is preserved.",
   "references": [
     {
       "path": "src/app.txt",
@@ -75,10 +75,10 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-pr?number=7&step=2
 status: 200
 {
-  "record_revision": "71400f7bb985694857b558672d5a9e6bd7ae344fe74d929f622d9f5fb4407e40",
+  "record_revision": "eecb696cd6a2d4032d6da4feeb8ffaaf7847044f30d5d0d85ac9e98a6194ec60",
   "state": "ready",
-  "feature": "Teach the app to count to two.",
-  "architecture": "The app's count and its explanation live in separate files.",
+  "summary": "Teach the app to count to two.",
+  "overview": "The app's count and its explanation live in separate files.",
   "comparison": {
     "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
     "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
@@ -86,7 +86,7 @@ status: 200
   "step_count": 2,
   "step": 2,
   "title": "Read the new guide",
-  "commentary": "Check the new docs against the behavior.",
+  "note": "Check the new docs against the behavior.",
   "references": [
     {
       "path": "docs/new.md",
@@ -147,7 +147,7 @@ pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-pr?number=8
 status: 200
 {
-  "record_revision": "9d5a6cb058af31240c4f6661092bfdbb1f5ddd55adf4bd191f6966b6e3d3c99d",
+  "record_revision": "0dd0882d8f17ed3b7129d5f890f5b7aa03f44d2fa24af1f92a5b7c79cd6bebb7",
   "state": "stale"
 }
 ? 0
@@ -161,7 +161,7 @@ pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-pr?number=9
 status: 200
 {
-  "record_revision": "6f766dab7c4b783f71edbd9b2e6f0a99b56b73079ea277f37b3793adc8415c5c",
+  "record_revision": "07fc5ffa0d4da8a0c6611f8997f7837dbb7e6f7af2f7b79cc42abc0f8b5e3a9e",
   "state": "invalid",
   "message": "Use one guided-pr block in the pull request description."
 }

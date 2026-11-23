@@ -9,11 +9,11 @@ from metabrowser.builtin_plugins.github import guided_pr
 from metabrowser.builtin_plugins.github.guided_pr import (
     CONTRACT_ID,
     MAX_EXCERPT_BYTES,
-    MAX_STEPS,
+    MAX_ITEMS,
     SCHEMA_PATH,
-    GuidedPR,
+    Collection,
+    CollectionReference,
     GuideError,
-    GuideReference,
     _hunk_rows,  # pyright: ignore[reportPrivateUsage]
     _references,  # pyright: ignore[reportPrivateUsage]
     parse_guide,
@@ -36,22 +36,22 @@ from metabrowser.diff.format import (
 
 _GUIDE = """```guided-pr
 softschema:
-  contract: metabrowser.github:GuidedPR/v1
-  envelope: guide
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
   status: enforced
-guide:
+collection:
   comparison:
     merge_base: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     head: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-  feature: Explain the feature.
-  architecture: Trace the request through the worker.
-  steps:
+  summary: Explain the feature.
+  overview: Trace the request through the worker.
+  items:
     - title: Read the request first
-      commentary: Does the request wait for the worker?
+      note: Does the request wait for the worker?
       references:
         - {path: read.py, side: new, start_line: 2, end_line: 5}
     - title: Follow the worker
-      commentary: Check the publication boundary.
+      note: Check the publication boundary.
       references:
         - {path: worker.py}
 ```"""
@@ -60,8 +60,8 @@ guide:
 def test_parses_an_ordered_guide_from_the_description() -> None:
     guide = parse_guide(f"An ordinary PR description.\r\n\r\n{_GUIDE}")
     assert guide is not None
-    assert [step.title for step in guide.steps] == ["Read the request first", "Follow the worker"]
-    assert guide.steps[0].references[0].end_line == 5
+    assert [step.title for step in guide.items] == ["Read the request first", "Follow the worker"]
+    assert guide.items[0].references[0].end_line == 5
 
 
 def test_ignores_the_marker_inside_an_example_of_markdown() -> None:
@@ -69,7 +69,7 @@ def test_ignores_the_marker_inside_an_example_of_markdown() -> None:
 
 
 def test_packaged_schema_matches_the_model() -> None:
-    compiled = compile_model(GuidedPR, SCHEMA_PATH, contract_id=CONTRACT_ID, check_only=True)
+    compiled = compile_model(Collection, SCHEMA_PATH, contract_id=CONTRACT_ID, check_only=True)
     assert not compiled.drift, compiled.drift_diff
 
 
@@ -82,9 +82,9 @@ def test_packaged_schema_matches_the_model() -> None:
         _GUIDE.replace("path: read.py", "path: ../read.py"),
         _GUIDE.replace("start_line: 2", "start_line: true"),
         _GUIDE.replace("start_line: 2", "start_line: 2, extra: 3"),
-        _GUIDE.replace("feature: Explain the feature.", "feature: [one, two]"),
+        _GUIDE.replace("summary: Explain the feature.", "summary: [one, two]"),
         _GUIDE.replace("status: enforced", "status: soft"),
-        _GUIDE.replace("GuidedPR/v1", "GuidedPR/v2"),
+        _GUIDE.replace("Collection/v1", "Collection/v2"),
     ],
 )
 def test_rejects_malformed_guide_blocks(body: str) -> None:
@@ -92,16 +92,16 @@ def test_rejects_malformed_guide_blocks(body: str) -> None:
         parse_guide(body)
 
 
-def _guide_of(steps: int) -> str:
-    one = _GUIDE.split("  steps:\n")[0]
-    step = "    - title: Step {n}\n      commentary: Check it.\n      references:\n        - {{path: a.py}}\n"
-    return one + "  steps:\n" + "".join(step.format(n=n) for n in range(steps)) + "```"
+def _guide_of(items: int) -> str:
+    one = _GUIDE.split("  items:\n")[0]
+    step = "    - title: Step {n}\n      note: Check it.\n      references:\n        - {{path: a.py}}\n"
+    return one + "  items:\n" + "".join(step.format(n=n) for n in range(items)) + "```"
 
 
-def test_a_guide_may_have_at_most_max_steps_steps() -> None:
-    assert parse_guide(_guide_of(MAX_STEPS)) is not None
+def test_a_guide_may_have_at_most_max_items_items() -> None:
+    assert parse_guide(_guide_of(MAX_ITEMS)) is not None
     with pytest.raises(GuideError, match="does not satisfy the v1 SoftSchema"):
-        parse_guide(_guide_of(MAX_STEPS + 1))
+        parse_guide(_guide_of(MAX_ITEMS + 1))
 
 
 @pytest.fixture
@@ -110,7 +110,7 @@ def parses(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
     asked: list[str] = []
     real = parse_guide
 
-    def counting(body: str) -> GuidedPR | None:
+    def counting(body: str) -> Collection | None:
         asked.append(body)
         return real(body)
 
@@ -253,7 +253,7 @@ def _long_row_patch(file_id: str, characters: int) -> FilePatch:
 
 
 def _states(
-    references: list[GuideReference],
+    references: list[CollectionReference],
     changes: dict[str, FileChange],
     patches: dict[str, FilePatch],
     *,
@@ -266,11 +266,11 @@ def _states(
 def test_a_step_names_what_became_of_each_reference() -> None:
     new = {"side": "new", "start_line": 1, "end_line": 1}
     references = [
-        GuideReference(path="whole.py"),
-        GuideReference(path="a.py", **new),  # pyright: ignore[reportArgumentType]
-        GuideReference(path="b.py", side="old", start_line=3, end_line=4),
-        GuideReference(path="cut.py", **new),  # pyright: ignore[reportArgumentType]
-        GuideReference(path="gone.py", **new),  # pyright: ignore[reportArgumentType]
+        CollectionReference(path="whole.py"),
+        CollectionReference(path="a.py", **new),  # pyright: ignore[reportArgumentType]
+        CollectionReference(path="b.py", side="old", start_line=3, end_line=4),
+        CollectionReference(path="cut.py", **new),  # pyright: ignore[reportArgumentType]
+        CollectionReference(path="gone.py", **new),  # pyright: ignore[reportArgumentType]
     ]
     changes = {
         "whole.py": _change("whole.py", 1),
@@ -297,8 +297,8 @@ def test_a_steps_excerpts_share_one_budget() -> None:
     characters = MAX_EXCERPT_BYTES // 2 // 6 + 1
     new = {"side": "new", "start_line": 1, "end_line": 1}
     references = [
-        GuideReference(path="a.py", **new),  # pyright: ignore[reportArgumentType]
-        GuideReference(path="b.py", **new),  # pyright: ignore[reportArgumentType]
+        CollectionReference(path="a.py", **new),  # pyright: ignore[reportArgumentType]
+        CollectionReference(path="b.py", **new),  # pyright: ignore[reportArgumentType]
     ]
     changes = {"a.py": _change("a.py", 1), "b.py": _change("b.py", 2)}
     patches = {
@@ -307,6 +307,6 @@ def test_a_steps_excerpts_share_one_budget() -> None:
     }
     assert _states(references, changes, patches) == ["ready", "excerpt_too_large"]
     # One row past the whole budget is refused on its own.
-    only = [GuideReference(path="a.py", **new)]  # pyright: ignore[reportArgumentType]
+    only = [CollectionReference(path="a.py", **new)]  # pyright: ignore[reportArgumentType]
     big = {"file-1": _long_row_patch("file-1", MAX_EXCERPT_BYTES // 6 + 1)}
     assert _states(only, changes, big) == ["excerpt_too_large"]

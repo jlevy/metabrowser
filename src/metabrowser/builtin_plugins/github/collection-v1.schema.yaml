@@ -1,5 +1,5 @@
 $defs:
-  GuideComparison:
+  CollectionComparison:
     additionalProperties: false
     properties:
       head:
@@ -9,9 +9,29 @@ $defs:
     required:
     - head
     - merge_base
-    title: GuideComparison
+    title: CollectionComparison
     type: object
-  GuideReference:
+  CollectionItem:
+    additionalProperties: false
+    properties:
+      note:
+        $ref: '#/$defs/Prose'
+      references:
+        items:
+          $ref: '#/$defs/CollectionReference'
+        maxItems: 8
+        minItems: 1
+        title: References
+        type: array
+      title:
+        $ref: '#/$defs/Prose'
+    required:
+    - note
+    - references
+    - title
+    title: CollectionItem
+    type: object
+  CollectionReference:
     additionalProperties: false
     properties:
       end_line:
@@ -37,27 +57,7 @@ $defs:
         default: null
     required:
     - path
-    title: GuideReference
-    type: object
-  GuideStep:
-    additionalProperties: false
-    properties:
-      commentary:
-        $ref: '#/$defs/Prose'
-      references:
-        items:
-          $ref: '#/$defs/GuideReference'
-        maxItems: 8
-        minItems: 1
-        title: References
-        type: array
-      title:
-        $ref: '#/$defs/Prose'
-    required:
-    - commentary
-    - references
-    - title
-    title: GuideStep
+    title: CollectionReference
     type: object
   LineNumber:
     minimum: 1
@@ -71,26 +71,26 @@ $defs:
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
 properties:
-  architecture:
-    $ref: '#/$defs/Prose'
   comparison:
-    $ref: '#/$defs/GuideComparison'
-  feature:
-    $ref: '#/$defs/Prose'
-  steps:
+    $ref: '#/$defs/CollectionComparison'
+  items:
     items:
-      $ref: '#/$defs/GuideStep'
+      $ref: '#/$defs/CollectionItem'
     maxItems: 40
     minItems: 1
-    title: Steps
+    title: Items
     type: array
+  overview:
+    $ref: '#/$defs/Prose'
+  summary:
+    $ref: '#/$defs/Prose'
 required:
-- architecture
 - comparison
-- feature
-- steps
-title: GuidedPR
+- items
+- overview
+- summary
+title: Collection
 type: object
 x-softschema:
-  contract: metabrowser.github:GuidedPR/v1
-  schema_sha256: 43d7aa6622c6d444e01b8a78563603e680b402a7413f26c7be6acd63ec84cf51
+  contract: metabrowser.collection:Collection/v1
+  schema_sha256: 70639051bb9cada013f51ad4e4e16c2607d087d2158fc8ce75743722e0850221

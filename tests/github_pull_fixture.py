@@ -1284,22 +1284,22 @@ def guide_body(origin: Origin) -> str:
 
 ```guided-pr
 softschema:
-  contract: metabrowser.github:GuidedPR/v1
-  envelope: guide
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
   status: enforced
-guide:
+collection:
   comparison:
     merge_base: "{origin["base"]}"
     head: "{origin["fork_head"]}"
-  feature: Teach the app to count to two.
-  architecture: The app's count and its explanation live in separate files.
-  steps:
+  summary: Teach the app to count to two.
+  overview: The app's count and its explanation live in separate files.
+  items:
     - title: Start with the count
-      commentary: Check that the original value is preserved.
+      note: Check that the original value is preserved.
       references:
         - {{path: src/app.txt, side: new, start_line: 1, end_line: 2}}
     - title: Read the new guide
-      commentary: Check the new docs against the behavior.
+      note: Check the new docs against the behavior.
       references:
         - {{path: docs/new.md, side: new, start_line: 1, end_line: 1}}
         - {{path: src/app.txt}}

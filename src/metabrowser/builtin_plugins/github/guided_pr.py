@@ -31,30 +31,30 @@ if TYPE_CHECKING:
     from metabrowser.builtin_plugins.github.pull_route import PullHost
     from metabrowser.diff.format import FileChange, FilePatch, Hunk
 
-CONTRACT_ID = "metabrowser.github:GuidedPR/v1"
-SCHEMA_PATH = Path(__file__).with_name("guided-pr-v1.schema.yaml")
+CONTRACT_ID = "metabrowser.collection:Collection/v1"
+SCHEMA_PATH = Path(__file__).with_name("collection-v1.schema.yaml")
 _CONTRACT = Contract(
     id=CONTRACT_ID,
     profile=SchemaProfile.pure_yaml,
     status=SchemaStatus.enforced,
-    envelope_key="guide",
+    envelope_key="collection",
     schema_path=SCHEMA_PATH,
 )
 # Only block tokens matter. In particular, an example in another fence is not a guide.
 _MARKDOWN = MarkdownIt("commonmark").disable("inline")
 
-# Each step hydrates at most as many paths as the measured first paint of Changes
+# Each item hydrates at most as many paths as the measured first paint of Changes
 # (INITIAL_PULL_FILES in sidekick.py). It renders only the selected ranges.
 MAX_REFERENCES = 8
-# A reviewer reads a guide one step at a time, and parse_guide costs by the step: markdown-it,
-# YAML, JSON Schema and pydantic, in Python that holds the GIL, take 3.3 ms a step of
+# A reviewer reads a guide one item at a time, and parse_guide costs by the item: markdown-it,
+# YAML, JSON Schema and pydantic, in Python that holds the GIL, take 3.3 ms an item of
 # MAX_REFERENCES references and 0.6 ms a KiB of text on top. Warm, best of nine, on a
-# 10-core Mac at a load average of 13 (2026-11-20): 20 steps took 66 ms with the shortest
-# text, 40 steps 131 ms and 80 steps 262 ms, and 40 steps with the description filled to
-# MAX_BODY_BYTES took 154 ms. The body bound alone admits 480 one-reference steps, which
+# 10-core Mac at a load average of 13 (2026-11-20): 20 items took 66 ms with the shortest
+# text, 40 items 131 ms and 80 items 262 ms, and 40 items with the description filled to
+# MAX_BODY_BYTES took 154 ms. The body bound alone admits 480 one-reference items, which
 # took 322 ms, so this keeps the largest guide the caps admit near 150 ms. read_guide pays
 # it once for each record revision.
-MAX_STEPS = 40
+MAX_ITEMS = 40
 # Eight excerpts totaling 800 one-character rows, just past the PR body ceiling after
 # the per-row charge, mounted and laid out in 11–14 ms in five headless Chrome 157 runs
 # at 1280×900 on the Guided PR page (2026-11-18). A single long row must fit too.
@@ -72,19 +72,19 @@ class _Model(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", str_strip_whitespace=False)
 
 
-class GuideComparison(_Model):
+class CollectionComparison(_Model):
     merge_base: Sha
     head: Sha
 
 
-class GuideReference(_Model):
+class CollectionReference(_Model):
     path: Prose
     side: Literal["old", "new"] | None = None
     start_line: LineNumber | None = None
     end_line: LineNumber | None = None
 
     @model_validator(mode="after")
-    def _usable_reference(self) -> GuideReference:
+    def _usable_reference(self) -> CollectionReference:
         format_pull_href(1, "files", self.path)
         if self.side is None and self.start_line is None and self.end_line is None:
             return self
@@ -98,20 +98,20 @@ class GuideReference(_Model):
         return self
 
 
-class GuideStep(_Model):
+class CollectionItem(_Model):
     title: Prose
-    commentary: Prose
-    references: list[GuideReference] = Field(min_length=1, max_length=MAX_REFERENCES)
+    note: Prose
+    references: list[CollectionReference] = Field(min_length=1, max_length=MAX_REFERENCES)
 
 
-class GuidedPR(_Model):
-    comparison: GuideComparison
-    feature: Prose
-    architecture: Prose
-    steps: list[GuideStep] = Field(min_length=1, max_length=MAX_STEPS)
+class Collection(_Model):
+    comparison: CollectionComparison
+    summary: Prose
+    overview: Prose
+    items: list[CollectionItem] = Field(min_length=1, max_length=MAX_ITEMS)
 
 
-def parse_guide(body: str) -> GuidedPR | None:
+def parse_guide(body: str) -> Collection | None:
     """Read one top-level fenced SoftSchema artifact from the raw PR description."""
     if "guided-pr" not in body:
         return None
@@ -137,14 +137,14 @@ def parse_guide(body: str) -> GuidedPR | None:
         document: object = parse_yaml_text(fence.content)
     except ValueError as exc:
         raise GuideError("The guided-pr block contains invalid YAML.") from exc
-    if not isinstance(document, dict) or set(document) != {"softschema", "guide"}:
-        raise GuideError("The guided-pr block needs softschema metadata and a guide.")
+    if not isinstance(document, dict) or set(document) != {"softschema", "collection"}:
+        raise GuideError("The guided-pr block needs softschema metadata and a collection.")
     if document["softschema"] != {
         "contract": CONTRACT_ID,
         "envelope": _CONTRACT.envelope_key,
         "status": _CONTRACT.status,
     }:
-        raise GuideError("The guided-pr block needs the enforced GuidedPR/v1 contract.")
+        raise GuideError("The guided-pr block needs the enforced Collection/v1 contract.")
     result = validate_artifact(Path("guided-pr"), contract=_CONTRACT, document=document)
     if not result.ok:
         error = result.structural.errors[0]
@@ -152,7 +152,7 @@ def parse_guide(body: str) -> GuidedPR | None:
         where = f" at {path}" if isinstance(path, str) and path else ""
         raise GuideError(f"The guided-pr block does not satisfy the v1 SoftSchema{where}.")
     try:
-        return GuidedPR.model_validate(result.values)
+        return Collection.model_validate(result.values)
     except ValidationError as exc:
         location = ".".join(str(part) for part in exc.errors()[0]["loc"])
         raise GuideError(f"Invalid guided-pr reference at {location}.") from exc
@@ -161,7 +161,7 @@ def parse_guide(body: str) -> GuidedPR | None:
 @dataclass(frozen=True, slots=True)
 class _Read:
     revision: str
-    guide: GuidedPR | None
+    guide: Collection | None
     message: str | None
 
 
@@ -174,7 +174,7 @@ _READS_LOCK: Final = threading.Lock()
 _MAX_READS: Final = 16
 
 
-def read_guide(key: tuple[str, str, int], revision: str, body: str) -> GuidedPR | None:
+def read_guide(key: tuple[str, str, int], revision: str, body: str) -> Collection | None:
     """:func:`parse_guide` of *body*, reused while *key*'s record has this *revision*."""
     with _READS_LOCK:
         hit = _READS.get(key)
@@ -193,7 +193,7 @@ def read_guide(key: tuple[str, str, int], revision: str, body: str) -> GuidedPR 
 
 
 def _excerpt(
-    patch: FilePatch, reference: GuideReference, budget: int
+    patch: FilePatch, reference: CollectionReference, budget: int
 ) -> tuple[str, list[dict[str, object]], int]:
     start, end = reference.start_line, reference.end_line
     assert start is not None and end is not None
@@ -246,7 +246,7 @@ def _hunk_rows(
 
 def _references(
     number: int,
-    references: list[GuideReference],
+    references: list[CollectionReference],
     changes: dict[str, FileChange],
     patches: dict[str, FilePatch],
     *,
@@ -282,7 +282,7 @@ def _references(
 
 
 async def _step_references(
-    store: PublishedSource, number: int, guide: GuidedPR, step: GuideStep
+    store: PublishedSource, number: int, guide: Collection, step: CollectionItem
 ) -> list[dict[str, object]]:
     base, head = guide.comparison.merge_base, guide.comparison.head
     compared = await shared_pull_manifest(store, number, base, head)
@@ -347,9 +347,9 @@ async def guided_pr(host: PullHost, number: int, step_number: int) -> dict[str, 
         return {**identity, "state": "comparison_unavailable"}
     if await asyncio.to_thread(_head_moved, store, record):
         return {**identity, "state": "stale"}
-    if step_number > len(guide.steps):
+    if step_number > len(guide.items):
         return {**identity, "state": "step_not_found"}
-    step = guide.steps[step_number - 1]
+    step = guide.items[step_number - 1]
     try:
         references = await _step_references(store, number, guide, step)
     except (DiffSourceError, GitError):
@@ -357,12 +357,12 @@ async def guided_pr(host: PullHost, number: int, step_number: int) -> dict[str, 
     return {
         **identity,
         "state": "ready",
-        "feature": guide.feature,
-        "architecture": guide.architecture,
+        "summary": guide.summary,
+        "overview": guide.overview,
         "comparison": guide.comparison.model_dump(),
-        "step_count": len(guide.steps),
+        "step_count": len(guide.items),
         "step": step_number,
         "title": step.title,
-        "commentary": step.commentary,
+        "note": step.note,
         "references": references,
     }

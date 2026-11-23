@@ -3,8 +3,8 @@
 /**
  * @typedef {{old: number | null, new: number | null, op: "add" | "del" | "context", text: string}} Row
  * @typedef {{path: string, state: string, href: string | null, rows: Row[]}} Reference
- * @typedef {{state: "ready", record_revision: string, feature: string, architecture: string,
- *   step: number, step_count: number, title: string, commentary: string,
+ * @typedef {{state: "ready", record_revision: string, summary: string, overview: string,
+ *   step: number, step_count: number, title: string, note: string,
  *   references: Reference[]}} Step
  * @typedef {{state: "absent" | "invalid" | "stale" | "comparison_unavailable" |
  *   "description_truncated" | "step_not_found" | "not_cached", record_revision: string | null,
@@ -258,14 +258,14 @@ export function mountGuidedPR(host, number, open) {
         return;
       }
       notice.hidden = true;
-      feature.textContent = state.feature;
-      architecture.textContent = state.architecture;
+      feature.textContent = state.summary;
+      architecture.textContent = state.overview;
       status.textContent = `Step ${state.step} of ${state.step_count}`;
       previous.disabled = state.step <= 1;
       next.disabled = state.step >= state.step_count;
       detail.replaceChildren(
         element("h2", state.title, "section-heading"),
-        element("p", state.commentary, "github-pull-guide-commentary"),
+        element("p", state.note, "github-pull-guide-commentary"),
         ...state.references.map((reference) => renderReference(reference, open)),
       );
     },

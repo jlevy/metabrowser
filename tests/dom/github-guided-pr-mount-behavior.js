@@ -43,13 +43,13 @@ function step(generation, number, count = 2) {
   return {
     state: "ready",
     record_revision: revisionOf(generation),
-    feature: "Teach the app to <b>count</b>.",
-    architecture: "Two files.\nThe count and its words.",
+    summary: "Teach the app to <b>count</b>.",
+    overview: "Two files.\nThe count and its words.",
     comparison: { merge_base: "a".repeat(40), head: "b".repeat(40) },
     step_count: count,
     step: number,
     title: `Step ${number}`,
-    commentary: "Check <b>this</b> first.\nThen that.",
+    note: "Check <b>this</b> first.\nThen that.",
     references: [
       {
         path: "src/app.txt",
