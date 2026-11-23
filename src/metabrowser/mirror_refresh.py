@@ -27,6 +27,14 @@ refresh finds another process refreshing the store, a served mirror follows that
 and observes the store again once it ends. Switching the pin resolves a selection in
 the mirror, opens the new subject, and replaces the served one under a new generation.
 
+A mirror is fetched as often as it usefully can be, since a fetch into Metabrowser's own
+store is safe to repeat and spends no rate limit. A visible page on one of the origin's
+branches makes its own ask every :data:`STORE_PROBE_S` (:meth:`MirrorSession.page_ask`):
+the server asks the origin where that branch is with one ``ls-remote``, outside the store
+turn and the network slots, and fetches at once when it moved; the whole mirror is
+fetched once it is older than the freshness window. A probe or a fetch that failed is
+tried again only a window later.
+
 A server opens any pull request of its repository, and attends to one: the one its URL
 named, replaced whenever a pin switch serves another's head. That one counts toward the
 mirror's staleness and is refreshed with it, because a page of code on a pull request's
@@ -107,7 +115,53 @@ MAX_FIRST_IN_A_ROW: Final = 2
 ELSEWHERE_POLL_S: Final = 1.0
 ELSEWHERE_WAIT_S: Final = GIT_ACQUISITION_TIMEOUT_S
 
+# How often a visible page of a mirror served on one of its origin's branches asks
+# whether that branch moved there: one ``ls-remote`` of the branch
+# (:meth:`ServedMirror.origin_tip`), and the fetch at once when it did, so a push shows
+# within seconds, where the freshness window and the page's poll made it up to 90 s. A
+# probe takes no turn at the store and no network slot, since it writes nothing and ends
+# in a second or two.
+#
+# Measured 2026-11-22 against github.com over HTTPS with Git 2.56.1, at a load average
+# of 275 to 300, five runs each of ``ls-remote`` of the default branch: 0.79 to 1.65 s
+# for pallets/click and 0.99 to 1.50 s for bluesky-social/social-app, whose whole
+# advertisement is 12,068 refs; 0.06 to 0.07 s of CPU, 13 MB at the peak, and 57 bytes of
+# answer. A refresh is two round trips where a probe is one, ``ls-remote --symref`` (0.76
+# to 1.44 s) and then the fetch, which with nothing new took 0.67 to 0.93 s into a store of
+# click (75 refs) and 1.06 to 1.36 s into one of social-app (2,994 refs), 0.08 s of CPU and
+# 17 MB; and a refresh takes the store's turn and its fetch lock and rewrites its record,
+# which a probe does not. On the stores of two real mirrors the same day, at a load
+# average of 330, the fetch alone took 1.7 to 5.3 s and 0.2 to 0.6 s of CPU (the cadence
+# plan, "Metabrowser's Own Stores").
+#
+# Five seconds is three times the slowest probe, so probes do not run into their own
+# latency, and it is the interval a visible pull request is probed at (``ATTENDED_PROBE_S``
+# in ``builtin_plugins/github/served_pull.py``), so a push and a pull request's change show
+# equally soon. It is 720 probes an hour for a visible mirror, about 50 s of CPU. An idle
+# machine was not to hand; the wall times above include the load.
+#
+# An origin can also not answer at all: in the same run one ``ls-remote`` of
+# torvalds/linux had printed nothing after 386 s, when it was killed, and ``curl`` got no
+# answer from that repository's endpoint in 15 s. So a probe runs under the first-request
+# deadline (``REMOTE_PROBE_TIMEOUT_S``), and a failed one holds the next for a window.
+STORE_PROBE_S: Final = 5.0
+# The shortest gap the server keeps between two probes of the served branch, however
+# many pages ask. Below STORE_PROBE_S, so an ask that arrives a little early, as timers
+# make them, still probes instead of waiting for the next one, as ``PROBE_FLOOR_S`` does
+# for a pull request (``builtin_plugins/github/served_pull.py``).
+STORE_PROBE_FLOOR_S: Final = 4.0
+# How long the request that started a probe waits for it. Past this it answers
+# ``not_due`` and the probe ends on its own, under the first-request deadline, starting
+# the fetch itself if the branch moved. Three seconds is about twice the slowest probe
+# measured above (1.65 s), so the request that started a probe nearly always carries its
+# answer, and it is as long as a pull request's probe is waited for (``PROBE_WAIT_S``).
+STORE_PROBE_WAIT_S: Final = 3.0
+
 type StartedOrJoined = Literal["started", "joined"]
+# How a visible page's own ask was answered (:meth:`MirrorSession.page_ask`): the fetch
+# was ``started`` or ``joined``, a probe found the served branch where the mirror has it
+# (``probed``), or nothing was due (``not_due``).
+type PageAsk = Literal["started", "joined", "probed", "not_due"]
 # How a request for a pull request's refresh was answered; ``"too_many"`` started nothing,
 # because :data:`MAX_PULL_JOBS` were queued or running.
 type PullJobStart = Literal["started", "joined", "too_many"]
@@ -217,6 +271,10 @@ class SelectionPendingError(SelectionError):
 type RefKind = Literal["branch", "tag", "remote"]
 
 
+class OriginProbeError(Exception):
+    """The origin could not be asked where a branch is; nothing was learned or changed."""
+
+
 @dataclass(frozen=True, slots=True)
 class MirrorRef:
     """One branch or tag a mirror or a checkout holds, and the commit it names.
@@ -313,6 +371,16 @@ class ServedMirror(Protocol):
 
     async def refresh(self) -> RefreshResult:
         """Fetch from the origin. Returns a typed outcome for every failure it can name."""
+        ...
+
+    async def origin_tip(self, ref: str) -> str | None:
+        """Ask the origin, fetching nothing, which commit the branch behind *ref* names.
+
+        *ref* is the mirror's own ref for one of the origin's branches
+        (:func:`probes_origin`). ``None`` is an origin that no longer has the branch.
+        Writes nothing and takes no lock. Raises :class:`OriginProbeError` when the origin
+        did not answer.
+        """
         ...
 
     async def recorded_freshness(self) -> RecordedFreshness:
@@ -431,7 +499,9 @@ class FreshnessFields(TypedDict):
     did not run, which the next refresh retries; ``superseded`` once a pin switch
     serves something else. ``None`` when there was none. ``selection_href`` is where a
     ``found`` selection opens, with its line anchor, so a page opened while it was
-    pending can go there.
+    pending can go there. ``probe_every_s`` is how often a visible page of this pin makes
+    its own ask (:meth:`MirrorSession.page_ask`): :data:`STORE_PROBE_S` while the pin is
+    one of the origin's branches, which the server probes there, and ``None`` otherwise.
     """
 
     refreshable: bool
@@ -442,6 +512,7 @@ class FreshnessFields(TypedDict):
     last_outcome: LastOutcome | None
     refreshing: bool
     stale: bool
+    probe_every_s: float | None
     pull_request: int | None
     selection_state: SelectionState | None
     selection_href: str | None
@@ -456,6 +527,7 @@ UNSERVED_FRESHNESS: Final[FreshnessFields] = {
     "last_outcome": None,
     "refreshing": False,
     "stale": False,
+    "probe_every_s": None,
     "pull_request": None,
     "selection_state": None,
     "selection_href": None,
@@ -495,6 +567,23 @@ def follows_moves(ref: str | None) -> bool:
 
     return ref is not None and ref.startswith(_FOLLOWED_REF_PREFIXES)
 
+
+def probes_origin(ref: str | None) -> bool:
+    """Whether a pin served under *ref* is probed at the origin between fetches.
+
+    Only one of the origin's branches: a tag is not expected to move, a commit opened by
+    its ID cannot, and a pull request's head is the provider's to watch.
+    """
+
+    return ref is not None and ref.startswith(_PROBED_REF_PREFIX)
+
+
+_PROBED_REF_PREFIX: Final = "refs/remotes/origin/"
+# Refresh outcomes that say nothing against trying again at once: the fetch ran, another
+# process's is running, or this one was stopped before the origin answered.
+_UNHELD_OUTCOMES: Final = frozenset(
+    {"succeeded", "default_branch_unknown", "refreshing_elsewhere", "cancelled"}
+)
 
 # Outcomes after which the store holds what the origin had: the fetch ran.
 _FETCHED_OUTCOMES: Final = frozenset({"succeeded", "default_branch_unknown"})
@@ -565,6 +654,18 @@ def followed_outcome(
 
 def _never() -> bool:
     return False
+
+
+def _monotonic() -> float:
+    """The clock the probe intervals are kept on; a test replaces it."""
+
+    return time.monotonic()
+
+
+# How a probe of the served branch ended: the origin has it where the mirror does, it
+# moved and the fetch was started, the origin did not answer, or the answer was not acted
+# on (the pin changed meanwhile, or that tip's fetch was already tried).
+type ProbeEnd = Literal["unchanged", "moved", "failed", "held"]
 
 
 @dataclass(eq=False, slots=True)
@@ -827,6 +928,15 @@ class MirrorSession:
         self._pull_jobs: set[str] = set()
         # The keys of background pull-request jobs not yet promoted; each removes its own.
         self._background_pulls: set[str] = set()
+        # Probes of the served branch at its origin (:meth:`page_ask`), on the monotonic
+        # clock: the one running, when one last started, when one last failed, and the
+        # origin's tip the last probe started a fetch for, and when.
+        self._probe_task: asyncio.Task[ProbeEnd] | None = None
+        self._probe_attempt: float | None = None
+        self._probe_failed: float | None = None
+        self._probe_fetched: tuple[str | None, float] | None = None
+        # When a fetch of the mirror last failed.
+        self._fetch_failed: float | None = None
 
     # ── The attended pull request ───────────────────────────────
 
@@ -952,6 +1062,7 @@ class MirrorSession:
             "last_outcome": self._last_outcome(),
             "refreshing": self.refreshing() or self.companion_refreshing(),
             "stale": self.is_stale(),
+            "probe_every_s": STORE_PROBE_S if probes_origin(subject.ref) else None,
             "pull_request": self._pull_request,
             "selection_state": self._selection_state,
             "selection_href": self._selection_href if self._selection_state == "found" else None,
@@ -1031,6 +1142,121 @@ class MirrorSession:
         if companion_stale:
             self.request_companion_refresh()
         return started
+
+    # ── A visible page's own asks ───────────────────────────────
+
+    def _fetch_held(self, at: float) -> bool:
+        """Whether a fetch failed within a freshness window of *at*, so none is retried."""
+
+        return self._fetch_failed is not None and at - self._fetch_failed <= self._window_s
+
+    def _probe_running(self) -> bool:
+        return self._probe_task is not None and not self._probe_task.done()
+
+    def _probe_ref(self, at: float) -> str | None:
+        """The served branch, when a probe of it may start at *at*, else ``None``.
+
+        Not for a pin that is not one of the origin's branches, nor before its tip in the
+        mirror is observed; not while a refresh or another probe runs; not within a
+        freshness window of a failed fetch or a failed probe, so an origin that is gone,
+        or a machine that is offline, is asked once a window and not every few seconds;
+        and not within :data:`STORE_PROBE_FLOOR_S` of the last probe, however many pages
+        ask.
+        """
+
+        subject = _served_revision()
+        if subject is None or not probes_origin(subject.ref):
+            return None
+        ref = subject.ref
+        assert ref is not None
+        if self._tip is None or self._tip[0] != ref:
+            return None
+        if self.refreshing() or self._probe_running() or self._fetch_held(at):
+            return None
+        if self._probe_failed is not None and at - self._probe_failed <= self._window_s:
+            return None
+        if self._probe_attempt is not None and at - self._probe_attempt < STORE_PROBE_FLOOR_S:
+            return None
+        return ref
+
+    async def page_ask(self) -> PageAsk:
+        """Answer a visible page's own ask: fetch a stale mirror, or probe the served branch.
+
+        A page sends it while it is visible, every ``probe_every_s`` of its status, so
+        nothing here runs for a hidden page. The whole mirror is fetched when its last
+        fetch is older than the freshness window, unless a fetch failed within one.
+        Otherwise the served branch is probed at its origin when :meth:`_probe_ref` allows,
+        and the fetch starts at once if it moved there. The data served beside the mirror
+        is not this ask's: its own page keeps it.
+
+        Waits for the probe at most :data:`STORE_PROBE_WAIT_S`, then answers ``not_due``
+        and leaves it to end on its own; cancelling the wait never cancels the probe.
+        """
+
+        at = _monotonic()
+        if self.refreshing():
+            return "joined"
+        if self._mirror_stale(_now_utc()) and not self._fetch_held(at):
+            return self._refresh_mirror(companion_stale=False)
+        ref = self._probe_ref(at)
+        if ref is None:
+            return "not_due"
+        task = self._probe_task = asyncio.ensure_future(self._probe(ref, at))
+        try:
+            end = await asyncio.wait_for(asyncio.shield(task), STORE_PROBE_WAIT_S)
+        except TimeoutError:
+            return "not_due"
+        if end == "unchanged":
+            return "probed"
+        return "started" if end == "moved" else "not_due"
+
+    async def _probe(self, ref: str, at: float) -> ProbeEnd:
+        """Ask the origin where *ref*'s branch is, and fetch at once if not where the mirror has it.
+
+        Outside the store turn and the network slots: it writes nothing and a probe queued
+        behind a fetch would defeat its purpose. A tip a probe already started a fetch for
+        starts no second one within a freshness window, so an origin whose fetch does not
+        bring what its ``ls-remote`` names cannot make every probe a fetch.
+        """
+
+        self._probe_attempt = at
+        try:
+            tip = await self.mirror.origin_tip(ref)
+        except Exception:
+            # Nothing waits on a probe but the page's freshness, so any failure only holds
+            # the next one for a window.
+            log.debug("could not probe %s at the origin", ref, exc_info=True)
+            self._probe_failed = at
+            return "failed"
+        self._probe_failed = None
+        held = self._tip
+        if held is None or held[0] != ref:
+            # The pin moved to another ref while the origin was asked.
+            return "held"
+        if tip == held[1]:
+            return "unchanged"
+        ended = _monotonic()
+        asked = self._probe_fetched
+        if (asked is not None and asked[0] == tip and ended - asked[1] <= self._window_s) or (
+            self._fetch_held(ended)
+        ):
+            return "held"
+        self._probe_fetched = (tip, ended)
+        log.info("the origin moved %s; fetching", ref)
+        try:
+            self._refresh_mirror(companion_stale=False)
+        except RuntimeError:
+            # The server is shutting down and starts no more jobs.
+            return "held"
+        return "moved"
+
+    async def stop_probe(self) -> None:
+        """Cancel a probe still running, which kills its Git, and wait for it to unwind."""
+
+        task = self._probe_task
+        if task is not None and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     def request_commit_fetch(self, *, retry: bool) -> CommitFetchAnswer:
         """Ask for the fetch a commit the mirror lacks waits for.
@@ -1167,6 +1393,7 @@ class MirrorSession:
         except Exception:
             log.exception("refreshing the served mirror failed")
             result = RefreshResult("failed", _utc_timestamp())
+        self._fetch_failed = None if result.outcome in _UNHELD_OUTCOMES else _monotonic()
         self._swept.update(result.swept)
         self._set_result(result)
         if result.outcome in _FETCHED_OUTCOMES:
@@ -1492,7 +1719,10 @@ async def lifespan_refresh(app: Any) -> AsyncGenerator[None]:
                 session.request_refresh()
         yield
     finally:
+        served = mirror_session(app)
         app.state.source_mirror = None
+        if served is not None:
+            await served.stop_probe()
         await coordinator.aclose()
 
 
@@ -1509,6 +1739,9 @@ __all__ = [
     "MAX_CONCURRENT_REFRESHES",
     "MAX_FIRST_IN_A_ROW",
     "MAX_PULL_JOBS",
+    "STORE_PROBE_FLOOR_S",
+    "STORE_PROBE_S",
+    "STORE_PROBE_WAIT_S",
     "UNSERVED_FRESHNESS",
     "AmbiguousSelectionError",
     "CommitFetch",
@@ -1521,6 +1754,8 @@ __all__ = [
     "MirrorRef",
     "MirrorSession",
     "OpenedSelection",
+    "OriginProbeError",
+    "PageAsk",
     "PullJobStart",
     "PullRequestSet",
     "RecordedFreshness",
@@ -1541,6 +1776,7 @@ __all__ = [
     "followed_outcome",
     "lifespan_refresh",
     "mirror_session",
+    "probes_origin",
     "pull_head_number",
     "refresh_coordinator",
     "serve_mirror",

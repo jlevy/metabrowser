@@ -281,6 +281,14 @@ A served mirror answers every page from the store and never makes a request wait
 network (`mirror_refresh.py`). A mirror is stale once its last fetch is older than
 `FRESHNESS_WINDOW_S`.
 
+A store Metabrowser keeps is fetched as often as it usefully can be (the owner’s rule,
+2026-11-22): a fetch into it is atomic, removes no commit, writes no reader’s checkout
+([What Is Never Written](arch-open-modes.md#what-is-never-written)), and spends no
+GitHub rate limit, so what limits it is process time and network.
+Two cadences follow, each constant beside its measurement in `mirror_refresh.py`: a
+visible page on a branch has that branch probed every `STORE_PROBE_S`, and has the whole
+mirror fetched once it is older than `FRESHNESS_WINDOW_S`.
+
 - **The coordinator:** `RefreshCoordinator`, on the application state, keeps one job per
   key, a store key or a store key and a pull-request number, so concurrent requests join
   the running one; `MAX_CONCURRENT_REFRESHES` bounds the network jobs across every key.
@@ -302,6 +310,27 @@ network (`mirror_refresh.py`). A mirror is stale once its last fetch is older th
   ([Following a Branch](#following-a-branch)). When another process holds the fetch
   lock, a served mirror follows that refresh (`ELSEWHERE_POLL_S`, up to
   `ELSEWHERE_WAIT_S`) and observes the store when it ends.
+- **A visible page on a branch:** the status names `probe_every_s` for a pin served
+  under one of the origin’s branches (`probes_origin`), and the page sends its own ask
+  that often while it is visible, `POST /api/source/refresh` with `{"for": "page"}`,
+  starting with its first status, so a hidden page sends none
+  (`MirrorSession.page_ask`). The ask answers the status, so it is the page’s poll too.
+  The server fetches the whole mirror when it is older than the freshness window.
+  Otherwise it probes: one `ls-remote` of that branch (`StoreMirror.origin_tip`), which
+  takes no turn at the store, no network slot, and no lock, since it writes nothing.
+  A tip that differs from the mirror’s starts the fetch at once, so a push is served a
+  few seconds later and not a window and a poll later.
+  The request waits for the probe at most `STORE_PROBE_WAIT_S` and never for a fetch.
+  Core probes with Git alone and knows no provider.
+  A tag, a commit opened by its ID, and a pull request’s head are not probed.
+- **What holds a probe or a page’s fetch:** one probe runs at a time, no closer than
+  `STORE_PROBE_FLOOR_S` to the last, however many tabs ask, and none while a refresh
+  runs. A probe that failed, or a fetch that failed, holds the page’s asks for a
+  freshness window, so an origin that is gone or a machine that is offline is asked once
+  a window; a reader’s own Refresh is never held.
+  A tip a probe already started a fetch for starts no second one within a window, so an
+  origin whose fetch does not bring what its `ls-remote` names cannot make every probe a
+  fetch.
 - **A commit the mirror lacks:** a page that opens a commit’s address asks for the fetch
   it waits on, which runs only when the mirror is stale, since a link in served content
   can lead to any address; a reader’s **Retry** always fetches.

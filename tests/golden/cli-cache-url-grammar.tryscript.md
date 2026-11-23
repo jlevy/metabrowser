@@ -171,6 +171,7 @@ status: 200
   "last_outcome": null,
   "refreshing": false,
   "stale": false,
+  "probe_every_s": null,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null

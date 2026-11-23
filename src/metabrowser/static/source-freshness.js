@@ -6,7 +6,12 @@
 // answer is a 304. When the mirror is older than the server's freshness window and
 // nothing is refreshing, opening or revealing the page asks for one background
 // refresh; the page never waits for it, and a refusal of that ask, which the reader did
-// not make, says nothing. A page on a branch or tag reads that ref as the mirror has it,
+// not make, says nothing. A page on one of the origin's branches also makes its own ask
+// while it is visible, as often as the status says (`probe_every_s`): the server asks the
+// origin where the branch is and fetches at once when it moved, so a push shows within
+// seconds, and fetches the whole mirror once it is older than the window. That ask
+// answers the status, so it stands in for the slow poll, and a hidden page sends none.
+// A page on a branch or tag reads that ref as the mirror has it,
 // as github.com shows a branch: when a refresh moves the ref, the server serves its new
 // tip, and the page goes with it to the same address, by itself. Only a ref the pin does
 // not follow, a pull request's head, is offered instead, and accepting switches the pin.
@@ -500,6 +505,13 @@
     // One refresh request per visible period: a stale page that cannot be refreshed
     // (its origin is gone) must not ask again on every poll.
     let refreshAskedWhileVisible = false;
+    // Whether the page's own ask went out since the page was last shown: the first goes
+    // with the first status, so a page opened or revealed learns of a push at once, and
+    // the rest on the timer.
+    let pageAskedWhileVisible = false;
+    // Whether the server answers the page's own ask. One that refuses it is polled as a
+    // page that sends none is, until the page is shown again.
+    let pageAskAnswered = true;
     let switching = false;
     // A page follows its ref at most once: it leaves, or a refused follow says why and
     // waits for the reader's refresh rather than asking on every poll.
@@ -552,6 +564,17 @@
       }
     }
 
+    /**
+     * How long the page waits before its own ask, or null when it sends none: only a
+     * page of a pin the server probes asks, and not one whose ask the server refused.
+     *
+     * @returns {number | null}
+     */
+    function pageAskMs() {
+      const every = status?.refreshable && pageAskAnswered ? status.probe_every_s : null;
+      return typeof every === "number" && every > 0 ? every * 1000 : null;
+    }
+
     function scheduleNext() {
       clearTimer();
       if (disposed || !deps.isVisible()) {
@@ -559,10 +582,13 @@
       }
       // A poll that failed backs off to the slow interval: a server that stopped while
       // a refresh ran must not be asked every second for as long as the page is open.
-      const delay = status?.refreshing && error === null ? FAST_POLL_MS : SLOW_POLL_MS;
+      // While a refresh runs the status is polled quickly, and the asks wait for its end.
+      const refreshing = status?.refreshing && error === null;
+      const askMs = refreshing || error !== null ? null : pageAskMs();
+      const delay = askMs ?? (refreshing ? FAST_POLL_MS : SLOW_POLL_MS);
       timer = deps.schedule(() => {
         timer = null;
-        void poll();
+        void (askMs === null ? poll() : pageAsk());
       }, delay);
     }
 
@@ -608,6 +634,63 @@
       }
       if (status?.stale && !status.refreshing && !refreshAskedWhileVisible) {
         await ask({}, { own: true });
+        return;
+      }
+      render();
+      // The first status of a visible period: ask at once, unless the page is already
+      // leaving for the commit its branch moved to.
+      if (
+        error === null &&
+        !status?.refreshing &&
+        !following &&
+        !pageAskedWhileVisible &&
+        pageAskMs() !== null
+      ) {
+        await pageAsk();
+        return;
+      }
+      scheduleNext();
+      notifyChange();
+    }
+
+    /**
+     * The page's own ask, sent only while it is visible: the server asks the origin where
+     * the served branch is and fetches at once when it moved, and fetches a mirror older
+     * than its freshness window. It answers the status, as a poll does, so the timer that
+     * sends it is the page's poll too. The reader did not ask, so a refusal says nothing
+     * and the page goes back to polling; a server that does not answer is reported as a
+     * poll's is, and the slow poll finds it again.
+     */
+    async function pageAsk() {
+      if (disposed || polling || !deps.isVisible()) {
+        return;
+      }
+      polling = true;
+      pageAskedWhileVisible = true;
+      try {
+        const response = await deps.request("POST", REFRESH_ROUTE, { body: { for: "page" } });
+        if (disposed) {
+          return;
+        }
+        const answer = /** @type {{status?: unknown} | null} */ (response.body);
+        if (
+          (response.status === 200 || response.status === 202) &&
+          answer !== null &&
+          isStatus(answer.status)
+        ) {
+          accept(answer.status);
+          // The envelope may have changed; the next poll must not be answered by a 304.
+          etag = null;
+          error = null;
+        } else {
+          pageAskAnswered = false;
+        }
+      } catch {
+        error = "The server did not answer.";
+      } finally {
+        polling = false;
+      }
+      if (disposed) {
         return;
       }
       render();
@@ -823,6 +906,8 @@
         return;
       }
       refreshAskedWhileVisible = false;
+      pageAskedWhileVisible = false;
+      pageAskAnswered = true;
       void poll();
     }
 
@@ -846,6 +931,7 @@
         shown,
         timerPending: timer !== null,
         refreshAskedWhileVisible,
+        pageAskedWhileVisible,
         error,
       }),
     });

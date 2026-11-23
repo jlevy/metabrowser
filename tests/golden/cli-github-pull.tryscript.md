@@ -1053,6 +1053,7 @@ status: 200
   },
   "refreshing": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 7,
   "selection_state": null,
   "selection_href": null
@@ -1088,6 +1089,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https
   },
   "refreshing": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 7,
   "selection_state": null,
   "selection_href": null

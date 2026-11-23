@@ -42,7 +42,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/identity` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md`, `cli-github-pull.tryscript.md` |
 | `/api/counterpart` | covered | `--api` | `cli-api-counterpart.tryscript.md` |
 | `/api/source/status` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md`, `cli-checkout-overlay.tryscript.md`, `cli-checkout-overlay.txt` |
-| `/api/source/refresh` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md` |
+| `/api/source/refresh` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md`, `cli-git-refresh.txt` |
 | `/api/source/pin` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-shell.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
 | `/api/source/link` | covered | `--api --data` | `cli-api-source-link.txt`, `app-contract.txt` |
 | `/api/source/refs` | covered | `--api` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-shell.tryscript.md` |
@@ -205,6 +205,8 @@ interaction session and fails when a named function did not execute.
 | `source.branch-follow` | interaction | `static/source-freshness.js#followTarget`, `static/source-freshness.js#describe`, `static/source-freshness.js#follow`, `static/source-freshness.js#acceptOffer` | `/api/source/status`, `/api/source/pin` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `source.file-ages-refill` | interaction | `static/revision-ages.js#createController`, `static/revision-ages.js#mount`, `static/revision-ages.js#noteText`, `static/revision-ages.js#annotate`, `static/revision-ages.js#track` | `/api/index/progress` | `node tests/dom/revision-ages-session.js` | `cli-ui-revision-ages.tryscript.md` |
 | `source.revision-recent-folder-names` | interaction | `static/tree-filter-model.js#clusterRecentTree` | `/api/recent` | `node tests/dom/revision-ages-session.js` | `cli-ui-revision-ages.tryscript.md` |
+| `source.branch-probe` | data | `/api/source/refresh` | `owned-route` | `metab file://<ORIGIN> --api /api/source/refresh --data page-ask.json` | `cli-git-refresh.txt` |
+| `source.page-ask` | interaction | `static/source-freshness.js#pageAsk`, `static/source-freshness.js#pageAskMs` | `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `source.history-landing` | interaction | `static/source-pin-guard.js#createHistoryGuard`, `static/source-pin-guard.js#servesAnother` | `/api/source/status`, `/api/tree` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `source.stale-pin-guard` | interaction | `static/source-pin-guard.js#guardFetch`, `static/source-pin-guard.js#guardedRequest` | `/api/file`, `/api/tree`, `/api/source/status` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `source.ref-selector` | interaction | `static/source-ref-selector.js#createSelector`, `static/source-ref-selector.js#describe`, `static/source-ref-selector.js#moveRow`, `static/source-ref-selector.js#rowOffsets`, `static/source-ref-selector.js#rowWindow` | `/api/source/refs`, `/api/source/pin` | `node tests/dom/source-ref-selector-session.js` | `cli-ui-source-ref-selector.tryscript.md` |

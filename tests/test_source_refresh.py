@@ -18,6 +18,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -34,10 +35,14 @@ from metabrowser.cache.records import (
     RepositoryStoreState,
     StoreOperation,
 )
+from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.update import RefreshOutcome, StoreUpdate
 from metabrowser.cli.main import _app
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject, store_batch_reader_count
 from metabrowser.mirror_refresh import (
+    FRESHNESS_WINDOW_S,
+    STORE_PROBE_FLOOR_S,
+    STORE_PROBE_S,
     LastOutcome,
     MirrorDisplay,
     MirrorRef,
@@ -633,6 +638,225 @@ def test_a_malformed_refresh_request_is_refused_and_starts_nothing(
     assert served.get("/api/source/status").json()["refreshing"] is False
 
 
+# ── A visible page's own asks ────────────────────────────────────────
+
+
+class _Clock:
+    """The monotonic clock the probe intervals are kept on, moved by the test."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> _Clock:
+    moved = _Clock()
+    monkeypatch.setattr("metabrowser.mirror_refresh._monotonic", moved)
+    return moved
+
+
+@pytest.fixture
+def probes(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every ref the server asked the origin about, in order."""
+
+    asked: list[str] = []
+    real = StoreMirror.origin_tip
+
+    async def counted(self: StoreMirror, ref: str) -> str | None:
+        asked.append(ref)
+        return await real(self, ref)
+
+    monkeypatch.setattr(StoreMirror, "origin_tip", counted)
+    return asked
+
+
+def _page_ask(client: TestClient) -> Any:
+    return _post(client, "/api/source/refresh", {"for": "page"})
+
+
+def test_a_page_ask_probes_the_served_branch_and_fetches_at_once_when_it_moved(
+    served: TestClient, origin: _Origin, clock: _Clock, probes: list[str]
+) -> None:
+    """A push to the branch a visible page is on is served seconds later, not a
+    freshness window and a poll later: the page's ask has the server run one
+    ``ls-remote`` of that branch, and the fetch starts when it moved."""
+
+    status = served.get("/api/source/status").json()
+    assert status["probe_every_s"] == STORE_PROBE_S
+
+    unchanged = _page_ask(served)
+    assert unchanged.status_code == 200
+    assert unchanged.json()["refresh"] == "probed"
+    assert probes == ["refs/remotes/origin/topic"]
+    # Nothing was fetched: the mirror is inside its window and the branch had not moved.
+    assert unchanged.json()["status"]["refreshing"] is False
+    assert unchanged.json()["status"]["last_outcome"]["operation"] == "acquire"
+
+    newer = _push_commit(origin, "NEW.md", "# New\n", "third")
+    # An ask inside the floor asks the origin nothing, however many pages send one.
+    clock.now += STORE_PROBE_FLOOR_S - 0.5
+    early = _page_ask(served)
+    assert (early.status_code, early.json()["refresh"]) == (200, "not_due")
+    assert len(probes) == 1
+
+    clock.now += 1.0
+    moved = _page_ask(served)
+    assert moved.status_code == 202
+    assert moved.json()["refresh"] == "started"
+    assert len(probes) == 2
+    after = _settle(served)
+    assert after["last_outcome"] == {
+        "operation": "refresh",
+        "outcome": "succeeded",
+        "at": after["last_fetch_at"],
+    }
+    assert (after["pin"], after["latest"]) == (newer, newer)
+
+    # The mirror has the branch where the origin does again, so the next probe fetches nothing.
+    clock.now += STORE_PROBE_S
+    again = _page_ask(served)
+    assert (again.status_code, again.json()["refresh"]) == (200, "probed")
+    assert served.get("/api/source/status").json()["last_fetch_at"] == after["last_fetch_at"]
+
+
+def test_a_pin_that_is_not_a_branch_of_the_origin_is_never_probed(
+    served: TestClient, origin: _Origin, clock: _Clock, probes: list[str]
+) -> None:
+    _git(_work(origin), "tag", "v9", origin.second)
+    _git(_work(origin), "push", "-q", str(origin.path), "v9")
+    assert _post(served, "/api/source/refresh").status_code == 202
+    _settle(served)
+    for selection in ({"oid": origin.first}, {"ref": "v9"}):
+        pinned = _post(served, "/api/source/pin", selection)
+        assert pinned.status_code == 200, selection
+        assert pinned.json()["status"]["probe_every_s"] is None
+        clock.now += STORE_PROBE_S
+        answer = _page_ask(served)
+        assert (answer.status_code, answer.json()["refresh"]) == (200, "not_due"), selection
+    assert probes == []
+
+
+def test_a_probe_that_fails_is_tried_again_only_after_a_window(
+    served: TestClient, origin: _Origin, clock: _Clock, probes: list[str]
+) -> None:
+    """An origin that is gone, or a machine that is offline, is asked once a freshness
+    window, not every few seconds, and a failed probe is no failed refresh."""
+
+    shutil.rmtree(origin.path)
+    failed = _page_ask(served)
+    assert (failed.status_code, failed.json()["refresh"]) == (200, "not_due")
+    assert failed.json()["status"]["last_outcome"]["operation"] == "acquire"
+    for _ in range(3):
+        clock.now += STORE_PROBE_S
+        assert _page_ask(served).json()["refresh"] == "not_due"
+    assert len(probes) == 1
+    clock.now += FRESHNESS_WINDOW_S
+    assert _page_ask(served).json()["refresh"] == "not_due"
+    assert len(probes) == 2
+
+
+def test_a_page_ask_fetches_a_stale_mirror_and_not_again_inside_a_window_of_a_failure(
+    served: TestClient, origin: _Origin, clock: _Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While a page is visible the whole mirror is fetched once it is older than the
+    freshness window, and a fetch that failed is tried again only a window later."""
+
+    assert _page_ask(served).json()["refresh"] == "probed"
+    later = datetime.now(UTC) + timedelta(seconds=FRESHNESS_WINDOW_S + 5)
+    monkeypatch.setattr("metabrowser.mirror_refresh._now_utc", lambda: later)
+
+    stale = _page_ask(served)
+    assert (stale.status_code, stale.json()["refresh"]) == (202, "started")
+    assert _settle(served)["last_outcome"]["outcome"] == "succeeded"
+
+    shutil.rmtree(origin.path)
+    monkeypatch.setattr(
+        "metabrowser.mirror_refresh._now_utc",
+        lambda: later + timedelta(seconds=2 * FRESHNESS_WINDOW_S),
+    )
+    assert _page_ask(served).json()["refresh"] == "started"
+    failed = _settle(served)
+    assert (failed["stale"], failed["last_outcome"]["outcome"]) == (True, "origin_unavailable")
+    # Stale still, but the failure holds the page's asks; a reader's own click does not wait.
+    clock.now += STORE_PROBE_S
+    held = _page_ask(served)
+    assert (held.status_code, held.json()["refresh"]) == (200, "not_due")
+    clock.now += FRESHNESS_WINDOW_S
+    assert _page_ask(served).json()["refresh"] == "started"
+    _settle(served)
+    assert _post(served, "/api/source/refresh").json()["refresh"] == "started"
+    _settle(served)
+
+
+def test_a_fetch_that_does_not_bring_the_probed_tip_is_not_started_again_by_each_probe(
+    served: TestClient, origin: _Origin, clock: _Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fetches: list[str] = []
+
+    async def brings_nothing(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
+        fetches.append(store_key)
+        return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
+
+    monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", brings_nothing)
+    _push_commit(origin, "NEW.md", "# New\n", "third")
+    assert _page_ask(served).json()["refresh"] == "started"
+    _settle(served)
+    for _ in range(3):
+        clock.now += STORE_PROBE_S
+        assert _page_ask(served).json()["refresh"] == "not_due"
+    assert len(fetches) == 1
+    clock.now += FRESHNESS_WINDOW_S
+    assert _page_ask(served).json()["refresh"] == "started"
+    _settle(served)
+    assert len(fetches) == 2
+
+
+def test_page_asks_while_a_probe_runs_start_no_second_one(
+    served: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One probe in flight per mirror, however many tabs ask, and a slow origin holds no
+    request longer than the probe's wait."""
+
+    asked: list[str] = []
+    release = threading.Event()
+
+    async def slow_tip(self: StoreMirror, ref: str) -> str | None:
+        asked.append(ref)
+        await held_until(release, 30)
+        return None
+
+    monkeypatch.setattr(StoreMirror, "origin_tip", slow_tip)
+    monkeypatch.setattr("metabrowser.mirror_refresh.STORE_PROBE_WAIT_S", 0.05)
+    answers = [_page_ask(served).json()["refresh"] for _ in range(3)]
+    assert answers == ["not_due", "not_due", "not_due"]
+    assert len(asked) == 1
+    release.set()
+
+
+def test_the_shutdown_cancels_a_running_probe(
+    origin: _Origin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ended: list[str] = []
+
+    async def endless_tip(self: StoreMirror, ref: str) -> str | None:
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            ended.append("cancelled")
+            raise
+        return None
+
+    monkeypatch.setattr(StoreMirror, "origin_tip", endless_tip)
+    monkeypatch.setattr("metabrowser.mirror_refresh.STORE_PROBE_WAIT_S", 0.05)
+    assert _serve(origin.url).exit_code == 0
+    with TestClient(server.app) as client:
+        assert _page_ask(client).json()["refresh"] == "not_due"
+    assert ended == ["cancelled"]
+
+
 # ── The coordinator ──────────────────────────────────────────────────
 
 
@@ -691,6 +915,9 @@ class _BusyMirror:
 
     async def recorded_freshness(self) -> RecordedFreshness:
         return RecordedFreshness(self.at, "refresh", "succeeded", self.at)
+
+    async def origin_tip(self, ref: str) -> str | None:
+        raise AssertionError("not reached")
 
     async def ref_tip(self, ref: str) -> str | None:
         return None

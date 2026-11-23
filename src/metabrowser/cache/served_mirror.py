@@ -24,6 +24,12 @@ from metabrowser.cache import acquire
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.atomic import RecordError, read_record
 from metabrowser.cache.locks import LockBusyError, store_fetch_lock
+from metabrowser.cache.origin import (
+    BRANCH_MIRROR_PREFIX,
+    REMOTE_PROBE_TIMEOUT_S,
+    ls_remote_branch_args,
+    parse_branch_tip,
+)
 from metabrowser.cache.paths import store_git_directory, store_record
 from metabrowser.cache.providers import repository_context_for
 from metabrowser.cache.records import (
@@ -42,13 +48,20 @@ from metabrowser.cache.resolve import (
 )
 from metabrowser.cache.update import update_store
 from metabrowser.cache.urls import GitSource, RepositorySelection
-from metabrowser.git.process import RepositoryStoreTarget, repository_store_target
+from metabrowser.git.process import (
+    ACQUISITION_POLICY,
+    GitError,
+    RepositoryStoreTarget,
+    repository_store_target,
+    run_git,
+)
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.home import PrivateStorageError
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
     MirrorDisplay,
     MirrorRef,
+    OriginProbeError,
     RecordedFreshness,
     RefKind,
     RefreshResult,
@@ -230,6 +243,29 @@ class StoreMirror:
             self.home, self.store_key, remote_url=acquire.remote_url_for(self.source)
         )
         return RefreshResult(outcome=update.outcome.value, at=update.at, swept=update.swept)
+
+    async def origin_tip(self, ref: str) -> str | None:
+        """The commit the origin's branch behind *ref* names now, asked of the origin.
+
+        One ``ls-remote`` of that branch, which takes no lock and writes nothing, so it
+        runs beside a fetch. The first-request deadline bounds it, on every transport:
+        nothing waits for a probe longer than that.
+        """
+
+        if not ref.startswith(BRANCH_MIRROR_PREFIX):
+            raise OriginProbeError(f"{ref} is not a branch of the origin")
+        branch = ref.removeprefix(BRANCH_MIRROR_PREFIX)
+        remote_url = acquire.remote_url_for(self.source)
+        try:
+            printed = await run_git(
+                ls_remote_branch_args(remote_url, branch),
+                target=self._target(),
+                policy=ACQUISITION_POLICY,
+                timeout_s=REMOTE_PROBE_TIMEOUT_S,
+            )
+        except GitError as exc:
+            raise OriginProbeError("the origin did not answer the probe") from exc
+        return parse_branch_tip(printed, branch)
 
     def _default_ref(self) -> str | None:
         try:

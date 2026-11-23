@@ -3630,6 +3630,11 @@ declare global {
     last_outcome: { operation: string; outcome: string; at: string } | null;
     refreshing: boolean;
     stale: boolean;
+    /**
+     * How often, in seconds, a visible page of this pin makes its own ask, which has the
+     * server probe the served branch at its origin; null for a pin that is not probed.
+     */
+    probe_every_s: number | null;
     pull_request: number | null;
     selection_state: "pending" | "found" | "not_found" | "fetch_failed" | "superseded" | null;
     selection_href: string | null;
@@ -3775,6 +3780,7 @@ declare global {
       shown: MetabrowserSourcePage | null;
       timerPending: boolean;
       refreshAskedWhileVisible: boolean;
+      pageAskedWhileVisible: boolean;
       error: string | null;
     };
   }>;

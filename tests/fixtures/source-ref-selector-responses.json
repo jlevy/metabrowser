@@ -476,6 +476,7 @@
         },
         "refreshing": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
@@ -510,6 +511,7 @@
         },
         "refreshing": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
@@ -544,6 +546,7 @@
         },
         "refreshing": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
@@ -578,6 +581,7 @@
         },
         "refreshing": false,
         "stale": true,
+        "probe_every_s": 5.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null

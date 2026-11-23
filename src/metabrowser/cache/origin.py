@@ -168,6 +168,36 @@ def ls_remote_head_args(remote_url: str) -> list[str]:
     return [*origin_git_args(remote_url), "ls-remote", "--symref", "--", remote_url, "HEAD"]
 
 
+def ls_remote_branch_args(remote_url: str, branch: str) -> list[str]:
+    """``ls-remote`` for one branch of the origin, by its full name there.
+
+    Protocol v2, Git's default since 2.26, sends the name as a ``ref-prefix``, so the
+    origin advertises the refs that begin with it and not every ref it has: 57 bytes of
+    answer for ``main`` of a repository whose whole advertisement is 12,068 lines
+    (measured beside ``STORE_PROBE_S`` in ``mirror_refresh.py``). It reads the origin
+    and writes nothing anywhere.
+    """
+
+    return [*origin_git_args(remote_url), "ls-remote", "--", remote_url, f"refs/heads/{branch}"]
+
+
+def parse_branch_tip(stdout: bytes, branch: str) -> str | None:
+    """The commit :func:`ls_remote_branch_args` printed for *branch*, or ``None``.
+
+    ``None`` is an origin without that branch. A pattern also matches a longer ref that
+    ends with it, ``refs/heads/x/refs/heads/main`` for ``refs/heads/main``, so only the
+    line that names the branch itself is read.
+    """
+
+    wanted = f"refs/heads/{branch}".encode()
+    for line in stdout.splitlines():
+        oid, _, name = line.partition(b"\t")
+        if name == wanted:
+            text = oid.decode("ascii", "replace")
+            return text if is_full_revision(text) else None
+    return None
+
+
 def mirror_fetch_args(
     remote_url: str,
     *,
@@ -343,10 +373,12 @@ __all__ = [
     "fetched_ref_names",
     "fetched_refs",
     "pruned_ref_names",
+    "ls_remote_branch_args",
     "ls_remote_head_args",
     "mirror_fetch_args",
     "mirror_prune_args",
     "origin_git_args",
+    "parse_branch_tip",
     "parse_symref_head",
     "remote_tracking_ref",
 ]

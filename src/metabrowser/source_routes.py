@@ -29,7 +29,9 @@ as a pinned revision, or the working tree again, without writing the checkout.
 ``POST /api/source/refresh`` starts a background refresh of the served mirror, or joins
 the one running, and returns at once. With ``{"for": "commit"}`` it is the fetch a
 commit the mirror lacks waits for, which a page asks for by itself only when the mirror
-is older than the freshness window. ``POST /api/source/pin`` switches the served pin
+is older than the freshness window. With ``{"for": "page"}`` it is a visible page's own
+ask, every few seconds on a branch: the server asks the origin where that branch is and
+fetches at once when it moved. ``POST /api/source/pin`` switches the served pin
 to a branch, tag, or commit in the mirror. Both change state or start work, so both are
 POST routes with a JSON body behind the application's same-origin guard: content inside
 an untrusted page cannot reach them with a link, an image, or a form.
@@ -207,6 +209,9 @@ class SourceStatus(TypedDict):
     last_outcome: LastOutcome | None
     refreshing: bool
     stale: bool
+    # How often a visible page of this pin asks with ``{"for": "page"}``, in seconds; null
+    # when the pin is not one of the origin's branches, which alone are probed.
+    probe_every_s: float | None
     pull_request: int | None
     selection_state: SelectionState | None
     selection_href: str | None
@@ -687,19 +692,19 @@ def _error(message: str, code: str, status_code: int) -> JSONResponse:
     return JSONResponse({"error": message, "code": code}, status_code=status_code)
 
 
-def _refresh_request(body: dict[str, Any]) -> tuple[bool, bool]:
-    """Whether a refresh request is for a missing commit, and whether it is a retry."""
+def _refresh_request(body: dict[str, Any]) -> tuple[Literal["commit", "page"] | None, bool]:
+    """What a refresh request is for, a missing commit or a visible page, and whether it is a retry."""
 
     unknown = sorted(set(body) - {"for", "retry"})
     if unknown:
         raise _BadRequestError('a refresh request names only "for" and "retry"')
     purpose = body.get("for")
     retry = body.get("retry", False)
-    if purpose is not None and purpose != "commit":
-        raise _BadRequestError('"for" may only be "commit"')
-    if not isinstance(retry, bool) or (retry and purpose is None):
-        raise _BadRequestError('"retry" is true or false, and goes with "for"')
-    return purpose == "commit", retry
+    if purpose is not None and purpose not in ("commit", "page"):
+        raise _BadRequestError('"for" may only be "commit" or "page"')
+    if not isinstance(retry, bool) or (retry and purpose != "commit"):
+        raise _BadRequestError('"retry" is true or false, and goes with "for": "commit"')
+    return purpose, retry
 
 
 async def api_source_refresh(request: Request) -> JSONResponse:
@@ -722,10 +727,21 @@ async def api_source_refresh(request: Request) -> JSONResponse:
     refresh was answered (``started``, ``joined``, or ``too_many`` when the queue had no
     room for it), or null when none was asked for, so a page can tell a fetch that ran
     from one a full queue refused.
+
+    ``{"for": "page"}`` is the ask a visible page makes by itself
+    (:meth:`~metabrowser.mirror_refresh.MirrorSession.page_ask`). It fetches a mirror
+    older than the freshness window, and otherwise asks the origin where the served
+    branch is and fetches at once if it moved: ``refresh`` is then ``"probed"`` for a
+    branch found where the mirror has it, ``"not_due"`` when nothing was asked of the
+    origin, and both answer ``200``. It waits for the probe at most ``STORE_PROBE_WAIT_S``
+    and never for a fetch. The status's ``probe_every_s`` says how often a page sends
+    it: a number for one of the origin's branches, and null for any other pin, whose page
+    sends none.
     """
 
     try:
-        for_commit, retry = _refresh_request(await _json_object(request))
+        purpose, retry = _refresh_request(await _json_object(request))
+        for_commit = purpose == "commit"
         mirror = _served_mirror(request, "refresh")
     except _BadRequestError as exc:
         return _error(str(exc), "invalid_request", exc.status_code)
@@ -736,6 +752,8 @@ async def api_source_refresh(request: Request) -> JSONResponse:
         fetch = mirror.request_commit_fetch(retry=retry)
         started: str = fetch.refresh
         pulled["pull_refresh"] = fetch.pull_refresh
+    elif purpose == "page":
+        started = await mirror.page_ask()
     else:
         started = mirror.request_refresh()
     status = source_status(mirror)
@@ -751,7 +769,7 @@ async def api_source_refresh(request: Request) -> JSONResponse:
             status_code=429,
         )
     # Nothing scheduled and nothing running is an answer, not accepted work.
-    accepted = started != "fresh" or status["refreshing"]
+    accepted = started not in ("fresh", "probed", "not_due") or status["refreshing"]
     return JSONResponse(
         {"refresh": started, **pulled, "status": dict(status)},
         status_code=202 if accepted else 200,

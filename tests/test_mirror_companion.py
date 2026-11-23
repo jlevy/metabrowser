@@ -68,6 +68,9 @@ class _Mirror:
             return RecordedFreshness(self.fetched_at, None, None, None)
         return RecordedFreshness(self.fetched_at, "refresh", "succeeded", self.recorded_at)
 
+    async def origin_tip(self, ref: str) -> str | None:
+        raise AssertionError("not reached")
+
     async def ref_tip(self, ref: str) -> str | None:
         return None
 

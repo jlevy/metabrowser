@@ -48,7 +48,12 @@ from metabrowser.cache.records import (
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import LineSelection, RepositorySelection
 from metabrowser.cli.selection import pending_selection_opener
-from metabrowser.mirror_refresh import MAX_PULL_JOBS, mirror_session, serve_mirror
+from metabrowser.mirror_refresh import (
+    MAX_PULL_JOBS,
+    STORE_PROBE_S,
+    mirror_session,
+    serve_mirror,
+)
 from metabrowser.source import reset_source_session
 from tests.golden_harness import (
     JSON_BODY,
@@ -223,6 +228,10 @@ class _BesideSet:
 def _commit_fetch(client: TestClient, *, retry: bool = False) -> Any:
     body: dict[str, Any] = {"for": "commit", "retry": True} if retry else {"for": "commit"}
     return client.post("/api/source/refresh", json=body, headers=JSON_BODY)
+
+
+def _page_ask(client: TestClient) -> Any:
+    return client.post("/api/source/refresh", json={"for": "page"}, headers=JSON_BODY)
 
 
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
@@ -445,6 +454,29 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 time.sleep(0.02)
             still = client.get(f"/api/git/commit/{_ABSENT_COMMIT}")
             recorded["commit_unqueued_after"] = {"oid": _ABSENT_COMMIT, **answer(still)}
+        # A visible page on a branch makes its own ask every few seconds. The server asks
+        # the origin where the branch is: where the mirror has it, so nothing is fetched;
+        # then, after a push, somewhere else, so the fetch starts at once and the served
+        # branch follows. A page on a commit is told to send no such ask, and one sent
+        # all the same asks the origin nothing.
+        probe_clock = [1000.0]
+        monkeypatch.setattr("metabrowser.mirror_refresh._monotonic", lambda: probe_clock[0])
+        serve_mirror(StoreMirror.from_published(published), serving=True)
+        with TestClient(server.app) as client:
+            assert client.post("/api/source/refresh", json={}, headers=JSON_BODY).status_code == 202
+            recorded["probe_page"] = _settle(client)
+            recorded["probe_unchanged"] = answer(_page_ask(client))
+            _commit_on_topic(origin)
+            probe_clock[0] += STORE_PROBE_S
+            recorded["probe_moved"] = answer(_page_ask(client))
+            recorded["probe_followed"] = _settle(client)
+            pinned = client.post(
+                "/api/source/pin", json={"oid": recorded["probe_page"]["pin"]}, headers=JSON_BODY
+            )
+            assert pinned.status_code == 200
+            recorded["commit_pin"] = pinned.json()["status"]
+            probe_clock[0] += STORE_PROBE_S
+            recorded["commit_pin_ask"] = answer(_page_ask(client))
         # A mirror whose last refresh found the repository gone or private, inside the
         # window: the row says so in the words the command line uses.
         _write_state(
@@ -551,6 +583,21 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["commit_retry_started"]["body"]["pull_refresh"] == "joined"
     assert recorded["commit_fresh"]["body"]["pull_refresh"] is None
     assert recorded["folder"]["pin"] is None
+    # A page's own ask: a probe that found the branch where the mirror has it fetched
+    # nothing, and one that found a push started the fetch the served branch followed.
+    probe_page = recorded["probe_page"]
+    assert (probe_page["probe_every_s"], probe_page["stale"]) == (STORE_PROBE_S, False)
+    unchanged = recorded["probe_unchanged"]
+    assert (unchanged["status"], unchanged["body"]["refresh"]) == (200, "probed")
+    assert unchanged["body"]["status"] == probe_page
+    moved = recorded["probe_moved"]
+    assert (moved["status"], moved["body"]["refresh"]) == (202, "started")
+    assert moved["body"]["status"]["refreshing"] is True
+    followed = recorded["probe_followed"]
+    assert followed["pin"] != probe_page["pin"] and followed["latest"] == followed["pin"]
+    assert recorded["commit_pin"]["probe_every_s"] is None
+    unasked = recorded["commit_pin_ask"]
+    assert (unasked["status"], unasked["body"]["refresh"]) == (200, "not_due")
     check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
 
 
@@ -576,11 +623,41 @@ def test_the_session_runs_on_the_recording() -> None:
     assert refused_follow["paint"]["error"].startswith("Could not follow topic")
     assert refused_follow["paint"]["offer"].endswith("[Reload]")
     again = by_name["a refused follow is not asked again on the next poll"]
-    assert not any(request.startswith("POST") for request in again["requests"])
+    assert not any(request.startswith("POST /api/source/pin") for request in again["requests"])
     assert again["paint"]["error"] == refused_follow["paint"]["error"]
     assert by_name["the reload a refused follow offers"]["reloads"] == 1
+    # The page's own ask, every probe_every_s while it is visible, stands in for the poll.
+    page_ask = 'POST /api/source/refresh {"for":"page"}'
+    opened = by_name["a page on a branch asks with its first status"]
+    assert opened["requests"] == ["GET /api/source/status", page_ask]
+    assert opened["timer"] == "ask"
+    unchanged = by_name["an unchanged branch: the ask is the poll, and nothing repaints"]
+    assert (unchanged["requests"], unchanged["repaints"]) == ([page_ask], 0)
+    hidden = by_name["a hidden page asks nothing"]
+    assert (hidden["requests"], hidden["timer"]) == ([], None)
+    assert by_name["shown again, the page asks at once"]["requests"][-1] == page_ask
+    pushed = by_name["the origin moved the branch: the fetch starts at once"]
+    assert (pushed["requests"], pushed["timer"]) == ([page_ask], "fast")
+    assert pushed["paint"]["tone"] == "refreshing"
+    arrived_push = by_name["the fetch brought the push; the page follows its branch"]
+    assert arrived_push["requests"][-1].startswith("POST /api/source/pin ")
+    assert arrived_push["reloads"] == 1
+    refused_ask = by_name["a refused ask says nothing, and the page polls instead"]
+    assert (refused_ask["timer"], refused_ask["paint"]["error"]) == ("slow", None)
+    after_refusal = by_name["the poll after a refused ask"]["requests"]
+    assert len(after_refusal) == 1 and after_refusal[0].startswith("GET /api/source/status")
+    silent = by_name["the server stopped answering the page's asks"]
+    assert (silent["timer"], silent["paint"]["error"]) == ("slow", "The server did not answer.")
+    on_commit = by_name["a page on a commit sends no ask of its own"]
+    assert (on_commit["requests"], on_commit["timer"]) == (["GET /api/source/status"], "slow")
+    assert all(
+        request.startswith("GET ")
+        for request in by_name["a page on a commit polls slowly"]["requests"]
+    )
+    # The page asks for a refresh by itself once per visible period, and the server
+    # holds its own asks while a fetch has just failed, so neither is repeated per poll.
     polls = by_name["a stale page whose refresh fails asks once"]["requests"]
-    assert len(polls) == 2 and all(request.startswith("GET ") for request in polls)
+    assert "POST /api/source/refresh {}" not in polls
     history = {row["failure"]: row["means"] for row in transcript["history"]}
     assert history["a refresh moved the refs"] == "stale"
     assert by_name["an unchanged status is a 304"]["repaints"] == 0

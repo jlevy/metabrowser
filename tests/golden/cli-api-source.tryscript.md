@@ -64,6 +64,7 @@ status: 200
   },
   "refreshing": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -110,6 +111,7 @@ status: 200
   },
   "refreshing": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -192,6 +194,7 @@ status: 200
     },
     "refreshing": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -231,6 +234,7 @@ status: 200
     },
     "refreshing": false,
     "stale": true,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -273,6 +277,7 @@ status: 200
     },
     "refreshing": false,
     "stale": true,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -317,6 +322,7 @@ status: 200
     },
     "refreshing": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -356,6 +362,7 @@ status: 200
     },
     "refreshing": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -574,6 +581,7 @@ status: 200
     },
     "refreshing": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -616,6 +624,7 @@ status: 200
     },
     "refreshing": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -666,6 +675,7 @@ status: 202
     },
     "refreshing": true,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -696,6 +706,7 @@ status: 200
   },
   "refreshing": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -742,6 +753,7 @@ status: 202
     },
     "refreshing": true,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -772,6 +784,7 @@ status: 200
   },
   "refreshing": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -786,7 +799,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file:
 api: /api/source/refresh
 status: 400
 {
-  "error": "\"for\" may only be \"commit\"",
+  "error": "\"for\" may only be \"commit\" or \"page\"",
   "code": "invalid_request"
 }
 Error: /api/source/refresh returned HTTP 400

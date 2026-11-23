@@ -28,6 +28,7 @@ status: 202
     },
     "refreshing": true,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": "pending",
     "selection_href": null
@@ -58,6 +59,7 @@ status: 200
   },
   "refreshing": false,
   "stale": false,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": "found",
   "selection_href": "/view/g1-ZG9jcw/g1-djEubWQ?plain=1#L1-L2"
@@ -94,6 +96,7 @@ status: 202
     },
     "refreshing": true,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": "pending",
     "selection_href": null
@@ -124,6 +127,7 @@ status: 200
   },
   "refreshing": false,
   "stale": false,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": "not_found",
   "selection_href": null
@@ -160,6 +164,7 @@ status: 202
     },
     "refreshing": true,
     "stale": false,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": "pending",
     "selection_href": null
@@ -190,6 +195,7 @@ status: 200
   },
   "refreshing": false,
   "stale": false,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": "fetch_failed",
   "selection_href": null

@@ -2,7 +2,10 @@
 // commit, and pin switches, driven through the production browser code.
 //
 // The page talks to the server through three routes, and the commit view through a
-// fourth. Every response here is one the in-process application gave while a mirror
+// fourth. A page on a branch also makes its own ask while visible, which has the server
+// probe that branch at its origin; the scripted server answers it as the real one does
+// when the branch has not moved, with the status as it is, unless a step queued the
+// recorded answer of a probe that found a push. Every response here is one the in-process application gave while a mirror
 // went stale, refreshed onto a newer commit it followed, switched its pin, lost its origin,
 // invalidated an open history cursor, and was asked for commits it did not have,
 // recorded in tests/fixtures/source-freshness-responses.json.
@@ -94,6 +97,8 @@ function createPage() {
   let renders = 0;
   let model = null;
   const postAnswers = { "/api/source/refresh": [], "/api/source/pin": [] };
+  // Answers to the page's own ask, `{"for": "page"}`, ahead of the default one.
+  const pageAskAnswers = [];
   let currentStatus = null;
   let currentTag = null;
   let tagCounter = 0;
@@ -121,6 +126,15 @@ function createPage() {
         return { status: 200, etag: currentTag, body: currentStatus };
       }
       log.push(`POST ${route} ${JSON.stringify(options.body ?? {})}`);
+      if (route === "/api/source/refresh" && options.body?.for === "page") {
+        if (!answering) {
+          throw new Error("connection refused");
+        }
+        const scripted = pageAskAnswers.shift();
+        return scripted
+          ? { status: scripted.status, etag: null, body: scripted.body }
+          : { status: 200, etag: null, body: { refresh: "probed", status: currentStatus } };
+      }
       const answer = postAnswers[route].shift();
       assert(answer, `no scripted answer for POST ${route}`);
       return { status: answer.status, etag: null, body: answer.body };
@@ -205,6 +219,9 @@ function createPage() {
     answerPost(route, status, body) {
       postAnswers[route].push({ status, body });
     },
+    answerPageAsk(status, body) {
+      pageAskAnswers.push({ status, body });
+    },
     setVisible(value) {
       visible = value;
     },
@@ -225,7 +242,9 @@ function createPage() {
             ? "fast"
             : pending[0].delayMs === freshness.SLOW_POLL_MS
               ? "slow"
-              : String(pending[0].delayMs);
+              : pending[0].delayMs === (currentStatus?.probe_every_s ?? 0) * 1000
+                ? "ask"
+                : String(pending[0].delayMs);
       const painted = renders;
       renders = 0;
       const observed = {
@@ -327,6 +346,83 @@ async function run() {
         steps.at(-1).reloads === 1,
       "following must ask for the page's own ref at its own address, then reload in place",
     );
+    controller.dispose();
+  }
+
+  // A page on a branch, visible for a while. It makes its own ask with its first status
+  // and then every `probe_every_s`; each has the server ask the origin where the branch
+  // is, and the answer is the status, so the ask is the page's poll too. A hidden page
+  // asks nothing. When a probe finds a push, the server starts the fetch at once, the
+  // page polls quickly until it ends, and then follows its branch.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    const answerAsk = (answer) => page.answerPageAsk(answer.status, answer.body);
+    page.setStatus(recorded.probe_page);
+    answerAsk(recorded.probe_unchanged);
+    await controller.start();
+    steps.push(page.observe("a page on a branch asks with its first status"));
+
+    answerAsk(recorded.probe_unchanged);
+    await page.fireTimer();
+    steps.push(page.observe("an unchanged branch: the ask is the poll, and nothing repaints"));
+
+    page.setVisible(false);
+    controller.onVisibilityChange();
+    steps.push(page.observe("a hidden page asks nothing"));
+
+    page.setVisible(true);
+    answerAsk(recorded.probe_unchanged);
+    controller.onVisibilityChange();
+    await settle();
+    steps.push(page.observe("shown again, the page asks at once"));
+
+    answerAsk(recorded.probe_moved);
+    await page.fireTimer();
+    steps.push(page.observe("the origin moved the branch: the fetch starts at once"));
+
+    page.setStatus(recorded.probe_followed);
+    page.answerPost("/api/source/pin", 200, recorded.followed);
+    await page.fireTimer();
+    steps.push(page.observe("the fetch brought the push; the page follows its branch"));
+    controller.dispose();
+  }
+
+  // A server that refuses the page's ask is polled as before, and one that stops
+  // answering is reported as a failed poll is and found again by the slow poll.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.probe_page);
+    page.answerPageAsk(recorded.pin_refused.status, recorded.pin_refused.body);
+    await controller.start();
+    steps.push(page.observe("a refused ask says nothing, and the page polls instead"));
+    await page.fireTimer();
+    steps.push(page.observe("the poll after a refused ask"));
+    controller.dispose();
+  }
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.probe_page);
+    await controller.start();
+    page.observe("opened");
+    page.stopAnswering();
+    await page.fireTimer();
+    steps.push(page.observe("the server stopped answering the page's asks"));
+    controller.dispose();
+  }
+
+  // A page on a commit opened by its ID, which no push moves: the status names no
+  // interval, so the page sends no ask of its own and polls slowly.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.commit_pin);
+    await controller.start();
+    steps.push(page.observe("a page on a commit sends no ask of its own"));
+    await page.fireTimer();
+    steps.push(page.observe("a page on a commit polls slowly"));
     controller.dispose();
   }
 
