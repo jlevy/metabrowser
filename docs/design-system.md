@@ -4893,9 +4893,12 @@ Show ignored changes map membership but leaves the explicit Files and Ignored ro
 intact.
 
 There is no separate color selector.
-Every file maps its exact extension through the taxonomy’s distribution key, every
-folder maps its dominant extension through the same helper, and remainder cells take the
-neutral Other color.
+Every file maps its exact extension through the taxonomy’s distribution key, a folder
+drawn as one solid cell maps its dominant extension through the same helper, and
+remainder cells take the neutral Other color.
+A nested folder, whose children are drawn inside it, paints its header and frame in the
+neutral border tone (`.tm-nested-folder`): it usually holds many types, and its dominant
+one would claim them all.
 The File types panel and Treemap read the same declared palette, so a semantic family
 keeps the same color across both views and across folders.
 Modification age remains available in the tooltip; it does not compete with file type as
@@ -4918,8 +4921,8 @@ the map below moves down by those lines once and is measured again for the space
 under it. The map’s cells, its bars, and its legend share one hover
 (`distribution-hover.js`), as File Overview’s do
 ([Aggregate Distributions](#aggregate-distributions)). Pointing at an entry marks every
-cell painted its family’s color, the files of its types and the folders it is the
-dominant type of, its segment in every tally row, and the entry, with the entry’s counts
+cell painted its family’s color, the files of its types and the solid folders it is the
+dominant type of but no nested folder, its segment in every tally row, and the entry, with the entry’s counts
 tooltip. Pointing at a cell or a segment marks it and its family’s entry, and a cell
 keeps its own tooltip.
 Every marked cell lifts, and none grows

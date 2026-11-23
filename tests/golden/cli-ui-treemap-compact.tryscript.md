@@ -122,13 +122,14 @@ $ node tests/dom/treemap-compact-session.js
     {
       "step": "pointing at the Python legend entry",
       "marked": [
-        "src/lib",
         "src/lib/app.py",
         "src/lib/util.py",
         "src/lib/cli.py"
       ],
       "markOps": [
-        "copy src/lib"
+        "copy src/lib/app.py",
+        "copy src/lib/util.py",
+        "copy src/lib/cli.py"
       ]
     },
     {

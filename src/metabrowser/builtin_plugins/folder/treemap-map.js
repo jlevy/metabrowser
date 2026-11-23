@@ -74,6 +74,14 @@ const SIZE_PRESETS = Object.freeze({
 /** The Treemap view, which a map cell opens at its folder (treemap.js registers it). */
 export const TREEMAP_VIEW_ID = "treemap";
 
+/**
+ * The palette key of a nested folder, whose header and frame are drawn neutral
+ * (mb-lzmo). No legend entry or tally segment has it, since the taxonomy's keys
+ * are a family's `family:` key, an extension, or the remainder's "", so a
+ * family hover never marks a nested folder and hovering one marks no entry.
+ */
+const NESTED_FOLDER_KEY = "folder:nested";
+
 /** What a map shows while its tree is on its way. */
 export const TREEMAP_LOADING_HTML =
   '<div class="tm-loading mb-delayed-loading" aria-hidden="true"></div><span class="sr-only">Loading treemap…</span>';
@@ -324,13 +332,20 @@ export function createTreemapMap(mb, palette, viewport, options) {
   /**
    * The distribution key for a cell: the family behind a file's extension, and
    * the neutral fallback for the remainder cell that stands for what did not
-   * fit.
+   * fit. A folder whose contents are drawn inside it takes NESTED_FOLDER_KEY:
+   * its header and frame are chrome around many types, not one of them. A folder
+   * drawn as one solid cell keeps its dominant type's.
    * @param {Record<string, any>} cell
    * @returns {string}
    */
   function cellPaletteKey(cell) {
-    const extension = cell.ext || "(none)";
-    return cell.kind === "rest" ? "" : mb.fileTypes.distributionKeyForExtension(extension);
+    if (cell.kind === "rest") {
+      return "";
+    }
+    if (cell.kind === "dir" && cell.nested) {
+      return NESTED_FOLDER_KEY;
+    }
+    return mb.fileTypes.distributionKeyForExtension(cell.ext || "(none)");
   }
 
   /**
@@ -382,17 +397,20 @@ export function createTreemapMap(mb, palette, viewport, options) {
       pending: false,
     };
     const probe = doc.createElement("div");
+    // A nested folder takes no palette class, so .tm-type-fill falls back to
+    // the neutral border tone (styles.css, .tm-nested-folder).
+    const nestedFolder = paletteKey === NESTED_FOLDER_KEY;
     probe.className = [
       "tm-cell",
       "tm-type-fill",
-      rest ? "tm-rest" : "tm-file",
-      palette.classFor(paletteKey),
+      rest ? "tm-rest" : nestedFolder ? "tm-nested-folder" : "tm-file",
+      nestedFolder ? "" : palette.classFor(paletteKey),
       ignored ? "tm-ignored" : "",
       pending ? "tm-pending-still" : "",
     ]
       .filter(Boolean)
       .join(" ");
-    const styleText = palette.styleFor(paletteKey);
+    const styleText = nestedFolder ? "" : palette.styleFor(paletteKey);
     if (styleText) {
       probe.setAttribute("style", styleText);
     }

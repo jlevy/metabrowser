@@ -296,8 +296,10 @@
 }
 
 /* Every folder/file fill shares the mounted extension palette with
-   the Files Overview. Directory cells use their dominant type;
-   the remainder uses the neutral Other slot. The base hue is mixed
+   the Files Overview. A folder drawn as one solid cell uses its dominant
+   type; a nested folder's header and frame use the neutral border tone
+   (.tm-nested-folder), since they hold many types; the remainder uses the
+   neutral Other slot. The base hue is mixed
    into the current surface so chrome text stays readable in both
    themes while the Overview bars retain the full-strength swatch. */
 .tm-type-fill {
@@ -311,6 +313,12 @@
     var(--mb-distribution-color, var(--viz-border)) 74%,
     var(--viz-border)
   );
+}
+
+/* A nested folder's header and frame: no family, so the fills above take
+   their neutral fallback even under an element that sets one. */
+.tm-nested-folder {
+  --mb-distribution-color: initial;
 }
 
 .tm-ignored {

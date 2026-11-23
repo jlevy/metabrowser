@@ -3,9 +3,9 @@
 //
 // The Treemap shows File Overview's legend under its tally bars (docs/design-system.md,
 // "Folder Treemap"). A legend entry is a handle on its family's marks: pointing at it marks
-// every cell of the family, the files of its types and the folders it is the dominant type
-// of, its segment in every tally row, and the entry. Pointing at a cell or a segment marks
-// it and its family's entry. There is one tooltip: the bars show an entry's, the counts of
+// every cell of the family, the files of its types and the solid folders it is the dominant
+// type of (a nested folder is neutral), its segment in every tally row, and the entry.
+// Pointing at a cell or a segment marks it and its family's entry. There is one tooltip: the bars show an entry's, the counts of
 // the family's segment in the tally row the legend's shares are of, anchored on the entry;
 // a cell shows its own, anchored on the hover anchor the map puts over the cell under the
 // pointer.
@@ -687,9 +687,9 @@ function ownPointOf(cells, index) {
   );
   transcript["the legend under the tally bars, at rest"] = atRest;
 
-  // A legend entry marks every cell of its family, the files of its type and the folders it
-  // is the dominant type of, the family's segment in each tally row, and itself. The map's
-  // outer box is the folder itself, whose dominant type is Python too.
+  // A legend entry marks every cell of its family: the files of its type, and no nested
+  // folder, whose header and frame are neutral since it holds many types (the outer box
+  // and docs/build here). It marks the family's segment in each tally row, and itself.
   entry("Python").emit("mouseenter");
   const onEntry = read();
   assert(
@@ -698,9 +698,7 @@ function ownPointOf(cells, index) {
       "Ignored family:python",
       "Total family:python",
       "legend family:python",
-      "cell docs",
       "cell docs/c.py",
-      "cell docs/build",
       "cell docs/build/d.py",
     ]) &&
       onEntry.pointer === null &&
@@ -737,13 +735,13 @@ function ownPointOf(cells, index) {
   const leftCell = read();
   assert(nothing(leftCell), `left the cell: ${JSON.stringify(leftCell)}`);
 
-  // A folder is the color of its dominant type, so it keys to that family's entry. A folder
-  // lifts without the shimmer, which would cover its children. Its child under the pointer
+  // A nested folder is neutral, so it keys to no family's entry and marks only itself. A
+  // folder lifts without the shimmer, which would cover its children. Its child under the pointer
   // is the deepest cell there, and takes the hover.
   pointAt("docs/build");
   const onFolder = read();
   assert(
-    same(onFolder.marked, ["legend family:python", "cell docs/build"]) &&
+    same(onFolder.marked, ["cell docs/build"]) &&
       !onFolder.shimmers &&
       onFolder.anchoredOn === "the anchor over docs/build",
     `the build folder: ${JSON.stringify(onFolder)}`,
@@ -921,7 +919,6 @@ function ownPointOf(cells, index) {
         "Ignored family:python",
         "Total family:python",
         "legend family:python",
-        "cell docs",
         "cell docs/c.py",
       ]) &&
       filesOnly.tooltip === "1 file · 300 B",
