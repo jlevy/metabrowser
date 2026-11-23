@@ -17,11 +17,11 @@ import asyncio
 import inspect
 import re
 from pathlib import Path
-from typing import Any, cast
 
 from metabrowser import server as proc_browser
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.inventory_engine.tree_page_assembly import assemble_tree_pages
+from tests.shell_request import shell_request
 
 
 def _read(name: str) -> str:
@@ -31,17 +31,7 @@ def _read(name: str) -> str:
 def _render_index_html() -> str:
     """Render the / route once and return the HTML body."""
 
-    class _FakeQuery:
-        def get(self, key: str, default: str = "") -> str:
-            return default
-
-    class _FakeReq:
-        def __init__(self) -> None:
-            self.query_params = _FakeQuery()
-            self.headers: dict[str, str] = {}
-            self.cookies: dict[str, str] = {}
-
-    resp = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
+    resp = asyncio.run(proc_browser.index(shell_request()))
     return resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else str(resp.body)
 
 

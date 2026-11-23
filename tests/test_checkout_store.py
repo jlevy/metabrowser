@@ -34,6 +34,7 @@ from metabrowser.checkout_store import (
 from metabrowser.mirror_refresh import STORE_PROBE_S
 from tests.checkout_replica import Replica, build_linear, clone_checkout, fingerprint
 from tests.golden_harness import FixedClock, isolate_cli, pinned_git
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_serve_pin import posix_only
 
@@ -113,7 +114,7 @@ def _refs(client: TestClient, kind: str) -> dict[str, Any]:
     return response.json()
 
 
-def _ready(client: TestClient, *, timeout_s: float = 240.0) -> dict[str, Any]:
+def _ready(client: TestClient, *, timeout_s: float = 30.0) -> dict[str, Any]:
     """The listing of remote-tracking branches once the store exists and nothing fetches."""
 
     deadline = time.monotonic() + timeout_s
@@ -253,7 +254,7 @@ def test_a_folder_no_page_is_looking_at_fetches_its_store_by_itself_and_writes_n
         newer = _push(folder.replica, "m7")
         # The fixture's clock stands still, so the store is old only once it is moved.
         folder.clock.advance(3600)
-        deadline = time.monotonic() + 240
+        deadline = time.monotonic() + 30
         # A GET starts no work, so only the server's own timer can have fetched.
         while _by_name(_refs(client, "remote"))["origin/trunk"] != newer:
             assert time.monotonic() < deadline, "the idle refresh never fetched"
@@ -261,7 +262,7 @@ def test_a_folder_no_page_is_looking_at_fetches_its_store_by_itself_and_writes_n
     assert fingerprint(folder.checkout) == before, "the idle fetch wrote the checkout"
 
 
-def _settled(client: TestClient, *, timeout_s: float = 240.0) -> dict[str, Any]:
+def _settled(client: TestClient, *, timeout_s: float = 30.0) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_s
     while True:
         status = client.get("/api/source/status").json()
@@ -400,7 +401,7 @@ def test_an_origin_that_needs_credentials_is_shown_as_not_fetched_with_the_reaso
     server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
     serve_checkout_store()
     with TestClient(server.app) as client:
-        deadline = time.monotonic() + 240
+        deadline = time.monotonic() + 30
         while (listing := _refs(client, "remote"))["origin"]["state"] != "absent":
             assert time.monotonic() < deadline, listing["origin"]
             time.sleep(0.05)
@@ -412,7 +413,7 @@ def test_an_origin_that_needs_credentials_is_shown_as_not_fetched_with_the_reaso
         assert attempts == ["acquire"]
         # A reader's own refresh tries again.
         assert _post(client, "/api/source/refresh").json()["refresh"] == "started"
-        deadline = time.monotonic() + 240
+        deadline = time.monotonic() + 30
         while len(attempts) < 2:
             assert time.monotonic() < deadline
             time.sleep(0.05)
@@ -442,7 +443,7 @@ def test_a_checkout_with_a_local_origin_or_none_keeps_no_store_and_is_served_as_
         server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
         serve_checkout_store()
         with TestClient(server.app) as client:
-            deadline = time.monotonic() + 240
+            deadline = time.monotonic() + 30
             while (listing := _refs(client, "remote"))["origin"] is not None:
                 assert listing["origin"]["state"] == "acquiring", listing["origin"]
                 assert time.monotonic() < deadline
@@ -523,13 +524,13 @@ def test_a_follow_in_flight_does_not_take_back_the_working_tree_the_reader_chose
 
     async def held(self: StoreMirror, **kwargs: Any) -> Any:
         opening.set()
-        await asyncio.to_thread(release.wait)
+        await held_until(release, 30)
         return await open_selection(self, **kwargs)
 
     monkeypatch.setattr(StoreMirror, "open_selection", held)
     _push(folder.replica, "m7")
     assert _post(served, "/api/source/refresh").status_code == 202
-    assert opening.wait(240), "the fetch never came to follow the branch"
+    assert opening.wait(30), "the fetch never came to follow the branch"
     answers: list[Any] = []
     chooser = threading.Thread(
         target=lambda: answers.append(_post(served, "/api/source/pin", {"working_tree": True}))
@@ -538,7 +539,7 @@ def test_a_follow_in_flight_does_not_take_back_the_working_tree_the_reader_chose
     # Long enough for an unguarded switch to have ended before the follow attaches.
     chooser.join(1.0)
     release.set()
-    chooser.join(240)
+    chooser.join(30)
     assert not chooser.is_alive() and answers[0].status_code == 200
     _ready(served)
     assert served.get("/api/source/status").json()["subject"] == "attached_filesystem"
@@ -592,7 +593,7 @@ def test_the_origins_default_branch_lists_first_and_is_marked(
     assert (branch["default"], branch["checked_out"]) == (False, True)
 
 
-def test_a_short_name_is_read_from_the_store_and_the_answer_says_which(
+def test_a_short_name_is_read_from_the_store_and_the_answer_names_its_source(
     folder: _Folder, served: TestClient
 ) -> None:
     """``origin/trunk`` and a tag the origin has are the store's; the checkout's own
@@ -690,7 +691,7 @@ def test_a_checkout_that_could_not_lend_is_tried_again_on_the_idle_timer(
         if len(attempts) == 1:
             raise CheckoutStoreError("lender_missing", "the checkout cannot lend its objects")
         retrying.set()
-        await asyncio.to_thread(release.wait)
+        await held_until(release, 30)
         return await acquire(*args, **kwargs)
 
     monkeypatch.setattr(checkout_store, "acquire_checkout_store", refused_once)
@@ -699,12 +700,12 @@ def test_a_checkout_that_could_not_lend_is_tried_again_on_the_idle_timer(
     serve_checkout_store()
     try:
         with TestClient(server.app) as client:
-            assert retrying.wait(240), "the acquisition was never tried again"
+            assert retrying.wait(30), "the acquisition was never tried again"
             during = _refs(client, "remote")["origin"]
             assert (during["state"], during["reason"]) == ("absent", "lender_missing")
             assert during["refreshing"] is True
             release.set()
-            deadline = time.monotonic() + 240
+            deadline = time.monotonic() + 30
             while (listing := _refs(client, "remote"))["origin"]["state"] != "ready":
                 assert time.monotonic() < deadline, listing["origin"]
                 time.sleep(0.05)

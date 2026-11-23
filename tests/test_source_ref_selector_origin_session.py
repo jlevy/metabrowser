@@ -18,7 +18,6 @@ pins what the session prints.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import threading
 import time
@@ -41,6 +40,7 @@ from tests.golden_harness import (
     run_session,
     stand_in_sandbox,
 )
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 
 RECORDING = "source-ref-selector-origin-responses.json"
@@ -65,7 +65,7 @@ def _push(work: Path, origin: Path, text: str, *refs: str) -> str:
 def _until(client: TestClient, wanted: str) -> dict[str, Any]:
     """The remote-tracking list once the store is in state *wanted* and nothing fetches."""
 
-    deadline = time.monotonic() + 240
+    deadline = time.monotonic() + 30
     while True:
         listed = client.get("/api/source/refs", params={"kind": "remote"})
         origin = listed.json()["origin"]
@@ -120,7 +120,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     gate = threading.Event()
 
     async def held(*args: Any, **kwargs: Any) -> Any:
-        await asyncio.to_thread(gate.wait)
+        await held_until(gate, 30)
         return await acquire(*args, **kwargs)
 
     fetch_gate = threading.Event()
@@ -132,7 +132,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     failing: list[bool] = []
 
     async def held_fetch(*args: Any, **kwargs: Any) -> Any:
-        await asyncio.to_thread(fetch_gate.wait)
+        await held_until(fetch_gate, 30)
         if failing:
             raise OSError("the fetch could not run")
         return await update(*args, **kwargs)
