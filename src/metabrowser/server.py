@@ -2445,22 +2445,28 @@ async def index(
     # core does not special-case plugin names.
     plugin_asset_config = _build_plugin_asset_config_block(plugin_prefixes)
 
-    # Reuse KPress's vendored reader faces for the whole UI. Link KPress's
-    # style-tokens.css (the @font-face source of truth) and preload the chrome's
-    # always-present Source Sans face, using the SAME stamped URLs the
-    # embedded document requests so the woff2 downloads exactly once and is
-    # served from the immutable cache (see kpress_static_asset). Preloading
-    # only the chrome face avoids an "unused preload" warning on tree-only views;
-    # PT Serif (embedded prose) rides the same immutable cache + font-display:
-    # block on first document open.
-    _sans_url = kpress_adapter.kpress_static_url(
+    # Reuse KPress's stamped font bytes. The reader keeps KPress's original faces;
+    # chrome's separate family uses optional display so a late response does not
+    # move the tabs, toolbar or root menu after the fallback has already painted.
+    sans_url = kpress_adapter.kpress_static_url(
         "fonts/source-sans-3-latin-wght-normal.woff2", prefix=kpress_prefix
     )
-    _tokens_url = kpress_adapter.kpress_static_url("css/style-tokens.css", prefix=kpress_prefix)
-    kpress_font_head = (
-        f'<link rel="preload" as="font" type="font/woff2" crossorigin href="{_sans_url}">\n'
-        f'  <link rel="stylesheet" href="{_tokens_url}">'
+    italic_sans_url = kpress_adapter.kpress_static_url(
+        "fonts/source-sans-3-latin-wght-italic.woff2", prefix=kpress_prefix
     )
+    tokens_url = kpress_adapter.kpress_static_url("css/style-tokens.css", prefix=kpress_prefix)
+    chrome_sans_faces = _json.dumps((("normal", sans_url), ("italic", italic_sans_url)))
+    kpress_font_head = f"""<link rel="preload" as="font" type="font/woff2" crossorigin href="{sans_url}">
+  <link rel="stylesheet" href="{tokens_url}">
+  <script>
+    if (typeof FontFace === "function" && document.fonts) {{
+      for (const [style, url] of {chrome_sans_faces}) {{
+        document.fonts.add(new FontFace("Metabrowser Source Sans", 'url("' + url + '")', {{
+          style, weight: "200 900", display: "optional",
+        }}));
+      }}
+    }}
+  </script>"""
 
     html = f"""<!DOCTYPE html>
 <html lang="en" style="--doc-max-chars: {DOC_MAX_CHARS_DEFAULT}">
@@ -2469,10 +2475,8 @@ async def index(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
   <title>{page_title}</title>
-  <!-- Reader fonts: preload the chrome's Source Sans face + link KPress's
-       @font-face source of truth, version-keyed so chrome and the embedded
-       document share one download. Built in kpress_font_head above from the
-       required KPress package. No flash of unstyled text on first paint. -->
+  <!-- Preload the shared Source Sans bytes, and register chrome's no-late-swap
+       face before layout. KPress retains the reader's own font policy. -->
   {kpress_font_head}
   {client_settings_block}
   <script>{_DOCUMENT_WIDTH_SCRIPT}</script>

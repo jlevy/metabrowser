@@ -3421,7 +3421,7 @@ _KPRESS_CLASS = re.compile(r"\.kpress(?:-[\w-]+)?\b")
 _FACE_ROOTS = {
     ":root": {
         "--font-sans": "var(--app-sans-clean)",
-        "--prose-sans-font": "var(--app-sans-clean)",
+        "--prose-sans-font": '"Source Sans 3 Variable", var(--app-sans-system)',
         "--kpress-host-font-mono": "var(--app-mono)",
         "--kpress-host-font-size-base": "var(--document-body-font-size)",
     },
