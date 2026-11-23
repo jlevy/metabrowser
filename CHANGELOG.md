@@ -216,7 +216,11 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   plugin’s `renderInlineTree` and tree helpers, and the GitHub plugin’s `pullStateIcon`
   are their modules’ exports, and the agents plugin’s agent-log renderers are what its
   exported `loadLogRenderers` answers.
-  Update a plugin’s reads and set its `sdk_version` to `0.8`.
+  To upgrade from SDK 0.7, replace `metabrowser.builtins` calls with declared provider
+  dependencies and use their module exports.
+  Set `sdk_version = "0.8"` after updating the plugin.
+  The manifest must match the runtime’s SDK version.
+  See [plugin diagnostics](docs/command-line.md#diagnostics-and-plugins).
 
 - Discovery refuses a plugin that requires one that was not discovered or was refused,
   and every plugin on a cycle of requirements, naming the cause.
@@ -1351,8 +1355,7 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   shapes the recommended registry gives a category or a format, so a registry that gives
   one any of those five, or `folder`, `fileSymlink`, `gear`, `sun`, `moon`, `print`,
   `serif`, `sans`, or `toggle`, fails validation.
-  `PLUGIN_SDK_VERSION` remains `0.7`. See the
-  [Icon Catalog](docs/design-system-icons.md).
+  See the [Icon Catalog](docs/design-system-icons.md).
 
 - Choosing a branch or tag in the branch and tag chooser no longer flashes **Reload** on
   the page you are leaving.
@@ -1586,8 +1589,8 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   Command-P, or Control-P outside macOS, still prints every view, and in the macOS app
   File > Print does; a source view, which had the header’s button, now prints that way.
   For plugin authors, the Markdown builtin’s `mountRendered` takes
-  `printIndicator: true` to draw the button, off unless asked; `PLUGIN_SDK_VERSION`
-  remains `0.7`. See [Print](docs/design-system.md#print).
+  `printIndicator: true` to draw the button, off unless asked.
+  See [Print](docs/design-system.md#print).
 
 - `metab ROOT --present` hands a folder, a file, or a GitHub URL to the macOS app and
   reports what it sent.
@@ -1812,7 +1815,7 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   heading on the folder’s address instead of opening the README as a file.
   For plugin authors, `metabrowser.kpressInitToc(container, config)` hands KPress its
   per-binding configuration, and the Markdown builtin’s `mountRendered` takes a
-  `pagePath`; `PLUGIN_SDK_VERSION` remains `0.7`. See
+  `pagePath`. See
   [Embedded Document Navigation](docs/design-system.md#embedded-document-navigation).
 
 - The Files panel’s totals no longer move the tree when the count of ignored files
@@ -1919,9 +1922,8 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   A pull request’s author with no avatar on GitHub now shows it too, in the header and
   on the Conversation; a Pulls row still shows no icon for one.
   For plugin authors, `metabrowser.actorIdentity(name, options)` and
-  `metabrowser.actorIdentityHtml(name, options)` draw a person as the shell does, and
-  `PLUGIN_SDK_VERSION` remains `0.7`. See
-  [Page Headers](docs/design-system.md#page-headers) and
+  `metabrowser.actorIdentityHtml(name, options)` draw a person as the shell does.
+  See [Page Headers](docs/design-system.md#page-headers) and
   [Actor Identity](docs/design-system.md#actor-identity).
 
 - A Files tree row’s tooltip stays under a pointer that has not moved when something
@@ -2898,7 +2900,7 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   shown controls hold.
   With `numbered: true` instead of a letter, a situational control takes a number from
   its place on screen, beside the shell’s. `METABROWSER_SETTINGS` serves the reserved
-  keys as `RESERVED_SHELL_KEYS`. `PLUGIN_SDK_VERSION` remains `0.7`.
+  keys as `RESERVED_SHELL_KEYS`.
 
 - Hold Shift outside a text field to see the keys: a keycap appears on each control a
   key reaches now, and the shortcut strip lists the common keys that are live.
@@ -2945,7 +2947,6 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   reports it, naming the plugin that holds a shared key.
   A view left alone, as HTML’s Source is without active content, has no other tab to
   switch to and is served without its key.
-  `PLUGIN_SDK_VERSION` remains `0.7`.
 
 - A pull request that is already shown no longer shows a spinner while it refreshes.
   Its page, the changed files under its row, and the Pulls list keep what they show and
