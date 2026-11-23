@@ -309,6 +309,23 @@ def test_the_slowest_probe_still_vouches_from_behind_the_lists_lag() -> None:
     assert MAX_PAID_PROBE_S + PULLS_LAG_S + LIST_PROBE_S <= FRESHNESS_WINDOW_S
 
 
+def test_checked_at_is_when_the_probe_asked_not_when_github_answered(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A9 of review A on #737: a slow probe stamped at its end would vouch for changes
+    GitHub made while it ran, and the stand-in's clock never moved during a probe."""
+
+    seed_catalog(repository, [generated_item(2)], fetched_at=STAMP)
+    github = _GitHub(monkeypatch, generated_item(2))
+    github.later(20)
+    asked = github.now
+    github.takes = 3.0
+    probe = ListProbe()
+    _probe(probe, repository)
+    assert github.now == asked + timedelta(seconds=3)
+    assert probe.checked_at == utc_stamp(asked)
+
+
 def test_a_pull_request_changed_just_before_an_issue_is_still_found(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:

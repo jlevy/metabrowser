@@ -295,6 +295,35 @@ def test_a_graphql_query_costs_what_github_reports_and_one_when_it_reports_nothi
     assert gh_budget.automatic_spent(NOW) == cost
 
 
+@pytest.mark.parametrize(
+    ("status", "reason", "headers"),
+    [
+        (401, "Unauthorized", ""),
+        (403, "Forbidden", f"X-Ratelimit-Remaining: 0\r\nX-Ratelimit-Reset: {RESET}\r\n"),
+        (502, "Bad Gateway", ""),
+    ],
+)
+def test_a_graphql_query_github_refused_costs_one(
+    monkeypatch: pytest.MonkeyPatch, status: int, reason: str, headers: str
+) -> None:
+    """A refusal is charged as a ``200`` is, rate-limited or not (A9 of review A on #737)."""
+
+    import asyncio
+    from types import SimpleNamespace
+
+    from metabrowser.builtin_plugins.github import gh
+
+    out = f"HTTP/2.0 {status} {reason}\r\n{headers}\r\n".encode() + b'{"message": "no"}'
+
+    async def run(*_args: object, **_kwargs: object) -> object:
+        return SimpleNamespace(stdout=out, stderr=b"", returncode=0)
+
+    monkeypatch.setattr(gh, "_run", run)
+    with pytest.raises(gh.GhError):
+        asyncio.run(gh.gh_graphql("query Fixed { viewer { login } }", {}, now=NOW))
+    assert gh_budget.automatic_spent(NOW) == 1
+
+
 def test_a_job_the_coordinator_starts_for_a_readers_click_is_the_readers_too() -> None:
     import asyncio
 
