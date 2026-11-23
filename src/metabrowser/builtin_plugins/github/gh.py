@@ -753,6 +753,8 @@ async def gh_api(path: str, *, etag: str | None = None, now: datetime | None = N
         raise _failure_without_response(completed)
     moment = now or datetime.now(UTC)
     gh_budget.observe(response.headers, resource="core")
+    # GitHub counts every answer but a 304 against the rate limit, refusals included.
+    gh_budget.spent(0 if response.status == 304 else 1, now=moment)
     refused = _refusal(response, now=moment)
     if refused is not None:
         if refused.state == "rate_limited":
@@ -820,6 +822,27 @@ def _is_one_read_only_query(document: str) -> bool:
     return depth == 0 and starting and operations == ["query"]
 
 
+# The most one query is taken to have cost, whatever its answer says: GitHub's own limit
+# on a query is 500,000 nodes, 5,000 points at a hundred nodes a point.
+_MAX_GRAPHQL_COST: Final = 5000
+
+
+def _graphql_cost(response: GhResponse) -> int:
+    """What GitHub says the query cost, ``rateLimit { cost }``, or one when it does not say.
+
+    Each of the plugin's queries asks for it, and each reported 1 on 2026-11-22: a catalog
+    page by either order, core batches of 8 and of 25, a timeline page, and one core
+    (cli/cli and jlevy/metabrowser, gh 2.98.0).
+    """
+
+    try:
+        payload = json.loads(response.body)
+        cost = payload["data"]["rateLimit"]["cost"]
+    except (ValueError, KeyError, TypeError):
+        return 1
+    return cost if type(cost) is int and 0 <= cost <= _MAX_GRAPHQL_COST else 1
+
+
 async def gh_graphql(
     query: str,
     variables: Mapping[str, str | int | bool | None],
@@ -854,10 +877,15 @@ async def gh_graphql(
     gh_budget.observe(response.headers, resource="graphql")
     refused = _refusal(response, now=moment)
     if refused is not None:
+        gh_budget.spent(1, now=moment)
         if refused.state == "rate_limited":
             gh_budget.hold(refused.reset_at, now=moment)
         raise refused
-    payload = response.json()
+    try:
+        payload = response.json()
+    finally:
+        # Counted before anything below can refuse the answer: GitHub charged for it.
+        gh_budget.spent(_graphql_cost(response), now=moment)
     if not isinstance(payload, dict):
         raise GhError("GitHub answered with an unreadable GraphQL response")
     errors = payload.get("errors")

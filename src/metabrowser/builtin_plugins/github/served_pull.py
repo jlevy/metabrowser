@@ -549,6 +549,15 @@ class ServedPull:
         """
 
         window = FULL_REFRESH_S if self.probe_vouches(now) else FRESHNESS_WINDOW_S
+        if (
+            gh_budget.over_ceiling(now)
+            and self._last_attempt is not None
+            and now - self._last_attempt <= timedelta(seconds=gh_budget.CEILING_FULL_READ_S)
+        ):
+            # Over the process's own ceiling (AUTOMATIC_CORE_PER_HOUR) a full read, even
+            # one a probe found a change for, waits five minutes after the last; a change
+            # that waits is not probed for again.
+            return "probe" if self._probe_saw_at is None and self.probe_due(now) else None
         if self.full_read_due(now):
             self._full_asked = True
             return "full"
@@ -619,7 +628,11 @@ class ServedPull:
             or (self._probe_failed is not None and now - self._probe_failed <= window)
             or (
                 self._probe_attempt is not None
-                and now - self._probe_attempt < timedelta(seconds=PROBE_FLOOR_S)
+                and now - self._probe_attempt
+                # Over the process's own ceiling, probes slow to the full-read interval.
+                < timedelta(
+                    seconds=FULL_REFRESH_S if gh_budget.over_ceiling(now) else PROBE_FLOOR_S
+                )
             )
             or not _may_probe(self.key, now)
         )

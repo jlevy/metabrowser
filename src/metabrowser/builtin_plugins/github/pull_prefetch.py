@@ -119,7 +119,7 @@ _FIELDS: Final = frozenset({"records", "files", "changed"})
 
 type ItemKind = Literal["record", "files"]
 type PrefetchStart = Literal["started", "joined", "not_due", "deferred"]
-type DeferReason = Literal["below_floor", "rate_hold", "hourly_cap", "scan_cap"]
+type DeferReason = Literal["below_floor", "rate_hold", "self_ceiling", "hourly_cap", "scan_cap"]
 # An item's end: refreshed or failed, or why it started nothing, or why the lane stopped.
 type ItemOutcome = str
 
@@ -629,12 +629,19 @@ class FilesBudgetWire(TypedDict):
     hour_used: int
 
 
+class CeilingWire(TypedDict):
+    per_hour: int
+    hour_used: int
+
+
 class GovernorWire(TypedDict):
     floor: float
     admits: bool
     reason: str | None
     held_until: str | None
     observed: dict[str, gh_budget.ObservationWire]
+    # What this process's automatic work may spend in a rolling hour, and has.
+    ceiling: CeilingWire
 
 
 class PrefetchEnvelope(TypedDict):
@@ -682,6 +689,10 @@ async def prefetch_envelope(host: PullHost | None) -> PrefetchEnvelope:
             reason=verdict.reason,
             held_until=gh_budget.held_until(now),
             observed=gh_budget.observations(now),
+            ceiling=CeilingWire(
+                per_hour=gh_budget.AUTOMATIC_CORE_PER_HOUR,
+                hour_used=gh_budget.automatic_spent(now),
+            ),
         ),
         recent=list(lane.recent),
     )

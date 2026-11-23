@@ -35,12 +35,25 @@ account check named (:func:`note_account`, called by :func:`~.gh.gh_account` and
 token has its own budget. A response already in flight when the account changed can
 still be observed for the new one until its next check, at most one refresh's requests.
 ``remaining`` is the account's, so several servers on one account stop together.
+
+Beside the account's budget this process keeps a ceiling on its own automatic work,
+:data:`AUTOMATIC_CORE_PER_HOUR`. What the process spends it counts itself (:func:`spent`):
+one for each REST answer that is not ``304``, and each GraphQL query's reported cost, in
+the hour before now. ``x-ratelimit-used`` cannot count it, being the account's counter:
+two of one process's responses 204 s apart differed by 208 calls, one of them its own, and
+on 2026-11-22 the account's GraphQL ``remaining`` fell 433 points between two of one
+script's queries a moment apart, each of cost 1. A reader's own action is not counted
+(:func:`readers_own`), and is never limited. Past the ceiling (:func:`over_ceiling`),
+background work is not admitted, probes slow to the full-read interval, and full reads to
+:data:`CEILING_FULL_READ_S`, until enough of the hour's spending is an hour old.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Generator, Iterable, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Final, Literal, TypedDict
@@ -56,13 +69,29 @@ BACKGROUND_FLOOR: Final = 0.25
 # How long a refusal that named no reset time holds: the refresh coordinator's window, as
 # ``pull_list_refresh`` waits after one.
 UNKNOWN_RESET_HOLD_S: Final = 60.0
+# What this process's automatic work may spend in a rolling hour, in ``core`` calls and
+# GraphQL points together. Six Metabrowser servers ran on one account on 2026-11-22 while
+# its other clients spent about 1,500 of its 5,000 ``core`` an hour, so the ceiling is
+# sized for six: 300 a server is at most 1,800 if all six reach it, which with those 1,500
+# leaves the reader the 1,250 that ``BACKGROUND_FLOOR`` reserves and 450 beside it. One
+# visible page whose repository is pushed to once a minute spends about 120 an hour on its
+# two probes' ``200``s, and 40 catalog scans add 40 points, so a server reaches 300 only
+# with several such pages or CI running on them. See
+# docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md.
+AUTOMATIC_CORE_PER_HOUR: Final = 300
+# How far apart automatic full reads of one thing are held while the process is over its
+# ceiling: the plan's five minutes, 12 reads an hour for each visible record or list.
+CEILING_FULL_READ_S: Final = 300.0
+# The rolling hour, kept as one count a minute: 60 numbers however much is spent.
+_SPEND_BUCKET_S: Final = 60
+_SPEND_BUCKETS: Final = 60
 # Resources are header text, so the ones kept are bounded: GitHub names a handful.
 _MAX_RESOURCES: Final = 8
 _RESOURCE: Final = re.compile(r"[a-z_]{1,32}")
 _COUNT: Final = re.compile(r"[0-9]{1,9}")
 _EPOCH: Final = re.compile(r"[0-9]{1,12}")
 
-type AdmissionReason = Literal["below_floor", "rate_hold"]
+type AdmissionReason = Literal["below_floor", "rate_hold", "self_ceiling"]
 
 
 def _stamp(moment: datetime) -> str:
@@ -100,6 +129,11 @@ class Admission:
 _OBSERVED: dict[str, RateObservation] = {}
 _held_until: str | None = None
 _account: str | None = None
+# What automatic work spent in each minute of the last hour, by minute since the epoch.
+_SPENT: dict[int, int] = {}
+# Whether the work running in this context is a reader's own action. A task started
+# inside :func:`readers_own` inherits it, as the refresh job a reader's click starts does.
+_READERS_OWN: ContextVar[bool] = ContextVar("metabrowser_gh_readers_own", default=False)
 
 
 def note_account(login: str) -> None:
@@ -111,6 +145,7 @@ def note_account(login: str) -> None:
     global _account, _held_until
     if _account is not None and login != _account:
         _OBSERVED.clear()
+        _SPENT.clear()
         _held_until = None
     _account = login
 
@@ -170,10 +205,69 @@ def observations(now: datetime) -> dict[str, ObservationWire]:
     }
 
 
+@contextmanager
+def readers_own() -> Generator[None]:
+    """Mark the work started inside as a reader's own action, which no ceiling counts.
+
+    A route enters it around the start of what a reader's click asked for; the job's task
+    copies the context when it is created, so its requests are the reader's too. A job
+    already running that the click only joins stays automatic, and is counted.
+    """
+
+    token = _READERS_OWN.set(True)
+    try:
+        yield
+    finally:
+        _READERS_OWN.reset(token)
+
+
+def _minute(now: datetime) -> int:
+    return int(now.timestamp()) // _SPEND_BUCKET_S
+
+
+def spent(cost: int, *, now: datetime) -> None:
+    """Count *cost* this process just spent at *now*, unless a reader's own action spent it."""
+
+    if cost <= 0 or _READERS_OWN.get():
+        return
+    minute = _minute(now)
+    for old in [each for each in _SPENT if each <= minute - _SPEND_BUCKETS]:
+        del _SPENT[old]
+    _SPENT[minute] = _SPENT.get(minute, 0) + cost
+
+
+def automatic_spent(now: datetime) -> int:
+    """What this process's automatic work spent in the hour before *now*."""
+
+    minute = _minute(now)
+    return sum(cost for each, cost in _SPENT.items() if minute - _SPEND_BUCKETS < each <= minute)
+
+
+def over_ceiling(now: datetime) -> bool:
+    """Whether automatic work has spent :data:`AUTOMATIC_CORE_PER_HOUR` in the last hour."""
+
+    return automatic_spent(now) >= AUTOMATIC_CORE_PER_HOUR
+
+
+def full_read_interval(usual_s: float, *, now: datetime) -> float:
+    """How far apart automatic full reads are held at *now*: *usual_s*, or the ceiling's."""
+
+    return max(usual_s, CEILING_FULL_READ_S) if over_ceiling(now) else usual_s
+
+
 def admission(
-    resources: Iterable[str], *, now: datetime, floor: float = BACKGROUND_FLOOR
+    resources: Iterable[str],
+    *,
+    now: datetime,
+    floor: float = BACKGROUND_FLOOR,
+    ceiling: bool = True,
 ) -> Admission:
-    """Whether background work that spends *resources* may start at *now*."""
+    """Whether background work that spends *resources* may start at *now*.
+
+    Not during a hold, below the floor of a resource it spends, nor, unless *ceiling* is
+    false, while this process is over its own ceiling. A periodic full read of what is
+    visible passes ``ceiling=False`` and slows itself instead (:func:`full_read_interval`).
+    """
 
     if held_until(now) is not None:
         return Admission(False, "rate_hold")
@@ -183,6 +277,8 @@ def admission(
             continue
         if seen.remaining <= floor * seen.limit:
             return Admission(False, "below_floor")
+    if ceiling and over_ceiling(now):
+        return Admission(False, "self_ceiling")
     return Admission(True)
 
 
@@ -191,22 +287,30 @@ def forget() -> None:
 
     global _account, _held_until
     _OBSERVED.clear()
+    _SPENT.clear()
     _held_until = None
     _account = None
 
 
 __all__ = [
+    "AUTOMATIC_CORE_PER_HOUR",
     "BACKGROUND_FLOOR",
+    "CEILING_FULL_READ_S",
     "UNKNOWN_RESET_HOLD_S",
     "Admission",
     "AdmissionReason",
     "ObservationWire",
     "RateObservation",
     "admission",
+    "automatic_spent",
     "forget",
+    "full_read_interval",
     "held_until",
     "hold",
     "note_account",
     "observations",
     "observe",
+    "over_ceiling",
+    "readers_own",
+    "spent",
 ]

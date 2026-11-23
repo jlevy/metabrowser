@@ -26,7 +26,7 @@ from time import monotonic
 from typing import Any, Final, Literal, TypedDict
 from weakref import WeakKeyDictionary
 
-from metabrowser.builtin_plugins.github import pull_list
+from metabrowser.builtin_plugins.github import gh_budget, pull_list
 from metabrowser.builtin_plugins.github.checkout import served_checkout
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import (
@@ -471,6 +471,8 @@ def scan_is_due(stamp: PullRefreshStamp | None, probe: ListProbe | None, *, now:
     if stamp is None:
         return True
     window = FULL_REFRESH_S if probe is not None and probe.vouches(now) else FRESHNESS_WINDOW_S
+    # Over the process's own ceiling a full read waits five minutes.
+    window = gh_budget.full_read_interval(window, now=now)
     return not rate_limit_holds(stamp, now=now) and now - pull_list.parse_stamp(
         stamp.at
     ) > timedelta(seconds=window)

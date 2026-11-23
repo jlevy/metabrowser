@@ -15,7 +15,7 @@ from typing import Annotated, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StringConstraints, model_validator
 
-from metabrowser.builtin_plugins.github import pull_list
+from metabrowser.builtin_plugins.github import gh_budget, pull_list
 from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh import GhResponse, gh_api, gh_stack_available
 from metabrowser.builtin_plugins.github.gh_lists import (
@@ -169,7 +169,9 @@ def remaining_freshness(stamp: PullRefreshStamp | None) -> float:
     """How long the last refresh still holds off the next automatic one, in seconds."""
 
     read = stamp is not None and stamp.outcome == "succeeded"
-    return snapshot_freshness(stamp, FULL_REFRESH_S if read else STACK_FRESHNESS_S)
+    # Over the process's own ceiling a full read waits five minutes, as a failure does.
+    usual = gh_budget.full_read_interval(FULL_REFRESH_S, now=pull_list.utc_now())
+    return snapshot_freshness(stamp, usual if read else STACK_FRESHNESS_S)
 
 
 def _rate_hold(repository: ListedRepository) -> PullRefreshStamp | None:

@@ -212,6 +212,10 @@ status: 200
         "remaining": 4999,
         "reset_at": "2026-09-23T16:46:00Z"
       }
+    },
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 6
     }
   },
   "recent": [
@@ -401,6 +405,10 @@ status: 200
         "remaining": 4999,
         "reset_at": "2026-09-23T16:46:00Z"
       }
+    },
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 3
     }
   },
   "recent": [
@@ -500,6 +508,10 @@ status: 200
         "remaining": 1000,
         "reset_at": "2026-09-23T16:46:00Z"
       }
+    },
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 6
     }
   },
   "recent": [

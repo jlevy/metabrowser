@@ -536,7 +536,13 @@ account check and the bounds on probes.
   record vouches for is a function of the head and base it names, is read at once when
   either moves, and is not read again on a clock.
 - [ ] Budget admission for the cores walk, stacks, labels, and the timeline.
-- [ ] `AUTOMATIC_CORE_PER_HOUR` in `gh_budget.py`.
+- [x] `AUTOMATIC_CORE_PER_HOUR` in `gh_budget.py`, counted by `gh_api` and `gh_graphql`
+  as they answer; each query asks for `rateLimit { cost }`. A reader’s own action is
+  told apart by the context its route starts the job in (`readers_own`), so a job a
+  reader’s click only joins is still counted.
+  `GET pulls-prefetch` reports the ceiling and the hour’s use.
+  Not counted until Phase 1’s conditional account check lands: a job’s `gh auth status`,
+  which is not a `gh api` call.
 
 ### Phase 3: Metabrowser’s Own Stores
 

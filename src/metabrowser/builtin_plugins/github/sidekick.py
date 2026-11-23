@@ -28,6 +28,7 @@ refresh is ``pull-refresh`` beside ``pull``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 from functools import partial
@@ -480,7 +481,8 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     # own record's probe and for no longer (:func:`.pull_list_route.attend_list`).
     attending = None if ask.retry else attend_list(list_view(request.app, DEFAULT_LIST))
     try:
-        started = await start_refresh(host, ask)
+        with _whose(ask.retry):
+            started = await start_refresh(host, ask)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
     finally:
@@ -506,6 +508,18 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     if started == "too_many":
         answer.update(_TOO_MANY)
     return JSONResponse(answer, status_code=_REFRESH_STATUS[started], headers=_NO_STORE)
+
+
+def _whose(retry: bool) -> contextlib.AbstractContextManager[None]:
+    """The context a refresh starts in: a reader's own for a *retry*, which no ceiling counts.
+
+    The job's task copies it, so what a reader's click spends is not counted against the
+    process's automatic work (:func:`.gh_budget.readers_own`).
+    """
+
+    from metabrowser.builtin_plugins.github import gh_budget
+
+    return gh_budget.readers_own() if retry else contextlib.nullcontext()
 
 
 def _invalid_request(message: str, status_code: int = 400) -> JSONResponse:
@@ -727,7 +741,8 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     # writes its stamp at once, and an answer read after the start would race that write.
     window = ListWindow(ask.name, limit=0)
     found = await asyncio.to_thread(read_catalog_window, view, window)
-    started = start_refresh(view, ask, wanted=wanted)
+    with _whose(ask.retry):
+        started = start_refresh(view, ask, wanted=wanted)
     # Nothing is awaited from the start to here, so a job this request started has done
     # nothing yet. One it joined may have, and the answer says it is still refreshing.
     after = list_view(request.app, ask.name)
@@ -860,7 +875,8 @@ async def stacks_refresh_handler(request: Request) -> Response:
             status_code=409,
         )
     wanted = await asyncio.to_thread(refresh_wanted, view.repository, retry=retry)
-    started = start_refresh(view, retry=retry, wanted=wanted)
+    with _whose(retry):
+        started = start_refresh(view, retry=retry, wanted=wanted)
     envelope = await asyncio.to_thread(stack_envelope, stack_view(request.app))
     return JSONResponse(
         {"refresh": started, "stacks": dict(envelope), "status_route": STACKS_ROUTE},
@@ -918,7 +934,8 @@ async def labels_refresh_handler(request: Request) -> Response:
             status_code=409,
         )
     wanted = await asyncio.to_thread(refresh_wanted, view.repository, retry=retry)
-    started = start_refresh(view, retry=retry, wanted=wanted)
+    with _whose(retry):
+        started = start_refresh(view, retry=retry, wanted=wanted)
     envelope = await asyncio.to_thread(label_envelope, label_view(request.app))
     return JSONResponse(
         {"refresh": started, "labels": dict(envelope), "status_route": LABELS_ROUTE},
@@ -1111,7 +1128,8 @@ async def pull_files_refresh_handler(request: Request) -> JSONResponse:
     # Read before the start: a job this request starts may write at once, as one with no gh
     # to run writes its stamp, and an answer read after the start would race that write.
     found = await asyncio.to_thread(read_files, view)
-    started = start_files_refresh(view, ask, wanted=wanted, local=local)
+    with _whose(ask.retry):
+        started = start_files_refresh(view, ask, wanted=wanted, local=local)
     # Nothing is awaited from the start to here, so a job this request started has done
     # nothing yet. One it joined may have, and the answer says it is still refreshing.
     after = files_view(request.app, ask.number)

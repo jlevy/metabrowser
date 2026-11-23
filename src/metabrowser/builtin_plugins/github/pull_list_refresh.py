@@ -80,6 +80,7 @@ _COMMIT_ID: Final = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 # same cost of 1 (2026-11-11).
 _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
   viewer { login }
+  rateLimit { cost }
   repository(owner:$owner,name:$name) {
     id
     all:pullRequests(first:1) { totalCount }

@@ -154,6 +154,7 @@ _CORE_FIELDS: Final = """
 _CORE_QUERY: Final = (
     """query PullCore($owner:String!,$name:String!,$number:Int!) {
   viewer { login }
+  rateLimit { cost }
   repository(owner:$owner,name:$name) {
     id nameWithOwner
     pull:pullRequest(number:$number) {"""

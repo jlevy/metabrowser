@@ -67,7 +67,7 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     utc_stamp,
 )
 from metabrowser.builtin_plugins.github.pull_catalog import catalog_member
-from metabrowser.builtin_plugins.github.served_pull import PROBE_WAIT_S
+from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S, PROBE_WAIT_S
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
 
 if TYPE_CHECKING:
@@ -219,9 +219,12 @@ class ListProbe:
 
         Not while one runs, while a change it found waits for its scan, while GitHub's
         limit holds, within a freshness window of a failed probe, nor within
-        :meth:`gap_s` of the last.
+        :meth:`gap_s` of the last, or ``FULL_REFRESH_S`` while the process is over its own
+        ceiling (:func:`.gh_budget.over_ceiling`).
         """
 
+        # Over the process's own ceiling, probes slow to the full-read interval.
+        gap = max(self.gap_s(), FULL_REFRESH_S) if gh_budget.over_ceiling(now) else self.gap_s()
         return not (
             self.probing
             or self.saw is not None
@@ -230,7 +233,7 @@ class ListProbe:
                 self._failed is not None
                 and now - self._failed <= timedelta(seconds=FRESHNESS_WINDOW_S)
             )
-            or (self._attempt is not None and now - self._attempt < timedelta(seconds=self.gap_s()))
+            or (self._attempt is not None and now - self._attempt < timedelta(seconds=gap))
         )
 
     async def run(self, repository: ListedRepository) -> None:

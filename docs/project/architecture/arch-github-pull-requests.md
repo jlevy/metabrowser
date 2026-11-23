@@ -81,6 +81,18 @@ rule. The observations belong to the account the last account check named, and a
 account forgets them; since `remaining` is the account’s, several servers on one account
 stop together.
 
+The same module keeps a ceiling on the process’s own automatic work,
+`AUTOMATIC_CORE_PER_HOUR`, counted from what the process spends itself: one for each
+REST answer that is not `304` and each GraphQL query’s reported `rateLimit.cost`, over
+the last hour.
+The account’s `x-ratelimit-used` cannot count it, since every other client
+moves it. A reader’s own action is not counted: its route starts the job inside
+`readers_own`, and the job’s task inherits that.
+Past the ceiling background work is not admitted (`self_ceiling`), probes slow to
+`FULL_REFRESH_S`, and the full reads of what is visible to `CEILING_FULL_READ_S`, until
+the hour rolls. `GET pulls-prefetch` reports the ceiling and what the hour has used
+beside the governor’s other state.
+
 ### The GitHub Status Check
 
 `gh_status.py` answers what GitHub work needs from `gh`: its path and version, the

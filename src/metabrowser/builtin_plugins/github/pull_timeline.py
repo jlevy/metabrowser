@@ -39,6 +39,7 @@ _GRAPHQL_MAX_NUMBER: Final = (1 << 31) - 1
 _QUERY: Final = """
 query MetabrowserPullTimeline($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   viewer { login }
+  rateLimit { cost }
   repository(owner: $owner, name: $name) {
     nameWithOwner
     pullRequest(number: $number) {

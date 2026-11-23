@@ -1664,3 +1664,38 @@ def test_a_head_that_moves_while_mergeability_is_unknown_has_a_wait_of_its_own(
     clock[0] += timedelta(seconds=ATTENDED_PROBE_S)
     asyncio.run(held.probe(pushed))
     assert asked[-1] == (True, False)
+
+
+def test_over_the_process_ceiling_probes_slow_to_the_full_read_and_full_reads_to_five_minutes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import gh_budget
+
+    record = _record(state="closed", fetched=NOW)
+    held = _held(record, tmp_path)
+    _probing(monkeypatch, [pulls.PullProbe("unchanged", {}), pulls.PullProbe("changed", {})])
+    clock = [NOW]
+    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    asyncio.run(held.probe(record))
+    # The record was read in full just now.
+    held._last_attempt = NOW  # pyright: ignore[reportPrivateUsage]
+    gh_budget.spent(gh_budget.AUTOMATIC_CORE_PER_HOUR, now=NOW)
+    try:
+        # The next probe waits FULL_REFRESH_S, not PROBE_FLOOR_S, and the read the window
+        # would start once no probe vouches waits with it.
+        assert held.automatic_due(NOW + timedelta(seconds=ATTENDED_PROBE_S)) is None
+        assert held.automatic_due(NOW + timedelta(seconds=FULL_REFRESH_S - 1)) is None
+        # A change a probe finds waits five minutes from the last read.
+        clock[0] = NOW + timedelta(seconds=FULL_REFRESH_S)
+        assert held.automatic_due(clock[0]) == "probe"
+        asyncio.run(held.probe(record))
+        assert held._probe_saw == "pull"  # pyright: ignore[reportPrivateUsage]
+        assert held.automatic_due(clock[0]) is None
+        ceiling = timedelta(seconds=gh_budget.CEILING_FULL_READ_S)
+        assert held.automatic_due(NOW + ceiling) is None
+        assert held.automatic_due(NOW + ceiling + timedelta(seconds=1)) == "full"
+        # Once the hour has rolled, the change is read at once again.
+        gh_budget.forget()
+        assert held.automatic_due(clock[0]) == "full"
+    finally:
+        gh_budget.forget()

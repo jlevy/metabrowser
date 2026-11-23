@@ -136,6 +136,7 @@ def _batch_query(count: int) -> str:
     return (
         f"query VisiblePullCores($owner:String!,$name:String!,{variables}) {{\n"
         "  viewer { login }\n"
+        "  rateLimit { cost }\n"
         "  repository(owner:$owner,name:$name) {\n"
         "    id nameWithOwner\n"
         f"{aliases}\n  }}\n}}"

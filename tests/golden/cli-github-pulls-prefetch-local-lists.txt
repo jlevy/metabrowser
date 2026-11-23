@@ -72,7 +72,11 @@ status: 200
     "admits": true,
     "reason": null,
     "held_until": null,
-    "observed": {}
+    "observed": {},
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 0
+    }
   },
   "recent": [
     {
@@ -120,7 +124,11 @@ status: 200
     "admits": true,
     "reason": null,
     "held_until": null,
-    "observed": {}
+    "observed": {},
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 0
+    }
   },
   "recent": [
     {
@@ -281,7 +289,11 @@ status: 200
     "admits": true,
     "reason": null,
     "held_until": null,
-    "observed": {}
+    "observed": {},
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 1
+    }
   },
   "recent": [
     {
@@ -346,7 +358,11 @@ status: 200
     "admits": true,
     "reason": null,
     "held_until": null,
-    "observed": {}
+    "observed": {},
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 0
+    }
   },
   "recent": [
     {
