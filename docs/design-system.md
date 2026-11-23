@@ -2529,10 +2529,10 @@ Choosing types narrows the diff to their files and adds a muted note, “12 of 3
 and **Clear** after the menu; the [Diff summary](#diff-summary) still describes the
 whole change set. A choice shows in the menu at once, with the control `aria-busy` until
 its files arrive, so there is no spinner; a choice that keeps no file says so in muted
-text where the files would be, and one whose files do not load says that in the note at
-`--status-error-text`. `Y` opens the menu (`diff.type-filter`).
-`builtin_plugins/diff/diff-type-filter.js` holds the behavior, and
-`tests/dom/diff-type-filter-session.js` its session.
+text where the files would be, and one whose files do not load says so in an error
+[notice](#notices) at the toolbar’s height, an alert.
+`Y` opens the menu (`diff.type-filter`). `builtin_plugins/diff/diff-type-filter.js`
+holds the behavior, and `tests/dom/diff-type-filter-session.js` its session.
 
 ## The Pull Request Page
 
