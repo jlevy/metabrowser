@@ -294,10 +294,27 @@ FOLDER_DISCOVERY_MAX_ENTRIES = 4_096
 # Global emission budget for one rollup response. ``top`` bounds a
 # single directory; a balanced tree multiplies per level, so this cap
 # is what actually bounds response size (nodes past it become
-# children:null lazy sentinels or fold into rest buckets). The browser
-# renders at most ~800 cells, so 1200 leaves headroom for hide-mode
-# filtering without amplification.
-ROLLUP_MAX_NODES = 1_200
+# children:null lazy sentinels or fold into rest buckets).
+#
+# Measured on 2026-11-22 at depth 12, top 200, warm aggregates, encoding
+# included (9 runs each; host load 230-260 on 10 CPUs, so CPU time is
+# the stable figure). This repository, 35,790 files, 33,191 of them
+# ignored:
+#
+#   nodes   unignored  unexpanded  deepest  JSON       gzip     CPU
+#   1,200     804        136        5       233,625    33,325    9 ms
+#   2,400   1,302        407        8       467,879    58,114   16 ms
+#   4,000   1,408        464        8       762,951    93,760   23 ms
+#   6,000   1,626        657        8     1,194,375   143,496   31 ms
+#
+# and a synthetic 138,001-file repository-like tree, unignored nodes
+# 796 / 1,734 / 2,728 / 3,724 at the same budgets, 12 to 28 ms CPU.
+# Most nodes are files too small to draw, which fold into their
+# folder's remainder cell, so the budget sits well above the map's cell
+# cap (maxCells, treemap-layout.js): at 1,200 the Overview's compact map drew 118 cells on
+# this repository and left 136 folders unexpanded. 4,000 reaches the
+# depth the larger budgets reach for about 25 ms of server CPU.
+ROLLUP_MAX_NODES = 4_000
 
 # Trailing debounce for treemap refresh after inventory change events;
 # read by the SDK's watchRollup.
@@ -310,11 +327,10 @@ ROLLUP_WATCH_DEBOUNCE_MS = 1_000
 #
 # This bounds entries, not bytes. The largest shape the browser asks for is
 # the Treemap's, depth and top at their maxima, which spends the whole node
-# budget: on a 19,731-file repository it encoded to 234,883 bytes at 1,200
-# nodes (review of #724, 2026-11-22), and a 100k-file tree at depth 3 with
-# default bounds to ~200 KB. A body is capped by ROLLUP_MAX_NODES regardless
-# of tree size, so eight entries is a ceiling near 1.9 MB rather than
-# something that grows with the root.
+# budget: about 190 bytes a node, 762,951 bytes at 4,000 nodes on this
+# repository (ROLLUP_MAX_NODES above). A body is capped by ROLLUP_MAX_NODES
+# regardless of tree size, so eight entries is a ceiling near 6 MB rather
+# than something that grows with the root.
 #
 # This is a settled-index optimization. During a scan the revision has already
 # moved by the time a body is stored, so every stored body is unreachable the

@@ -307,7 +307,11 @@ def test_rollup_global_node_budget_on_adversarial_branching() -> None:
         f"{payload_bytes:,} bytes (cap {ROLLUP_MAX_NODES} nodes)"
     )
     assert emitted <= ROLLUP_MAX_NODES
-    assert payload_bytes < 400_000, f"payload {payload_bytes:,} bytes exceeds the budget"
+    # A node encodes to about 180 bytes (713,316 at 4,000 here), so the body is bounded by
+    # the node cap, not by the tree: without it this tree would encode to ~8 MB.
+    assert payload_bytes < 200 * ROLLUP_MAX_NODES, (
+        f"payload {payload_bytes:,} bytes exceeds the budget"
+    )
     # Totals stay full-subtree even where emission was cut.
     assert node["total_files"] == total_files
 
