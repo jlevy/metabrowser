@@ -483,8 +483,12 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   `checkout_revisions.py`) reads that ref, not one commit of it, as a mirror’s pin does
   ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)), so
   it moves when the reader’s commit or the reader’s own fetch moves the ref.
-  A commit opened by its ID is served under no ref and stays, and the working tree is no
-  revision.
+  Only a selection that names the ref, as `ref` or as `under`, follows it.
+  A commit opened by its ID alone stays: it is served under no ref, or under the ref
+  last served while it is that ref’s tip, so that the selector names the ref, and then
+  too `follows` is false.
+  Asking for the revision already served the other way changes only that.
+  The working tree is no revision.
   - **The move is read, never fetched.** A visible page makes its own ask,
     `POST /api/source/refresh` with `{"for": "page"}`, as often as its status says in
     `probe_every_s` (`CHECKOUT_REFS_POLL_S`), and `CheckoutRevisions.observe` answers
@@ -492,12 +496,18 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
     [ref state](arch-git.md#answers-kept-under-the-refs-state), one `stat` per ref file
     and no Git process, and reads the ref with Git only when that state is not the one
     it was last read under.
-    The measurements that chose a poll by the page over a watch of the Git directory are
-    beside the constant.
+    The ask names the state before it takes the locks a switch is made under, and takes
+    them only when the state changed; an ask within `CHECKOUT_REFS_FLOOR_S` of the last
+    reading, another visible page’s, is answered from memory.
+    The measurements of what an ask costs, and the reasoning that chose a poll by the
+    page over a watch of the Git directory, are beside the constant.
   - **The server follows** with the mirror’s own step, `follow_served_ref` in
     `mirror_refresh.py`: under the locks a switch is made under, it opens the ref’s new
     commit and serves it under a new generation.
-    A ref the reader deleted keeps its last commit served, and `latest` is then null.
+    It records the new revision as the checkout’s before attaching it, as a switch does.
+    A ref the reader deleted keeps its last commit served, and `latest` is then null,
+    which the page’s row says: the branch no longer exists in the checkout, and the page
+    shows its last commit.
   - **The page follows** as a mirror’s does: `static/source-freshness.js` sees the ref
     it was drawn for served at another commit, asks the pin route for that ref with its
     own `/view/` address, and goes where `view_href` says, the same file or folder when

@@ -330,8 +330,8 @@ cost alone
   carries `checkout` when the checkout’s own remote-tracking branch is not at the row’s
   commit: that ref’s commit and its date, or nulls when the checkout has no such ref
   (`_own_difference` in `checkout_revisions.py`, bead `mb-h7mv`). So a branch the reader
-  has not pulled, or has pushed since Metabrowser’s last fetch, is visible, and the
-  chooser marks the row “yours differs” or “not in checkout”.
+  has not fetched since it moved, or has pushed since Metabrowser’s last fetch, is
+  visible, and the chooser marks the row “yours differs” or “not in checkout”.
   The row says that the two differ and not which is ahead or by how many commits: that
   takes a walk of the history between the two for every branch that differs, a Git
   process apiece whose cost the number of refs does not bound, where the checkout’s ref

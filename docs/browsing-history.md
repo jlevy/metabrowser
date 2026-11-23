@@ -116,11 +116,11 @@ Click it or press `W` to see any other branch or tag without checking it out.
   not where your own last `git fetch` left it.
   The origin’s default branch is first and marked “default”.
   A branch there is marked “yours differs” when your checkout’s own `origin/<branch>` is
-  at another commit, which is a branch you have not pulled, or have pushed since
-  Metabrowser last fetched, and “not in checkout” when you have never fetched it; hover
-  over the row for your commit and which of the two was committed later.
-  The row at the foot of the navigation pane says when the origin was last fetched and
-  has **Refresh**, on your working tree’s page too; it fetches Metabrowser’s store,
+  at another commit, which is a branch you have not fetched since it moved, or have
+  pushed since Metabrowser last fetched, and “not in checkout” when you have never
+  fetched it; hover over the row for your commit and which of the two was committed
+  later. The row at the foot of the navigation pane says when the origin was last fetched
+  and has **Refresh**, on your working tree’s page too; it fetches Metabrowser’s store,
   never your checkout.
   A line under the list says when it was fetched, or why it was not: an origin that
   needs a password Metabrowser does not have is listed from your checkout instead, and
@@ -157,13 +157,16 @@ are only as new as your own Git commands left them; when you commit on the branc
 or your own `git fetch` moves `origin/main`, the page goes to the new commit by itself
 within a few seconds, on the same file or folder when the new commit has it, or at the
 root when it does not.
-It reads the repository’s refs to find that out and never fetches.
+It reads the repository’s refs to find that out and fetches nothing into your checkout.
+When you delete the branch shown, the page keeps its last commit, and the row at the
+foot of the navigation pane says the branch no longer exists.
+Where Metabrowser keeps a store of the origin, as above, a page shown on such a branch
+also keeps that store fetched, quietly, about once a freshness window.
 One of the origin’s branches follows the origin by itself, as a repository opened by its
-URL does.
-A commit you opened by its ID stays that commit, and **Working tree** is always
-the files on disk.
-The button follows the folder you opened: it is there when that folder
-is a repository’s root, as the Commits tab is.
+URL does. A commit you opened by its ID stays that commit, even while it is the tip of
+the branch you came from, and **Working tree** is always the files on disk.
+The button follows the folder you opened: it is there when that folder is a repository’s
+root, as the Commits tab is.
 
 Showing a branch or tag needs a Git as recent as cloning does
 ([installation](installation.md#git-and-github-setup)), and in a partial clone, one made

@@ -432,6 +432,8 @@ and on 2026-11-22 for a pull request’s head (bead `mb-6a6w`).
 - **A repository folder’s own branches** follow by the same step and the same page code,
   with the move read from the checkout’s refs in place of a fetch
   ([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+  There a commit opened by its ID alone never follows, even while it is served under the
+  tip of the ref last served (bead `mb-dna1`).
 
 ## Source Routes
 
