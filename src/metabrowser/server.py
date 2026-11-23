@@ -2445,9 +2445,9 @@ async def index(
     # core does not special-case plugin names.
     plugin_asset_config = _build_plugin_asset_config_block(plugin_prefixes)
 
-    # Reuse KPress's stamped font bytes. The reader keeps KPress's original faces;
-    # chrome's separate family uses optional display so a late response does not
-    # move the tabs, toolbar or root menu after the fallback has already painted.
+    # The sidebar uses an optional-display alias of KPress's stamped Source Sans
+    # faces so a late response cannot move its tabs, filter bar, or root menu.
+    # The rest of the app uses KPress's original faces and the same font bytes.
     sans_url = kpress_adapter.kpress_static_url(
         "fonts/source-sans-3-latin-wght-normal.woff2", prefix=kpress_prefix
     )
@@ -2455,13 +2455,13 @@ async def index(
         "fonts/source-sans-3-latin-wght-italic.woff2", prefix=kpress_prefix
     )
     tokens_url = kpress_adapter.kpress_static_url("css/style-tokens.css", prefix=kpress_prefix)
-    chrome_sans_faces = _json.dumps((("normal", sans_url), ("italic", italic_sans_url)))
+    sidebar_sans_faces = _json.dumps((("normal", sans_url), ("italic", italic_sans_url)))
     kpress_font_head = f"""<link rel="preload" as="font" type="font/woff2" crossorigin href="{sans_url}">
   <link rel="stylesheet" href="{tokens_url}">
   <script>
     if (typeof FontFace === "function" && document.fonts) {{
-      for (const [style, url] of {chrome_sans_faces}) {{
-        document.fonts.add(new FontFace("Metabrowser Source Sans", 'url("' + url + '")', {{
+      for (const [style, url] of {sidebar_sans_faces}) {{
+        document.fonts.add(new FontFace("Metabrowser Sidebar Sans", 'url("' + url + '")', {{
           style, weight: "200 900", display: "optional",
         }}));
       }}
@@ -2475,8 +2475,7 @@ async def index(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
   <title>{page_title}</title>
-  <!-- Preload the shared Source Sans bytes, and register chrome's no-late-swap
-       face before layout. KPress retains the reader's own font policy. -->
+  <!-- Preload the shared Source Sans bytes and register the sidebar face before layout. -->
   {kpress_font_head}
   {client_settings_block}
   <script>{_DOCUMENT_WIDTH_SCRIPT}</script>

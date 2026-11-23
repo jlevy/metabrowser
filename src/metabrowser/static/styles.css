@@ -135,17 +135,20 @@
      [data-app-font] on <html> (cookie metabrowser.interfaceFont); the option
      list is the server's _FONT_SETS registry. Two sets today:
        clean  - KPress's vendored faces everywhere: Source Sans 3 for chrome +
-                embedded UI, PT Serif for embedded prose. The shell registers
-                an optional-display Source Sans family so a late font cannot
-                move chrome. The reader's faces come from KPress's
-                style-tokens.css. Both use the same stamped font URLs.
+                embedded UI, PT Serif for embedded prose. The @font-face rules
+                come from KPress's style-tokens.css, linked once in <head> (the
+                plugin SDK does not link it again), so the woff2 files download
+                a single time and are shared by the chrome and the embedded
+                document (no second copy, no FOUT once preloaded).
        system - the platform UI sans + platform serif (macOS: system-ui and
                 ui-serif "New York"); no web fonts are fetched.
      Clean is the default and lives in this :root base; each additional set is a
      `html[data-app-font="<value>"]` block below (see "system"). To add a set:
      add a _FONT_SETS entry (server) and one such block here, which repoints both
      --font-sans and --font-sans-ex-height (tests/test_short_commit.py checks each). */
-  --app-sans-clean: "Metabrowser Source Sans", var(--app-sans-system);
+  --app-sans-clean:
+    "Source Sans 3 Variable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
   --app-sans-system: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --app-serif-system: ui-serif, Georgia, "Times New Roman", serif;
   --font-sans: var(--app-sans-clean);
@@ -286,9 +289,15 @@
      bridged onto --kpress-measure at the .kpress scope further down. */
   --kpress-print-page-margin: 0.65in;
   --kpress-print-font-size: 11pt;
-  /* Chrome prose and sans reading mode use KPress's original face. They keep
-     its font policy even when the chrome has already picked its fallback. */
-  --prose-sans-font: "Source Sans 3 Variable", var(--app-sans-system);
+  /* Sans face for chrome prose (.chrome-prose below) and the "sans" reading
+     mode. Points at the interface sans palette (--app-sans-clean, repointed
+     to system under [data-app-font="system"]) rather than var(--font-sans):
+     KPress redeclares --font-sans inside its own `.kpress` scope, so a
+     reference would resolve to KPress's scoped Source Sans at the document,
+     not the host token. --app-sans-* are
+     host-only and never redeclared by KPress, so they resolve correctly when
+     bridged into the embedded scope. */
+  --prose-sans-font: var(--app-sans-clean);
 
   /* ── Type scale ─────────────────────────────────────────────────
      The ENTIRE app uses this ramp; never inline a font-size literal at
@@ -2826,6 +2835,14 @@ html.theme-anim .menu {
   background: var(--sidebar-bg);
   position: relative;
   z-index: var(--z-pane);
+}
+/* The navigation frame and Files list keep their first font for this page.
+   A late Source Sans response cannot reposition the tabs, folder menu, or filter bar. */
+html:not([data-app-font="system"]) .tree-pane
+  > :where(.app-header, .nav-tab-bar, #nav-filter-bar, #nav-metadata-files),
+html:not([data-app-font="system"]) .tree-pane #tab-files {
+  --font-sans: "Metabrowser Sidebar Sans", var(--app-sans-system);
+  font-family: var(--font-sans);
 }
 /* No top padding: the chrome over the scroller, a toolbar or the metadata band
    under it (`.nav-metadata-band`), ends in its own rule and spacing, and what
