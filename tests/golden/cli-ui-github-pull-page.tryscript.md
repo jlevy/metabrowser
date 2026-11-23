@@ -1165,7 +1165,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "status": "current",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched 1 min ago via GitHub CLI",
+        "freshness": "Fetched 6 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
         "browse": "link to the root"
