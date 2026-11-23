@@ -41,7 +41,7 @@ has not finished. This judges the record:
   the title's baseline (mb-tatf), at its tokens' end inset and height, inside the room the
   title's first line leaves it from first paint; in a main view too narrow for that room
   beside a title, on the eyebrow's row instead, centered on its line, inside the room the
-  eyebrow's end leaves it; its link and its menu's Open in Browser the item's page on github.com at the checkout's commit, through
+  eyebrow's end leaves it; its link and its menu’s Open in Browser use the item’s GitHub page through
   the hooks the macOS app reads, in the text ink with a muted chevron in a joined chip
   group's frame, at a chip's size rather than the title's; its menu, opened with a click
   and walked with the arrow keys, Home, End, Escape, and Tab, every item on top where it
@@ -151,13 +151,14 @@ def _served(root: Path) -> tuple[Path, str]:
     (notes / "arch-views-models-routes.md").write_text("# Routes\n", encoding="utf-8")
     (root / "CONTRIBUTING.md").write_text("# Contributing\n", encoding="utf-8")
     (root / "README.md").write_text("# Served\n", encoding="utf-8")
-    _git(root, "init", "-q", "--initial-branch=main", ".")
+    _git(root, "init", "-q", "--initial-branch=trunk", ".")
     _git(root, "remote", "add", "origin", "https://github.com/octo/demo.git")
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "Serve a long note")
     # Origin has the commit, as a fetch would have it, so every committed page has a
     # counterpart (src/metabrowser/counterpart.py).
     _git(root, "update-ref", "refs/remotes/origin/trunk", "HEAD")
+    _git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
     commit = _git(root, "rev-parse", "HEAD")
     # A file the checkout does not track, which has none.
     (notes / "draft.txt").write_text("Not committed.\n", encoding="utf-8")
@@ -228,13 +229,13 @@ def test_the_corner_leaves_a_narrow_title_its_row() -> None:
 
 
 def _links(commit: str) -> dict[str, str]:
-    """Each page's counterpart: the item's tree or blob at the checkout's commit."""
+    """Each page's counterpart at the origin's default branch or an explicit commit."""
 
     return {
-        "file": f"{_REPOSITORY}/blob/{commit}/docs/notes/a-long-name-for-a-view-header-title.md",
-        "folder": f"{_REPOSITORY}/tree/{commit}/docs/notes",
-        "root": f"{_REPOSITORY}/tree/{commit}",
-        "wrapped": f"{_REPOSITORY}/blob/{commit}/docs/notes/{_WRAPPED}",
+        "file": f"{_REPOSITORY}/blob/trunk/docs/notes/a-long-name-for-a-view-header-title.md",
+        "folder": f"{_REPOSITORY}/tree/trunk/docs/notes",
+        "root": _REPOSITORY,
+        "wrapped": f"{_REPOSITORY}/blob/trunk/docs/notes/{_WRAPPED}",
         "commit": f"{_REPOSITORY}/commit/{commit}",
     }
 

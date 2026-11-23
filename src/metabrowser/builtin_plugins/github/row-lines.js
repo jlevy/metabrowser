@@ -65,7 +65,6 @@ const RECENT = 8;
  *   deletions: number | null,
  *   exact: boolean,
  *   statuses: {status: string, count: number}[],
- *   size?: {state: string, pushed_bytes: number | null, diff_bytes: number | null} | null,
  * }} FilesSummary
  *
  * A row as the lane reads it: its number and its head commit as the list of pull requests
@@ -116,33 +115,6 @@ export function isFilesSummary(value) {
     (body.head === null || typeof body.head === "string") &&
     (body.generation === null || typeof body.generation === "string")
   );
-}
-
-/**
- * The size a row's line ends with, "· 1.8 MB", what the pull request pushes, and the tooltip
- * saying what it is and its patch's size, or null while no size is kept for its list
- * (pull_files_summary.py, `size`). The number is bold in the line's ink, the dot muted and
- * kept with the totals before it, as the size line's are (docs/design-system.md, "Change Size
- * Line").
- *
- * @param {FilesSummary} summary
- * @param {(bytes: number) => string} formatSize
- * @returns {{parts: MetabrowserCountParts, tooltip: string, label: string} | null}
- */
-export function rowSize(summary, formatSize) {
-  const size = summary.size;
-  if (size?.state !== "measured" || typeof size.pushed_bytes !== "number") {
-    return null;
-  }
-  const pushed = formatSize(size.pushed_bytes);
-  const diff = typeof size.diff_bytes === "number" ? formatSize(size.diff_bytes) : null;
-  return {
-    parts: ["\u00a0", { separator: "·" }, " ", { number: pushed }],
-    tooltip:
-      `${pushed} compressed: what Git pushes for this pull request.` +
-      (diff === null ? "" : ` ${diff} raw diff: its patch, uncompressed.`),
-    label: `${pushed} compressed${diff === null ? "" : `, ${diff} raw diff`}`,
-  };
 }
 
 /**
