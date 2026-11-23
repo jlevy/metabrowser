@@ -362,6 +362,17 @@ async function run() {
   await painted(handle);
   assert.equal(mounted.at(-1), earlier);
   assert.equal(pane.scrollTop, inEarlier, "and the earlier diff lands in c.py");
+  // Changes and Docs draw one comparison: a move to Docs draws the earlier diff the reader
+  // chose, not the record's newer one, and the way back to Changes draws it again.
+  window.location.pathname = "/pull/7/docs";
+  handle.setTab("docs");
+  await painted(handle);
+  assert.equal(mounted.at(-1), earlier, "Docs draws the earlier diff the reader chose");
+  window.location.pathname = "/pull/7/files";
+  handle.setTab("files");
+  await painted(handle);
+  assert.equal(mounted.at(-1), earlier, "and Changes draws it again");
+  assert.equal(entry().pullChanges.chosen, true, "the choice stays the reader's");
   handle.dispose();
   assert.equal(resize.size, 0, "a disposed page left an observer");
   return {
