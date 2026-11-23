@@ -214,6 +214,30 @@
   border-bottom: none;
 }
 
+/* The bar's two groups. It leads with what names the file, the disclosure and
+   the copy control beside the name, and ends with what shows the file another
+   way: a file's Rendered | Source chooser and the View file control. Each is
+   one flex item, so a long path is cut short with its copy control still beside
+   it, and where a bar wraps (`.diff-file-bar-markdown`) its end group moves to
+   the next line whole and keeps to the bar's end there. The end group's start
+   margin takes the bar's free space, which stays part of the bar's one
+   activation surface. */
+.metabrowser-diff-host .diff-file-lead {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: 4px;
+}
+
+.metabrowser-diff-host .diff-file-end {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  margin-inline-start: auto;
+}
+
 .metabrowser-diff-host .diff-file-chevron {
   display: inline-flex;
   align-items: center;
@@ -221,7 +245,7 @@
 }
 
 .metabrowser-diff-host .diff-file-toggle {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -293,14 +317,14 @@
    it switches the served pin first). It stays visible, since it is how a
    reader leaves the diff for the file, and takes the link color on hover
    and focus like every other text action.
-   Set at the path's own size and line height, the toggle's: the control is
-   a centered box beside the toggle, and only text of the path's size and
-   line height centers onto the path's baseline. The toggle and the button
-   form take a button's `normal` line height; the link form inherited the
-   bar's 1.5 and sat 0.5px above the path's baseline at 14px, at device
-   pixel ratios of 1 and 2, where the button form sat on it ("Row Text
-   Shares a Baseline" in the design system; Design Rule Measurements, "Row
-   Baselines"). */
+   Set at the path's own size and line height, the toggle's: the control and
+   the toggle are centered boxes, each in its group and each group in the
+   bar, and only text of the path's size and line height centers onto the
+   path's baseline. The toggle and the button form take a button's `normal`
+   line height; the link form inherited the bar's 1.5 and sat 0.5px above
+   the path's baseline at 14px, at device pixel ratios of 1 and 2, where the
+   button form sat on it ("Row Text Shares a Baseline" in the design system;
+   Design Rule Measurements, "Row Baselines"). */
 .metabrowser-diff-host .diff-file-view {
   flex: none;
   padding: 0 4px;
@@ -340,6 +364,9 @@
   display: none;
 }
 
+/* Copy path, right after the name, its stats, and its notes, as the file
+   header's follows its path ("Copyable Identifiers Use One Delegate" in the
+   design system). */
 .metabrowser-diff-host .diff-file-copy {
   /* A 20px hit target keeps the 24px row exact under its 1px border;
      the token re-scope leaves the icon-btn primitive untouched. */
@@ -348,7 +375,8 @@
 }
 
 /* The reveal contract: the copy control appears while its row is
-   hovered or holds focus, like every other revealed icon button. */
+   hovered or holds focus, like every other revealed icon button. At rest
+   it keeps its place, unseen, so nothing in the bar moves when it shows. */
 .metabrowser-diff-host .diff-file-bar:hover .diff-file-copy,
 .metabrowser-diff-host .diff-file-bar:focus-within .diff-file-copy {
   opacity: 1;
@@ -558,12 +586,18 @@
   white-space: nowrap;
 }
 
+/* A bar with a Rendered | Source chooser wraps where its two groups do not fit one
+   line: the name keeps the first to itself, and the chooser's group takes the second,
+   at the bar's end (`.diff-file-end`). Where that group alone is wider than the bar, it
+   wraps too, each of its lines at the bar's end, so no control is cut off. */
 .metabrowser-diff-host .diff-file-bar-markdown {
   flex-wrap: wrap;
 }
 
-.metabrowser-diff-host .diff-file-bar-markdown .diff-file-toggle {
+.metabrowser-diff-host .diff-file-bar-markdown .diff-file-end {
   flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .metabrowser-diff-host .diff-markdown-control {
@@ -572,13 +606,9 @@
   margin-block: 2px;
 }
 
-.metabrowser-diff-host .diff-markdown-progress + .diff-file-view,
-.metabrowser-diff-host .diff-markdown-progress + .diff-file-copy {
-  margin-inline-start: auto;
-}
-
-/* Keeps its place in the bar, so it never moves the controls, and appears only after
-   the loading-state delay (.mb-delayed-loading). */
+/* Leads the chooser, toward the bar's free space. Keeps its place in the bar, so it
+   never moves the controls, and appears only after the loading-state delay
+   (.mb-delayed-loading). */
 .metabrowser-diff-host .diff-markdown-progress {
   display: inline-flex;
   flex: none;
