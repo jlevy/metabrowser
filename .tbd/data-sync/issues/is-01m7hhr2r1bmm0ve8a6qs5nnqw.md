@@ -5,7 +5,7 @@ title: "Release 0.13: make verify, opt-in tiers, installed-wheel checkpoint and 
 kind: task
 status: in_progress
 priority: 1
-version: 9
+version: 10
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45095985926
@@ -28,10 +28,11 @@ dependencies: []
 parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 child_order_hints:
   - is-01m839ga4kf87q8n4p3q29rqrv
+  - is-01m83anmkn4q6grheww9z22vva
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:08.288Z
-updated_at: 2026-11-23T04:27:16.040Z
+updated_at: 2026-11-23T04:29:48.013Z
 started_at: 2026-11-23T03:13:34.119Z
 ---
 
