@@ -1209,9 +1209,59 @@ type MetabrowserFilterPreset = {
   values: Array<string>;
 };
 
+/** One File type tally row: `[key, tracked, ignored]`, as /api/rollup and /api/tree send. */
+type MetabrowserTypeTallyRow = Readonly<[string, number, number]>;
+
+/** The File type counts a menu is built from (a comparison's `view=types` answer too). */
+type MetabrowserTypeTally = Readonly<{
+  extensions?: ReadonlyArray<MetabrowserTypeTallyRow>;
+  canonical_extensions?: ReadonlyArray<MetabrowserTypeTallyRow>;
+  type_families?: ReadonlyArray<MetabrowserTypeTallyRow>;
+  type_presets?: ReadonlyArray<MetabrowserTypeTallyRow>;
+}>;
+
+type MetabrowserTypeMenuOptions = {
+  /** Count the gitignored column too; true unless said otherwise. */
+  showIgnored?: boolean;
+  /** At most this many extension rows; `typeMenu.MAX_OPTIONS` unless said otherwise. */
+  max?: number;
+  /** A row's icon for a file name; the shell's `MetabrowserFileTypes.iconFor` by default. */
+  iconFor?: (name: string) => { svg: string; cls: string };
+  /** A group heading's icon; the icon registry's `withClass` by default. */
+  groupIcon?: (name: string, cls: string) => string;
+};
+
+type MetabrowserTypePresetSection = {
+  id: string;
+  label?: string;
+  icon?: string;
+  presets: Array<MetabrowserFilterPreset>;
+};
+
+/** The File type menu's rows, shared by the Files tab and a diff's toolbar. */
+type MetabrowserTypeMenu = Readonly<{
+  MAX_OPTIONS: number;
+  options(
+    tally: MetabrowserTypeTally,
+    options?: MetabrowserTypeMenuOptions,
+  ): Array<MetabrowserFilterOption>;
+  presetSections(
+    tally: MetabrowserTypeTally,
+    options?: MetabrowserTypeMenuOptions,
+  ): Array<MetabrowserTypePresetSection>;
+  /** The selection after a preset row is pressed: its values added, or removed when it was on. */
+  togglePreset(
+    current: ReadonlyArray<string> | null,
+    values: ReadonlyArray<string>,
+    wasOn: boolean,
+  ): Array<string> | null;
+}>;
+
 type MetabrowserFilterControls = {
   /** Choose a dropdown row as a click on it does; false when no bound container holds it. */
   activateMenuRow(row: HTMLElement): boolean;
+  /** The File type menu's rows, built from a tally. */
+  typeMenu: MetabrowserTypeMenu;
   bind(root: Element, handlers: MetabrowserFilterHandlers): () => void;
   checkHtml(spec: {
     checked?: boolean;
@@ -4337,6 +4387,11 @@ declare global {
   type MetabrowserPublicPluginShortcutsApi = MetabrowserPluginShortcutsApi;
   type MetabrowserPublicQueuedShortcut = MetabrowserQueuedShortcut;
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
+  type MetabrowserPublicFilterOption = MetabrowserFilterOption;
+  type MetabrowserPublicTypeTallyRow = MetabrowserTypeTallyRow;
+  type MetabrowserPublicTypeTally = MetabrowserTypeTally;
+  type MetabrowserPublicTypeMenuOptions = MetabrowserTypeMenuOptions;
+  type MetabrowserPublicTypePresetSection = MetabrowserTypePresetSection;
   type MetabrowserPublicPullRouteRuntime = MetabrowserPullRouteRuntime;
   type MetabrowserPublicPullStackNavigation = MetabrowserPullStackNavigation;
   type MetabrowserPublicPullsPanelHandle = MetabrowserPullsPanelHandle;
