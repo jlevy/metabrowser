@@ -14,14 +14,33 @@ cloned https://github.com/octo/demo in 0.0 s
 --- gh ---
 gh auth status
 gh api repos/octo/demo --jq .size
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
+## GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter automatic work leaves to the reader. The page's own ask for the timeline waits: nothing is asked of GitHub, and the answer says to ask again in a minute, which the page does for as long as the budget refuses.
+# metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-timeline --data timeline.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-timeline
+status: 200
+{
+  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
+  "state": "unavailable",
+  "events": [],
+  "retryable": true,
+  "retry_after_s": 60
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+## With the budget above the floor again, it is read.
 # metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-timeline --data timeline.json
 exit: 0
 --- stdout ---

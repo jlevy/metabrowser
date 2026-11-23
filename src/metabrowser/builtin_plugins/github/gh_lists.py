@@ -241,12 +241,16 @@ class PageTooLargeError(Exception):
 
 
 async def active_account() -> str:
-    """The active github.com login, or the :class:`PullDataError` that says why not."""
+    """The active github.com login, or the :class:`PullDataError` that says why not.
+
+    Every job's account check: a conditional read that spends no rate limit while the
+    login is the same (:func:`~.gh.gh_account`).
+    """
 
     try:
         return await gh_account()
     except GhError as exc:
-        raise PullDataError(exc.state, str(exc)) from exc
+        raise PullDataError(exc.state, str(exc), reset_at=exc.reset_at) from exc
 
 
 async def get_response(path: str, *, etag: str | None, now: datetime) -> GhResponse:

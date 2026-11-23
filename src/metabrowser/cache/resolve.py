@@ -37,7 +37,7 @@ import asyncio
 import bisect
 import re
 import unicodedata
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -444,6 +444,12 @@ def _newest_first(entry: MirrorRef) -> tuple[bool, bool, float, str]:
     return (not entry.default, not dated, -(entry.committed_at or 0.0), entry.name)
 
 
+def in_listing_order(entries: tuple[MirrorRef, ...]) -> tuple[MirrorRef, ...]:
+    """*entries* in a listing's order (:func:`_newest_first`), for a list read from two places."""
+
+    return tuple(sorted(entries, key=_newest_first))
+
+
 async def list_mirror_refs(
     target: RepositoryStoreTarget,
     kind: RefKind,
@@ -582,6 +588,23 @@ async def ref_tip(target: RepositoryStoreTarget, ref: str) -> str | None:
     return None if found is None else await _peeled_commit(target, found)
 
 
+async def ref_tips(target: RepositoryStoreTarget, refs: Sequence[str]) -> dict[str, str]:
+    """The commit each of the full refs *refs* names, for those that name one, in one read.
+
+    :func:`ref_tip` for several refs with one ``for-each-ref``: a ref that does not exist
+    under exactly that name, or names no commit, is left out. Only a tag of a tag costs
+    a further process, to peel it.
+    """
+
+    wanted = [ref for ref in refs if ref.startswith("refs/") and is_valid_ref_name(ref)]
+    tips: dict[str, str] = {}
+    for ref, found in (await _exact_refs(target, wanted)).items():
+        commit = await _peeled_commit(target, found)
+        if commit is not None:
+            tips[ref] = commit
+    return tips
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedPin:
     """The commit a pin request names, and the mirror ref it was found through, if any."""
@@ -656,7 +679,8 @@ async def resolve_pin(
     pinned by ID has no ref, unless it is the tip of one of *keep_refs* in the mirror
     now: the refs a server was serving, which a reader who went to another commit and
     came back by ID is still on. The first such ref is kept, so the selector names it
-    and freshness keeps following it. A request names its own first such ref, as View on
+    and freshness says when it moves on; the commit itself stays put
+    (``MirrorSession._by_id``). A request names its own first such ref, as View on
     branch names the pull request's head. Otherwise it is served under a pull request's
     head when it is the tip of one the mirror holds. ``HEAD`` is the default branch,
     *default_ref*, as in a URL.
@@ -815,6 +839,7 @@ __all__ = [
     "MAX_DISAMBIGUATION_OBJECTS",
     "MAX_REF_CANDIDATES",
     "MIRROR_REFS",
+    "in_listing_order",
     "RefCandidate",
     "RefNamespaces",
     "ResolvedPin",
@@ -830,6 +855,7 @@ __all__ = [
     "mirror_refs",
     "ref_candidates",
     "ref_tip",
+    "ref_tips",
     "resolve_commit_id",
     "resolve_pin",
     "resolve_ref_and_path",

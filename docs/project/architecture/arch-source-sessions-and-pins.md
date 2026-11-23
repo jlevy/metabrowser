@@ -472,12 +472,62 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   one of its own at the foot of the pane, where every tab shows it: the Pulls tab’s
   requests and a comparison’s are refused as the Files tab’s are, and the selector is in
   the Files toolbar, which the other tabs hide.
+- **The origin’s branches and tags** are the exception to reading in place: they are
+  listed and served from the store Metabrowser keeps beside the checkout, which borrows
+  the checkout’s objects, and such a pin is fetched and followed as a mirror’s is
+  ([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)).
+  `CheckoutRevisions.serves` answers for a revision of either, so the page of one is
+  still the folder’s.
+- **Revision reads.** The checkout serves a pinned commit of its own directly from its
+  own Git objects.
+- **Following a branch.** A revision served under one of the checkout’s own branches,
+  remote-tracking branches, or tags (`FOLLOWED_CHECKOUT_REFS` in
+  `checkout_revisions.py`) reads that ref, not one commit of it, as a mirror’s pin does
+  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)), so
+  it moves when the reader’s commit or the reader’s own fetch moves the ref.
+  Only a selection that names the ref, as `ref` or as `under`, follows it.
+  A commit opened by its ID alone stays: it is served under no ref, or under the ref
+  last served while it is that ref’s tip, so that the selector names the ref, and then
+  too `follows` is false.
+  Asking for the revision already served the other way changes only that.
+  The working tree is no revision.
+  - **The move is read, never fetched.** A visible page makes its own ask,
+    `POST /api/source/refresh` with `{"for": "page"}`, as often as its status says in
+    `probe_every_s` (`CHECKOUT_REFS_POLL_S`), and `CheckoutRevisions.observe` answers
+    it: it names the checkout’s
+    [ref state](arch-git.md#answers-kept-under-the-refs-state), one `stat` per ref file
+    and no Git process, and reads the ref with Git only when that state is not the one
+    it was last read under.
+    The ask names the state before it takes the locks a switch is made under, and takes
+    them only when the state changed; an ask within `CHECKOUT_REFS_FLOOR_S` of the last
+    reading, another visible page’s, is answered from memory.
+    The measurements of what an ask costs, and the reasoning that chose a poll by the
+    page over a watch of the Git directory, are beside the constant.
+  - **The server follows** with the mirror’s own step, `follow_served_ref` in
+    `mirror_refresh.py`: under the locks a switch is made under, it opens the ref’s new
+    commit and serves it under a new generation.
+    It records the new revision as the checkout’s before attaching it, as a switch does.
+    A ref the reader deleted keeps its last commit served, and `latest` is then null,
+    which the page’s row says: the branch no longer exists in the checkout, and the page
+    shows its last commit.
+  - **The page follows** as a mirror’s does: `static/source-freshness.js` sees the ref
+    it was drawn for served at another commit, asks the pin route for that ref with its
+    own `/view/` address, and goes where `view_href` says, the same file or folder when
+    the new commit has it, or the root.
+    A hidden page asks nothing, so a branch nobody is looking at is read again when its
+    page is shown.
+  - **The status** of such a revision has `follows` true and `latest`, the ref’s commit
+    as last read in the checkout, whether or not the folder keeps a store; `refreshable`
+    and the fetch fields are still the store’s alone, since nothing is fetched into a
+    checkout. A folder that keeps no store answers the ask with `200` and `probed` while
+    such a revision is served, and `409` otherwise, as before.
+    Where it keeps one, the same ask is also the store’s, which fetches a store older
+    than `FRESHNESS_WINDOW_S`, quietly.
+  - **Never written.** `tests/test_checkout_revisions.py` compares every entry under the
+    checkout, `.git` included, across an ask, a follow, and the new commit’s files.
 - **Pull requests.** A GitHub checkout’s Pulls tab and branch list use the same
   repository catalog on the working tree and its pinned revisions.
   Opening a pull request leaves the Files pin in place.
-- **Revision reads.** The checkout serves the pinned commit directly from its own Git
-  objects. If the branch moves, the page keeps that commit until the reader selects a
-  revision.
 
 ## How a Mirror’s Page Names Itself
 

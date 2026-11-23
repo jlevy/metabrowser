@@ -73,6 +73,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -719,6 +720,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -897,6 +899,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
@@ -962,6 +965,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
@@ -1009,6 +1013,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
@@ -1084,6 +1089,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -1124,6 +1130,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -1164,6 +1171,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -1210,7 +1218,7 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": true,
-  "follows": false,
+  "follows": true,
   "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref_on_origin": true,
   "last_fetch_at": "[TIMESTAMP]",
@@ -1220,7 +1228,9 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 7,
   "selection_state": null,
   "selection_href": null
@@ -1245,7 +1255,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https
   "borrows": null,
   "shallow": false,
   "refreshable": true,
-  "follows": false,
+  "follows": true,
   "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref_on_origin": true,
   "last_fetch_at": "[TIMESTAMP]",
@@ -1255,7 +1265,9 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https
     "at": "[TIMESTAMP]"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 7,
   "selection_state": null,
   "selection_href": null
@@ -1382,6 +1394,7 @@ status: 202
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": {
       "outcome": "gh_failed",
@@ -1416,6 +1429,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -1459,6 +1473,7 @@ status: 202
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": {
       "outcome": "gh_failed",
@@ -1493,6 +1508,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -1537,6 +1553,7 @@ status: 200
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": false,
     "last_refresh": {
       "outcome": "gh_failed",

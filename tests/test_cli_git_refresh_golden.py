@@ -18,7 +18,9 @@ the origin moves the way a busy upstream does:
 The transcript then shows the refresh starting and, once it has ended, the status after
 it; the next command pinning the new default revision; a page's own request for a
 missing commit's fetch starting nothing on the mirror just fetched, and a retry fetching
-all the same; the force-pushed-away commit and
+all the same; a visible page's own ask finding the served branch where the mirror has it
+and fetching nothing, and then, after a push, starting the fetch the branch follows; the
+force-pushed-away commit and
 the deleted branch's commit still readable by ID; the deleted branch gone by name; and a
 refresh against a removed origin recorded as ``origin_unavailable``, which exits 1 while
 the mirror keeps serving. The clock is fixed and the session moves it before each fetch,
@@ -37,6 +39,7 @@ from typing import Any
 
 import pytest
 
+from metabrowser.mirror_refresh import STORE_PROBE_S
 from tests.golden_harness import (
     Invocation,
     Labels,
@@ -84,6 +87,41 @@ def _move_origin(origin: Path) -> str:
     subprocess.run(
         ["git", "--git-dir", str(origin), "update-ref", "-d", "refs/heads/feature"],
         check=True,
+        env=env,
+    )
+    return subprocess.run(
+        ["git", "--git-dir", str(origin), "rev-parse", "--verify", "refs/heads/topic"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+
+
+def _push_to_topic(origin: Path) -> str:
+    """Add ``pushed`` on ``topic``, as a push to the branch a page is on; return its commit."""
+
+    env = pinned_git_env()
+    parent = subprocess.run(
+        ["git", "--git-dir", str(origin), "rev-parse", "--verify", "refs/heads/topic"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+    stream = (
+        b"commit refs/heads/topic\n"
+        b"committer Mirror <mirror@example.invalid> 1767243600 +0000\n"
+        b"data 7\npushed\n\n"
+        b"from " + parent.encode() + b"\n"
+        b"M 100644 inline PUSHED.md\ndata 7\npushed\n\n"
+        b"done\n"
+    )
+    subprocess.run(
+        ["git", "--git-dir", str(origin), "fast-import", "--quiet", "--done"],
+        check=True,
+        capture_output=True,
+        input=stream,
         env=env,
     )
     return subprocess.run(
@@ -181,8 +219,27 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
     assert _payload(retried)["refresh"] == "started"
     assert _after(retried)["last_outcome"]["outcome"] == "succeeded"
 
+    # A visible page's own ask, on the branch it shows. The server asks the origin where
+    # that branch is with one ls-remote: where the mirror has it, so nothing is fetched
+    # and nothing is left to follow; then, after a push, somewhere else, so the fetch
+    # starts at once and the served branch follows it.
+    page_ask = _body(bodies, "page-ask.json", {"for": "page"})
+    probed = api("/api/source/refresh", data=page_ask)
+    assert _payload(probed)["refresh"] == "probed"
+    assert _payload(probed)["status"]["probe_every_s"] == STORE_PROBE_S
+    assert _payload(probed)["status"]["last_fetch_at"] == _after(retried)["last_fetch_at"]
+    assert len(_sections(probed.stdout)) == 1, "nothing was fetched, so there is nothing to follow"
+    pushed = _push_to_topic(origin)
+    clock.advance(10)
+    moved = api("/api/source/refresh", data=page_ask)
+    assert _payload(moved)["refresh"] == "started"
+    assert _payload(moved)["status"]["pin"] == rewritten
+    assert (_after(moved)["pin"], _after(moved)["latest"]) == (pushed, pushed)
+
     old = _payload(api("/api/source/pin", data=_body(bodies, "pin-second.json", {"oid": SECOND})))
     assert old["changed"] is True and old["status"]["pin"] == SECOND
+    # A commit opened by its ID is not probed: its status names no interval.
+    assert old["status"]["probe_every_s"] is None
     tag = _payload(api("/api/source/pin", data=_body(bodies, "pin-v2.json", {"ref": "v2"})))
     assert tag["status"]["pin"] == rewritten
     gone = api(
@@ -201,11 +258,11 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
     assert _after(unreachable)["last_outcome"]["outcome"] == "origin_unavailable"
     # The record keeps the outcome by name, so the next command reports it too.
     failed = _payload(api("/api/source/status"))
-    assert failed["pin"] == rewritten
+    assert failed["pin"] == pushed
     assert failed["last_outcome"]["operation"] == "refresh"
     assert failed["last_outcome"]["outcome"] == "origin_unavailable"
-    # The last successful fetch, the retry's, is kept; only the outcome records the failure.
-    assert failed["last_fetch_at"] == _after(retried)["last_fetch_at"]
+    # The last successful fetch, the probe's, is kept; only the outcome records the failure.
+    assert failed["last_fetch_at"] == _after(moved)["last_fetch_at"]
 
     labels = Labels()
     labels.origin(url)

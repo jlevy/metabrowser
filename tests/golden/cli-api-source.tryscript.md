@@ -63,7 +63,9 @@ status: 200
     "at": "2026-09-17T12:00:05Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -109,7 +111,9 @@ status: 200
     "at": "2026-09-17T12:00:05Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -191,7 +195,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -230,7 +236,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -272,7 +280,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -316,7 +326,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -355,7 +367,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -434,6 +448,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": null,
   "refs": [
     {
@@ -475,6 +490,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": null,
   "refs": [
     {
@@ -509,6 +525,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": null,
   "refs": [
     {
@@ -573,7 +590,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -615,7 +634,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -665,7 +686,9 @@ status: 202
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": true,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -695,7 +718,9 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -741,7 +766,9 @@ status: 202
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": true,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": 5.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -771,7 +798,9 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": 5.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -786,7 +815,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file:
 api: /api/source/refresh
 status: 400
 {
-  "error": "\"for\" may only be \"commit\"",
+  "error": "\"for\" may only be \"commit\" or \"page\"",
   "code": "invalid_request"
 }
 Error: /api/source/refresh returned HTTP 400

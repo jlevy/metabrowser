@@ -22,6 +22,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "origin": null,
       "pull_requests": null,
       "refs": [
         {
@@ -73,6 +74,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "origin": null,
       "pull_requests": null,
       "refs": [
         {
@@ -115,6 +117,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "origin": null,
       "pull_requests": null,
       "refs": [
         {
@@ -167,11 +170,14 @@
         "last_fetch_at": null,
         "last_outcome": null,
         "refreshing": false,
+        "refresh_quiet": false,
         "stale": false,
+        "probe_every_s": null,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
       },
+      "read_from": null,
       "view_href": "/view/README.md"
     }
   },
@@ -191,17 +197,20 @@
         "borrows": null,
         "shallow": false,
         "refreshable": false,
-        "follows": false,
-        "latest": null,
+        "follows": true,
+        "latest": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
         "ref_on_origin": null,
         "last_fetch_at": null,
         "last_outcome": null,
         "refreshing": false,
+        "refresh_quiet": false,
         "stale": false,
+        "probe_every_s": 2.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
       },
+      "read_from": "checkout",
       "view_href": "/view/g1-UkVBRE1FLm1k"
     }
   },
@@ -224,6 +233,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "origin": null,
       "pull_requests": null,
       "refs": [
         {
@@ -272,17 +282,20 @@
         "borrows": null,
         "shallow": false,
         "refreshable": false,
-        "follows": false,
-        "latest": null,
+        "follows": true,
+        "latest": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
         "ref_on_origin": null,
         "last_fetch_at": null,
         "last_outcome": null,
         "refreshing": false,
+        "refresh_quiet": false,
         "stale": false,
+        "probe_every_s": 2.0,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
       },
+      "read_from": "checkout",
       "view_href": "/view/g1-UkVBRE1FLm1k"
     }
   },
@@ -308,11 +321,14 @@
         "last_fetch_at": null,
         "last_outcome": null,
         "refreshing": false,
+        "refresh_quiet": false,
         "stale": false,
+        "probe_every_s": null,
         "pull_request": null,
         "selection_state": null,
         "selection_href": null
       },
+      "read_from": null,
       "view_href": "/view/README.md"
     }
   },

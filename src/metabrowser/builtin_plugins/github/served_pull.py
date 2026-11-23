@@ -31,13 +31,19 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
-from metabrowser.builtin_plugins.github import pulls
+from metabrowser.builtin_plugins.github import gh_budget, pulls
+from metabrowser.builtin_plugins.github.pull_freshness import (
+    checks_settling,
+    mergeability_pending,
+)
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
@@ -45,15 +51,17 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullRequest,
     read_pull_record,
 )
-from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from metabrowser.builtin_plugins.github.pull_catalog import CatalogState
     from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreAttempt, CoreWindow
     from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
     from metabrowser.cache.acquire import PublishedSource
+
+log = logging.getLogger(__name__)
 
 # Pull requests whose state is kept in memory. The numbers are request text, so this is a
 # bound, as ``MAX_REMEMBERED_MISSES`` is on the selections a session remembers. A
@@ -67,6 +75,156 @@ MAX_KEPT_PULLS: Final = 64
 # Eight revisions per PR; metadata updates cannot evict the comparison actually displayed.
 # Two 64-character IDs per entry keep this below 2 KiB per held PR even with SHA-256.
 MAX_ISSUED_COMPARISONS: Final = 8
+
+
+# How often a visible page's pull request is probed: one conditional ``GET`` of its issue
+# (:func:`.pulls.probe_pull_request`), which GitHub does not count against the rate limit
+# when it answers ``304``. One probe took 0.56 to 0.96 s with gh 2.98.0 and 0.06 s of CPU
+# (2026-11-22, load average near 300), so a change shows half an interval and one probe
+# after GitHub's ETag moves, on average, with one ``gh`` process each time.
+# How soon that is after the change is GitHub's: reading 12 NixOS/nixpkgs issues every
+# 3.8 s for 20 minutes on 2026-11-23 (315 rounds) caught two changes, one answered 2 s
+# after its ``updated_at`` and one between about 8 and 13 s after, and reads 15 to 20 s
+# apart had seen two more inside 10 and 19 s. Too few to state an average.
+# See docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md.
+ATTENDED_PROBE_S: Final = 5.0
+# The shortest gap the server keeps between two probes of one pull request, however many
+# pages ask. Below the page's ATTENDED_PROBE_S, so an ask that arrives a little early, as
+# timers and thread hops make them, still probes instead of waiting for the next one: at
+# the same value an ask at +5 s minus 2 ms was refused and the cadence slipped toward 10 s.
+PROBE_FLOOR_S: Final = 4.0
+# How often an open pull request's settling checks are probed with it: the first pages of
+# its head's check runs and status, two more conditional ``GET``s. While CI runs they
+# change every few seconds, and each change costs a ``checks_only`` read of about 2
+# ``core``; 10 s holds that to about 12 a minute.
+# Their ETags move with the head's own checks and not with its repository, so these
+# probes have no bound on paid answers that change nothing, as the list's has
+# (``MAX_PAID_PROBE_S``). Measured 2026-11-23, 06:44 to 07:12 UTC, with gh 2.98.0: of 504
+# conditional reads of both pages for six heads, four with runs in progress, the 56
+# answered ``200`` after a page's first each changed a run's status or conclusion, added
+# a run, or changed the status, all of which a record keeps; and for four pull requests
+# whose checks had ended, both pages answered ``304`` in all 96 reads of each page over
+# 7 minutes in which the pull's own ETag moved seven times.
+# That is a sample, mostly of GitHub Actions runs. A check app that rewrites a run's
+# output while it stays in progress would answer a paid ``200`` that changes nothing a
+# record keeps, one ``core`` each interval; what bounds those is the checks ending and
+# the process's ceiling (:func:`.gh_budget.over_ceiling`), past which
+# :meth:`ServedPull.probe_due` slows every probe to :data:`FULL_REFRESH_S`.
+CHECKS_PROBE_S: Final = 10.0
+# How long a record the probes vouch for goes without a full read. A probe cannot see an
+# edited comment, a reaction, a re-run check of a finished head, or a mergeability GitHub
+# recomputes for a record that holds an answer, as when its base moves, so a visible
+# page's record is read in full this often whatever the probes say: the "every minute or
+# two" the plan sets, and an unchanged full read is all ``304``s and its account checks.
+FULL_REFRESH_S: Final = 90.0
+# How long, from the first probe that finds a head's mergeability unknown, the pull itself
+# is asked with each probe (:func:`.pulls.mergeability_probe_path`). GitHub computes
+# ``mergeable`` after the read that first asks: of 12 open NixOS/nixpkgs pull requests
+# read cold on 2026-11-23, all 12 answered ``null``, and all 12 an answer on the next
+# read 3 to 4 s later; review A of #726 saw ``null`` on 8 of 10 and an answer on all 10
+# 8 s later. Thirty seconds is six probes, several times the slowest of those. A probe
+# that fails does not spend it, and one that ends unanswered is renewed for a record read
+# later, at most once a :data:`FULL_REFRESH_S` (:meth:`ServedPull._probe`). That is the
+# bound on what these asks can spend on a pull whose answer never comes; of 10 more read
+# cold that day and then every 5 s, all 10 answered on the next read, and none was a
+# ``200`` that still said ``null``. Past it
+# the pull is asked no more, since its ETag moves with the whole repository and each move
+# costs a call, and the record is no longer vouched for: the window's read asks again.
+MERGEABLE_SETTLE_S: Final = 30.0
+# How long a ``POST`` that started a probe waits for it. A probe normally ends in about a
+# second; past this the request answers ``not_due`` and the probe ends on its own, so a
+# slow network never holds the page's request for gh's own 30 s deadline.
+PROBE_WAIT_S: Final = 3.0
+# Probes running at once in one server, across every pull request; an automatic ask past
+# it answers ``not_due`` and the page asks again at its next interval, so nothing queues.
+# Each probe is one ``gh`` process, three while checks settle (the issue, the head's check
+# runs, and its status) and one more while mergeability is unknown (the pull), and one
+# conditional ``gh api`` used 45 MB for 0.6 s (three runs, 2026-11-22, load average 295).
+# A probe is one pull request's, one at a time, so the bound is on pull requests probed in
+# the same second: a reader's visible pages, and a script asking many cached numbers,
+# which ran that many ``gh`` at once before this (review K3 on #709). Four is more visible
+# pull request pages than one server's reader keeps in view. The issue has answered before
+# a probe's other three start, so a probe runs at most three at once, and four hold the
+# worst case to twelve processes and about 540 MB for under a second, 180 MB when nothing
+# settles. It is a cost argument, not a measured limit.
+MAX_PROBES_IN_FLIGHT: Final = 4
+# How long after its last ask a pull request the cap refused keeps its place ahead of those
+# probed since (:func:`_may_probe`): two of a page's intervals, so one whose page keeps
+# asking has its turn however many are ahead, and one whose page went away holds no one
+# back for longer.
+PROBE_TURN_S: Final = 2 * ATTENDED_PROBE_S
+# The probes running in this process, which is one server.
+_PROBES: set[asyncio.Future[None]] = set()
+# Pull requests the cap refused, oldest first, by the refresh key each asks under, with
+# when and how long its place is kept. Request text decides how many ask, so it is bounded
+# as the kept pulls are.
+_REFUSED: OrderedDict[str, tuple[datetime, float]] = OrderedDict()
+
+
+def probes_in_flight() -> int:
+    """How many probes run now in this server, against :data:`MAX_PROBES_IN_FLIGHT`."""
+
+    return sum(not task.done() for task in _PROBES)
+
+
+def may_probe(key: str, now: datetime, *, turn_s: float) -> bool:
+    """:func:`_may_probe` for a probe that is not a pull request's: the list's.
+
+    One cap for the server, shared by both kinds (:mod:`.pull_list_probe`). *turn_s* is
+    how long a refusal keeps its place, twice the asker's own interval as
+    :data:`PROBE_TURN_S` is twice a page's: the list asks half as often as a page, and
+    kept for a page's turn its refusal lapsed before its next ask (review A5 on #737). On
+    the event loop, as every caller of the cap is.
+    """
+
+    return _may_probe(key, now, turn_s=turn_s)
+
+
+def track_probe(task: asyncio.Future[None]) -> None:
+    """Count *task*, a probe that just started, against the cap until it ends."""
+
+    _PROBES.add(task)
+    task.add_done_callback(_PROBES.discard)
+
+
+def _may_probe(key: str, now: datetime, *, turn_s: float = PROBE_TURN_S) -> bool:
+    """Whether the pull request asking under *key* may start a probe at *now*, under the cap.
+
+    Past the cap an ask is refused and remembered. A free probe then goes to those
+    refused longest ago before one that was not, so askers that arrive in the same order
+    each round, as a script's loop over cached numbers does, take turns: before this the
+    first :data:`MAX_PROBES_IN_FLIGHT` were probed every round and the rest never (review
+    A4 on #726), and a record never probed is read in full once a window instead. A
+    refusal is forgotten *turn_s* after its asker last asked, :data:`PROBE_TURN_S` for a
+    pull request, or when it probes.
+    """
+
+    for other, (since, kept_s) in list(_REFUSED.items()):
+        if not timedelta(0) <= now - since <= timedelta(seconds=kept_s):
+            del _REFUSED[other]
+    free = MAX_PROBES_IN_FLIGHT - probes_in_flight()
+    ahead = 0
+    for other in _REFUSED:
+        if other == key:
+            break
+        ahead += 1
+    if ahead < free:
+        _REFUSED.pop(key, None)
+        return True
+    # Refused again, it keeps its place and its refusal is as new as this ask, so it
+    # lapses only once its asker stops asking: dated from the first refusal, it lapsed
+    # before the turn of any asker past the twelfth came (review B1 on #726).
+    _REFUSED[key] = (now, turn_s)
+    while len(_REFUSED) > MAX_KEPT_PULLS:
+        _REFUSED.popitem(last=False)
+    return False
+
+
+def forget_probes() -> None:
+    """Forget every probe and refusal, as a new process holds none; for tests."""
+
+    _PROBES.clear()
+    _REFUSED.clear()
 
 
 # A measured selected-core path is about 1.7 s. This bounds only the POST's wait,
@@ -241,6 +399,39 @@ class ServedPull:
     )
     _issued: OrderedDict[tuple[str, str], None] = field(default_factory=OrderedDict, repr=False)
     _displayed: tuple[str, str] | None = field(default=None, repr=False)
+    # Probes (:func:`.pulls.probe_pull_request`) of the record held: when one last found it
+    # unchanged (``probed_at``), when one was last tried, for the pull and for its checks,
+    # and when one last failed. ``_probe_etags`` are newer ETags GitHub sent for checks
+    # the record already holds. ``_probe_saw`` is a change a probe found, ``pull`` or only
+    # ``checks``, and when, which makes the record due until an attempt starts after it.
+    # ``_issue_seen`` is the pull request's issue as the last probe found it, kept across
+    # records. ``_probe_saw_updated`` is the issue ``updated_at`` of the change a probe
+    # found, and ``_attempted_updated`` the one the last refresh was started for: a read
+    # that did not bring the record up to it is tried again once a window, not on every
+    # probe, as an answer that lags the catalog's row is (``_attempted_row``).
+    probed_at: str | None = field(default=None, repr=False)
+    _probe_attempt: datetime | None = field(default=None, repr=False)
+    _checks_probe_attempt: datetime | None = field(default=None, repr=False)
+    _probe_failed: datetime | None = field(default=None, repr=False)
+    _probe_etags: dict[str, str] = field(default_factory=dict, repr=False)
+    _probe_saw: Literal["pull", "checks"] | None = field(default=None, repr=False)
+    _probe_saw_at: datetime | None = field(default=None, repr=False)
+    _issue_seen: pulls.IssueSeen | None = field(default=None, repr=False)
+    _probe_saw_updated: str | None = field(default=None, repr=False)
+    _attempted_updated: str | None = field(default=None, repr=False)
+    # The head whose unknown mergeability a probe first asked the pull about, and when:
+    # :data:`MERGEABLE_SETTLE_S` is counted from it.
+    _mergeability_asked: tuple[str, datetime] | None = field(default=None, repr=False)
+    _probe_task: asyncio.Future[None] | None = field(default=None, repr=False)
+    # When the record held was last read in full, not ``checks_only``, and when a full read
+    # was last tried: :data:`FULL_REFRESH_S` is measured from these, since a ``checks_only``
+    # read moves ``fetched_at`` every few seconds while CI runs. A record another writer
+    # published counts as read in full when this server adopts it.
+    full_read_at: str | None = field(default=None, repr=False)
+    _full_attempt: datetime | None = field(default=None, repr=False)
+    # A visible page's ask found the full read overdue (:meth:`automatic_due`): the next
+    # refresh reads everything, even for a record whose checks alone are due.
+    _full_asked: bool = field(default=False, repr=False)
 
     def note_comparison(self, pair: tuple[str, str], *, displayed: bool = False) -> None:
         """Remember a comparison this PR issued; metadata cannot evict the displayed pair."""
@@ -276,6 +467,12 @@ class ServedPull:
         return f"{_job_prefix(self.published)}:pull/{self.number}"
 
     @property
+    def probe_key(self) -> str:
+        """The coordinator's key for its probe, beside :attr:`key`, its refresh's."""
+
+        return f"{self.key}:probe"
+
+    @property
     def refreshing(self) -> bool:
         """Whether its refresh is running now, so its state is about to change."""
 
@@ -308,23 +505,32 @@ class ServedPull:
         the catalog cannot loop. One whose checks alone are due (``checks_due``, an open pull
         request the catalog vouches for but read longer ago than the window) is due once a
         window.
+
+        Below :data:`~.gh_budget.BACKGROUND_FLOOR` (:meth:`below_floor`) only a change is
+        due, one a probe found or the catalog reports: the reads the clock alone asks for,
+        a record's age and an open one's checks, wait until the account's budget is back
+        above it, as background work does. A reader's own action never asks this.
         """
 
         window = timedelta(seconds=window_s)
         unserved = self.without_store and not isinstance(self.published, ListedRepository)
         last = self.last
-        held = (
-            last is not None
-            and last["outcome"] == "rate_limited"
-            and last["reset_at"] is not None
-            and now < _parse_stamp(last["reset_at"])
-        )
+        held = self._held(now)
         attempted_within = self._last_attempt is not None and now - self._last_attempt <= window
+        # A probe found GitHub changed since this record: due until an attempt follows.
+        if (
+            self._probe_saw_at is not None
+            and self.fetched_at is not None
+            and not held
+            and (self._last_attempt is None or self._last_attempt < self._probe_saw_at)
+        ):
+            return True
         if self.changed_row is not None and self.fetched_at is not None:
             # GitHub changed it after this record: due unless an attempt saw that very row.
             return not held and (self._attempted_row != self.changed_row or not attempted_within)
+        spare = not self.below_floor(now)
         if self.checks_due and not unserved and self.fetched_at is not None:
-            return not held and not attempted_within
+            return spare and not held and not attempted_within
         newest = max(
             (stamp for stamp in (self.fetched_at, self.verified_at) if stamp is not None),
             default=None,
@@ -337,7 +543,287 @@ class ServedPull:
             # What succeeded was a server with no store writing that record. This one's
             # refresh, which fetches the head into its store, has not been tried.
             return True
-        return self._last_attempt is None or now - self._last_attempt > window
+        return spare and (self._last_attempt is None or now - self._last_attempt > window)
+
+    def _held(self, now: datetime) -> bool:
+        """Whether GitHub's rate limit holds an automatic read of this record at *now*."""
+
+        last = self.last
+        return (
+            last is not None
+            and last["outcome"] == "rate_limited"
+            and last["reset_at"] is not None
+            and now < _parse_stamp(last["reset_at"])
+        ) or gh_budget.held_until(now) is not None
+
+    def below_floor(self, now: datetime) -> bool:
+        """Whether the account's ``core`` budget is at or below the background floor at *now*.
+
+        Then this record's periodic reads stop (:meth:`is_stale`, :meth:`full_read_due`),
+        while its probes go on, since a ``304`` is free, and a change one finds is still
+        read in full: the owner's rule of 2026-11-22, in :mod:`.gh_budget`'s docstring.
+        """
+
+        return gh_budget.admission(("core",), now=now).reason == "below_floor"
+
+    def probe_vouches(self, now: datetime) -> bool:
+        """Whether a probe found the record held unchanged within a freshness window."""
+
+        return self.probed_at is not None and now - _parse_stamp(self.probed_at) <= timedelta(
+            seconds=FRESHNESS_WINDOW_S
+        )
+
+    def automatic_due(self, now: datetime) -> Literal["full", "probe"] | None:
+        """What a visible page's automatic ask is due to start at *now*, if anything.
+
+        ``full`` when the record is stale (:meth:`is_stale`), over a window of
+        :data:`FULL_REFRESH_S` while probes vouch for it and :data:`FRESHNESS_WINDOW_S`
+        otherwise, or when its full read is overdue (:meth:`full_read_due`), so even a
+        record the catalog or the probes vouch for is read in full that often while a page
+        shows it. ``probe`` when none of that holds and a probe is due (:meth:`probe_due`).
+        Below the background floor neither clock asks for a full read, so the ask probes,
+        and ``full`` is then only a change a probe or the catalog found.
+        """
+
+        window = FULL_REFRESH_S if self.probe_vouches(now) else FRESHNESS_WINDOW_S
+        if (
+            gh_budget.over_ceiling(now)
+            and self._last_attempt is not None
+            and now - self._last_attempt <= timedelta(seconds=gh_budget.CEILING_FULL_READ_S)
+        ):
+            # Over the process's own ceiling (AUTOMATIC_CORE_PER_HOUR) a full read, even
+            # one a probe found a change for, waits five minutes after the last; a change
+            # that waits is not probed for again.
+            return "probe" if self._probe_saw_at is None and self.probe_due(now) else None
+        if self.full_read_due(now):
+            self._full_asked = True
+            return "full"
+        if self.is_stale(now, window_s=window):
+            return "full"
+        return "probe" if self.probe_due(now) else None
+
+    def full_read_overdue(self, now: datetime) -> bool:
+        """Whether the record held was last read in full longer than FULL_REFRESH_S ago.
+
+        A record adopted with no full read of this server's known counts from ``fetched_at``.
+        """
+
+        stamp = self.full_read_at or self.fetched_at
+        return stamp is not None and now - _parse_stamp(stamp) > timedelta(seconds=FULL_REFRESH_S)
+
+    def full_read_due(self, now: datetime) -> bool:
+        """Whether a full read is overdue (:meth:`full_read_overdue`) and may start at *now*.
+
+        Not while GitHub's limit holds, below the background floor (:meth:`below_floor`),
+        within a freshness window of a failed refresh of any kind
+        (:meth:`_failed_recently`), nor within :data:`FULL_REFRESH_S` of the last full
+        read tried, so a failing one is not retried on every ask. ``checks_only`` reads,
+        which neither count as one nor hold one back, do not move either clock.
+        """
+
+        return (
+            self.full_read_overdue(now)
+            and not self._held(now)
+            and not self.below_floor(now)
+            and not self._failed_recently(now)
+            and (
+                self._full_attempt is None
+                or now - self._full_attempt > timedelta(seconds=FULL_REFRESH_S)
+            )
+        )
+
+    def _failed_recently(self, now: datetime) -> bool:
+        """Whether the last refresh failed and was tried within a freshness window."""
+
+        last = self.last
+        return (
+            last is not None
+            and last["outcome"] != "succeeded"
+            and self._last_attempt is not None
+            and now - self._last_attempt <= timedelta(seconds=FRESHNESS_WINDOW_S)
+        )
+
+    def probe_due(self, now: datetime) -> bool:
+        """Whether a probe of the record held may start at *now*.
+
+        Not while a refresh or another probe runs, while GitHub's limit holds, within a
+        freshness window of a failed refresh or a failed probe (so a missing ``gh`` or a
+        lost network is asked once a window, not every few seconds), nor within
+        :data:`PROBE_FLOOR_S` of the last probe, however many pages ask, nor while
+        :data:`MAX_PROBES_IN_FLIGHT` probes of other pull requests run in this server or
+        one the cap refused earlier is still to have its turn (:func:`_may_probe`, which
+        remembers this ask when it refuses it).
+        """
+
+        window = timedelta(seconds=FRESHNESS_WINDOW_S)
+        return not (
+            self.fetched_at is None
+            or self._refreshing
+            or (self._probe_task is not None and not self._probe_task.done())
+            or self._held(now)
+            or self._failed_recently(now)
+            or (self._probe_failed is not None and now - self._probe_failed <= window)
+            or (
+                self._probe_attempt is not None
+                and now - self._probe_attempt
+                # Over the process's own ceiling, probes slow to the full-read interval.
+                < timedelta(
+                    seconds=FULL_REFRESH_S if gh_budget.over_ceiling(now) else PROBE_FLOOR_S
+                )
+            )
+            or not _may_probe(self.key, now)
+        )
+
+    async def probe(
+        self, record: PullRecord, *, coordinator: RefreshCoordinator | None = None
+    ) -> None:
+        """Probe *record*, the record held, when :meth:`probe_due` says one may start.
+
+        Waits at most :data:`PROBE_WAIT_S` and then raises :class:`TimeoutError`, leaving
+        the probe to end on its own; cancelling the wait never cancels the probe.
+
+        With *coordinator*, the server's, the probe is its job under :attr:`probe_key`, so
+        shutdown cancels it with every other job, which kills its ``gh``; it takes no
+        network slot and no turn at the store. A probe shutdown cancelled ends the wait
+        without an error: it found nothing, and nothing is due from it. Asked of a
+        coordinator that has closed, it starts nothing, for the same reason.
+        """
+
+        if self._probe_task is not None and not self._probe_task.done():
+            raise AssertionError("probe_due holds a second probe while one runs")
+        if coordinator is not None and coordinator.closed:
+            return
+        work: Callable[[], Awaitable[None]] = partial(self._probe, record)
+        task: asyncio.Future[None] | None = None
+        if coordinator is not None:
+            coordinator.start(self.probe_key, work, network=False)
+            task = coordinator.job(self.probe_key)
+        if task is None:
+            task = asyncio.ensure_future(work())
+        self._probe_task = task
+        track_probe(task)
+        try:
+            await asyncio.wait_for(asyncio.shield(task), PROBE_WAIT_S)
+        except asyncio.CancelledError:
+            waiter = asyncio.current_task()
+            if not task.cancelled() or (waiter is not None and waiter.cancelling()):
+                # The wait was cancelled, as a request is; the probe goes on.
+                raise
+
+    @property
+    def probing(self) -> bool:
+        """Whether a probe of this pull request runs."""
+
+        return self._probe_task is not None and not self._probe_task.done()
+
+    async def _probe(self, record: PullRecord) -> None:
+        now = pulls.utc_now()
+        self._probe_attempt = now
+        # A record whose mergeability is unknown has the pull asked too, for
+        # MERGEABLE_SETTLE_S from the first probe that found this head's unknown. A
+        # record that holds an answer ends the wait, so the next unknown has its own, and
+        # so does a new head. A wait that ended unanswered is renewed for a record read
+        # after it ended, as a page shown again reads one, and no sooner than
+        # FULL_REFRESH_S after it began: that bounds the asks for a pull request GitHub
+        # never answers, however many records of it are read meanwhile.
+        asked = self._mergeability_asked
+        head = record.pull.head.sha
+        settle = timedelta(seconds=MERGEABLE_SETTLE_S)
+        if not mergeability_pending(record):
+            asked = self._mergeability_asked = None
+        elif (
+            asked is None
+            or asked[0] != head
+            or (
+                now - asked[1] >= timedelta(seconds=FULL_REFRESH_S)
+                and _parse_stamp(record.fetched_at) > asked[1] + settle
+            )
+        ):
+            asked = self._mergeability_asked = (head, now)
+        mergeability = asked is not None and now - asked[1] <= settle
+        checks = checks_settling(record) and (
+            self._checks_probe_attempt is None
+            # Less the slack PROBE_FLOOR_S allows each probe, so jitter does not push
+            # the checks to every third probe (review B7 on #709).
+            or now - self._checks_probe_attempt
+            >= timedelta(seconds=CHECKS_PROBE_S - (ATTENDED_PROBE_S - PROBE_FLOOR_S))
+        )
+        if checks:
+            self._checks_probe_attempt = now
+        # Settling checks a probe cannot see (:func:`.pulls.checks_probe_paths`), and a
+        # mergeability still unknown once the pull is asked no more, are read once a
+        # freshness window, as without probes, so no probe vouches for the record.
+        vouches = not (
+            checks_settling(record) and pulls.checks_probe_paths(self.published, record) is None
+        ) and not (mergeability_pending(record) and not mergeability)
+        try:
+            found = await pulls.probe_pull_request(
+                self.published,
+                record,
+                etags=dict(self._probe_etags),
+                checks=checks,
+                seen=self._issue_seen,
+                mergeability=mergeability,
+            )
+        except Exception as exc:
+            # Nothing waits on a probe's result but this record's freshness: any failure,
+            # GitHub's or a bug's, leaves the record to the window cadence for a window,
+            # where a raised error would answer each 5 s ask with a 500 and no backoff.
+            if self.fetched_at == record.fetched_at:
+                self._probe_failed = now
+            if mergeability:
+                # A failed probe holds the next for longer than the settle wait lasts, and
+                # may not have reached the pull: the wait starts over when probes resume.
+                self._mergeability_asked = None
+            if isinstance(exc, pulls.PullDataError):
+                log.debug("probing pull request %s failed: %s", self.number, exc)
+            else:
+                log.exception("probing pull request %s failed", self.number)
+            return
+        # The issue as GitHub has it now, whichever record this probe ran beside.
+        self._issue_seen = found.seen
+        if self.fetched_at != record.fetched_at:
+            # A newer record arrived while it ran; what it found is about the older one.
+            return
+        self._probe_failed = None
+        self._probe_etags.update(found.etags)
+        if found.outcome == "unchanged":
+            if vouches:
+                self.probed_at = _stamp(now)
+            return
+        if found.outcome == "behind":
+            # GitHub's issue answer is older than the record: it lags, and a read would
+            # bring nothing, so the record is neither vouched for nor read.
+            return
+        updated = found.updated_at
+        if (
+            found.outcome == "changed"
+            and updated is not None
+            and updated == self._attempted_updated
+            and self._last_attempt is not None
+            and now - self._last_attempt <= timedelta(seconds=FRESHNESS_WINDOW_S)
+        ):
+            # The read this change started did not bring the record up to it, as when
+            # the pull's own answer lags its issue's: no vouching, and no read again
+            # until a window has passed.
+            return
+        if found.outcome == "changed":
+            self._probe_saw_updated = updated
+        self._probe_saw = (
+            "pull" if found.outcome == "changed" or self._probe_saw == "pull" else "checks"
+        )
+        self._probe_saw_at = now
+
+    def _forget_probes(self) -> None:
+        """A newer record is held: what probes found was about the one before it."""
+
+        self.probed_at = None
+        self._probe_etags = {}
+        self._probe_saw = self._probe_saw_at = None
+        self._probe_saw_updated = None
+        self._probe_failed = None
+        # ``_checks_probe_attempt`` is kept: the checks probes keep their own cadence across
+        # the checks_only reads they start, rather than starting afresh after each one.
 
     def saw_record(
         self,
@@ -354,7 +840,13 @@ class ServedPull:
 
         if fetched_at is not None and (self.fetched_at is None or fetched_at > self.fetched_at):
             self.fetched_at = fetched_at
+            if not self._refreshing:
+                # Another writer's record, taken as read in full; a refresh of this server's
+                # that is running sets ``full_read_at`` itself when it ends, and may be the
+                # checks_only read that published this record (review B6 on #709).
+                self.full_read_at = fetched_at
             self.without_store = without_store
+            self._forget_probes()
             self.display_core = None
             self.verified_at = self.changed_row = None
             self.checks_due = False
@@ -424,10 +916,17 @@ class ServedPull:
         A refresh cancelled before it ended, as a background job a reader's work preempts
         is, forgets its attempt, so the next automatic request is not held for a window.
         An automatic refresh of a record whose checks alone are due (``checks_due``) reads
-        them on their own (``checks_only`` in :func:`.pulls.refresh_pull_request`).
+        them on their own (``checks_only`` in :func:`.pulls.refresh_pull_request`), unless
+        a visible page's ask found its full read overdue (:meth:`automatic_due`).
         """
-        previous_attempt, self._last_attempt = self._last_attempt, pulls.utc_now()
+        started = pulls.utc_now()
+        previous_attempt, self._last_attempt = self._last_attempt, started
+        previous_full, previous_asked = self._full_attempt, self._full_asked
         previous_row, self._attempted_row = self._attempted_row, self.changed_row
+        previous_updated, self._attempted_updated = (
+            self._attempted_updated,
+            self._probe_saw_updated,
+        )
         self._refreshing = True
         try:
             while True:
@@ -484,7 +983,16 @@ class ServedPull:
                     self._core_ready.set()
 
                 progress = stage_core if self._core_requested and self.fetched_at is None else None
-                checks_only = self.checks_due and not recover and self.changed_row is None
+                checks_only = (
+                    (self.checks_due or self._probe_saw == "checks")
+                    and not recover
+                    and self.changed_row is None
+                    and self._probe_saw != "pull"
+                    and not self._full_asked
+                )
+                if not checks_only:
+                    self._full_attempt = started
+                    self._full_asked = False
                 try:
                     if progress is not None or self._source_pulls is not None:
                         record = await pulls.refresh_pull_request(
@@ -520,8 +1028,9 @@ class ServedPull:
                     # refresh published nothing. Its writer stamps how it ended just after
                     # the record, possibly after this, so the outcome is read from disk
                     # until this job's next refresh (see outcome()).
-                    self.fetched_at = exc.current.fetched_at
+                    self.fetched_at = self.full_read_at = exc.current.fetched_at
                     self.without_store = written_without_store(exc.current)
+                    self._forget_probes()
                     self.verified_at = self.changed_row = None
                     self.checks_due = False
                     self.outcome_on_disk = True
@@ -535,8 +1044,13 @@ class ServedPull:
                     )
                 else:
                     self.outcome_on_disk = False
+                    # A checks_only read keeps the clock of the full read before it.
+                    self.full_read_at = (
+                        (self.full_read_at or self.fetched_at) if checks_only else record.fetched_at
+                    )
                     self.fetched_at = record.fetched_at
                     self.without_store = written_without_store(record)
+                    self._forget_probes()
                     self.verified_at = self.changed_row = None
                     self.checks_due = False
                     if record.comparison is not None:
@@ -548,6 +1062,8 @@ class ServedPull:
                     return
         except asyncio.CancelledError:
             self._last_attempt, self._attempted_row = previous_attempt, previous_row
+            self._attempted_updated = previous_updated
+            self._full_attempt, self._full_asked = previous_full, previous_asked
             raise
         finally:
             self.display_core = None
@@ -755,20 +1271,37 @@ class ServedPulls:
         self._kept[pull.number] = pull
         if len(self._kept) > MAX_KEPT_PULLS:
             for number, held in self._kept.items():
-                if number != self._attended and held is not self.active and not held.refreshing:
+                if (
+                    number != self._attended
+                    and held is not self.active
+                    and not held.refreshing
+                    and not held.probing
+                ):
                     del self._kept[number]
                     break
         return pull
 
 
 __all__ = [
+    "ATTENDED_PROBE_S",
+    "PROBE_FLOOR_S",
+    "CHECKS_PROBE_S",
+    "FULL_REFRESH_S",
     "MAX_KEPT_PULLS",
+    "MAX_PROBES_IN_FLIGHT",
+    "MERGEABLE_SETTLE_S",
+    "PROBE_TURN_S",
+    "PROBE_WAIT_S",
     "PullRefreshOutcome",
     "ServedPull",
     "ServedPulls",
     "cached_comparison_record",
+    "forget_probes",
     "last_refresh",
+    "may_probe",
+    "probes_in_flight",
     "record_revision",
     "served_pull",
+    "track_probe",
     "written_without_store",
 ]

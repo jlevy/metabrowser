@@ -173,7 +173,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": null,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -216,7 +218,7 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": true,
-    "follows": false,
+    "follows": true,
     "latest": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -226,7 +228,9 @@ status: 200
       "at": "2026-09-17T12:00:05Z"
     },
     "refreshing": false,
+    "refresh_quiet": false,
     "stale": true,
+    "probe_every_s": null,
     "pull_request": 7,
     "selection_state": null,
     "selection_href": null

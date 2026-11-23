@@ -51,7 +51,7 @@ status: 200
   "borrows": "[CWD]/checkout",
   "shallow": false,
   "refreshable": true,
-  "follows": false,
+  "follows": true,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -61,7 +61,9 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 1,
   "selection_state": null,
   "selection_href": null
@@ -87,6 +89,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": {
     "state": "absent",
     "complete": false,
@@ -253,7 +256,7 @@ status: 200
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
-  "follows": false,
+  "follows": true,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -263,7 +266,9 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 1,
   "selection_state": null,
   "selection_href": null
@@ -290,7 +295,7 @@ status: 200
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
-  "follows": false,
+  "follows": true,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -300,7 +305,9 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 1,
   "selection_state": null,
   "selection_href": null
@@ -337,6 +344,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "a619ab340be40ab8fd05eb4905d2177ec7594b9a4aa6c3806baa7d70b397ea4a",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -548,7 +556,7 @@ status: 200
   "borrows": "[CWD]/shallow",
   "shallow": true,
   "refreshable": true,
-  "follows": false,
+  "follows": true,
   "latest": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -558,7 +566,9 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "refreshing": false,
+  "refresh_quiet": false,
   "stale": true,
+  "probe_every_s": null,
   "pull_request": 1,
   "selection_state": null,
   "selection_href": null

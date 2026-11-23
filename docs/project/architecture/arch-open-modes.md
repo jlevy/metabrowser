@@ -168,7 +168,7 @@ for that check, and not a second account.
 | Views | The working tree | The working tree, and revisions | Revisions |
 | Commits, diffs, and the ref chooser | No | Yes | Yes |
 | Pulls and View on GitHub | No, with one case [not decided](#not-decided) | When `origin` is on github.com | When the origin is on github.com |
-| Refresh from the origin | None | Never into the checkout | A background fetch into the store, which a served branch follows |
+| Refresh from the origin | None | Never into the checkout; a background fetch into [Metabrowser’s store beside it](#origin-branches-in-a-repository-folder), which lists the origin’s branches and tags and which a served origin branch follows | A background fetch into the store, which a served branch follows |
 | `kind` in `GET /api/identity` | `folder` | `folder` | `mirror` |
 
 - **Repository folder mode needs only Git.** Any repository gets its root opened,
@@ -229,6 +229,8 @@ are deferred.
   are read from its Git directory in place, or from Metabrowser’s cache for that
   directory, and
   [never write the checkout](#showing-a-revision-never-writes-the-checkout).
+  Its origin’s branches and tags are read from
+  [the store Metabrowser keeps beside the checkout](#origin-branches-in-a-repository-folder).
   A pull request’s head is read from the store that
   [borrows from the checkout](arch-mirror-acquisition-and-refresh.md#the-lending-checkout),
   as its Changes are, because the head is usually not among the checkout’s objects and
@@ -261,6 +263,154 @@ Opening the reader’s own working-tree copy of the file is a separate action wi
 label, since the working tree can differ from the head and renders under the folder’s
 profile.
 
+### Origin Branches in a Repository Folder
+
+**Built** (bead `mb-ay84`), in `checkout_store.py`. The owner set the rule on
+2026-11-22: a repository folder shows its origin’s branches and tags as Metabrowser last
+fetched them into a store of its own beside the checkout, kept current as a mirror’s
+store is, while the checkout is never fetched into.
+It carries out “in local mode, … the cache layers are still the same as mirror mode”
+(the owner, 2026-11-19): a folder’s revisions are a mirror’s, and the working tree and
+local branches are what it adds.
+Fetching into Metabrowser’s own store is safe to repeat, so how often is a matter of
+cost alone
+([Metabrowser’s Own Stores](../specs/active/plan-2026-11-22-pull-request-update-cadence.md#metabrowsers-own-stores)).
+
+- **The store** is the cache’s store for the address the checkout’s `origin` remote
+  names, the one `metab <URL> --checkout <folder>` would make: an overlay with the
+  served checkout as its lender
+  ([The Lending Checkout](arch-mirror-acquisition-and-refresh.md#the-lending-checkout)),
+  so it holds only the objects the checkout lacks, or the full store of that address
+  when the cache already has one.
+  `checkout_origin` in `cache/lender.py` reads the address from the checkout’s
+  configuration file, in the command line’s grammar, and `acquire_checkout_store`
+  acquires with `allow_clone_fallback=False`, so a checkout that cannot lend is refused
+  and never cloned in full unasked.
+- **Which checkouts keep one:** a checkout whose `origin` is an `https` address the
+  grammar accepts, on github.com or not.
+  A checkout with no `origin`, or one whose origin is a path or a `file://` address,
+  keeps no store and is served exactly as before: its remote-tracking branches are
+  already that repository’s, a file read away, and the listing’s `origin` is null.
+  An origin reached another way, SSH on a host no provider reduces to HTTPS, or an
+  `http://` or `git://` address, is one Metabrowser cannot fetch, and the chooser says
+  so (`transport_unsupported`); a server never tries it.
+- **When it is fetched:** from the moment the folder is served, by the rules of every
+  store Metabrowser keeps
+  ([Refresh Cadence](arch-mirror-acquisition-and-refresh.md#refresh-cadence)). A server
+  reads the origin and the store the cache has in the background as it starts, acquires
+  a store it lacks, and then runs the idle timer, so with no page visible the store is
+  at most `STORE_IDLE_REFRESH_S` old.
+  A visible page asks as a mirror’s does: an open chooser sends its own ask once, with
+  the first list that reads the store, Remotes or Tags, and not for the checkout’s own
+  branches, `POST /api/source/refresh` with `{"for": "page"}`, which fetches a store
+  older than `FRESHNESS_WINDOW_S`, and a page on one of the origin’s branches has that
+  branch probed every `STORE_PROBE_S`. A one-shot `--show` or `--api` reads the store
+  the cache has, at the request that needs it, and reaches the network only through an
+  explicit `POST /api/source/refresh`, which makes the store when there is none.
+- **The session** is a `MirrorSession` over that store, made once the store exists.
+  `mirror_refresh.py` splits what belongs to the store, its fetch, its turn, its probe
+  and hold rules, its idle timer, and its last outcome (`StoreSession`), from what
+  belongs to the pin (`MirrorSession`), and a session is told which served revisions are
+  its store’s (`owns`). So while the working tree or one of the checkout’s own revisions
+  is served, a folder’s session fetches and reports and follows nothing.
+- **One store, one turn:** the GitHub plugin fetches pull requests’ heads into the same
+  store. Core owns the acquisition and the store’s turn (`store_turn`), and the plugin
+  takes both from core (`_acquire_comparison` and `_CheckoutPulls.turn` in
+  `builtin_plugins/github/checkout.py`), so the folder’s fetch and a pull request’s
+  queue at one `StoreTurn` and neither reports the other as a refresh running elsewhere.
+- **The chooser:** `GET /api/source/refs` answers `origin`, the store’s state
+  (`OriginStore`): `ready` with the last fetch’s time and outcome, `acquiring` while the
+  first fetch runs, or `absent` with a reason code and a sentence.
+  Once it is ready, the list of remote-tracking branches has the origin’s branches from
+  the store, each named `origin/<branch>` as the checkout names it, and the list of tags
+  the origin’s tags from it; any ref only the checkout has, another remote’s branch or a
+  local tag, is still read from the checkout.
+  The checkout’s own `refs/remotes/origin/*` is not a second list.
+  The checkout’s own branches are read from the checkout, as before.
+- **Where the reader’s own `origin/<branch>` differs:** a row of the origin’s branches
+  carries `checkout` when the checkout’s own remote-tracking branch is not at the row’s
+  commit: that ref’s commit and its date, or nulls when the checkout has no such ref
+  (`_own_difference` in `checkout_revisions.py`, bead `mb-h7mv`). So a branch the reader
+  has not fetched since it moved, or has pushed since Metabrowser’s last fetch, is
+  visible, and the chooser marks the row “yours differs” or “not in checkout”.
+  The row says that the two differ and not which is ahead or by how many commits: that
+  takes a walk of the history between the two for every branch that differs, a Git
+  process apiece whose cost the number of refs does not bound, where the checkout’s ref
+  was already read by the listing’s one `for-each-ref`. Both commits’ dates are in the
+  row, and the tooltip says which is the later.
+- **Showing an origin branch** serves a revision read from the store
+  (`StoreMirror.open_selection`), inert as every revision is, and it follows the branch
+  when a fetch moves it, as a mirror’s does
+  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)). The
+  pin route reads a selection from the store when it names a full ref of one of the
+  origin’s branches, or a tag the store holds, and a commit ID while a revision of the
+  store is served (`CheckoutRevisions._of_origin`). A short name, as `--ref` gives one,
+  is read in a checkout’s order with the origin’s taken from the store: the checkout’s
+  own branch of that name, then a tag the store holds, then a tag only the checkout has,
+  then `origin/<branch>` as the store has it.
+  The pin route’s answer says which was read in `read_from`, `origin` or `checkout`, and
+  `--ref` says so on standard error.
+  A switch opens the store first, which adopts a cached one with no network, so
+  `metab PATH --ref origin/topic` reads the store once the cache has it and the checkout
+  until then. The status of such a pin has the store’s freshness, `refreshable` and
+  `follows`, and is still a folder’s, named and placed as the folder is.
+- **The origin’s default branch** lists first in Remotes and is marked `default`, as a
+  mirror’s is, from the store’s record of it.
+- **The freshness row** is on every page of a folder that keeps a store, its working
+  tree’s too: the status of the working tree, and of one of the checkout’s own
+  revisions, has the store’s last fetch and is `refreshable`, with nothing of the
+  store’s followed or probed (`MirrorSession.unpinned_fields`); one of the checkout’s
+  own branches follows the checkout’s ref, which is read and never fetched
+  ([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+  The row says what was fetched is Metabrowser’s store of the origin and never the
+  checkout, and leaves the reload offer to the ref selector (`describe` with `checkout`
+  in `static/source-freshness.js`). A page that shows nothing of the store, the working
+  tree’s or one of the checkout’s own revisions, has a store grown old fetched by its
+  own ask, `{"for": "page"}`: once each time it is shown, and on one of the checkout’s
+  own branches each time that page asks while it is visible.
+  That fetch is quiet: nothing on the page can change when it ends.
+  The row says “Refreshing…” for the reader’s own Refresh, and on a page of one of the
+  origin’s branches, which a fetch can move.
+- **Refresh:** `POST /api/source/refresh` on a folder that keeps a store fetches the
+  store, whatever the folder shows, and the listing reads the checkout’s refs again each
+  time it is asked for.
+- **Without a store,** because the origin is refused, the reader is offline, or the
+  first fetch has not ended, the chooser lists the checkout’s refs as before and says
+  why. An origin that needs credentials the provider’s helper lacks is
+  `not_found_or_private`: the origin is shown as not fetched, with that reason.
+  Nothing prompts, since the acquisition policy gives Git no terminal and no askpass
+  program. Where the provider says what to do about it, as GitHub’s does for `gh`, the
+  reason’s sentence ends with that.
+  A server tries a failed acquisition again unasked `STORE_IDLE_REFRESH_S` after it
+  ended, and then twice as long after each failure in a row, up to
+  `ACQUISITION_RETRY_CAP_S`, also when it was the checkout that could not lend, since a
+  partial clone can be made whole; the chooser keeps the reason while it tries.
+  An acquisition that ran out its deadline (`timed_out`) downloaded for all of it and
+  kept nothing, so it is not tried again unasked at all (`_NOT_RETRIED_UNASKED` in
+  `checkout_store.py`, with the measurement).
+  A page’s own ask is held to the same waits, and a reader’s Refresh to none.
+- **Never written:** `tests/test_checkout_store.py` compares every entry under the
+  checkout’s `.git`, and its working tree, before and after the store is made, an origin
+  branch served and read, a probe, a reader’s fetch, and the idle fetch.
+  An entry’s modification time is compared too: every fetch into a store that borrows
+  keeps the pack it receives (`OVERLAY_FETCH_CONFIG` in `cache/lender.py`), because Git
+  would otherwise mark an object the checkout already holds as written again, in the
+  checkout.
+
+The first acquisition was measured on 2026-11-22; the numbers are in
+`checkout_store.py`, beside the acquisition.
+
+The defaults this was built on, recorded 2026-11-22 with the implementation:
+
+- The folder’s store is fetched from the moment the folder is served, not only once the
+  reader opens the chooser or Pulls.
+  It keeps the owner’s “whenever possible, not out of date”; a server opened on a folder
+  therefore reaches its origin’s host without being asked.
+- An origin that needs credentials the store cannot use is shown as not fetched, with
+  the reason, and nothing prompts.
+- A checkout whose origin is not a network remote, or that has no origin, keeps its
+  earlier behavior.
+
 ## What Is Never Written
 
 In no mode does Metabrowser write a user’s Git directory: no index, ref, or object.
@@ -274,6 +424,10 @@ today.
   One that borrows a checkout’s objects reads that checkout’s object files through
   `objects/info/alternates` and runs no Git in it
   ([The Lending Checkout](arch-mirror-acquisition-and-refresh.md#the-lending-checkout)).
+- A repository folder’s store of its origin is such a store.
+  Its origin is read from the checkout’s configuration file, and every fetch and probe
+  runs with the store as its Git directory
+  ([Origin Branches in a Repository Folder](#origin-branches-in-a-repository-folder)).
 - An edit, when editing is built, writes the one file the reader edits, in the
   working-tree view and under `--allow-edits`.
 
@@ -536,6 +690,8 @@ the design that carries it out.
 | Repository folder mode is for any Git repository; Pulls and View on GitHub are for github.com only | 2026-11-18 | [The Three Modes](#the-three-modes) |
 | One view for each server for now; links that select a branch are deferred under `mb-itzy` | 2026-11-18 | [Views](#views) |
 | A revision renders inert | 2026-11-09, confirmed 2026-11-18 | [Views](#views) |
+| A repository folder shows its origin’s branches and tags from Metabrowser’s own store beside the checkout, fetched as often as is useful; the checkout is never fetched into | 2026-11-22 | [Origin Branches in a Repository Folder](#origin-branches-in-a-repository-folder) |
+| That store is fetched from the moment the folder is served; an origin whose credentials it lacks is shown as not fetched, with the reason, and nothing prompts; a checkout with no origin, or a local one, keeps no store | 2026-11-22, as defaults with `mb-ay84` | [Origin Branches in a Repository Folder](#origin-branches-in-a-repository-folder) |
 | Pulls and View on GitHub stay on a revision view, and it links to the commit viewed | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | View on branch and Browse code go to the pull request’s head as a revision view; the working-tree copy is a separate, labelled action | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | Open URL… opens the mirror, always, offers a known checkout, and never silently shows another revision | 2026-11-18 | [The File Menu](#the-file-menu) |
@@ -588,6 +744,7 @@ A pull request that builds a part updates its row.
 | GitHub links opened in the app, and `SessionRoot` | Built: one mirror per repository, which opens every link into it in its running server | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0`; `mb-30xb` |
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Built | [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout); [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
+| A repository folder’s origin branches and tags from Metabrowser’s store beside it, each marked where the reader’s own `origin/<branch>` differs | Built | [Origin Branches in a Repository Folder](#origin-branches-in-a-repository-folder), `mb-ay84`, `mb-h7mv` |
 | Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |
 | File > Open URL… | Built, without the offer of a known checkout, which waits for a way to tell that an open folder is a checkout of the URL’s repository | [#560](https://github.com/jlevy/metabrowser/pull/560), `mb-m4mg`; the offer is `mb-bkk2` |
 | View on GitHub on files, folders, pull requests, and commits | Built; the app’s native popover is its own | `mb-4wqh` |

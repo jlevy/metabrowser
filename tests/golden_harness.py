@@ -75,6 +75,7 @@ from click import unstyle
 import metabrowser
 from devtools.check_parity import IN_PROCESS_COMMAND
 from metabrowser import mirror_refresh
+from metabrowser.builtin_plugins.github.gh import forget_account
 from metabrowser.builtin_plugins.github.gh_status import forget_github_status
 from metabrowser.cache import records
 from metabrowser.cache.acquire import PublishedSource
@@ -334,10 +335,12 @@ def run_metab(args: Sequence[str]) -> Invocation:
     and exit status a user sees rather than a test-only rendering of the exception.
     Each ``metab`` is a process of its own, so it starts with no GitHub status kept from
     the command before; otherwise the ``gh`` calls a golden records would depend on how
-    long that command took.
+    long that command took. Nor does it know the login the account check last heard, so
+    its first check is unconditional, as a new process's is.
     """
 
     forget_github_status()
+    forget_account()
     out = io.StringIO()
     err = io.StringIO()
     exit_code = 0

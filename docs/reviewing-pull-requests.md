@@ -154,7 +154,7 @@ The page has four tabs:
 
 | Opened with | Code controls |
 | --- | --- |
-| A repository or pull-request URL | **Browse code** opens the pinned code, first switching the pin to this pull request’s head when another commit is served. When the head has moved since, **Switch to the head** offers the new one. |
+| A repository or pull-request URL | **Browse code** opens the pinned code, first switching the pin to this pull request’s head when another commit is served. Code served on the pull request’s head follows it: when new commits are pushed, the page moves to the new head by itself, as a page on a branch does. |
 | A checkout or a folder in one | Files and Commits keep showing your checkout, which may differ from the pull request, so there is no **Browse code**. When the checkout’s `HEAD` is the pull request’s head, the page says so and offers **Browse the checkout**. |
 
 In **Changes**, a changed file offers **View on branch**, which opens the file at the
@@ -172,9 +172,8 @@ Where it opens follows the table above:
 
 A deleted file, a symbolic link, and a submodule have no View on branch, and no file
 does while Changes shows an earlier head than the pull request’s, which no branch holds
-any more. If the pull request moves on after the page was drawn, View on branch and
-Browse code switch nothing and say that the head has moved; reload to see the newer
-changes.
+any more. If the pull request moves on in the moment before the page has followed it,
+View on branch and Browse code switch nothing and say that the head has moved.
 
 ### Rendered Markdown in Changes
 
@@ -272,12 +271,22 @@ again once a window while it stays open, except one you must fix, such as GitHub
 missing or signed out, which waits for **Refresh**. The Pulls tab’s **Reload** asks for
 a new check of the list.
 
-A refresh never moves the diff you are reading.
-When the head moves, the conversation and checks update, **Changes** says
-`New commits were pushed; updating.` over the diff it keeps, and **Show the newer
-changes** moves it. On a repository URL the served code stays put too, until **Switch to
-the head**. The foot of the navigation pane says separately when the repository’s mirror
-was fetched.
+The page follows the pull request.
+When new commits are pushed, the conversation and checks update, and **Changes** shows
+the new head’s diff, with a line above it such as
+`The pull request’s head moved from 1a2b3c4 to 5d6e7f8.` You stay in the file you were
+reading, at the same place in it, when the new diff still has that file.
+**Show the earlier changes** on that line goes back to the diff you were reading, which
+then stays until you choose **Show the newer changes**. While the new commits are still
+being fetched, Changes says `New commits were pushed; updating.` over the diff it has.
+
+On a repository URL, code served on the pull request’s head follows it too, as a branch
+does, and the page reloads on the new head.
+A commit you opened by its ID stays put; when it was the head, the foot of the
+navigation pane says the pull request is now at the newer commit, with **Switch**.
+Beside a checkout, only Changes moves, since Files and Commits show your working tree.
+The foot of the navigation pane says separately when the repository’s mirror was
+fetched.
 
 ### Several Pull Requests at Once
 

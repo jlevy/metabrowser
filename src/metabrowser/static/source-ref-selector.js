@@ -24,7 +24,19 @@
 // - a third list, Remotes, its remote-tracking branches, beside its own branches and
 //   its tags;
 // - an offer to reload when the server comes to serve something else, which a mirror's
-//   freshness row makes and a checkout's page has no such row to make.
+//   freshness row makes and a checkout's page has no such row to make;
+// - its origin's branches and tags from a store Metabrowser keeps beside the checkout
+//   (`origin` in the listing; metabrowser/checkout_store.py). Once that store exists, the
+//   Remotes list has the origin's branches as Metabrowser last fetched them, in place of
+//   the checkout's own `origin/*`, and the Tags list the origin's tags; a line under the
+//   list says so and when, or why the origin is not fetched. The origin's default branch
+//   is first there and marked. A row there whose branch the reader's own checkout has
+//   at another commit, or not at all, says so (`ownDifference`): "yours differs" where
+//   the checkout's own `origin/<branch>` is not where the origin's is, which is a branch
+//   the reader has not fetched since it moved, or has pushed since. An open list of a
+//   checkout, once it shows Remotes or Tags, makes a visible page's own ask once
+//   (`{"for": "page"}`), which fetches a store older than the server's freshness window,
+//   and asks for the list again while that runs.
 //
 // The selector chooses what the Files tab shows and nothing else, so it leads that tab's
 // toolbar row, beside Group by, where the server draws its button (server.py); the Pulls
@@ -50,6 +62,7 @@
 (() => {
   const REFS_ROUTE = "/api/source/refs";
   const PIN_ROUTE = "/api/source/pin";
+  const REFRESH_ROUTE = "/api/source/refresh";
   const VIEW_PREFIX = "/view/";
   // A mirror keeps its origin's branches where a checkout keeps a remote's: it has no
   // branches of its own, so they are simply its branches.
@@ -157,6 +170,44 @@
   }
 
   /**
+   * What a row of the origin's branches says where the reader's own remote-tracking
+   * branch is not at the row's commit, or `null` where it is. Pure.
+   *
+   * The row is the origin's branch as Metabrowser last fetched it into its own store;
+   * the checkout's `origin/<branch>` is where the reader's own last fetch left it. The
+   * server says only that the two differ, and where the checkout's is: which is ahead
+   * needs a walk of the history between them, which the listing does not make. The
+   * commits' dates are in the listing, so the tooltip says which was committed later.
+   *
+   * @param {MetabrowserSourceRef} row
+   * @returns {{text: string, tip: string} | null}
+   */
+  function ownDifference(row) {
+    const own = row.checkout;
+    if (own === undefined || own === null) {
+      return null;
+    }
+    if (own.commit === null) {
+      return {
+        text: "not in checkout",
+        tip: `Your checkout has no ${row.name} of its own. This row is the origin's, as Metabrowser last fetched it.`,
+      };
+    }
+    const mine = own.committed_at;
+    const theirs = row.committed_at;
+    const when =
+      mine === null || theirs === null || mine === theirs
+        ? ""
+        : mine < theirs
+          ? ", an earlier commit by date"
+          : ", a later commit by date";
+    return {
+      text: "yours differs",
+      tip: `Your checkout's ${row.name} is at ${window.MetabrowserFormatters.shortCommit(own.commit)}${when}, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.`,
+    };
+  }
+
+  /**
    * What the selector shows for one state. Pure.
    *
    * @param {MetabrowserSourceRefSelectorState} state
@@ -183,6 +234,7 @@
             checkedOut: row.checked_out === true,
             current: row.current,
             chip,
+            own: ownDifference(row),
             pulls: (row.pulls ?? []).map((pull) => ({
               number: pull.number,
               title: pull.title,
@@ -227,6 +279,34 @@
     if (pullsReady && listing?.pull_requests?.complete === false && state.query !== "") {
       note = note === "" ? PULLS_INCOMPLETE : `${note} ${PULLS_INCOMPLETE}`;
     }
+    // What the list says of the store its origin's refs are read from: only for the lists
+    // that read it, a checkout's remote-tracking branches and its tags.
+    /** @type {MetabrowserSourceRefSelectorModel["origin"]} */
+    let origin = null;
+    const store = listing?.origin ?? null;
+    if (checkout && store !== null && state.kind !== "branch") {
+      const what = state.kind === "tag" ? "tags" : "branches";
+      if (store.state === "ready") {
+        origin = {
+          text: `The origin's ${what} are as Metabrowser last fetched them`,
+          fetchedAt: store.last_fetch_at,
+          tone: "quiet",
+        };
+      } else if (store.state === "acquiring") {
+        origin = {
+          text: `Fetching the origin's ${what}. Until then these are the checkout's own.`,
+          fetchedAt: null,
+          tone: "quiet",
+        };
+      } else {
+        const why = store.detail === null ? "" : ` ${store.detail}`;
+        origin = {
+          text: `Origin not fetched.${why} These are the checkout's own.`,
+          fetchedAt: null,
+          tone: "warning",
+        };
+      }
+    }
     return {
       button: label.name === "" ? label.kind : `${label.kind}: ${label.name}`,
       // A pull request's number, which the button sets in its own weight
@@ -259,6 +339,7 @@
       workingTree,
       rows,
       note,
+      origin,
       error: state.error,
       removed: state.removed === true,
       stale:
@@ -406,6 +487,7 @@
       (pa?.state ?? null) !== (pb?.state ?? null) ||
       pa?.complete !== pb?.complete ||
       pa?.refreshing !== pb?.refreshing ||
+      JSON.stringify(a.origin ?? null) !== JSON.stringify(b.origin ?? null) ||
       JSON.stringify(a.working_tree) !== JSON.stringify(b.working_tree)
     ) {
       return false;
@@ -421,6 +503,7 @@
         x.default !== y.default ||
         x.checked_out !== y.checked_out ||
         x.current !== y.current ||
+        JSON.stringify(x.checkout ?? null) !== JSON.stringify(y.checkout ?? null) ||
         (x.pulls_total ?? 0) !== (y.pulls_total ?? 0) ||
         pullsSignature(x.pulls ?? []) !== pullsSignature(y.pulls ?? [])
       ) {
@@ -463,7 +546,8 @@
         x.default !== y.default ||
         x.checkedOut !== y.checkedOut ||
         x.current !== y.current ||
-        x.chip !== y.chip
+        x.chip !== y.chip ||
+        (x.own?.tip ?? "") !== (y.own?.tip ?? "")
       ) {
         return false;
       }
@@ -579,6 +663,8 @@
     /** The wait before the next ask for pull requests the server was still filling. */
     /** @type {unknown} */
     let pullsTimer = null;
+    // Whether the visible page's own ask went out since the list was opened.
+    let askedForOrigin = false;
     let disposed = false;
 
     function render() {
@@ -606,10 +692,14 @@
       inflight = null;
     }
 
-    /** Ask again after PULLS_POLL_MS while the server fills its pull requests. */
+    /** Ask again after PULLS_POLL_MS while the server fills its pull requests, or fetches
+     * the store a checkout's origin is listed from. */
     function watchPulls() {
       clearPullsTimer();
-      if (disposed || !state.open || state.listing?.pull_requests?.refreshing !== true) {
+      const filling =
+        state.listing?.pull_requests?.refreshing === true ||
+        state.listing?.origin?.refreshing === true;
+      if (disposed || !state.open || !filling) {
         return;
       }
       pullsTimer = deps.schedule(() => {
@@ -708,13 +798,52 @@
       watchPulls();
     }
 
+    /**
+     * A visible page's own ask, for a checkout that keeps a store of its origin: the server
+     * fetches the store when it is older than its freshness window, and makes it when it
+     * has none. Sent once each time the list opens, with the first list that reads the
+     * store, the Remotes or the Tags, and never
+     * waited for: when the server says a fetch runs, the list is asked for again and then
+     * watched until it ends. The reader did not ask, so a refusal says nothing.
+     */
+    async function askForOrigin() {
+      // Only for a list that reads the store, the origin's branches or its tags: the
+      // checkout's own branches are read from the checkout, and a fetch moves none.
+      if (
+        !checkout ||
+        disposed ||
+        !state.open ||
+        askedForOrigin ||
+        state.kind === "branch" ||
+        (state.listing?.origin ?? null) === null
+      ) {
+        return;
+      }
+      askedForOrigin = true;
+      try {
+        const response = await deps.request("POST", REFRESH_ROUTE, { for: "page" });
+        const answer = /** @type {{refresh?: unknown} | null} */ (
+          response.body !== null && typeof response.body === "object" ? response.body : null
+        );
+        const started = answer?.refresh === "started" || answer?.refresh === "joined";
+        if (!disposed && state.open && response.status === 202 && started) {
+          await load(true);
+        }
+      } catch {
+        // The list is the server's as it was; the next opening asks again.
+      }
+    }
+
     function open() {
       if (disposed || state.open) {
         return Promise.resolve();
       }
       state.open = true;
       state.error = null;
-      return load();
+      askedForOrigin = false;
+      return load().then(() => {
+        void askForOrigin();
+      });
     }
 
     function close() {
@@ -746,7 +875,9 @@
       }
       state.kind = kind;
       state.listing = null;
-      return load();
+      return load().then(() => {
+        void askForOrigin();
+      });
     }
 
     /** @param {string} query */
@@ -989,6 +1120,26 @@
     paintRows(parts, model);
     parts.note.textContent = model.note;
     parts.note.hidden = model.note === "";
+    const origin = model.origin;
+    if (origin === null) {
+      parts.origin.hidden = true;
+      parts.origin.textContent = "";
+    } else {
+      // When the store was fetched, as a row says its commit's age, with the exact time
+      // as its tooltip (docs/design-system.md, "Age").
+      const at = origin.fetchedAt === null ? Number.NaN : Date.parse(origin.fetchedAt) / 1000;
+      const fetched = Number.isFinite(at)
+        ? window.MetabrowserFormatters.age(at, { style: "relative" }).label
+        : "";
+      parts.origin.textContent = fetched === "" ? origin.text : `${origin.text}, ${fetched}.`;
+      if (Number.isFinite(at)) {
+        parts.origin.dataset.tipText = window.metabrowser.formatTimestamp(at);
+      } else {
+        delete parts.origin.dataset.tipText;
+      }
+      parts.origin.dataset.tone = origin.tone;
+      parts.origin.hidden = false;
+    }
     parts.error.textContent = model.error ?? "";
     parts.error.hidden = model.error === null;
   }
@@ -1163,6 +1314,14 @@
       badge.textContent = row.default ? "default" : "checked out";
       main.append(badge);
     }
+    // Where the reader's own `origin/<branch>` is not where the origin's branch is: a
+    // second tag, in a warning's ink, whose sentence the row's tooltip carries.
+    if (row.own !== null) {
+      const own = document.createElement("span");
+      own.className = "source-ref-selector-badge source-ref-selector-own";
+      own.textContent = row.own.text;
+      main.append(own);
+    }
     // The commit as every line names one, its short ID in the commit-ID face, then
     // its age, in the compact style of navigation, with the exact time as its tooltip
     // (docs/design-system.md, "Age"). A date Git did not give has no age.
@@ -1195,6 +1354,9 @@
       const tips = [];
       if (name.scrollWidth > name.clientWidth) {
         tips.push(row.name);
+      }
+      if (row.own !== null) {
+        tips.push(row.own.tip);
       }
       if (now.pulls.length > 0) {
         const tip = pullTip(now, cut);
@@ -1317,6 +1479,7 @@
           checkedOut: false,
           current: false,
           chip: "remote",
+          own: null,
           pulls: tall ? [{ number: 1, title: "probe", state: "open" }] : [],
           pullsTotal: tall ? 1 : 0,
         },
@@ -1620,6 +1783,11 @@
     const note = document.createElement("p");
     note.className = "source-ref-selector-note";
     note.setAttribute("role", "status");
+    // What the list says of the store a checkout's origin is listed from, and when it
+    // was fetched. Not a live region: its age is repainted with the list.
+    const origin = document.createElement("p");
+    origin.className = "source-ref-selector-note source-ref-selector-origin";
+    origin.hidden = true;
     const error = document.createElement("p");
     error.className = "source-ref-selector-error";
     error.setAttribute("role", "alert");
@@ -1649,7 +1817,7 @@
         delete workingTree.dataset.tipText;
       }
     });
-    panel.append(workingTree, kinds, filter, list, note, error);
+    panel.append(workingTree, kinds, filter, list, note, origin, error);
     // The button's own box, which a ref chip's menu trigger is placed against, so that
     // the list's containing block stays the toolbar and the list spans the pane. Drawn
     // by the server around its button, and adopted with it.
@@ -1688,6 +1856,7 @@
       list,
       sizer,
       note,
+      origin,
       error,
       rows: {
         shown: [],

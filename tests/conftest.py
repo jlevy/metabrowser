@@ -357,11 +357,15 @@ def _reset_rate_budget() -> Generator[None, None, None]:  # pyright: ignore[repo
     The governor keeps them per process, so a refusal one test replays would otherwise hold
     background work in every test after it until the replayed reset time.
     """
-    from metabrowser.builtin_plugins.github import gh_budget
+    from metabrowser.builtin_plugins.github import gh, gh_budget
 
+    # The account check's last answer is per process too (gh.gh_account): a test starts
+    # with none, so its first check is unconditional whatever ran before it.
     gh_budget.forget()
+    gh.forget_account()
     yield
     gh_budget.forget()
+    gh.forget_account()
 
 
 @pytest.fixture(autouse=True)
@@ -377,6 +381,25 @@ def _reset_label_sets() -> Generator[None, None, None]:  # pyright: ignore[repor
         loaded = sys.modules.get("metabrowser.builtin_plugins.github.pull_labels")
         if loaded is not None:
             loaded.forget()
+
+    forget()
+    yield
+    forget()
+
+
+@pytest.fixture(autouse=True)
+def _reset_probe_turns() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start every test with no probe in flight and none refused, as a new process.
+
+    ``served_pull`` keeps both per process, by a pull request's refresh key, and the
+    fixtures share one repository and one clock, so a refusal one test left would hold
+    back the next test's probe. A process that never imported it holds neither.
+    """
+
+    def forget() -> None:
+        loaded = sys.modules.get("metabrowser.builtin_plugins.github.served_pull")
+        if loaded is not None:
+            loaded.forget_probes()
 
     forget()
     yield

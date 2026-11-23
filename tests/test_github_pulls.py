@@ -23,7 +23,7 @@ from dataclasses import field as dataclass_field
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, cast
 from unittest.mock import patch
 
 import pytest
@@ -42,6 +42,7 @@ from metabrowser.builtin_plugins.github.gh import (
     parse_included_response,
     rate_limit_reset,
 )
+from metabrowser.builtin_plugins.github.gh_lists import active_account
 from metabrowser.builtin_plugins.github.pull_file_anchor import path_digest
 from metabrowser.builtin_plugins.github.pull_markdown import render_part
 from metabrowser.builtin_plugins.github.pull_record import (
@@ -288,10 +289,22 @@ def test_gh_api_runs_isolated_with_fixed_arguments(
 
 
 @pytest.mark.parametrize(
-    "path", ["../repos/x", "repos/octo/../demo", "repos/octo/demo --paginate", "-X"]
+    "path",
+    [
+        "../repos/x",
+        "repos/octo/../demo",
+        "repos/octo/demo --paginate",
+        "-X",
+        # Only ``user`` itself is admitted outside a repository (the account check).
+        "users/octo",
+        "user/repos",
+        "user?per_page=1",
+        "user/",
+        "rate_limit",
+    ],
 )
 def test_gh_api_refuses_a_path_it_did_not_build(path: str) -> None:
-    with pytest.raises(ValueError, match="not a repository API path"):
+    with pytest.raises(ValueError, match="not an API path Metabrowser reads"):
         asyncio.run(gh_api(path))
 
 
@@ -345,6 +358,193 @@ def test_account_is_the_active_login_even_in_an_error_state() -> None:
     assert parse_active_account(json.dumps(inactive).encode()) is None
     with pytest.raises(GhError):
         parse_active_account(b'{"hosts":{"github.com":[{"active":true,"login":"bad login"}]}}')
+
+
+def _gh_commands(stand: _Stand) -> list[str]:
+    """Each logged gh call as its command, with the ETag a conditional one sent."""
+
+    commands: list[str] = []
+    for call in stand.calls():
+        args: list[str] = call["args"]
+        sent = next((arg for arg in args if arg.startswith("If-None-Match: ")), None)
+        named = "auth status" if args[:2] == ["auth", "status"] else f"api {args[-1]}"
+        commands.append(named + (f" [{sent.split(': ', 1)[1]}]" if sent else ""))
+    return commands
+
+
+def test_the_account_check_is_a_conditional_read_that_a_304_answers(stand: _Stand) -> None:
+    """mb-1bir: ``gh auth status`` cost one core call each time; a ``304`` costs none."""
+
+    assert asyncio.run(active_account()) == READER
+    assert asyncio.run(active_account()) == READER
+    # The second carries the first's ETag, GitHub answers 304, and the login stands.
+    assert _gh_commands(stand) == ["api user", 'api user ["user-octo-reader"]']
+    # Another account's token gets a 200 for the old ETag, and its own from then on.
+    stand.answer({**scenario(stand.origin), "auth": account("someone-else")})
+    assert asyncio.run(active_account()) == "someone-else"
+    assert asyncio.run(active_account()) == "someone-else"
+    assert _gh_commands(stand) == [
+        'api user ["user-octo-reader"]',
+        'api user ["user-someone-else"]',
+    ]
+
+
+def test_an_account_check_that_finds_no_account_asks_gh_auth_status_why(stand: _Stand) -> None:
+    stand.answer({**scenario(stand.origin), "auth": {"stdout": '{"hosts":{}}\n', "exit": 0}})
+    with pytest.raises(PullDataError) as signed_out:
+        asyncio.run(active_account())
+    assert signed_out.value.state == "not_logged_in"
+    assert "gh auth login --hostname github.com" in str(signed_out.value)
+    assert _gh_commands(stand) == ["api user", "auth status"]
+    # A refused token in the environment: only gh auth status names the variable.
+    refused = {
+        "active": True,
+        "login": "",
+        "state": "error",
+        "error": "HTTP 401: Bad credentials",
+        "tokenSource": "GH_TOKEN",
+    }
+    stand.answer(
+        {
+            **scenario(stand.origin),
+            "auth": {"stdout": json.dumps({"hosts": {"github.com": [refused]}}), "exit": 0},
+        }
+    )
+    with pytest.raises(PullDataError) as token:
+        asyncio.run(active_account())
+    assert token.value.state == "not_logged_in"
+    assert "replace the token in GH_TOKEN" in str(token.value)
+
+
+def test_an_account_check_that_cannot_reach_github_names_the_account_gh_has_saved(
+    stand: _Stand,
+) -> None:
+    """Offline, ``gh auth status`` still names the saved account, so a switch is seen."""
+
+    assert asyncio.run(active_account()) == READER
+    stand.calls()
+    offline = {"stderr": "error connecting to api.github.com\n", "exit": 1}
+    stand.answer(
+        {**scenario(stand.origin), "auth": account("someone-else"), "api_failure": offline}
+    )
+    assert asyncio.run(active_account()) == "someone-else"
+    assert _gh_commands(stand) == ['api user ["user-octo-reader"]', "auth status"]
+
+
+def test_a_gh_too_old_for_auth_status_json_still_passes_the_account_check(
+    stand: _Stand,
+) -> None:
+    old = {"stderr": "unknown flag: --json\n\nUsage: gh auth status\n", "exit": 1}
+    named = {"status": 200, "headers": {"Etag": '"old"'}, "body": {"login": READER}}
+    stand.answer(_api({**scenario(stand.origin), "auth": old}, "user", named))
+    assert asyncio.run(active_account()) == READER
+    assert _gh_commands(stand) == ["api user"]
+    # Signed out, it is asked why and cannot say: the status check's own state.
+    stand.answer({**scenario(stand.origin), "auth": old})
+    with pytest.raises(PullDataError) as too_old:
+        asyncio.run(active_account())
+    assert too_old.value.state == "gh_too_old"
+    assert _gh_commands(stand) == ['api user ["old"]', "auth status"]
+
+
+def test_an_account_check_github_refuses_keeps_the_last_login_for_the_next(
+    stand: _Stand,
+) -> None:
+    assert asyncio.run(active_account()) == READER
+    limited = {
+        "status": 403,
+        "headers": {"X-Ratelimit-Remaining": "0", "X-Ratelimit-Reset": "1790181960"},
+        "body": {"message": "API rate limit exceeded"},
+    }
+    stand.answer(_api(scenario(stand.origin), "user", limited))
+    with pytest.raises(PullDataError) as refused:
+        asyncio.run(active_account())
+    assert (refused.value.state, refused.value.reset_at) == (
+        "rate_limited",
+        "2026-09-23T16:46:00Z",
+    )
+    stand.answer(scenario(stand.origin))
+    stand.calls()
+    assert asyncio.run(active_account()) == READER
+    assert _gh_commands(stand) == ['api user ["user-octo-reader"]']
+
+
+def test_a_304_names_the_account_to_the_budget_as_a_200_does(stand: _Stand) -> None:
+    """Review A5 on #726: the status check can name another account between two checks,
+    and the budget then belongs to the one this check answers for."""
+
+    from metabrowser.builtin_plugins.github import gh_budget
+
+    assert asyncio.run(active_account()) == READER
+    gh_budget.note_account("someone-else")
+    gh_budget.hold("2026-09-17T13:00:00Z", now=FETCHED_AT)
+    assert gh_budget.held_until(FETCHED_AT) is not None
+    assert asyncio.run(active_account()) == READER
+    assert _gh_commands(stand) == ["api user", 'api user ["user-octo-reader"]']
+    # The 304 named octo-reader, so someone-else's hold is forgotten.
+    assert gh_budget.held_until(FETCHED_AT) is None
+
+
+def test_a_saved_token_github_refuses_fails_as_gh_auth_status_says(stand: _Stand) -> None:
+    """Review A5 on #726: gh names the saved account and says GitHub refused its token."""
+
+    refused = {
+        "active": True,
+        "login": READER,
+        "state": "error",
+        "error": "HTTP 401: Bad credentials",
+        "tokenSource": "keyring",
+    }
+    stand.answer(
+        {
+            **scenario(stand.origin),
+            "auth": {"stdout": json.dumps({"hosts": {"github.com": [refused]}}), "exit": 0},
+        }
+    )
+    with pytest.raises(PullDataError) as failed:
+        asyncio.run(active_account())
+    assert failed.value.state == "not_logged_in"
+    # The step gh auth status's own verdict names, not the bare 401's.
+    assert "gh auth login --hostname github.com" in str(failed.value)
+    assert _gh_commands(stand) == ["api user", "auth status"]
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        # The login becomes the record's reader, so it is checked as gh auth status's is.
+        (ok("user", {"login": "not a login"}), "not a GitHub login"),
+        (ok("user", {"login": 7}), "not a GitHub login"),
+        ({"status": 404, "body": {"message": "Not Found"}}, "would not name the account"),
+        # A 304 for a request that sent no ETag names no one.
+        ({"status": 304}, "not conditional"),
+    ],
+)
+def test_an_account_answer_that_names_no_login_fails_the_check(
+    stand: _Stand, entry: dict[str, Any], message: str
+) -> None:
+    stand.answer(_api(scenario(stand.origin), "user", entry))
+    with pytest.raises(PullDataError) as failed:
+        asyncio.run(active_account())
+    assert failed.value.state == "gh_failed" and message in str(failed.value)
+    assert "pull request" not in str(failed.value)
+
+
+def test_an_account_answer_with_no_etag_is_asked_for_unconditionally_next(
+    stand: _Stand,
+) -> None:
+    """Review A5 on #726: the old ETag would be another answer's."""
+
+    assert asyncio.run(active_account()) == READER
+    bare = {
+        "status": 200,
+        "headers": {"X-Ratelimit-Limit": "5000"},
+        "body": {"login": "someone-else"},
+    }
+    stand.answer(_api(scenario(stand.origin), "user", bare))
+    assert asyncio.run(active_account()) == "someone-else"
+    assert asyncio.run(active_account()) == "someone-else"
+    assert _gh_commands(stand) == ["api user", 'api user ["user-octo-reader"]', "api user"]
 
 
 @pytest.mark.parametrize(
@@ -402,7 +602,13 @@ def test_etags_are_not_sent_for_another_reader(stand: _Stand) -> None:
     stand.calls()
     record = stand.refresh(7)
     assert record.reader == "gh:someone-else"
-    sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    # The pull request's own reads; the account check's ``user`` is conditional on the
+    # account, not on a record.
+    sent = [
+        call["args"]
+        for call in stand.calls()
+        if call["args"][0] == "api" and call["args"][-1] != "user"
+    ]
     assert not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
 
 
@@ -910,9 +1116,10 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
         plain_code=True,
     )
     assert "<symbol" in str(raw["html"])
-    html = client.get(
-        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
-    ).json()["html"]
+    answered = client.get("/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"})
+    # A refusal names its code in the body; indexing it would say only that a key is missing.
+    assert answered.status_code == 200, answered.text
+    html = answered.json()["html"]
     for gone in ("<svg", "<symbol", "<use"):
         assert gone not in html, gone
 
@@ -932,9 +1139,10 @@ def test_the_markdown_route_keeps_a_mermaid_block_for_the_page_to_draw(
         stand.published.slug,
         record.model_copy(update={"pull": record.pull.model_copy(update={"body": text})}),
     )
-    html = client.get(
-        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
-    ).json()["html"]
+    answered = client.get("/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"})
+    # A refusal names its code in the body; indexing it would say only that a key is missing.
+    assert answered.status_code == 200, answered.text
+    html = answered.json()["html"]
     assert '<pre lang="mermaid"><code>flowchart LR\n  A --&gt; B\n</code></pre>' in html
     assert (html.count("<pre"), html.count("lang=")) == (2, 1)
 
@@ -945,9 +1153,9 @@ def test_the_markdown_route_names_only_kpress_stylesheets_and_the_same_ones_for_
     """A page sets a text in KPress's stylesheets; a comment must not choose what it loads."""
 
     _stand, client = pinned_pull
-    answer = client.get(
-        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
-    ).json()
+    answered = client.get("/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"})
+    assert answered.status_code == 200, answered.text
+    answer = answered.json()
     assets = answer["assets"]["assets"]
     assert {asset["id"] for asset in assets} >= {"css/document.css", "css/components.css"}
     assert {asset["loading"] for asset in assets} == {"stylesheet"}
@@ -1583,6 +1791,18 @@ def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
         (b'{"number": 7, "retry": true, "prepare_comparison": "' + b"a" * 64 + b'"}', 400),
         (b'{"number": 7, "retry": true, "comparison": "yes"}', 400),
         (b'{"number": 7, "state": "open"}', 400),
+        # The record an asker holds is named by its whole revision, and not while idle.
+        (b'{"number": 7, "held": null}', 400),
+        (b'{"number": 7, "held": "abc"}', 400),
+        (b'{"number": 7, "held": 7}', 400),
+        (
+            b'{"number": 7, "held": "'
+            + b"a" * 64
+            + b'", "prepare_comparison": "'
+            + b"a" * 64
+            + b'"}',
+            400,
+        ),
     ):
         refused = client.post(_REFRESH_ROUTE, content=content, headers=_JSON)
         assert (refused.status_code, refused.json()["code"]) == (status, "invalid_request")
@@ -1594,6 +1814,45 @@ def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
     assert client.post(_REFRESH_ROUTE, content=b"{}", headers=plain).status_code == 415
     outdated = client.post(_REFRESH_ROUTE, json=_ASK_7, headers={**_JSON, PIN_HEADER: "0" * 40})
     assert (outdated.status_code, outdated.json()["code"]) == (409, "pin_changed")
+
+
+def test_a_refresh_answer_leaves_out_the_record_its_asker_holds(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """An ask that names the record it holds gets every field but that record (mb-jd08).
+
+    A visible page asks every ``probe_every_s``; what the whole envelope cost each time
+    is recorded beside ``pull_route.refresh_answer_pull``.
+    """
+
+    _stand, client = pinned_pull
+
+    def ask(**fields: Any) -> tuple[int, dict[str, Any]]:
+        answer = client.post(_REFRESH_ROUTE, json={"number": 7, **fields}, headers=_JSON)
+        return answer.status_code, answer.json()["pull"]
+
+    status, whole = ask()
+    assert status == 200 and whole["record"]["number"] == 7 and "record_held" not in whole
+    revision = whole["record_revision"]
+
+    status, held = ask(held=revision)
+    assert status == 200 and held["record_held"] is True and "record" not in held
+    # Everything else an envelope says still arrives: the state, the verdict, the outcome.
+    assert set(held) - {"record_held"} == set(whole) - {"record"}
+    assert (held["record_revision"], held["state"], held["fetched_at"]) == (
+        revision,
+        whole["state"],
+        whole["fetched_at"],
+    )
+    assert len(json.dumps(held)) < len(json.dumps(whole)) / 4
+
+    # Another revision is a record the asker does not have, so it is sent.
+    status, other = ask(held="0" * 64)
+    assert status == 200 and other["record"] == whole["record"] and "record_held" not in other
+
+    # A reader's own refresh may name it too, and its answer as it starts holds that record.
+    status, started = ask(retry=True, held=revision)
+    assert status == 202 and started["record_held"] is True and "record" not in started
 
 
 def _answering_head(stand: _Stand, head: str) -> dict[str, Any]:
@@ -1629,7 +1888,7 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Serve mode: the cold read pins the head, the pull route answers, a refresh runs in
-    the coordinator, and a newer head is offered as ``latest`` rather than switched to."""
+    the coordinator, and the pin follows a newer head that refresh finds (mb-6a6w)."""
 
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
     # The session's freshness window reads the wall clock, so records do too here.
@@ -1653,12 +1912,15 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
             started = client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON)
             assert started.status_code == 202 and started.json()["pull"]["refreshing"] is True
             status = settle(client)
-            assert (status["pin"], status["latest"]) == (earlier, head)
+            # The pull request's own job observed the mirror when it ended, and the pin,
+            # served under the pull request's head, went with the ref it had just fetched.
+            assert (status["follows"], status["ref"]) == (True, "refs/pull/7/head")
+            assert (status["pin"], status["latest"]) == (head, head)
             envelope = _read(client, 7).json()
             assert envelope["last_refresh"]["outcome"] == "succeeded"
-            assert (envelope["pin"], envelope["record"]["pull"]["head"]["sha"]) == (earlier, head)
+            assert (envelope["pin"], envelope["record"]["pull"]["head"]["sha"]) == (head, head)
 
-            # Taking the offer switches by the pull request's ref, as the page does.
+            # A page drawn for the earlier head asks for the ref, which changes nothing now.
             taken = client.post("/api/source/pin", json={"ref": "refs/pull/7/head"}, headers=_JSON)
             assert taken.status_code == 200, taken.text
             assert taken.json()["status"]["pin"] == head
@@ -1675,14 +1937,107 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
         git_repo.clear_repo_cache()
 
 
+def test_a_commit_pinned_by_its_id_stays_when_the_pull_request_it_heads_moves(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A commit opened by its ID stays put, also while it is a pull request's head.
+
+    The mirror names such a pin by the pull request whose head it is, so the selector can
+    say so, but the reader asked for a commit: the next push must not move it, and a pull
+    request they never opened is not attended, so nothing probes it (A2 of review A on
+    #745, reproduced as the review did: from a page on the branch, with no pull request
+    attended, pin the head by ID and refresh). The newer head is reported as ``latest``.
+    A request that names the ref, as Browse code and View on branch do with ``under``,
+    follows it.
+    """
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    monkeypatch.setattr(pulls, "utc_now", lambda: datetime.now(UTC).replace(microsecond=0))
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    _move_pull_head(stand, earlier)
+    stand.answer(_answering_head(stand, earlier))
+
+    def pin(client: TestClient, body: dict[str, str]) -> dict[str, Any]:
+        answer = client.post("/api/source/pin", json=body, headers=_JSON)
+        assert answer.status_code == 200, answer.text
+        return answer.json()["status"]
+
+    try:
+        result = _serve(CANONICAL)
+        assert result.exit_code == 0, result.output
+        with TestClient(app) as client:
+            assert settle(client)["pull_request"] is None
+            assert client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON).status_code == 202
+            _until(client, 7)
+            by_id = pin(client, {"oid": earlier})
+            assert (by_id["pin"], by_id["ref"]) == (earlier, "refs/pull/7/head")
+            assert (by_id["follows"], by_id["pull_request"]) == (False, None)
+
+            _move_pull_head(stand, head)
+            stand.answer(scenario(stand.origin))
+            assert client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON).status_code == 202
+            deadline = time.monotonic() + 30
+            while _read(client, 7).json()["record"]["pull"]["head"]["sha"] != head:
+                assert time.monotonic() < deadline, "the refresh did not read the newer head"
+                time.sleep(0.01)
+            _until(client, 7)
+            status = client.get("/api/source/status").json()
+            assert (status["pin"], status["latest"]) == (earlier, head)
+            assert (status["follows"], status["pull_request"]) == (False, None)
+
+            named = pin(client, {"oid": head, "under": "refs/pull/7/head"})
+            assert (named["pin"], named["follows"], named["pull_request"]) == (head, True, 7)
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+
+
+def test_a_record_another_process_published_moves_the_pin_on_that_pull_requests_head(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two servers on one store: the one that only reads the other's record follows too.
+
+    The other process's refresh fetched the newer head into the shared store and wrote the
+    record. This server ran no job, so nothing observed the mirror; the read that adopts
+    the record asks for that (A7 of review A on #745).
+    """
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    monkeypatch.setattr(pulls, "utc_now", lambda: datetime.now(UTC).replace(microsecond=0))
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    _move_pull_head(stand, earlier)
+    stand.answer(_answering_head(stand, earlier))
+    try:
+        result = _serve(f"{CANONICAL}/pull/7")
+        assert result.exit_code == 0, result.output
+        with TestClient(app) as client:
+            assert settle(client)["pin"] == earlier
+            _move_pull_head(stand, head)
+            stand.answer(scenario(stand.origin))
+            time.sleep(1.1)  # A record's time has one-second resolution; this one is newer.
+            assert stand.refresh(7).pull.head.sha == head
+            assert client.get("/api/source/status").json()["pin"] == earlier
+            assert _read(client, 7).json()["record"]["pull"]["head"]["sha"] == head
+            deadline = time.monotonic() + 30
+            while client.get("/api/source/status").json()["pin"] != head:
+                assert time.monotonic() < deadline, "the pin did not follow the adopted head"
+                time.sleep(0.01)
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+
+
 def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """View file on Files changed switches by commit ID: to the merge base and back.
+    """A commit asked for by its ID alone: the merge base, and back to the head.
 
-    Back on the head, the server serves ``refs/pull/7/head`` again, so the selector
-    names the pull request rather than a bare commit, also after a branch was served
-    in between.
+    Back on the head, the server serves it under ``refs/pull/7/head`` again, so the
+    selector names the pull request rather than a bare commit, also after a branch was
+    served in between. Asked for by ID, the head stays put (``follows`` is false) and the
+    attended pull request stays the one the URL named: only a request that names the ref,
+    as View on branch does with ``under``, follows it (A2 of review A, B5 of review B on
+    #745).
     """
 
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
@@ -1704,12 +2059,14 @@ def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
             assert (at_base["pin"], at_base["ref"], at_base["pull_request"]) == (base, None, 7)
             at_head = pin({"oid": head})
             assert (at_head["pin"], at_head["ref"]) == (head, "refs/pull/7/head")
+            assert (at_head["follows"], at_head["pull_request"]) == (False, 7)
             # A branch served in between is the ref last served; the head is still the
             # pull request's.
             assert pin({"ref": DEFAULT_BRANCH})["ref"] == f"refs/remotes/origin/{DEFAULT_BRANCH}"
             assert pin({"oid": base})["ref"] is None
             again = pin({"oid": head})
             assert (again["pin"], again["ref"]) == (head, "refs/pull/7/head")
+            assert (again["follows"], again["pull_request"]) == (False, 7)
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
@@ -1777,9 +2134,23 @@ def test_a_pin_on_another_pull_requests_head_makes_it_the_attended_one(
     assert pin({"ref": DEFAULT_BRANCH})["pull_request"] == 8
     assert session.companion is attended
     assert pin({"ref": "refs/pull/7/head"})["pull_request"] == 7
-    # View file switches by commit ID: under that head's ref, it is the same switch.
+    # A switch by commit ID alone is named by the head it is, and attends nothing new: the
+    # reader opened a commit. Naming the head too, as View on branch does, attends it.
     by_commit = pin({"oid": stand.origin["merged_head"]})
-    assert (by_commit["ref"], by_commit["pull_request"]) == ("refs/pull/8/head", 8)
+    assert (by_commit["ref"], by_commit["pull_request"]) == ("refs/pull/8/head", 7)
+    assert by_commit["follows"] is False
+    # The same commit asked for by the head's name is the same pin, which now follows the
+    # head and attends its pull request.
+    flipped = pin({"ref": "refs/pull/8/head"})
+    assert (flipped["pin"], flipped["pull_request"], flipped["follows"]) == (
+        stand.origin["merged_head"],
+        8,
+        True,
+    )
+    assert pin({"ref": "refs/pull/7/head"})["pull_request"] == 7
+    assert pin({"ref": DEFAULT_BRANCH})["follows"] is True
+    named = pin({"oid": stand.origin["merged_head"], "under": "refs/pull/8/head"})
+    assert (named["ref"], named["pull_request"], named["follows"]) == ("refs/pull/8/head", 8, True)
 
 
 def _serving_repository_url(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2704,13 +3075,23 @@ def test_author_and_merger_avatars_come_from_existing_detail_responses(stand: _S
     assert upgraded.projection_version == PULL_RECORD_PROJECTION
     assert upgraded.pull.author_avatar_url == wanted
     assert all(item.author_avatar_url == wanted for item in upgraded.issue_comments)
-    sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    # The pull request's own reads; the account check's ``user`` is conditional on the
+    # account, not on a record.
+    sent = [
+        call["args"]
+        for call in stand.calls()
+        if call["args"][0] == "api" and call["args"][-1] != "user"
+    ]
     assert sent and not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
     assert not any("users/" in str(args) for args in sent)
     warm = stand.refresh(7)
     assert warm.pull.author_avatar_url == wanted
     assert warm.projection_version == PULL_RECORD_PROJECTION
-    reused = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    reused = [
+        call["args"]
+        for call in stand.calls()
+        if call["args"][0] == "api" and call["args"][-1] != "user"
+    ]
     assert len(reused) == len(sent) == 6
     assert all(any(arg.startswith("If-None-Match: ") for arg in args) for args in reused)
 
@@ -2749,7 +3130,13 @@ def test_a_record_of_bare_label_names_is_shown_neutral_until_its_refresh_colors_
     upgraded = stand.refresh(7)
     assert upgraded.projection_version == PULL_RECORD_PROJECTION
     assert upgraded.pull.labels == record.pull.labels
-    sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    # The pull request's own reads; the account check's ``user`` is conditional on the
+    # account, not on a record.
+    sent = [
+        call["args"]
+        for call in stand.calls()
+        if call["args"][0] == "api" and call["args"][-1] != "user"
+    ]
     assert sent and not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
 
 
@@ -3804,15 +4191,15 @@ def test_h80_initial_graph_core_then_real_rest_etag_then_304(
     first = stand.record(7)
     assert isinstance(first, PullRecord) and path not in first.etags and replies == []
     initial_calls = stand.calls()
-    assert sum(c["args"][:2] == ["auth", "status"] for c in initial_calls) == 2
+    assert sum(c["args"][-1] == "user" for c in initial_calls) == 2
     assert sum("graphql" in c["args"] for c in initial_calls) == 1
     second = stand.refresh(7)
     assert replies == [(200, None)] and second.etags[path]
-    assert sum(c["args"][:2] == ["auth", "status"] for c in stand.calls()) == 2
+    assert sum(c["args"][-1] == "user" for c in stand.calls()) == 2
     third = stand.refresh(7)
     assert replies == [(200, None), (304, second.etags[path])]
     assert third.pull == first.pull
-    assert sum(c["args"][:2] == ["auth", "status"] for c in stand.calls()) == 2
+    assert sum(c["args"][-1] == "user" for c in stand.calls()) == 2
 
 
 @pytest.mark.parametrize("state,draft", [("open", False), ("open", True), ("closed", False)])
@@ -4171,6 +4558,136 @@ def test_visible_core_preemption_honors_a_failure_recorded_during_its_checks(
     # The source-wide failure hold covers the visible batch: no second provider read.
     _drain_visible_cores(client)
     assert calls == [(8,)]
+
+
+# Each route that may start a refresh for a reader's own click: the module and name of the
+# start it calls inside ``_whose``, and what else its body must name.
+_RETRY_ROUTES: Final[dict[str, tuple[str, str, dict[str, Any]]]] = {
+    "pull-refresh": ("pull_route", "start_refresh", {"number": 7}),
+    "pulls-refresh": ("pull_list_route", "start_refresh", {}),
+    "stacks-refresh": ("pull_stacks_route", "start_refresh", {}),
+    "labels-refresh": ("pull_labels_route", "start_refresh", {}),
+    "pull-files-refresh": ("pull_files_route", "start_files_refresh", {"number": 7}),
+}
+
+
+@pytest.mark.parametrize("retry", [True, False], ids=["reader", "automatic"])
+@pytest.mark.parametrize("route", sorted(_RETRY_ROUTES))
+def test_each_refresh_route_starts_a_readers_click_where_the_ceiling_does_not_count_it(
+    pinned_pull: tuple[_Stand, TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    retry: bool,
+) -> None:
+    """A9 of review A on #737: the unit tests proved the context and the coordinator's copy
+    of it, and nothing proved a route enters it, so a handler that dropped ``_whose`` would
+    count a reader's Reload against the process's ceiling unseen.
+
+    The start each route calls is replaced by one that spends where it is called, which is
+    where the job it starts would copy its context from.
+    """
+
+    import importlib
+    import inspect
+
+    from metabrowser.builtin_plugins.github import gh_budget, pull_list_route
+
+    module_name, name, body = _RETRY_ROUTES[route]
+    module = importlib.import_module(f"metabrowser.builtin_plugins.github.{module_name}")
+    counted: list[tuple[int, int]] = []
+
+    def spend() -> str:
+        now = datetime.now(UTC)
+        before = (gh_budget.automatic_spent(now), gh_budget.speculative_spent(now))
+        gh_budget.spent(5, now=now)
+        after = (gh_budget.automatic_spent(now), gh_budget.speculative_spent(now))
+        counted.append((after[0] - before[0], after[1] - before[1]))
+        return "not_due"
+
+    async def started_async(*_args: object, **_kwargs: object) -> str:
+        return spend()
+
+    def started(*_args: object, **_kwargs: object) -> str:
+        return spend()
+
+    real = getattr(module, name)
+    monkeypatch.setattr(
+        module, name, started_async if inspect.iscoroutinefunction(real) else started
+    )
+    # A page's automatic ask also probes the list, which spends on its own.
+    monkeypatch.setattr(pull_list_route, "attend_list", lambda _view: None)
+    _stand, client = pinned_pull
+    response = client.post(
+        f"/api/plugin/github/{route}", json={**body, "retry": retry}, headers=_JSON
+    )
+    assert response.status_code == 200, response.text
+    # A reader's click is not counted; an automatic ask is, and the label set's periodic
+    # read is speculative work as well (A1 of review A on #737).
+    speculative = 5 if route == "labels-refresh" else 0
+    assert counted == ([(0, 0)] if retry else [(5, speculative)])
+
+
+def test_cores_for_rows_on_screen_are_held_over_the_process_ceiling(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A9 of review A on #737: no test spent the ceiling before asking for visible cores.
+
+    The rows on screen are the visible lane, which the floor does not hold; the ceiling
+    and a rate-limit hold do.
+    """
+
+    from metabrowser.builtin_plugins.github import gh_budget, pulls
+
+    visible, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8,), lane="visible"
+    )
+    _stand, client = pinned_pull
+    ninth = {**visible, "window": {**visible["window"], "id": "viewport"}, "numbers": [9]}
+    assert ninth["lane"] == "visible"
+    gh_budget.spent(gh_budget.AUTOMATIC_CORE_PER_HOUR, now=pulls.utc_now())
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "held"
+    # What the cache covers is answered all the same, with no request.
+    assert client.post(_PREPARE_CORES, json=visible).json()["preparation"] == "ready"
+    assert calls == [(8,)]
+    gh_budget.forget()
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "started"
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+
+
+def test_a_spent_speculative_share_holds_the_cores_walk_and_not_the_rows_on_screen(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A1 of review A on #737: the walk's batches are speculative, and counted as such."""
+
+    from metabrowser.builtin_plugins.github import gh_budget, pulls
+
+    async def spend() -> None:
+        gh_budget.spent(1, now=pulls.utc_now())
+
+    walk, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8,), hold_batch=spend, lane="background"
+    )
+    _stand, client = pinned_pull
+    _drain_visible_cores(client)
+    now = pulls.utc_now()
+    assert gh_budget.speculative_spent(now) == 1
+    # What the stand's own reads spent, which were not the walk's.
+    others = gh_budget.automatic_spent(now) - 1
+    with gh_budget.speculative():
+        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR - 1, now=now)
+    assert not gh_budget.over_ceiling(now)
+    ninth = {**walk, "window": {**walk["window"], "id": "walk-9"}, "numbers": [9]}
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "held"
+    assert calls == [(8,)]
+    # The same row on screen is read, and its batch is not speculative work.
+    on_screen = {**ninth, "window": {**walk["window"], "id": "viewport"}, "lane": "visible"}
+    assert client.post(_PREPARE_CORES, json=on_screen).json()["preparation"] == "started"
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+    now = pulls.utc_now()
+    assert gh_budget.speculative_spent(now) == gh_budget.SPECULATIVE_CORE_PER_HOUR
+    assert gh_budget.automatic_spent(now) == others + gh_budget.SPECULATIVE_CORE_PER_HOUR + 1
 
 
 def test_visible_core_preempts_a_background_batch_that_reads_none_of_its_rows(
@@ -6039,7 +6556,10 @@ def test_a_catalog_scan_does_not_send_a_polled_record_again(
 
 
 def _api_paths(stand: _Stand) -> list[str]:
-    return sorted(call["args"][-1] for call in stand.calls() if call["args"][:1] == ["api"])
+    """The repository paths asked for, leaving out the account check's ``user``."""
+
+    asked = (call["args"][-1] for call in stand.calls() if call["args"][:1] == ["api"])
+    return sorted(path for path in asked if path != "user")
 
 
 def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
@@ -6112,6 +6632,274 @@ def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
     assert conflict.comparison == first.comparison
     assert _api_paths(stand) == sorted([pull_path, runs_path, status_path])
     assert stand.record(7) == conflict
+
+
+ISSUE_PATH = "repos/octo/demo/issues/7"
+
+
+def _probe(
+    stand: _Stand,
+    record: PullRecord,
+    *,
+    checks: bool,
+    etags: dict[str, str] | None = None,
+    seen: pulls.IssueSeen | None = None,
+    mergeability: bool = False,
+) -> pulls.PullProbe:
+    return asyncio.run(
+        pulls.probe_pull_request(
+            stand.published,
+            record,
+            etags=etags or {},
+            checks=checks,
+            seen=seen,
+            mergeability=mergeability,
+        )
+    )
+
+
+def _sent_etags(stand: _Stand) -> list[tuple[str, str | None]]:
+    """Each ``gh api`` call's path and the ETag it sent, if it was conditional."""
+
+    sent: list[tuple[str, str | None]] = []
+    for call in stand.calls():
+        args: list[str] = call["args"]
+        etag = next((arg for arg in args if arg.startswith("If-None-Match: ")), None)
+        sent.append((args[-1], etag.split(": ", 1)[1] if etag else None))
+    return sent
+
+
+def test_a_probe_asks_only_the_issue_and_never_the_account(stand: _Stand) -> None:
+    """The first probe of a number reads its issue once; after that an unchanged pull
+    request is one conditional read that GitHub answers ``304``."""
+
+    record = stand.refresh(7)
+    assert pulls.probe_path(stand.published, 7) == ISSUE_PATH
+    stand.calls()
+    first = _probe(stand, record, checks=False)
+    assert first.outcome == "unchanged" and first.etags == {}
+    assert first.seen is not None and first.seen.updated_at == record.pull.updated_at
+    assert _sent_etags(stand) == [(ISSUE_PATH, None)]
+    again = _probe(stand, record, checks=False, seen=first.seen)
+    assert again == pulls.PullProbe("unchanged", {}, first.seen, record.pull.updated_at)
+    assert _sent_etags(stand) == [(ISSUE_PATH, first.seen.etag)]
+
+
+def test_a_push_to_the_repository_moves_the_pulls_etag_and_not_the_probes(
+    stand: _Stand,
+) -> None:
+    """mb-2ppr: the pull embeds its repositories, whose ``pushed_at`` and counts move with
+    every push and every issue opened; the issue a probe reads embeds neither, so its
+    ETag holds (measured 2026-11-23, beside ``pulls.PROBE_RESOURCE``)."""
+
+    answers = scenario(stand.origin)
+    pull_path = "repos/octo/demo/pulls/7"
+    record = stand.refresh(7)
+    seen = _probe(stand, record, checks=False).seen
+    body = answers["api"][pull_path]["body"]
+    base = {**body["base"], "repo": {"pushed_at": "2026-09-17T11:59:00Z", "open_issues": 12}}
+    pushed = ok(pull_path, {**body, "base": base})
+    assert pushed["headers"]["Etag"] != record.etags[pull_path]
+    stand.answer(_api(answers, pull_path, pushed))
+    stand.calls()
+    assert _probe(stand, record, checks=False, seen=seen) == pulls.PullProbe(
+        "unchanged", {}, seen, record.pull.updated_at
+    )
+    assert seen is not None and _sent_etags(stand) == [(ISSUE_PATH, seen.etag)]
+
+
+def test_a_probe_finds_a_change_by_the_issues_updated_at_and_keeps_what_it_saw(
+    stand: _Stand,
+) -> None:
+    answers = scenario(stand.origin)
+    pull_path = "repos/octo/demo/pulls/7"
+    record = stand.refresh(7)
+    seen = _probe(stand, record, checks=False).seen
+    body = answers["api"][pull_path]["body"]
+    merged = {**body, "state": "closed", "merged": True, "updated_at": "2026-09-17T11:00:00Z"}
+    stand.answer(_api(answers, pull_path, ok(pull_path, merged)))
+    stand.calls()
+    found = _probe(stand, record, checks=True, seen=seen)
+    assert found.outcome == "changed" and found.seen is not None and found.seen != seen
+    assert found.seen.updated_at == "2026-09-17T11:00:00Z"
+    # The checks are not asked once the pull request itself changed.
+    assert _api_paths(stand) == [ISSUE_PATH]
+    # A 304 for what that probe saw is still a change beside the older record, for free...
+    assert _probe(stand, record, checks=False, seen=found.seen) == pulls.PullProbe(
+        "changed", {}, found.seen, "2026-09-17T11:00:00Z"
+    )
+    assert _sent_etags(stand) == [(ISSUE_PATH, found.seen.etag)]
+    # ...and no change beside the record the full read brings.
+    newer = stand.refresh(7)
+    assert newer.pull.updated_at == "2026-09-17T11:00:00Z"
+    assert _probe(stand, newer, checks=False, seen=found.seen) == pulls.PullProbe(
+        "unchanged", {}, found.seen, "2026-09-17T11:00:00Z"
+    )
+
+
+def test_a_new_issue_etag_with_the_same_updated_at_changes_nothing(stand: _Stand) -> None:
+    """A reaction moves the issue's ETag and not its ``updated_at``: one paid read, the new
+    ETag kept, and no full read."""
+
+    answers = scenario(stand.origin)
+    record = stand.refresh(7)
+    seen = _probe(stand, record, checks=False).seen
+    reacted = ok(
+        ISSUE_PATH,
+        {"number": 7, "updated_at": record.pull.updated_at, "reactions": {"+1": 1}},
+        {"Etag": 'W/"rotated"'},
+    )
+    stand.answer(_api(answers, ISSUE_PATH, reacted))
+    found = _probe(stand, record, checks=False, seen=seen)
+    assert found == pulls.PullProbe(
+        "unchanged",
+        {},
+        pulls.IssueSeen(record.pull.updated_at, 'W/"rotated"'),
+        record.pull.updated_at,
+    )
+    # An issue GitHub answers for another number, or without a time, fails the probe.
+    for wrong in (
+        {"number": 8, "updated_at": record.pull.updated_at},
+        {"number": 7, "updated_at": None},
+    ):
+        stand.answer(_api(answers, ISSUE_PATH, ok(ISSUE_PATH, wrong)))
+        with pytest.raises(PullDataError) as unreadable:
+            _probe(stand, record, checks=False, seen=seen)
+        assert unreadable.value.state == "gh_failed"
+
+
+def test_an_app_authored_pull_reads_the_same_through_graphql_and_rest(stand: _Stand) -> None:
+    """GraphQL names an app by its slug and REST by its bot account; the core read projects
+    REST's, so the first probe after a cold open finds no change (review B2 on #709)."""
+
+    answers = scenario(stand.origin)
+    rest = copy.deepcopy(answers["api"]["repos/octo/demo/pulls/7"]["body"])
+    rest["user"] = {"login": "dependabot[bot]", "type": "Bot"}
+    rest["merged_by"] = {"login": "renovate[bot]", "type": "Bot"}
+    graph = graph_core_data(rest)["repository"]["pull"]
+    graph["author"] = {"__typename": "Bot", "login": "dependabot"}
+    graph["mergedBy"] = {"__typename": "Bot", "login": "renovate"}
+    assert pulls._graph_pull(graph, 7) == pulls._pull(rest, 7)  # pyright: ignore[reportPrivateUsage]
+    # A person is named the same both ways, whatever their login.
+    graph["author"] = {"__typename": "User", "login": "octocat"}
+    assert pulls._graph_pull(graph, 7).author == "octocat"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_probe_of_unknown_mergeability_asks_the_pull_and_sees_github_answer(
+    stand: _Stand,
+) -> None:
+    """Review A1 on #726: GitHub computes ``mergeable`` after the read that first asks, and
+    nothing the issue carries moves when it does. Before, three probes asked the issue and
+    never the pull, and each vouched for "Merge status unknown"."""
+
+    answers = scenario(stand.origin)
+    pull_path = "repos/octo/demo/pulls/7"
+    body = answers["api"][pull_path]["body"]
+    computing = {**body, "state": "open", "merged": False, "mergeable": None}
+    answers = _api(answers, pull_path, ok(pull_path, computing))
+    stand.answer(answers)
+    record = stand.refresh(7)
+    assert record.pull.mergeable == "unknown"
+    assert pulls.mergeability_probe_path(stand.published, record) == pull_path
+    seen = _probe(stand, record, checks=False).seen
+    stand.calls()
+    # Not asked for: the issue alone.
+    assert _probe(stand, record, checks=False, seen=seen).outcome == "unchanged"
+    assert _api_paths(stand) == [ISSUE_PATH]
+    # Still computing: the pull answers 304 to the record's own ETag.
+    waiting = _probe(stand, record, checks=False, seen=seen, mergeability=True)
+    assert (waiting.outcome, waiting.etags) == ("unchanged", {})
+    assert sorted(_sent_etags(stand)) == sorted(
+        [(ISSUE_PATH, seen.etag if seen else None), (pull_path, record.etags[pull_path])]
+    )
+    # The repository moved and GitHub is still computing: the new ETag is kept.
+    base = {
+        **cast("dict[str, Any]", computing["base"]),
+        "repo": {"pushed_at": "2026-09-17T11:59:00Z"},
+    }
+    moved = ok(pull_path, {**computing, "base": base})
+    stand.answer(_api(answers, pull_path, moved))
+    still = _probe(stand, record, checks=False, seen=seen, mergeability=True)
+    assert (still.outcome, still.etags) == ("unchanged", {pull_path: moved["headers"]["Etag"]})
+    # GitHub answers, with the same updated_at: the checks are read again.
+    computed = ok(pull_path, {**computing, "mergeable": True})
+    stand.answer(_api(answers, pull_path, computed))
+    assert _probe(stand, record, checks=False, seen=seen, mergeability=True).outcome == (
+        "checks_changed"
+    )
+    resolved = asyncio.run(pulls.refresh_pull_request(stand.published, 7, checks_only=True))
+    assert resolved.pull.mergeable == "mergeable"
+    # A record that holds an answer, or a closed one, never has the pull asked.
+    assert pulls.mergeability_probe_path(stand.published, resolved) is None
+    stand.calls()
+    assert _probe(stand, resolved, checks=False, seen=seen, mergeability=True).outcome == (
+        "unchanged"
+    )
+    assert _api_paths(stand) == [ISSUE_PATH]
+    closed = record.model_copy(update={"pull": record.pull.model_copy(update={"state": "closed"})})
+    assert pulls.mergeability_probe_path(stand.published, closed) is None
+
+
+def test_a_pull_answer_that_cannot_be_read_is_not_taken_for_still_unknown(
+    stand: _Stand,
+) -> None:
+    """Review B3 on #726: read as "the same", a malformed 200 would be vouched for and its
+    ETag kept, so the pull would answer 304 from then on."""
+
+    answers = scenario(stand.origin)
+    pull_path = "repos/octo/demo/pulls/7"
+    body = answers["api"][pull_path]["body"]
+    computing = {**body, "state": "open", "merged": False, "mergeable": None}
+    answers = _api(answers, pull_path, ok(pull_path, computing))
+    stand.answer(answers)
+    record = stand.refresh(7)
+    seen = _probe(stand, record, checks=False).seen
+    issue = ok(ISSUE_PATH, {"number": 7, "updated_at": record.pull.updated_at})
+    malformed = ok(pull_path, {"number": 7, "message": "?"})
+    stand.answer(_api(_api(answers, ISSUE_PATH, issue), pull_path, malformed))
+    found = _probe(stand, record, checks=False, seen=seen, mergeability=True)
+    assert (found.outcome, found.etags) == ("checks_changed", {})
+
+
+def test_an_issue_older_than_the_record_is_behind_and_not_a_change(stand: _Stand) -> None:
+    """Review A8 on #726: an answer that lags the pull's would have cost a full read."""
+
+    answers = scenario(stand.origin)
+    record = stand.refresh(7)
+    older = "2000-01-01T00:00:00Z"
+    assert older < record.pull.updated_at
+    stand.answer(_api(answers, ISSUE_PATH, ok(ISSUE_PATH, {"number": 7, "updated_at": older})))
+    stand.calls()
+    found = _probe(stand, record, checks=True)
+    assert (found.outcome, found.updated_at) == ("behind", older)
+    assert _api_paths(stand) == [ISSUE_PATH]
+    # A time in another spelling would not compare as text, so it is not read as one.
+    offset = ok(ISSUE_PATH, {"number": 7, "updated_at": "2030-01-01T00:00:00+00:00"})
+    stand.answer(_api(answers, ISSUE_PATH, offset))
+    with pytest.raises(PullDataError) as unreadable:
+        _probe(stand, record, checks=False)
+    assert unreadable.value.state == "gh_failed"
+
+
+def test_a_checks_probe_reads_the_first_pages_and_sees_a_rerun(stand: _Stand) -> None:
+    answers = scenario(stand.origin)
+    head = stand.origin["fork_head"]
+    runs_path = page(f"repos/octo/demo/commits/{head}/check-runs")
+    status_path = page(f"repos/octo/demo/commits/{head}/status")
+    record = stand.refresh(7)
+    assert pulls.checks_probe_paths(stand.published, record) == (runs_path, status_path)
+    stand.calls()
+    first = _probe(stand, record, checks=True)
+    assert (first.outcome, first.etags) == ("unchanged", {})
+    assert _api_paths(stand) == sorted([ISSUE_PATH, runs_path, status_path])
+    rerun = copy.deepcopy(answers["api"][runs_path]["body"])
+    for run in rerun["check_runs"]:
+        run.update(status="in_progress", conclusion=None)
+    stand.answer(_api(answers, runs_path, ok(runs_path, rerun)))
+    assert _probe(stand, record, checks=True).outcome == "checks_changed"
+    # A part GitHub refused would read as a change on every probe, so it is not probed.
+    refused = record.model_copy(update={"status": None, "unavailable": {"status": "gh_failed"}})
+    assert pulls.checks_probe_paths(stand.published, refused) is None
 
 
 def test_a_checks_only_refresh_reads_everything_when_the_pull_moved(stand: _Stand) -> None:

@@ -23,6 +23,7 @@ from metabrowser.builtin_plugins.github.pull_list import ListedRepository, write
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.builtin_plugins.github.pull_stacks import read_stacks, refresh_stacks
 from metabrowser.builtin_plugins.github.pull_stacks_route import StackView, stack_envelope
+from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
 from metabrowser.cache.locks import run_lock_section, source_alias_lock
 from metabrowser.server import app
 from tests.cache_home_fixture import FixtureSource, _stage_and_publish_source, build_empty_home
@@ -421,16 +422,20 @@ def test_cached_route_etag_ignores_countdown_but_changes_at_expiry(
     before = (repository.home / f"sources/{repository.slug}/pulls/stacks.json").read_bytes()
     with TestClient(app) as client:
         first = client.get("/api/plugin/github/stacks")
-        assert first.status_code == 200 and first.json()["fresh_for_s"] == 300
+        # A snapshot that was read is read again FULL_REFRESH_S later, where a failed
+        # attempt waits STACK_FRESHNESS_S.
+        assert first.status_code == 200 and first.json()["fresh_for_s"] == FULL_REFRESH_S
         monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=30))
-        assert envelope(repository)["fresh_for_s"] == 270
+        assert envelope(repository)["fresh_for_s"] == FULL_REFRESH_S - 30
         assert (
             client.get(
                 "/api/plugin/github/stacks", headers={"if-none-match": first.headers["etag"]}
             ).status_code
             == 304
         )
-        monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=301))
+        monkeypatch.setattr(
+            pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=FULL_REFRESH_S + 1)
+        )
         expired = client.get(
             "/api/plugin/github/stacks", headers={"if-none-match": first.headers["etag"]}
         )
@@ -556,3 +561,40 @@ def test_unwritable_cache_keeps_snapshot_and_process_backoff(
     provider(monkeypatch, [response([native(2)])])
     asyncio.run(refresh_stacks(repository, retry=True))
     assert envelope(repository)["stacks"][0]["number"] == 2
+
+
+def test_an_automatic_read_waits_for_the_budget_and_slows_past_the_process_ceiling(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import gh_budget
+    from metabrowser.builtin_plugins.github.pull_stacks import refresh_wanted
+
+    provider(monkeypatch, [response([native(30, 7, 9)])])
+    asyncio.run(refresh_stacks(repository))
+
+    def later(seconds: float) -> None:
+        monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=seconds))
+
+    later(FULL_REFRESH_S + 1)
+    assert refresh_wanted(repository)
+    low = {
+        "x-ratelimit-limit": "5000",
+        "x-ratelimit-remaining": "1000",
+        "x-ratelimit-reset": str(int((FETCHED_AT + timedelta(minutes=30)).timestamp())),
+    }
+    try:
+        # Below the floor an automatic read stops; a reader's Retry never asks.
+        gh_budget.observe(low, resource="core")
+        assert not refresh_wanted(repository)
+        assert refresh_wanted(repository, retry=True)
+        gh_budget.forget()
+        # Past the ceiling it is slowed to five minutes, not stopped.
+        gh_budget.spent(gh_budget.AUTOMATIC_CORE_PER_HOUR, now=FETCHED_AT)
+        assert not refresh_wanted(repository)
+        assert envelope(repository)["fresh_for_s"] == gh_budget.CEILING_FULL_READ_S - (
+            FULL_REFRESH_S + 1
+        )
+        later(gh_budget.CEILING_FULL_READ_S + 1)
+        assert refresh_wanted(repository)
+    finally:
+        gh_budget.forget()

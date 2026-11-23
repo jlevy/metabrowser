@@ -9,8 +9,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": null,
+  "checked_at": null,
   "reader": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "total": null,
@@ -45,8 +47,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": null,
+    "checked_at": null,
     "reader": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": null,
     "total": null,
@@ -72,8 +76,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -102,7 +108,7 @@ status: 200
 --- body ---
 {"target": 500}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=open cursor=open-100
 gh api graphql catalog state=open cursor=open-200
@@ -125,8 +131,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -201,8 +209,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -277,8 +287,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -339,8 +351,10 @@ status: 200
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "succeeded",
@@ -371,6 +385,7 @@ status: 200
 --- body ---
 {"target": 1000}
 --- gh ---
+gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
 exit: 0
 --- stdout ---
@@ -382,8 +397,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -421,8 +438,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "closed",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -499,8 +518,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "all",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -672,8 +693,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -708,8 +731,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:01:01Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -738,7 +763,7 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=2'
 exit: 0
@@ -751,8 +776,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:01:01Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -827,8 +854,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:01:01Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -887,8 +916,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:01:01Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -923,8 +954,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:01:01Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "network_error",
@@ -954,6 +987,7 @@ Error: the refresh ended with network_error
 --- body ---
 {"retry": true}
 --- gh ---
+gh api user
 gh auth status
 gh api graphql catalog state=open cursor=start
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
@@ -967,8 +1001,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:01:01Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "network_error",
@@ -1008,8 +1044,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": "2026-09-17T12:01:01Z",
+    "checked_at": null,
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
+    "probe_every_s": 10.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "network_error",
@@ -1044,8 +1082,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:01:01Z",
+  "checked_at": null,
   "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -1074,7 +1114,7 @@ status: 200
 --- body ---
 {"retry": true}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=all cursor=start
 ## A visible pull request prepares its description from one GraphQL batch.
@@ -1103,6 +1143,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
@@ -1185,6 +1226,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
@@ -1309,6 +1351,47 @@ status: 200
 --- body ---
 {"state": "all", "window": {"id": "leased-8", "generation": "<CATALOG_EPOCH_2>:1"}, "numbers": [7, 8]}
 --- gh ---
+## GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter automatic work leaves to the reader. A batch that would read GitHub is held, with no request; one the cache covers is still answered.
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-cores-prepare --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-cores-prepare
+status: 200
+{
+  "preparation": "held",
+  "failure": null
+}
+--- stderr ---
+--- body ---
+{"state": "all", "window": {"id": "held-8", "generation": "<CATALOG_EPOCH_2>:1"}, "numbers": [8]}
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-cores-prepare --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-cores-prepare
+status: 200
+{
+  "preparation": "ready",
+  "ready_numbers": [
+    7
+  ],
+  "skipped_numbers": []
+}
+--- stderr ---
+--- body ---
+{"state": "all", "window": {"id": "held-8", "generation": "<CATALOG_EPOCH_2>:1"}, "numbers": [7]}
+--- gh ---
+## The same batch for rows on screen is not held by the floor, which is a reserve for the reader: what the reader is looking at is still read.
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-cores-prepare --data request.json
+exit: 0
+--- stdout ---
+status: 202
+{"preparation": "started", "status_route": "/api/plugin/github/pull?number=8"}
+--- stderr ---
+--- body ---
+{"state": "all", "window": {"id": "held-8", "generation": "<CATALOG_EPOCH_2>:1"}, "numbers": [8], "lane": "visible"}
+--- gh ---
+gh api graphql visible-cores numbers=8
 # metab root --api /api/cache/source/github-com-octo-demo-9vhngza0oa1
 exit: 0
 --- stdout ---
@@ -1372,7 +1455,7 @@ exit: 0
 api: /api/plugin/github/cache-clear
 status: 200
 {
-  "cleared": 4,
+  "cleared": 5,
   "source": "https://github.com/octo/demo"
 }
 --- stderr ---
@@ -1390,8 +1473,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": null,
+  "checked_at": null,
   "reader": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "total": null,
@@ -1422,8 +1507,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "open",
     "fetched_at": null,
+    "checked_at": null,
     "reader": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": null,
     "total": null,
@@ -1449,8 +1536,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "open",
   "fetched_at": "2026-09-17T12:02:02Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -1479,7 +1568,7 @@ status: 200
 --- body ---
 {}
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=open cursor=open-100
 gh api graphql catalog state=open cursor=open-200

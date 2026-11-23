@@ -34,7 +34,7 @@ cloned https://github.com/octo/demo in 0.0 s
 --- gh ---
 gh auth status
 gh api repos/octo/demo --jq .size
-gh auth status
+gh api user
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=open cursor=open-100
 gh api graphql catalog state=all cursor=start
@@ -60,11 +60,11 @@ status: 200
     "per_scan": 8,
     "scan": null,
     "scan_used": 0,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 0
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -72,7 +72,15 @@ status: 200
     "admits": true,
     "reason": null,
     "held_until": null,
-    "observed": {}
+    "observed": {},
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 0,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 0,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 0
+    }
   },
   "recent": [
     {
@@ -108,11 +116,11 @@ status: 200
     "per_scan": 8,
     "scan": null,
     "scan_used": 0,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 0
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -120,7 +128,15 @@ status: 200
     "admits": true,
     "reason": null,
     "held_until": null,
-    "observed": {}
+    "observed": {},
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 0,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 0,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 0
+    }
   },
   "recent": [
     {
@@ -269,11 +285,11 @@ status: 200
     "per_scan": 8,
     "scan": null,
     "scan_used": 0,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 0
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 1
   },
   "governor": {
@@ -281,7 +297,15 @@ status: 200
     "admits": true,
     "reason": null,
     "held_until": null,
-    "observed": {}
+    "observed": {},
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 1,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 1,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 0
+    }
   },
   "recent": [
     {
@@ -296,7 +320,7 @@ status: 200
 --- body ---
 {"files": [8]}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/8/files?per_page=100&page=1
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull-files?number=8&limit=0'
 exit: 0
@@ -334,11 +358,11 @@ status: 200
     "per_scan": 8,
     "scan": null,
     "scan_used": 0,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 0
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -346,7 +370,15 @@ status: 200
     "admits": true,
     "reason": null,
     "held_until": null,
-    "observed": {}
+    "observed": {},
+    "ceiling": {
+      "per_hour": 300,
+      "hour_used": 0,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 0,
+      "catalog_per_hour": 8,
+      "catalog_hour_used": 0
+    }
   },
   "recent": [
     {

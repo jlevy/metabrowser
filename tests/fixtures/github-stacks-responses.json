@@ -45,7 +45,7 @@
       "source": "https://github.com/octo/demo",
       "reader": "gh:octo-reader",
       "fetched_at": "2026-09-17T12:05:01Z",
-      "fresh_for_s": 300.0,
+      "fresh_for_s": 90.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -124,7 +124,7 @@
       "source": "https://github.com/octo/demo",
       "reader": "gh:octo-reader",
       "fetched_at": "2026-09-17T12:15:03Z",
-      "fresh_for_s": 300.0,
+      "fresh_for_s": 90.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -145,7 +145,7 @@
       "source": "https://github.com/octo/demo",
       "reader": "gh:octo-reader",
       "fetched_at": "2026-09-17T12:20:04Z",
-      "fresh_for_s": 300.0,
+      "fresh_for_s": 90.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",

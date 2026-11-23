@@ -24,12 +24,18 @@ filled, so the page asks again while it is.
 A folder that is a repository's root answers the same two routes for its own checkout
 (:mod:`metabrowser.checkout_revisions`): the refs route lists its branches, tags, and
 remote-tracking branches from its own Git directory, and the pin route serves one of them
-as a pinned revision, or the working tree again, without writing the checkout.
+as a pinned revision, or the working tree again, without writing the checkout. When
+Metabrowser keeps a store of the checkout's origin (:mod:`metabrowser.checkout_store`),
+the refs route says so in ``origin``, lists the origin's branches and tags from that
+store, as last fetched, and the pin route serves one from it; the refresh route then
+fetches the store, where a folder with none is refused as before.
 
 ``POST /api/source/refresh`` starts a background refresh of the served mirror, or joins
 the one running, and returns at once. With ``{"for": "commit"}`` it is the fetch a
 commit the mirror lacks waits for, which a page asks for by itself only when the mirror
-is older than the freshness window. ``POST /api/source/pin`` switches the served pin
+is older than the freshness window. With ``{"for": "page"}`` it is a visible page's own
+ask, every few seconds on a branch: the server asks the origin where that branch is and
+fetches at once when it moved. ``POST /api/source/pin`` switches the served pin
 to a branch, tag, or commit in the mirror. Both change state or start work, so both are
 POST routes with a JSON body behind the application's same-origin guard: content inside
 an untrusted page cannot reach them with a link, an image, or a form.
@@ -65,6 +71,7 @@ from metabrowser.checkout_revisions import (
     checkout_ref_name,
     checkout_revisions,
 )
+from metabrowser.checkout_store import CheckoutStore, OriginStore, checkout_store
 from metabrowser.content_errors import ContentReadError
 from metabrowser.git.process import GitError, GitLocation
 from metabrowser.git.ref_state import ref_state
@@ -164,7 +171,8 @@ class SourceStatus(TypedDict):
     origin knows it by; both are ``None`` when no ref is known. A filesystem subject
     has no pin, so all three are ``None``. The freshness fields are described by
     :class:`~metabrowser.mirror_refresh.FreshnessFields`; they are empty and
-    ``refreshable`` is false unless the subject is a served mirror.
+    ``refreshable`` is false unless the subject is a served mirror, or a folder that
+    keeps a store of its checkout's origin, once that store is open.
 
     ``name``, ``origin``, and ``location`` are what a served mirror's page shows where
     a folder's shows its name and path, from
@@ -182,9 +190,19 @@ class SourceStatus(TypedDict):
 
     A revision a folder's server shows of its own checkout is a pin with no origin:
     ``name`` is the folder's name, ``location`` the checkout's path, shown as a folder's
-    is, ``origin`` is ``None``, and nothing is refreshable, since Metabrowser fetches
-    nothing into a checkout. ``GET /api/identity`` says such a subject's ``kind`` is
-    still ``folder``.
+    is, and ``origin`` is ``None``. Metabrowser fetches nothing into a checkout. What is
+    refreshable in a folder is the store Metabrowser keeps of the checkout's origin
+    (:mod:`metabrowser.checkout_store`): once it is open, the working tree's status and
+    that of a revision read from the checkout say when that store was fetched, and one of
+    the origin's branches or tags, read from the store, has its freshness fields as a
+    mirror's pin has. A revision read from the checkout under one of its own branches,
+    remote-tracking branches, or tags ``follows`` that ref as the checkout has it, with or
+    without a store: ``latest`` is the ref's commit as last read there, and
+    ``probe_every_s`` how often a visible page asks where it is, which reads the
+    checkout's refs and fetches nothing
+    (:meth:`~metabrowser.checkout_revisions.CheckoutRevisions.observe`). The working tree
+    and a commit opened by its ID follow nothing. ``GET /api/identity`` says such a
+    subject's ``kind`` is still ``folder``.
     """
 
     subject: str
@@ -206,7 +224,13 @@ class SourceStatus(TypedDict):
     last_fetch_at: str | None
     last_outcome: LastOutcome | None
     refreshing: bool
+    # True when all that is refreshing is a fetch of the mirror no reader asked for: the
+    # idle one, or a visible page's once a window. A page shows nothing for it.
+    refresh_quiet: bool
     stale: bool
+    # How often a visible page of this pin asks with ``{"for": "page"}``, in seconds; null
+    # when the pin is not one of the origin's branches, which alone are probed.
+    probe_every_s: float | None
     pull_request: int | None
     selection_state: SelectionState | None
     selection_href: str | None
@@ -223,6 +247,19 @@ def source_status(
     session = get_source_session()
     pin = as_git_revision_subject(session.subject)
     if pin is not None and checkout is not None and checkout.serves(pin):
+        # One of the origin's branches or tags, read from the store Metabrowser keeps of
+        # it, is fetched and followed as a mirror's pin is; the checkout's own is not.
+        store = checkout.origin
+        of_store = store is not None and store.owns(pin)
+        # One of the checkout's own follows its ref as the checkout has it, read and not
+        # fetched; all that is refreshable is the store of the origin.
+        freshness: FreshnessFields = (
+            store.freshness_fields(pin)
+            if store is not None and of_store
+            else checkout.freshness_fields(
+                pin, UNSERVED_FRESHNESS if store is None else store.unpinned_fields()
+            )
+        )
         return SourceStatus(
             subject=pin.kind,
             generation=session.generation,
@@ -233,15 +270,13 @@ def source_status(
             origin=None,
             location=checkout.display.location,
             borrows=None,
-            shallow=checkout.shallow,
-            **UNSERVED_FRESHNESS,
+            shallow=store.shallow() if store is not None and of_store else checkout.shallow,
+            **freshness,
         )
     if pin is not None:
         from metabrowser.git.tree_source import ref_short_name
 
-        freshness: FreshnessFields = (
-            mirror.freshness_fields(pin) if mirror is not None else UNSERVED_FRESHNESS
-        )
+        freshness = mirror.freshness_fields(pin) if mirror is not None else UNSERVED_FRESHNESS
         display = mirror.mirror.display if mirror is not None else None
         return SourceStatus(
             subject=pin.kind,
@@ -267,7 +302,12 @@ def source_status(
         location=None,
         borrows=None,
         shallow=False,
-        **UNSERVED_FRESHNESS,
+        # A folder that keeps a store of its checkout's origin says how fresh that is.
+        **(
+            checkout.origin.unpinned_fields()
+            if checkout is not None and checkout.origin is not None
+            else UNSERVED_FRESHNESS
+        ),
     )
 
 
@@ -300,7 +340,11 @@ class SourceRef(TypedDict):
     requests the branch is the head of, open first and then newest first, and a filter's
     matches before the rest, the first :data:`REF_PULLS_PER_ROW` of them, and ``pulls_total``
     how many there are; a row with none has neither, so a list of thousands of branches
-    pays nothing for them.
+    pays nothing for them. ``checkout`` is on a row of a checkout's origin's branches
+    read from Metabrowser's store of that origin, and only where the checkout's own
+    ``origin/<branch>`` is not at the row's ``commit``
+    (:class:`CheckoutOwnRef`): the reader has not fetched what the origin has, or has
+    pushed what Metabrowser has not fetched yet.
     """
 
     name: str
@@ -312,6 +356,23 @@ class SourceRef(TypedDict):
     current: bool
     pulls: NotRequired[list[RefPull]]
     pulls_total: NotRequired[int]
+    checkout: NotRequired[CheckoutOwnRef]
+
+
+class CheckoutOwnRef(TypedDict):
+    """Where the checkout's own remote-tracking branch is, on a row whose commit it is not at.
+
+    ``commit`` is the commit the checkout's ``refs/remotes/origin/<branch>`` names and
+    ``committed_at`` that commit's committer date in epoch seconds; both are ``None``
+    when the checkout has no such ref, a branch the reader never fetched. The row says
+    that the two differ and no more: which is ahead, and by how many commits, would take
+    a walk of the history between them for every branch that differs
+    (``_own_difference`` in ``checkout_revisions.py``). It is the wire form of the
+    dataclass of the same name in ``mirror_refresh.py``, which a listing carries.
+    """
+
+    commit: str | None
+    committed_at: float | None
 
 
 class RefPullsStatus(TypedDict):
@@ -357,7 +418,13 @@ class SourceRefs(TypedDict):
     checkout's remote-tracking branches are a third. ``working_tree`` is ``None`` for a
     mirror, which has none. ``pull_requests`` is ``None`` where no provider has pull
     requests for the subject, and for a list of tags, which no pull request has as its
-    head.
+    head. ``origin`` is the store Metabrowser keeps of a checkout's origin
+    (:class:`~metabrowser.checkout_store.OriginStore`): once it is ``ready``, the
+    checkout's list of remote-tracking branches has the origin's branches from that
+    store, as last fetched, in place of the checkout's own ``origin/*``, and its list of
+    tags has the origin's tags from it with the tags only the checkout has. ``None`` for
+    a mirror, whose status says the same of its store, and for a checkout that keeps no
+    store: one with no ``origin``, or whose origin is on this machine.
     """
 
     kind: RefKind
@@ -366,6 +433,7 @@ class SourceRefs(TypedDict):
     ref: str | None
     kinds: list[RefKind]
     working_tree: WorkingTree | None
+    origin: OriginStore | None
     pull_requests: RefPullsStatus | None
     refs: list[SourceRef]
 
@@ -394,6 +462,7 @@ def source_refs(
     query: str,
     working_tree: WorkingTree | None = None,
     pulls: RefPulls | None = None,
+    origin: OriginStore | None = None,
 ) -> SourceRefs:
     """Every ref of *listed* that matches *query*, a case-insensitive name fragment.
 
@@ -406,6 +475,9 @@ def source_refs(
 
     needle = query.casefold()
     of_checkout = working_tree is not None
+    # A checkout's first-listed branch is the one checked out. Its first-listed
+    # remote-tracking branch is its origin's default, as the origin's store has it.
+    checked_out = of_checkout and kind == "branch"
     served_ref = subject.ref if subject is not None else None
     found = pulls.matching(query) if pulls is not None and needle else frozenset[str]()
     rows: list[SourceRef] = []
@@ -418,13 +490,17 @@ def source_refs(
             ref=entry.ref,
             commit=entry.commit,
             committed_at=entry.committed_at,
-            default=entry.default and not of_checkout,
-            checked_out=entry.default and of_checkout,
+            default=entry.default and not checked_out,
+            checked_out=entry.default and checked_out,
             current=served_ref is not None and entry.ref == served_ref,
         )
         if pulls is not None and head is not None and (shown := pulls.pulls(head, query)):
             row["pulls"] = list(shown[:REF_PULLS_PER_ROW])
             row["pulls_total"] = len(shown)
+        if entry.checkout is not None:
+            row["checkout"] = CheckoutOwnRef(
+                commit=entry.checkout.commit, committed_at=entry.checkout.committed_at
+            )
         rows.append(row)
     return SourceRefs(
         kind=kind,
@@ -433,6 +509,7 @@ def source_refs(
         ref=served_ref,
         kinds=list(_CHECKOUT_REF_KINDS if of_checkout else _MIRROR_REF_KINDS),
         working_tree=working_tree,
+        origin=origin,
         pull_requests=RefPullsStatus(
             state="ready" if pulls.ready else "absent",
             complete=pulls.complete,
@@ -487,6 +564,34 @@ async def _refs_answer_key(
     )
 
 
+async def _with_origin_state(
+    key: tuple[str, ...] | None,
+    store: CheckoutStore | None,
+    checkout: CheckoutRevisions,
+    *,
+    kind: RefKind,
+    origin: OriginStore | None,
+) -> tuple[str, ...] | None:
+    """A checkout's listing key with what its origin's store adds to the answer.
+
+    The store's state as the envelope reports it, and, for a list that reads the store's
+    refs, their state (:func:`~metabrowser.git.ref_state.ref_state`), which another
+    process's fetch changes too. ``None``, to keep nothing, when that state cannot be
+    named.
+    """
+
+    if key is None or origin is None:
+        return key
+    refs = ""
+    location = store.refs_location() if store is not None else None
+    if kind != "branch" and checkout.origin is not None and location is not None:
+        state = await ref_state(location)
+        if state is None:
+            return None
+        refs = state
+    return (*key, json.dumps(origin, sort_keys=True, separators=(",", ":")), refs)
+
+
 def _encoded_refs(
     listed: tuple[MirrorRef, ...],
     subject: GitRevisionSubject | None,
@@ -495,6 +600,7 @@ def _encoded_refs(
     query: str,
     working_tree: WorkingTree | None,
     pulls: RefPulls | None,
+    origin: OriginStore | None = None,
 ) -> bytes:
     """The listing's body, as :func:`keep_body` keeps it, filtered and encoded.
 
@@ -504,7 +610,13 @@ def _encoded_refs(
     """
 
     page = source_refs(
-        listed, subject, kind=kind, query=query, working_tree=working_tree, pulls=pulls
+        listed,
+        subject,
+        kind=kind,
+        query=query,
+        working_tree=working_tree,
+        pulls=pulls,
+        origin=origin,
     )
     return bytes(JSONResponse(dict(page)).body)
 
@@ -564,6 +676,7 @@ async def api_source_refs(request: Request) -> Response:
             # list of branches the reader came to choose from (mb-tjbm review A10).
             log.warning("the pull requests of the refs could not be read: %s", exc)
     working_tree: WorkingTree | None = None
+    origin: OriginStore | None = None
     try:
         if isinstance(source, CheckoutRevisions):
             # HEAD as the listing will read it (`_repository`), and the key names it.
@@ -577,6 +690,13 @@ async def api_source_refs(request: Request) -> Response:
                 first_ref=head_ref,
                 pulls=pulls,
             )
+            # The store of the checkout's origin: its state is part of the answer, and
+            # once it lists the origin's refs, so is the state of its own refs.
+            store = checkout_store(request.app)
+            if store is not None:
+                await store.ensure_open()
+            origin = store.state() if store is not None else None
+            key = await _with_origin_state(key, store, source, kind=kind, origin=origin)
             kept = kept_answer(request, key)
             if kept is not None:
                 return kept
@@ -584,6 +704,10 @@ async def api_source_refs(request: Request) -> Response:
             head, listed = await source.list_refs(kind)
             if head != head_ref:
                 # HEAD was read again between the key and the listing: keep nothing.
+                key = None
+            if store is not None and store.state() != origin:
+                # The store was made, or its fetch ended, while the refs were read.
+                origin = store.state()
                 key = None
             working_tree = WorkingTree(
                 current=subject is None,
@@ -627,6 +751,7 @@ async def api_source_refs(request: Request) -> Response:
         query=query,
         working_tree=working_tree,
         pulls=pulls,
+        origin=origin,
     )
     return keep_body(request, key, body)
 
@@ -687,23 +812,29 @@ def _error(message: str, code: str, status_code: int) -> JSONResponse:
     return JSONResponse({"error": message, "code": code}, status_code=status_code)
 
 
-def _refresh_request(body: dict[str, Any]) -> tuple[bool, bool]:
-    """Whether a refresh request is for a missing commit, and whether it is a retry."""
+def _refresh_request(body: dict[str, Any]) -> tuple[Literal["commit", "page"] | None, bool]:
+    """What a refresh request is for, a missing commit or a visible page, and whether it is a retry."""
 
     unknown = sorted(set(body) - {"for", "retry"})
     if unknown:
         raise _BadRequestError('a refresh request names only "for" and "retry"')
     purpose = body.get("for")
     retry = body.get("retry", False)
-    if purpose is not None and purpose != "commit":
-        raise _BadRequestError('"for" may only be "commit"')
-    if not isinstance(retry, bool) or (retry and purpose is None):
-        raise _BadRequestError('"retry" is true or false, and goes with "for"')
-    return purpose == "commit", retry
+    if purpose is not None and purpose not in ("commit", "page"):
+        raise _BadRequestError('"for" may only be "commit" or "page"')
+    if not isinstance(retry, bool) or (retry and purpose != "commit"):
+        raise _BadRequestError('"retry" is true or false, and goes with "for": "commit"')
+    return purpose, retry
 
 
 async def api_source_refresh(request: Request) -> JSONResponse:
     """``POST /api/source/refresh`` — start or join a refresh of the served mirror.
+
+    A folder that keeps a store of its checkout's origin answers for that store,
+    whatever it serves (:meth:`~metabrowser.checkout_store.CheckoutStore.refresh`):
+    the store is fetched, or made when there is none yet, and the answer adds
+    ``origin``, the store's state, beside the folder's ``status``. Any other folder
+    answers ``unsupported_for_subject`` (409).
 
     Returns ``202`` as soon as the job is scheduled; the response never waits on the
     network. ``refresh`` says whether this request started the job or joined one that
@@ -722,20 +853,84 @@ async def api_source_refresh(request: Request) -> JSONResponse:
     refresh was answered (``started``, ``joined``, or ``too_many`` when the queue had no
     room for it), or null when none was asked for, so a page can tell a fetch that ran
     from one a full queue refused.
+
+    ``{"for": "page"}`` is the ask a visible page makes by itself
+    (:meth:`~metabrowser.mirror_refresh.MirrorSession.page_ask`). It fetches a mirror
+    older than the freshness window, and otherwise asks the origin where the served
+    branch is and fetches at once if it moved: ``refresh`` is then ``"probed"`` for a
+    branch found where the mirror has it, ``"not_due"`` when nothing was asked of the
+    origin, and both answer ``200``. It waits for the probe at most ``STORE_PROBE_WAIT_S``
+    and never for a fetch. The status's ``probe_every_s`` says how often a page sends
+    it: a number for one of the origin's branches, and null for any other pin, whose page
+    sends none.
+
+    A folder's page on one of its checkout's own branches, remote-tracking branches, or
+    tags sends the same ask (:meth:`~metabrowser.checkout_revisions.CheckoutRevisions.observe`):
+    the server reads where that ref is in the checkout, fetching nothing, and serves its
+    new commit when the reader's commit or fetch moved it. ``refresh`` is ``"probed"``
+    unless the store of the origin, when the folder keeps one, had a fetch to start or
+    join, and a folder with no store answers it ``200`` where every other refresh of
+    it is ``409``.
     """
 
+    mirror: MirrorSession | None = None
+    store: CheckoutStore | None = None
+    checkout: CheckoutRevisions | None = None
+    # Whether a page's ask read the checkout's own refs for the branch it shows.
+    observed: bool | None = None
     try:
-        for_commit, retry = _refresh_request(await _json_object(request))
-        mirror = _served_mirror(request, "refresh")
+        purpose, retry = _refresh_request(await _json_object(request))
+        for_commit = purpose == "commit"
+        try:
+            mirror = _served_mirror(request, "refresh")
+        except UnsupportedSourceCapabilityError:
+            # A folder that keeps a store of its checkout's origin refreshes that.
+            store = checkout_store(request.app)
+            if store is not None:
+                await store.ensure_open()
+            checkout = checkout_revisions()
+            if purpose == "page" and checkout is not None:
+                observed = await checkout.observe()
+            if store is None or not store.fetchable:
+                if observed is None:
+                    raise
+                store = None
     except _BadRequestError as exc:
         return _error(str(exc), "invalid_request", exc.status_code)
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
     pulled: dict[str, Any] = {}
+    if mirror is None and store is None:
+        # A folder with no store to fetch, on one of its checkout's own branches: the
+        # ask read where the branch is, which is all there is to ask.
+        return JSONResponse(
+            {"refresh": "probed", "status": dict(source_status(None, checkout))}, status_code=200
+        )
+    if mirror is None:
+        assert store is not None
+        started, pull_refresh = await store.refresh(purpose, retry=retry)
+        if observed is not None and started == "not_due":
+            # Nothing was due at the origin, and the checkout's own refs were read.
+            started = "probed"
+        if for_commit:
+            pulled["pull_refresh"] = pull_refresh
+        status = source_status(None, checkout_revisions())
+        origin = store.state()
+        pulled["origin"] = origin
+        # The store's fetch is work accepted whatever the folder serves.
+        accepted = started not in ("fresh", "probed", "not_due") or (
+            origin is not None and origin["refreshing"]
+        )
+        return JSONResponse(
+            {"refresh": started, **pulled, "status": dict(status)},
+            status_code=202 if accepted else 200,
+        )
     if for_commit:
         fetch = mirror.request_commit_fetch(retry=retry)
         started: str = fetch.refresh
         pulled["pull_refresh"] = fetch.pull_refresh
+    elif purpose == "page":
+        started = await mirror.page_ask()
     else:
         started = mirror.request_refresh()
     status = source_status(mirror)
@@ -751,7 +946,7 @@ async def api_source_refresh(request: Request) -> JSONResponse:
             status_code=429,
         )
     # Nothing scheduled and nothing running is an answer, not accepted work.
-    accepted = started != "fresh" or status["refreshing"]
+    accepted = started not in ("fresh", "probed", "not_due") or status["refreshing"]
     return JSONResponse(
         {"refresh": started, **pulled, "status": dict(status)},
         status_code=202 if accepted else 200,
@@ -1166,6 +1361,12 @@ async def api_source_pin(request: Request) -> JSONResponse:
     try:
         body = await _json_object(request)
         source = _switchable(request, "pin")
+        if isinstance(source, CheckoutRevisions):
+            # The store of its origin, if the cache has one: an origin branch is read
+            # from it, and a one-shot command opens it at the request that needs it.
+            store = checkout_store(request.app)
+            if store is not None:
+                await store.ensure_open()
         selection = _selection(body, checkout=isinstance(source, CheckoutRevisions))
         # Where the page is, read on the subject it was drawn for, before any switch.
         identity = _view_identity(
@@ -1207,6 +1408,10 @@ async def api_source_pin(request: Request) -> JSONResponse:
         log.warning("switching the pin failed: %s", exc)
         return _error("the selection could not be opened", exc.code, exc.http_status)
     answer: dict[str, Any] = {"changed": changed, "status": status()}
+    if checkout is not None:
+        # Where the revision is read from: the store Metabrowser keeps of the origin, or
+        # the checkout itself; null on the working tree.
+        answer["read_from"] = checkout.read_from
     switched = as_git_revision_subject(session.subject)
     if identity is not None:
         if switched is not None:
@@ -1389,6 +1594,7 @@ __all__ = [
     "REFS_MAX_QUERY_CHARS",
     "SOURCE_ROUTES",
     "WORKING_TREE_PIN",
+    "CheckoutOwnRef",
     "SourcePinGuard",
     "SourceRef",
     "SourceRefs",

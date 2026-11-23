@@ -68,6 +68,10 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Pull request update cadence and GitHub budget](specs/active/plan-2026-11-22-pull-request-update-cadence.md):
+  a draft for free conditional probes every few seconds for what is on screen, full
+  reads once every minute or two, and a budget that leaves room for the account’s other
+  tools
 - [Tabular data browsing and live SQLite](specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md):
   a draft for one generic table plugin over CSV, record lists, and SQLite, with
   nondestructive, live reads of databases other applications are writing

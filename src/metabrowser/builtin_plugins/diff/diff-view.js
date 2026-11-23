@@ -3212,7 +3212,7 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   what it says when it keeps no file. *unfold* draws every fold open, the rendered
  *   view's unchanged runs and the text diff's long changed runs alike, for a page that
  *   shows its files whole: a pull request's Docs tab.
- * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
+ * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, sectionForPath: (path: string) => HTMLElement | null, pathForSection: (section: Element) => string | null, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
@@ -3551,6 +3551,26 @@ export function mountDiffView(container, document_, api, options = {}) {
      * @param {string} path
      */
     fileForPath: (path) => lookupFile(view, path),
+    /**
+     * The section of the file a path names, or null, and the path a file's section is
+     * known by: for a host that keeps a reader's place by its file across two comparisons.
+     *
+     * @param {string} path
+     */
+    sectionForPath: (path) =>
+      view.disposed ? null : (fileEntryForPath(view, path)?.section ?? null),
+    /** @param {Element} section */
+    pathForSection(section) {
+      // A disposed view says nothing of its files, as `sectionForPath` does not.
+      const entry = view.disposed
+        ? undefined
+        : view.bySection.get(/** @type {HTMLElement} */ (section));
+      if (entry === undefined) {
+        return null;
+      }
+      const side = /** @type {{path?: string}} */ (entry.change.new ?? entry.change.old);
+      return typeof side.path === "string" ? side.path : null;
+    },
     currentFile,
     /** Settles when the first screen's Markdown files no longer wait to be drawn. */
     firstScreen: () => view.markdown?.controller.firstScreen ?? Promise.resolve(),

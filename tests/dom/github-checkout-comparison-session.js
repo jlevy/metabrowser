@@ -180,7 +180,6 @@ async function run() {
     await run.controller.poll();
     assert.equal(run.model.canRetryComparison, false);
     assert.equal(run.model.browse, null, "an unpinned folder offers no Browse code");
-    assert.equal(run.model.headOffer, null, "nor a switch to the head");
     assert.equal(run.model.comparison.route, recorded.ready.body.comparison_route);
     snapshot(run, "the finished comparison stays beside the folder");
     run.controller.dispose();
@@ -535,7 +534,8 @@ async function run() {
     }
     await run.fire(page.REFRESH_ASK_MS);
     assert.deepEqual(run.posts(), [
-      `POST /api/plugin/github/pull-refresh ${JSON.stringify({ number: 10 })}`,
+      // The page's own ask names the record it shows, for an answer without it.
+      `POST /api/plugin/github/pull-refresh ${JSON.stringify({ number: 10, held: stale.record_revision })}`,
     ]);
     if (owned) {
       run.controller.setTab("files");

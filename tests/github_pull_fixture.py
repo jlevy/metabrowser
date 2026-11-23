@@ -13,7 +13,8 @@ so every commit ID is the same on every machine. It stands in for
 
 ``scenario`` answers every ``gh api`` read of those pull requests from
 ``tests/fixtures/github-pull/responses.json``, scrubbed real responses, and ``gh auth
-status`` for one signed-in account. GraphQL catalog pages contain 102 rows, of which
+status`` for one signed-in account, which ``gh api user``, the account check's read,
+names too. GraphQL catalog pages contain 102 rows, of which
 100 are open and two are closed. Fixed REST list entries remain available for generic
 transport tests:
 
@@ -72,7 +73,7 @@ DEFAULT_BRANCH: Final = "topic"
 _WHEN: Final = 1788000000
 
 _FAKE_GH: Final = """#!{python}
-import json, os, sys
+import hashlib, json, os, re, sys
 
 args = sys.argv[1:]
 log = os.environ.get("FAKE_GH_LOG")
@@ -151,13 +152,57 @@ if args[:1] == ["api"]:
             path = "graphql:" + state + ":" + fields.get("cursor", "start")
         if fields.get("owner", "").casefold() != "octo" or fields.get("name", "").casefold() != "demo":
             path = "graphql:unavailable-repository"
-    entry = pick(path, scenario["api"].get(path, {{"status": 404, "body": {{"message": "Not Found"}}}}))
+    if path == "user" and "user" not in scenario["api"]:
+        # The account check's read (gh.gh_account). It names the login the scenario's
+        # ``auth`` answer does, from the same sequence ``gh auth status`` draws on, with
+        # an ETag that is the login's own, so the same login answers 304.
+        # A gh too old for ``auth status --json`` answers ``gh api user`` as any does, so
+        # a scenario whose ``auth`` is that refusal is such a gh signed out: the account
+        # check then asks ``gh auth status`` why, and that is the refusal it meets. One
+        # that is signed in answers from an ``api`` entry for ``user``.
+        answer = pick("auth", scenario["auth"])
+        too_old = "unknown flag" in answer.get("stderr", "")
+        if answer.get("exit", 0) != 0 and not too_old:
+            sys.stderr.write(answer.get("stderr", ""))
+            sys.exit(answer["exit"])
+        hosts = [] if too_old else (
+            json.loads(answer["stdout"]).get("hosts", {{}}).get("github.com", []))
+        active = next((host for host in hosts if host.get("active")), None)
+        if active is None:
+            sys.stderr.write("To get started with GitHub CLI, please run:  gh auth login\\n")
+            sys.exit(4)
+        if active.get("state") != "success" and "401" not in str(active.get("error")):
+            sys.stderr.write("error connecting to api.github.com\\n")
+            sys.exit(1)
+        if active.get("state") != "success":
+            entry = {{"status": 401, "body": {{"message": "Bad credentials"}}}}
+        else:
+            entry = {{"status": 200, "headers": {{"Etag": '"user-' + active["login"] + '"'}},
+                     "body": {{"login": active["login"], "id": 1, "type": "User"}}}}
+    else:
+        missing = {{"status": 404, "body": {{"message": "Not Found"}}}}
+        issue = re.fullmatch(r"(repos/[^/]+/[^/]+)/issues/([0-9]+)", path or "")
+        if issue and path not in scenario["api"]:
+            # A probe's read (pulls.probe_path): the pull request as its issue carries it,
+            # from the scenario's answer for the pull. It embeds no repository, so its
+            # ETag is its own fields' and a push that moves the pull's ETag leaves it
+            # alone, as measured on 2026-11-23 (pulls.PROBE_RESOURCE).
+            pull = scenario["api"].get(issue.group(1) + "/pulls/" + issue.group(2), missing)
+            entry = pick(path, pull)
+            if entry["status"] == 200 and isinstance(entry.get("body"), dict):
+                body = {{key: entry["body"].get(key) for key in ("number", "updated_at", "state", "title")}}
+                body["pull_request"] = {{"merged_at": entry["body"].get("merged_at")}}
+                tag = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:32]
+                headers = {{**entry.get("headers", {{}}), "Etag": 'W/"issue-' + tag + '"'}}
+                entry = {{"status": 200, "headers": headers, "body": body}}
+        else:
+            entry = pick(path, scenario["api"].get(path, missing))
     status = entry["status"]
     headers = dict(entry.get("headers", {{}}))
     body = entry["raw"].encode() if "raw" in entry else json.dumps(entry.get("body", None)).encode()
     if match is not None and headers.get("Etag") == match:
         status, body = 304, b""
-    reason = {{200: "OK", 304: "Not Modified", 403: "Forbidden", 404: "Not Found",
+    reason = {{200: "OK", 304: "Not Modified", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
               429: "Too Many Requests"}}.get(status, "Status")
     out = f"HTTP/2.0 {{status}} {{reason}}\\n".encode()
     for name, value in headers.items():
@@ -665,7 +710,7 @@ def logged_gh_calls(directory: Path) -> list[str]:
                 f"gh api graphql catalog state={state} cursor={fields.get('cursor', 'start')}"
             )
             continue
-        path = next(arg for arg in args if arg.startswith("repos/"))
+        path = next(arg for arg in args if arg == "user" or arg.startswith("repos/"))
         if "--jq" in args:
             calls.append(f"gh api {path} --jq {args[args.index('--jq') + 1]}")
             continue
@@ -690,11 +735,17 @@ def in_a_stable_order(calls: list[str]) -> list[str]:
     A refresh reads the pull first, for its head, and then its other parts in flight
     together, which reach the log in whatever order the processes did. Only those parts
     are sorted: a list's pages are read one after another, and their order is pinned.
+    The list probe, which runs beside all of it, is listed first.
     """
 
-    ordered: list[str] = []
+    # The list probe a page's automatic ask starts runs beside that ask's own work
+    # (`attend_list`), so it reaches the log anywhere among it: it is listed first.
+    beside = [call for call in calls if _LIST_PROBE.match(call)]
+    ordered: list[str] = list(beside)
     together: list[str] = []
     for call in calls:
+        if _LIST_PROBE.match(call):
+            continue
         if _RECORD_PART.match(call):
             together.append(call)
             continue
@@ -705,6 +756,7 @@ def in_a_stable_order(calls: list[str]) -> list[str]:
     return ordered
 
 
+_LIST_PROBE = re.compile(r"gh api repos/[^/]+/[^/]+/(issues|pulls)\?state=all&sort=updated&")
 # The parts of a record a refresh reads together, after the pull itself.
 _RECORD_PART = re.compile(
     r"gh api repos/[^/]+/[^/]+/"
@@ -1041,6 +1093,10 @@ def account(login: str = READER, *, state: str = "success") -> dict[str, Any]:
     return {"stdout": json.dumps({"hosts": {"github.com": [host]}}) + "\n", "exit": 0}
 
 
+LIST_PROBE_PATH = "repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1"
+NEWEST_PULL_PATH = "repos/octo/demo/pulls?state=all&sort=updated&direction=desc&per_page=1"
+
+
 def catalog_entries(
     items: list[dict[str, Any]], *, reader: str = READER, repository_id: str = "R_demo"
 ) -> dict[str, Any]:
@@ -1105,6 +1161,24 @@ def catalog_entries(
                 }
             }
             entries[key] = ok(key, body)
+    # The list probe's one-row page: the pull request updated last, as the issues list
+    # names it, and the pulls page asked when an issue is newest.
+    newest = max(items, key=lambda item: (item["updated_at"], item["number"]), default=None)
+    as_issue = (
+        []
+        if newest is None
+        else [
+            {
+                "number": newest["number"],
+                "updated_at": newest["updated_at"],
+                "pull_request": {
+                    "url": f"https://api.github.com/repos/octo/demo/pulls/{newest['number']}"
+                },
+            }
+        ]
+    )
+    entries[LIST_PROBE_PATH] = ok(LIST_PROBE_PATH, as_issue)
+    entries[NEWEST_PULL_PATH] = ok(NEWEST_PULL_PATH, [newest] if newest is not None else [])
     return entries
 
 

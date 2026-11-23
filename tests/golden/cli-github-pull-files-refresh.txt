@@ -104,13 +104,13 @@ status: 200
 --- body ---
 {"number": 106}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=2
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=3
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull-files?number=106&limit=3'
 exit: 0
 --- stdout ---
@@ -312,6 +312,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -507,14 +508,14 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/7
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -711,67 +712,67 @@ status: 200
 --- body ---
 {"number": 105}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=1
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=2
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=3
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=4
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=5
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=6
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=7
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=8
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=9
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=10
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=11
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=12
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=13
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=14
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=15
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=16
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=17
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=18
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=19
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=20
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=21
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=22
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=23
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=24
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=25
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=26
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=27
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=28
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=29
-gh auth status
+gh api user (If-None-Match)
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=30
-gh auth status
+gh api user (If-None-Match)
 ## The clock moves on 120 s, to 2026-09-17T12:02:00Z.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data list-request.json
 exit: 0
@@ -786,8 +787,10 @@ status: 202
     "source": "https://github.com/octo/demo",
     "list": "all",
     "fetched_at": null,
+    "checked_at": null,
     "reader": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": null,
     "total": null,
@@ -813,8 +816,10 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "all",
   "fetched_at": "2026-09-17T12:02:00Z",
+  "checked_at": null,
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
+  "probe_every_s": 10.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -841,7 +846,7 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-gh auth status
+gh api user
 gh api graphql catalog state=all cursor=start
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull-files?number=106&limit=1'
 exit: 0
@@ -965,11 +970,11 @@ status: 200
 --- body ---
 {"number": 106}
 --- gh ---
-gh auth status
+gh api user
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=2 (If-None-Match)
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=3 (If-None-Match)
-gh auth status
+gh api user (If-None-Match)
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull-files?number=106&limit=1'
 exit: 0
 --- stdout ---
@@ -1093,6 +1098,7 @@ Error: the refresh ended with network_error
 --- body ---
 {"number": 106, "retry": true}
 --- gh ---
+gh api user
 gh auth status
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=1
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull-files?number=106&limit=0'

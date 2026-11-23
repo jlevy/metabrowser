@@ -15,7 +15,7 @@
 // Timers, the clock, visibility, and paint are injected; the browser glue's
 // IntersectionObserver is played by asking for parts in reading order. Each step prints
 // the requests the page made, the timer it left, how many times it painted, what it
-// would paint, whether it reloaded, and which parts it rendered as Markdown.
+// would paint, and which parts it rendered as Markdown.
 //
 // `place` is the reader's place in the pane through history, from createScrollKeeper, on a
 // stage standing for the pane: see placeStory.
@@ -27,6 +27,10 @@ const { pathToFileURL } = require("node:url");
 const repoRoot = path.resolve(__dirname, "../..");
 const recorded = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
+);
+// What KPress alone made of the hostile comment, recorded beside the server's answers.
+const kpressTree = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-kpress-tree.json"), "utf8"),
 );
 // The recording holds each distinct record once: an answer whose record an earlier
 // pull-route answer carried names that answer, and reads here as that record.
@@ -91,7 +95,6 @@ function summarizeState(model) {
     ...(model.revalidating ? { revalidating: true } : {}),
     failure: model.failure,
     browse: browseCode(model),
-    headOffer: model.headOffer === null ? null : model.headOffer.ref,
   };
 }
 
@@ -149,15 +152,10 @@ function summarize(model) {
           },
     notes: model.notes,
     browse: browseCode(model),
-    // The offer's two commits as its sentence names them, each a short commit ID.
-    headOffer:
-      model.headOffer === null
-        ? null
-        : `code ${window.metabrowser.shortCommit(model.headOffer.pin)}, head ${window.metabrowser.shortCommit(model.headOffer.head)} [Switch to the head] -> ${model.headOffer.ref}`,
     comparison:
       model.comparison === null
         ? null
-        : `${model.comparison.left.slice(0, 12)}...${model.comparison.right.slice(0, 12)}${model.comparison.headMoved ? " (head moved)" : ""}`,
+        : `${model.comparison.left.slice(0, 12)}...${model.comparison.right.slice(0, 12)}`,
   };
 }
 
@@ -261,12 +259,20 @@ function createPage(runtime, options) {
   let nextTimer = 1;
   let visible = true;
   let paints = [];
+  // The model last painted, in any step, for an invariant the brief summary leaves out.
+  let lastModel = null;
   let rendered = [];
-  let reloads = 0;
   let navigations = [];
   // What the conversation last painted, to run the page's own paint decision on each paint.
   let conversation = { key: "", textRevision: null };
-  const server = { pull: null, refresh: [], pin: [], markdown: new Map(), held: [] };
+  const server = {
+    pull: null,
+    refresh: [],
+    pin: [],
+    markdown: new Map(),
+    held: [],
+    waiting: [],
+  };
   const clock = { now: Date.parse("2026-09-17T12:00:30Z") };
 
   const deps = {
@@ -275,6 +281,15 @@ function createPage(runtime, options) {
         log.push(`POST ${route} ${JSON.stringify(requestOptions.body)}`);
         const answer = (route === "/api/source/pin" ? server.pin : server.refresh).shift();
         assert(answer, `no scripted answer for POST ${route}`);
+        if (answer.unanswered) {
+          throw new Error("the server did not answer");
+        }
+        if (answer.waits) {
+          // An answer still on its way, until the step releases it (`releaseRefresh`).
+          return new Promise((resolve) => server.waiting.push(() => resolve(answer)));
+        }
+        // An answer that takes this long, on the page's clock.
+        clock.now += answer.takesMs ?? 0;
         return answer;
       }
       if (route.startsWith("/api/plugin/github/pull-markdown")) {
@@ -295,9 +310,9 @@ function createPage(runtime, options) {
       }
       return answer;
     },
-    schedule(callback, delayMs) {
+    schedule(callback, delayMs, kind) {
       const id = nextTimer++;
-      timers.set(id, { callback, delayMs });
+      timers.set(id, { callback, delayMs, kind });
       return id;
     },
     cancel(handle) {
@@ -310,12 +325,10 @@ function createPage(runtime, options) {
     formatHold: (liftMs, nowMs) => runtime.holdLiftText(liftMs, nowMs, "en-US", "UTC"),
     render(model) {
       paints.push(model);
+      lastModel = model;
     },
     renderMarkdown(part, body) {
       rendered.push({ part, html: body.html });
-    },
-    reload() {
-      reloads += 1;
     },
     navigate(href) {
       navigations.push(href);
@@ -329,7 +342,8 @@ function createPage(runtime, options) {
     onRestored: () => () => {},
   });
   const controller = runtime.createPullController(deps, options);
-  const isAskDelay = (delayMs) => delayMs === 0 || delayMs === runtime.REFRESH_ASK_MS;
+  // The page names its asks (`askAfter`), so a poll and an ask with the same delay differ.
+  const isAsk = (timer) => timer.kind === "ask";
 
   async function settle() {
     for (let turn = 0; turn < 20; turn += 1) {
@@ -344,6 +358,11 @@ function createPage(runtime, options) {
     setVisible(value) {
       visible = value;
     },
+    /** Answer the oldest refresh request still on its way. */
+    async releaseRefresh() {
+      server.waiting.shift()();
+      await settle();
+    },
     async releaseMarkdown() {
       while (server.held.length > 0) {
         server.held.shift()();
@@ -354,11 +373,10 @@ function createPage(runtime, options) {
       log.length = 0;
       paints = [];
       rendered = [];
-      reloads = 0;
       navigations = [];
       await action();
       await settle();
-      const timer = [...timers.values()].find((each) => !isAskDelay(each.delayMs));
+      const timer = [...timers.values()].find((each) => !isAsk(each));
       const snapshot = controller.snapshot();
       const entry = {
         step: name,
@@ -373,11 +391,12 @@ function createPage(runtime, options) {
                 : timer.delayMs,
         paints: paints.length,
       };
-      if ([...timers.values()].some((each) => each.delayMs === runtime.REFRESH_ASK_MS)) {
+      const ask = [...timers.values()].find(isAsk);
+      if (ask?.delayMs === runtime.REFRESH_ASK_MS) {
         entry.askWaits = true;
-      }
-      if (reloads > 0) {
-        entry.reloads = reloads;
+      } else if (ask !== undefined && ask.delayMs > 0) {
+        // A current record's next probe ask, every `probe_every_s` while the page is visible.
+        entry.probeAskMs = ask.delayMs;
       }
       if (navigations.length > 0) {
         entry.navigated = navigations;
@@ -399,17 +418,24 @@ function createPage(runtime, options) {
     },
     /** The poll that is due. */
     fire() {
-      const [id, timer] = [...timers.entries()].find(([, each]) => !isAskDelay(each.delayMs));
+      const [id, timer] = [...timers.entries()].find(([, each]) => !isAsk(each));
       timers.delete(id);
       timer.callback();
     },
     /** A cold page asks immediately; a stale page waits for the reader to stay. */
     fireAsk(delayMs = runtime.REFRESH_ASK_MS) {
-      const [[id, timer]] = [...timers.entries()].filter(([, each]) => each.delayMs === delayMs);
+      const [[id, timer]] = [...timers.entries()].filter(
+        ([, each]) => isAsk(each) && each.delayMs === delayMs,
+      );
       timers.delete(id);
       timer.callback();
     },
     timersLeft: () => timers.size,
+    lastModel: () => lastModel,
+    /** The waiting ask's delay, or null with none waiting. */
+    askDelay: () => [...timers.values()].find(isAsk)?.delayMs ?? null,
+    /** The poll's timer, to tell a poll left waiting from one armed again. */
+    pollTimer: () => [...timers.entries()].find(([, each]) => !isAsk(each))?.[0] ?? null,
   };
 }
 
@@ -559,7 +585,16 @@ function hunkCases() {
 function placeStory(runtime) {
   const timers = new Map();
   let nextTimer = 1;
-  const stage = { heights: [], scrollTop: 0, entry: null, anchored: false, writes: 0 };
+  // `files` names each block's changed file, as Changes' blocks have one; null on a page of
+  // cards, whose places name none.
+  const stage = {
+    heights: [],
+    files: null,
+    scrollTop: 0,
+    entry: null,
+    anchored: false,
+    writes: 0,
+  };
   const tops = () => {
     let next = 120;
     return stage.heights.map((height) => {
@@ -575,9 +610,18 @@ function placeStory(runtime) {
         stage.entry = place;
         stage.writes += 1;
       },
-      measure: () => runtime.placeAt(tops(), stage.scrollTop),
+      measure() {
+        const at = runtime.placeAt(tops(), stage.scrollTop);
+        return stage.files === null || at.block < 0 ? at : { ...at, file: stage.files[at.block] };
+      },
       apply(place) {
-        const top = runtime.scrollTopOf(place, tops());
+        // As the page's own keeper asks the mounted diff: a place that names no file, or a
+        // page with no diff to ask, leaves it out; a diff without the file answers -1.
+        const fileBlock =
+          place.file === undefined || stage.files === null
+            ? undefined
+            : stage.files.indexOf(place.file);
+        const top = runtime.scrollTopOf(place, tops(), fileBlock);
         if (top === null) {
           return false;
         }
@@ -727,6 +771,52 @@ function placeStory(runtime) {
     stage.scrollTop = 200;
     step(`what is not a place is no place: ${JSON.stringify(value)}`, () => keeper.land());
   }
+
+  // Changes, whose blocks are files. The diff is replaced by a newer head's, with a file
+  // added above the reader's and one removed: the place is its file's, not its index's.
+  stage.entry = null;
+  reopen([300, 400, 500]);
+  stage.files = ["a.py", "b.py", "c.py"];
+  keeper.land();
+  stage.scrollTop = 460;
+  let reading = null;
+  step("in Changes a place names its file", () => {
+    keeper.scrolled();
+    fireWrite();
+    reading = keeper.snapshot().holding ?? stage.entry;
+  });
+  stage.heights = [];
+  stage.scrollTop = 0;
+  step("the diff is replaced: the place is held, and written for a reload", () =>
+    keeper.holdAt(reading),
+  );
+  // The emptied pane clamps to its top while the newer comparison is read, which arrives as
+  // a scroll: it is the hold's, so the place a reload lands on stays the reader's (A3 of
+  // review A on #745).
+  step("the emptied pane clamps to its top: the place stays written", () => {
+    keeper.scrolled();
+    fireWrite();
+  });
+  stage.heights = [250, 300, 400, 500];
+  stage.files = ["new.py", "a.py", "b.py", "c.py"];
+  step("the newer diff paints: the pane is in the same file, a block further on", () =>
+    keeper.contentChanged(),
+  );
+  stage.heights = [250, 900, 400, 500];
+  step("a file above it draws its lines: the pane is put back", () => keeper.contentChanged());
+  fireSettle();
+  stage.files = ["new.py", "a.py", "c.py"];
+  stage.heights = [250, 900, 500];
+  reopen(stage.heights);
+  step("loaded again on a diff without the file: the top of the block at its index", () =>
+    keeper.land(),
+  );
+  keeper.readerMoved();
+  stage.files = null;
+  stage.entry = { block: 1, offset: 5, top: 400, file: 7 };
+  reopen([300, 400]);
+  stage.scrollTop = 200;
+  step("a place whose file is not a name is no place", () => keeper.land());
 
   stage.entry = { block: 1, offset: 5, top: 400 };
   reopen([300, 400]);
@@ -1039,6 +1129,299 @@ async function main() {
   );
   leftOpen.controller.dispose();
 
+  // A current page left open asks every `probe_every_s`, and the server answers each ask
+  // with a probe, a conditional read GitHub answers for free: unchanged, it is not due,
+  // and the record is vouched for by the probe, with the age line not pulsing. Hidden, the
+  // page asks nothing; shown again, it asks when its interval has passed. A probe that
+  // finds a change starts the refresh, which the page then follows.
+  const probing = createPage(runtime, { number: 7, tab: "", brief: true });
+  /** Printed with the second part, as `leftOpen` is. */
+  const probingStory = [];
+  probing.clock.now = Date.parse("2026-09-17T12:06:00Z");
+  probing.server.pull = recorded.refreshed;
+  await probing.controller.start();
+  probing.server.refresh.push(recorded.probed);
+  probingStory.push(
+    await probing.step("a current page asks once the reader stays, and a probe answers", () =>
+      probing.fireAsk(),
+    ),
+  );
+  const firstAsk = probingStory.at(-1);
+  assert(
+    firstAsk.probeAskMs === recorded.refreshed.body.probe_every_s * 1000 &&
+      firstAsk.paint?.revalidating !== true,
+    `a probed page does not ask again after probe_every_s: ${JSON.stringify(firstAsk)}`,
+  );
+  // The ask named the record the page shows, and the answer came without it (mb-jd08: the
+  // cost of the whole envelope every interval is recorded beside `refresh_answer_pull` in
+  // pull_route.py). The page still shows that record, under the verdict the answer brought.
+  const heldAsk = `POST /api/plugin/github/pull-refresh ${JSON.stringify({
+    number: 7,
+    held: recorded.refreshed.body.record_revision,
+  })}`;
+  assert(
+    recorded.probed.body.pull.record_held === true &&
+      !("record" in recorded.probed.body.pull) &&
+      JSON.stringify(firstAsk.requests) === JSON.stringify([heldAsk]),
+    `a page that shows a record did not ask naming it: ${JSON.stringify(firstAsk.requests)}`,
+  );
+  assert(
+    probing.lastModel().status === "current" &&
+      probing.lastModel().recordRevision === recorded.refreshed.body.record_revision &&
+      probing.lastModel().pull?.title === recorded.refreshed.body.record.pull.title,
+    `an answer without the record took the page's record: ${JSON.stringify(firstAsk)}`,
+  );
+  probing.clock.now += recorded.refreshed.body.probe_every_s * 1000;
+  probing.server.pull = recorded.probed_current;
+  probing.server.refresh.push(recorded.probed);
+  probingStory.push(
+    await probing.step("its interval later it asks again, and the probe vouches", async () =>
+      probing.fireAsk(recorded.refreshed.body.probe_every_s * 1000),
+    ),
+  );
+  // The poll keeps its own slow interval while probe asks answer: an ask that started
+  // nothing leaves it waiting, so it still fires, and a server that stops answering is
+  // reported by it and by the failed ask itself.
+  const pollWaiting = probing.pollTimer();
+  const interval = recorded.refreshed.body.probe_every_s * 1000;
+  for (let ask = 0; ask < 2; ask += 1) {
+    probing.clock.now += interval;
+    probing.server.refresh.push(recorded.probed);
+    await probing.step("another interval, another probe", async () => probing.fireAsk(interval));
+  }
+  assert(
+    probing.pollTimer() === pollWaiting,
+    "a probe ask that started nothing armed the poll again, so it never fires",
+  );
+  probingStory.push(
+    await probing.step("the poll's own interval still reads, between probe asks", async () =>
+      probing.fire(),
+    ),
+  );
+  probing.clock.now += interval;
+  probing.server.refresh.push({ unanswered: true });
+  probingStory.push(
+    await probing.step("a probe ask the server does not answer is reported", async () =>
+      probing.fireAsk(interval),
+    ),
+  );
+  assert(
+    probingStory.at(-1).paint?.message === "The server did not answer.",
+    `a failed probe ask was not reported: ${JSON.stringify(probingStory.at(-1))}`,
+  );
+  probing.clock.now += interval;
+  probing.server.refresh.push(recorded.probed);
+  probingStory.push(
+    await probing.step("the next probe ask that answers clears it", async () =>
+      probing.fireAsk(interval),
+    ),
+  );
+  probing.clock.now += interval;
+  probing.server.refresh.push({ ...recorded.probed, takesMs: interval + 1000 });
+  probingStory.push(
+    await probing.step("an answer slower than the interval is followed by a short gap", async () =>
+      probing.fireAsk(interval),
+    ),
+  );
+  assert(
+    probingStory.at(-1).probeAskMs === runtime.PROBE_ASK_GAP_MS,
+    `a slow answer was followed by an ask at once: ${JSON.stringify(probingStory.at(-1))}`,
+  );
+  probing.clock.now += runtime.PROBE_ASK_GAP_MS;
+  probing.server.refresh.push(recorded.probed);
+  await probing.step("the gap passes and it asks", async () =>
+    probing.fireAsk(runtime.PROBE_ASK_GAP_MS),
+  );
+  // Review B1 on #709: the record goes stale when its full read comes due, a few seconds
+  // before the next probe ask would start it. The poll that reads it so asks at once,
+  // since no ask for a stale record was sent within a window; it does not wait a window
+  // from the probe ask before it. Asserted rather than printed: the page's transcript is at
+  // its review budget, and the two steps repeat paints the story already shows.
+  probing.clock.now += 2000;
+  const overdue = recorded.probed_current.body;
+  probing.server.pull = {
+    ...recorded.probed_current,
+    etag: `${recorded.probed_current.etag}-overdue`,
+    body: { ...overdue, state: "stale", verified_by: "fetch", verified_at: overdue.fetched_at },
+  };
+  const overdueRead = await probing.step("past its full read the poll reads it stale", async () =>
+    probing.fire(),
+  );
+  assert(
+    overdueRead.paint?.status === "stale" &&
+      overdueRead.paint.revalidating === true &&
+      overdueRead.paint.canRefresh === false,
+    `an overdue record did not paint as revalidating: ${JSON.stringify(overdueRead)}`,
+  );
+  assert(
+    probing.askDelay() === 0,
+    `a record gone stale between probe asks waited a window: ${probing.askDelay()}`,
+  );
+  probing.server.refresh.push({
+    status: 202,
+    etag: null,
+    body: { pull: { ...overdue, refreshing: true } },
+  });
+  const fullRead = await probing.step("its full read starts", async () => probing.fireAsk(0));
+  assert(
+    JSON.stringify(fullRead.requests) === JSON.stringify([heldAsk]) && fullRead.timer === "fast",
+    `an overdue record's ask did not start its full read: ${JSON.stringify(fullRead)}`,
+  );
+  probing.server.pull = recorded.probed_current;
+  await probing.step("the full read ends and the record is current", async () => probing.fire());
+  // An answer that leaves out a record the page does not hold is not shown: the server's
+  // moved on between the ask and its answer, or it has no store and so drops the
+  // comparison of a record with the same revision. The page reads the route at once,
+  // unconditionally, and shows what that read brings. Asserted rather than printed, as
+  // the steps above are.
+  for (const differs of [{ record_revision: "0".repeat(64) }, { no_store: true }]) {
+    probing.clock.now += interval;
+    probing.server.refresh.push({
+      ...recorded.probed,
+      body: { ...recorded.probed.body, pull: { ...recorded.probed.body.pull, ...differs } },
+    });
+    const unheld = await probing.step("an answer about a record the page lacks", async () =>
+      probing.fireAsk(interval),
+    );
+    assert(
+      JSON.stringify(unheld.requests) === JSON.stringify([heldAsk]) && unheld.timer === 0,
+      `an answer about another record did not make a read due: ${JSON.stringify(unheld)}`,
+    );
+    const reread = await probing.step("which the page reads at once", async () => probing.fire());
+    assert(
+      JSON.stringify(reread.requests) ===
+        JSON.stringify(["GET /api/plugin/github/pull?number=7"]) &&
+        probing.lastModel().status === "current" &&
+        !probing.lastModel().message &&
+        probing.lastModel().recordRevision === recorded.refreshed.body.record_revision,
+      `an answer about another record was not followed by a whole read: ${JSON.stringify(reread)}`,
+    );
+  }
+  // The revision leaves out `fetched_at`, so a read another asker made of the same content
+  // is answered without the record too: the page's record takes the answer's time, and its
+  // age line says what the whole answer would have (review A1 on #746).
+  probing.clock.now += 5 * 60_000;
+  const readElsewhere = new Date(probing.clock.now).toISOString().replace(".000Z", "Z");
+  const heldPull = recorded.probed.body.pull;
+  probing.server.refresh.push({
+    ...recorded.probed,
+    body: {
+      ...recorded.probed.body,
+      pull: { ...heldPull, fetched_at: readElsewhere, verified_at: readElsewhere },
+    },
+  });
+  await probing.step("a held answer after another asker's read", async () =>
+    probing.fireAsk(interval),
+  );
+  const wholeAnswer = runtime.describePull(
+    {
+      ...probing.server.pull.body,
+      fetched_at: readElsewhere,
+      verified_at: readElsewhere,
+      verified_by: heldPull.verified_by,
+      record: { ...probing.server.pull.body.record, fetched_at: readElsewhere },
+    },
+    { number: 7, tab: "", nowMs: probing.clock.now, online: true },
+  );
+  assert(
+    /just now/u.test(wholeAnswer.freshness) &&
+      probing.lastModel().freshness === wholeAnswer.freshness,
+    `a held record kept its own age: ${probing.lastModel().freshness}, not ${wholeAnswer.freshness}`,
+  );
+  // A held answer that lands after a newer read was shown is dropped, as a whole one is:
+  // it is merged with the page's record and then refused by its request's number.
+  probing.clock.now += interval;
+  probing.server.refresh.push({
+    ...recorded.probed,
+    waits: true,
+    body: { ...recorded.probed.body, pull: { ...heldPull, state: "stale" } },
+  });
+  await probing.step("an ask whose answer is slow", async () => probing.fireAsk(interval));
+  probing.server.pull = {
+    ...recorded.probed_current,
+    etag: `${recorded.probed_current.etag}-newer`,
+  };
+  const newer = await probing.step("a poll answers first", async () => probing.fire());
+  assert(
+    JSON.stringify(newer.requests) ===
+      JSON.stringify(["GET /api/plugin/github/pull?number=7 (If-None-Match)"]) &&
+      probing.lastModel().status === "current",
+    `a poll beside a slow ask did not read: ${JSON.stringify(newer)}`,
+  );
+  const late = await probing.step("the slow held answer lands", () => probing.releaseRefresh());
+  assert(
+    probing.lastModel().status === "current" && late.paint?.status !== "stale",
+    `a held answer older than what the page shows replaced it: ${JSON.stringify(late)}`,
+  );
+  // A mismatch that lands while a reader's Refresh is on its way, as Changes offers one for
+  // a current record: its read finds the Refresh pending and sends nothing, and the
+  // Refresh's own answer arms the poll again.
+  const crossing = createPage(runtime, { number: 7, tab: "files", brief: true });
+  crossing.clock.now = Date.parse("2026-09-17T12:06:00Z");
+  crossing.server.pull = recorded.refreshed;
+  await crossing.controller.start();
+  crossing.server.refresh.push({
+    ...recorded.probed,
+    waits: true,
+    body: { ...recorded.probed.body, pull: { ...heldPull, record_revision: "0".repeat(64) } },
+  });
+  await crossing.step("an ask whose answer is slow", async () => crossing.fireAsk());
+  crossing.server.refresh.push({
+    status: 202,
+    etag: null,
+    waits: true,
+    body: { pull: { ...recorded.refreshed.body, refreshing: true } },
+  });
+  const pressed = await crossing.step("the reader presses Refresh meanwhile", () => {
+    void crossing.controller.requestRefresh();
+  });
+  assert(
+    pressed.requests.length === 1 && /"retry":true/u.test(pressed.requests[0]),
+    `Changes sent no Refresh beside the page's own ask: ${JSON.stringify(pressed)}`,
+  );
+  const crossed = await crossing.step(
+    "the ask's answer names a record the page lacks",
+    async () => {
+      await crossing.releaseRefresh();
+      crossing.fire();
+    },
+  );
+  assert(
+    crossed.requests.length === 0 && crossing.pollTimer() === null,
+    `a read was sent under a pending Refresh: ${JSON.stringify(crossed)}`,
+  );
+  const answered = await crossing.step("the Refresh answers", () => crossing.releaseRefresh());
+  assert(
+    crossing.pollTimer() !== null && answered.timer === "fast",
+    `a mismatch under a pending Refresh left no poll armed: ${JSON.stringify(answered)}`,
+  );
+  crossing.controller.dispose();
+  probing.setVisible(false);
+  await probing.controller.onVisibilityChange();
+  probingStory.push(
+    await probing.step("hidden, it asks nothing", async () => {
+      probing.clock.now += 60_000;
+    }),
+  );
+  assert(probingStory.at(-1).probeAskMs === undefined, "a hidden page keeps a probe ask waiting");
+  probing.setVisible(true);
+  probing.server.refresh.push({
+    status: 202,
+    etag: null,
+    body: { pull: { ...recorded.probed_current.body, refreshing: true } },
+  });
+  probingStory.push(
+    await probing.step(
+      "shown again past its interval it asks at once, and a probe that found a change refreshes",
+      async () => {
+        await probing.controller.onVisibilityChange();
+        probing.fireAsk(0);
+      },
+    ),
+  );
+  probing.controller.dispose();
+  assert(probing.timersLeft() === 0, "a disposed probing page left a timer running");
+
   // GitHub's rate limit refused the page's refresh. It is a hold, not a failure: the page
   // offers no Refresh, names when it will ask again, which is not before `reset_at` and not
   // within a freshness window of the refused attempt, and asks at that time, at once.
@@ -1143,18 +1526,17 @@ async function main() {
     ),
   );
 
-  // Served an older head of this pull request, a refresh found a newer one: the existing
-  // offer, which reloads on the newer head.
-  const behind = createPage(runtime, { number: 7, tab: "", brief: true });
-  behind.clock.now = Date.parse("2026-09-17T12:41:30Z");
-  behind.server.pull = recorded.behind_head;
+  // Served an older head of this pull request when a refresh found a newer one: the server
+  // followed the head, as it follows a branch, so the page is on it and offers nothing.
+  const followed = createPage(runtime, { number: 7, tab: "", brief: true });
+  followed.clock.now = Date.parse("2026-09-17T12:41:30Z");
+  followed.server.pull = recorded.followed_head;
   steps.push(
-    await behind.step("served an older head, the page offers the newer one", () =>
-      behind.controller.start(),
+    await followed.step("the served head followed the pull request, and nothing is offered", () =>
+      followed.controller.start(),
     ),
   );
-  behind.server.pin.push(recorded.switch_to_head);
-  steps.push(await behind.step("taking the offer reloads", () => behind.controller.switchToHead()));
+  followed.controller.dispose();
 
   // A previous failed attempt leaves a manual Fetch. Reopening or showing the page
   // does not keep retrying, and a refused manual request explains why it stopped.
@@ -1301,11 +1683,12 @@ async function main() {
   // The page's own defense, played on what KPress alone made of the hostile comment: the
   // nodes rebuilt from the template the page parses it into.
   const inert = serialize(
-    inertHtml.sanitizeNodes(templateNodes(recorded["kpress added"].body.tree), pageDocument, base),
+    inertHtml.sanitizeNodes(templateNodes(kpressTree.tree), pageDocument, base),
   );
 
-  // Files changed keeps the diff it opened: a record whose comparison moved offers it.
-  // The diff opened before the switch compared the base with the pin served then.
+  // Changes follows the pull request: a record whose comparison moved replaces the diff
+  // shown, and the reader who went back to the earlier one is offered the newer instead.
+  // The earlier diff here compared the base with the pin served before the switch.
   const comparison = recorded.current.body.record.comparison;
   const recordComparison = { left: comparison.base, right: comparison.head };
   const openedOnPin = { left: comparison.base, right: recorded.current.body.pin };
@@ -1313,8 +1696,79 @@ async function main() {
     ["nothing open yet", null, recordComparison],
     ["open on the record's comparison", recordComparison, recordComparison],
     ["open on an older head", openedOnPin, recordComparison],
+    ["open on an older head the reader went back to", openedOnPin, recordComparison, true],
     ["no comparison in the record", recordComparison, null],
-  ].map(([when, mounted, next]) => `${when}: ${runtime.filesAction(mounted, next)}`);
+  ].map(
+    ([when, mounted, next, chosen]) => `${when}: ${runtime.filesAction(mounted, next, chosen)}`,
+  );
+  // What Changes says over a diff that replaced another, as the page paints `followedNote`:
+  // both heads and the way back. The diff it replaced is the one shown before, on this page
+  // or as the history entry remembers it across the reload a followed pin makes.
+  const commit = (oid) => window.metabrowser.shortCommit(oid);
+  const noted = (last, from, next) => {
+    const earlier = runtime.followedFrom(last, from, next);
+    const note = runtime.followedNote(earlier, next);
+    if (note === null) {
+      return "no note";
+    }
+    const said =
+      note.kind === "head"
+        ? `The pull request’s head moved from ${commit(note.from)} to ${commit(note.to)}.`
+        : "The comparison has changed.";
+    return `${said} [Show the earlier changes] -> ${commit(earlier.left)}...${commit(earlier.right)}`;
+  };
+  const laterHead = { left: comparison.base, right: "c".repeat(40) };
+  const otherBase = { left: "b".repeat(40), right: comparison.head };
+  const entry = (state) => runtime.rememberedChanges(JSON.parse(JSON.stringify(state)));
+  const reloaded = entry({ shown: { ...openedOnPin, route: "/r", junk: 1 }, from: null });
+  assert(
+    JSON.stringify(reloaded.shown) === JSON.stringify({ ...openedOnPin, route: "/r" }),
+    "an entry's memory kept something other than the comparison's commits and routes",
+  );
+  const kept = entry({ shown: recordComparison, from: openedOnPin });
+  for (const junk of [null, "nonsense", {}, { shown: { left: 1, right: "a" } }]) {
+    assert(runtime.rememberedChanges(junk) === null, `not a memory: ${JSON.stringify(junk)}`);
+  }
+  assert(entry({ shown: recordComparison, from: "x" }).from === null, "a from that is none");
+  // The reader's choice of the earlier diff is in the entry too, so the reload each later
+  // push makes keeps it (A5 of review A on #745): only `true` is a choice, and a record that
+  // names the remembered commits again has nothing earlier to show.
+  const choice = entry({ shown: openedOnPin, from: null, chosen: true });
+  assert(
+    choice.chosen === true &&
+      entry({ shown: openedOnPin, from: null, chosen: "yes" }).chosen === false &&
+      entry({ shown: openedOnPin, from: null }).chosen === false,
+    "an entry's choice is true or none",
+  );
+  assert(
+    runtime.chosenEarlier(choice, recordComparison) === choice.shown &&
+      runtime.chosenEarlier(choice, openedOnPin) === null &&
+      runtime.chosenEarlier({ ...choice, chosen: false }, recordComparison) === null &&
+      runtime.chosenEarlier(null, recordComparison) === null,
+    "a page loaded again shows the earlier diff its reader chose, and only that",
+  );
+  const changesFollowed = {
+    "the first diff of a page": noted(null, null, recordComparison),
+    "a newer head replaces the diff shown": noted(openedOnPin, null, recordComparison),
+    "the same diff mounted again keeps its note": noted(
+      recordComparison,
+      openedOnPin,
+      recordComparison,
+    ),
+    "a second head names the one before it": noted(recordComparison, openedOnPin, laterHead),
+    "the same head from another base": noted(otherBase, null, recordComparison),
+    "the page loaded again on the newer head, its entry remembering the earlier diff": noted(
+      reloaded.shown,
+      reloaded.from,
+      recordComparison,
+    ),
+    "the page loaded again after it had followed": noted(kept.shown, kept.from, recordComparison),
+    "an entry that last showed this diff and no other": noted(
+      entry({ shown: recordComparison, from: null }).shown,
+      null,
+      recordComparison,
+    ),
+  };
 
   // What Files changed says instead, for a record whose comparison could not be made and
   // for one whose merge base the store's shallow history cannot settle. A record without a
@@ -1370,7 +1824,6 @@ async function main() {
         when,
         {
           browse: browseCode(model),
-          headOffer: model.headOffer,
           checkoutAtHead: model.checkoutAtHead,
           comparison: model.comparison,
           files: model.filesUnavailable,
@@ -1395,15 +1848,14 @@ async function main() {
   pinnedCheckout.pin = pinnedCheckout.record.pull.base.sha;
   const otherPin = runtime.describePull(pinnedCheckout, pinnedCheckoutPage);
   assert(
-    otherPin.browse === null && otherPin.headOffer === null && otherPin.comparison?.branch === null,
-    "an unrelated checkout pin offers no PR head or file switch",
+    otherPin.browse === null && otherPin.comparison?.branch === null,
+    "an unrelated checkout pin offers no code or file switch",
   );
   pinnedCheckout.pin = head;
   const headPin = runtime.describePull(pinnedCheckout, pinnedCheckoutPage);
   assert(
     headPin.browse?.kind === "link" &&
       headPin.browse.at === head &&
-      headPin.headOffer === null &&
       headPin.comparison?.branch?.ref === null,
     "a checkout already at the PR head keeps its direct code and file links",
   );
@@ -1464,6 +1916,7 @@ async function main() {
     wire: runtime.gitPathWire("src/app.txt"),
     pageDefense: inert,
     filesChanged: files,
+    changesFollowed,
   };
   // Which address is the page's entry on a tab, for a tab switch from beside the page and for
   // writing a reader's place: a changed file's address is its Files changed too.
@@ -1496,6 +1949,7 @@ async function main() {
   ].map(([when, document_]) => `${when}: ${runtime.noFiles(document_)}`);
   const second = {
     leftOpen: leftOpenStory,
+    probing: probingStory,
     failing: failingStory,
     rateLimited: rateLimitedStory,
     checkActions,

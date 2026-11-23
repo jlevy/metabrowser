@@ -12,7 +12,8 @@ responses. Serving began on the default branch, as it does when the pull request
 be opened at startup. The page opened with nothing cached, fetched the record, read its
 Markdown, switched the pin to the head the record names, went stale, refreshed to a
 record with the same text, and refreshed again to one with a hostile comment, recorded
-both as the hook answers it and as KPress alone renders it. The same server then fetched
+both as the hook answers it and, in ``tests/fixtures/github-pull-page-kpress-tree.json``,
+as KPress alone renders it. The same server then fetched
 pull requests 8 and 9, merged and closed, and read each once, for the header's wording
 in those states and a skipped check, then read 8 again once GitHub named no merger. With
 GitHub out of reach, a refresh of 8 failed and the page's own request found it not due,
@@ -338,13 +339,20 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["markdown added"] = _answer(
                 client.get(_MARKDOWN, params={**read_7, "part": f"issue_comment/{added['id']}"})
             )
-            # What KPress alone makes of the same text, before the hook hardens it: the
-            # input the page's own defense, neutralizeFragment, is played on.
-            recorded["kpress added"] = {
-                "status": 200,
-                "etag": None,
-                "body": {"tree": html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))},
-            }
+
+            # Ten seconds on, the page's own ask for the current record is a probe: GitHub
+            # answers its conditional read 304, so nothing is refreshed, and the record is
+            # vouched for by the probe. The ask names the record the page shows, so the
+            # answer leaves it out.
+            clock[0] = FETCHED_AT + timedelta(minutes=6, seconds=10)
+            held_7 = {**read_7, "held": recorded["refreshed"]["body"]["record_revision"]}
+            recorded["probed"] = _answer(client.post(_REFRESH, json=held_7, headers=JSON_BODY))
+            assert recorded["probed"]["body"]["refresh"] == "not_due"
+            probed = recorded["probed"]["body"]["pull"]
+            assert probed["record_held"] is True and "record" not in probed
+            recorded["probed_current"] = _answer(client.get(_PULL, params=read_7))
+            assert recorded["probed_current"]["body"]["verified_by"] == "probe"
+            clock[0] = FETCHED_AT + timedelta(minutes=6)
 
             # The same server, asked for the stand-in's merged and then its closed pull
             # request, each read once: what the header says in a state other than open.
@@ -376,7 +384,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 time.sleep(0.01)
 
             # Served an older head of 7, as a page left open is: a refresh finds a newer
-            # one, and the pin stays until the reader takes the offer.
+            # one, and the server follows the pull request's head to it.
             def _answering_7(head: str) -> None:
                 path = "repos/octo/demo/pulls/7"
                 body = answers["api"][path]["body"]
@@ -402,7 +410,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             assert client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY).json()
             clock[0] = FETCHED_AT + timedelta(minutes=41)
             _answering_7(origin["fork_head"])
-            recorded["behind_head"] = _fetched(client, 7)
+            recorded["followed_head"] = _fetched(client, 7)
 
             # A number with no record, and a press of Fetch past the bound on jobs.
             recorded["absent_14"] = _answer(client.get(_PULL, params={"number": 14}))
@@ -454,10 +462,10 @@ def test_recording_is_what_a_served_pull_request_answers(
         "too_many",
     )
     assert recorded["not_github"]["body"]["reason"] == "not_github"
-    behind = recorded["behind_head"]["body"]
-    assert behind["pin"] == pull_origin["fork_earlier"]
-    assert behind["pin_ref"] == "refs/pull/7/head"
-    assert behind["record"]["pull"]["head"]["sha"] == pull_origin["fork_head"]
+    followed = recorded["followed_head"]["body"]
+    assert followed["pin"] == pull_origin["fork_head"] != pull_origin["fork_earlier"]
+    assert followed["pin_ref"] == "refs/pull/7/head"
+    assert followed["record"]["pull"]["head"]["sha"] == pull_origin["fork_head"]
     assert recorded["switch_refused"]["status"] == 404
     assert recorded["pending"]["body"]["refreshing"] is True
     assert recorded["current"]["body"]["state"] == "current"
@@ -480,7 +488,12 @@ def test_recording_is_what_a_served_pull_request_answers(
         unchanged["record"]["issue_comments"]
         == recorded["stale"]["body"]["record"]["issue_comments"]
     )
-    kept = json.dumps(recorded["kpress added"]["body"]["tree"])
+    # What KPress alone makes of the hostile comment, before the hook hardens it: the
+    # input the page's own defense, neutralizeFragment, is played on. It is no answer of
+    # the server, and at 245 lines it is a recording of its own, which keeps the server's
+    # inside the review budget.
+    kpress_tree = html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))
+    kept = json.dumps(kpress_tree)
     for hazard in ('"link"', '"img"', '"svg"', '"data-kpress-video-id"', '"modal-overlay"'):
         assert hazard in kept, f"KPress alone no longer keeps {hazard}"
     assert allowlist_violations(recorded["markdown added"]["body"]["html"]) == []
@@ -495,6 +508,11 @@ def test_recording_is_what_a_served_pull_request_answers(
     check_recording(
         "github-pull-page-responses.json",
         _stored_once(recorded),
+        transcript="cli-ui-github-pull-page.tryscript.md",
+    )
+    check_recording(
+        "github-pull-page-kpress-tree.json",
+        {"tree": kpress_tree},
         transcript="cli-ui-github-pull-page.tryscript.md",
     )
 
@@ -540,11 +558,7 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     for when, checkout_page in transcript["checkout"].items():
         if when.startswith("a mirror"):
             continue
-        assert (
-            checkout_page["browse"],
-            checkout_page["headOffer"],
-            checkout_page["comparison"],
-        ) == (None, None, None)
+        assert (checkout_page["browse"], checkout_page["comparison"]) == (None, None)
     assert transcript["hunks"] and transcript["place"]
 
 
@@ -676,8 +690,11 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "the preparation ends with no comparison: nothing",
             "a record whose comparison nothing prepares: nothing",
             "Changes, its diff reads no comparison: nothing",
-            "a record with a moved head lands, offering the newer changes: nothing",
-            "the reader takes them, their diff not yet read: the pending placeholder",
+            # Changes follows a moved head; the way back shows the earlier diff, whose failed
+            # read leaves the record's summary drawn, as a repair of an older diff does.
+            "a record with a moved head is followed: its diff reads the comparison: the summary",
+            "the reader goes back: the earlier diff reads none again: the summary",
+            "the reader takes the newer changes, their diff not yet read: the summary",
             "their diff reads the comparison: the summary",
             "Changes, its diff throws: nothing",
             "Retry, the diff not yet read: the pending placeholder",
@@ -775,22 +792,20 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "numbered after a refresh with no pin: 1 Refresh",
             f"1: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
             "2: not handled",
-            # Code behind the head offers to switch to it, numbered after Refresh; while the
-            # refresh 2 asks for runs, Refresh waits, shown and disabled, and keeps 2, so the
-            # offer keeps 3 and a second 2 asks nothing (B2 of review B on #506).
+            # While the refresh 2 asks for runs, Refresh waits, shown and disabled, and keeps
+            # 2, so a second 2 asks nothing (B2 of review B on #506). Code on the pull
+            # request's head numbers no switch to it: the server follows that head.
             f"1: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered with the code behind the head: "
-            "1 Browse code, 2 Refresh, 3 Switch to the head",
+            "numbered with the code on the head: 1 Browse code, 2 Refresh",
             f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered while that refresh runs: 1 Browse code, 2 Refresh, 3 Switch to the head",
+            "numbered while that refresh runs: 1 Browse code, 2 Refresh",
             "2: nothing asked",
-            # Once the refresh ends Refresh is offered again on Changes, and the offer keeps 3;
-            # on Conversation nothing is left to refresh, so Refresh is not shown and the offer
-            # takes 2 (C2 of review C on #506, accepted).
-            "numbered once the refresh ends: 1 Browse code, 2 Refresh, 3 Switch to the head",
-            "numbered on Conversation once the refresh ends: 1 Browse code, 2 Switch to the head",
-            "3: POST /api/source/pin "
-            '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head"}',
+            # Once the refresh ends Refresh is offered again on Changes; on Conversation
+            # nothing is left to refresh, so Refresh is not shown (C2 of review C on #506,
+            # accepted).
+            "numbered once the refresh ends: 1 Browse code, 2 Refresh",
+            "numbered on Conversation once the refresh ends: 1 Browse code",
+            "3: not handled",
             "Shift+H: not handled",
             "Shift+E: opened the checks route",
             "Shift+C: opened the conversation route",
@@ -897,6 +912,33 @@ def test_explicit_repair_preserves_route_and_response_ownership(scenario: str) -
     assert run_session("github-pull-repair-lifecycle-behavior.js", "--case", scenario) == {
         "case": scenario,
         "passed": True,
+    }
+
+
+def test_changes_follows_a_moved_head_in_the_readers_file_and_entry() -> None:
+    """The production page joins a followed diff to the reader's place and history entry.
+
+    A mounted page with a history entry and a diff view that answers ``sectionForPath`` and
+    ``pathForSection`` from its own sections (A4 of review A on #745): the place names its
+    file, the emptied pane's clamp to its top is not written while the newer comparison is
+    read (A3), the newer diff keeps the reader's file, a page mounted again on the entry says
+    the same note and lands there, the reader's choice of the earlier diff outlives a reload
+    (A5), and a file the newer diff lacks lands on a block's top (A8). While a followed diff
+    is read, what replaces it keeps the place already kept: a second push, a push on a page
+    loaded again on its entry, and **Show the earlier changes** pressed over the read (B1 of
+    review B).
+    """
+
+    assert run_session("github-pull-changes-follow-behavior.js") == {
+        "placeNamesItsFile": True,
+        "clampIsNotWritten": True,
+        "followKeepsTheFile": True,
+        "reloadSaysAndLands": True,
+        "choiceSurvivesReload": True,
+        "missingFileLandsOnABlockTop": True,
+        "secondFollowDuringReadKeepsTheFile": True,
+        "followDuringReloadReadKeepsTheFile": True,
+        "wayBackDuringReadKeepsTheFile": True,
     }
 
 
