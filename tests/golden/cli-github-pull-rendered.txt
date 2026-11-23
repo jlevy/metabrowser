@@ -243,7 +243,7 @@ status: 200
   "reason": null,
   "source": "<PATH>",
   "number": 7,
-  "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "pin": "cb2e4e60f719120be29fa824b982dbe353fcc5c9",
   "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
   "verified_at": "2026-09-17T12:00:00Z",

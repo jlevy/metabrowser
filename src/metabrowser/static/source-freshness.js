@@ -680,7 +680,9 @@
         return;
       }
       if (status?.stale && !status.refreshing && !refreshAskedWhileVisible) {
-        await ask({}, { own: true });
+        // A folder's page that shows nothing of the store asks as a page does, so the
+        // fetch is quiet: nothing on the page can change when it ends.
+        await ask(checkout && !status.follows ? { for: "page" } : {}, { own: true });
         return;
       }
       render();

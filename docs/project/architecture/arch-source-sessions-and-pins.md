@@ -478,9 +478,12 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   ([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)).
   `CheckoutRevisions.serves` answers for a revision of either, so the page of one is
   still the folder’s.
-- **Not yet.** A revision of a checkout has no Pulls tab, and its branch list shows no
-  pull requests; and one of the checkout’s own branches that moves while it is shown is
-  not followed.
+- **Pull requests.** A GitHub checkout’s Pulls tab and branch list use the same
+  repository catalog on the working tree and its pinned revisions.
+  Opening a pull request leaves the Files pin in place.
+- **Revision reads.** The checkout serves a pinned commit of its own directly from its
+  own Git objects. If one of its own branches moves, the page keeps that commit until the
+  reader selects a revision.
 
 ## How a Mirror’s Page Names Itself
 

@@ -587,21 +587,38 @@
 }
 
 .metabrowser-diff-host
-  :is(.diff-markdown-control, .diff-markdown-progress, .diff-markdown, .diff-file-body)[hidden] {
+  :is(
+    .diff-markdown-control,
+    .diff-markdown-progress,
+    .diff-markdown,
+    .diff-structured,
+    .diff-file-body
+  )[hidden] {
   display: none;
+}
+
+/* Every rendered row fills the diff box so the change gutter stays at its edge.
+   The reading column inside it uses equal insets measured from that same box. */
+.metabrowser-diff-host :is(.diff-markdown, .diff-structured) {
+  container-type: inline-size;
+  --diff-rendered-inset: max(
+    calc(var(--content-padding-x) + var(--diff-change-gutter-width)),
+    calc((100cqi - var(--doc-measure)) / 2)
+  );
+  padding-block: 4px;
 }
 
 /* The comparison's article is a KPress fragment outside the document host; the shell's
    bridge (static/styles.css) gives every `.kpress` the app's colors and corners, so its
    quotes and code draw as a document's do. */
 .metabrowser-diff-host .diff-markdown {
-  max-inline-size: calc(var(--doc-measure) + 2 * var(--content-padding-x));
-  padding-block: 4px;
   overflow-wrap: anywhere;
 }
 
 .metabrowser-diff-host .diff-markdown-block {
-  padding: 4px var(--content-padding-x);
+  padding-block: 4px;
+  padding-inline: calc(var(--diff-rendered-inset) - var(--diff-change-gutter-width))
+    var(--diff-rendered-inset);
   border-inline-start: var(--diff-change-gutter-width) solid transparent;
 }
 
@@ -642,10 +659,6 @@
 
 /* A changed YAML or JSON file's tree is the file view's (structured/styles.css), at its
    own height, with each added or removed row in the change gutter Markdown blocks use. */
-.metabrowser-diff-host .diff-structured {
-  padding-block: 4px;
-}
-
 .metabrowser-diff-host .diff-structured.structured-tree,
 .metabrowser-diff-host .diff-structured .tree-viewport-flat {
   height: auto;
@@ -653,7 +666,14 @@
 }
 
 .metabrowser-diff-host .diff-structured .srow {
+  padding-inline-end: var(--diff-rendered-inset);
   border-inline-start: var(--diff-change-gutter-width) solid transparent;
+}
+
+/* The tree sets each row's nesting as inline padding. The chevron comes after that
+   padding, so an extra margin offsets the whole row's content without replacing it. */
+.metabrowser-diff-host .diff-structured .srow-chevron {
+  margin-inline-start: calc(var(--diff-rendered-inset) - var(--diff-change-gutter-width));
 }
 
 .metabrowser-diff-host :is(.diff-structured .srow-change-added, .diff-frontmatter-added) {
@@ -701,7 +721,7 @@
 .metabrowser-diff-host .diff-structured-note {
   margin: 0;
   padding-block: 2px 4px;
-  padding-inline-start: var(--diff-change-gutter-width);
+  padding-inline: var(--diff-rendered-inset);
   font-family: var(--font-sans);
   color: var(--muted);
 }
@@ -769,8 +789,8 @@
   background: none;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
-  padding: 4px var(--content-padding-x);
-  padding-inline-start: calc(var(--content-padding-x) + var(--diff-change-gutter-width));
+  padding-block: 4px;
+  padding-inline: var(--diff-rendered-inset);
 }
 
 .metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary:hover {

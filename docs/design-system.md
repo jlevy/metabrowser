@@ -569,33 +569,30 @@ An age in a line takes the line’s size, as an age does everywhere
 ([Label Colors](#label-colors)), and a revision takes the line’s size
 ([Short Commit IDs](#short-commit-ids)).
 
-The two headers share their parts in one order, and each keeps the lines only it has:
+A pull request leads with its state and ages, then shows its author and branches.
+A commit shows its author, revision, and age in that order.
 
 | Line | A commit’s page | A pull request’s page |
 | --- | --- | --- |
 | Title | The subject, `.page-heading`, its own lines | The state icon, the title, and the number, `.page-heading`, cut short at two lines |
 | Author | The [actor identity](#actor-identity) | The actor identity, its sentence, “wants to merge 2 commits”, and the stack chip’s slot at the end |
 | Where it lives | The revision, its copy button, and its refs | The branches, head → base |
-| Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …”, View on GitHub, and Browse code, then Refresh’s slot at the end |
+| Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …”, Browse code, and Refresh’s slot at the end |
 | Its own | None | The labels, a row of chips; the freshness note ending the author’s row; the status line, while it has something to say |
 | Size line | “4 files changed · 56.9 KB compressed (193.9 KB raw diff)”, the [change size line](#change-size-line) | “2 commits · 36 files changed · 1.8 MB compressed (6.2 MB raw diff)” |
 | Diff summary | The last line, drawn by the commit’s diff | The last line, drawn from the comparison |
 | Under the header | The description, a card | The tab bar |
 
-They diverge where a commit is not a pull request.
-A commit has one author and one time, and no state, branches, labels, stack, or
-freshness of its own, so its age line is the time alone, and its refs stand where a pull
-request’s branches do, both saying where the change lives.
-A pull request has a state, which leads its row of ages, and the lines only a cached
-record has. `test_page_headers_set_every_line_under_the_title_at_the_body_size` in
+The commit’s age line gives its commit time.
+Its refs and the pull request’s branches say where the change lives.
+`test_page_headers_set_every_line_under_the_title_at_the_body_size` in
 `tests/test_design_vocabulary.py` holds that each page writes the classes on every line
 but the labels, and that no rule sets another size on a line.
-The order the lines come in is held by `tests/dom/git-panel-behavior.js` for the
-commit’s page and by `tests/test_page_header_chrome.py` for both, which draws both
-headers in headless Chrome, each with its Diff summary drawn, and reads every line but
-the labels as a page header’s line, every line and every run of text in it at the body
-size, both titles alike, the first line `--page-title-gap` under its title, and every
-line after it one gap under the one before.
+The pull request adds half the shared line gap above and below its size line and reduces
+the padding below its Diff summary by the same total amount.
+`tests/dom/git-panel-behavior.js` checks the commit’s header order.
+`tests/test_page_header_chrome.py` draws both headers with their Diff summaries and
+checks the row order, type sizes, title gap, and gaps around the size lines.
 Its measurements are in
 [Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#page-headers).
 
@@ -2549,9 +2546,9 @@ rendered README. Both headers use `.page-heading`. The title begins with the Pul
 icon at the title’s font size.
 The text wraps under its first line while the icon stays beside the first line, to two
 lines at most, and one cut short there carries the whole of it in its tooltip.
-The title is as tall as its own lines, its author’s line `--page-title-gap` under it
-([Page Headers](#page-headers)), so a pull request with a two-line title puts its tab
-bar a line lower than one with a one-line title.
+The title is as tall as its own lines.
+The state and ages sit `--page-title-gap` below it, followed by the author and branches
+([Page Headers](#page-headers)). A two-line title puts the tab bar one line lower.
 The cold page’s title is the Pulls tab’s row for the pull request where the list has
 one, icon, text, and number, so it takes the record’s lines.
 Where the list has none it is “Pull request #7”, held at two lines, the most a record’s
@@ -2575,12 +2572,12 @@ native stack navigation below); where the row has no room left, the note leaves 
 first, whole, and then the sentence is cut short at its end, the action first and then
 the author, never moved or wrapped; the branches have the line under it to themselves,
 one line in every state, their names cut short rather than wrapping it; the row of ages
-begins with the state’s badge, as wide as the widest state, then “Opened”, the ages,
-View on GitHub, and Browse code, one line whose ages are cut short at their end, the
-links after them whole down to 420 px, below which they are clipped at the row’s end,
-and ends in Refresh’s slot; a pull request with labels has a row of them, one line at a
-label’s height, and one with none has no labels row and no gap for it; and a cold page
-keeps every row, empty, at its height.
+begins with the state’s badge, as wide as the widest state, then “Opened”, the ages, and
+Browse code, one line whose ages are cut short at their end, the links after them whole
+down to 420 px, below which they are clipped at the row’s end, and ends in Refresh’s
+slot; a pull request with labels has a row of them, one line at a label’s height, and
+one with none has no labels row and no gap for it; and a cold page keeps every row,
+empty, at its height.
 The freshness note is muted, after a muted dot, at the sentence’s size, stepping back by
 its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit · Fetched just
 now via GitHub CLI”, never a second time for a check that found nothing changed, since

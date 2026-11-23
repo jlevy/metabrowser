@@ -36,6 +36,7 @@ from pathlib import Path
 import pytest
 
 from metabrowser.diff.markdown_projection import project_markdown_diff
+from metabrowser.settings import DOC_MAX_CHARS_DEFAULT
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
 from tests.test_github_pull_text_chrome import _kpress_static  # pyright: ignore[reportPrivateUsage]
@@ -86,7 +87,14 @@ def test_a_fold_expands_in_place_without_a_box_in_chrome(
     assert quoted["status"] == "ready"
     fold_input = tmp_path / "input.json"
     fold_input.write_text(
-        json.dumps({"sheets": sheets, "blocks": projection["blocks"], "quoted": quoted["blocks"]}),
+        json.dumps(
+            {
+                "sheets": sheets,
+                "blocks": projection["blocks"],
+                "quoted": quoted["blocks"],
+                "docMaxChars": DOC_MAX_CHARS_DEFAULT,
+            }
+        ),
         encoding="utf-8",
     )
     # The session leads a process group of its own, which Chrome joins, and the whole group
