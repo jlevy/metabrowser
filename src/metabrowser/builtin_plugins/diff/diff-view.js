@@ -315,6 +315,9 @@ const FILE_BORDER_PX = 2;
 export const SPLIT_RETURN_MARGIN_PX = 20;
 const SPLIT_TOO_NARROW_TIP =
   "Too narrow for Split, so this shows Unified. Choose Split to scroll sideways.";
+// Why the layout chips are unavailable while the diff shows Current (`renderLayoutControl`).
+const LAYOUT_IN_CURRENT_TIP =
+  "Current shows the new version in one column; choose Diff for Split or Unified.";
 
 /** @param {string} tag @param {string} className @param {string} [text] */
 function el(tag, className, text) {
@@ -1411,18 +1414,32 @@ function renderLayoutControl(view) {
   }
   // The control shows what the diff draws. While Split does not fit that is Unified, and
   // the reader's choice waits in `chosenLayout`, so Split says why it is not selected.
+  // While the diff shows Current, one column whatever the layout, it keeps its place and
+  // shows the layout Diff draws, and both chips say why neither can be chosen. They are
+  // `aria-disabled`, not `disabled`, so the pointer and the keyboard reach what they say.
+  const current = view.show === "current";
   const fellBack = view.chosenLayout === "split" && view.layout === "unified";
+  const splitTip = current ? LAYOUT_IN_CURRENT_TIP : fellBack ? SPLIT_TOO_NARROW_TIP : null;
   control.innerHTML = filterControls.groupHtml({
     key: "diff-layout",
     label: "Diff layout",
     layout: "joined",
     options: [
-      { label: "Split", value: "split", ...(fellBack ? { tip: SPLIT_TOO_NARROW_TIP } : {}) },
-      { label: "Unified", value: "unified" },
+      { label: "Split", value: "split", ...(splitTip ? { tip: splitTip } : {}) },
+      { label: "Unified", value: "unified", ...(current ? { tip: LAYOUT_IN_CURRENT_TIP } : {}) },
     ],
     select: "one",
     value: view.layout,
   });
+  if (current) {
+    for (const chip of control.querySelectorAll("[data-chip-value]")) {
+      chip.setAttribute("aria-disabled", "true");
+      chip.setAttribute(
+        "aria-label",
+        `${chip.getAttribute("data-chip-value") === "split" ? "Split" : "Unified"}, unavailable. ${LAYOUT_IN_CURRENT_TIP}`,
+      );
+    }
+  }
   // The markup is new, so `L`'s badge moves to the new chip it would select.
   const option = view.layoutKey ? layoutKeyOption(view) : null;
   if (option) {
@@ -1464,7 +1481,8 @@ export function toggleLayout(view) {
  * @param {boolean} [persist]
  */
 export function setLayout(view, value, persist = true) {
-  if (view.disposed) {
+  // Current is one column whatever the layout, so neither chip, nor `L`, changes anything.
+  if (view.disposed || view.show === "current") {
     return;
   }
   const layout = value === "split" ? "split" : "unified";
@@ -1509,19 +1527,22 @@ export function hasTextDiff(change, patch, context) {
 
 /**
  * Put a file's Diff | Current chooser in its bar's end group, before anything the
- * Rendered layer adds there, so Rendered | Source keeps the bar's far end.
+ * Rendered layer adds there, so Rendered | Source keeps the bar's far end, and lay the bar
+ * out to wrap around it as a bar with a chooser does.
  *
  * @param {MountedDiffState} view
  * @param {HTMLElement} section
+ * @param {HTMLElement} bar
  * @param {HTMLElement} end
  * @param {string} id Unique to the bar, for the key its chips carry.
  */
-function addShowControl(view, section, end, id) {
+function addShowControl(view, section, bar, end, id) {
   if (!view.api?.filterControls) {
     return;
   }
   const entry = { control: el("div", "diff-show-control"), key: `diff-show:${id}`, section };
   view.showControls.set(entry.key, entry);
+  bar.classList.add("diff-file-bar-chooser");
   end.append(entry.control);
   paintShowControl(view, entry);
 }
@@ -1629,6 +1650,7 @@ function drawShow(view, anchor) {
   for (const entry of view.showControls.values()) {
     paintShowControl(view, entry);
   }
+  renderLayoutControl(view);
   view.markdown?.controller.show(view.show === "current");
   if (view.awaitingWidth) {
     // Nothing is drawn before the first width, which draws what is chosen then.
@@ -3324,8 +3346,8 @@ function renderFileSection(change, patch, context, view, draw) {
   // Rendered | Source choosers, and the View file controls opt out.
   const format = view.markdown?.format(change) ?? null;
   const availability = String(change.availability);
-  if (format !== null && hasTextDiff(change, patch, context)) {
-    addShowControl(view, section, end, toggleId);
+  if (hasTextDiff(change, patch, context)) {
+    addShowControl(view, section, bar, end, toggleId);
   }
   const markdown =
     format === null

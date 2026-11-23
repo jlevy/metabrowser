@@ -508,7 +508,7 @@ function describe(file) {
     chips.length === 2 &&
       !file.control.hidden &&
       !file.progress.hidden &&
-      file.bar.classList.contains("diff-file-bar-markdown"),
+      file.bar.classList.contains("diff-file-bar-chooser"),
     `${file.name}: the chooser is gone`,
   );
   // Showing Source instead of Rendered is never a message in the body: nothing but the

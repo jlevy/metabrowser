@@ -44,6 +44,11 @@ class PageElement {
     const owner = this;
     this.classList = {
       contains: (name) => owner.className.split(" ").includes(name),
+      add(...names) {
+        for (const name of names) {
+          this.toggle(name, true);
+        }
+      },
       toggle(name, force) {
         const names = new Set(owner.className.split(" ").filter(Boolean));
         const want = force === undefined ? !names.has(name) : force;
@@ -251,6 +256,10 @@ async function main() {
       },
       filterControls: {
         groupHtml(next) {
+          // The layout control's chips; the Diff | Current choosers have their own session.
+          if (next.key !== "diff-layout") {
+            return "";
+          }
           spec = next;
           drawnChips = next.options.map((option) => {
             const chip = new PageElement("button");
@@ -261,8 +270,10 @@ async function main() {
           });
           return "control";
         },
-        bind(_root, handlers) {
-          change = handlers.onChange;
+        bind(root, handlers) {
+          if (root.classList.contains("diff-layout-control")) {
+            change = handlers.onChange;
+          }
           return () => {};
         },
       },

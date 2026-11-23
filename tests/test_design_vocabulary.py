@@ -368,7 +368,7 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
         box("diff-show-control"),
         box("diff-markdown-control"),
     )
-    bar = el("diff-file-bar diff-file-bar-markdown", lead, end)
+    bar = el("diff-file-bar diff-file-bar-chooser", lead, end)
     el("content-body metabrowser-diff-host", el("diff-file", bar))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-facts", facts))
@@ -599,11 +599,11 @@ def test_diff_file_bar_keeps_its_actions_by_the_name_and_its_chooser_at_its_end(
     end = _rule(diff_css, f"{host} .diff-file-end")
     assert "flex: none;" in end
     assert "margin-inline-start: auto;" in end
-    # Only a bar with a Rendered | Source chooser wraps, and its end group, where it alone is
-    # wider than the bar, wraps too, with each line at the bar's end.
+    # Only a bar with a chooser, Diff | Current or Rendered | Source, wraps, and its end group,
+    # where it alone is wider than the bar, wraps too, with each line at the bar's end.
     assert "flex-wrap" not in _rule(diff_css, f"{host} .diff-file-bar")
-    assert "flex-wrap: wrap;" in _rule(diff_css, f"{host} .diff-file-bar-markdown")
-    wrapping_end = _rule(diff_css, f"{host} .diff-file-bar-markdown .diff-file-end")
+    assert "flex-wrap: wrap;" in _rule(diff_css, f"{host} .diff-file-bar-chooser")
+    wrapping_end = _rule(diff_css, f"{host} .diff-file-bar-chooser .diff-file-end")
     assert "flex: 0 1 auto;" in wrapping_end
     assert "flex-wrap: wrap;" in wrapping_end
     assert "justify-content: flex-end;" in wrapping_end

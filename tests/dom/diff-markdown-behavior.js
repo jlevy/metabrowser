@@ -516,10 +516,7 @@ async function main() {
   const c = file("c", { lead: true });
   const d = file("d");
   assert.equal(a.source.hidden, true, "a file waits for Rendered before showing Source");
-  assert.ok(
-    a.bar.classList.contains("diff-file-bar-markdown"),
-    "a chooser lays the bar out for it",
-  );
+  assert.ok(a.bar.classList.contains("diff-file-bar-chooser"), "a chooser lays the bar out for it");
   assert.equal(a.control.hidden, false);
   assert.equal(a.progress.hidden, false);
   view.observe(root, null);
@@ -622,7 +619,7 @@ async function main() {
   assert.equal(c.sourceChoice.attributes.get("aria-checked"), "true");
   assert.equal(c.control.hidden, false, "a file that can only show Source keeps its chooser");
   assert.equal(c.progress.hidden, false, "and its progress mark's place");
-  assert.ok(c.bar.classList.contains("diff-file-bar-markdown"), "and its bar's layout");
+  assert.ok(c.bar.classList.contains("diff-file-bar-chooser"), "and its bar's layout");
   const why = "This file is too large to show rendered.";
   assert.equal(c.renderedChoice.attributes.get("aria-disabled"), "true");
   assert.equal(c.renderedChoice.disabled, undefined, "it takes the pointer, so it can say why");
@@ -677,7 +674,7 @@ async function main() {
   assert.equal(d.renderedChoice.dataset.tipText, undefined);
   assert.equal(d.control.hidden, false, "a retryable failure keeps the chooser");
   assert.equal(d.progress.hidden, false);
-  assert.ok(d.bar.classList.contains("diff-file-bar-markdown"));
+  assert.ok(d.bar.classList.contains("diff-file-bar-chooser"));
   assert.equal(d.source.hidden, false, "a failed render shows Source");
   assert.equal(d.section.children.length, 3, "and says nothing about it");
   await d.renderedChoice.click();

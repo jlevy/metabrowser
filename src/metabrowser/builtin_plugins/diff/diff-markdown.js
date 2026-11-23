@@ -973,7 +973,7 @@ export function createMarkdownViews(deps) {
       // The progress mark leads the end group, on the side of the bar's free space, so
       // nothing in it moves when the mark appears, and the chooser ends it, after the
       // diff's own Diff | Current where the file has one.
-      bar.classList.add("diff-file-bar-markdown");
+      bar.classList.add("diff-file-bar-chooser");
       end.prepend(progress);
       end.append(control);
       source.before(rendered);

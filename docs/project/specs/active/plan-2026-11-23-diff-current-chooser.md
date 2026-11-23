@@ -222,7 +222,7 @@ One stack on #759, one commit per bead:
   and Rendered Current for Markdown.
 - [x] `mb-wd9o`: Source Current for those files.
 - [x] `mb-256j`: Rendered Current for YAML and JSON.
-- [ ] `mb-ubs0`: the chooser on every bar with a text diff, and the layout control while
+- [x] `mb-ubs0`: the chooser on every bar with a text diff, and the layout control while
   Current is chosen.
 - [ ] `mb-yt73`: `diff.show`, `N`, the browserless session and its golden, and the
   parity row.

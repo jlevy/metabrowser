@@ -194,6 +194,13 @@ class FakeElement {
     return this.find(selector.slice(1)).find((node) => node !== this) ?? null;
   }
 
+  /** Descendants of one class; markup set as `innerHTML` is not parsed, so it has none. */
+  querySelectorAll(selector) {
+    return selector.startsWith(".")
+      ? this.find(selector.slice(1)).filter((node) => node !== this)
+      : [];
+  }
+
   text() {
     return [...this.walk()]
       .map((node) => node.textContent)
@@ -1422,6 +1429,9 @@ async function main() {
   const preferenceWrites = [];
   const layoutSpecs = [];
   let unbound = 0;
+  // The diff's Diff | Current choosers are bound once, on its root.
+  let showBinds = 0;
+  let showUnbound = 0;
   const layoutApi = {
     highlightSyntax: async (source) => {
       layoutSyntaxCalls += 1;
@@ -1442,7 +1452,13 @@ async function main() {
         layoutSpecs.push(spec);
         return `<span role="radiogroup" data-select="${spec.select}" data-layout="${spec.layout}">${spec.options.map((option) => option.label).join("/")}</span>`;
       },
-      bind: (_root, handlers) => {
+      bind: (root, handlers) => {
+        if (!root.classList.contains("diff-layout-control")) {
+          showBinds += 1;
+          return () => {
+            showUnbound += 1;
+          };
+        }
         layoutChange = handlers.onChange;
         return () => {
           unbound += 1;
@@ -1613,6 +1629,126 @@ async function main() {
         row.find("diff-split-old")[0].classList.contains("diff-split-empty"),
       ),
   );
+  // Diff | Current is on a code file's bar too: one choice for the diff, which draws the
+  // new file's lines in one column whatever the layout, while the layout control keeps its
+  // place, says why it is unavailable, and changes nothing.
+  let showChange = null;
+  let currentLayoutChange = null;
+  const showSpecs = [];
+  const currentApi = {
+    ...layoutApi,
+    filterControls: {
+      groupHtml: (spec) => {
+        showSpecs.push(spec);
+        return "";
+      },
+      bind: (root, handlers) => {
+        if (root.classList.contains("diff-layout-control")) {
+          currentLayoutChange = handlers.onChange;
+        } else {
+          showChange = handlers.onChange;
+        }
+        return () => {};
+      },
+    },
+  };
+  const currentHost = new FakeElement("div");
+  const currentHandle = mountDiffView(currentHost, byName.get("modified-with-heading"), currentApi);
+  const codeBar = currentHost.find("diff-file-bar")[0];
+  const showSpec = showSpecs.find((spec) => spec.key.startsWith("diff-show:"));
+  check(
+    "a code file's bar ends with the Diff | Current chooser and wraps around it",
+    codeBar.find("diff-file-end")[0].children[0]?.classList.contains("diff-show-control") ===
+      true && codeBar.classList.contains("diff-file-bar-chooser"),
+  );
+  check(
+    "the chooser is one joined, exclusive group named for what it chooses",
+    showSpec?.label === "Diff or current version" &&
+      showSpec.layout === "joined" &&
+      showSpec.select === "one" &&
+      showSpec.value === "diff" &&
+      JSON.stringify(showSpec.options.map((option) => [option.label, option.tip])) ===
+        JSON.stringify([
+          ["Diff", "Show what changed, removals included"],
+          ["Current", "Show the new version alone, its changes marked"],
+        ]),
+    JSON.stringify(showSpec),
+  );
+  const writesBefore = preferenceWrites.length;
+  showChange(showSpec.key, "current", "one");
+  await Promise.resolve();
+  const currentRoot = currentHost.find("diff-root")[0];
+  const currentLines = currentHost.find("diff-line");
+  check(
+    "Current draws the new file's lines in one column, in place of Split",
+    currentRoot.dataset.show === "current" &&
+      currentHost.find("diff-split-row").length === 0 &&
+      currentHost.find("diff-hunk-current").length === 1 &&
+      JSON.stringify(currentLines.map((row) => row.find("diff-line-marker")[0].textContent)) ===
+        JSON.stringify([" ", "+", " "]) &&
+      currentLines.every((row) => row.find("diff-line-number").length === 1),
+    `${currentHost.find("diff-split-row").length} split rows, ${currentLines.length} lines`,
+  );
+  check(
+    "its hunk header names the new side's range alone",
+    currentHost.find("diff-hunk-header")[0].textContent.startsWith("@@ +3,"),
+    currentHost.find("diff-hunk-header")[0].textContent,
+  );
+  const layoutInCurrent = showSpecs.filter((spec) => spec.key === "diff-layout").at(-1);
+  check(
+    "the layout control keeps the stored layout and says why neither chip can be chosen",
+    layoutInCurrent.value === "split" &&
+      layoutInCurrent.options.every(
+        (option) =>
+          option.tip ===
+          "Current shows the new version in one column; choose Diff for Split or Unified.",
+      ),
+    JSON.stringify(layoutInCurrent),
+  );
+  currentLayoutChange("diff-layout", "unified", "one");
+  check(
+    "choosing a layout in Current changes nothing and stores nothing",
+    currentRoot.dataset.layout === "split" &&
+      currentHost.find("diff-hunk-current").length === 1 &&
+      preferenceWrites.length === writesBefore,
+  );
+  showChange(showSpec.key, "diff", "one");
+  await Promise.resolve();
+  check(
+    "Diff draws the stored layout again",
+    currentRoot.dataset.show === "diff" &&
+      currentHost.find("diff-split-row").length === 3 &&
+      showSpecs.filter((spec) => spec.key === "diff-layout").at(-1).options[1].tip === undefined,
+  );
+  currentHandle.dispose();
+  const deletedCurrent = new FakeElement("div");
+  let deletedShow = null;
+  const deletedHandle = mountDiffView(deletedCurrent, byName.get("deleted-file"), {
+    ...currentApi,
+    filterControls: {
+      groupHtml: (spec) => {
+        if (spec.key.startsWith("diff-show:")) {
+          deletedShow = spec.key;
+        }
+        return "";
+      },
+      bind: (root, handlers) => {
+        if (!root.classList.contains("diff-layout-control")) {
+          showChange = handlers.onChange;
+        }
+        return () => {};
+      },
+    },
+  });
+  showChange(deletedShow, "current", "one");
+  await Promise.resolve();
+  check(
+    "a deleted file says in Current that it has no current version",
+    deletedCurrent.text().includes("This file was deleted, so it has no current version.") &&
+      deletedCurrent.find("diff-line").length === 0,
+  );
+  deletedHandle.dispose();
+
   const pureDelete = new FakeElement("div");
   mountDiffView(pureDelete, byName.get("deleted-file"), layoutApi);
   const pureDeleteRows = pureDelete.find("diff-split-change");
@@ -1626,6 +1762,11 @@ async function main() {
   const pointerUpListeners = documentListeners.get("pointerup")?.length ?? 0;
   splitHandle.dispose();
   check("layout control binding disposes with the view", unbound === 1, String(unbound));
+  check(
+    "the Diff | Current binding is one per diff and disposes with it",
+    showBinds > 0 && showUnbound === 1,
+    `${showBinds} bound, ${showUnbound} unbound`,
+  );
   check(
     "selection gate listeners dispose with the view",
     (documentListeners.get("pointerup")?.length ?? 0) === pointerUpListeners - 1,
@@ -1651,8 +1792,10 @@ async function main() {
     ...layoutApi,
     filterControls: {
       ...layoutApi.filterControls,
-      bind: (_root, handlers) => {
-        boundedLayoutChange = handlers.onChange;
+      bind: (root, handlers) => {
+        if (root.classList.contains("diff-layout-control")) {
+          boundedLayoutChange = handlers.onChange;
+        }
         return () => {};
       },
     },
