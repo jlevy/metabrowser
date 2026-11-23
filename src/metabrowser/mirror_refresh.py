@@ -321,6 +321,22 @@ class MirrorRef:
     commit: str
     default: bool = False
     committed_at: float | None = None
+    # Only on a row of a checkout's list of its origin's branches, read from the store
+    # Metabrowser keeps of that origin: where the checkout's own remote-tracking branch
+    # is, when that is not ``commit`` (``_with_origin`` in ``checkout_revisions.py``).
+    checkout: CheckoutsOwnRef | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CheckoutsOwnRef:
+    """Where a checkout's own remote-tracking branch is, beside its origin's branch.
+
+    ``commit`` and ``committed_at`` are that ref's, as :class:`MirrorRef` has them, and
+    both ``None`` when the checkout has no such ref: a branch the reader never fetched.
+    """
+
+    commit: str | None
+    committed_at: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2244,6 +2260,7 @@ __all__ = [
     "STORE_PROBE_WAIT_S",
     "UNSERVED_FRESHNESS",
     "AmbiguousSelectionError",
+    "CheckoutsOwnRef",
     "CommitFetch",
     "CommitFetchAnswer",
     "CompanionRefresh",
@@ -2276,7 +2293,9 @@ __all__ = [
     "StoreSession",
     "StoreTurn",
     "drain_refreshes",
+    "follow_served_ref",
     "followed_outcome",
+    "follows_moves",
     "lifespan_refresh",
     "mirror_session",
     "probes_origin",

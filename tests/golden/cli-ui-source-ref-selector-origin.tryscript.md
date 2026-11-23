@@ -23,6 +23,13 @@ where its last fetch left it, and the origin has moved on.
   Metabrowser last fetched them, and when.
   The checkout’s own branches read no store.
 - An origin branch is chosen by its ref and is named as the checkout names it.
+- A row of the origin’s branches says where the reader’s own `origin/<branch>` is not
+  where the origin’s is: “yours differs”, with the checkout’s commit in the row’s
+  tooltip (`own`), and “not in checkout” for a branch the reader never fetched.
+  The server says only that the two differ.
+  `ownDifference` is what the tooltip says when the checkout’s commit is dated earlier
+  or later than the origin’s, which the recording’s commits, all of one pinned date, are
+  not.
 - With no store, while it is first fetched, or when the origin needs credentials
   Metabrowser lacks, the list is the checkout’s own and says why.
 - A mirror’s list, and a checkout that keeps no store, ask nothing and say nothing.
@@ -80,8 +87,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] (remote chip)",
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
+          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
@@ -107,8 +118,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] (remote chip)",
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
+          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
@@ -164,8 +179,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] (remote chip)",
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
+          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
@@ -191,8 +210,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] (remote chip)",
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 38a3045 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
+          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
@@ -221,8 +244,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] (remote chip)",
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
+          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
@@ -250,8 +277,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": true,
         "rows": [
-          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] (remote chip)",
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
+          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
@@ -277,8 +308,12 @@ $ node tests/dom/source-ref-selector-origin-session.js
         "loading": false,
         "switching": true,
         "rows": [
-          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] (remote chip)",
-          "origin/feature f747860 2020-01-01T00:00:00Z (remote chip)"
+          "origin/trunk 9ba2923 2020-01-01T00:00:00Z [default] [yours differs] (remote chip)",
+          "origin/feature f747860 2020-01-01T00:00:00Z [not in checkout] (remote chip)"
+        ],
+        "own": [
+          "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
+          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
@@ -389,6 +424,17 @@ $ node tests/dom/source-ref-selector-origin-session.js
   "quietWithoutAStore": {
     "asked": [],
     "origin": null
+  },
+  "ownDifference": {
+    "asRecorded": [
+      "yours differs: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
+      "not in checkout: Your checkout has no origin/feature: your own git fetch has not brought this branch."
+    ],
+    "yoursEarlier": "yours differs: Your checkout's origin/trunk is at 0b51e01, an earlier commit by date, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
+    "yoursLater": "yours differs: Your checkout's origin/trunk is at 0b51e01, a later commit by date, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
+    "ownBranches": [
+      null
+    ]
   }
 }
 ? 0

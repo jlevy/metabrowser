@@ -179,6 +179,44 @@ def test_a_served_checkout_lists_its_origins_refs_from_metabrowsers_own_store(
     assert _working_tree(folder.checkout) == tree
 
 
+def test_an_origin_branch_says_where_the_readers_own_ref_is_when_it_differs(
+    folder: _Folder, served: TestClient
+) -> None:
+    """The row is the origin's branch as Metabrowser fetched it. Where the checkout's own
+    `origin/<branch>` is another commit, or the checkout has none, the row says so, and
+    stops saying so once the reader's own fetch has brought it."""
+
+    rows = {row["name"]: row for row in _ready(served)["refs"]}
+    trunk = rows["origin/trunk"]
+    # The origin's trunk is at M6; the reader's last fetch left theirs at M5. Both commits'
+    # dates are in the row, for the page to say which is the later; the replica pins
+    # every commit to one date.
+    assert trunk["commit"] == folder.ahead
+    assert trunk["checkout"] == {"commit": folder.behind, "committed_at": trunk["committed_at"]}
+    assert isinstance(trunk["committed_at"], float)
+    # A branch the reader never fetched: the checkout has no such ref.
+    assert rows["origin/feature"]["checkout"] == {"commit": None, "committed_at": None}
+    # A filter keeps the mark, and no other list has one.
+    assert _refs(served, "remote&q=trunk")["refs"][0]["checkout"] == trunk["checkout"]
+    for kind in ("branch", "tag"):
+        assert all("checkout" not in row for row in _refs(served, kind)["refs"])
+
+    # The reader fetches: their refs are the origin's, and the rows say nothing.
+    pinned_git(
+        folder.checkout,
+        *("fetch", "-q", folder.replica.url, "+refs/heads/*:refs/remotes/origin/*"),
+    )
+    assert all("checkout" not in row for row in _refs(served, "remote")["refs"])
+    # The reader pushes a commit Metabrowser has not fetched: theirs is the later one.
+    pinned_git(folder.checkout, "commit", "-q", "--allow-empty", "-m", "pushed")
+    pushed = pinned_git(folder.checkout, "rev-parse", "HEAD")
+    pinned_git(folder.checkout, "update-ref", _ORIGIN_TRUNK, pushed)
+    again = {row["name"]: row for row in _refs(served, "remote")["refs"]}
+    assert again["origin/trunk"]["commit"] == folder.ahead
+    assert again["origin/trunk"]["checkout"]["commit"] == pushed
+    assert "checkout" not in again["origin/feature"]
+
+
 def test_another_remotes_branches_stay_listed_from_the_checkout(
     folder: _Folder, tmp_path: Path
 ) -> None:

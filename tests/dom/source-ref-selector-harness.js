@@ -184,8 +184,15 @@ function paintOf(model) {
     switching: model.switching,
     rows: model.rows.map(
       (row) =>
-        `${row.name} ${row.commit} ${committedOf(row.committedAt)}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}${pullsOf(row)}`,
+        `${row.name} ${row.commit} ${committedOf(row.committedAt)}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${row.own ? ` [${row.own.text}]` : ""}${checkout ? ` (${row.chip} chip)` : ""}${pullsOf(row)}`,
     ),
+    // What a row's tooltip says where the reader's own `origin/<branch>` is not where the
+    // origin's branch is. Absent where no row says so.
+    ...(model.rows.some((row) => row.own)
+      ? {
+          own: model.rows.filter((row) => row.own).map((row) => `${row.name}: ${row.own.tip}`),
+        }
+      : {}),
     note: model.note,
     // What a checkout's list says of the store its origin's refs are read from, with
     // when that store was fetched: the page shows it as an age, so the transcript prints

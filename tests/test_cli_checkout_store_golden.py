@@ -90,8 +90,10 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
         "With the store, the list of remote-tracking branches has the origin's branches as "
         "Metabrowser fetched them: origin/trunk at M6, first and marked as the origin's "
         "default branch, and origin/feature, which the checkout "
-        "never fetched. The checkout's own origin/* is not a second list. origin says when "
-        "the store was last fetched.",
+        "never fetched. The checkout's own origin/* is not a second list: each row says in "
+        "checkout where the reader's own ref is when that is another commit, M5 on "
+        "origin/trunk, and nulls on origin/feature, which the checkout has no ref for. "
+        "origin says when the store was last fetched.",
         ((("checkout", "--api", "/api/source/refs?kind=remote"), 0),),
     ),
     (

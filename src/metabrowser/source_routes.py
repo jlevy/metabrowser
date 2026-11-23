@@ -340,7 +340,11 @@ class SourceRef(TypedDict):
     requests the branch is the head of, open first and then newest first, and a filter's
     matches before the rest, the first :data:`REF_PULLS_PER_ROW` of them, and ``pulls_total``
     how many there are; a row with none has neither, so a list of thousands of branches
-    pays nothing for them.
+    pays nothing for them. ``checkout`` is on a row of a checkout's origin's branches
+    read from Metabrowser's store of that origin, and only where the checkout's own
+    ``origin/<branch>`` is not at the row's ``commit``
+    (:class:`CheckoutOwnRef`): the reader has not fetched what the origin has, or has
+    pushed what Metabrowser has not fetched yet.
     """
 
     name: str
@@ -352,6 +356,22 @@ class SourceRef(TypedDict):
     current: bool
     pulls: NotRequired[list[RefPull]]
     pulls_total: NotRequired[int]
+    checkout: NotRequired[CheckoutOwnRef]
+
+
+class CheckoutOwnRef(TypedDict):
+    """Where the checkout's own remote-tracking branch is, on a row whose commit it is not at.
+
+    ``commit`` is the commit the checkout's ``refs/remotes/origin/<branch>`` names and
+    ``committed_at`` that commit's committer date in epoch seconds; both are ``None``
+    when the checkout has no such ref, a branch the reader never fetched. The row says
+    that the two differ and no more: which is ahead, and by how many commits, would take
+    a walk of the history between them for every branch that differs
+    (``_own_difference`` in ``checkout_revisions.py``).
+    """
+
+    commit: str | None
+    committed_at: float | None
 
 
 class RefPullsStatus(TypedDict):
@@ -476,6 +496,10 @@ def source_refs(
         if pulls is not None and head is not None and (shown := pulls.pulls(head, query)):
             row["pulls"] = list(shown[:REF_PULLS_PER_ROW])
             row["pulls_total"] = len(shown)
+        if entry.checkout is not None:
+            row["checkout"] = CheckoutOwnRef(
+                commit=entry.checkout.commit, committed_at=entry.checkout.committed_at
+            )
         rows.append(row)
     return SourceRefs(
         kind=kind,
@@ -1569,6 +1593,7 @@ __all__ = [
     "REFS_MAX_QUERY_CHARS",
     "SOURCE_ROUTES",
     "WORKING_TREE_PIN",
+    "CheckoutOwnRef",
     "SourcePinGuard",
     "SourceRef",
     "SourceRefs",

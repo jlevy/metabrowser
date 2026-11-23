@@ -3844,6 +3844,11 @@ declare global {
     pulls?: MetabrowserSourceRefPull[];
     /** How many pull requests the branch heads, of which `pulls` lists the first few. */
     pulls_total?: number;
+    /** On a row of the origin's branches read from Metabrowser's store, where the
+     * checkout's own remote-tracking branch is when that is not this row's commit: its
+     * commit and that commit's date, both null when the checkout has no such branch.
+     * Absent where the two agree, and on every other row. */
+    checkout?: { commit: string | null; committed_at: number | null };
   };
 
   /** A pull request as the ref list shows it: its state as the Pulls tab does. */
@@ -3962,6 +3967,9 @@ declare global {
       current: boolean;
       /** The chip a row's name is drawn as. */
       chip: "local" | "remote" | "tag";
+      /** What the row says where the reader's own `origin/<branch>` is not where the
+       * origin's is: a short tag and the sentence its tooltip carries; else null. */
+      own: { text: string; tip: string } | null;
       /** The pull requests the branch is the head of, the first of which the row shows. */
       pulls: MetabrowserSourceRefPull[];
       /** How many it heads, of which `pulls` lists the first few. */

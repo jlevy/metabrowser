@@ -30,7 +30,10 @@
 //   Remotes list has the origin's branches as Metabrowser last fetched them, in place of
 //   the checkout's own `origin/*`, and the Tags list the origin's tags; a line under the
 //   list says so and when, or why the origin is not fetched. The origin's default branch
-//   is first there and marked. An open list of a checkout, once it shows Remotes or Tags,
+//   is first there and marked. A row there whose branch the reader's own checkout has
+//   at another commit, or not at all, says so (`ownDifference`): "yours differs" where
+//   the checkout's own `origin/<branch>` is not where the origin's is, which is a branch
+//   the reader has not pulled, or has pushed since. An open list of a checkout, once it shows Remotes or Tags,
 //   makes a visible page's own ask once (`{"for": "page"}`), which fetches a store older
 //   than the server's freshness window, and asks for the list again while that runs.
 //
@@ -166,6 +169,44 @@
   }
 
   /**
+   * What a row of the origin's branches says where the reader's own remote-tracking
+   * branch is not at the row's commit, or `null` where it is. Pure.
+   *
+   * The row is the origin's branch as Metabrowser last fetched it into its own store;
+   * the checkout's `origin/<branch>` is where the reader's own last fetch left it. The
+   * server says only that the two differ, and where the checkout's is: which is ahead
+   * needs a walk of the history between them, which the listing does not make. The
+   * commits' dates are in the listing, so the tooltip says which was committed later.
+   *
+   * @param {MetabrowserSourceRef} row
+   * @returns {{text: string, tip: string} | null}
+   */
+  function ownDifference(row) {
+    const own = row.checkout;
+    if (own === undefined || own === null) {
+      return null;
+    }
+    if (own.commit === null) {
+      return {
+        text: "not in checkout",
+        tip: `Your checkout has no ${row.name}: your own git fetch has not brought this branch.`,
+      };
+    }
+    const mine = own.committed_at;
+    const theirs = row.committed_at;
+    const when =
+      mine === null || theirs === null || mine === theirs
+        ? ""
+        : mine < theirs
+          ? ", an earlier commit by date"
+          : ", a later commit by date";
+    return {
+      text: "yours differs",
+      tip: `Your checkout's ${row.name} is at ${window.MetabrowserFormatters.shortCommit(own.commit)}${when}, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.`,
+    };
+  }
+
+  /**
    * What the selector shows for one state. Pure.
    *
    * @param {MetabrowserSourceRefSelectorState} state
@@ -192,6 +233,7 @@
             checkedOut: row.checked_out === true,
             current: row.current,
             chip,
+            own: ownDifference(row),
             pulls: (row.pulls ?? []).map((pull) => ({
               number: pull.number,
               title: pull.title,
@@ -460,6 +502,7 @@
         x.default !== y.default ||
         x.checked_out !== y.checked_out ||
         x.current !== y.current ||
+        JSON.stringify(x.checkout ?? null) !== JSON.stringify(y.checkout ?? null) ||
         (x.pulls_total ?? 0) !== (y.pulls_total ?? 0) ||
         pullsSignature(x.pulls ?? []) !== pullsSignature(y.pulls ?? [])
       ) {
@@ -502,7 +545,8 @@
         x.default !== y.default ||
         x.checkedOut !== y.checkedOut ||
         x.current !== y.current ||
-        x.chip !== y.chip
+        x.chip !== y.chip ||
+        (x.own?.tip ?? "") !== (y.own?.tip ?? "")
       ) {
         return false;
       }
@@ -1269,6 +1313,14 @@
       badge.textContent = row.default ? "default" : "checked out";
       main.append(badge);
     }
+    // Where the reader's own `origin/<branch>` is not where the origin's branch is: a
+    // second tag, in a warning's ink, whose sentence the row's tooltip carries.
+    if (row.own !== null) {
+      const own = document.createElement("span");
+      own.className = "source-ref-selector-badge source-ref-selector-own";
+      own.textContent = row.own.text;
+      main.append(own);
+    }
     // The commit as every line names one, its short ID in the commit-ID face, then
     // its age, in the compact style of navigation, with the exact time as its tooltip
     // (docs/design-system.md, "Age"). A date Git did not give has no age.
@@ -1301,6 +1353,9 @@
       const tips = [];
       if (name.scrollWidth > name.clientWidth) {
         tips.push(row.name);
+      }
+      if (row.own !== null) {
+        tips.push(row.own.tip);
       }
       if (now.pulls.length > 0) {
         const tip = pullTip(now, cut);
@@ -1423,6 +1478,7 @@
           checkedOut: false,
           current: false,
           chip: "remote",
+          own: null,
           pulls: tall ? [{ number: 1, title: "probe", state: "open" }] : [],
           pullsTotal: tall ? 1 : 0,
         },

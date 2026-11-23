@@ -3155,6 +3155,12 @@ html.theme-anim .menu {
   border-radius: var(--radius-chrome);
   color: var(--muted);
 }
+/* Where the reader's own `origin/<branch>` is not where the origin's branch is: the same
+   outlined tag in a warning's ink, since it is a state to notice and not an error. */
+.source-ref-selector-own {
+  border-color: var(--status-warning-text);
+  color: var(--status-warning-text);
+}
 /* A ref's commit as every line names one: its short ID in the commit-ID face and gray
    (`.git-commit-sha`) beside the ref's name, then its age, whose tier sets its colour
    and weight (`.age-*`). Neither shrinks: the name gives way first. The age ends the row

@@ -93,6 +93,7 @@ from metabrowser.git.process import (
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
     PROBED_REF_PREFIX,
+    CheckoutsOwnRef,
     FreshnessFields,
     MirrorRef,
     MirrorSession,
@@ -727,11 +728,18 @@ def _with_origin(
     the checkout has stay: another remote's branches, and a tag the origin lacks. The
     checkout's ``origin/*`` is not a second list. In one listing order
     (``in_listing_order`` in ``cache/resolve.py``).
+
+    Each of the origin's branches says where the checkout's own ``origin/<branch>`` is
+    when that is another commit, or that the checkout has none
+    (:func:`_own_difference`), so a branch the reader has not pulled is visible.
     """
 
     from metabrowser.cache.resolve import in_listing_order
 
     if kind == "remote":
+        # The checkout's own ``origin/*``, by the ref the store keeps the same branch
+        # under: a mirror's ref for its origin's branch is a checkout's for it too.
+        readers = {entry.ref: entry for entry in mine if entry.ref.startswith(PROBED_REF_PREFIX)}
         origin = tuple(
             MirrorRef(
                 name=f"origin/{entry.name}",
@@ -739,15 +747,36 @@ def _with_origin(
                 commit=entry.commit,
                 default=entry.default,
                 committed_at=entry.committed_at,
+                checkout=_own_difference(readers.get(entry.ref), entry.commit),
             )
             for entry in theirs
         )
-        own = tuple(entry for entry in mine if not entry.ref.startswith(PROBED_REF_PREFIX))
+        own = tuple(entry for entry in mine if entry.ref not in readers)
     else:
         origin = theirs
         held = {entry.ref for entry in theirs}
         own = tuple(entry for entry in mine if entry.ref not in held)
     return in_listing_order((*origin, *own))
+
+
+def _own_difference(own: MirrorRef | None, commit: str) -> CheckoutsOwnRef | None:
+    """Where the checkout's own remote-tracking branch is, when not at *commit*; else ``None``.
+
+    *own* is the checkout's ``refs/remotes/origin/<branch>`` and *commit* the same
+    branch's in the store of the origin, as Metabrowser last fetched it. That the two
+    differ is all this says, with the checkout's commit and its date. Which is ahead, and
+    by how many commits, is not said: it needs a walk of the history between the two for
+    each branch that differs, one Git process apiece with a cost the number of refs does
+    not bound, where the whole listing is otherwise one ``for-each-ref`` of each
+    repository, and the checkout's ref was already read by it. The two dates are in the
+    row, and the page says which commit is the later.
+    """
+
+    if own is None:
+        return CheckoutsOwnRef(commit=None, committed_at=None)
+    if own.commit == commit:
+        return None
+    return CheckoutsOwnRef(commit=own.commit, committed_at=own.committed_at)
 
 
 async def _open_revision(

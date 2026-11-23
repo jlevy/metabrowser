@@ -149,9 +149,63 @@ async function run() {
     checkout: true,
   });
 
+  // What a row says where the reader's own `origin/<branch>` is not where the origin's
+  // is. The recording's commits share one pinned date, so the two rows it has say only
+  // that they differ; the same listing with the checkout's commit dated a day earlier
+  // and a day later says which was committed later.
+  const listed = recording.remotes.body;
+  const tips = (/** @type {(at: number) => number} */ shift) =>
+    selectorRuntime
+      .describe({
+        shown: null,
+        open: true,
+        kind: "remote",
+        query: "",
+        listing: {
+          ...listed,
+          refs: listed.refs.map((row) =>
+            row.checkout?.commit
+              ? {
+                  ...row,
+                  checkout: { ...row.checkout, committed_at: shift(row.checkout.committed_at) },
+                }
+              : row,
+          ),
+        },
+        loading: false,
+        switching: false,
+        error: null,
+        checkout: true,
+      })
+      .rows.map((row) => (row.own === null ? null : `${row.own.text}: ${row.own.tip}`));
+  const ownDifference = {
+    asRecorded: tips((at) => at),
+    yoursEarlier: tips((at) => at - 86400)[0],
+    yoursLater: tips((at) => at + 86400)[0],
+    // The checkout's own branches are not the origin's, and say nothing.
+    ownBranches: selectorRuntime
+      .describe({
+        shown: null,
+        open: true,
+        kind: "branch",
+        query: "",
+        listing: recording.branches.body,
+        loading: false,
+        switching: false,
+        error: null,
+        checkout: true,
+      })
+      .rows.map((row) => row.own),
+  };
+  assert(
+    ownDifference.asRecorded.every((tip) => tip !== null),
+    "a differing row said nothing",
+  );
+
   return {
     steps,
     quietWithoutAStore: { asked: quiet.requests.slice(1), origin: model.origin },
+    ownDifference,
   };
 }
 

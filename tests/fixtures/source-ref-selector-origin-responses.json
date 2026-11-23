@@ -225,7 +225,11 @@
           "committed_at": 1577836800.0,
           "default": true,
           "checked_out": false,
-          "current": false
+          "current": false,
+          "checkout": {
+            "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+            "committed_at": 1577836800.0
+          }
         },
         {
           "name": "origin/feature",
@@ -234,7 +238,11 @@
           "committed_at": 1577836800.0,
           "default": false,
           "checked_out": false,
-          "current": false
+          "current": false,
+          "checkout": {
+            "commit": null,
+            "committed_at": null
+          }
         }
       ]
     }
@@ -544,7 +552,11 @@
           "committed_at": 1577836800.0,
           "default": true,
           "checked_out": false,
-          "current": false
+          "current": false,
+          "checkout": {
+            "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+            "committed_at": 1577836800.0
+          }
         },
         {
           "name": "origin/feature",
@@ -553,7 +565,11 @@
           "committed_at": 1577836800.0,
           "default": false,
           "checked_out": false,
-          "current": false
+          "current": false,
+          "checkout": {
+            "commit": null,
+            "committed_at": null
+          }
         }
       ]
     }
@@ -603,7 +619,11 @@
           "committed_at": 1577836800.0,
           "default": true,
           "checked_out": false,
-          "current": false
+          "current": false,
+          "checkout": {
+            "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+            "committed_at": 1577836800.0
+          }
         },
         {
           "name": "origin/feature",
@@ -612,7 +632,11 @@
           "committed_at": 1577836800.0,
           "default": false,
           "checked_out": false,
-          "current": false
+          "current": false,
+          "checkout": {
+            "commit": null,
+            "committed_at": null
+          }
         }
       ]
     }
@@ -772,7 +796,11 @@
           "committed_at": 1577836800.0,
           "default": true,
           "checked_out": false,
-          "current": true
+          "current": true,
+          "checkout": {
+            "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+            "committed_at": 1577836800.0
+          }
         },
         {
           "name": "origin/feature",
@@ -781,7 +809,11 @@
           "committed_at": 1577836800.0,
           "default": false,
           "checked_out": false,
-          "current": false
+          "current": false,
+          "checkout": {
+            "commit": null,
+            "committed_at": null
+          }
         }
       ]
     }

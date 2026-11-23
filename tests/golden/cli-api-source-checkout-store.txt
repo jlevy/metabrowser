@@ -208,7 +208,7 @@ status: 200
 }
 --- stderr ---
 
-== With the store, the list of remote-tracking branches has the origin's branches as Metabrowser fetched them: origin/trunk at M6, first and marked as the origin's default branch, and origin/feature, which the checkout never fetched. The checkout's own origin/* is not a second list. origin says when the store was last fetched.
+== With the store, the list of remote-tracking branches has the origin's branches as Metabrowser fetched them: origin/trunk at M6, first and marked as the origin's default branch, and origin/feature, which the checkout never fetched. The checkout's own origin/* is not a second list: each row says in checkout where the reader's own ref is when that is another commit, M5 on origin/trunk, and nulls on origin/feature, which the checkout has no ref for. origin says when the store was last fetched.
 
 # metab checkout --api '/api/source/refs?kind=remote'
 exit: 0
@@ -258,7 +258,11 @@ status: 200
       "committed_at": 1577836800.0,
       "default": true,
       "checked_out": false,
-      "current": false
+      "current": false,
+      "checkout": {
+        "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+        "committed_at": 1577836800.0
+      }
     },
     {
       "name": "origin/feature",
@@ -267,7 +271,11 @@ status: 200
       "committed_at": 1577836800.0,
       "default": false,
       "checked_out": false,
-      "current": false
+      "current": false,
+      "checkout": {
+        "commit": null,
+        "committed_at": null
+      }
     }
   ]
 }

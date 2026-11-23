@@ -238,6 +238,10 @@ def test_recording_is_what_a_served_checkout_with_a_store_answers(
         ("origin/feature", False),
     ]
     assert ready["refs"][0]["commit"] != absent["refs"][0]["commit"]
+    # Each says where the reader's own ref is: behind on trunk, and none for feature.
+    assert ready["refs"][0]["checkout"]["commit"] == absent["refs"][0]["commit"]
+    assert ready["refs"][1]["checkout"] == {"commit": None, "committed_at": None}
+    assert all("checkout" not in row for row in recorded["branches"]["body"]["refs"])
     # The working tree's status says how fresh the store is, and can refresh it.
     assert recorded["ask_fresh"]["body"]["status"]["refreshable"] is True
     assert recorded["ask_fresh"]["body"]["status"]["subject"] == "attached_filesystem"
@@ -326,3 +330,16 @@ def test_the_session_reads_the_origin_from_the_store_and_asks_as_a_visible_page(
     assert refused["paint"]["origin"].endswith("These are the checkout's own. [warning]")
     # The mirror's session and a checkout with no store paint no such line.
     assert session["quietWithoutAStore"] == {"asked": [], "origin": None}
+    # A row whose branch the reader's checkout has elsewhere, or not at all, says so.
+    assert "[yours differs]" in remotes["paint"]["rows"][0]
+    assert "[not in checkout]" in remotes["paint"]["rows"][1]
+    behind = recording["not_fetched_remotes"]["body"]["refs"][0]["commit"]
+    assert remotes["paint"]["own"][0].startswith(
+        f"origin/trunk: Your checkout's origin/trunk is at {behind[:7]}, where your own"
+    )
+    own = session["ownDifference"]
+    assert own["asRecorded"][0].startswith("yours differs: ")
+    assert own["asRecorded"][1].startswith("not in checkout: Your checkout has no origin/feature")
+    assert ", an earlier commit by date," in own["yoursEarlier"]
+    assert ", a later commit by date," in own["yoursLater"]
+    assert own["ownBranches"] == [None] * len(recording["branches"]["body"]["refs"])
