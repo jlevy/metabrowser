@@ -31,6 +31,7 @@ from metabrowser.builtin_plugins.github.pull_list_probe import (
     LIST_PROBE_S,
     MAX_PAID_PROBE_S,
     PAID_PROBES_BEFORE_SLOWING,
+    PULLS_LAG_S,
     ListProbe,
     probe_path,
     pulls_path,
@@ -82,6 +83,10 @@ class _GitHub:
         self.fail: PullDataError | None = None
         self.fail_pulls: PullDataError | None = None
         self.release: asyncio.Event | None = None
+        # How long GitHub takes to answer the issues page, on the stand-in's clock.
+        self.takes = 0.0
+        # The pulls page as it was, while GitHub's list runs behind a change.
+        self.behind: tuple[dict[str, Any] | None, int] | None = None
         self.now = FETCHED_AT
         monkeypatch.setattr(pull_list, "utc_now", lambda: self.now)
         monkeypatch.setattr(pull_list_probe, "get_response", self._get)
@@ -108,6 +113,17 @@ class _GitHub:
         self.issue = {"number": number, "updated_at": when}
         self.revision += 1
 
+    def comment_now(self, number: int) -> None:
+        """An issue is updated at the stand-in's present moment."""
+
+        self.issue = {"number": number, "updated_at": utc_stamp(self.now)}
+        self.revision += 1
+
+    def pulls_page_runs_behind(self) -> None:
+        """The pulls page keeps answering as it does now, whatever changes, until told."""
+
+        self.behind = (self.item, self.pulls_revision)
+
     def _newest(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         if self.item is not None:
@@ -126,10 +142,11 @@ class _GitHub:
         if path == f"repos/octo/demo/pulls{tail}":
             if self.fail_pulls is not None:
                 raise self.fail_pulls
-            current = f'W/"pulls-{self.pulls_revision}"'
+            item, revision = self.behind or (self.item, self.pulls_revision)
+            current = f'W/"pulls-{revision}"'
             status = 304 if etag == current else 200
             self.pulls_statuses.append(status)
-            rows = [self.item] if self.item else []
+            rows = [item] if item else []
         else:
             assert path == f"repos/octo/demo/issues{tail}"
             self.asked.append(etag)
@@ -137,6 +154,7 @@ class _GitHub:
             status = 304 if etag == current else 200
             self.statuses.append(status)
             rows = self._newest()
+            self.later(self.takes)
         body = b"" if status == 304 else json.dumps(rows).encode()
         return GhResponse(status, {"etag": current}, body)
 
@@ -205,27 +223,90 @@ def test_a_push_costs_nothing_while_a_pull_request_is_the_row_updated_last(
     assert probe.checked_at == utc_stamp(github.now)
 
 
-def test_an_issue_updated_last_asks_the_pulls_page_once_for_each_such_answer(
+def test_an_issue_updated_last_asks_the_pulls_page_until_one_ask_is_past_the_lists_lag(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     seed_catalog(repository, [generated_item(2)], fetched_at=STAMP)
     github = _GitHub(monkeypatch, generated_item(2))
+    github.later(3600)
     github.comment_on_issue(40, minutes=30)
     probe = ListProbe()
     _probe(probe, repository)
     # An issue is newest, so the newest pull request is asked for, and the catalog holds it.
+    # The issue was updated half an hour ago, far past any lag: one ask settles it.
     assert (github.statuses, github.pulls_statuses) == ([200], [200])
     assert probe.saw is None and probe.checked_at == utc_stamp(github.now)
     # Nothing moves: one free request, and the pulls page is not asked again.
     github.later(LIST_PROBE_S)
     _probe(probe, repository)
     assert (github.statuses, github.pulls_statuses) == ([200, 304], [200])
-    # Another comment on the issue: the pulls page answers 304, its pull request unchanged.
-    github.comment_on_issue(40, minutes=31)
+    settled = probe.checked_at
+    assert settled == utc_stamp(github.now)
+    # A comment on the issue a probe interval ago: the pulls page answers 304, but it may
+    # still run behind a pull request changed just before the comment, so the probe
+    # vouches for no later than it already had, and the next asks the pulls page again.
+    github.comment_now(40)
     github.later(LIST_PROBE_S)
+    assert LIST_PROBE_S < PULLS_LAG_S <= 2 * LIST_PROBE_S
     _probe(probe, repository)
     assert (github.statuses, github.pulls_statuses) == ([200, 304, 200], [200, 304])
-    assert probe.saw is None and probe.checked_at == utc_stamp(github.now)
+    assert probe.saw is None and probe.checked_at == settled
+    # That ask is past the lag: a free 304 from each page, and the probe vouches for now.
+    github.later(LIST_PROBE_S)
+    _probe(probe, repository)
+    assert (github.statuses, github.pulls_statuses) == ([200, 304, 200, 304], [200, 304, 304])
+    assert probe.checked_at == utc_stamp(github.now)
+    # And then the pulls page rests again.
+    github.later(LIST_PROBE_S)
+    _probe(probe, repository)
+    assert github.pulls_statuses == [200, 304, 304]
+    assert probe.checked_at == utc_stamp(github.now)
+
+
+def test_a_pull_request_changed_just_before_an_issue_is_found_though_the_pulls_page_ran_behind(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A3 of review A on #737: a merge that closes an issue, with the pulls page behind.
+
+    The pulls page was asked once for each answer that put an issue first, and the plan
+    measured that page up to 14.2 s behind a change. Asked inside that lag it answered
+    with the old row, the probe vouched, and the change waited for the periodic scan.
+    """
+
+    seed_catalog(repository, [generated_item(2)], fetched_at=STAMP)
+    github = _GitHub(monkeypatch, generated_item(2))
+    github.later(3600)
+    probe = ListProbe()
+    _probe(probe, repository)
+    assert probe.checked_at == utc_stamp(github.now)
+    # The pull request is merged, and a second later the issue it closes is updated.
+    github.later(LIST_PROBE_S - 2)
+    github.pulls_page_runs_behind()
+    merged = {**generated_item(2), "updated_at": utc_stamp(github.now)}
+    github.update(merged)
+    github.later(1)
+    github.comment_now(40)
+    github.later(1)
+    _probe(probe, repository)
+    # The issues page put the issue first, and the pulls page still had the old row.
+    assert (github.statuses, github.pulls_statuses) == ([200, 200], [200])
+    assert probe.saw is None
+    # The probe vouches for nothing past the change the lag can hide.
+    assert probe.checked_at is not None
+    assert pull_list.parse_stamp(probe.checked_at) < pull_list.parse_stamp(merged["updated_at"])
+    # GitHub's list catches up, and the next probe, a 304 from the issues page, asks the
+    # pulls page again and finds the pull request.
+    github.behind = None
+    github.later(LIST_PROBE_S)
+    _probe(probe, repository)
+    assert (github.statuses, github.pulls_statuses) == ([200, 200, 304], [200, 200])
+    assert probe.saw == ((2, merged["updated_at"]),)
+
+
+def test_the_slowest_probe_still_vouches_from_behind_the_lists_lag() -> None:
+    """The arithmetic beside ``MAX_PAID_PROBE_S``: an ask interval of the window to spare."""
+
+    assert MAX_PAID_PROBE_S + PULLS_LAG_S + LIST_PROBE_S <= FRESHNESS_WINDOW_S
 
 
 def test_a_pull_request_changed_just_before_an_issue_is_still_found(
@@ -250,15 +331,18 @@ def test_a_pulls_page_that_failed_is_asked_again_though_the_issues_page_holds(
 
     seed_catalog(repository, [generated_item(2)], fetched_at=STAMP)
     github = _GitHub(monkeypatch, generated_item(2))
+    github.later(3600)
     github.comment_on_issue(40, minutes=30)
     probe = ListProbe()
     _probe(probe, repository)
     github.update(_changed(2, minutes=31))
     github.comment_on_issue(40, minutes=32)
+    first = probe.checked_at
+    assert first == utc_stamp(github.now)
     github.fail_pulls = PullDataError("network_error", "no route to GitHub")
     github.later(LIST_PROBE_S)
     _probe(probe, repository)
-    assert probe.saw is None and probe.checked_at == STAMP
+    assert probe.saw is None and probe.checked_at == first
     github.fail_pulls = None
     github.later(FRESHNESS_WINDOW_S + 1)
     _probe(probe, repository)
@@ -285,12 +369,13 @@ def test_probes_that_pay_and_find_nothing_slow_until_one_is_free_or_finds_a_chan
         LIST_PROBE_FLOOR_S,
         LIST_PROBE_FLOOR_S,
         2 * LIST_PROBE_FLOOR_S,
-        4 * LIST_PROBE_FLOOR_S,
+        MAX_PAID_PROBE_S,
         MAX_PAID_PROBE_S,
         MAX_PAID_PROBE_S,
         MAX_PAID_PROBE_S,
         MAX_PAID_PROBE_S,
     ]
+    assert 2 * LIST_PROBE_FLOOR_S < MAX_PAID_PROBE_S < 4 * LIST_PROBE_FLOOR_S
     assert PAID_PROBES_BEFORE_SLOWING == 3
     # Still inside a freshness window of the last, so the catalog still vouches.
     github.later(MAX_PAID_PROBE_S - 1)

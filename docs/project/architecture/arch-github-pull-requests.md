@@ -366,6 +366,9 @@ It asks the issues list, which includes pull requests, because a pull request’
 embeds its repositories and its ETag moves on every push; the measurements are beside
 `LIST_PROBE_S`. When an issue is the newest row, the one-row pulls page (`pulls_path`)
 says which pull request is.
+GitHub’s lists run behind a change, so that page is asked by every probe until one asks
+it `PULLS_LAG_S` after the issue’s update, and until then an unchanged probe vouches
+only for what GitHub had that long before it asked.
 A `200` is a hint: the newest pull request is compared with the catalog’s row of that
 number, and the catalog is behind only when it lacks that row as GitHub has it.
 An unchanged probe moves the probe’s `checked_at`, and for a freshness window the

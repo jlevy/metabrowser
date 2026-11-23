@@ -13,8 +13,13 @@ an opened or closed issue, or a recomputed ``mergeable`` touched them, and each 
 ``200`` costs a call (the measurements are beside :data:`LIST_PROBE_S`). An issue's row
 embeds none. The cost is that an issue's own update moves it too. When the newest row is
 an issue, a pull request may have changed just before it, so the one-row pulls page
-(:func:`pulls_path`) is asked as well, with its own ETag, once for each answer that put an
-issue first; a ``304`` there says the newest pull request is still the one last seen.
+(:func:`pulls_path`) is asked as well, with its own ETag; a ``304`` there says the newest
+pull request is still the one last seen. GitHub's lists run behind a change
+(:data:`PULLS_LAG_S`), so one ask made a moment after the issue's update may be answered
+with the row from before a pull request's change, as when a merge closes an issue. The
+pulls page is therefore asked by every probe until one asks it :data:`PULLS_LAG_S` after
+the issue's ``updated_at``, and until then an unchanged probe vouches only for what GitHub
+had that long before it asked (``checked_at``), not for the moment it asked.
 
 Either way a ``200`` is a hint, not proof. The newest pull request's row is compared with
 the catalog's row of the same number, and the catalog is behind only when it has no such
@@ -24,7 +29,9 @@ character, as :mod:`.pull_freshness` records). The comparison is made on a ``304
 from the rows the last ``200``s gave, so what a probe says never depends on which answer
 carried the row:
 
-- **unchanged**: the catalog holds that row. ``checked_at`` moves, and for a freshness
+- **unchanged**: the catalog holds that row. ``checked_at`` moves, to when the probe asked
+  or, with an issue newest and the pulls page not yet asked past its lag, to
+  :data:`PULLS_LAG_S` before that, and for a freshness
   window the catalog vouches for its records and its list as a scan just run would
   (:func:`.pull_freshness.record_freshness`), so the scan itself is due only once every
   ``FULL_REFRESH_S`` (:func:`.pull_list_route.refresh_wanted`).
@@ -111,13 +118,23 @@ LIST_PROBE_FLOOR_S: Final = 9.0
 # before the gap to the next doubles: three allows a burst of issue comments or pushes
 # without slowing the list, at three calls.
 PAID_PROBES_BEFORE_SLOWING: Final = 3
+# How far behind a change GitHub's one-row pulls page may still answer with the row from
+# before it. Its ETag moved 1.3 to 14.2 s after ``updated_at`` over nine changes, median
+# 3.4 s, two past 10 s (the plan's "How Soon GitHub Reports a Change", 2026-11-22), so 20
+# is the largest lag measured and two fifths again. With an issue newest, the pulls page
+# is asked by each probe until one asks it this long after the issue's ``updated_at``, and
+# an unchanged probe before that vouches only up to this long before it asked.
+PULLS_LAG_S: Final = 20.0
 # The longest that gap grows. Not ``FULL_REFRESH_S``, the plan's bound for the record's
 # probe: an unchanged probe vouches for the catalog for a freshness window (60 s), and a
 # list probed less often than that would stop vouching, so its scan would run every window,
 # one GraphQL point and an account check each, which costs more than the probes saved.
-# At 40 s a repository whose issues never rest costs 90 calls an hour, where every probe
-# paid would cost 360.
-MAX_PAID_PROBE_S: Final = 40.0
+# A repository whose issues never rest is the one whose probes slow this far, and there an
+# issue is always newest and just updated, so each probe vouches from ``PULLS_LAG_S``
+# before it asked: 30 + 20 leaves 10 s of the window, one ask interval, for the next probe
+# to start in. At 30 s such a repository costs 120 calls an hour, where every probe paid
+# would cost 360. ``tests/test_github_pull_list_probe.py`` pins the sum.
+MAX_PAID_PROBE_S: Final = 30.0
 
 type ListProbeOutcome = Literal["unchanged", "changed", "behind"]
 # The first row's number and ``updated_at``; ``None`` for a repository with no pull request.
@@ -181,8 +198,9 @@ class ListProbe:
     # the pulls page's, in a tuple so "no pull request" is not "no answer".
     _newest: tuple[FirstRow, bool] | None = field(default=None, repr=False)
     _newest_pull: tuple[FirstRow] | None = field(default=None, repr=False)
-    # Whether the pulls page was read since the issues page last answered ``200``.
-    _pulls_asked: bool = field(default=False, repr=False)
+    # Whether the pulls page was asked ``PULLS_LAG_S`` or more after the ``updated_at`` of
+    # the issue the issues page's last ``200`` put first: its answer then hides no change.
+    _pulls_settled: bool = field(default=False, repr=False)
     # Probes in a row that each paid for a ``200`` and found no pull request changed.
     _paid_idle: int = field(default=0, repr=False)
     _scanned_for: tuple[FirstRow] | None = field(default=None, repr=False)
@@ -296,7 +314,7 @@ class ListProbe:
         now = pull_list.utc_now()
         self._attempt = now
         try:
-            outcome = await self._ask(repository)
+            outcome = await self._ask(repository, now)
         except Exception as exc:
             # Nothing waits on a probe but the catalog's freshness: any failure leaves the
             # scan to its window cadence for a window, as a failed record probe does.
@@ -308,7 +326,20 @@ class ListProbe:
             return
         self._failed = None
         if outcome == "unchanged":
-            self.checked_at = utc_stamp(now)
+            # When the probe asked, not when it ended: GitHub may change while it runs.
+            # Less the lists' lag while the pulls page may still hide a change.
+            through = now if self._settled else now - timedelta(seconds=PULLS_LAG_S)
+            if self.checked_at is None or through > pull_list.parse_stamp(self.checked_at):
+                self.checked_at = utc_stamp(through)
+
+    @property
+    def _settled(self) -> bool:
+        """Whether the last answers can hide no pull request's change behind GitHub's lag."""
+
+        if self._newest is None:
+            return True
+        row, is_pull = self._newest
+        return row is None or is_pull or self._pulls_settled
 
     async def _get(self, path: str) -> tuple[FirstRow, bool] | None:
         """Ask *path* with its last ETag: its row and kind from a ``200``, ``None`` for a ``304``."""
@@ -335,22 +366,25 @@ class ListProbe:
             self._etags.pop(path, None)
         return found
 
-    async def _ask(self, repository: ListedRepository) -> ListProbeOutcome:
+    async def _ask(self, repository: ListedRepository, now: datetime) -> ListProbeOutcome:
         answered = await self._get(probe_path(repository))
         paid = answered is not None
         if answered is not None:
             self._newest = answered
             # Whatever the pulls page last said was said before this answer.
-            self._pulls_asked = False
+            self._pulls_settled = False
         assert self._newest is not None
         row, is_pull = self._newest
         if row is not None and not is_pull:
             # An issue is newest, and a pull request may have changed just before it: the
-            # pulls page says, asked once for each answer that put an issue first, and
-            # again after a read of it that failed.
-            if not self._pulls_asked:
+            # pulls page says. Its answer may run ``PULLS_LAG_S`` behind such a change, so
+            # each probe asks it, a free ``304`` while nothing moves, until one asks that
+            # long after the issue's update; a read of it that failed settles nothing.
+            if not self._pulls_settled:
                 newest_pull = await self._get(pulls_path(repository))
-                self._pulls_asked = True
+                self._pulls_settled = now - pull_list.parse_stamp(row[1]) >= timedelta(
+                    seconds=PULLS_LAG_S
+                )
                 paid = paid or newest_pull is not None
                 if newest_pull is not None:
                     self._newest_pull = (newest_pull[0],)
@@ -405,6 +439,7 @@ __all__ = [
     "LIST_PROBE_S",
     "MAX_PAID_PROBE_S",
     "PAID_PROBES_BEFORE_SLOWING",
+    "PULLS_LAG_S",
     "ListProbe",
     "ListProbeOutcome",
     "checked_at",

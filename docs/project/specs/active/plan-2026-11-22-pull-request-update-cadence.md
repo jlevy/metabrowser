@@ -408,15 +408,20 @@ about once a minute.
   plan proposed: over 120 rounds on three repositories the pulls page answered `200` for
   an unmoved row 8 times and the issues page never, since an issue’s row embeds no
   repository. When an issue is the newest row the one-row pulls page is asked too, with
-  its own ETag. The newest pull request is compared with the catalog’s row of the same
-  number, not with the probe’s last answer, so a row costs one `200` however long its
-  scan takes, and a row still missing after its scan (GraphQL behind REST) starts no
-  second one. An unchanged list probe moves the probe’s `checked_at`, as an unchanged
-  record probe moves `verified_at`, and `record_freshness` in `pull_freshness.py` takes
-  it as the catalog’s age, so the catalog keeps vouching between scans; otherwise it
-  would vouch for nothing in the last third of each `FULL_REFRESH_S`. A visible pull
-  request page sends no ask of its own for the list: the server takes its automatic ask
-  for the record as one for the repository’s list too (`attend_list`).
+  its own ETag, and since that page ran up to 14.2 s behind a change, it is asked by
+  every probe until one asks it `PULLS_LAG_S` after the issue’s `updated_at`; until then
+  an unchanged probe vouches only for what GitHub had that long before it asked (review
+  A3 of #737: a merge that closes an issue updates the pull request and then the issue,
+  and one ask a moment later could miss the merge until the periodic scan).
+  The newest pull request is compared with the catalog’s row of the same number, not
+  with the probe’s last answer, so a row costs one `200` however long its scan takes,
+  and a row still missing after its scan (GraphQL behind REST) starts no second one.
+  An unchanged list probe moves the probe’s `checked_at`, as an unchanged record probe
+  moves `verified_at`, and `record_freshness` in `pull_freshness.py` takes it as the
+  catalog’s age, so the catalog keeps vouching between scans; otherwise it would vouch
+  for nothing in the last third of each `FULL_REFRESH_S`. A visible pull request page
+  sends no ask of its own for the list: the server takes its automatic ask for the
+  record as one for the repository’s list too (`attend_list`).
 - **`pull_files_route.py`** (built): a files list is a function of the head and base it
   names, so one the catalog’s row or the record vouches for is read when either moves
   and never on a clock.
