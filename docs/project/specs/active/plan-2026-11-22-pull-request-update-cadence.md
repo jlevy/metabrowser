@@ -339,6 +339,23 @@ guards and adds one:
   the hour rolls. The ceiling is per process, and six servers ran on this account in
   [Background](#how-much-budget-is-metabrowsers), so the proposal is sized for six: 300
   a server, at most 1,800 of the account’s 5,000 if all six reach it.
+- **A share of the ceiling for speculative work** (new, review A1 of #737),
+  `SPECULATIVE_CORE_PER_HOUR` in `gh_budget.py`: what work nobody is looking at may
+  spend of the ceiling in a rolling hour.
+  That work is the prefetch of records and files lists, the catalog’s backfill past
+  every reader’s prefix, the cores walk past the rows on screen, and the label set’s
+  periodic read. It runs inside `gh_budget.speculative`, so what it spends counts toward
+  the share as well as the ceiling, and admission refuses it once the share is spent.
+  With one counter for both, the prefetch’s own caps allowed more than the ceiling by
+  themselves, so it could spend the whole hour, and the page on screen then paid with
+  slowed probes, held cores, and a refused timeline.
+  What is on screen is never refused for the share, so it keeps the rest of the ceiling,
+  as the owner’s rule asks: what is on screen updates within seconds, and everything
+  else every minute or two, inside the rate limit.
+  The prefetch’s `RECORDS_PER_HOUR` and `FILES_PER_HOUR` are priced to fit the share,
+  with the arithmetic beside them in `pull_prefetch.py`. Neither number has been
+  measured against a real session: `GET pulls-prefetch` reports both and what the hour
+  has used of each under `governor.ceiling`.
 
 GitHub’s secondary limits count every request, `304`s included: at most 100 in flight,
 and 900 points a minute for each REST endpoint, a `GET` being one point.
@@ -391,15 +408,20 @@ about once a minute.
   plan proposed: over 120 rounds on three repositories the pulls page answered `200` for
   an unmoved row 8 times and the issues page never, since an issue’s row embeds no
   repository. When an issue is the newest row the one-row pulls page is asked too, with
-  its own ETag. The newest pull request is compared with the catalog’s row of the same
-  number, not with the probe’s last answer, so a row costs one `200` however long its
-  scan takes, and a row still missing after its scan (GraphQL behind REST) starts no
-  second one. An unchanged list probe moves the probe’s `checked_at`, as an unchanged
-  record probe moves `verified_at`, and `record_freshness` in `pull_freshness.py` takes
-  it as the catalog’s age, so the catalog keeps vouching between scans; otherwise it
-  would vouch for nothing in the last third of each `FULL_REFRESH_S`. A visible pull
-  request page sends no ask of its own for the list: the server takes its automatic ask
-  for the record as one for the repository’s list too (`attend_list`).
+  its own ETag, and since that page ran up to 14.2 s behind a change, it is asked by
+  every probe until one asks it `PULLS_LAG_S` after the issue’s `updated_at`; until then
+  an unchanged probe vouches only for what GitHub had that long before it asked (review
+  A3 of #737: a merge that closes an issue updates the pull request and then the issue,
+  and one ask a moment later could miss the merge until the periodic scan).
+  The newest pull request is compared with the catalog’s row of the same number, not
+  with the probe’s last answer, so a row costs one `200` however long its scan takes,
+  and a row still missing after its scan (GraphQL behind REST) starts no second one.
+  An unchanged list probe moves the probe’s `checked_at`, as an unchanged record probe
+  moves `verified_at`, and `record_freshness` in `pull_freshness.py` takes it as the
+  catalog’s age, so the catalog keeps vouching between scans; otherwise it would vouch
+  for nothing in the last third of each `FULL_REFRESH_S`. A visible pull request page
+  sends no ask of its own for the list: the server takes its automatic ask for the
+  record as one for the repository’s list too (`attend_list`).
 - **`pull_files_route.py`** (built): a files list is a function of the head and base it
   names, so one the catalog’s row or the record vouches for is read when either moves
   and never on a clock.
@@ -547,8 +569,11 @@ account check and the bounds on probes.
   A batch of cores the budget holds answers `held`. The floor holds only the background
   walk: cores for rows on screen are held by a rate-limit hold and the self-ceiling
   alone, by the owner’s floor rule.
-  A held timeline answers `unavailable` and `retryable`. The scan a list probe’s change
-  starts is not asked, as [Priority](#priority) says.
+  A held timeline answers `unavailable` and `retryable`, with `retry_after_s`
+  (`HELD_RETRY_S` in `pull_timeline.py`), and the page asks again that long after for as
+  long as the budget refuses; a transient failure is still retried once (review A4 of
+  #737). The scan a list probe’s change starts is not asked, as [Priority](#priority)
+  says.
 - [x] `AUTOMATIC_CORE_PER_HOUR` in `gh_budget.py`, counted by `gh_api` and `gh_graphql`
   as they answer; each query asks for `rateLimit { cost }`. A reader’s own action is
   told apart by the context its route starts the job in (`readers_own`), so a job a
@@ -556,6 +581,8 @@ account check and the bounds on probes.
   `GET pulls-prefetch` reports the ceiling and the hour’s use.
   A job’s account check is a conditional `gh api user`, so it is counted as any answer
   is: nothing for a `304`, one for a `200`.
+- [x] `SPECULATIVE_CORE_PER_HOUR`, speculative work’s share of that ceiling, with the
+  prefetch’s caps priced to fit it (see [Budget](#budget)).
 
 ### Phase 3: Metabrowser’s Own Stores
 
@@ -607,9 +634,11 @@ account check and the bounds on probes.
   Each probe is one `gh` process (0.06 s of CPU, 45 MB for 0.6 s). Below about 2 s,
   probes would overlap their own latency.
 - Is 300 `core` an hour per server the right self-ceiling for automatic work, given how
-  much of the account’s hour other tools use?
-  Should the servers of one home share a ceiling instead, through a file beside their
-  event logs?
+  much of the account’s hour other tools use, and is a third of it the right share for
+  speculative work? Neither has been measured: `governor.ceiling` in `GET pulls-prefetch`
+  reports what an hour used, and a few real sessions’ readings should be recorded beside
+  the constants. Should the servers of one home share a ceiling instead, through a file
+  beside their event logs?
 - Below the floor nothing automatic observes the GraphQL budget again: the catalog’s
   periodic scan was the only regular GraphQL read, and it now waits with the rest.
   The floor then lifts only at the budget’s reset, on a reader’s Reload, or when a list

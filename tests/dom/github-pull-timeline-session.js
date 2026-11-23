@@ -113,13 +113,20 @@ function mount(mountPullPage, envelope, how = {}) {
         timelines.push({
           request,
           signal: options.signal,
-          answer: (state, events, revision = request.record_revision, retryable = false) =>
+          answer: (
+            state,
+            events,
+            revision = request.record_revision,
+            retryable = false,
+            retryAfterS = null,
+          ) =>
             finish(
               response({
                 state,
                 events,
                 record_revision: revision,
                 ...(retryable ? { retryable } : {}),
+                ...(retryAfterS === null ? {} : { retry_after_s: retryAfterS }),
               }),
             ),
         }),
@@ -562,6 +569,44 @@ async function run() {
     }
     assert.equal(transient.hasTimer(TIMELINE_RETRY_MS), false, "the retry budget is exhausted");
     transient.handle.dispose();
+  }
+  // A read the server's budget refused names how long to wait (`retry_after_s`): the page
+  // asks again then, for as long as it is refused, and keeps the transient failure's one
+  // retry for after it (review A4 of #737: it asked once more a second later, refused
+  // again, and then showed no timeline until the record changed).
+  {
+    const waits = mount(mountPullPage, fixture());
+    await waits.handle.ready;
+    await settle();
+    waits.handle.activate();
+    waits.frame();
+    waits.frame();
+    const refused = waits.timelines[0];
+    refused.answer("unavailable", [], firstRevision, true, 60);
+    await settle();
+    assert.equal(waits.hasTimer(TIMELINE_RETRY_MS), false, "a held read is no transient failure");
+    for (const asked of [2, 3]) {
+      assert.ok(waits.hasTimer(60_000), "the page waits as long as the server said");
+      waits.timer(60_000);
+      assert.equal(waits.timelines.length, asked);
+      assert.deepEqual(waits.timelines[asked - 1].request, refused.request);
+      waits.timelines[asked - 1].answer(
+        "unavailable",
+        [],
+        firstRevision,
+        true,
+        asked === 2 ? 60 : null,
+      );
+      await settle();
+    }
+    assert.equal(waits.hasTimer(60_000), false);
+    waits.timer(TIMELINE_RETRY_MS);
+    assert.equal(waits.timelines.length, 4);
+    waits.timelines[3].answer("complete", [commit]);
+    await settle();
+    assert.ok(waits.body().querySelector(".github-pull-commit"));
+    assert.equal(waits.hasTimer(60_000) || waits.hasTimer(TIMELINE_RETRY_MS), false);
+    waits.handle.dispose();
   }
 
   // Every review's heading is its author, "reviewed", and its age, and a chip after the age

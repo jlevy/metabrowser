@@ -4397,6 +4397,136 @@ def test_visible_core_preemption_honors_a_failure_recorded_during_its_checks(
     assert calls == [(8,)]
 
 
+# Each route that may start a refresh for a reader's own click: the module and name of the
+# start it calls inside ``_whose``, and what else its body must name.
+_RETRY_ROUTES: Final[dict[str, tuple[str, str, dict[str, Any]]]] = {
+    "pull-refresh": ("pull_route", "start_refresh", {"number": 7}),
+    "pulls-refresh": ("pull_list_route", "start_refresh", {}),
+    "stacks-refresh": ("pull_stacks_route", "start_refresh", {}),
+    "labels-refresh": ("pull_labels_route", "start_refresh", {}),
+    "pull-files-refresh": ("pull_files_route", "start_files_refresh", {"number": 7}),
+}
+
+
+@pytest.mark.parametrize("retry", [True, False], ids=["reader", "automatic"])
+@pytest.mark.parametrize("route", sorted(_RETRY_ROUTES))
+def test_each_refresh_route_starts_a_readers_click_where_the_ceiling_does_not_count_it(
+    pinned_pull: tuple[_Stand, TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    retry: bool,
+) -> None:
+    """A9 of review A on #737: the unit tests proved the context and the coordinator's copy
+    of it, and nothing proved a route enters it, so a handler that dropped ``_whose`` would
+    count a reader's Reload against the process's ceiling unseen.
+
+    The start each route calls is replaced by one that spends where it is called, which is
+    where the job it starts would copy its context from.
+    """
+
+    import importlib
+    import inspect
+
+    from metabrowser.builtin_plugins.github import gh_budget, pull_list_route
+
+    module_name, name, body = _RETRY_ROUTES[route]
+    module = importlib.import_module(f"metabrowser.builtin_plugins.github.{module_name}")
+    counted: list[tuple[int, int]] = []
+
+    def spend() -> str:
+        now = datetime.now(UTC)
+        before = (gh_budget.automatic_spent(now), gh_budget.speculative_spent(now))
+        gh_budget.spent(5, now=now)
+        after = (gh_budget.automatic_spent(now), gh_budget.speculative_spent(now))
+        counted.append((after[0] - before[0], after[1] - before[1]))
+        return "not_due"
+
+    async def started_async(*_args: object, **_kwargs: object) -> str:
+        return spend()
+
+    def started(*_args: object, **_kwargs: object) -> str:
+        return spend()
+
+    real = getattr(module, name)
+    monkeypatch.setattr(
+        module, name, started_async if inspect.iscoroutinefunction(real) else started
+    )
+    # A page's automatic ask also probes the list, which spends on its own.
+    monkeypatch.setattr(pull_list_route, "attend_list", lambda _view: None)
+    _stand, client = pinned_pull
+    response = client.post(
+        f"/api/plugin/github/{route}", json={**body, "retry": retry}, headers=_JSON
+    )
+    assert response.status_code == 200, response.text
+    # A reader's click is not counted; an automatic ask is, and the label set's periodic
+    # read is speculative work as well (A1 of review A on #737).
+    speculative = 5 if route == "labels-refresh" else 0
+    assert counted == ([(0, 0)] if retry else [(5, speculative)])
+
+
+def test_cores_for_rows_on_screen_are_held_over_the_process_ceiling(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A9 of review A on #737: no test spent the ceiling before asking for visible cores.
+
+    The rows on screen are the visible lane, which the floor does not hold; the ceiling
+    and a rate-limit hold do.
+    """
+
+    from metabrowser.builtin_plugins.github import gh_budget, pulls
+
+    visible, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8,), lane="visible"
+    )
+    _stand, client = pinned_pull
+    ninth = {**visible, "window": {**visible["window"], "id": "viewport"}, "numbers": [9]}
+    assert ninth["lane"] == "visible"
+    gh_budget.spent(gh_budget.AUTOMATIC_CORE_PER_HOUR, now=pulls.utc_now())
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "held"
+    # What the cache covers is answered all the same, with no request.
+    assert client.post(_PREPARE_CORES, json=visible).json()["preparation"] == "ready"
+    assert calls == [(8,)]
+    gh_budget.forget()
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "started"
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+
+
+def test_a_spent_speculative_share_holds_the_cores_walk_and_not_the_rows_on_screen(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A1 of review A on #737: the walk's batches are speculative, and counted as such."""
+
+    from metabrowser.builtin_plugins.github import gh_budget, pulls
+
+    async def spend() -> None:
+        gh_budget.spent(1, now=pulls.utc_now())
+
+    walk, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8,), hold_batch=spend, lane="background"
+    )
+    _stand, client = pinned_pull
+    _drain_visible_cores(client)
+    now = pulls.utc_now()
+    assert gh_budget.speculative_spent(now) == 1
+    # What the stand's own reads spent, which were not the walk's.
+    others = gh_budget.automatic_spent(now) - 1
+    with gh_budget.speculative():
+        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR - 1, now=now)
+    assert not gh_budget.over_ceiling(now)
+    ninth = {**walk, "window": {**walk["window"], "id": "walk-9"}, "numbers": [9]}
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "held"
+    assert calls == [(8,)]
+    # The same row on screen is read, and its batch is not speculative work.
+    on_screen = {**ninth, "window": {**walk["window"], "id": "viewport"}, "lane": "visible"}
+    assert client.post(_PREPARE_CORES, json=on_screen).json()["preparation"] == "started"
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+    now = pulls.utc_now()
+    assert gh_budget.speculative_spent(now) == gh_budget.SPECULATIVE_CORE_PER_HOUR
+    assert gh_budget.automatic_spent(now) == others + gh_budget.SPECULATIVE_CORE_PER_HOUR + 1
+
+
 def test_visible_core_preempts_a_background_batch_that_reads_none_of_its_rows(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:

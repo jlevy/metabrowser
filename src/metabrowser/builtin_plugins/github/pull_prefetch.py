@@ -47,17 +47,18 @@ queued would wait behind the reader too, and the page's next ask says what is wa
 The caps, measured against the fake ``gh`` in ``tests/golden/cli-github-pulls-prefetch.txt``,
 count only what GitHub's API answers; a list the store gives is not counted
 (``tests/golden/cli-github-pulls-prefetch-local-lists.txt``): a
-background record refresh asks for at most 8 core points when each part fits on one page
-(two account checks, the pull, and five parts; a ``304`` is free and an account check is
-not), and a one-page files list for 3 (two account checks and the page). A part of more
-than 100 comments, reviews, or check runs costs a point a page more. The lanes are kept
-in memory, one per repository a server process serves, so at one page a part
-:data:`RECORDS_PER_HOUR` and :data:`FILES_PER_HOUR` spend at most 40 × 8 + 100 × 3 = 620
-core points an hour for each repository in each process, 12.4% of a 5,000-point limit. What
-bounds the account as a whole is the governor's floor, read from GitHub's own count of
-what remains (:mod:`.gh_budget`). :data:`RECORDS_PER_SCAN` keeps one scan's changes from
-spending most of an hour's records at once; a scan is one publication of the catalog,
-its ``fetched_at``, however many pages it read.
+background record refresh asks for at most 6 core points when each part fits on one page
+(the pull and five parts; a ``304`` is free, and so is the account check after a
+process's first, since it is conditional), and a one-page files list for 1. A part of more than 100 comments, reviews,
+or check runs costs a point a page more. The lanes are kept in memory, one per repository
+a server process serves; the arithmetic of :data:`RECORDS_PER_HOUR` and
+:data:`FILES_PER_HOUR` is beside them. What bounds the lane's points, whatever its items
+cost, is speculative work's share of the process's own ceiling
+(:data:`~.gh_budget.SPECULATIVE_CORE_PER_HOUR`), which the lane's jobs are counted toward
+and the governor refuses past; what bounds the account as a whole is the governor's floor,
+read from GitHub's own count of what remains (:mod:`.gh_budget`). :data:`RECORDS_PER_SCAN`
+keeps one scan's changes from spending a whole hour's records at once; a scan is one
+publication of the catalog, its ``fetched_at``, however many pages it read.
 
 ``GET`` reports the lane from memory: the running item, the queue, the caps and their
 use, the governor, and the last :data:`MAX_RECENT` outcomes.
@@ -105,12 +106,24 @@ MAX_PREFETCH_NUMBERS: Final = 16
 # Measured 2026-11-17 on this repository's checkout store, 11 open heads at a load average
 # of 12 to 13: 1.3 s one at a time, 0.42 s four at a time.
 MERGE_BASES_AT_ONCE: Final = 4
+# The hour's caps are priced to fit speculative work's share of the process's own ceiling
+# (``gh_budget.SPECULATIVE_CORE_PER_HOUR``), which refuses the lane whatever its items turn
+# out to cost. At one page a part a record costs at most 6 points and a files list from
+# GitHub 1 (the module docstring), so the two caps together spend at most
+# 12 × 6 + 20 × 1 = 92 points an hour, under the share's 100, and leave the rest of it, and
+# whatever they do not use, to the catalog's backfill, the cores walk, and the label set,
+# first come, first served. They were 40 and 100 before the ceiling, at most 40 × 8 +
+# 100 × 3 = 620 points an hour at that day's prices, against a ceiling of 300 for all
+# automatic work (review A1 of #737); ``tests/test_github_pull_prefetch.py`` pins the sum.
+# A scan's cap is eight, above the seven records a page names as the ones it expects
+# opened next, its top rows (``PREFETCH_TOP_ROWS`` in pulls-panel.js) and the open row's
+# two neighbours, so one scan's changes do not crowd them out; it is two thirds of an
+# hour's records.
 RECORDS_PER_SCAN: Final = 8
-RECORDS_PER_HOUR: Final = 40
-# The lists of six panes of rows in view, at the 16 an ask names, with a few rested on: a
-# reader who reads that many panes in an hour has every first expansion drawn from the
-# cache. At 3 points a one-page list that is 300 points an hour, under the records' 320.
-FILES_PER_HOUR: Final = 100
+RECORDS_PER_HOUR: Final = 12
+# Lists GitHub must give, since one the store gives is not counted: the rows of one pane
+# in view, at the 16 an ask names, with a few rested on.
+FILES_PER_HOUR: Final = 20
 MAX_RECENT: Final = 16
 # The numbers ``GET pull`` most recently answered, which ``changed`` adds.
 MAX_VIEWED: Final = 16
@@ -272,7 +285,7 @@ def _repository_hold(served: ServedPulls, now: datetime) -> bool:
 
 async def _governor(served: ServedPulls) -> gh_budget.Admission:
     now = pulls.utc_now()
-    verdict = gh_budget.admission(("core",), now=now)
+    verdict = gh_budget.admission(("core",), now=now, speculative=True)
     if verdict.admitted and await asyncio.to_thread(_repository_hold, served, now):
         return gh_budget.Admission(False, "rate_hold")
     return verdict
@@ -308,6 +321,7 @@ _STOPS: Final = frozenset(
     {
         "deferred:below_floor",
         "deferred:rate_hold",
+        "deferred:self_ceiling",
         "failed:rate_limited",
         "failed:network_error",
         "failed:unexpected",
@@ -319,6 +333,13 @@ _KIND_STOPS: Final = frozenset({"deferred:hourly_cap", "deferred:scan_cap"})
 
 
 async def _run_lane(app: Any, host: PullHost, lane: Lane) -> None:
+    # Nobody is looking at what the lane reads: every job it starts copies this context,
+    # so what each spends counts toward speculative work's share of the ceiling.
+    with gh_budget.speculative():
+        await _work_lane(app, host, lane)
+
+
+async def _work_lane(app: Any, host: PullHost, lane: Lane) -> None:
     while lane.queue:
         if any(item.kind == "files" and item.number not in lane.prepared for item in lane.queue):
             try:
@@ -632,6 +653,10 @@ class FilesBudgetWire(TypedDict):
 class CeilingWire(TypedDict):
     per_hour: int
     hour_used: int
+    # Speculative work's share of it, and what that work has spent: at or past it the
+    # governor refuses the lane with ``self_ceiling`` though the ceiling itself has room.
+    speculative_per_hour: int
+    speculative_hour_used: int
 
 
 class GovernorWire(TypedDict):
@@ -670,7 +695,7 @@ async def prefetch_envelope(host: PullHost | None) -> PrefetchEnvelope:
     now = pulls.utc_now()
     lane = lane_of(host.pulls) if host is not None else Lane()
     if host is None:
-        verdict = gh_budget.admission(("core",), now=now)
+        verdict = gh_budget.admission(("core",), now=now, speculative=True)
     return PrefetchEnvelope(
         source=host.pulls.source if host is not None else None,
         running=_wire(lane.running) if lane.running is not None else None,
@@ -692,6 +717,8 @@ async def prefetch_envelope(host: PullHost | None) -> PrefetchEnvelope:
             ceiling=CeilingWire(
                 per_hour=gh_budget.AUTOMATIC_CORE_PER_HOUR,
                 hour_used=gh_budget.automatic_spent(now),
+                speculative_per_hour=gh_budget.SPECULATIVE_CORE_PER_HOUR,
+                speculative_hour_used=gh_budget.speculative_spent(now),
             ),
         ),
         recent=list(lane.recent),

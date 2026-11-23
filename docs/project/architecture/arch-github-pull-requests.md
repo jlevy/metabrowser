@@ -96,8 +96,14 @@ moves it. A reader’s own action is not counted: its route starts the job insid
 `readers_own`, and the job’s task inherits that.
 Past the ceiling background work is not admitted (`self_ceiling`), probes slow to
 `FULL_REFRESH_S`, and the full reads of what is visible to `CEILING_FULL_READ_S`, until
-the hour rolls. `GET pulls-prefetch` reports the ceiling and what the hour has used
-beside the governor’s other state.
+the hour rolls. Speculative work, which nobody is looking at, has its own share of that
+ceiling, `SPECULATIVE_CORE_PER_HOUR`: the prefetch, the backfill past every reader’s
+prefix, the cores walk past the rows on screen, and the label set’s periodic read run
+inside `gh_budget.speculative`, which counts what they spend toward the share too, and
+are refused with `self_ceiling` once it is spent.
+What is on screen is never refused for the share, so it keeps the rest of the ceiling.
+`GET pulls-prefetch` reports the ceiling and the share and what the hour has used of
+each under `governor.ceiling`, beside the governor’s other state.
 
 ### The GitHub Status Check
 
@@ -266,7 +272,8 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   and `PROBE_FLOOR_S` apart, and a rate-limit hold stops them all.
   A server runs at most `MAX_PROBES_IN_FLIGHT` at once across its pull requests, each
   one to four `gh` processes, and an ask past that answers `not_due`; one refused goes
-  ahead of those probed since, for `PROBE_TURN_S`, so askers take turns.
+  ahead of those probed since, for `PROBE_TURN_S`, so askers take turns; the list’s
+  probe keeps its place for twice its own interval, since it asks half as often.
   A probe is a coordinator job under the pull request’s key with `:probe`, taking no
   network slot and no turn at the store, so shutdown cancels it.
 - **Below `BACKGROUND_FLOOR`:** probes go on, since a `304` is free, and a change one
@@ -359,6 +366,9 @@ It asks the issues list, which includes pull requests, because a pull request’
 embeds its repositories and its ETag moves on every push; the measurements are beside
 `LIST_PROBE_S`. When an issue is the newest row, the one-row pulls page (`pulls_path`)
 says which pull request is.
+GitHub’s lists run behind a change, so that page is asked by every probe until one asks
+it `PULLS_LAG_S` after the issue’s update, and until then an unchanged probe vouches
+only for what GitHub had that long before it asked.
 A `200` is a hint: the newest pull request is compared with the catalog’s row of that
 number, and the catalog is behind only when it lacks that row as GitHub has it.
 An unchanged probe moves the probe’s `checked_at`, and for a freshness window the
@@ -374,6 +384,10 @@ absent, failed and due, or wanted for a reader’s prefix or the backfill; the d
 once every `FULL_REFRESH_S` while probes vouch and once a freshness window otherwise;
 and else the probe, one at a time for a repository and `LIST_PROBE_FLOOR_S` apart
 however many tabs ask.
+A change a probe found is asked for before the periodic scan, so the job that scans for
+it is the one the probe is told of.
+Two asks that both found the probe due in their worker threads start one probe: the
+later finds it no longer due on the loop and starts nothing.
 A list probe counts toward the server’s `MAX_PROBES_IN_FLIGHT` with its pull requests’
 probes and is a coordinator job as theirs are.
 Probes that each pay for a `200` and find no pull request changed, as in a repository
@@ -568,8 +582,10 @@ in `<n>.timeline.json`, bound to the inputs it orders (`_discussion_revision`): 
 source, number, reader, base branch, head, and the discussion’s identifiers.
 An advance of the base branch keeps it usable; a retarget or a new head needs a new one.
 It answers `complete`, `partial` with a retryable verified prefix, or `unavailable`,
-asks for no patch or Git object, and runs only after the selected Conversation paints,
-in a provider slot of its own once any metadata refresh settles.
+retryable with `retry_after_s` when the budget held the read, which the page asks again
+after for as long as the budget holds it; it asks for no patch or Git object, and runs
+only after the selected Conversation paints, in a provider slot of its own once any
+metadata refresh settles.
 
 ## Native Stacks
 

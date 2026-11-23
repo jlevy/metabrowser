@@ -538,5 +538,15 @@ def test_an_automatic_read_waits_for_the_budget_and_a_readers_retry_does_not(
         gh_budget.spent(gh_budget.AUTOMATIC_CORE_PER_HOUR, now=now)
         assert not refresh_wanted(repository)
         assert refresh_wanted(repository, retry=True)
+        gh_budget.forget()
+        # And past speculative work's share of it (A1 of review A on #737), which what
+        # is on screen spends none of.
+        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR, now=now)
+        assert refresh_wanted(repository)
+        with gh_budget.speculative():
+            gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR, now=now)
+        assert not gh_budget.over_ceiling(now)
+        assert not refresh_wanted(repository)
+        assert refresh_wanted(repository, retry=True)
     finally:
         gh_budget.forget()

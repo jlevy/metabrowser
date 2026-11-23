@@ -194,11 +194,11 @@ status: 200
     "per_scan": 8,
     "scan": "<CATALOG_EPOCH_1>:2026-09-17T14:00:00Z",
     "scan_used": 1,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 1
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -215,7 +215,9 @@ status: 200
     },
     "ceiling": {
       "per_hour": 300,
-      "hour_used": 6
+      "hour_used": 6,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 6
     }
   },
   "recent": [
@@ -387,11 +389,11 @@ status: 200
     "per_scan": 8,
     "scan": "<CATALOG_EPOCH_1>:2026-09-17T14:01:01Z",
     "scan_used": 1,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 1
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -408,7 +410,9 @@ status: 200
     },
     "ceiling": {
       "per_hour": 300,
-      "hour_used": 3
+      "hour_used": 3,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 3
     }
   },
   "recent": [
@@ -490,11 +494,11 @@ status: 200
     "per_scan": 8,
     "scan": "<CATALOG_EPOCH_1>:2026-09-17T14:01:01Z",
     "scan_used": 1,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 1
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -511,7 +515,9 @@ status: 200
     },
     "ceiling": {
       "per_hour": 300,
-      "hour_used": 6
+      "hour_used": 6,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 6
     }
   },
   "recent": [

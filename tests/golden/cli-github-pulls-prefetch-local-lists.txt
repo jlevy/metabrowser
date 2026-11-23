@@ -60,11 +60,11 @@ status: 200
     "per_scan": 8,
     "scan": null,
     "scan_used": 0,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 0
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -75,7 +75,9 @@ status: 200
     "observed": {},
     "ceiling": {
       "per_hour": 300,
-      "hour_used": 0
+      "hour_used": 0,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 0
     }
   },
   "recent": [
@@ -112,11 +114,11 @@ status: 200
     "per_scan": 8,
     "scan": null,
     "scan_used": 0,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 0
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -127,7 +129,9 @@ status: 200
     "observed": {},
     "ceiling": {
       "per_hour": 300,
-      "hour_used": 0
+      "hour_used": 0,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 0
     }
   },
   "recent": [
@@ -277,11 +281,11 @@ status: 200
     "per_scan": 8,
     "scan": null,
     "scan_used": 0,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 0
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 1
   },
   "governor": {
@@ -292,7 +296,9 @@ status: 200
     "observed": {},
     "ceiling": {
       "per_hour": 300,
-      "hour_used": 1
+      "hour_used": 1,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 1
     }
   },
   "recent": [
@@ -346,11 +352,11 @@ status: 200
     "per_scan": 8,
     "scan": null,
     "scan_used": 0,
-    "per_hour": 40,
+    "per_hour": 12,
     "hour_used": 0
   },
   "files": {
-    "per_hour": 100,
+    "per_hour": 20,
     "hour_used": 0
   },
   "governor": {
@@ -361,7 +367,9 @@ status: 200
     "observed": {},
     "ceiling": {
       "per_hour": 300,
-      "hour_used": 0
+      "hour_used": 0,
+      "speculative_per_hour": 100,
+      "speculative_hour_used": 0
     }
   },
   "recent": [

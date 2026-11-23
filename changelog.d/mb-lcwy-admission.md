@@ -5,3 +5,5 @@
   changed files wait too.
   A change found on the page or list on screen is still read, as are the descriptions of
   the rows on screen, and a reader’s own Refresh, Reload, or Retry is never held by it.
+  A Conversation timeline the budget held is asked for again every minute while its page
+  stays open, and appears once the budget allows.
