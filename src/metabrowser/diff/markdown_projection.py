@@ -453,8 +453,18 @@ class _Element:
     children: list[_Element | str] = field(default_factory=list)
 
 
+# A document's own `ins` and `del`, as the tags the allowlist draws them as without the
+# page's change tints, so every `ins` and `del` in a block is one `_marked` wrote: the
+# page tints any `ins` in an added row and any `del` in a removed one (diff styles.css),
+# and a class the projection added would not do, since raw HTML may write one.
+_DOCUMENT_MARKS = {"ins": "span", "del": "s"}
+
+
 class _Html(HTMLParser):
-    """Read the small already hardened HTML subset without repairing its structure."""
+    """Read the small already hardened HTML subset without repairing its structure.
+
+    A document's `ins` and `del` are read as `span` and `s` (`_DOCUMENT_MARKS`).
+    """
 
     def __init__(self, html: str, budget: float) -> None:
         super().__init__()
@@ -476,12 +486,14 @@ class _Html(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self._count()
+        tag = _DOCUMENT_MARKS.get(tag, tag)
         node = _Element(tag, tuple((key, value or "") for key, value in attrs))
         self.stack[-1].children.append(node)
         if tag not in _VOID:
             self.stack.append(node)
 
     def handle_endtag(self, tag: str) -> None:
+        tag = _DOCUMENT_MARKS.get(tag, tag)
         if self.stack[-1].tag != tag or len(self.stack) == 1:
             raise _Unsupported("unbalanced render tree")
         self.stack.pop()

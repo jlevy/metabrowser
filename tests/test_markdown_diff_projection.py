@@ -978,6 +978,46 @@ def test_raw_html_the_render_drops_whole_is_left_to_source() -> None:
     assert [block["kind"] for block in result["blocks"]] == ["context", "context"]
 
 
+def test_a_document_cannot_write_the_change_marks() -> None:
+    """The page tints every `ins` in an added row and every `del` in a removed one, so a
+    document's own are drawn as `span` and `s`: here the address changed, and the one
+    word the document marks as inserted must not read as the whole change."""
+
+    old = b"Download the installer from https://good.example/install.sh and run it.\n"
+    forged = (
+        b"Download the installer <ins>now</ins> from https://evi1.example/install.sh and run it.\n"
+    )
+    result = _project(old, forged)
+    assert result["status"] == "ready"
+    assert [(block["kind"], block["html"]) for block in result["blocks"]] == [
+        (
+            "removed",
+            "<p>Download the installer from https://good.example/install.sh and run it.</p>",
+        ),
+        (
+            "added",
+            "<p>Download the installer <span>now</span> from https://evi1.example/install.sh "
+            "and run it.</p>",
+        ),
+    ]
+    # The genuine insertion is the projection's own mark.
+    genuine = old.replace(b"installer", b"installer now")
+    assert _changed(_project(old, genuine))[1]["html"] == (
+        "<p>Download the installer <ins>now</ins> from https://good.example/install.sh "
+        "and run it.</p>"
+    )
+    written = b"Pay <del>100</del> <ins>900</ins> to the vendor.\n"
+    unchanged = _project(b"Intro.\n\n" + written, b"Intro!\n\n" + written)
+    assert unchanged["blocks"][-1] == {
+        **unchanged["blocks"][-1],
+        "kind": "context",
+        "html": "<p>Pay <s>100</s> <span>900</span> to the vendor.</p>",
+    }
+    for block in unchanged["blocks"] + result["blocks"]:
+        assert "<ins>" not in block["html"] or block["kind"] == "added"
+        assert "<del>" not in block["html"] or block["kind"] == "removed"
+
+
 def test_a_quote_changes_one_paragraph_at_a_time() -> None:
     old = b"> First paragraph.\n>\n> Second old paragraph.\n"
     new = b"> First paragraph.\n>\n> Second new paragraph.\n"
