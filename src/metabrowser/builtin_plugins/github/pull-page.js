@@ -4809,6 +4809,7 @@ export function mountPullPage(container, ctx, mb) {
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
    *   settled: boolean, cacheMiss: boolean, retryPending: boolean, heldUntil: number | null,
+   *   heldMs: number,
    *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
   let commitTimeline = null;
   // The allowlist a text's Markdown passes through before it is inserted; a text stays
@@ -8269,8 +8270,10 @@ export function mountPullPage(container, ctx, mb) {
               cacheMiss: false,
               retryPending: false,
               // When the wait the server named for a read its budget refused ends, in
-              // `Date.now()` time; null for a transient failure's one retry.
+              // `Date.now()` time; null for a transient failure's one retry. The wait
+              // itself, which bounds what is left of it when the clock steps back.
               heldUntil: null,
+              heldMs: 0,
               read: null,
             }
           : null;
@@ -8392,6 +8395,7 @@ export function mountPullPage(container, ctx, mb) {
         // says, for as long as it refuses and this record's page stays.
         held.settled = false;
         held.retryPending = true;
+        held.heldMs = projection.heldMs;
         held.heldUntil = Date.now() + projection.heldMs;
         followTimeline();
       } else if (!cachedOnly && (!retrying || afterHold) && projection?.retryable) {
@@ -8408,9 +8412,12 @@ export function mountPullPage(container, ctx, mb) {
     if (retrying) {
       // A paint during a refresh ask cancels the wait (`timelineAllowed`), and the next one
       // waits only what is left of it, so the server's minute is a period, not a minimum
-      // that each refresh ask starts again (review B3 of #737).
+      // that each refresh ask starts again (review B3 of #737), and never more than the
+      // server asked when the clock steps back (review D4).
       const delay =
-        held.heldUntil === null ? TIMELINE_RETRY_MS : Math.max(0, held.heldUntil - Date.now());
+        held.heldUntil === null
+          ? TIMELINE_RETRY_MS
+          : Math.min(held.heldMs, Math.max(0, held.heldUntil - Date.now()));
       const timer = window.setTimeout(() => void load(), delay);
       read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
     } else if (typeof window.requestAnimationFrame === "function") {
