@@ -593,6 +593,61 @@ def test_a_budget_that_covers_the_tree_emits_all_of_it(ignored: str) -> None:
     assert all(not any(probe.parent == path for probe in entries.values()) for path in unexpanded)
 
 
+@pytest.mark.parametrize("ignored", ["include", "exclude"])
+@pytest.mark.parametrize("depth", [1, 2, 3])
+def test_a_budget_that_covers_the_tree_to_its_depth_emits_all_of_it(
+    ignored: str, depth: int
+) -> None:
+    """The same at every depth: a folder's demand on the budget stops at the depth.
+
+    Counting a folder's whole subtree, past the levels the request reaches, gave it a share
+    it could never spend and gave the folders expanded before it a smaller one, which left
+    them in ``rest`` with the budget unspent.
+    """
+
+    entries = _mixed_tree()
+    visible = _visible_paths(entries)
+    wanted = {
+        path
+        for path, probe in entries.items()
+        if probe.type in ("dir", "file")
+        and (path == "" or path.count("/") < depth)
+        and (ignored == "include" or path in visible)
+    }
+    result = _rollup_result(
+        entries, depth=depth, top=10_000, max_nodes=len(wanted), ignored=cast(Any, ignored)
+    )
+    nodes = _nodes_by_path(cast(dict[str, Any], result["node"]))
+    assert set(nodes) == wanted
+    assert all("rest" not in node for node in nodes.values())
+
+
+@pytest.mark.parametrize("ignored", ["include", "exclude"])
+def test_a_deep_sibling_does_not_starve_a_shallow_one_under_a_depth(ignored: str) -> None:
+    """A heavy flat folder expanded first keeps its files when its sibling runs deep.
+
+    ``B``, ten large files, expands before ``A``, whose thousand files lie two levels down,
+    past ``depth=2``. Fourteen nodes cover the tree to that depth: the root, ``A``, ``B``,
+    ``A/A1``, and ``B``'s ten files.
+    """
+
+    entries = _probes(
+        _dir(""),
+        _dir("A"),
+        _dir("A/A1"),
+        _dir("B"),
+        *(_file(f"A/A1/x{i:04d}.py", 1) for i in range(1000)),
+        *(_file(f"B/b{i}.py", 10_000_000) for i in range(10)),
+    )
+    for max_nodes in (14, 30):
+        result = _rollup_result(
+            entries, depth=2, top=10_000, max_nodes=max_nodes, ignored=cast(Any, ignored)
+        )
+        nodes = _nodes_by_path(cast(dict[str, Any], result["node"]))
+        assert len(nodes) == 14, max_nodes
+        assert "rest" not in nodes["B"]
+
+
 @pytest.mark.parametrize("max_nodes", [10_000, 40, 7])
 def test_exclude_is_the_same_envelope_less_the_ignored_children(max_nodes: int) -> None:
     """``ignored=exclude`` changes the emitted children and ``rest``, and nothing else.
@@ -688,7 +743,9 @@ def test_compact_decodes_to_the_json_tree(
 ) -> None:
     """The compact encoding holds the JSON tree: its file rows decode to the file nodes.
 
-    The decoder below is the client's (``treemap-rollup-decode.js``): a file's path is
+    ``_decode_compact`` below decodes by the client's rule; the production decoder,
+    ``treemap-rollup-decode.js``, runs against the route in
+    ``tests/test_treemap_rollup_decode.py``. A file's path is
     ``dir.path ? dir.path + "/" + name : name``, a null mtime is the JSON's omitted one,
     and ``gitignored`` 0 or 1 is false or true. Folders keep their children as
     folders only, an unexpanded folder has no ``files``, and the budget is spent alike, so

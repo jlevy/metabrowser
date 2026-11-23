@@ -12,6 +12,7 @@ from metabrowser.file_type_registry import FileTypeRegistry, load_file_type_regi
 from metabrowser.settings import (
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+    ROLLUP_MAX_DEPTH,
 )
 from metabrowser.wire_models import (
     ExtensionTallyRow,
@@ -121,10 +122,13 @@ class _SubtreeAggregate:
     size_all: int = 0
     files_unignored: int = 0
     size_unignored: int = 0
-    # Directories beneath, so a directory knows the nodes its whole expansion would
-    # spend (``_emit_limit``).
-    dirs_all: int = 0
-    dirs_unignored: int = 0
+    # The files and directories at each level beneath, all and unignored: index ``k``
+    # counts the entries ``k + 1`` levels down, to ROLLUP_MAX_DEPTH levels. A directory
+    # expanded with ``l`` levels left emits at most the first ``l`` of them, which is its
+    # demand on the node budget (``_emit_limit``); the whole subtree's count overstated a
+    # directory whose subtree runs past the depth asked for.
+    entries_by_level: list[int] = field(default_factory=list)
+    visible_by_level: list[int] = field(default_factory=list)
     newest_mtime_ns: int = 0
     ext_files: Counter[str] = field(default_factory=Counter)
     ext_bytes: Counter[str] = field(default_factory=Counter)
@@ -140,8 +144,6 @@ class _SubtreeAggregate:
         self.size_all += other.size_all
         self.files_unignored += other.files_unignored
         self.size_unignored += other.size_unignored
-        self.dirs_all += other.dirs_all
-        self.dirs_unignored += other.dirs_unignored
         self.newest_mtime_ns = max(self.newest_mtime_ns, other.newest_mtime_ns)
         self.ext_files.update(other.ext_files)
         self.ext_bytes.update(other.ext_bytes)
@@ -254,17 +256,31 @@ def _aggregate_subtree(
     if cached is not None:
         return cached
     aggregate = _SubtreeAggregate()
+    # This directory's children, then its subdirectories' levels one level further down.
+    entries_by_level = [0]
+    visible_by_level = [0]
+
+    def add_levels(levels: list[int], beneath: list[int]) -> None:
+        for index, count in enumerate(beneath[: ROLLUP_MAX_DEPTH - 1], start=1):
+            if index == len(levels):
+                levels.append(count)
+            else:
+                levels[index] += count
+
     for child in children_by_parent.get(directory_path, ()):
         ignored = parent_ignored or child.gitignored
-        if child.type == "dir":
-            aggregate.absorb(
-                _aggregate_subtree(child.path, ignored, children_by_parent, aggregates)
-            )
-            aggregate.dirs_all += 1
-            if not ignored:
-                aggregate.dirs_unignored += 1
+        if child.type not in ("dir", "file"):
             continue
-        if child.type != "file":
+        entries_by_level[0] += 1
+        if not ignored:
+            visible_by_level[0] += 1
+        if child.type == "dir":
+            child_aggregate = _aggregate_subtree(
+                child.path, ignored, children_by_parent, aggregates
+            )
+            aggregate.absorb(child_aggregate)
+            add_levels(entries_by_level, child_aggregate.entries_by_level)
+            add_levels(visible_by_level, child_aggregate.visible_by_level)
             continue
         extension = child.ext or ROLLUP_NO_EXT_KEY
         aggregate.files_all += 1
@@ -283,6 +299,8 @@ def _aggregate_subtree(
             if not child.ext:
                 aggregate.no_ext_files_unignored[child.name] += 1
                 aggregate.no_ext_bytes_unignored[child.name] += child.size
+    aggregate.entries_by_level = entries_by_level
+    aggregate.visible_by_level = visible_by_level
     aggregates[directory_path] = aggregate
     return aggregate
 
@@ -449,14 +467,15 @@ def _emit_bounded_tree(
         )
 
     def demand(aggregate: _SubtreeAggregate, level: int) -> tuple[int, int]:
-        # The nodes expanding the whole directory would emit, among all entries and
-        # among visible ones, or none past the depth.
-        if level >= options.depth:
+        # The nodes expanding the directory down to the depth would emit, among all
+        # entries and among visible ones, or none past the depth.
+        levels_left = options.depth - level
+        if levels_left <= 0:
             return (0, 0)
-        visible = aggregate.files_unignored + aggregate.dirs_unignored
+        visible = sum(aggregate.visible_by_level[:levels_left])
         if exclude:
             return (visible, visible)
-        return (aggregate.files_all + aggregate.dirs_all, visible)
+        return (sum(aggregate.entries_by_level[:levels_left]), visible)
 
     root_node = _directory_node(root_entry, root_aggregate, root_ignored, options)
     remaining_nodes = max(0, options.max_nodes - 1)

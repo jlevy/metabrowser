@@ -320,7 +320,7 @@ ROLLUP_DEFAULT_NODES = 4_000
 
 # The largest budget ``nodes=`` may name, and what ``nodes=max`` asks
 # for, as the Treemap view does. Measured on 2026-11-23 on this
-# repository's main checkout, as for ROLLUP_MAX_TOP above, at depth 12
+# repository's main checkout, as for ROLLUP_MAX_TOP below, at depth 12
 # with ``top`` at the budget, laid out with the canvas map's cell cap
 # as it stood (PAINT_MAX_CELLS in treemap-map.js), Files metric, Show
 # ignored on. Bytes are the result as the route encodes it, gzip at
@@ -358,8 +358,9 @@ ROLLUP_MAX_NODES = 32_000
 # entries, 35,790 files, 2,740 entries visible) with the production
 # build_rollup at depth 12, laid out by the production layout at
 # 1223x587 with a cell floor of 0.5 px and no cell cap, Files metric,
-# Show ignored on (attic/treemap-budget/sim_rules.py and
-# analyze_rules.mjs). Share of the map in unexpanded folders /
+# Show ignored on, by the replay the dense treemap research describes
+# (docs/project/research/research-2026-11-22-dense-treemap-rendering.md,
+# "Rollup Budget on This Repository"). Share of the map in unexpanded folders /
 # remainder cells / file cells, in percent:
 #
 #   nodes   top 200 (before)   top = budget     budget share
@@ -376,8 +377,7 @@ ROLLUP_MAX_NODES = 32_000
 # less of the map as files than ``top`` at the budget, which spends the
 # budget on the files of the first folders it reaches. A share by
 # subtree weight, or one with a floor of 10, 40, or 200 children, left
-# more unexpanded at every budget below the whole tree
-# (attic/treemap-budget/out-2026-11-23/rules-table.txt). The same
+# more unexpanded at every budget below the whole tree. The same
 # responses with Show ignored off, at 4,000 nodes: 7.2 / 5.8 / 58 with
 # the share, 25.8 / 14.7 / 37 before, and 33.4 / 0.0 / 48 with top at
 # the budget. A share of all entries alone

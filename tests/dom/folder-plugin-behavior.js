@@ -1274,6 +1274,58 @@ sandbox.MetabrowserNavigationRoute.attachController({
         container.status.textContent === "",
       geometry(container),
     );
+
+    // Out of sight, as when File Overview's own Show ignored turns it off, the view asks
+    // nothing; it asks once it shows.
+    const setIgnored = (checked) =>
+      toolbarChange({
+        target: {
+          checked,
+          getAttribute(name) {
+            return name === "data-chip-check" ? "folder-rollup-ignored" : null;
+          },
+        },
+      });
+    sandbox.MetabrowserViewState.setActive(container, false);
+    const hiddenStart = fetchCalls.length;
+    setIgnored(false);
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "a hidden view asks nothing when Show ignored changes",
+      fetchCalls.length === hiddenStart,
+      `${fetchCalls.length - hiddenStart}`,
+    );
+    sandbox.MetabrowserViewState.setActive(container, true);
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "the view asks for the tree Show ignored names once it shows",
+      fetchCalls.length === hiddenStart + 1 &&
+        new URL(fetchCalls.at(-1)).searchParams.get("ignored") === "exclude" &&
+        cellIndexOf(container, "c.md") === -1,
+      `${fetchCalls.length - hiddenStart} ${fetchCalls.at(-1)}`,
+    );
+
+    // Show ignored on, and the tree with ignored files fails to arrive: the map keeps the
+    // others and says so, until a tree with them does arrive.
+    rollupOverride = { ok: false, status: 500 };
+    setIgnored(true);
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "a failed tree with ignored files says the map shows the others",
+      cellIndexOf(container, "c.md") === -1 &&
+        container.status.textContent ===
+          "Could not load the ignored files; the treemap shows the others.",
+      container.status.textContent,
+    );
+    rollupOverride = null;
+    setIgnored(false);
+    setIgnored(true);
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "the tree with ignored files puts the statement away",
+      cellIndexOf(container, "c.md") >= 0 && container.status.textContent === "",
+      container.status.textContent,
+    );
   }
 
   // Dispose detaches the inventory-change and window-resize listeners.

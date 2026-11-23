@@ -1,7 +1,8 @@
 """The Treemap's compact rollup decoder against the route's two encodings.
 
 The route answers one folder in the ordinary encoding and in ``encoding=compact``, with
-and without gitignored nodes, and ``tests/dom/treemap-rollup-decode-behavior.js`` holds,
+and without gitignored nodes, at a budget that covers it and one that leaves folders
+unexpanded and siblings in ``rest``, and ``tests/dom/treemap-rollup-decode-behavior.js`` holds,
 with the production decoder, that each compact body decodes to the ordinary body asked
 for with the same options.
 """
@@ -46,17 +47,18 @@ def test_compact_rollups_decode_to_the_ordinary_rollup(tmp_path: Path) -> None:
     served.mkdir()
     _fixture(served)
     server._set_root_dir(served)
-    base = {"path": "", "depth": "max", "top": "max", "ext_rank": "dual", "nodes": "max"}
+    base = {"path": "", "depth": "max", "top": "max", "ext_rank": "dual"}
 
     async def run() -> list[dict[str, Any]]:
         async with inventory_harness(served) as harness:
             bodies: list[dict[str, Any]] = []
-            for ignored in ("include", "exclude"):
-                for encoding in ("ordinary", "compact"):
-                    query = {**base, "ignored": ignored}
-                    if encoding == "compact":
-                        query["encoding"] = "compact"
-                    bodies.append(await _body(harness, query))
+            for nodes in ("max", "3"):
+                for ignored in ("include", "exclude"):
+                    for encoding in ("ordinary", "compact"):
+                        query = {**base, "nodes": nodes, "ignored": ignored}
+                        if encoding == "compact":
+                            query["encoding"] = "compact"
+                        bodies.append(await _body(harness, query))
             return bodies
 
     bodies = asyncio.run(run())
@@ -67,8 +69,17 @@ def test_compact_rollups_decode_to_the_ordinary_rollup(tmp_path: Path) -> None:
 
     # The include bodies draw ignored nodes and the exclude ones none, so each pair
     # decodes a different tree.
+    def walk(node: dict[str, Any]) -> list[dict[str, Any]]:
+        return [node, *(found for child in node.get("children") or [] for found in walk(child))]
+
     assert ignored_paths(bodies[0]["node"]), "the fixture serves no gitignored node"
     assert not ignored_paths(bodies[2]["node"])
+    # The small budget leaves a folder unexpanded and a sibling in ``rest``, in both
+    # encodings, so the decoder meets both.
+    for small in bodies[4:]:
+        folders = [node for node in walk(small["node"]) if node["type"] == "dir"]
+        assert any(node["children"] is None for node in folders), small
+        assert any("rest" in node for node in folders), small
     paths: list[str] = []
     for index, body in enumerate(bodies):
         written = tmp_path / f"rollup-{index}.json"
@@ -78,7 +89,7 @@ def test_compact_rollups_decode_to_the_ordinary_rollup(tmp_path: Path) -> None:
         ["node", str(BEHAVIOR_JS), str(REPO_ROOT), *paths],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=30,
         check=False,
     )
     assert result.returncode == 0, (

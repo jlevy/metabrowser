@@ -4899,7 +4899,8 @@ Show ignored changes map membership but leaves the explicit Files and Ignored ro
 intact. In the Treemap view it asks again for the tree, with or without the gitignored
 nodes, and keeps the map it has, laid out as Show ignored off, until that tree arrives,
 so no folder is sized by totals whose nodes are missing; a view out of sight asks when
-it shows.
+it shows. If the tree with the ignored files fails, the status line says the map shows
+the others.
 
 There is no separate color selector.
 Every file maps its exact extension through the taxonomy’s distribution key, a folder

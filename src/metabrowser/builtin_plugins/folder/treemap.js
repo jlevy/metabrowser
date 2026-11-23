@@ -90,6 +90,9 @@ export function registerTreemap(mb, palette, rollupControls) {
     // while Show ignored is off (treemapFullRollupQuery).
     let envelopeHasIgnored = false;
     let rollupFailed = false;
+    // The last request failed, so a map drawn without ignored files while Show ignored
+    // is on says so until a tree with them arrives.
+    let refreshFailed = false;
     let disposed = false;
     const parent = parentNavigation(ctx.path || "", mb.sourceKind());
     const parentControlHtml = parent
@@ -283,7 +286,11 @@ export function registerTreemap(mb, palette, rollupControls) {
       if (disposed || !viewport) {
         return;
       }
-      status.textContent = statusHtml(envelope);
+      status.textContent =
+        statusHtml(envelope) ||
+        (refreshFailed && state.includeIgnored && !envelopeHasIgnored
+          ? "Could not load the ignored files; the treemap shows the others."
+          : "");
       status.hidden = status.textContent === "";
       const failed = envelope?.index_status === "failed";
       status.dataset.severity = failed ? "error" : "warning";
@@ -347,11 +354,12 @@ export function registerTreemap(mb, palette, rollupControls) {
     /** @param {unknown} error */
     function onRollupError(error) {
       console.warn("watchRollup refresh failed:", error);
+      refreshFailed = true;
       if (!isCompleteSnapshot(envelope) || !envelope?.node) {
         rollupFailed = true;
         totalsView.stopLoading();
-        relayout();
       }
+      relayout();
     }
     /**
      * Watch the folder's tree as Show ignored asks for it now.
@@ -386,6 +394,7 @@ export function registerTreemap(mb, palette, rollupControls) {
       envelope = env;
       envelopeHasIgnored = includeIgnored;
       rollupFailed = false;
+      refreshFailed = false;
       const completeSnapshot = isCompleteSnapshot(env);
       if (completeSnapshot && env.node) {
         totalsView.update(normalizeFolderTotals(env.node));

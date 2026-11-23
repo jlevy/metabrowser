@@ -97,12 +97,13 @@ function* nodes(node) {
     check(`${name}: decodes to the ordinary body`, difference === null, difference);
     const files = [...nodes(decoded.node)].filter((node) => node.type === "file");
     filesDecoded += files.length;
-    check(`${name}: holds files to decode`, files.length > 0, "no file nodes");
     check(
       `${name}: an ordinary body comes back as it is`,
       decodeRollupEnvelope(ordinary) === ordinary,
     );
   }
+
+  check("the bodies hold files to decode", filesDecoded > 0, "no file nodes");
 
   /** The error decoding a body whose root holds `files`, or null when it decodes. */
   function refusal(files) {
@@ -140,6 +141,22 @@ function* nodes(node) {
       { name: "a.py", path: "a.py", type: "file", size: 3, ext: ".py", gitignored: true },
     ]),
     JSON.stringify(decoded.node.children),
+  );
+
+  const unexpanded = decodeRollupEnvelope({
+    encoding: "compact",
+    node: {
+      name: "",
+      path: "",
+      type: "dir",
+      children: [{ name: "d", path: "d", type: "dir", children: null }],
+      files: [],
+    },
+  });
+  check(
+    "an unexpanded folder keeps children: null",
+    unexpanded.node.children[0].children === null,
+    JSON.stringify(unexpanded.node),
   );
 
   if (failures.length > 0) {

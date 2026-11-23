@@ -103,7 +103,9 @@ function decodeNode(root) {
       }
       delete node.files;
     }
-    if (node.children !== undefined || children.length > 0) {
+    // An unexpanded folder keeps `children: null`, which says the budget did not reach
+    // it, and an expanded one its folders and files.
+    if (Array.isArray(node.children) || children.length > 0) {
       node.children = children;
     }
   }
