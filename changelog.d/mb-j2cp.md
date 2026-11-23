@@ -28,12 +28,11 @@
   where it stands and moves each mirror into `repos/`, so nothing is cloned again, and
   removes `repository-stores/` once it is empty.
   A source’s `source.yml` is rewritten as `RepositorySource/v2`, the contract that holds
-  the new slug. A mirror no source names keeps the words its old name had, or, when it
-  had none, is kept as `unattached-<11 characters>`, and an entry the rename cannot read
-  or move is named in a warning and left as it is: a source under its old name in
-  `sources/`, and any other entry under its old name in `repos/`. A pull request’s list
-  of changed files is worked out again the first time the pull request is opened
-  afterwards, since the saved list names its mirror by path.
+  the new slug. A mirror that no source names is kept as `unattached-<11 characters>`,
+  and an entry the rename cannot read or move is named in a warning and left as it is: a
+  source under its old name in `sources/`, and any other entry under its old name in
+  `repos/`. A pull request’s list of changed files is worked out again the first time
+  the pull request is opened afterwards, since the saved list names its mirror by path.
   That first open writes to the cache, so the cache must be writable once; a read-only
   copy is not migrated.
   Until then `/api/cache/*` answers `migration_pending`, and the macOS app, which reads

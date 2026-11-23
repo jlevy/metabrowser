@@ -1,9 +1,9 @@
 # Repository Cache
 
-**Status:** Built: the cache and configuration roots, the `f03` layout and its
-migrations from `f01` and `f02`, source and store identity, the SoftSchema record
-contracts, owner-only storage, the lock hierarchy and side locks, the runtime probe, the
-startup sweep of staging, and the read-only `/api/cache/` routes.
+**Status:** Built: the cache and configuration roots, the `f03` layout and its migration
+from `f01`, source and store identity, the SoftSchema record contracts, owner-only
+storage, the lock hierarchy and side locks, the runtime probe, the startup sweep of
+staging, and the read-only `/api/cache/` routes.
 Planned: size accounting and a purge command for repository stores, which the
 [thin-mirror plan](../specs/done/plan-2026-09-23-v012-thin-mirror.md) defers until after
 the alpha.
@@ -136,24 +136,18 @@ Migration holds the home lock and publishes the layout after each step, so an
 interrupted chain resumes where it stopped.
 A newer format is refused with `FutureLayoutFormatError`, which asks for an upgrade.
 
-`f02` is the format in which a store directory is named by a key and not by the whole
-digest of its identity, as `f01` named it.
-`f03` is the format of the names as they now read, for both entries: single-dash words
-and a base-36 suffix ([store keys](#store-keys) and [slugs](#slugs)), where `f02` joined
-its words with `--` and spelled the suffix in hexadecimal; and the stores live in
-`repos/`, where `f01` and `f02` kept them in `repository-stores/`.
-`cache/store_rename.py` migrates a home from either to `f03`, which `acquire_source`
-does before it looks for a hit, so a store cached by an older release is still a hit,
-and no clone is repeated.
-A home that is `f01` is renamed once, straight to its `f03` names, and the step from
-`f02` that follows finds nothing left to rename.
-The two have different consumers.
-`f01` is released data, since v0.12.0 wrote it.
-`f02` was never released: it exists only in the homes of development builds, so the code
-that recognises its store keys is deleted before the release that carries `f03`
-(`mb-t7wx`). Each entry is renamed where it stands, and a store is moved into `repos/`
-by the same atomic, no-replace rename that respells its key; the skeleton has made
-`repos/` already, so the parent is not renamed in one step.
+Metabrowser v0.12.0 wrote `f01`, which named mirrors by their whole identity digest
+under `repository-stores/` and used double-dash source slugs with a hexadecimal suffix.
+`f03` uses single-dash words and base-36 suffixes for both [store keys](#store-keys) and
+[slugs](#slugs), with mirrors under `repos/`. `cache/store_rename.py` migrates directly
+from `f01` to `f03` before `acquire_source` looks up a cache hit, so it reuses the
+existing clone. The migration moves mirrors with atomic, no-replace renames inside the
+cache. It reuses the `repos/` directory created by the cache skeleton.
+
+Metabrowser refuses the unpublished development format `f02`. A developer who still has
+that layout can run a previous `f02`-compatible development build against that cache and
+open a repository to finish the migration.
+Check that `layout.yml` says `f03` before switching to the release build.
 Sources go first: `source.yml` records its slug and validates it against the identity,
 and `f03` spells a slug in a way a `RepositorySource/v1` record cannot hold, so the
 record is a new contract, `/v2`. The migration reads the old record as the YAML it is
@@ -168,9 +162,8 @@ to the home and moves each entry to the first target nothing holds.
 The repository a store holds is read from the source whose alias names it, or whose
 identity derives it in either object format, so a store that an interrupted acquisition
 left unreferenced keeps its repository’s name, and the next acquisition of that source
-reuses it. A store no source names keeps the words an `f02` name had, and an `f01` one,
-which had none, takes the readable part `unattached`, so it is listed as unreferenced
-and kept, as it always was.
+reuses it. A store that no source names takes the readable part `unattached` and remains
+listed as unreferenced.
 A directory whose `store.yml` or `source.yml` does not record the identity its name
 spells was damaged already and is left as it is.
 An entry whose record cannot be read, such as a record with a second hard link or a file
@@ -259,8 +252,8 @@ and a lookup or a listing checks it.
   named like a suffix, `abcdefghijk`, gives `github-com-jlevy-abcdefghijk-<suffix>`, and
   the suffix is what follows the last dash.
   A name of the right shape is not thereby a store’s: only a suffix of the identity
-  `store.yml` records ties a name to a store (`store_key_matches_identity`), and an
-  `f02` name with its `--` or an `f01` whole digest is no key at all.
+  `store.yml` records ties a name to a store (`store_key_matches_identity`), and a whole
+  digest from `f01` is distinct from a current key.
 - **A name another store holds is never shared.** The claim reads the identity recorded
   at each candidate, takes the first no other store holds, and does it under the store’s
   lock (`_claim_store_key` in `cache/acquire.py`). A lookup finds the store at the
@@ -279,7 +272,7 @@ and a lookup or a listing checks it.
 ### Slugs
 
 A source directory is named for the repository in the same way, with its source
-identity: `sources/github-com-jlevy-markform-jqlzm24hgct`, where `f02` had
+identity: `sources/github-com-jlevy-markform-jqlzm24hgct`, where `f01` used
 `github-com--jlevy--markform--8c5e18ed6f7f`. A slug and a store key have one grammar
 (`is_slug` and `is_store_key`), and `slug_matches_identity` and
 `store_key_matches_identity` tell them apart by the identity each suffix digests, so a
@@ -314,11 +307,10 @@ conformance corpus, and deterministic round trip; the distribution check runs th
 inventory against isolated wheel and source installs.
 `config.yml` is user-owned and validated permissively, so it is not in the table;
 `check_packaged_schemas` compiles it with the others.
-`RepositorySource/v1` is what `f01` and `f02` wrote, with a slug spelled by `--` and
-hexadecimal digits.
-`f03` spells it differently, which a `/v1` reader would refuse, so it
-is `/v2` with its own schema file, and no `/v1` schema or reader is kept: the layout
-migration reads the old record as plain YAML and rewrites it.
+`RepositorySource/v1` is what `f01` wrote, with a slug spelled by `--` and hexadecimal
+digits. `f03` spells it differently, which a `/v1` reader would refuse, so it is `/v2`
+with its own schema file, and no `/v1` schema or reader is kept: the layout migration
+reads the old record as plain YAML and rewrites it.
 
 | Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus |
 | --- | --- | --- | --- | --- | --- |

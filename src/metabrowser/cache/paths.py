@@ -18,7 +18,7 @@ LAYOUT_RECORD: Final = "layout.yml"
 STAGING: Final = "staging"
 SOURCES: Final = "sources"
 # The directory of the repository stores, one per Git database. Its name is `repos`, and
-# the code still says "repository store" for an entry of it. An `f02` home named it
+# the code still says "repository store" for an entry of it. An `f01` home named it
 # `repository-stores` (``store_rename.LEGACY_REPOSITORY_STORES``).
 REPOSITORY_STORES: Final = "repos"
 # The bare repository inside a store, and inside a staging entry that becomes one.

@@ -46,8 +46,7 @@ EMPTY_READABLE: Final = "source"
 
 # The single dash that joins a name's readable words and its suffix. The readable part is
 # only a name for a person, the suffix makes it unique, and the suffix is simply the last
-# token, so nothing wider than a dash is needed to find where it starts. (An ``f02`` name
-# joined its words with `--` so that a word's own dash showed.)
+# token, so nothing wider than a dash is needed to find where it starts.
 NAME_SEPARATOR: Final = "-"
 
 # The base-36 characters (`0-9a-z`) of an identity's digest that end a slug or a store key,
@@ -160,9 +159,8 @@ def is_store_key(value: str) -> bool:
     The suffix is always the last token and has one of :data:`NAME_SUFFIX_CHARS`
     characters of ``0-9a-z``, so a readable word that happens to look like one, such as a
     repository named ``abcdefghijk``, is still read as part of the readable part: the key
-    that follows it ends in the real suffix. A bare run of characters is no key, so a name
-    an older release gave a store, the whole digest, is told from a key, and so is a
-    ``--`` name an ``f02`` home gave one.
+    that follows it ends in the real suffix. The whole digest an older release used as a
+    directory name has no dash, so it is distinct from a key.
     """
 
     return _has_name_shape(value)

@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -364,8 +363,8 @@ def build_overlay_home(home: Path, checkouts: Path) -> None:
     )
 
 
-def _f02_readable(transport: GitTransport, address: str) -> str:
-    """The readable part an ``f01`` or ``f02`` name had: the words joined by ``--``."""
+def _legacy_source_readable(transport: GitTransport, address: str) -> str:
+    """The readable part an ``f01`` source slug had: the words joined by ``--``."""
 
     readable = "--".join(slug_tokens(transport, address)) or EMPTY_READABLE
     return (
@@ -376,16 +375,16 @@ def _f02_readable(transport: GitTransport, address: str) -> str:
 
 
 def legacy_slug(source: FixtureSource) -> str:
-    """The slug ``f01`` and ``f02`` gave *source*: its words joined by ``--`` and 12 digits."""
+    """The slug ``f01`` gave *source*: its words joined by ``--`` and 12 digits."""
 
-    return f"{_f02_readable(source.transport, source.address)}--{identity_digest(source.id)[:12]}"
+    return f"{_legacy_source_readable(source.transport, source.address)}--{identity_digest(source.id)[:12]}"
 
 
-def _rewrite_sources_as_f02(home: Path) -> None:
-    """Name every source as ``f01`` and ``f02`` did: words joined by ``--`` and 12 digits.
+def _rewrite_sources_as_f01(home: Path) -> None:
+    """Name every source as ``f01`` did: words joined by ``--`` and 12 digits.
 
-    The record says so too, under the contract those releases wrote it with. It is written
-    as the text it was, because this release no longer validates a slug spelled that way.
+    The record says so too, under the contract stored by that release. It is written
+    as plain YAML because the current schema expects its current slug.
     """
 
     sources = home / SOURCES
@@ -394,7 +393,7 @@ def _rewrite_sources_as_f02(home: Path) -> None:
             home, f"{SOURCES}/{entry.name}/source.yml", REPOSITORY_SOURCE_CONTRACT_ID
         )
         assert isinstance(record, RepositorySource)
-        old = f"{_f02_readable(record.transport, record.clone_url)}--{identity_digest(record.id)[:12]}"
+        old = f"{_legacy_source_readable(record.transport, record.clone_url)}--{identity_digest(record.id)[:12]}"
         path = home / SOURCES / entry.name / "source.yml"
         text = path.read_text(encoding="utf-8")
         assert f"slug: {entry.name}\n" in text
@@ -409,17 +408,13 @@ def _rewrite_sources_as_f02(home: Path) -> None:
         entry.rename(sources / old)
 
 
-def _rewrite_stores(
-    home: Path, name_of: Callable[[RepositoryStore], str], layout_format: str
-) -> dict[str, str]:
-    """Name every store by *name_of*, in ``repository-stores``; return each one's old name.
+def rewrite_as_f01(home: Path) -> dict[str, str]:
+    """Rewrite a current cache as v0.12.0 left it. Return old store names by current key.
 
-    The layout says *layout_format*, the lock files are named for the old names too, and
-    ``repos`` is gone, as in a home that no release of this layout has opened: the skeleton
-    that ``open_cache`` makes is what brings it back. The map is from the key each store has
-    now to the name it is given.
+    f01 uses whole-digest store names in repository-stores and double-dash source slugs.
+    Store locks use the old names, and the layout names f01.
     """
-
+    _rewrite_sources_as_f01(home)
     old_names: dict[str, str] = {}
     (home / REPOSITORY_STORES).rename(home / LEGACY_REPOSITORY_STORES)
     stores = home / LEGACY_REPOSITORY_STORES
@@ -430,7 +425,7 @@ def _rewrite_stores(
             REPOSITORY_STORE_CONTRACT_ID,
         )
         assert isinstance(record, RepositoryStore)
-        name = name_of(record)
+        name = identity_digest(record.id)
         entry.rename(stores / name)
         old_names[entry.name] = name
         for suffix in (".lock", ".fetch.lock"):
@@ -438,46 +433,10 @@ def _rewrite_stores(
     write_record_atomic(
         home,
         LAYOUT_RECORD,
-        CacheLayout(format=layout_format, created_by="0.12.0"),
+        CacheLayout(format="f01", created_by="0.12.0"),
         CACHE_LAYOUT_CONTRACT_ID,
     )
     return old_names
-
-
-def rewrite_as_f01(home: Path) -> dict[str, str]:
-    """Rewrite *home* as the release that wrote ``f01`` left it; return each store's old name.
-
-    A store directory is named by the whole digest of its identity, in
-    ``repository-stores``, and a source by words joined by ``--`` and 12 digits. Lock files
-    are named for the old store names too, and the layout says ``f01``. The map is from the
-    key each store has now to the name it is given.
-    """
-
-    _rewrite_sources_as_f02(home)
-    return _rewrite_stores(home, lambda record: identity_digest(record.id), "f01")
-
-
-def rewrite_as_f02(
-    home: Path, stores: Sequence[FixtureStore] = (FLASK_STORE, ORPHAN_STORE)
-) -> dict[str, str]:
-    """Rewrite *home* as the release that wrote ``f02`` left it; return each store's old name.
-
-    A store directory is named for its source's words joined by ``--`` and 16 hexadecimal
-    digits of its identity, in ``repository-stores``, a source as ``f01`` named it, and the
-    layout says ``f02``. *stores* are the fixture stores the home holds, which say each
-    one's repository. The map is from the key each store has now to the name it is given.
-    """
-
-    by_id = {store.id: store for store in stores}
-
-    def name_of(record: RepositoryStore) -> str:
-        source = by_id[record.id].source
-        return (
-            f"{_f02_readable(source.transport, source.address)}--{identity_digest(record.id)[:16]}"
-        )
-
-    _rewrite_sources_as_f02(home)
-    return _rewrite_stores(home, name_of, "f02")
 
 
 def build_shared_directories_home(home: Path) -> None:

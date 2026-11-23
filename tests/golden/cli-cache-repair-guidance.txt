@@ -79,6 +79,34 @@ exit: 1
 --- stdout ---
 --- stderr ---
 Error: This Metabrowser configuration directory uses format f02, and this release reads formats up to f01. Upgrade Metabrowser, or set METABROWSER_CONFIG_DIR to a different directory.
+## A development-only f02 layout is refused without changing stores or config.
+# metab <ROOT> --api /api/cache/layout
+exit: 1
+--- stdout ---
+api: /api/cache/layout
+status: 409
+{
+  "error": "layout.yml names format f02, which no Metabrowser release wrote.",
+  "code": "layout_unreadable"
+}
+--- stderr ---
+Error: /api/cache/layout returned HTTP 409
+# metab <ROOT> --api /api/cache/stores
+exit: 1
+--- stdout ---
+api: /api/cache/stores
+status: 409
+{
+  "error": "layout.yml names format f02, which no Metabrowser release wrote.",
+  "code": "layout_unreadable"
+}
+--- stderr ---
+Error: /api/cache/stores returned HTTP 409
+# metab <ORIGIN-A> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: layout.yml names format f02, which no Metabrowser release wrote
 ## A home written by a newer release is refused before anything is written.
 # metab <ORIGIN-A> --no-serve
 exit: 1

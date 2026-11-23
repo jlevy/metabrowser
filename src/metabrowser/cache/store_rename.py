@@ -1,31 +1,27 @@
-"""The ``f01`` and ``f02`` to ``f03`` migration: sources and stores take their current names.
+"""The ``f01`` to ``f03`` migration: sources and stores take their current names.
 
 ``f03`` names a source directory by a slug and a store directory by a key, and both are
 the repository's words joined by single dashes and the first base-36 characters of an
 identity's digest, such as ``sources/github-com-jlevy-markform-jqlzm24hgct`` and
 ``repos/github-com-jlevy-markform-1bo2sp3ey2l``
 (:func:`~metabrowser.cache.identity.slug_candidates` and
-:func:`~metabrowser.cache.identity.store_key_candidates`). Two spellings came before it:
+:func:`~metabrowser.cache.identity.store_key_candidates`).
 
-- ``f01`` named a store by all 64 hexadecimal digits of its identity, in
-  ``repository-stores/``, such as ``repository-stores/096a832ec2dfe765...``, and a source
-  by words joined by ``--`` and 12 digits of its identity, such as
-  ``sources/github-com--jlevy--markform--8c5e18ed6f7f``.
-- ``f02`` named a store for the repository it holds and 16 digits of its identity, joined
-  by ``--``, such as ``repository-stores/github-com--jlevy--markform--096a832ec2dfe765``.
+In ``f01``, a store was named by all 64 hexadecimal digits of its identity, in
+``repository-stores/``, such as ``repository-stores/096a832ec2dfe765...``. A source used
+words joined by ``--`` and 12 digits of its identity, such as
+``sources/github-com--jlevy--markform--8c5e18ed6f7f``.
 
 The entries are renamed where they are, and the stores are moved into ``repos/``. A store
 can hold a clone of gigabytes and nothing in the cache deletes one, so leaving the old
 names would orphan every store: each repository would be cloned again, and the old clones
 would stay with no command that lists or removes them. A rename moves a store of any size
-in one step and fetches nothing. A home that is ``f01`` is renamed once, straight to the
-``f03`` names, and the step from ``f02`` then finds nothing left to rename; the older
-spellings are kept here only to recognise them, never to write them again.
+in one step and fetches nothing.
 
 Sources go first, so that the stores can name the repository they hold. A source's
 ``source.yml`` records its slug and is validated against its identity, and ``f03`` spells
-that slug in a way a ``RepositorySource/v1`` record of ``f01`` or ``f02`` cannot hold, so
-it is a new contract, ``/v2``. The migration reads the old record as the YAML mapping it is
+that slug in a way a ``RepositorySource/v1`` record cannot hold, so it is a new contract,
+``/v2``. The migration reads the old record as the YAML mapping it is
 (:data:`LEGACY_SOURCE_CONTRACT_ID` is the only place the old contract is named, and nothing
 else reads it), writes the ``/v2`` record with the new slug in the old directory, and then
 renames the directory: a migration interrupted between the two leaves an entry under its
@@ -36,10 +32,8 @@ The repository a store holds is read from the source whose alias names it, or, f
 store no alias names, whose identity derives it (an acquisition interrupted between its
 two renames leaves one): the source's recorded transport and address give the readable
 part exactly as a lookup computes it, so the next acquisition of that source reuses the
-store. A store no source names keeps the readable part its ``f02`` name had, and an
-``f01`` one, which had none, takes :data:`UNATTACHED_READABLE`: it is listed as
-unreferenced, which says what it is, and is kept, as such a store always was. A directory
-whose ``store.yml`` or ``source.yml`` does not record the identity its name spells is
+store. An ``f01`` store that no source names takes :data:`UNATTACHED_READABLE` and is
+listed as unreferenced. A directory whose ``store.yml`` or ``source.yml`` does not record the identity its name spells is
 damaged already and is left as it is. An entry whose record cannot be read, or that cannot
 be moved (a name every width of which another entry holds, a parent that refuses the
 rename), is skipped and named in a warning, so one cannot stop the rest. Past
@@ -69,12 +63,8 @@ The caller holds the application-home lock, and each rename is atomic and refuse
 replace, so an interrupted migration is resumed by running it again: the entries it
 renamed are not legacy names any more. Nothing is read or written outside the home.
 
-The consumers are two. ``f01`` is released data: v0.12.0 wrote it, so its whole-digest store
-names, its ``repository-stores`` directory and its ``--`` slugs and ``RepositorySource/v1``
-records are read here for as long as such a home can exist. ``f02`` was never released: it
-exists only in the homes of development builds between #647 and this layout, and the
-store-key spelling it added (``f02_key_parts`` and the words it kept) is deleted before the
-release that carries ``f03`` (mb-t7wx).
+``f01`` is released data. Metabrowser v0.12.0 wrote its whole-digest store names,
+``repository-stores`` directory, ``--`` source slugs, and ``RepositorySource/v1`` records.
 """
 
 from __future__ import annotations
@@ -130,10 +120,10 @@ from metabrowser.home import (
 
 log = logging.getLogger(__name__)
 
-# What ``f01`` and ``f02`` called the directory of the stores, which ``f03`` calls
+# What ``f01`` called the directory of the stores, which ``f03`` calls
 # :data:`~metabrowser.cache.paths.REPOSITORY_STORES`.
 LEGACY_REPOSITORY_STORES: Final = "repository-stores"
-# The contract of the ``source.yml`` that ``f01`` and ``f02`` wrote, whose slug was words
+# The contract of the ``source.yml`` that ``f01`` wrote, whose slug was words
 # joined by ``--`` and hexadecimal digits. It is read here and nowhere else.
 LEGACY_SOURCE_CONTRACT_ID: Final = "metabrowser.cache:RepositorySource/v1"
 # The readable part of the key of a store no source names and whose old name said nothing:
@@ -146,18 +136,13 @@ UNATTACHED_READABLE: Final = "unattached"
 MAX_MIGRATED_ENTRIES: Final = 10_000
 
 _LEGACY_STORE_KEY_RE: Final = re.compile(r"^[0-9a-f]{64}$")
-# An ``f02`` name: words that may hold single dashes, joined by ``--``, the last of them
-# hexadecimal digits of an identity. Every key and slug of ``f01`` and ``f02`` was one.
-_F02_NAME_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)*$")
-F02_SEPARATOR: Final = "--"
-# The longest ``f02`` name: 96 bytes of readable part, its separator, and 64 digits.
-_F02_MAX_BYTES: Final = 96 + len(F02_SEPARATOR) + 64
-# The hexadecimal digits an ``f02`` store key ended in, shortest first: its 16-digit first
-# choice, two longer ones, and the whole digest. Frozen here as released; ``f03`` does not
-# write it.
-F02_KEY_SUFFIX_HEX_DIGITS: Final = (16, 24, 32, 64)
-# The same for an ``f01`` and ``f02`` slug, whose first choice was 12 digits.
-F02_SLUG_SUFFIX_HEX_DIGITS: Final = (12, 16, 24, 32, 64)
+# An ``f01`` source slug has words joined by ``--`` followed by an identity digest prefix.
+_LEGACY_SOURCE_SLUG_RE: Final = re.compile(
+    r"^[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)*$"
+)
+_LEGACY_SOURCE_SEPARATOR: Final = "--"
+_LEGACY_SOURCE_MAX_BYTES: Final = 96 + len(_LEGACY_SOURCE_SEPARATOR) + 64
+LEGACY_SOURCE_SUFFIX_HEX_DIGITS: Final = (12, 16, 24, 32, 64)
 _HEX_RE: Final = re.compile(r"^[0-9a-f]+$")
 # The object formats a source's store can have (``OBJECT_FORMATS``, which a test holds this
 # to), in the order they are tried.
@@ -216,51 +201,24 @@ def is_legacy_store_key(name: str) -> bool:
     return _LEGACY_STORE_KEY_RE.fullmatch(name) is not None
 
 
-def _f02_name_parts(name: str, widths: tuple[int, ...]) -> tuple[str, str] | None:
-    if len(name) > _F02_MAX_BYTES or _F02_NAME_RE.fullmatch(name) is None:
+def _legacy_source_suffix(name: str) -> str | None:
+    """Return the hexadecimal suffix of an ``f01`` source slug."""
+    if len(name) > _LEGACY_SOURCE_MAX_BYTES or _LEGACY_SOURCE_SLUG_RE.fullmatch(name) is None:
         return None
-    readable, separator, suffix = name.rpartition(F02_SEPARATOR)
+    readable, separator, suffix = name.rpartition(_LEGACY_SOURCE_SEPARATOR)
     if (
         not separator
         or not readable
-        or len(suffix) not in widths
+        or len(suffix) not in LEGACY_SOURCE_SUFFIX_HEX_DIGITS
         or _HEX_RE.fullmatch(suffix) is None
     ):
         return None
-    return readable, suffix
+    return suffix
 
 
-def f02_key_parts(name: str) -> tuple[str, str] | None:
-    """The readable part and hexadecimal suffix of a store directory named as ``f02`` does.
-
-    ``None`` for any other name. The readable part is as ``f02`` spelled it, with its
-    words joined by ``--``, and the suffix is one of :data:`F02_KEY_SUFFIX_HEX_DIGITS`
-    hexadecimal digits. A name of ``f03`` has no ``--``, so the two never read alike.
-    """
-
-    return _f02_name_parts(name, F02_KEY_SUFFIX_HEX_DIGITS)
-
-
-def f02_slug_parts(name: str) -> tuple[str, str] | None:
-    """The readable part and hexadecimal suffix of a source directory named as ``f01`` did.
-
-    ``None`` for any other name; the suffix is one of :data:`F02_SLUG_SUFFIX_HEX_DIGITS`
-    hexadecimal digits of the source identity.
-    """
-
-    return _f02_name_parts(name, F02_SLUG_SUFFIX_HEX_DIGITS)
-
-
-def is_f02_store_key(name: str) -> bool:
-    """Whether *name* is a store directory named as an ``f02`` home names it."""
-
-    return f02_key_parts(name) is not None
-
-
-def is_f02_slug(name: str) -> bool:
-    """Whether *name* is a source directory named as an ``f01`` or ``f02`` home names it."""
-
-    return f02_slug_parts(name) is not None
+def is_legacy_source_slug(name: str) -> bool:
+    """Whether *name* has the shape of an ``f01`` source slug."""
+    return _legacy_source_suffix(name) is not None
 
 
 def _read_entry(home: Path, relative_path: str, contract_id: str, entry: str) -> BaseModel | None:
@@ -288,7 +246,7 @@ def _skipped(entry: str) -> None:
 def _legacy_source_values(home: Path, name: str) -> dict[str, Any] | None:
     """The values of the ``source.yml`` in the directory *name*, read without its contract.
 
-    Under ``f03`` a record whose slug is spelled as ``f02`` spells it no longer validates,
+    Under ``f03`` a record whose slug is spelled as ``f01`` spells it no longer validates,
     so an old record is read as the YAML mapping it is and checked by hand
     (:func:`_source_slugs`). Its header must name the old contract, or the current one, which
     an interrupted migration leaves. ``None`` when there is none or it cannot be read, which
@@ -333,16 +291,16 @@ def _source_slugs(name: str, values: dict[str, Any]) -> tuple[str, ...] | None:
     transport = values.get("transport")
     address = values.get("clone_url")
     recorded = values.get("slug")
-    parts = f02_slug_parts(name)
+    suffix = _legacy_source_suffix(name)
     if (
-        parts is not None
+        suffix is not None
         and isinstance(source_id, str)
         and is_identity(source_id)
         and transport in TRANSPORTS
         and isinstance(address, str)
         and isinstance(recorded, str)
         and source_identity(transport, address) == source_id
-        and identity_digest(source_id).startswith(parts[1])
+        and identity_digest(source_id).startswith(suffix)
     ):
         candidates = slug_candidates(transport, address, source_id)
         if recorded == name or recorded in candidates:
@@ -352,7 +310,7 @@ def _source_slugs(name: str, values: dict[str, Any]) -> tuple[str, ...] | None:
 
 
 def _rename_legacy_sources(home: Path) -> int:
-    """Give every source directory of ``f01`` or ``f02`` its ``f03`` slug; return how many."""
+    """Give every source directory of ``f01`` its ``f03`` slug; return how many."""
 
     try:
         names = list_private_directory(
@@ -362,7 +320,7 @@ def _rename_legacy_sources(home: Path) -> int:
         return 0
     renamed = 0
     for name in names:
-        if not is_f02_slug(name):
+        if not is_legacy_source_slug(name):
             continue
         values = _legacy_source_values(home, name)
         if values is None:
@@ -437,26 +395,12 @@ def _recorded_identity(home: Path, name: str) -> str | None:
     return record.id if isinstance(record, RepositoryStore) else None
 
 
-def _spelled_identity_matches(name: str, recorded: str | None) -> bool:
-    """Whether the identity recorded in a store names the directory it is in.
-
-    An ``f01`` name is the whole digest, and an ``f02`` name ends in a prefix of it.
-    """
-
-    if recorded is None:
-        return False
-    if is_legacy_store_key(name):
-        return recorded == f"{IDENTITY_PREFIX}{name}"
-    parts = f02_key_parts(name)
-    return parts is not None and identity_digest(recorded).startswith(parts[1])
-
-
 def plan_store_renames(home: Path) -> list[Rename]:
     """The renames that move every store of ``repository-stores`` into ``repos`` as its key.
 
-    A store named as ``f01`` or ``f02`` named it takes its ``f03`` key, and an entry that is
-    none of those, or whose record does not name it, is moved under the name it has, after
-    every store, so that a stray name never takes one's first choice. A home with no
+    A store with an ``f01`` name takes its ``f03`` key. Entries with unrecognized names
+    or mismatched records move afterwards under their existing names, so they cannot
+    take a store's first key choice. A home with no
     ``repository-stores`` has nothing to plan.
     """
 
@@ -466,7 +410,7 @@ def plan_store_renames(home: Path) -> list[Rename]:
         )
     except FileNotFoundError:
         return []
-    legacy = {name for name in names if is_legacy_store_key(name) or is_f02_store_key(name)}
+    legacy = {name for name in names if is_legacy_store_key(name)}
     repositories = _repositories_by_store(home) if legacy else {}
     stores: list[Rename] = []
     kept: list[Rename] = []
@@ -476,19 +420,12 @@ def plan_store_renames(home: Path) -> list[Rename]:
             kept.append(Rename(source, (f"{REPOSITORY_STORES}/{name}",)))
             continue
         recorded = _recorded_identity(home, name)
-        if recorded is None or not _spelled_identity_matches(name, recorded):
+        if recorded is None or recorded != f"{IDENTITY_PREFIX}{name}":
             log.warning("Left a cache store whose record does not name its directory: %s", name)
             kept.append(Rename(source, (f"{REPOSITORY_STORES}/{name}",)))
             continue
         repository = repositories.get(recorded)
-        parts = f02_key_parts(name)
-        if repository is not None:
-            readable = readable_part(*repository)
-        elif parts is not None:
-            # No source says which repository this is, but its name did: keep its words.
-            readable = parts[0].replace(F02_SEPARATOR, "-")
-        else:
-            readable = UNATTACHED_READABLE
+        readable = readable_part(*repository) if repository is not None else UNATTACHED_READABLE
         stores.append(
             Rename(
                 source,
@@ -547,8 +484,8 @@ def _apply_store_renames(home: Path, plan: list[Rename]) -> list[str]:
 def _refuse_while_an_older_release_fetches(home: Path) -> None:
     """Raise :class:`OlderReleaseBusyError` if a process holds an old store's fetch lock.
 
-    A store named as ``f01`` or ``f02`` named it took its fetch lock under that name, which
-    an older process holds across its network work. The lock is only tried, never kept, and
+    An ``f01`` store's fetch lock used its directory name. An older process holds that
+    lock across its network work. The lock is only tried, never kept, and
     a lock file that is missing means no fetch, so none is created.
     """
 
@@ -559,7 +496,7 @@ def _refuse_while_an_older_release_fetches(home: Path) -> None:
     except FileNotFoundError:
         return
     for name in names:
-        if not (is_legacy_store_key(name) or is_f02_store_key(name)):
+        if not is_legacy_store_key(name):
             continue
         try:
             busy = legacy_store_fetch_busy(home, name)
@@ -591,21 +528,16 @@ def rename_legacy_names(home: Path) -> None:
 
 __all__ = [
     "DERIVED_OBJECT_FORMATS",
-    "F02_KEY_SUFFIX_HEX_DIGITS",
-    "F02_SEPARATOR",
-    "F02_SLUG_SUFFIX_HEX_DIGITS",
     "LEGACY_REPOSITORY_STORES",
     "MAX_MIGRATED_ENTRIES",
     "UNATTACHED_READABLE",
     "LEGACY_SOURCE_CONTRACT_ID",
+    "LEGACY_SOURCE_SUFFIX_HEX_DIGITS",
     "NoFreeTargetError",
     "OlderReleaseBusyError",
     "Rename",
     "apply_renames",
-    "f02_key_parts",
-    "f02_slug_parts",
-    "is_f02_slug",
-    "is_f02_store_key",
+    "is_legacy_source_slug",
     "is_legacy_store_key",
     "plan_store_renames",
     "rename_legacy_names",

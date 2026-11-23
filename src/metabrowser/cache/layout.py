@@ -69,25 +69,14 @@ from metabrowser.home import (
 LAYOUT_FORMAT: Final = "f03"
 CONFIG_FORMAT: Final = "f01"
 CONFIG_FORMAT_HISTORY: Final[tuple[str, ...]] = (CONFIG_FORMAT,)
-# Every format a released Metabrowser has written, oldest first, ending with the current
-# one. Adding a format appends it here and adds the migration from its predecessor.
-# ``f02`` names each repository store by a readable key where ``f01`` spelled the whole
-# digest of its identity, and ``f03`` shortens that key, and a source's slug, to single-dash
-# words and a base-36 suffix where ``f02`` joined them with ``--`` and spelled the suffix
-# in hexadecimal, and moves the stores from ``repository-stores`` to ``repos``
-# (``store_rename``).
-FORMAT_HISTORY: Final[tuple[str, ...]] = ("f01", "f02", "f03")
+# Every format a released Metabrowser has written, oldest first. f01 used full
+# hexadecimal store digests in repository-stores and double-dash source slugs.
+# f03 uses single-dash names with base-36 suffixes and keeps stores in repos.
+FORMAT_HISTORY: Final[tuple[str, ...]] = ("f01", LAYOUT_FORMAT)
 
 type Migration = Callable[[Path], None]
 # The migration from each historical format to the next one in FORMAT_HISTORY.
-#
-# One function does both renames, because an entry named as ``f01`` or as ``f02`` is renamed
-# straight to its ``f03`` name. The step from ``f02`` of a home that was ``f01`` finds
-# nothing left to rename.
-MIGRATIONS: Final[Mapping[str, Migration]] = {
-    "f01": rename_legacy_names,
-    "f02": rename_legacy_names,
-}
+MIGRATIONS: Final[Mapping[str, Migration]] = {"f01": rename_legacy_names}
 
 _CONFIG_METADATA: Final = {
     "contract": CONFIG_CONTRACT_ID,
@@ -331,7 +320,7 @@ def _has_durable_entries(home: Path) -> bool:
     home. ``keep`` leaves an over-shared directory to the repairing writes that follow.
     """
 
-    # A home whose stores are still in the directory ``f01`` and ``f02`` named has data too.
+    # A home whose stores are still in the directory ``f01`` named has data too.
     for directory in (SOURCES, REPOSITORY_STORES, LEGACY_REPOSITORY_STORES):
         try:
             if list_private_directory(home, directory, max_entries=0, shared="keep"):

@@ -629,7 +629,7 @@ def store_fetch_lock(home: Path, store_key: str, *, order: LockOrder | None = No
 def legacy_store_fetch_busy(home: Path, name: str) -> bool:
     """Whether a process holds the fetch lock an earlier layout gave the store named *name*.
 
-    ``f01`` and ``f02`` named a store's directory, and so its ``locks/stores/<name>.fetch.lock``,
+    ``f01`` named a store's directory, and so its ``locks/stores/<name>.fetch.lock``,
     by the old spellings :func:`store_fetch_lock` refuses, so the layout migration asks here
     before it moves a store. The lock is tried and let go at once. A lock file that is
     missing is no fetch, and is not created.
