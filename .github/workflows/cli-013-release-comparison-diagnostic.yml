@@ -35,7 +35,7 @@ jobs:
           test "$(git rev-parse 'v0.12.0^{commit}')" = "$CONTROL_SHA"
           test -z "$(git status --porcelain)"
           command -v xvfb-run
-          command -v chromium
+          command -v google-chrome
           support="$RUNNER_TEMP/mb-release-comparison"
           mkdir -p "$support"/{tmp,uv,cargo,evidence}
           export TMPDIR="$support/tmp" UV_CACHE_DIR="$support/uv" CARGO_TARGET_DIR="$support/cargo"
@@ -84,6 +84,8 @@ jobs:
           control_label=exp-102-cli-013-v0120
           candidate_label=exp-102-cli-013-candidate
           ledger=explorations/performance-loop/results/runs.jsonl
+          pending=explorations/performance-loop/results/pending.json
+          capture_driver="$GITHUB_WORKSPACE/explorations/performance-loop/capture-browser.js"
           control_wheel="$(cat "$support/control.wheel-path")"
           candidate_wheel="$(cat "$support/candidate.wheel-path")"
           {
@@ -91,9 +93,10 @@ jobs:
             lscpu | grep -E '^(CPU\(s\)|Model name|Architecture):'
             node --version
             uv --version
-            chromium --version
+            google-chrome --version
             printf 'ImageOS=%s ImageVersion=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
             printf 'control=%s\ncandidate=%s\n' "$CONTROL_SHA" "$CANDIDATE_SHA"
+            printf 'diagnostic_driver_commit=%s\n' "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
           } > "$results/host.txt"
           wait_for_idle() {
             for _ in {1..24}; do
@@ -142,9 +145,14 @@ jobs:
               capture_stem="$results/browser-$side-$pair"
               launch "$side" > "$capture_stem.serve.log" 2>&1
               capture_status=0
-              xvfb-run -a -s '-screen 0 1920x1200x24' "${bench[@]}" capture \
-                --headed --chrome "$(command -v chromium)" --width 1600 --height 1040 \
-                --output "$capture_stem.json" --record > "$capture_stem.log" 2>&1 || capture_status=$?
+              profile_url="$(jq -er '.url' "$pending")"
+              xvfb-run -a -s '-screen 0 1920x1200x24' node "$capture_driver" \
+                --headed --chrome "$(command -v google-chrome)" --width 1600 --height 1040 \
+                --probe "$PWD/explorations/performance-loop/probe.js" --url "$profile_url" \
+                --output "$capture_stem.json" > "$capture_stem.log" 2>&1 || capture_status=$?
+              if (( capture_status == 0 )); then
+                "${bench[@]}" record --json-file "$capture_stem.json" >> "$capture_stem.log" 2>&1 || capture_status=$?
+              fi
               if ! grep -q '^recorded ' "$capture_stem.log"; then
                 printf 'Unrecorded pair %s %s (exit %s)\n' "$pair" "$side" "$capture_status" \
                   | tee -a "$results/rejected-captures.txt"

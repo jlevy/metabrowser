@@ -310,10 +310,17 @@ async function evaluate(session, expression, awaitPromise = false) {
   return result.result?.value;
 }
 
-async function installInputSentinel(session) {
+function startupInputReady(expectedUrl) {
+  return `location.href === ${JSON.stringify(expectedUrl)} &&
+    document.body?.isConnected === true &&
+    typeof window.metabrowser?.perf?.snapshot === "function"`;
+}
+
+async function installInputSentinel(session, expectedUrl) {
   return evaluate(
     session,
     `(() => {
+      if (!(${startupInputReady(expectedUrl)})) return null;
       const existing = document.getElementById(${JSON.stringify(INPUT_SENTINEL_ID)});
       existing?.remove();
       const target = document.createElement("span");
@@ -2009,15 +2016,29 @@ async function removeInputSentinel(session) {
   );
 }
 
-async function startTrustedInputPulse(session) {
-  const point = await installInputSentinel(session);
+async function startTrustedInputPulse(session, expectedUrl) {
+  const point = await installInputSentinel(session, expectedUrl);
+  if (!point) {
+    throw new Error("the navigated startup document is no longer ready for trusted input");
+  }
+  const pulse = async () => {
+    const reachesSentinel = await evaluate(
+      session,
+      `(${startupInputReady(expectedUrl)}) &&
+        document.elementFromPoint(${point.x}, ${point.y})?.id === ${JSON.stringify(INPUT_SENTINEL_ID)}`,
+    );
+    if (reachesSentinel !== true) {
+      throw new Error("the startup pulse would miss its sentinel in the navigated document");
+    }
+    await dispatchTrustedClickAtPoint(session, point);
+  };
   let count = 0;
   let running = true;
   let pulseError = null;
   const completion = (async () => {
     try {
       while (running) {
-        await dispatchTrustedClickAtPoint(session, point);
+        await pulse();
         count += 1;
         await delay(INPUT_PULSE_INTERVAL_MS);
       }
@@ -2036,7 +2057,7 @@ async function startTrustedInputPulse(session) {
         // A fast application can settle during the interval sleep. Send one
         // last controlled paint at the boundary so the stability polls do not
         // create an untested tail in the responsiveness window.
-        await dispatchTrustedClickAtPoint(session, point);
+        await pulse();
         count += 1;
         await delay(INTERACTION_OBSERVER_SETTLE_MS);
         return count;
@@ -2198,13 +2219,13 @@ async function capture(options) {
       });
     }
     await session.send("Page.navigate", { url: options.url });
+    const startupUrl = new URL(options.url).href;
+    const ready = options.scenario
+      ? `document.readyState === "complete" &&
+         typeof window.metabrowser?.perf?.snapshot === "function"`
+      : startupInputReady(startupUrl);
     await waitFor(
-      async () =>
-        evaluate(
-          session,
-          `document.readyState === "complete" &&
-            typeof window.metabrowser?.perf?.snapshot === "function"`,
-        ),
+      async () => evaluate(session, ready),
       FIRST_ROW_TIMEOUT_MS,
       "application shell and performance recorder",
     );
@@ -2229,7 +2250,7 @@ async function capture(options) {
         FIRST_ROW_TIMEOUT_MS,
         "fresh application row after the Git-to-Files preflight",
       );
-    } else {
+    } else if (options.scenario) {
       await waitFor(
         async () => evaluate(session, `Boolean(document.querySelector('[role="treeitem"]'))`),
         FIRST_ROW_TIMEOUT_MS,
@@ -2275,13 +2296,18 @@ async function capture(options) {
       return payload;
     }
     // A single early interaction can miss the exact update storm this loop is
-    // meant to catch. Pulse a one-pixel, non-product sentinel from first usable
-    // state through client quiescence. The click toggles only its own paint, so
-    // Event Timing samples input-to-next-paint latency without changing the
-    // application state or adding application work to one side of a comparison.
-    const inputPulse = await startTrustedInputPulse(session);
+    // meant to catch. Pulse a non-product sentinel as soon as the input recorder
+    // and document body are ready, through client quiescence. The click toggles
+    // only the sentinel paint. Event Timing samples input-to-next-paint latency
+    // while application state stays fixed.
+    const inputPulse = await startTrustedInputPulse(session, startupUrl);
     let inputPulseCount;
     try {
+      await waitFor(
+        async () => evaluate(session, `Boolean(document.querySelector('[role="treeitem"]'))`),
+        FIRST_ROW_TIMEOUT_MS,
+        "application first row",
+      );
       await waitForIndex(options.url, options.timeoutMs);
       // Completion can arm idle and timeout work (subtree warming, optional
       // assets). Let those callbacks become observable before declaring the
