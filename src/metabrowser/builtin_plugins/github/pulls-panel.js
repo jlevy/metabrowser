@@ -218,8 +218,10 @@ const CHECKOUT_NOT_LISTED =
  *   source: string | null,
  *   list: string,
  *   fetched_at: string | null,
+ *   checked_at?: string | null,
  *   reader: string | null,
  *   fresh_for_s: number,
+ *   probe_every_s?: number | null,
  *   refreshing: boolean,
  *   last_refresh: LastRefresh | null,
  *   fetched: number,
@@ -630,7 +632,7 @@ function pinChanged(response) {
  *     route: string,
  *     options: {etag?: string | null, body?: unknown, signal?: AbortSignal},
  *   ): Promise<PullsResponse>,
- *   schedule(callback: () => void, delayMs: number): unknown,
+ *   schedule(callback: () => void, delayMs: number, what?: "probe"): unknown,
  *   cancel(handle: unknown): void,
  *   now(): number,
  *   isVisible(): boolean,
@@ -789,6 +791,12 @@ export function createPullsController(deps, options = {}) {
   let prioritizeFilter = false;
   /** @type {unknown} */
   let timer = null;
+  // The next automatic ask of a list the envelope says to probe (`probe_every_s`): while
+  // the tab is shown and visible it asks that often, current or stale, and the server
+  // answers each ask with a free conditional read of GitHub, or with the scan when that
+  // is due. Without it the tab asks only after a poll, for a stale list, once a window.
+  /** @type {unknown} */
+  let probeTimer = null;
   /** @type {AbortController | null} */
   let inflight = null;
   // A request's answer counts only for the newest request of its list: a slow poll sent before
@@ -1595,6 +1603,44 @@ export function createPullsController(deps, options = {}) {
     }
   }
 
+  function clearProbeTimer() {
+    if (probeTimer !== null) {
+      deps.cancel(probeTimer);
+      probeTimer = null;
+    }
+  }
+
+  /**
+   * Schedule the shown list's next probe ask, `probe_every_s` after its last ask, or at
+   * once for a list not asked for within that, as when the tab is shown or wakes. After an
+   * ask that was *tried* and not sent, for one on its way or a limit that holds, the next
+   * waits a whole interval, so a list that cannot be asked for is not asked for in a loop.
+   *
+   * @param {boolean} [tried]
+   */
+  function scheduleProbe(tried = false) {
+    clearProbeTimer();
+    const list = held();
+    const every = list.envelope?.probe_every_s;
+    if (!live() || !online() || typeof every !== "number" || !(every > 0)) {
+      return;
+    }
+    const everyMs = every * 1000;
+    const dueInMs = list.askedAt === null ? 0 : list.askedAt + everyMs - deps.now();
+    probeTimer = deps.schedule(
+      () => {
+        probeTimer = null;
+        if (!askWhenDue(true)) {
+          scheduleProbe(true);
+        }
+      },
+      tried ? everyMs : Math.max(0, dueInMs),
+      // Named, so a session that drives the panel's timers by hand can tell this one from
+      // the poll's.
+      "probe",
+    );
+  }
+
   function pollDelay() {
     const list = held();
     const envelope = list.envelope;
@@ -2264,9 +2310,20 @@ export function createPullsController(deps, options = {}) {
 
   /**
    * Ask for the list's refresh when it is stale and shown, or being read ahead of the tab. The
-   * server holds it to one attempt a window.
+   * server holds it to one attempt a window. A shown list the envelope says to probe is
+   * also asked for every `probe_every_s` whatever its state, on a timer of its own
+   * (`scheduleProbe`).
    */
   function askIfDue() {
+    askWhenDue(false);
+    scheduleProbe();
+  }
+
+  /**
+   * @param {boolean} probing Whether the probe's timer asks, for a list current or stale.
+   * @returns {boolean} Whether an ask was sent.
+   */
+  function askWhenDue(probing) {
     const list = held();
     const envelope = list.envelope;
     const wanted = shown || readAhead;
@@ -2281,12 +2338,12 @@ export function createPullsController(deps, options = {}) {
       list.error !== null ||
       refreshReads.size > 0
     ) {
-      return;
+      return false;
     }
     const priority = shown && prioritizeFilter;
     prioritizeFilter = false;
     if (rateHoldMs(envelope, deps.now()) > 0) {
-      return;
+      return false;
     }
     const last = envelope.last_refresh;
     const probe = probeOnWake;
@@ -2302,24 +2359,42 @@ export function createPullsController(deps, options = {}) {
       last !== null &&
       now - Date.parse(last.at) <= (probe ? windowMs : Math.max(windowMs, WATCH_SETUP_RETRY_MS))
     ) {
-      return;
+      return false;
     }
     const target = Math.min(list.displayLimit, envelope.total ?? list.displayLimit);
     const missingRows = envelope.fetched < target;
     const foreground = priority && missingRows && !reconnect;
     const needsRows = missingRows && (foreground || list.priorityTarget < target);
     const needsCatalog = !envelope.complete && !envelope.refreshing;
+    // A list the server probes: a catalog whose last refresh did not fail, with no job
+    // running. Its asks keep the probe's interval, not the window.
+    const probeMs =
+      probing &&
+      shown &&
+      typeof envelope.probe_every_s === "number" &&
+      envelope.probe_every_s > 0 &&
+      !envelope.refreshing &&
+      (envelope.state === "current" || envelope.state === "stale") &&
+      (last === null || last.outcome === "succeeded")
+        ? envelope.probe_every_s * 1000
+        : null;
     if (
       !reconnect &&
       !needsRows &&
       !needsCatalog &&
+      probeMs === null &&
       (envelope.refreshing ||
         (!failureDue && envelope.state !== "absent" && envelope.state !== "stale"))
     ) {
-      return;
+      return false;
     }
-    if (!reconnect && !needsRows && list.askedAt !== null && now - list.askedAt < windowMs) {
-      return;
+    if (
+      !reconnect &&
+      !needsRows &&
+      list.askedAt !== null &&
+      now - list.askedAt < (probeMs ?? windowMs)
+    ) {
+      return false;
     }
     list.askedAt = now;
     list.priorityTarget = target;
@@ -2329,6 +2404,7 @@ export function createPullsController(deps, options = {}) {
       ...(foreground ? {} : { background: true }),
       ...(reconnect ? { reconnect: true } : {}),
     });
+    return true;
   }
 
   /**
@@ -2386,6 +2462,7 @@ export function createPullsController(deps, options = {}) {
     if (!disposed && name === filter && epoch === requestEpoch) {
       render();
       scheduleNext();
+      scheduleProbe();
       if (warming) {
         queueCores();
       }
@@ -3256,6 +3333,7 @@ export function createPullsController(deps, options = {}) {
       prioritizeFilter = visible;
       if (!visible) {
         clearTimer();
+        clearProbeTimer();
         cancelReads();
         queueCores();
         stopWarming();
@@ -3485,6 +3563,7 @@ export function createPullsController(deps, options = {}) {
       }
       if (!visible()) {
         clearTimer();
+        clearProbeTimer();
         cancelReads();
         stopWarming();
         return;
@@ -3496,6 +3575,7 @@ export function createPullsController(deps, options = {}) {
     pause() {
       parked = true;
       clearTimer();
+      clearProbeTimer();
       cancelReads();
       stopWarming();
     },
@@ -3506,6 +3586,7 @@ export function createPullsController(deps, options = {}) {
     dispose() {
       disposed = true;
       clearTimer();
+      clearProbeTimer();
       clearWalk();
       cancelReads();
       seek(null);

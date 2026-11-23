@@ -735,11 +735,17 @@ def in_a_stable_order(calls: list[str]) -> list[str]:
     A refresh reads the pull first, for its head, and then its other parts in flight
     together, which reach the log in whatever order the processes did. Only those parts
     are sorted: a list's pages are read one after another, and their order is pinned.
+    The list probe, which runs beside all of it, is listed first.
     """
 
-    ordered: list[str] = []
+    # The list probe a page's automatic ask starts runs beside that ask's own work
+    # (`attend_list`), so it reaches the log anywhere among it: it is listed first.
+    beside = [call for call in calls if _LIST_PROBE.match(call)]
+    ordered: list[str] = list(beside)
     together: list[str] = []
     for call in calls:
+        if _LIST_PROBE.match(call):
+            continue
         if _RECORD_PART.match(call):
             together.append(call)
             continue
@@ -750,6 +756,7 @@ def in_a_stable_order(calls: list[str]) -> list[str]:
     return ordered
 
 
+_LIST_PROBE = re.compile(r"gh api repos/[^/]+/[^/]+/(issues|pulls)\?state=all&sort=updated&")
 # The parts of a record a refresh reads together, after the pull itself.
 _RECORD_PART = re.compile(
     r"gh api repos/[^/]+/[^/]+/"
@@ -1086,6 +1093,10 @@ def account(login: str = READER, *, state: str = "success") -> dict[str, Any]:
     return {"stdout": json.dumps({"hosts": {"github.com": [host]}}) + "\n", "exit": 0}
 
 
+LIST_PROBE_PATH = "repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1"
+NEWEST_PULL_PATH = "repos/octo/demo/pulls?state=all&sort=updated&direction=desc&per_page=1"
+
+
 def catalog_entries(
     items: list[dict[str, Any]], *, reader: str = READER, repository_id: str = "R_demo"
 ) -> dict[str, Any]:
@@ -1150,6 +1161,24 @@ def catalog_entries(
                 }
             }
             entries[key] = ok(key, body)
+    # The list probe's one-row page: the pull request updated last, as the issues list
+    # names it, and the pulls page asked when an issue is newest.
+    newest = max(items, key=lambda item: (item["updated_at"], item["number"]), default=None)
+    as_issue = (
+        []
+        if newest is None
+        else [
+            {
+                "number": newest["number"],
+                "updated_at": newest["updated_at"],
+                "pull_request": {
+                    "url": f"https://api.github.com/repos/octo/demo/pulls/{newest['number']}"
+                },
+            }
+        ]
+    )
+    entries[LIST_PROBE_PATH] = ok(LIST_PROBE_PATH, as_issue)
+    entries[NEWEST_PULL_PATH] = ok(NEWEST_PULL_PATH, [newest] if newest is not None else [])
     return entries
 
 

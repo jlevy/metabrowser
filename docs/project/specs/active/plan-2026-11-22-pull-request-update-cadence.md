@@ -221,7 +221,7 @@ Every automatic read of GitHub is one of three kinds, and each has its own caden
 | --- | --- | --- | --- |
 | The pull request on a visible page | `GET repos/o/r/issues/<n>` with the ETag the last probe saw | `ATTENDED_PROBE_S` | Record, every `FULL_REFRESH_S` |
 | Its checks, while open and `checks_pending` or inside `NO_CHECKS_GRACE_S` | First page of `commits/<head>/check-runs` and `commits/<head>/status`, with the record’s ETags | `CHECKS_PROBE_S` | `checks_only` record refresh, every `FULL_REFRESH_S` |
-| A visible Pulls list, or the repository of a visible page | `GET repos/o/r/pulls?state=all&sort=updated&direction=desc&per_page=1` with the last answer’s ETag | `LIST_PROBE_S` | Catalog delta scan, every `FULL_REFRESH_S` |
+| A visible Pulls list, or the repository of a visible page | `GET repos/o/r/issues?state=all&sort=updated&direction=desc&per_page=1` with the last answer’s ETag (as built; proposed as the `pulls` page, see [Server Changes](#server-changes)) | `LIST_PROBE_S` | Catalog delta scan, every `FULL_REFRESH_S` |
 | Its changed files and stacks | None; they follow the record and the catalog | — | Every `FULL_REFRESH_S`, and the files list whenever the head moves |
 | Its labels | None | — | `LABEL_FRESHNESS_S`, as today: a full read of a large label set is 29 or more `gh` processes, and only chip colors depend on it |
 | Its timeline and cores | None; keyed by the record’s discussion revision and the catalog | — | When those change |
@@ -381,17 +381,31 @@ about once a minute.
   pull request’s issue (`probe_path` in `pulls.py`) and `ServedPull` keeps what it saw
   across records; `below_floor` holds the reads the clock alone asks for; and a probe is
   a coordinator job, at most `MAX_PROBES_IN_FLIGHT` of them in a server.
-- **`pull_list_route.py`:** the catalog job probes first, and runs its GraphQL scan only
-  when the probe answered `200`, when the last scan is older than `FULL_REFRESH_S`, or
-  when a reader asked.
-  An unchanged list probe moves the catalog’s checked time, as an unchanged record probe
-  moves `verified_at`, so `record_freshness` in `pull_freshness.py` keeps vouching
-  between scans; otherwise it would vouch for nothing in the last third of each
-  `FULL_REFRESH_S`.
+- **`pull_list_probe.py` and `pull_list_route.py`** (built): an automatic ask that finds
+  nothing else due probes the list, and the catalog’s delta scan runs only when the
+  probe found a pull request the catalog lacks, when the last scan is older than
+  `FULL_REFRESH_S`, or when a reader asked.
+  The probe asks the issues list,
+  `issues?state=all&sort=updated&direction=desc&per_page=1`, not the pulls page this
+  plan proposed: over 120 rounds on three repositories the pulls page answered `200` for
+  an unmoved row 8 times and the issues page never, since an issue’s row embeds no
+  repository. When an issue is the newest row the one-row pulls page is asked too, with
+  its own ETag. The newest pull request is compared with the catalog’s row of the same
+  number, not with the probe’s last answer, so a row costs one `200` however long its
+  scan takes, and a row still missing after its scan (GraphQL behind REST) starts no
+  second one. An unchanged list probe moves the probe’s `checked_at`, as an unchanged
+  record probe moves `verified_at`, and `record_freshness` in `pull_freshness.py` takes
+  it as the catalog’s age, so the catalog keeps vouching between scans; otherwise it
+  would vouch for nothing in the last third of each `FULL_REFRESH_S`. A visible pull
+  request page sends no ask of its own for the list: the server takes its automatic ask
+  for the record as one for the repository’s list too (`attend_list`).
 - **The envelope:** `verified_by` gains `probe`, and `verified_at` moves with each
   unchanged probe, so the page’s age line says when GitHub last confirmed the record.
   `probe_every_s` gives the interval of the page’s asks; `fresh_for_s` still says how
   long a record is fresh without probes.
+  The list envelope gains the same `probe_every_s`, and `checked_at`, when a list probe
+  last found the catalog unchanged; its entity tag leaves `checked_at` out, so a poll of
+  an unchanged list stays a `304`.
 
 The routes are internal contracts and change in one commit with the page, the CLI, and
 the transcripts, with no compatibility layer.
@@ -408,9 +422,13 @@ the transcripts, with no compatibility layer.
   An unchanged probe is one `POST` answered without a job, local to the machine.
   While probes vouch for the record the page asks for no catalog scan: the scan would
   only vouch for what the probes already did.
-  What else the scan fed, the stack the page shows and the list behind it, ages until
-  something else scans or Phase 2’s list probe gates the scan.
-- `pulls-panel.js`: the same, against `fresh_for_s` of the list envelope.
+  What else the scan fed, the stack the page shows and the list behind it, is kept by
+  the list probe, which the server runs on the page’s own ask (see
+  [Server Changes](#server-changes)).
+- `pulls-panel.js` (built): while the tab is shown and visible it asks every
+  `probe_every_s` of the list envelope, on a timer of its own, current or stale; an ask
+  that could not be sent waits a whole interval.
+  Its poll still asks for a stale list once a window, as before.
 - Visibility, focus, and coming back online wake both at once, as they do now.
 
 ### Metabrowser’s Own Stores
@@ -507,7 +525,10 @@ account check and the bounds on probes.
 
 ### Phase 2: Lists and Everything Else
 
-- [ ] The list probe, which gates the catalog’s delta scan, and `LIST_PROBE_S`.
+- [x] The list probe, which gates the catalog’s delta scan, and `LIST_PROBE_S`
+  (`pull_list_probe.py`), with the bound on paid probes for the list’s key
+  (`MAX_PAID_PROBE_S`). Not yet: the per-server cap on probes in flight, which Phase 1
+  builds for the record’s probe.
 - [ ] `FULL_REFRESH_S` for the catalog scan, the files list, and stacks.
 - [ ] Budget admission for the cores walk, stacks, labels, and the timeline.
 - [ ] `AUTOMATIC_CORE_PER_HOUR` in `gh_budget.py`.

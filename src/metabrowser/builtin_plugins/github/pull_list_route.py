@@ -3,15 +3,23 @@
 Provider totals are distinct from locally cached rows. Window pagination reads only
 SQLite indexes; the display budget does not cap the background catalog. A generation
 changes when existing filter content changes, not when older pages are appended.
+
+An automatic ask that finds nothing else due probes the list (:mod:`.pull_list_probe`):
+one conditional request, which starts the catalog's delta scan at once when GitHub has a
+pull request the catalog lacks. While probes vouch for the catalog its scan is due once
+every ``FULL_REFRESH_S``, for what a probe cannot see; otherwise once a freshness window,
+as before probes (:func:`refresh_wanted`).
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
 from time import monotonic
@@ -36,7 +44,9 @@ from metabrowser.builtin_plugins.github.pull_list import (
     refresh_is_due,
     write_list_refresh,
 )
+from metabrowser.builtin_plugins.github.pull_list_probe import LIST_PROBE_S, ListProbe, list_probe
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp, RecordAbsence
+from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
 from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, PULL_LIST_NAMES, PullListName
@@ -49,6 +59,8 @@ from metabrowser.mirror_refresh import (
     refresh_coordinator,
 )
 
+log = logging.getLogger(__name__)
+
 PULLS_ROUTE: Final = "/api/plugin/github/pulls"
 DEFAULT_LIST: Final[PullListName] = "open"
 DEFAULT_LIMIT: Final = 100
@@ -60,7 +72,9 @@ _JOB_STOPPED: Final = "the refresh stopped on an unexpected error, which the ser
 type ListState = Literal["absent", "pending", "current", "stale"]
 type ListAbsence = Literal["not_github"] | RecordAbsence
 type ListRefreshStart = Literal["started", "joined", "not_due"]
-type ListRefreshWanted = bool | Literal["reconnect"]
+# ``probe``: nothing is due but a list probe, which the route runs and which then makes
+# the ask ``changed`` (a delta scan is due at once) or ``False``.
+type ListRefreshWanted = bool | Literal["reconnect", "probe", "changed"]
 
 
 class ListRequestError(Exception):
@@ -80,8 +94,16 @@ class PullListEnvelope(TypedDict):
     source: str | None
     list: PullListName
     fetched_at: str | None
+    # When a list probe last found the catalog unchanged, if after ``fetched_at``: the
+    # list is ``current`` for a window from the newer of the two. Not in the entity tag,
+    # so a poll of an unchanged list stays a ``304`` while probes move it.
+    checked_at: str | None
     reader: str | None
     fresh_for_s: float
+    # How often a visible page asks while it shows a list: the server then probes it or
+    # scans it when that is due, and answers ``not_due`` otherwise. ``None`` with no
+    # catalog to probe.
+    probe_every_s: float | None
     refreshing: bool
     last_refresh: LastRefresh | None
     total: int | None
@@ -208,13 +230,25 @@ def _job_key(repository: ListedRepository) -> str:
 
 @dataclass(frozen=True, slots=True)
 class ListView:
+    """What an envelope needs from memory, read on the event loop that owns it.
+
+    ``checked_at`` is the list probe's, copied here so a thread reads one moment of it.
+    """
+
     repository: ListedRepository | None
     coordinator: RefreshCoordinator | None
     refreshing: bool
+    probe: ListProbe | None = None
+    checked_at: str | None = None
 
 
 def list_view(app: Any, name: PullListName) -> ListView:
     repository, coordinator = served_repository(app), refresh_coordinator(app)
+    probe = (
+        list_probe(coordinator, repository.source)
+        if repository is not None and coordinator is not None
+        else None
+    )
     return ListView(
         repository,
         coordinator,
@@ -223,6 +257,8 @@ def list_view(app: Any, name: PullListName) -> ListView:
             and coordinator is not None
             and coordinator.running(_job_key(repository))
         ),
+        probe,
+        probe.checked_at if probe is not None else None,
     )
 
 
@@ -230,10 +266,19 @@ def cached_list_row(home: Path, slug: str, number: int) -> PullListRow | None:
     return catalog_row(home, slug, number)
 
 
-def _state(listed: CatalogState, stamp: PullRefreshStamp | None) -> ListState:
-    fresh = pull_list.utc_now() - pull_list.parse_stamp(listed.fetched_at) <= timedelta(
-        seconds=FRESHNESS_WINDOW_S
-    )
+def _checked_at(listed: CatalogState, view: ListView) -> str | None:
+    """When a probe found *listed* unchanged after its scan, or ``None``."""
+
+    checked = view.checked_at
+    return checked if checked is not None and checked > listed.fetched_at else None
+
+
+def _state(
+    listed: CatalogState, stamp: PullRefreshStamp | None, checked_at: str | None
+) -> ListState:
+    fresh = pull_list.utc_now() - pull_list.parse_stamp(
+        checked_at or listed.fetched_at
+    ) <= timedelta(seconds=FRESHNESS_WINDOW_S)
     other = (
         stamp is not None
         and stamp.at >= listed.fetched_at
@@ -289,8 +334,10 @@ def list_envelope(view: ListView, found: ListFound | None, window: ListWindow) -
         source=None,
         list=window.name,
         fetched_at=None,
+        checked_at=None,
         reader=None,
         fresh_for_s=FRESHNESS_WINDOW_S,
+        probe_every_s=None,
         refreshing=view.refreshing,
         last_refresh=None,
         total=None,
@@ -324,12 +371,15 @@ def list_envelope(view: ListView, found: ListFound | None, window: ListWindow) -
             reason=None if view.refreshing else "not_cached",
         )
         return empty
+    checked_at = _checked_at(listed, view)
     return {
         **empty,
-        "state": _state(listed, stamp),
+        "state": _state(listed, stamp, checked_at),
         "reason": None,
         "fetched_at": listed.fetched_at,
+        "checked_at": checked_at,
         "reader": listed.reader,
+        "probe_every_s": LIST_PROBE_S if view.probe is not None else None,
         "total": listed.totals[window.name],
         "repository_total": listed.totals["all"],
         "filter_totals": listed.totals,
@@ -345,8 +395,10 @@ def list_envelope(view: ListView, found: ListFound | None, window: ListWindow) -
 
 
 def envelope_etag(envelope: PullListEnvelope, window: ListWindow) -> str:
+    # Without ``checked_at``, which every unchanged probe moves and no reader of a ``304``
+    # needs: ``state`` says what it decides.
     digest = hashlib.sha256(
-        json.dumps({**envelope, "after": window.after}, sort_keys=True).encode()
+        json.dumps({**envelope, "checked_at": None, "after": window.after}, sort_keys=True).encode()
     ).hexdigest()
     return build_scoped_etag(f"pulls-{digest[:32]}")
 
@@ -408,7 +460,30 @@ async def _run_refresh(repository: ListedRepository, coordinator: RefreshCoordin
         _DEMANDS.pop(key, None)
 
 
+def scan_is_due(stamp: PullRefreshStamp | None, probe: ListProbe | None, *, now: datetime) -> bool:
+    """Whether the catalog's periodic delta scan is due, after a scan that succeeded.
+
+    Once every ``FULL_REFRESH_S`` while a list probe vouches for the catalog, for what the
+    probe cannot see, a pull request whose ``updated_at`` did not move; once a freshness
+    window otherwise, as before probes.
+    """
+
+    if stamp is None:
+        return True
+    window = FULL_REFRESH_S if probe is not None and probe.vouches(now) else FRESHNESS_WINDOW_S
+    return not rate_limit_holds(stamp, now=now) and now - pull_list.parse_stamp(
+        stamp.at
+    ) > timedelta(seconds=window)
+
+
 def refresh_wanted(view: ListView, ask: RefreshRequest) -> ListRefreshWanted:
+    """What *ask* is due to start. Blocking and bounded; never contacts GitHub.
+
+    ``True`` for the catalog job, ``changed`` for the job with its delta scan first, since
+    a probe found GitHub ahead of the catalog, ``probe`` when only a list probe is due,
+    which the route then runs, and ``False`` for nothing.
+    """
+
     repository = view.repository
     if repository is None:
         return True
@@ -428,30 +503,103 @@ def refresh_wanted(view: ListView, ask: RefreshRequest) -> ListRefreshWanted:
             return True
         return "reconnect" if ask.reconnect and stamp.outcome == "network_error" else False
     listed = read_catalog(repository.home, repository.slug)
-    if listed is None or refresh_is_due(stamp, now=now):
+    probe = view.probe
+    if listed is None or scan_is_due(stamp, probe, now=now):
         return True
-    if listed.done["all"]:
-        return False
-    from metabrowser.builtin_plugins.github.pull_list_refresh import (
-        backfill_admitted,
-        prefix_wanted,
-    )
+    if probe is not None and probe.saw is not None:
+        # A probe that outlasted its request's wait found a change: its scan is due now.
+        return "changed"
+    if not listed.done["all"]:
+        from metabrowser.builtin_plugins.github.pull_list_refresh import (
+            backfill_admitted,
+            prefix_wanted,
+        )
 
-    # Past the asked prefix the backfill is background work, which the budget may pause.
-    return prefix_wanted(listed, ask.name, ask.target) or backfill_admitted()
+        # Past the asked prefix the backfill is background work, which the budget may pause.
+        if prefix_wanted(listed, ask.name, ask.target) or backfill_admitted():
+            return True
+    due = probe is not None and listed.source == repository.source and probe.due(now)
+    return "probe" if due else False
+
+
+async def probe_list(view: ListView) -> ListRefreshWanted:
+    """Run the list probe an ask found due, and say what the ask is due to start then.
+
+    ``changed`` when the probe found a pull request the catalog lacks, and ``False`` when
+    it found none, failed, or outlasted the wait, which leaves it to end on its own.
+    """
+
+    repository, probe = view.repository, view.probe
+    assert repository is not None and probe is not None
+    try:
+        await probe.run(repository)
+    except TimeoutError:
+        return False
+    return "changed" if probe.saw is not None else False
+
+
+def _attended_wanted(view: ListView, ask: RefreshRequest) -> ListRefreshWanted:
+    repository = view.repository
+    assert repository is not None
+    # A page shows one pull request, not the list: it keeps a catalog current, and never
+    # starts the first read of one nobody opened.
+    if read_catalog(repository.home, repository.slug) is None:
+        return False
+    return refresh_wanted(view, ask)
+
+
+async def _attend(view: ListView) -> None:
+    ask = RefreshRequest(DEFAULT_LIST, background=True)
+    try:
+        wanted = await asyncio.to_thread(_attended_wanted, view, ask)
+        if wanted == "probe":
+            wanted = await probe_list(view)
+        if wanted:
+            start_refresh(view, ask, wanted=wanted)
+    except Exception:
+        # Nothing waits on this but the catalog's freshness, and the page's own ask must
+        # still be answered.
+        log.exception("keeping the pull-request list current for a visible page failed")
+
+
+def attend_list(view: ListView) -> asyncio.Future[None] | None:
+    """Keep the repository's catalog current for a visible pull request page. On the loop.
+
+    The page's automatic ask for its own record, sent every ``ATTENDED_PROBE_S`` while it
+    is visible, stands for the ask a visible Pulls tab sends for the list: the list is
+    probed, and scanned when that is due, so the catalog keeps vouching for the page's
+    record, its stack, and the list behind it while the page is all that is open. Asked no
+    more than once every ``LIST_PROBE_FLOOR_S`` however many pages ask. The result ends
+    within ``PROBE_WAIT_S`` and a thread's read, never raises, and is ``None`` when
+    nothing was asked.
+    """
+
+    probe = view.probe
+    if view.repository is None or view.coordinator is None or probe is None:
+        return None
+    if not probe.attend(monotonic()):
+        return None
+    return asyncio.ensure_future(_attend(view))
 
 
 def start_refresh(
     view: ListView, ask: RefreshRequest, *, wanted: ListRefreshWanted
 ) -> ListRefreshStart:
     repository, coordinator = view.repository, view.coordinator
-    assert repository is not None and coordinator is not None
+    assert repository is not None and coordinator is not None and wanted != "probe"
     key = _job_key(repository)
+    # A change a probe found, or a reader's Reload, reads the delta scan first.
+    changed = wanted == "changed"
+    if (changed or ask.retry) and view.probe is not None:
+        view.probe.scan_started()
     if coordinator.running(key):
         if wanted and not (ask.background or ask.reconnect):
             demand = _DEMANDS[_demand_key(repository, coordinator)]
             demand.name, demand.target = ask.name, ask.target
             demand.retry = demand.retry or ask.retry
+        if changed:
+            # The running job's next page is then the delta scan, whoever asked.
+            _DEMANDS[_demand_key(repository, coordinator)].retry = True
         return "joined"
     if not wanted:
         return "not_due"
@@ -464,7 +612,7 @@ def start_refresh(
             return "not_due"
         starts[repository.source] = now
     _DEMANDS[_demand_key(repository, coordinator)] = _Demand(
-        ask.name, ask.target, ask.retry or reconnect
+        ask.name, ask.target, ask.retry or reconnect or changed
     )
     return coordinator.start(key, partial(_run_refresh, repository, coordinator), network=False)
 

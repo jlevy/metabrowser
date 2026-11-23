@@ -46,6 +46,7 @@ from tests.github_pull_fixture import (
     ANOTHER_READER,
     CANONICAL,
     FETCHED_AT,
+    LIST_PROBE_PATH,
     Origin,
     account,
     catalog_entries,
@@ -79,6 +80,7 @@ PULLS = "/api/plugin/github/pulls"
 REFRESH = "/api/plugin/github/pulls-refresh"
 PREPARE = "/api/plugin/github/pull-cores-prepare"
 CLEAR = "/api/plugin/github/cache-clear"
+PROBE = LIST_PROBE_PATH
 
 
 class _Session:
@@ -765,6 +767,68 @@ def test_golden_pull_list_backfill_waits_for_the_budget_floor_and_pages_past_eve
     rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     check_golden("cli-github-pulls-backfill.txt", rendered)
+
+
+def test_golden_pull_list_probe_answers_an_automatic_ask(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """An automatic ask inside the window probes the list, and scans only for a change.
+
+    Each command is its own process, so each probe here is a first one, sent with no ETag;
+    ``tests/test_github_pull_list_probe.py`` holds the ``304``, the ETag-only ``200``, and
+    the cadence one server keeps across asks.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    known = {
+        number: list_item(parts["pull"]) for number, parts in pull_bodies(session.origin).items()
+    }
+    items = [known[number] for number in (10, 9, 8, 7)]
+    online = scenario(session.origin)
+    online = {**online, "api": {**online["api"], **catalog_entries(items)}}
+    session.answer(online)
+    assert _after(session.post({}, summarize=True))["complete"]
+
+    session.advance(20)
+    session.say(
+        "An automatic ask finds nothing due and probes: one conditional read of the issue or "
+        "pull request updated last, with no account check. The catalog holds that row, so "
+        "nothing starts, and `checked_at` says when GitHub confirmed the list."
+    )
+    unchanged = session.post({"background": True})
+    assert unchanged.exit_code == 0, unchanged.stderr
+    answer = json.loads(unchanged.stdout.split("status: 200\n")[1])
+    assert (answer["refresh"], answer["pulls"]["state"]) == ("not_due", "current")
+    assert answer["pulls"]["checked_at"] == f"{session.now:%Y-%m-%dT%H:%M:%SZ}"
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [f"gh api {PROBE}"]
+
+    session.advance(10)
+    session.say(
+        "GitHub retitles #10. The next ask's probe finds a row the catalog lacks and starts "
+        "the delta scan at once, 30 s into a 60 s window."
+    )
+    changed = dict(
+        known[10], title="Retitled between scans", updated_at=f"{session.now:%Y-%m-%dT%H:%M:%SZ}"
+    )
+    moved_items = [changed if item["number"] == 10 else item for item in items]
+    session.answer({**online, "api": {**online["api"], **catalog_entries(moved_items)}})
+    scanned = session.post({"background": True}, summarize=True)
+    assert scanned.exit_code == 0, scanned.stderr
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        f"gh api {PROBE}",
+        "gh api user",
+        "gh api graphql catalog state=updated cursor=start",
+    ]
+    assert session.get("?state=all&limit=1").payload()["rows"][0]["title"] == changed["title"]
+
+    session.say("A reader's Reload never probes: it scans.")
+    reloaded = session.post({"retry": True}, summarize=True)
+    assert reloaded.exit_code == 0, reloaded.stderr
+    assert PROBE not in session.blocks[-1]
+
+    rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
+    assert str(tmp_path) not in rendered and str(session.home) not in rendered
+    check_golden("cli-github-pulls-probe.txt", rendered)
 
 
 def test_a_long_invalid_version_keeps_the_clear_command_in_the_persisted_refusal(

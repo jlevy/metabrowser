@@ -81,7 +81,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/plugin/github/pull-size` | covered | `--api` | `cli-github-pull-size.txt` |
 | `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-checkout.txt` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-backfill.txt` |
-| `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt`, `cli-github-pulls-backfill.txt` |
+| `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt`, `cli-github-pulls-backfill.txt`, `cli-github-pulls-probe.txt` |
 | `/api/plugin/github/pull-cores-prepare` | covered | `--api` | `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/stacks` | covered | `--api` | `cli-github-stacks.txt` |
 | `/api/plugin/github/stacks-refresh` | covered | `--api` | `cli-github-stacks.txt` |

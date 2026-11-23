@@ -257,7 +257,7 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   the budget is back above the floor, and meanwhile an unchanged probe keeps vouching
   for a record whose full read is overdue, so the page keeps asking every
   `probe_every_s`. What a probe cannot see is that much later below the floor.
-  The
+  The same ask keeps the repository’s list probed (see [The Catalog](#the-catalog)). The
   [update cadence plan](../specs/active/plan-2026-11-22-pull-request-update-cadence.md)
   records the measurements and the design.
 - **One-shot commands:** the CLI fetches a pull request only when it has no usable
@@ -298,9 +298,11 @@ names another head, **current** while the scan that published the row is recent,
 **checks** when an open record is past the window that its row still vouches for, since
 `updated_at` does not move for check runs, statuses, or mergeability, and **unverified**
 otherwise; the module docstring states each rule.
+A [list probe](#the-catalog) that found the catalog unchanged counts as a scan run when
+it asked, so the catalog vouches between scans.
 `verified_at` and `verified_by` say when and how the record was last known to describe
-GitHub: by the catalog’s scan, by its own fetch, or by a [probe](#serving-pull-requests)
-of the served pull request.
+GitHub: by the catalog’s scan or list probe, by its own fetch, or by a
+[probe](#serving-pull-requests) of the served pull request.
 They move with every scan and probe, so the entity tag leaves them out and
 `x-metabrowser-verified` carries them.
 `cli-github-pulls-prefetch.txt` pins each verdict.
@@ -331,6 +333,33 @@ GraphQL errors, including partial data with HTTP 200, never advance a checkpoint
 Each page commits its rows, counts, and cursor in one short transaction under the
 source-alias lock, a checkpoint revision rejects a superseded publisher, and no network
 work runs under the lock.
+
+**Probing.** `pull_list_probe.py` asks GitHub whether the catalog is behind with one
+conditional request for the issue or pull request updated last (`probe_path`), which
+GitHub answers `304` without spending its rate limit.
+It asks the issues list, which includes pull requests, because a pull request’s own row
+embeds its repositories and its ETag moves on every push; the measurements are beside
+`LIST_PROBE_S`. When an issue is the newest row, the one-row pulls page (`pulls_path`)
+says which pull request is.
+A `200` is a hint: the newest pull request is compared with the catalog’s row of that
+number, and the catalog is behind only when it lacks that row as GitHub has it.
+An unchanged probe moves the probe’s `checked_at`, and for a freshness window the
+catalog vouches as a scan run then would, so the list stays `current` and its records
+[verified](#freshness-verdicts) between scans.
+A change starts the job with its delta scan first, once for each row; a row still
+missing after its scan, as when GraphQL lags REST, leaves the scan to the window.
+A visible Pulls tab asks every `probe_every_s` of the list’s envelope (`LIST_PROBE_S`),
+and a visible pull request page’s own ask does the same for its repository
+(`attend_list` in `pull_list_route.py`), so the list is probed while either is on
+screen. `refresh_wanted` decides each automatic ask: the catalog job when the list is
+absent, failed and due, or wanted for a reader’s prefix or the backfill; the delta scan
+once every `FULL_REFRESH_S` while probes vouch and once a freshness window otherwise;
+and else the probe, one at a time for a repository and `LIST_PROBE_FLOOR_S` apart
+however many tabs ask.
+Probes that each pay for a `200` and find no pull request changed, as in a repository
+whose issues never rest, grow further apart, up to `MAX_PAID_PROBE_S`. The module
+docstring gives each outcome, `tests/test_github_pull_list_probe.py` pins them, and
+`cli-github-pulls-probe.txt` shows an ask answered by a probe.
 
 **Admission.** Reads open the database read-only and run neither Git nor `gh`. Readers
 and writers admit only the exact tables and index, and refuse a write-ahead-log database

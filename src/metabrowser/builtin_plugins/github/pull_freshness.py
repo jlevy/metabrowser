@@ -12,7 +12,9 @@ in one transaction, and only when the catalog's ``source`` and ``reader`` are th
   or the next one is running and the last ran within :data:`SCAN_GRACE_S` past it, the
   record is of this build's ``PULL_RECORD_PROJECTION``, and it is closed or was read
   within the window. ``verified_at`` is then the newer of that scan's ``fetched_at`` and
-  the record's, and ``verified_by`` is ``catalog``.
+  the record's, and ``verified_by`` is ``catalog``. A list probe that found the catalog
+  unchanged (:mod:`.pull_list_probe`) counts as a scan run when it asked: GitHub had no
+  pull request newer than the catalog's newest, so every row was as the scan left it.
 - **checks**: the same, for an open pull request read longer ago than the window. The
   catalog vouches for its conversation and head, and the record is stale for what
   ``updated_at`` does not track: check runs, commit statuses, and ``mergeable``, which a
@@ -128,12 +130,15 @@ def record_freshness(
     now: datetime,
     window_s: float = FRESHNESS_WINDOW_S,
     scanning: bool = False,
+    checked_at: str | None = None,
 ) -> RecordFreshness:
     """The verdict on *record* from *catalog* and its *row* of the same number.
 
     *scanning* says the catalog's next scan is running, which decides in a moment what a
     scan just past the window would: until it ends, and for at most :data:`SCAN_GRACE_S`
-    past the window, the last scan still vouches.
+    past the window, the last scan still vouches. *checked_at* is when a list probe last
+    found the catalog unchanged, if one did after the scan: the catalog is then as old as
+    that probe, not as its scan.
     """
 
     pending = checks_pending(record)
@@ -155,7 +160,8 @@ def record_freshness(
             return RecordFreshness(
                 "changed", record.fetched_at, "fetch", other_head, pending, identity
             )
-        age = now - _parse(catalog.fetched_at)
+        checked = max(catalog.fetched_at, checked_at or catalog.fetched_at)
+        age = now - _parse(checked)
         window = timedelta(seconds=window_s)
         recent = age <= window or (scanning and age <= window + timedelta(seconds=SCAN_GRACE_S))
         # A record an earlier projection wrote lacks what this one reads, its labels'
@@ -163,7 +169,7 @@ def record_freshness(
         # but vouches for no such record: the clock decides, and a refresh past the window
         # rewrites it at this projection, once.
         if recent and record.projection_version >= PULL_RECORD_PROJECTION:
-            verified = max(record.fetched_at, catalog.fetched_at)
+            verified = max(record.fetched_at, checked)
             if record.pull.state == "open" and now - _parse(record.fetched_at) > window:
                 # The conversation and head are as GitHub has them; checks, statuses, and
                 # mergeability are not in `updated_at`, so an open pull request's are read

@@ -446,6 +446,11 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     adds ``preparing_comparison`` while it remains optional.
     """
 
+    from metabrowser.builtin_plugins.github.pull_list_route import (
+        DEFAULT_LIST,
+        attend_list,
+        list_view,
+    )
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
         note_full_record,
@@ -471,10 +476,16 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
             {"error": "this server serves no GitHub repository", "code": "not_github"},
             status_code=409,
         )
+    # A visible page's automatic ask also keeps its repository's list probed, beside its
+    # own record's probe and for no longer (:func:`.pull_list_route.attend_list`).
+    attending = None if ask.retry else attend_list(list_view(request.app, DEFAULT_LIST))
     try:
         started = await start_refresh(host, ask)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
+    finally:
+        if attending is not None:
+            await asyncio.shield(attending)
     if ask.wait_core and started in {"started", "joined"}:
         served = host.pulls.held(ask.number)
         if served is not None:
@@ -671,7 +682,10 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     The default state is open and target is 500. The background worker continues to
     all metadata after that prefix. A background or reconnect ask joins without
     reprioritizing. Reconnect can retry one recent network failure early.
-    Retry and reconnect honor rate-limit holds. ``pulls`` is the envelope without its
+    Retry and reconnect honor rate-limit holds. An automatic ask that finds nothing else
+    due probes the list and waits for it at most ``PROBE_WAIT_S``: a change starts the
+    job with its delta scan first, and anything else answers ``not_due`` with
+    ``checked_at`` as the probe left it. ``pulls`` is the envelope without its
     rows, with ``refreshing`` as of the start. When a job runs after the start, ``pulls``
     was read before it, so a job this request started has not changed it; when none runs,
     it is read after ``refreshing``, as ``GET`` reads it.
@@ -682,6 +696,7 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
         ListWindow,
         list_envelope,
         list_view,
+        probe_list,
         read_catalog_window,
         refresh_request,
         refresh_wanted,
@@ -704,6 +719,10 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
             status_code=409,
         )
     wanted = await asyncio.to_thread(refresh_wanted, view, ask)
+    if wanted == "probe":
+        # A visible page asks every LIST_PROBE_S; most asks end here, in a free conditional
+        # read that finds nothing new (:mod:`.pull_list_probe`).
+        wanted = await probe_list(view)
     # Read before the start, as the file list's refresh does: a job with no gh to run
     # writes its stamp at once, and an answer read after the start would race that write.
     window = ListWindow(ask.name, limit=0)

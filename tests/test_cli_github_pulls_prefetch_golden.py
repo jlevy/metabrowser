@@ -36,6 +36,7 @@ from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
+    LIST_PROBE_PATH,
     Origin,
     catalog_entries,
     generated_item,
@@ -297,12 +298,17 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
         "7's page asks for its automatic refresh. Its checks alone are due, but its last full "
         "read was two hours ago, past FULL_REFRESH_S, and a visible page's record is read in "
         "full that often: every part is asked with its ETag, and GitHub answers 304 for all "
-        "that did not change. A record read in full within that interval reads its checks alone."
+        "that did not change. A record read in full within that interval reads its checks alone. "
+        "The same ask probes the repository's list, one read of the row updated last, "
+        "as a visible Pulls tab's ask would."
     )
     checks = session.run(CANONICAL, "--api", f"{PULL}-refresh", body={"number": 7})
     assert checks.exit_code == 0, checks.stderr
     calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
-    api = [call for call in calls if call.startswith("gh api repos/")]
+    assert f"gh api {LIST_PROBE_PATH}" in calls, calls
+    api = [
+        call for call in calls if call.startswith("gh api repos/") and LIST_PROBE_PATH not in call
+    ]
     assert any("comments" in call for call in api), calls
     assert all(call.endswith("(If-None-Match)") for call in api), calls
     read = session.run(CANONICAL, "--api", f"{PULL}?number=7").payload()
@@ -372,7 +378,10 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     assert found.exit_code == 0, found.stderr
     assert '"refresh": "started"' in found.stdout
     calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
-    # The probe, then the whole record between its two account checks.
+    # The list's probe runs beside the ask and is listed first; then the record's probe,
+    # and the whole record between its two account checks.
+    assert calls[0] == f"gh api {LIST_PROBE_PATH}", calls
+    calls = calls[1:]
     assert calls[1] == "gh api user" and calls[-1] == "gh api user (If-None-Match)", calls
     assert len(calls) == 9, calls
     reread = session.run(CANONICAL, "--api", f"{PULL}?number=7", full=True).payload()

@@ -362,7 +362,7 @@ $ node tests/dom/github-pulls-panel-session.js
     {
       "step": "a new PR revalidates the display through ten bounded cache pages",
       "requests": [
-        "GET /api/plugin/github/pulls?state=closed&limit=100 if-none-match \"pulls-34\"",
+        "GET /api/plugin/github/pulls?state=closed&limit=100 if-none-match \"pulls-36\"",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5902",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5802",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5702",
@@ -568,12 +568,20 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "gh api graphql catalog state=all cursor=start",
       "gh api graphql catalog state=all cursor=all-100"
     ],
-    "cached windows, filters, scrolling and reopen": [],
+    "cached windows, filters, scrolling and reopen": [
+      "gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1"
+    ],
     "due metadata refresh": [
       "gh api user (If-None-Match)",
       "gh api graphql catalog state=updated cursor=start"
     ],
     "fresh cached revisit": [],
+    "list probes": [
+      "gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1 (If-None-Match)",
+      "gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1 (If-None-Match)",
+      "gh api user (If-None-Match)",
+      "gh api graphql catalog state=updated cursor=start"
+    ],
     "refused newer_cache": [],
     "refused unknown_cache": []
   },
@@ -681,6 +689,85 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "meta": "#7 · ghost",
     "head": null
   },
+  "probes": [
+    {
+      "step": "a current list is shown: its first probe ask is due at once",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=all&limit=100",
+        "GET /api/plugin/github/pulls?state=all&limit=100&after=7",
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[105,106,104,103,102],\"files\":[105],\"changed\":true}"
+      ],
+      "poll": "slow",
+      "probeInMs": 0,
+      "firstRow": "Work item 106"
+    },
+    {
+      "step": "the ask is sent",
+      "requests": [
+        "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"background\":true}"
+      ],
+      "poll": "slow",
+      "probeInMs": null,
+      "firstRow": "Work item 106"
+    },
+    {
+      "step": "GitHub has nothing new: nothing is read, and the next ask waits an interval",
+      "requests": [],
+      "poll": "slow",
+      "probeInMs": 10000,
+      "firstRow": "Work item 106"
+    },
+    {
+      "step": "the next ask finds a change, and its scan starts: the poll turns fast",
+      "requests": [
+        "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"background\":true}"
+      ],
+      "poll": "fast",
+      "probeInMs": 10000,
+      "firstRow": "Work item 106"
+    },
+    {
+      "step": "an ask due while that scan runs is not sent, and the next waits an interval",
+      "requests": [],
+      "poll": "fast",
+      "probeInMs": 10000,
+      "firstRow": "Work item 106"
+    },
+    {
+      "step": "the scan's rows are read",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=all&limit=100",
+        "GET /api/plugin/github/pulls?state=all&limit=2&after=7",
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[105,106,104,103,102],\"files\":[105],\"changed\":true}"
+      ],
+      "poll": "slow",
+      "probeInMs": 0,
+      "firstRow": "Retitled between scans"
+    },
+    {
+      "step": "hidden: no timer waits to ask",
+      "requests": [],
+      "poll": null,
+      "probeInMs": null,
+      "firstRow": "Retitled between scans"
+    },
+    {
+      "step": "visible again a minute later: the list is read, and a probe ask is due at once",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-12\""
+      ],
+      "poll": "slow",
+      "probeInMs": 0,
+      "firstRow": "Retitled between scans"
+    },
+    {
+      "step": "the tab is not shown: no timer waits to ask",
+      "requests": [],
+      "poll": null,
+      "probeInMs": null,
+      "firstRow": "Retitled between scans"
+    }
+  ],
   "reader": [
     {
       "name": "a visible cold direct link fills the cache",

@@ -106,6 +106,7 @@ function createPage() {
   const log = [];
   const waiting = [];
   const timers = new Map();
+  const probeTimers = new Map();
   let nextTimer = 1;
   const clock = { now: Date.parse("2026-09-17T12:00:30Z") };
   let visible = true;
@@ -141,14 +142,16 @@ function createPage() {
         });
       });
     },
-    schedule(callback, delayMs) {
+    schedule(callback, delayMs, what) {
       const handle = nextTimer;
       nextTimer += 1;
-      timers.set(handle, { callback, delayMs });
+      // The probe ask's timer is kept apart: a step fires the poll's, or names this one.
+      (what === "probe" ? probeTimers : timers).set(handle, { callback, delayMs });
       return handle;
     },
     cancel(handle) {
       timers.delete(handle);
+      probeTimers.delete(handle);
     },
     now: () => clock.now,
     isVisible: () => visible,
@@ -246,6 +249,8 @@ function createPage() {
       await settle();
     },
     waitingCount: () => waiting.length,
+    /** The title of the first row the panel would paint, or null. */
+    firstTitle: () => model?.rows[0]?.title ?? null,
     rowsVersion: () => model?.rowsVersion,
     filterTotals: () => model?.filterTotals,
     /** Run the timer with this delay, or the only one. */
@@ -260,6 +265,17 @@ function createPage() {
       await settle();
     },
     timerDelays: () => [...timers.values()].map((timer) => timer.delayMs),
+    /** The delay of the timer that waits to send the list's next probe ask, or null. */
+    probeDelay: () => [...probeTimers.values()].map((timer) => timer.delayMs)[0] ?? null,
+    /** Run the probe ask's timer, after moving the clock on by its delay. */
+    async fireProbe() {
+      assert(probeTimers.size === 1, `expected one probe timer, found ${probeTimers.size}`);
+      const [[handle, timer]] = [...probeTimers.entries()];
+      probeTimers.delete(handle);
+      clock.now += timer.delayMs;
+      timer.callback();
+      await settle();
+    },
     /** What one step did, and everything it left behind. */
     observe(step, controller, options = {}) {
       const snapshot = controller.snapshot();
@@ -569,10 +585,66 @@ async function run() {
     provider_calls: recorded.provider_calls,
     failures,
     hostile,
+    probes: await probeStory(panel),
     reader: await readerStory(),
     paint: await paintStory(panel),
     numbers: await numberStory(panel),
   };
+}
+
+/**
+ * The asks of a shown list the server probes (`probe_every_s`): one every interval on a timer
+ * of its own, current or stale, with no read of the list unless an ask started a scan; none
+ * while the page is hidden or the tab is not shown; and one at once when it shows again.
+ */
+async function probeStory(panel) {
+  const page = createPage();
+  page.clock.now = Date.parse(recorded.refreshed.body.fetched_at) + 5_000;
+  const controller = panel.createPullsController(page.deps, { filter: "all", current: null });
+  const story = [];
+  const look = (step) => {
+    const snapshot = controller.snapshot();
+    story.push({
+      step,
+      requests: page.requests(),
+      poll: snapshot.timer,
+      probeInMs: page.probeDelay(),
+      firstRow: page.firstTitle(),
+    });
+  };
+  void controller.start({ shown: true });
+  await settle();
+  await page.answer(recorded.refreshed);
+  await page.answer(recorded.more_window);
+  look("a current list is shown: its first probe ask is due at once");
+  await page.fireProbe();
+  look("the ask is sent");
+  await page.answer(recorded.probe_unchanged);
+  look("GitHub has nothing new: nothing is read, and the next ask waits an interval");
+  await page.fireProbe();
+  await page.answer(recorded.probe_changed);
+  look("the next ask finds a change, and its scan starts: the poll turns fast");
+  await page.fireProbe();
+  look("an ask due while that scan runs is not sent, and the next waits an interval");
+  await page.fire(1000);
+  await page.answer(recorded.probe_scanned);
+  await page.answer(recorded.probe_scanned_more);
+  look("the scan's rows are read");
+  page.setVisible(false);
+  controller.onVisibilityChange();
+  await settle();
+  look("hidden: no timer waits to ask");
+  page.clock.now += 60_000;
+  page.setVisible(true);
+  controller.onVisibilityChange();
+  await settle();
+  await page.poll(recorded.probe_scanned);
+  look("visible again a minute later: the list is read, and a probe ask is due at once");
+  controller.setShown(false);
+  await settle();
+  look("the tab is not shown: no timer waits to ask");
+  controller.dispose();
+  return story;
 }
 
 /**

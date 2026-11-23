@@ -78,6 +78,7 @@ from metabrowser.builtin_plugins.github.pull_labels import (
     labels_job_key,
 )
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+from metabrowser.builtin_plugins.github.pull_list_probe import checked_at
 from metabrowser.builtin_plugins.github.pull_list_route import catalog_job_key
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
@@ -396,6 +397,8 @@ class PullView:
     core_admission: CoreAdmission | None = None
     preparing_comparison: bool = False
     catalog_scanning: bool = False
+    # When a list probe last found the catalog unchanged (:mod:`.pull_list_probe`).
+    catalog_checked_at: str | None = None
     labels_running: bool = False
 
 
@@ -407,6 +410,12 @@ def catalog_scanning(host: PullHost | None) -> bool:
         and host.coordinator is not None
         and host.coordinator.running(catalog_job_key(host.pulls.source))
     )
+
+
+def catalog_checked_at(host: PullHost | None) -> str | None:
+    """When a list probe last found the repository's catalog unchanged, with no read."""
+
+    return None if host is None else checked_at(host.coordinator, host.pulls.source)
 
 
 def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) -> PullView:
@@ -436,6 +445,7 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
         and host.preparing is not None
         and host.preparing(number),
         catalog_scanning=catalog_scanning(host),
+        catalog_checked_at=catalog_checked_at(host),
         labels_running=host is not None
         and host.coordinator is not None
         and host.coordinator.running(labels_job_key(host.pulls.source)),
@@ -495,6 +505,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             *catalog_member(served.home, served.slug, view.number),
             now=now,
             scanning=view.catalog_scanning,
+            checked_at=view.catalog_checked_at,
         )
         if isinstance(record, PullRecord)
         else None
@@ -614,18 +625,21 @@ def probed_at(
 
 
 def record_and_freshness(
-    served: ServedPulls, number: int, *, scanning: bool = False
+    served: ServedPulls, number: int, *, scanning: bool = False, checked_at: str | None = None
 ) -> tuple[PullRecord | None, RecordFreshness | None]:
     """The cached record of *number* and the catalog's verdict on it. Blocking and bounded.
 
-    *scanning* is :func:`catalog_scanning`, read on the event loop before the call.
+    *scanning* is :func:`catalog_scanning` and *checked_at* :func:`catalog_checked_at`,
+    read on the event loop before the call.
     """
 
     record, _dumped, _revision = cached_pull_record(served.home, served.slug, number)
     if not isinstance(record, PullRecord):
         return None, None
     member = catalog_member(served.home, served.slug, number)
-    return record, record_freshness(record, *member, now=pulls.utc_now(), scanning=scanning)
+    return record, record_freshness(
+        record, *member, now=pulls.utc_now(), scanning=scanning, checked_at=checked_at
+    )
 
 
 def note_full_record(view: PullView) -> None:
@@ -935,7 +949,13 @@ async def _start_refresh(
         if served.fetched_at is None:
             return "not_cached"
         held, freshness = await asyncio.to_thread(
-            partial(record_and_freshness, host.pulls, ask.number, scanning=catalog_scanning(host))
+            partial(
+                record_and_freshness,
+                host.pulls,
+                ask.number,
+                scanning=catalog_scanning(host),
+                checked_at=catalog_checked_at(host),
+            )
         )
         if held is not None:
             served.saw_record(
@@ -996,6 +1016,7 @@ __all__ = [
     "PullView",
     "RefreshRequest",
     "cached_pull_record",
+    "catalog_checked_at",
     "catalog_scanning",
     "comparison_route",
     "envelope_etag",
