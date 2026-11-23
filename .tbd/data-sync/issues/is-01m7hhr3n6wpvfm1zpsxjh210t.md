@@ -5,7 +5,7 @@ title: "Release 0.13.0: changelog, candidate review, and owner approval"
 kind: task
 status: in_progress
 priority: 1
-version: 10
+version: 11
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/727
@@ -23,7 +23,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:09.221Z
-updated_at: 2026-11-23T03:59:31.268Z
+updated_at: 2026-11-23T05:54:47.469Z
 started_at: 2026-11-23T03:14:00.397Z
 ---
 
@@ -36,3 +36,5 @@ started_at: 2026-11-23T03:14:00.397Z
 2026-11-22: Assembled and validated the 0.13.0 changelog and drafted release notes at b6636949b, based on main 44c475dd5. The changelog preserves 318 entries and prior release history. All 67 focused changelog, docs, and macOS version tests passed. Draft PR #727 uses hosted CI for its full verification after the local push hook stalled in type checks under system load. The release candidate still needs the diff layout fragment after it lands, the measured comparison in mb-icss, candidate validation in mb-brvm, and resolution of mb-t7wx. Obtain approval for the exact final main commit and notes before tagging. The exp-099 name in the older note belongs to a previous investigation.
 
 2026-11-22: Refreshed draft #727 at 29f9f8c36661ffde18d02990873771088522e662, based on merged #728 at ed952387f673f59d1c662f36125d6f1297c40518. Folded mb-rdwj into the 0.13.0 release. Verified that the 319 entries from the previous Unreleased section and 116 fragments all survived, and the previous release history is byte-identical. The 67 focused tests, public hygiene, changelog checks, and pre-commit checks passed on the refreshed head. Hosted CI run 45107154662 passed, including ci-ok job 137471966193. The draft is ready for review and remains pending final candidate quality, measured performance, the f02 cache decision, and approval of the exact release commit and notes.
+
+Reviewed corrected release-prep head a7e85ff98e4ed474845b6219172bca105ced7877, after folding the 118 fragments and preserving v0.12.0+ byte-for-byte. Exact Review D https://github.com/jlevy/metabrowser/pull/727#pullrequestreview-6017123166 . PR CI 45120576350 and isolated full make verify 45120609494 are pending. Earlier 96c06c77 gates caught a public hygiene label in exp-102. Latest local whole-repository public hygiene and changelog checks pass. Exact 0.13.0 tag and notes approval will follow landed main CI.

@@ -5,7 +5,7 @@ title: "Release 0.13: previous-release performance comparison (v0.12.0 vs exact 
 kind: task
 status: in_progress
 priority: 1
-version: 11
+version: 12
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45109522719
@@ -37,7 +37,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:08.755Z
-updated_at: 2026-11-23T05:29:05.458Z
+updated_at: 2026-11-23T05:43:22.127Z
 started_at: 2026-11-23T03:13:34.430Z
 ---
 
@@ -50,3 +50,5 @@ Use the installed-wheel control and candidate on one unchanged project-10 corpus
 Two hosted exact-wheel runs compared v0.12.0 (87b8ec812) and 0.13.0 draft runtime (29f9f8c3) on unchanged public project-10 corpora. Each returned five complete backend pairs with zero ordered-row differences and the same nine explained tally differences (registry schema/revision/fingerprint and docs-before-code presentation). First-row medians were 9 ms for both sides, then 10 ms for both sides. KPress 0.3.5 to 0.3.9 was the only non-Metabrowser runtime dependency delta. The stock Google Chrome attempt produced a visible control profile with 34.1% input coverage and was refused by the unmodified minimum-80% gate. The stock Chromium retry produced no profile file in all ten control/candidate attempts. No browser row reached the ledger or cleared the browser gate. A guarded early-input diagnostic for the known-working browser is staged for review.
 
 Matched HTTP diagnosis: original TCP-ready series admitted all 10 captures but candidate navigations began before the app could answer. All 5 missed 350 ms, 697–765 vs 131–242 ms. With the same lightweight HTTP readiness boundary, all five exact 29f9f8c3 candidates passed every hard gate (211–230 vs 112–301 ms), but four paired timings miss the 1.3× rough-cut tolerance. Broader font revision 78e3cdb3 replicated the relative miss in four admitted pairs. Control coverage and candidate cleanup each refused one attempt. The stock comparator still refuses the different locked KPress environments. Exact combined narrowed font + TCP candidate ed7e1f10 is now running (45116045122). Evidence for initial and matched regimes is committed locally as 6adc0dfd9; all raw artifacts retained.
+
+Exact #733 head 80fb76d run 45117924502 reached five complete admitted release pairs and all candidate hard gates passed. First rows 117–159 ms (median 123) vs 135–151 ms (median 142). Ratios 0.956, 0.804, 0.815, 1.120, 0.824; all within the 1.3 release tolerance. Pair 5 is the only careful 1.1 exceedance and does not establish a repeatable regression. One 72.6% control refusal was preserved and replaced by pair 6. Linux adopted-transport suite 25/25, measured JavaScript header-to-body 0–1 ms in complete pairs, and backend ordered rows identical. Stock compare still declines the different KPress locks and automated tallies still report nine intentional differences. All raw evidence retained. Formal PR review and merge gates are tracked separately.

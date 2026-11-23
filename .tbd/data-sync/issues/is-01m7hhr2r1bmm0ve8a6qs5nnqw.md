@@ -5,7 +5,7 @@ title: "Release 0.13: make verify, opt-in tiers, installed-wheel checkpoint and 
 kind: task
 status: in_progress
 priority: 1
-version: 13
+version: 14
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45095985926
@@ -35,7 +35,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:08.288Z
-updated_at: 2026-11-23T05:17:09.053Z
+updated_at: 2026-11-23T05:54:50.827Z
 started_at: 2026-11-23T03:13:34.119Z
 ---
 
@@ -52,3 +52,5 @@ The CLI baseline draft at 3d3533af3e4c73be92e3e4f1c12dacf54cc4fedf completed the
 Project-local Agent Skill rehearsal passed against the reviewed draft commit 3d3533af3e4c73be92e3e4f1c12dacf54cc4fedf. npm admitted skills@1.7.6 with the repository's 14-day cool-off, engine checking and disabled lifecycle scripts. The installer is the Vercel Labs MIT package published 2026-11-03T00:17:11.594Z. npm verified all eight package signatures and the installer attestation and found no known advisories. The verified SLSA source 77cfce8221e6e112a70152a230abc848b8b14c19 is the direct parent of signed v1.7.6 commit 7a5e920bead4b1039a6d6df5d7e1163b7b09423a, with only the package version changed. The scratch npm lock SHA-256 is c2741430853b2515ca061f9ccc4c664e5cfb2bab7e73441e60a41903a1f21ca5.
 
 The public exact-commit installation to .agents/skills/metabrowser/SKILL.md in the fresh scratch project matched the source Git blob byte for byte. The installed SHA-256 was 20b76561c6f65b82e01efecac529d6b07288f5f824cb6fd56f1336824900c99e. The skill kept its local metab preference and uvx metabrowser@latest fallback. For the required post-release smoke, follow publishing.md step 10 with the full approved landed RELEASE_COMMIT and the reviewed skills@1.7.6 lock. Run the installed skills entry point as add "jlevy/metabrowser@$RELEASE_COMMIT" --skill metabrowser --agent codex --copy --yes in a fresh project with DISABLE_TELEMETRY=1, then cmp against git show "$RELEASE_COMMIT:skills/metabrowser/SKILL.md". Record the exact absolute install path and hash in the release evidence.
+
+TCP #733 and sidebar #731 merged reviewed. Combined focused release tests: 348 passed on 96c06c77. In a7e85ff only the changelog and benchmark explanation changed, with local public-hygiene and changelog gates green. Exact hosted full release gate https://github.com/jlevy/metabrowser/actions/runs/45120609494 is running. Baseline and Agent Skill evidence retained outside scratch.

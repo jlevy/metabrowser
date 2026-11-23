@@ -3,9 +3,9 @@ type: is
 id: is-01m83anmkn4q6grheww9z22vva
 title: Fix pre-row Files navigation chrome layout shift in main CI
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 11
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45111133543
@@ -20,8 +20,12 @@ parent_id: is-01m7hhr2r1bmm0ve8a6qs5nnqw
 hold: null
 hold_until: null
 created_at: 2026-11-23T04:29:48.013Z
-updated_at: 2026-11-23T05:25:24.529Z
+updated_at: 2026-11-23T05:34:35.573Z
 started_at: 2026-11-23T04:31:07.504Z
+closed_at: 2026-11-23T05:34:35.541Z
+close_reason: "Merged in #731 and exact main CI 45117582542 passed all 16 Chrome shards and ci-ok."
+resolution: null
+duplicate_of: null
 ---
 Main CI run 45111133543 at b131131a3 shows pre-row shifts at 201/207 ms in the navigation filter bar, tab and root details. Chrome 3.12 dark 300 px CLS 0.00015 and 3.14 dark 180 px CLS 0.00011. Prior known folder age and empty-tree wrap cases have different sources. Measure the source rectangles and startup ordering, then fix the cause without relaxing layout thresholds.
 
@@ -32,3 +36,5 @@ Main b131131a’s Chrome run 45111133543 recorded startup movement of the tab, f
 Hosted CI 45116282538 is green across all 16 Chrome shards and all required checks. The ci-ok job 137503513751 printed `main-red run=45111133543 head=b131131a3ff080a350605e75f148078ac5b93cf8 tested=yes`.
 
 #731 merged to main at f0740fd64a4222f2d31a8b2665d9b674d679fb65. Main CI 45117582542 runs at that exact commit.
+
+Post-merge main CI 45117582542 succeeded on exact f0740fd64a4222f2d31a8b2665d9b674d679fb65. All 16 Chrome shards and ci-ok passed.
