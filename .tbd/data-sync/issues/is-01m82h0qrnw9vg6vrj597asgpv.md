@@ -3,9 +3,9 @@ type: is
 id: is-01m82h0qrnw9vg6vrj597asgpv
 title: "Live GitHub updates: what is on screen updates within seconds, everything else every minute or two, inside the rate limit"
 kind: epic
-status: in_progress
+status: closed
 priority: 1
-version: 34
+version: 35
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 refs:
   - kind: pr
@@ -48,7 +48,11 @@ child_order_hints:
   - is-01m83z9hk4cvwb4vnnhkt17t1b
   - is-01m83zhd3kfcv0c4tgvgd43h4p
 created_at: 2026-11-22T21:01:28.721Z
-updated_at: 2026-11-23T10:34:29.361Z
+updated_at: 2026-11-23T13:47:01.557Z
+closed_at: 2026-11-23T13:47:01.557Z
+close_reason: "All agreed phases and follow-ups merged in stack #710 (PRs #696-#747, main b68cc9571). Open follow-ups: mb-pgru, mb-m3gp, mb-mg37."
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 0c7789d9-960d-4814-a23b-d2a26e474369
