@@ -5,7 +5,7 @@ title: "Release 0.13: make verify, opt-in tiers, installed-wheel checkpoint and 
 kind: task
 status: in_progress
 priority: 1
-version: 12
+version: 13
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45095985926
@@ -35,7 +35,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:08.288Z
-updated_at: 2026-11-23T04:52:31.251Z
+updated_at: 2026-11-23T05:17:09.053Z
 started_at: 2026-11-23T03:13:34.119Z
 ---
 
@@ -48,3 +48,7 @@ The previous main passed hosted CI. Its local make verify passed lint, types, pa
 CLI-first release kickoff: #727 includes the reviewed SDK 0.8 correction (mb-smxw) and is updated to main after #730, the live GitHub smoke test correction (mb-mvwg). The authoritative Files pin and repository-wide Commits HEAD remain separate. The prior opt-in run passed 70 checks and found that stale assertion; the corrected live case passed independently. The local distribution check passed on e2b69be74, including exact candidate wheel, source archive, isolated console scripts, packaged contracts, setup doctor and navigation API. The newer release draft changes only the live test, so the runtime artifacts and measurements remain representative. Run the complete gate against the exact new draft and again verify final main after the prep lands.
 
 The CLI baseline draft at 3d3533af3e4c73be92e3e4f1c12dacf54cc4fedf completed the full isolated Linux make verify, including lint and parity, 9,393 parallel tests, 66 serial plus 66 Chrome tests, all 133 golden files, dependency audits, distribution checks, and installed-wheel smoke. Runner log confirms the checkout SHA. Ordinary exact #727 CI also passed. This is the pre-font-fix baseline; verify the actual final release candidate separately.
+
+Project-local Agent Skill rehearsal passed against the reviewed draft commit 3d3533af3e4c73be92e3e4f1c12dacf54cc4fedf. npm admitted skills@1.7.6 with the repository's 14-day cool-off, engine checking and disabled lifecycle scripts. The installer is the Vercel Labs MIT package published 2026-11-03T00:17:11.594Z. npm verified all eight package signatures and the installer attestation and found no known advisories. The verified SLSA source 77cfce8221e6e112a70152a230abc848b8b14c19 is the direct parent of signed v1.7.6 commit 7a5e920bead4b1039a6d6df5d7e1163b7b09423a, with only the package version changed. The scratch npm lock SHA-256 is c2741430853b2515ca061f9ccc4c664e5cfb2bab7e73441e60a41903a1f21ca5.
+
+The public exact-commit installation to .agents/skills/metabrowser/SKILL.md in the fresh scratch project matched the source Git blob byte for byte. The installed SHA-256 was 20b76561c6f65b82e01efecac529d6b07288f5f824cb6fd56f1336824900c99e. The skill kept its local metab preference and uvx metabrowser@latest fallback. For the required post-release smoke, follow publishing.md step 10 with the full approved landed RELEASE_COMMIT and the reviewed skills@1.7.6 lock. Run the installed skills entry point as add "jlevy/metabrowser@$RELEASE_COMMIT" --skill metabrowser --agent codex --copy --yes in a fresh project with DISABLE_TELEMETRY=1, then cmp against git show "$RELEASE_COMMIT:skills/metabrowser/SKILL.md". Record the exact absolute install path and hash in the release evidence.
