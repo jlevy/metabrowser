@@ -222,7 +222,8 @@ Every automatic read of GitHub is one of three kinds, and each has its own caden
 | The pull request on a visible page | `GET repos/o/r/issues/<n>` with the ETag the last probe saw | `ATTENDED_PROBE_S` | Record, every `FULL_REFRESH_S` |
 | Its checks, while open and `checks_pending` or inside `NO_CHECKS_GRACE_S` | First page of `commits/<head>/check-runs` and `commits/<head>/status`, with the record’s ETags | `CHECKS_PROBE_S` | `checks_only` record refresh, every `FULL_REFRESH_S` |
 | A visible Pulls list, or the repository of a visible page | `GET repos/o/r/issues?state=all&sort=updated&direction=desc&per_page=1` with the last answer’s ETag (as built; proposed as the `pulls` page, see [Server Changes](#server-changes)) | `LIST_PROBE_S` | Catalog delta scan, every `FULL_REFRESH_S` |
-| Its changed files and stacks | None; they follow the record and the catalog | — | Every `FULL_REFRESH_S`, and the files list whenever the head moves |
+| Its stacks | None | — | Every `FULL_REFRESH_S` |
+| Its changed files | None; the list follows the head and base the record and the catalog name | — | Whenever the head or base moves. A list no catalog row vouches for, every `FULL_REFRESH_S`; a vouched one is not read again on a clock (decided 2026-11-23) |
 | Its labels | None | — | `LABEL_FRESHNESS_S`, as today: a full read of a large label set is 29 or more `gh` processes, and only chip colors depend on it |
 | Its timeline and cores | None; keyed by the record’s discussion revision and the catalog | — | When those change |
 | Anything on a hidden page | None | — | None; becoming visible probes at once |
@@ -399,6 +400,12 @@ about once a minute.
   would vouch for nothing in the last third of each `FULL_REFRESH_S`. A visible pull
   request page sends no ask of its own for the list: the server takes its automatic ask
   for the record as one for the repository’s list too (`attend_list`).
+- **`pull_files_route.py`** (built): a files list is a function of the head and base it
+  names, so one the catalog’s row or the record vouches for is read when either moves
+  and never on a clock.
+  Only a list nothing vouches for ages, by `FULL_REFRESH_S`. Ageing a vouched list would
+  also unsettle the stack and row change lines, which read the same verdict, and spend
+  the prefetch’s hourly lists.
 - **The envelope:** `verified_by` gains `probe`, and `verified_at` moves with each
   unchanged probe, so the page’s age line says when GitHub last confirmed the record.
   `probe_every_s` gives the interval of the page’s asks; `fresh_for_s` still says how
@@ -527,8 +534,8 @@ account check and the bounds on probes.
 
 - [x] The list probe, which gates the catalog’s delta scan, and `LIST_PROBE_S`
   (`pull_list_probe.py`), with the bound on paid probes for the list’s key
-  (`MAX_PAID_PROBE_S`). Not yet: the per-server cap on probes in flight, which Phase 1
-  builds for the record’s probe.
+  (`MAX_PAID_PROBE_S`). A list probe counts toward the server’s `MAX_PROBES_IN_FLIGHT`
+  with its pull requests’ probes, and is a coordinator job as theirs are.
 - [x] `FULL_REFRESH_S` for the catalog scan, the files list, and stacks.
   The scan is due that often while list probes vouch (`scan_is_due`), and stacks are
   read again that long after a snapshot (`remaining_freshness` in `pull_stacks.py`). A
@@ -537,16 +544,18 @@ account check and the bounds on probes.
   either moves, and is not read again on a clock.
 - [x] Budget admission for the cores walk, stacks, labels, and the timeline, and for the
   catalog’s periodic scan and a files list’s periodic read.
-  A batch of cores the budget holds answers `held`, in either lane, since both prepare
-  rows a reader may open; a held timeline answers `unavailable` and `retryable`. The
-  scan a list probe’s change starts is not asked, as [Priority](#priority) says.
+  A batch of cores the budget holds answers `held`. The floor holds only the background
+  walk: cores for rows on screen are held by a rate-limit hold and the self-ceiling
+  alone, by the owner’s floor rule.
+  A held timeline answers `unavailable` and `retryable`. The scan a list probe’s change
+  starts is not asked, as [Priority](#priority) says.
 - [x] `AUTOMATIC_CORE_PER_HOUR` in `gh_budget.py`, counted by `gh_api` and `gh_graphql`
   as they answer; each query asks for `rateLimit { cost }`. A reader’s own action is
   told apart by the context its route starts the job in (`readers_own`), so a job a
   reader’s click only joins is still counted.
   `GET pulls-prefetch` reports the ceiling and the hour’s use.
-  Not counted until Phase 1’s conditional account check lands: a job’s `gh auth status`,
-  which is not a `gh api` call.
+  A job’s account check is a conditional `gh api user`, so it is counted as any answer
+  is: nothing for a `304`, one for a `200`.
 
 ### Phase 3: Metabrowser’s Own Stores
 
@@ -598,6 +607,16 @@ account check and the bounds on probes.
   much of the account’s hour other tools use?
   Should the servers of one home share a ceiling instead, through a file beside their
   event logs?
+- Below the floor nothing automatic observes the GraphQL budget again: the catalog’s
+  periodic scan was the only regular GraphQL read, and it now waits with the rest.
+  The floor then lifts only at the budget’s reset, on a reader’s Reload, or when a list
+  probe finds a change and its scan runs.
+  Should one cheap GraphQL read be let through to observe it, say once a freshness
+  window?
+- A reader’s own action is told from automatic work by the context its route starts the
+  job in (`gh_budget.readers_own`). A job a reader’s click only joins is still counted
+  toward `AUTOMATIC_CORE_PER_HOUR`, and a backfill that runs on inside a Reload’s job is
+  not. Is that attribution good enough, or should each job say what it is?
 - The live test needs a real change on GitHub.
   A throwaway draft pull request in this repository, edited and closed by the test,
   would do; that publishes to GitHub, so it needs the owner’s go-ahead.

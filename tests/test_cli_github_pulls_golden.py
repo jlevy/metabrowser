@@ -191,6 +191,21 @@ def _watch_summary(result: Invocation) -> str:
     )
 
 
+def _request(tmp_path: Path, body: dict[str, Any]) -> str:
+    path = tmp_path / "request.json"
+    path.write_text(json.dumps(body) + "\n", encoding="utf-8")
+    return str(path)
+
+
+def _acknowledged(result: Invocation) -> str:
+    """A preparation's acknowledgement, without the envelope it ends with."""
+
+    _, status, rest = result.stdout.partition("status: 202\n")
+    assert status, result.stdout
+    ack, _ = json.JSONDecoder().raw_decode(rest)
+    return f"status: 202\n{json.dumps(ack)}\n"
+
+
 def _without_assets(result: Invocation) -> str:
     """A Markdown answer without KPress's stylesheet manifest, which is KPress's to pin."""
     envelope = result.payload()
@@ -487,6 +502,38 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
     assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
     covered = session.post({"state": "all", "window": window, "numbers": [7]}, route=PREPARE)
     assert covered.payload()["preparation"] == "ready"
+    session.say(
+        "The same batch for rows on screen is not held by the floor, which is a reserve for "
+        "the reader: what the reader is looking at is still read."
+    )
+    eighth = graph_core_data(pull_bodies(session.origin)[8]["pull"], reader=ANOTHER_READER)
+    eighth["repository"]["p0"] = eighth["repository"].pop("pull")
+    key8 = "graphql:visible-cores:8"
+    session.answer(
+        _api(_api(replacement, key, ok(key, {"data": data})), key8, ok(key8, {"data": eighth}))
+    )
+    gh_budget.observe(
+        {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "1000",
+            "x-ratelimit-reset": str(int((session.now + timedelta(hours=1)).timestamp())),
+        },
+        resource="graphql",
+    )
+    visible = {"state": "all", "window": window, "numbers": [8], "lane": "visible"}
+    on_screen = session._run(  # pyright: ignore[reportPrivateUsage]
+        CANONICAL,
+        "--api",
+        PREPARE,
+        "--data",
+        _request(tmp_path, visible),
+        project=_acknowledged,
+        body=[json.dumps(visible)],
+    )
+    assert on_screen.exit_code == 0, on_screen.stderr
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        "gh api graphql visible-cores numbers=8"
+    ]
     gh_budget.forget()
 
     cached = session.local(f"/api/cache/source/{origin_identity(CANONICAL).slug}")

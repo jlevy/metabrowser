@@ -44,7 +44,8 @@ answered for nothing, or one that found a change, puts it back (:meth:`ListProbe
 A probe runs no account check and writes nothing; the scan a change starts checks the
 account and publishes. A failed probe holds the next for a freshness window. One probe per
 repository runs at a time, and :data:`LIST_PROBE_FLOOR_S` is the least gap between two,
-however many tabs ask. The state is this process's, per refresh coordinator and source.
+however many tabs ask. It counts toward the server's cap on probes in flight, with the
+probes of its pull requests (:meth:`ListProbe.may_start`), and is a coordinator job. The state is this process's, per refresh coordinator and source.
 """
 
 from __future__ import annotations
@@ -53,6 +54,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Final, Literal
 from weakref import WeakKeyDictionary
 
@@ -67,7 +69,12 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     utc_stamp,
 )
 from metabrowser.builtin_plugins.github.pull_catalog import catalog_member
-from metabrowser.builtin_plugins.github.served_pull import FULL_REFRESH_S, PROBE_WAIT_S
+from metabrowser.builtin_plugins.github.served_pull import (
+    FULL_REFRESH_S,
+    PROBE_WAIT_S,
+    may_probe,
+    track_probe,
+)
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
 
 if TYPE_CHECKING:
@@ -162,6 +169,8 @@ def _catalog_holds(repository: ListedRepository, first: FirstRow) -> bool:
 class ListProbe:
     """One repository's list probe: its ETag, what it last found, and when it may run."""
 
+    # The coordinator's key for its job, and its name under the server's cap on probes.
+    key: str = "pull-catalog:probe"
     # When a probe last found the catalog unchanged, as the envelope's ``checked_at``.
     checked_at: str | None = None
     # A row the catalog lacks that no scan has been started for: a scan is due at once.
@@ -236,18 +245,51 @@ class ListProbe:
             or (self._attempt is not None and now - self._attempt < timedelta(seconds=gap))
         )
 
-    async def run(self, repository: ListedRepository) -> None:
-        """Probe *repository*, when :meth:`due` says one may start.
+    def may_start(self, now: datetime) -> bool:
+        """Whether the server's cap on probes in flight leaves room for this one. On the loop.
+
+        The cap is ``MAX_PROBES_IN_FLIGHT`` in :mod:`.served_pull`, one for the server and
+        shared with the probes of its pull requests: a list probe is one ``gh`` process,
+        two when an issue is newest. One refused takes its turn as a refused pull
+        request's does.
+        """
+
+        return may_probe(self.key, now)
+
+    async def run(
+        self, repository: ListedRepository, *, coordinator: RefreshCoordinator | None = None
+    ) -> None:
+        """Probe *repository*, when :meth:`due` and :meth:`may_start` say one may start.
 
         Waits at most ``PROBE_WAIT_S`` and then raises :class:`TimeoutError`, leaving the
         probe to end on its own; cancelling the wait never cancels the probe.
+
+        With *coordinator*, the server's, the probe is its job under :attr:`key`, as a pull
+        request's probe is, so shutdown cancels it and kills its ``gh``; it takes no
+        network slot. A probe shutdown cancelled ends the wait without an error, and a
+        coordinator that has closed starts none.
         """
 
         if self.probing:
             raise AssertionError("due holds a second probe while one runs")
-        task = asyncio.ensure_future(self._run(repository))
+        if coordinator is not None and coordinator.closed:
+            return
+        work = partial(self._run, repository)
+        task: asyncio.Future[None] | None = None
+        if coordinator is not None:
+            coordinator.start(self.key, work, network=False)
+            task = coordinator.job(self.key)
+        if task is None:
+            task = asyncio.ensure_future(work())
         self._task = task
-        await asyncio.wait_for(asyncio.shield(task), PROBE_WAIT_S)
+        track_probe(task)
+        try:
+            await asyncio.wait_for(asyncio.shield(task), PROBE_WAIT_S)
+        except asyncio.CancelledError:
+            waiter = asyncio.current_task()
+            if not task.cancelled() or (waiter is not None and waiter.cancelling()):
+                # The wait was cancelled, as a request is; the probe goes on.
+                raise
 
     async def _run(self, repository: ListedRepository) -> None:
         now = pull_list.utc_now()
@@ -346,7 +388,7 @@ def list_probe(coordinator: RefreshCoordinator, source: str) -> ListProbe:
     if probe is None:
         while len(probes) >= _MAX_PROBED_SOURCES:
             del probes[next(iter(probes))]
-        probe = probes[source] = ListProbe()
+        probe = probes[source] = ListProbe(key=f"{source}:pull-catalog:probe")
     return probe
 
 

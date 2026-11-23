@@ -75,12 +75,14 @@ resource every response carries, and holds every resource after a `rate_limited`
 until its `reset_at`. Background work is admitted only while each resource it spends has
 more than `BACKGROUND_FLOOR` of its limit left and no hold applies; a reader’s own work
 is never asked. Everything automatic asks: the catalog’s backfill and its periodic scan,
-the prefetch, the preparation of cores in either lane, the periodic reads of stacks and
+the prefetch, the background walk that prepares cores, the periodic reads of stacks and
 of a files list, the label set, and Conversation’s timeline.
 Held, each waits and is asked for again, and none records a failure.
 Below the floor a visible page’s pull request and a visible list are still probed, and a
 change a probe or the catalog finds is still read in full, while the reads a clock alone
-asks for stop (`ServedPull.below_floor`); the module’s docstring has the rule.
+asks for stop (`ServedPull.below_floor`); cores for rows on screen are read too, held
+only by a rate-limit hold and the process’s ceiling.
+The module’s docstring has the rule.
 The observations belong to the account the last account check named, and another account
 forgets them; since `remaining` is the account’s, several servers on one account stop
 together.
@@ -372,6 +374,8 @@ absent, failed and due, or wanted for a reader’s prefix or the backfill; the d
 once every `FULL_REFRESH_S` while probes vouch and once a freshness window otherwise;
 and else the probe, one at a time for a repository and `LIST_PROBE_FLOOR_S` apart
 however many tabs ask.
+A list probe counts toward the server’s `MAX_PROBES_IN_FLIGHT` with its pull requests’
+probes and is a coordinator job as theirs are.
 Probes that each pay for a `200` and find no pull request changed, as in a repository
 whose issues never rest, grow further apart, up to `MAX_PAID_PROBE_S`. The module
 docstring gives each outcome, `tests/test_github_pull_list_probe.py` pins them, and

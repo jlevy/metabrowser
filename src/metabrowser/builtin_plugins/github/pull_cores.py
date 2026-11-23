@@ -598,9 +598,17 @@ async def request_preparation(
             if current is not None and current.ask == ask and current.failure is not None
             else "held"
         )
-    if not gh_budget.admission(("graphql",), now=pulls.utc_now()).admitted:
-        # Cores are prepared for rows a reader may open: background work, in either lane,
-        # which the budget holds. What is cached was answered above, with no request.
+    now = pulls.utc_now()
+    if ask.lane == "visible":
+        # Rows on screen: the floor is a reserve for the reader, and these are what the
+        # reader is looking at, so only a rate-limit hold and the process's own ceiling
+        # hold them (the owner's rule of 2026-11-22, in :mod:`.gh_budget`'s docstring).
+        held = gh_budget.held_until(now) is not None or gh_budget.over_ceiling(now)
+    else:
+        # The walk past them prepares rows a reader may open: background work.
+        held = not gh_budget.admission(("graphql",), now=now).admitted
+    if held:
+        # What is cached was answered above, with no request.
         return "held"
     current = pulls_set.core_window
     if current is not None and current.failure is not None:

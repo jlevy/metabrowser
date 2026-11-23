@@ -311,3 +311,33 @@ def test_a_job_the_coordinator_starts_for_a_readers_click_is_the_readers_too() -
 
     asyncio.run(run())
     assert gh_budget.automatic_spent(NOW) == 9
+
+
+def test_the_account_check_is_counted_as_any_other_answer_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A conditional ``gh api user``: a ``200`` costs one, and the ``304`` after it nothing."""
+
+    import asyncio
+    from types import SimpleNamespace
+
+    from metabrowser.builtin_plugins.github import gh
+
+    answers = [
+        b'HTTP/2.0 200 OK\r\nEtag: W/"user"\r\n\r\n{"login": "octo-reader"}',
+        b'HTTP/2.0 304 Not Modified\r\nEtag: W/"user"\r\n\r\n',
+    ]
+
+    async def run(*_args: object, **_kwargs: object) -> object:
+        return SimpleNamespace(stdout=answers.pop(0), stderr=b"", returncode=0)
+
+    monkeypatch.setattr(gh, "_run", run)
+    gh.forget_account()
+    try:
+        before = gh_budget.automatic_spent(datetime.now(UTC))
+        assert asyncio.run(gh.gh_account()) == "octo-reader"
+        assert gh_budget.automatic_spent(datetime.now(UTC)) == before + 1
+        assert asyncio.run(gh.gh_account()) == "octo-reader"
+        assert gh_budget.automatic_spent(datetime.now(UTC)) == before + 1
+    finally:
+        gh.forget_account()

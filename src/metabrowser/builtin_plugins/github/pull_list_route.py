@@ -538,8 +538,11 @@ async def probe_list(view: ListView) -> ListRefreshWanted:
 
     repository, probe = view.repository, view.probe
     assert repository is not None and probe is not None
+    if not probe.may_start(pull_list.utc_now()):
+        # The server's cap on probes in flight is full; the next ask probes.
+        return False
     try:
-        await probe.run(repository)
+        await probe.run(repository, coordinator=view.coordinator)
     except TimeoutError:
         return False
     return "changed" if probe.saw is not None else False

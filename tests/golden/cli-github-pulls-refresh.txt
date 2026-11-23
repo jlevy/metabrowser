@@ -1381,6 +1381,17 @@ status: 200
 --- body ---
 {"state": "all", "window": {"id": "held-8", "generation": "<CATALOG_EPOCH_2>:1"}, "numbers": [7]}
 --- gh ---
+## The same batch for rows on screen is not held by the floor, which is a reserve for the reader: what the reader is looking at is still read.
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-cores-prepare --data request.json
+exit: 0
+--- stdout ---
+status: 202
+{"preparation": "started", "status_route": "/api/plugin/github/pull?number=8"}
+--- stderr ---
+--- body ---
+{"state": "all", "window": {"id": "held-8", "generation": "<CATALOG_EPOCH_2>:1"}, "numbers": [8], "lane": "visible"}
+--- gh ---
+gh api graphql visible-cores numbers=8
 # metab root --api /api/cache/source/github-com-octo-demo-9vhngza0oa1
 exit: 0
 --- stdout ---
@@ -1444,7 +1455,7 @@ exit: 0
 api: /api/plugin/github/cache-clear
 status: 200
 {
-  "cleared": 4,
+  "cleared": 5,
   "source": "https://github.com/octo/demo"
 }
 --- stderr ---

@@ -662,3 +662,49 @@ def test_a_visible_pages_ask_never_starts_the_first_read_of_a_list_nobody_opened
 
     asyncio.run(exercise())
     assert github.asked == []
+
+
+def test_a_list_probe_counts_toward_the_servers_cap_with_its_pull_requests_probes(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import served_pull
+
+    seed_catalog(repository, [generated_item(2)], fetched_at=STAMP)
+    _succeeded(repository)
+    github = _GitHub(monkeypatch, generated_item(2))
+    cap = served_pull.MAX_PROBES_IN_FLIGHT
+
+    async def exercise() -> None:
+        coordinator = RefreshCoordinator(limit=1)
+        probe = pull_list_probe.list_probe(coordinator, repository.source)
+        view = ListView(repository, coordinator, False, probe, None)
+        records = [asyncio.get_running_loop().create_future() for _ in range(cap)]
+        for running in records:
+            served_pull.track_probe(running)
+        try:
+            # The cap is full of pull requests' probes: the list's ask probes nothing.
+            github.later(LIST_PROBE_S)
+            assert await pull_list_route.probe_list(view) is False
+            assert github.asked == [] and probe.checked_at is None
+            # One ends, and the list's probe takes its place and is counted itself.
+            records[0].set_result(None)
+            await asyncio.sleep(0)
+            github.release = asyncio.Event()
+            asking = asyncio.ensure_future(pull_list_route.probe_list(view))
+            await asyncio.sleep(0.05)
+            assert probe.probing and served_pull.probes_in_flight() == cap
+            # It is the coordinator's job, so shutdown would cancel it.
+            assert coordinator.running(probe.key)
+            github.release.set()
+            assert await asking is False
+            assert probe.checked_at == utc_stamp(github.now)
+            assert served_pull.probes_in_flight() == cap - 1
+        finally:
+            for running in records:
+                if not running.done():
+                    running.set_result(None)
+            await asyncio.sleep(0)
+            served_pull._REFUSED.clear()  # pyright: ignore[reportPrivateUsage]
+            await coordinator.aclose()
+
+    asyncio.run(exercise())

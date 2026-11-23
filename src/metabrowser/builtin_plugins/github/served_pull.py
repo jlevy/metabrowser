@@ -150,6 +150,23 @@ def probes_in_flight() -> int:
     return sum(not task.done() for task in _PROBES)
 
 
+def may_probe(key: str, now: datetime) -> bool:
+    """:func:`_may_probe` for a probe that is not a pull request's: the list's.
+
+    One cap for the server, shared by both kinds (:mod:`.pull_list_probe`). On the event
+    loop, as every caller of the cap is.
+    """
+
+    return _may_probe(key, now)
+
+
+def track_probe(task: asyncio.Future[None]) -> None:
+    """Count *task*, a probe that just started, against the cap until it ends."""
+
+    _PROBES.add(task)
+    task.add_done_callback(_PROBES.discard)
+
+
 def _may_probe(key: str, now: datetime) -> bool:
     """Whether the pull request asking under *key* may start a probe at *now*, under the cap.
 
@@ -664,8 +681,7 @@ class ServedPull:
         if task is None:
             task = asyncio.ensure_future(work())
         self._probe_task = task
-        _PROBES.add(task)
-        task.add_done_callback(_PROBES.discard)
+        track_probe(task)
         try:
             await asyncio.wait_for(asyncio.shield(task), PROBE_WAIT_S)
         except asyncio.CancelledError:
@@ -1262,8 +1278,10 @@ __all__ = [
     "cached_comparison_record",
     "forget_probes",
     "last_refresh",
+    "may_probe",
     "probes_in_flight",
     "record_revision",
     "served_pull",
+    "track_probe",
     "written_without_store",
 ]

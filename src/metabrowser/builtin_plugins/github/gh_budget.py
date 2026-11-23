@@ -14,7 +14,7 @@ more than :data:`BACKGROUND_FLOOR` of its limit remaining and no hold applies
 (:func:`admission`). With nothing observed it is admitted, and its first response is
 observed.
 
-Three kinds of work go below the floor, and only a hold stops them (the owner's rule,
+Four kinds of work go below the floor, and only a hold stops them (the owner's rule,
 2026-11-22):
 
 - a reader's own action (Retry, Reload, Fetch), which is never asked;
@@ -22,10 +22,13 @@ Three kinds of work go below the floor, and only a hold stops them (the owner's 
   count when it answers ``304``; and
 - the full read of a change such a probe finds, or the catalog reports, on that pull
   request: the floor is a reserve for the reader, and this is the page the reader is
-  looking at.
+  looking at; and
+- for the same reason, the probe of a visible list, the scan a change it finds starts,
+  and the cores of the rows on screen (:func:`.pull_cores.request_preparation`), which
+  this process's own ceiling still holds.
 
-Everything else automatic stops below it: prefetch and backfill, which ask
-:func:`admission`, and the reads a visible page's clock alone asks for, a record's
+Everything else automatic stops below it: prefetch, backfill, the cores walk, stacks,
+labels, the timeline, and the periodic scan and files read, which ask :func:`admission`, and the reads a visible page's clock alone asks for, a record's
 :data:`~.served_pull.FULL_REFRESH_S` full read and an open one's checks once a window
 (:meth:`.served_pull.ServedPull.below_floor`).
 
