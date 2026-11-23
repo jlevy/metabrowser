@@ -5,7 +5,7 @@ title: Restore CLI 0.13.0 first directory row below the browser release budget
 kind: bug
 status: in_progress
 priority: 1
-version: 8
+version: 9
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45112075401
@@ -31,7 +31,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-23T04:41:44.647Z
-updated_at: 2026-11-23T05:29:02.315Z
+updated_at: 2026-11-23T05:43:15.387Z
 started_at: 2026-11-23T04:41:48.946Z
 ---
 Five admitted foreground Chrome comparisons put the v0.13.0 candidate at 697–765 ms from navigation to the first directory row, versus 131–242 ms in v0.12.0 and the required 350 ms. The backend first-row median and ordered results match. Attribute the browser-side delay, fix a focused cause with the new startup font work accounted for, then rerun the exact candidate.
@@ -39,3 +39,5 @@ Five admitted foreground Chrome comparisons put the v0.13.0 candidate at 697–7
 ## Notes
 
 Matching first successful HTTP response restores all five candidate absolute budgets, and the remaining relative regression is four pairs above the 1.3× rough-cut tolerance. Browser late scripts and DOMContentLoaded shift about 80 ms. Two scripts, including a 1 KB script, take a uniform ~40 ms longer after headers while responding within the same server budget. mb-6cx8 fixes a Linux TCP_NODELAY hypothesis. Combined exact candidate with the narrowed font change is running.
+
+Exact #733 head 80fb76d run 45117924502 reached five complete admitted release pairs and all candidate hard gates passed. First rows 117–159 ms (median 123) vs 135–151 ms (median 142). Ratios 0.956, 0.804, 0.815, 1.120, 0.824; all within the 1.3 release tolerance. Pair 5 is the only careful 1.1 exceedance and does not establish a repeatable regression. One 72.6% control refusal was preserved and replaced by pair 6. Linux adopted-transport suite 25/25, measured JavaScript header-to-body 0–1 ms in complete pairs, and backend ordered rows identical. Stock compare still declines the different KPress locks and automated tallies still report nine intentional differences. All raw evidence retained. Formal PR review and merge gates are tracked separately.
