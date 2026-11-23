@@ -3,10 +3,23 @@ type: is
 id: is-01m836c38mhwwhmnxwz2ydn61z
 title: "Annotated collections: one format for Guided PR guides, reading lists, dashboards, and boards"
 kind: epic
-status: open
+status: in_progress
 priority: 2
-version: 8
+version: 10
 spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/677
+    at: 2026-11-23T03:51:30.951Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/679
+    at: 2026-11-23T03:51:30.951Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/693
+    at: 2026-11-23T03:51:30.951Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/570
+    at: 2026-11-23T03:51:30.951Z
 labels:
   - linear
   - Feature
@@ -18,7 +31,7 @@ child_order_hints:
   - is-01m836c59zjyn3p0p4azezrhh3
   - is-01m836c5sjm5382s2wc93p852s
 created_at: 2026-11-23T03:14:41.041Z
-updated_at: 2026-11-23T03:20:52.392Z
+updated_at: 2026-11-23T03:51:30.951Z
 extensions:
   linear:
     id: e6d16b1a-6932-46d8-ab79-79487c4851c8
