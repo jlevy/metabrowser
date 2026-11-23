@@ -645,6 +645,15 @@ sandbox.MetabrowserNavigationRoute.attachController({
   );
   check("folder cell is actionable", !!folderCellMatch, container.viewport.innerHTML);
   check("file cell is actionable", !!fileCellMatch, container.viewport.innerHTML);
+  // The outer box is the view's own folder: drawn and labelled, but it opens nothing.
+  const outerBoxClasses = container.viewport.innerHTML.match(
+    /class="([^"]*)"[^>]*data-tm-kind="dir" data-tm-path=""/,
+  )?.[1];
+  check(
+    "the view's outer box is drawn and is no button",
+    outerBoxClasses !== undefined && !outerBoxClasses.includes("tm-actionable"),
+    container.viewport.innerHTML.slice(0, 400),
+  );
   const cellClick = container.viewport.listeners.click?.[0];
   check("cell click handler bound", typeof cellClick === "function");
   const cellTarget = (index) => {

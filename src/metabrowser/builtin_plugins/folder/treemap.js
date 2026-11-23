@@ -259,6 +259,8 @@ export function registerTreemap(mb, palette, rollupControls) {
       size: "full",
       getState: () => state,
       onActivate: activateCell,
+      // The outer box is this view's own folder, so it opens nothing.
+      opens: (cell) => !(cell.kind === "dir" && cell.path === (ctx.path || "")),
       hover,
       onParent: openParent,
     });

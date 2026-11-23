@@ -131,6 +131,8 @@ export function withOuterBox(node) {
  * @property {(cell: Record<string, any>) => void} onActivate  a folder or file cell was chosen
  * @property {DistributionHover} [hover]  the hover the map shares with its bars and legend
  * @property {() => void} [onParent]  Backspace asks for the enclosing folder
+ * @property {(cell: Record<string, any>) => boolean} [opens]  whether activating a folder
+ *   or file cell opens anything; a cell that does not is no button and shows no pointer
  */
 
 /**
@@ -168,9 +170,13 @@ export function createTreemapMap(mb, palette, viewport, options) {
     return cell.kind === "rest" ? "" : mb.fileTypes.distributionKeyForExtension(extension);
   }
 
-  /** @param {Record<string, any>} cell @returns {boolean} */
+  /**
+   * A folder or file cell opens something, unless its host says it does not.
+   * @param {Record<string, any>} cell
+   * @returns {boolean}
+   */
   function cellIsActionable(cell) {
-    return cell.kind === "dir" || cell.kind === "file";
+    return (cell.kind === "dir" || cell.kind === "file") && (options.opens?.(cell) ?? true);
   }
 
   /**
