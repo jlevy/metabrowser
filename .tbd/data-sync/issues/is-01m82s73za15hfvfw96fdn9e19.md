@@ -3,9 +3,9 @@ type: is
 id: is-01m82s73za15hfvfw96fdn9e19
 title: "Address PR #709 reviews A and K: attended probes"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 20
+version: 21
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 labels: []
 dependencies: []
@@ -30,7 +30,11 @@ child_order_hints:
   - is-01m82s9844yp3wt73csd6cmva6
   - is-01m82s9dazkkwgfnqzq839p031
 created_at: 2026-11-22T23:24:46.440Z
-updated_at: 2026-11-22T23:46:18.263Z
+updated_at: 2026-11-23T01:19:32.686Z
+closed_at: 2026-11-23T01:19:32.675Z
+close_reason: "Reviews A and K on #709 dispositioned and addressed"
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes
