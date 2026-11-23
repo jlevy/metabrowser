@@ -172,6 +172,7 @@ function host() {
           formatTimestamp: () => "now",
           navigation: { href: () => "/view/" },
           sourceKind: () => "git_revision",
+          shortCommit: (commit) => commit.slice(0, 7),
           icons: { toggle: "" },
         },
       );

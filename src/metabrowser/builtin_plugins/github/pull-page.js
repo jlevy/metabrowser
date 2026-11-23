@@ -7461,13 +7461,18 @@ export function mountPullPage(container, ctx, mb) {
         }
         host.replaceChildren(introduction);
         // The guide's text is KPress prose and its excerpts are the diff plugin's rows.
-        mount.view = mountGuidedPR(host, number, openChangedFile, (assets) =>
-          Promise.all([
-            textStyles(
-              /** @type {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} */ (assets),
-            ),
-            mb.ensureKindAssets("diff"),
-          ]),
+        mount.view = mountGuidedPR(
+          host,
+          number,
+          openChangedFile,
+          (assets) =>
+            Promise.all([
+              textStyles(
+                /** @type {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} */ (assets),
+              ),
+              mb.ensureKindAssets("diff"),
+            ]),
+          mb.shortCommit,
         );
         mount.view.show(shown.recordRevision, shown.newCommits !== null);
       },

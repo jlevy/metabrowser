@@ -234,9 +234,6 @@ function renderReference(reference, open, changed) {
   return section;
 }
 
-/** @param {string} sha */
-const short = (sha) => element("code", sha.slice(0, 7));
-
 /** @param {number} count @param {string} one */
 const plural = (count, one) => `${count} ${one}${count === 1 ? "" : "s"}`;
 
@@ -253,8 +250,12 @@ function stepList(steps) {
  *
  * @param {Staleness} stale
  * @param {number | null} stepCount
+ * @param {(commit: string) => string} shortCommit The SDK's `shortCommit`: every line
+ *   names a commit at one length (docs/design-system.md, "Short Commit IDs").
  */
-export function staleNotice(stale, stepCount) {
+export function staleNotice(stale, stepCount, shortCommit) {
+  /** @param {string} sha */
+  const short = (sha) => element("span", shortCommit(sha), "git-commit-sha");
   const box = element("div", "", "notice github-pull-notice github-pull-guide-stale");
   box.dataset.severity = "warning";
   box.setAttribute("role", "status");
@@ -341,8 +342,9 @@ export function staleNotice(stale, stepCount) {
  * @param {(assets: unknown) => Promise<unknown>} loadStyles The stylesheets the guide is
  *   drawn in: KPress's, from the manifest a ready step carries, and the diff plugin's. The
  *   guide waits for them, as a description does.
+ * @param {(commit: string) => string} shortCommit The SDK's `shortCommit`.
  */
-export function mountGuidedPR(host, number, open, loadStyles) {
+export function mountGuidedPR(host, number, open, loadStyles, shortCommit) {
   /** @type {Promise<unknown> | null} */
   let styles = null;
   const controls = element("div", "", "github-pull-guide-controls");
@@ -366,7 +368,7 @@ export function mountGuidedPR(host, number, open, loadStyles) {
   /** @param {Staleness | null | undefined} stale @param {number | null} count */
   const showStale = (stale, count) => {
     outdated.hidden = !stale;
-    outdated.replaceChildren(...(stale ? [staleNotice(stale, count)] : []));
+    outdated.replaceChildren(...(stale ? [staleNotice(stale, count, shortCommit)] : []));
   };
 
   const navigation = createGuideNavigation({
