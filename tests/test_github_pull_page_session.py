@@ -816,18 +816,18 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "no block in the description: Conversation C, Changes G, Checks E; "
             "live conversation files checks",
             "D: not handled",
-            "a block in the description: Conversation C, Changes G, Guided PR D, Checks E; "
+            "a block in the description: Guided PR D, Conversation C, Changes G, Checks E; "
             "live conversation files guided checks",
             "D: opened the guided route",
             "the route arrives: Guided PR",
             "the block leaves while its tab is shown: "
-            "Conversation C, Changes G, Guided PR D, Checks E; Guided PR",
+            "Guided PR D, Conversation C, Changes G, Checks E; Guided PR",
             "back on Conversation: Conversation C, Changes G, Checks E; D: not handled",
             "the block returns while Shift is held: "
-            "badges Conversation C, Changes G, Guided PR D, Checks E",
+            "badges Guided PR D, Conversation C, Changes G, Checks E",
             "D: opened the guided route",
             "an example of the block inside another fence: "
-            "Conversation C, Changes G, Guided PR D, Checks E",
+            "Guided PR D, Conversation C, Changes G, Checks E",
             "disposed: keys none",
         ],
         # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):

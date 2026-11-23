@@ -1949,81 +1949,31 @@
   display: none;
 }
 
-.github-pull-guide-overview p,
-.github-pull-guide-commentary {
+/* KPress sets the guide's headings, paragraphs, and the space between them. The text is
+   plain, so its own line breaks stand, and an unbroken run wraps inside the column. */
+.github-pull-guide-prose p {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.github-pull-guide-controls,
-.github-pull-guide-reference-header {
+.github-pull-guide-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.5rem 0.75rem;
-}
-
-.github-pull-guide-controls {
   margin-block: 1.25rem;
 }
 
-.github-pull-guide-reference {
-  margin-block: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
-  overflow: hidden;
+/* Each excerpt is the diff plugin's file card and rows (guided-pr.js, `renderReference`),
+   which set its type and fills. An excerpt's bar names its file and does not fold it. */
+.metabrowser-diff-host .github-pull-guide-reference-header {
+  cursor: auto;
 }
 
-.github-pull-guide-reference-header {
-  justify-content: space-between;
-  padding: 0.5rem 0.75rem;
-}
-
-.github-pull-guide-reference-header code {
-  overflow-wrap: anywhere;
-}
-
-.github-pull-guide-reference-header a {
-  color: var(--link);
+.metabrowser-diff-host .github-pull-guide-reference-header .diff-file-toggle {
+  cursor: auto;
 }
 
 .github-pull-guide-reference > p {
-  padding-inline: 0.75rem;
-}
-
-.github-pull-guide-excerpt {
-  margin: 0;
-  padding-block: 0.35rem;
-  overflow-x: auto;
-  border-top: 1px solid var(--border);
-  font-family: var(--font-mono);
-}
-
-.github-pull-guide-line {
-  display: grid;
-  grid-template-columns: 5ch 5ch 2ch auto;
-  gap: 0.5ch;
-  min-width: max-content;
-  padding-inline: 0.75rem;
-}
-
-/* The row's own tint shows through its text: no block, padding, or background of a code
-   element's own, which the shell gives `pre code.hljs` where a highlighter has run. */
-.github-pull-guide-excerpt .github-pull-guide-line code {
-  display: inline;
-  padding: 0;
-  background: none;
-}
-
-.github-pull-guide-line-number {
-  text-align: end;
-  color: var(--muted);
-}
-
-.github-pull-guide-line[data-op="add"] {
-  background: var(--color-syntax-addition-bg);
-}
-
-.github-pull-guide-line[data-op="del"] {
-  background: var(--color-syntax-deletion-bg);
+  padding-inline: 10px;
 }

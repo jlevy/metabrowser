@@ -44,13 +44,16 @@ const same = (label, got, want) =>
 const TABS = `[...document.querySelectorAll(".github-pull .tab-btn")].map((tab) => tab.textContent.trim())`;
 const GUIDE_TAB = `[...document.querySelectorAll(".github-pull .tab-btn")].find((tab) => tab.textContent.trim() === "Guided PR")`;
 const ROWS = `[...document.querySelectorAll(".github-pull-guide-line")].map((line) => {
-  const code = line.querySelector("code");
+  const code = line.querySelector(".diff-line-text");
   const style = getComputedStyle(code);
   const boxes = [...line.children].map((child) => child.getBoundingClientRect());
   return {
     op: line.dataset.op,
     text: code.textContent,
-    noHighlight: code.classList.contains("no-highlight"),
+    noHighlight: code.closest("pre") === null,
+    // The diff's type: the guide's rows are the size of Changes' rows.
+    fontSize: style.fontSize,
+    monoBlock: getComputedStyle(document.documentElement).getPropertyValue("--mono-block-font-size").trim(),
     hljs: code.classList.contains("hljs") || code.querySelector("span") !== null,
     padding: style.padding,
     background: style.backgroundColor,
@@ -78,7 +81,7 @@ try {
   };
   const settled = (title) =>
     waitFor(
-      `document.querySelector(".github-pull-guide-step .section-heading")?.textContent === ${JSON.stringify(title)}`,
+      `document.querySelector(".github-pull-guide-step .github-pull-guide-title")?.textContent === ${JSON.stringify(title)}`,
     );
   const said = async () => {
     await waitFor(
@@ -141,6 +144,11 @@ try {
       row.background,
     );
     check(`${row.op} row is one line, its columns apart`, row.oneLine && row.apart);
+    check(
+      `${row.op} row is set at the diff's code size`,
+      row.fontSize === row.monoBlock,
+      `${row.fontSize} vs ${row.monoBlock}`,
+    );
   }
   same(
     "only the changed row is tinted",

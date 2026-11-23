@@ -387,7 +387,7 @@ a pull request, and a commit.
 | 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
 | 2. Heading row | The navigation row’s icon for its type, and its name and the metadata after it | The folder icon, or at the root its [kind mark](#source-kind-marks), and its name and the metadata after it | Its state icon, its title, and its number | The commit icon, its subject (planned) |
 | 3. Metadata | Its badges, size, and age, after its name | Its size, file count, and age, after its name | Its author line, branches, and ages, lines under the title ([Page Headers](#page-headers)) | Its author, revision, and age, lines under the title ([Page Headers](#page-headers)) |
-| 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, Guided PR when present, and Checks | None |
+| 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Guided PR when present, then Conversation, Changes, and Checks | None |
 | The corner | [View on GitHub](#view-on-github) | The same | The same | The same |
 
 Files and folders draw these parts today (`viewHeaderHtml` in `static/view-header.js`,

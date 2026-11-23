@@ -5,7 +5,7 @@
  * @typedef {{path: string, state: string, href: string | null, rows: Row[]}} Reference
  * @typedef {{state: "ready", record_revision: string, summary: string, overview: string,
  *   step: number, step_count: number, title: string, note: string,
- *   references: Reference[]}} Step
+ *   references: Reference[], assets?: unknown}} Step
  * @typedef {{state: "absent" | "invalid" | "stale" | "comparison_unavailable" |
  *   "description_truncated" | "step_not_found" | "not_cached", record_revision: string | null,
  *   message?: string}} Refusal
@@ -139,13 +139,43 @@ function element(tag, content = "", className = "") {
   return node;
 }
 
-/** @param {Reference} reference @param {(path: string) => void} open */
+/**
+ * The guide's own text in a KPress article, as the page sets a description
+ * (`kpressHost` in pull-page.js): KPress's prose element sets the headings, paragraphs, and
+ * the space between them, and `.chrome-prose` keeps it in the chrome's sans
+ * (docs/design-system.md, "Serif Is for Documents"). The text is the author's, set as text.
+ *
+ * @param {HTMLElement} prose The `.kpress-prose` element the caller fills.
+ */
+function proseHost(prose) {
+  const article = element("article", "", "kpress kpress-inert");
+  article.append(prose);
+  const host = element("div", "", "metabrowser-kpress-host");
+  host.append(article);
+  const text = element("div", "", "github-pull-guide-prose chrome-prose");
+  text.append(host);
+  return text;
+}
+
+/**
+ * One reference as the diff plugin draws a changed file (`renderFileSection` and
+ * `renderUnifiedLine` in builtin_plugins/diff/diff-view.js): its card, bar, and unified rows,
+ * in the plugin's own classes inside `.metabrowser-diff-host`, so an excerpt has the same
+ * type, row height, gutter, and change fills as Changes (docs/design-system.md, "Diffs").
+ * Rows are text in spans, not `pre code`, which the shell's highlighter would take for a
+ * snippet; the excerpt shows the author's selection, not the plugin's syntax tokens.
+ *
+ * @param {Reference} reference @param {(path: string) => void} open
+ */
 function renderReference(reference, open) {
-  const section = element("section", "", "github-pull-guide-reference");
-  const header = element("div", "", "github-pull-guide-reference-header");
-  header.append(element("code", reference.path));
+  const section = element("section", "", "diff-file github-pull-guide-reference");
+  const bar = element("div", "", "diff-file-bar github-pull-guide-reference-header");
+  const name = element("span", "", "diff-file-toggle");
+  name.append(element("span", reference.path, "diff-file-path"));
+  bar.append(name);
   if (reference.href !== null) {
     const full = document.createElement("a");
+    full.className = "diff-file-view";
     full.href = reference.href;
     full.textContent = "Open full diff";
     full.setAttribute("aria-label", `Open full diff for ${reference.path}`);
@@ -161,28 +191,25 @@ function renderReference(reference, open) {
         open(reference.path);
       }
     });
-    header.append(full);
+    bar.append(full);
   }
-  section.append(header);
+  section.append(bar);
   if (reference.state === "ready") {
-    const excerpt = element("pre", "", "github-pull-guide-excerpt");
-    excerpt.tabIndex = 0;
-    excerpt.setAttribute("aria-label", `Diff excerpt for ${reference.path}`);
+    const body = element("div", "", "diff-file-body github-pull-guide-excerpt");
+    body.setAttribute("role", "group");
+    body.setAttribute("aria-label", `Diff excerpt for ${reference.path}`);
     for (const row of reference.rows) {
-      const line = element("span", "", "github-pull-guide-line");
+      const line = element("div", "", `diff-line diff-line-${row.op} github-pull-guide-line`);
       line.dataset.op = row.op;
       line.append(
-        element("span", String(row.old ?? ""), "github-pull-guide-line-number"),
-        element("span", String(row.new ?? ""), "github-pull-guide-line-number"),
-        element("span", row.op === "add" ? "+" : row.op === "del" ? "−" : " "),
-        // A row is one line of someone's code, and the shell's highlighter would take it for
-        // a snippet in some language and paint a block of its own into the row. The row owns
-        // its tint, and `no-highlight` is the shell's opt-out (`highlightCode` in app.js).
-        element("code", row.text, "no-highlight"),
+        element("span", String(row.old ?? ""), "diff-line-number"),
+        element("span", String(row.new ?? ""), "diff-line-number"),
+        element("span", row.op === "add" ? "+" : row.op === "del" ? "-" : " ", "diff-line-marker"),
+        element("span", row.text, "diff-line-text"),
       );
-      excerpt.append(line);
+      body.append(line);
     }
-    section.append(excerpt);
+    section.append(body);
   } else if (reference.state !== "file") {
     const message =
       REFERENCE_MESSAGES[/** @type {keyof typeof REFERENCE_MESSAGES} */ (reference.state)];
@@ -195,17 +222,24 @@ function renderReference(reference, open) {
  * @param {HTMLElement} host
  * @param {number} number
  * @param {(path: string) => void} open
+ * @param {(assets: unknown) => Promise<unknown>} loadStyles The stylesheets the guide is
+ *   drawn in: KPress's, from the manifest a ready step carries, and the diff plugin's. The
+ *   guide waits for them, as a description does.
  */
-export function mountGuidedPR(host, number, open) {
-  const overview = element("div", "", "github-pull-guide-overview");
+export function mountGuidedPR(host, number, open, loadStyles) {
   const feature = element("p");
   const architecture = element("p");
-  overview.append(
-    element("h2", "What this changes", "section-heading"),
+  const summary = element("div", "", "kpress-prose");
+  summary.append(
+    element("h2", "What this changes"),
     feature,
-    element("h2", "Architecture", "section-heading"),
+    element("h2", "Architecture"),
     architecture,
   );
+  const overview = proseHost(summary);
+  overview.classList.add("github-pull-guide-overview");
+  /** @type {Promise<unknown> | null} */
+  let styles = null;
   const controls = element("div", "", "github-pull-guide-controls");
   const previous = document.createElement("button");
   const next = document.createElement("button");
@@ -230,7 +264,15 @@ export function mountGuidedPR(host, number, open) {
       if (!response.ok) {
         throw new Error("Could not read the guide");
       }
-      return response.json();
+      const result = await response.json();
+      if (result.state === "ready" && result.assets !== undefined) {
+        // A failed stylesheet leaves the text readable in the page's own type.
+        styles ??= loadStyles(result.assets).catch((error) => {
+          console.warn("metabrowser github: the guide's text styles did not load", error);
+        });
+        await styles;
+      }
+      return result;
     },
     render(state) {
       if (state.state === "loading") {
@@ -263,11 +305,14 @@ export function mountGuidedPR(host, number, open) {
       status.textContent = `Step ${state.step} of ${state.step_count}`;
       previous.disabled = state.step <= 1;
       next.disabled = state.step >= state.step_count;
-      detail.replaceChildren(
-        element("h2", state.title, "section-heading"),
+      const step = element("div", "", "kpress-prose");
+      step.append(
+        element("h2", state.title, "github-pull-guide-title"),
         element("p", state.note, "github-pull-guide-commentary"),
-        ...state.references.map((reference) => renderReference(reference, open)),
       );
+      const references = element("div", "", "metabrowser-diff-host github-pull-guide-references");
+      references.append(...state.references.map((reference) => renderReference(reference, open)));
+      detail.replaceChildren(proseHost(step), references);
     },
   });
   overview.hidden = controls.hidden = true;

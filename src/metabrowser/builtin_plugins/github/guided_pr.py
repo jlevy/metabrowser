@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from softschema.models import Contract, SchemaProfile, SchemaStatus
 from softschema.validate import parse_yaml_text, validate_artifact
 
+from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.pull_catalog import catalog_member
 from metabrowser.builtin_plugins.github.pull_freshness import record_freshness
@@ -365,4 +366,7 @@ async def guided_pr(host: PullHost, number: int, step_number: int) -> dict[str, 
         "title": step.title,
         "note": step.note,
         "references": references,
+        # The page sets the guide's prose in a KPress article, as it sets a description, and
+        # may show this tab before any description has loaded KPress's stylesheets.
+        "assets": await asyncio.to_thread(kpress_adapter.document_stylesheets),
     }

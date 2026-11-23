@@ -190,7 +190,7 @@ function host() {
         shown() {
           const title = container
             .querySelector(".github-pull-guide-step")
-            ?.querySelector(".section-heading");
+            ?.querySelector(".github-pull-guide-title");
           return title?.textContent ?? null;
         },
       };
@@ -227,7 +227,8 @@ async function run() {
     assert.equal(first.pending().length, 1);
     steps.push(`its tab opens: guide mounted; asked ${asked(first.reads)}`);
 
-    // A step is text, not markup, and each row's code is marked for the highlighter to skip.
+    // A step is text, not markup, and each row is the diff plugin's: its text a span, which
+    // the shell's highlighter, which takes `pre code`, cannot select.
     first.pending()[0].answer(step(1, 1));
     await settle();
     const commentary = view.container.querySelector(".github-pull-guide-commentary");
@@ -240,11 +241,12 @@ async function run() {
     steps.push(
       `step 1: ${view.shown()}; rows ${lines
         .map((line) => {
-          const code = line.children.find((child) => child.tag === "code");
-          assert.ok(code.classes.has("no-highlight"), "a row's code is skipped by the highlighter");
+          const code = line.children.find((child) => child.classes?.has("diff-line-text"));
+          assert.equal(code.tag, "span", "a row's text is a span, as the diff draws it");
+          assert.ok(line.classes.has("diff-line"), "a row is the diff plugin's row");
           assert.ok(
             code.children.every((child) => typeof child === "string"),
-            "a row's code holds text and no element",
+            "a row's text holds text and no element",
           );
           return `${line.dataset.op} ${code.textContent}`;
         })

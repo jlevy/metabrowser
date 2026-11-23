@@ -62,7 +62,132 @@ status: 200
         }
       ]
     }
-  ]
+  ],
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "455ce6a0f538267b",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
 }
 ? 0
 ```
@@ -131,7 +256,132 @@ status: 200
       "href": "/pull/7/files/src/app.txt",
       "rows": []
     }
-  ]
+  ],
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "455ce6a0f538267b",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
 }
 ? 0
 ```

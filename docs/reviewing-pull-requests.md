@@ -129,6 +129,11 @@ A cached page shows at once and refreshes in the background; the
 
 ### Tabs
 
+- **Guided PR** (`D`), the first tab when the description includes a guide: the
+  feature’s purpose, an architecture overview, and ordered review steps with commentary
+  above selected diff excerpts.
+  The tab appears when the description has a line that opens a `guided-pr` fence; the
+  server’s reading of the block decides what the tab then shows.
 - **Conversation** (`C`): the description, then comments, reviews, and commits in
   GitHub’s order, joined by a timeline line.
   Commits that arrive while you read are added after what is shown.
@@ -138,10 +143,6 @@ A cached page shows at once and refreshes in the background; the
   (`L` switches). Markdown files open as rendered changes, as the next section describes.
   The changed-file list on the Pulls tab moves through this diff, and the selected file
   follows the diff as you scroll.
-- **Guided PR** (`D`), when the description includes a guide: the feature’s purpose, an
-  architecture overview, and ordered review steps with commentary above selected diff
-  excerpts. The tab appears when the description has a line that opens a `guided-pr`
-  fence; the server’s reading of the block decides what the tab then shows.
 - **Checks** (`E`): the check runs and commit statuses, with links to their details.
 
 ### Guided PR

@@ -235,7 +235,8 @@ const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
 const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 // Give a transient queue or provider failure one chance to clear while the reader stays.
 export const TIMELINE_RETRY_MS = 1000;
-export const TABS = Object.freeze(["", "files", "guided", "checks"]);
+// Guided PR leads, when the description carries a guide: it is the author's reading order.
+export const TABS = Object.freeze(["guided", "", "files", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
 const TITLE_OVERHANG_PX = 4;
 /**
@@ -244,9 +245,9 @@ const TITLE_OVERHANG_PX = 4;
  * `C` is also the Charts tab's, which is never shown beside a page.
  */
 const PULL_TABS = Object.freeze([
+  Object.freeze({ id: "guided", label: "Guided PR", key: "d" }),
   Object.freeze({ id: "", label: "Conversation", key: "c" }),
   Object.freeze({ id: "files", label: "Changes", key: "g" }),
-  Object.freeze({ id: "guided", label: "Guided PR", key: "d" }),
   Object.freeze({ id: "checks", label: "Checks", key: "e" }),
 ]);
 // A cheap tab visibility hint, which does not parse: the server's Markdown parser decides if a
@@ -7308,7 +7309,15 @@ export function mountPullPage(container, ctx, mb) {
           return;
         }
         host.replaceChildren();
-        mount.view = mountGuidedPR(host, number, openChangedFile);
+        // The guide's text is KPress prose and its excerpts are the diff plugin's rows.
+        mount.view = mountGuidedPR(host, number, openChangedFile, (assets) =>
+          Promise.all([
+            mb.loadKpressAssets(
+              /** @type {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} */ (assets),
+            ),
+            mb.ensureKindAssets("diff"),
+          ]),
+        );
         mount.view.show(shown.recordRevision, shown.newCommits !== null);
       },
       () => {

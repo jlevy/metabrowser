@@ -780,11 +780,16 @@ The parse is kept for each pull request by record revision, so a step click read
 guide the first request parsed and an edited description is parsed once.
 An excerpt shows a replacement whole: `_hunk_rows` includes a line that exists only on
 the other side when it lies inside the range or touches either end of it.
-Guide text and diff lines are inserted as text, and an excerpt’s rows carry
-`no-highlight`, the shell’s opt-out in `highlightCode`, because a one-line snippet has
-no language for the highlighter to find.
-`guided-pr.js` loads on demand when the tab opens, aborts reads on disposal, and matches
-results to the page’s record revision.
+Guide text and diff lines are inserted as text, in the design system’s existing parts:
+the summary, overview, and each step’s title and note are prose in a KPress article, as
+a description is, and each excerpt is the diff plugin’s file card and unified rows
+(`renderReference` in `guided-pr.js`), so its type, row height, gutter, and change fills
+are Changes’. A ready step carries KPress’s stylesheet manifest, as the description’s
+Markdown route does, and the page loads it and the diff plugin’s styles before drawing
+the step, so the tab reads the same when it is the first thing opened.
+Guided PR is the first tab when the description has a guide: it is the author’s reading
+order. `guided-pr.js` loads on demand when the tab opens, aborts reads on disposal, and
+matches results to the page’s record revision.
 
 The tab is shown from a hint, not from the parse: `GUIDED_FENCE` in `pull-page.js`
 matches a line that opens a `guided-pr` fence in the description, and the server’s
