@@ -252,26 +252,27 @@ public nonisolated enum OpenURLEntry {
 ///
 /// Open checks the text (`OpenURLEntry`) and asks `metab` about the link with the command
 /// every link sent to the app is resolved with, `metab LINK --present --dry-run --format
-/// json` (`PresentDryRun`). A plan closes the panel, and the app opens it as it opens such
-/// a link (`AppDelegate.open(_:with:)`): in the repository's mirror, always, never a
-/// checkout of it, as The File Menu in `docs/project/architecture/arch-open-modes.md`
-/// designs it. A problem with the text, a refusal, or an answer the app cannot read is
-/// said under the field, and the panel stays open so the text can be fixed. An edit
-/// while `metab` is asked drops its answer, and so do Cancel and closing the panel:
-/// each returns the link it stopped awaiting, whose dry run the app then stops, so the
-/// panel's dry runs run one at a time.
+/// json` (`PresentDryRun`). A plan leaves the panel open until the app presents the
+/// repository's window. A problem stays under the field so the text can be fixed. Edits,
+/// Cancel, and closing the panel drop the active submission and stop its pending work.
 public nonisolated struct OpenURLPanel: Equatable, Sendable {
+    /// Identifies one press of Open. The same URL can be submitted again after cancellation.
+    public struct Request: Equatable, Sendable {
+        public let link: URL
+        fileprivate let id = UUID()
+
+        fileprivate init(link: URL) { self.link = link }
+    }
+
     public enum Phase: Equatable, Sendable {
-        /// The field takes text, and Open checks it.
         case editing
-        /// `metab` is asked about this link.
-        case checking(URL)
-        /// It opened a plan, handed its link on, or was cancelled: nothing more happens.
+        case checking(Request)
+        case waitingForRuntime(Request)
+        case opening(Request)
         case closed
     }
 
-    /// The field's text: as typed, until Open writes a GitHub URL in full
-    /// (`OpenURLEntry.corrected(_:)`), which the window then shows in the field.
+    /// The field's text: as typed, until Open writes a GitHub URL in full.
     public private(set) var text = ""
     public private(set) var phase = Phase.editing
     /// Why the text was not opened, said under the field until the next edit.
@@ -279,22 +280,36 @@ public nonisolated struct OpenURLPanel: Equatable, Sendable {
 
     public init() {}
 
-    /// Whether Open does anything: some text, and no answer awaited.
     public var canOpen: Bool { phase == .editing && !OpenURLEntry.trimmed(text).isEmpty }
 
-    public var isChecking: Bool { awaited != nil }
-
-    /// The link `metab` is asked about, whose answer the panel awaits.
-    public var awaited: URL? {
-        if case .checking(let link) = phase { return link }
-        return nil
+    public var canEdit: Bool {
+        switch phase {
+        case .editing, .checking, .waitingForRuntime: true
+        case .opening, .closed: false
+        }
     }
 
-    /// The field now holds `newText`. Any message goes, and an answer awaited is dropped:
-    /// the link it was for, whose dry run the app stops, or nil if none was awaited.
+    public var progress: String? {
+        switch phase {
+        case .checking: "Checking URL…"
+        case .waitingForRuntime: "Waiting for the server runtime…"
+        case .opening: "Opening repository…"
+        case .editing, .closed: nil
+        }
+    }
+
+    /// The submission whose outcome the panel awaits.
+    public var awaited: Request? {
+        switch phase {
+        case .checking(let request), .waitingForRuntime(let request), .opening(let request): request
+        case .editing, .closed: nil
+        }
+    }
+
+    /// Editing drops the submission it replaces, so the app can stop its work.
     @discardableResult
-    public mutating func edit(_ newText: String) -> URL? {
-        guard phase != .closed, newText != text else { return nil }
+    public mutating func edit(_ newText: String) -> Request? {
+        guard canEdit, newText != text else { return nil }
         let dropped = awaited
         text = newText
         message = nil
@@ -302,56 +317,67 @@ public nonisolated struct OpenURLPanel: Equatable, Sendable {
         return dropped
     }
 
-    /// Open was pressed: the link to ask `metab` about, which the panel now awaits, or nil,
-    /// with `message` saying why the text is not one. Text that is plainly a GitHub URL is
-    /// first written in full, with no message: the field shows the URL that is checked.
-    public mutating func open() -> URL? {
+    /// Open was pressed: the submission to check, or nil with a reason under the field.
+    public mutating func open() -> Request? {
         guard canOpen else { return nil }
         let corrected = OpenURLEntry.corrected(text)
         if corrected != OpenURLEntry.trimmed(text) { text = corrected }
         switch OpenURLEntry.link(text) {
         case .success(let link):
-            phase = .checking(link)
+            let request = Request(link: link)
+            phase = .checking(request)
             message = nil
-            return link
+            return request
         case .failure(let problem):
             message = problem.message
             return nil
         }
     }
 
-    /// `metab` answered about `link`: the plan to open, which closes the panel, or nil.
-    /// A refusal or an unreadable answer is said under the field; an answer the panel no
-    /// longer awaits changes nothing. `metab` names the `metab` that answered.
-    public mutating func answered(_ answer: PresentAnswer, for link: URL, metab: String) -> PresentPlan? {
-        guard phase == .checking(link) else { return nil }
+    /// Marks a check as waiting for a runtime, or running on one. A stale request does nothing.
+    @discardableResult
+    public mutating func setWaitingForRuntime(_ waiting: Bool, for request: Request) -> Bool {
+        let mayWaitAgain = waiting && phase == .opening(request)
+        guard phase == .checking(request) || phase == .waitingForRuntime(request) || mayWaitAgain else { return false }
+        phase = waiting ? .waitingForRuntime(request) : .checking(request)
+        return true
+    }
+
+    /// Returns the plan to present. A refusal or unreadable answer stays under the field.
+    public mutating func answered(_ answer: PresentAnswer, for request: Request, metab: String) -> PresentPlan? {
+        guard phase == .checking(request) else { return nil }
         switch answer {
         case .plan(let plan):
-            phase = .closed
+            phase = .opening(request)
             return plan
         case .refused(let refusal):
-            message = GitHubLink.shortened(refusal.message, to: PresentAnswer.shownLineLength)
+            failed(GitHubLink.shortened(refusal.message, to: PresentAnswer.shownLineLength), for: request)
         case .unreadable(let reason, _):
             // The output stays in the app's log: it can hold a traceback.
-            message = "Metabrowser could not check this URL: \(metab) \(GitHubLink.shortened(reason, to: PresentAnswer.shownLineLength))."
+            failed(
+                "Metabrowser could not check this URL: \(metab) \(GitHubLink.shortened(reason, to: PresentAnswer.shownLineLength)).",
+                for: request)
         }
-        phase = .editing
         return nil
     }
 
-    /// The link being checked goes to the link queue instead, as when no `metab` can run
-    /// now, which closes the panel: the queue waits for one, as it does for a link sent to
-    /// the app.
-    public mutating func handOff() -> URL? {
-        guard case .checking(let link) = phase else { return nil }
-        phase = .closed
-        return link
+    /// The app could not check the submission or present its window. The field can be edited again.
+    public mutating func failed(_ reason: String, for request: Request) {
+        guard awaited == request else { return }
+        message = reason
+        phase = .editing
     }
 
-    /// Cancel, or the panel closed: nothing more happens. Returns the link whose answer was
-    /// awaited, whose dry run the app stops, or nil if none was.
+    /// The destination window is on screen and will show the rest of the work.
+    public mutating func presented(for request: Request) -> Bool {
+        guard phase == .opening(request) else { return false }
+        phase = .closed
+        return true
+    }
+
+    /// Cancel, or closing the panel, ends the pending submission.
     @discardableResult
-    public mutating func cancel() -> URL? {
+    public mutating func cancel() -> Request? {
         let dropped = awaited
         phase = .closed
         return dropped

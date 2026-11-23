@@ -17,7 +17,7 @@ nonisolated enum AppLog {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = RuntimeSettings()
     private lazy var recentFolders = RecentTargetsMenu(
-        setup: { [weak self] in self?.operations.launchableSetup() }, open: { [weak self] in self?.request($0) })
+        setup: { [weak self] in self?.operations.launchableSetup() }, open: { [weak self] in self?.requestRecent($0) })
     /// The folder chooser each window's title opens (`FolderChooser`).
     private lazy var folderChooser = FolderChooserMenu(
         openFolders: { [weak self] in self?.folderWindows.chooserFolders(for: $0) ?? [] },
@@ -41,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var selection = RuntimeSelection(settings: settings, setup: settings.usable())
     /// The window each waiting folder was asked to open in (`request(_:into:)`).
     private var waitingWindows = WaitingWindows<BrowserWindowController>()
+    /// The recent repositories the user chose that still wait in RuntimeSelection.
+    private var waitingRecentRepositories: Set<URL> = []
     /// The searches, rechecks, and choices that change `selection`, and what follows each.
     private lazy var operations: RuntimeOperations = {
         let settings = self.settings
@@ -97,15 +99,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var linkProblems = LinkProblems()
     /// Whether a clone question or the problems alert is up: one at a time.
     private var isShowingLinkModal = false
+    private weak var cloneQuestionAlert: NSAlert?
     /// File > Open URL…, made the first time it is chosen and kept: it starts empty each
     /// time it comes on screen.
     private lazy var openURLWindow = OpenURLWindowController(
         onOpen: { [weak self] in self?.checkEnteredLink($0) },
         onDrop: { [weak self] in self?.stopCheckingEnteredLink($0) })
-    /// The dry run for the link File > Open URL… awaits, and the task that applies its
-    /// answer: at most one, since the panel awaits one answer and stops this one when it
-    /// drops it (`stopCheckingEnteredLink`).
-    private var enteredLinkCheck: (link: URL, task: Task<Void, Never>)?
+    /// The panel's one request, waiting for its own dry run or for a runtime to check it.
+    private var enteredLinkCheck: (request: OpenURLPanel.Request, task: Task<Void, Never>)?
+    private var waitingEnteredLink: OpenURLPanel.Request?
+    private var hasPendingEnteredLink: Bool { enteredLinkCheck != nil || waitingEnteredLink != nil }
     /// The runtime's file, or where `metab` may appear while there is none.
     private var watch: SetupWatch?
     private var watchedRuntime: Runtime?
@@ -176,7 +179,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A launch or reopen with nothing to show offers the Open panel.
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
         if selection.setup != nil {
-            if sessions.openServers.isEmpty && selection.waitingFolders.isEmpty && linksAreIdle { openFolder(nil) }
+            if sessions.openServers.isEmpty && selection.waitingFolders.isEmpty && linksAreIdle && !hasPendingEnteredLink {
+                openFolder(nil)
+            }
         } else {
             showPanelAfterDiscovery = true
         }
@@ -314,10 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             session.showFrontWindow(page: target.page)
             return
         }
-        if let current = selection.setup?.runtime, !selection.isUnverified,
-           !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
-            beginRecheck()
-        }
+        recheckChangedRuntime()
         // A request waiting for a runtime is resolved again when one is found.
         let waiting = URL(filePath: path)
         guard selection.setupForOpening(waiting) != nil, let session = session(for: .folder(root)) else {
@@ -352,10 +354,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 message: "Metabrowser opens folders, files, and GitHub links",
                 detail: "\(GitHubLink.shown(url)) is not a folder, a file, or an https link to GitHub."))
         }
-        if let current = selection.setup?.runtime, !selection.isUnverified,
-           !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
-            beginRecheck()
-        }
+        recheckChangedRuntime()
         guard selection.setupForOpening(url) != nil else {
             if selection.droppedLinks > 0 { showNextLinkModal() }
             if !selection.isBusy { showSettings(nil) }
@@ -427,34 +426,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         "metab \(setup.runtime.version) at \(setup.runtime.executable)"
     }
 
-    /// File > Open URL…: one field for a full GitHub URL, which opens as a link sent to
-    /// the app does, in the repository's mirror and never a checkout of it
-    /// (`OpenURLPanel`). The panel asks `metab` itself, with the command `resolveLink`
-    /// runs, so a refusal is said in the panel, which stays open to fix the text, and not
-    /// in the alert at the end of a burst.
+    /// File > Open URL…: a GitHub URL or repository shortcut, always opened in a mirror.
+    /// The panel owns the submission through the dry run and window placement, so a
+    /// refusal stays under the field and the app can stop work on a cancelled request.
     @objc func showOpenURL(_ sender: Any?) {
         openURLWindow.show()
     }
 
-    /// Asks `metab` about a link typed into File > Open URL…, and opens its plan as a
-    /// link sent to the app opens (`open(_:with:)`). With no `metab` the app can run now,
-    /// as while it finds or checks one, the link goes to the link queue instead, which
-    /// waits for one as it waits for any link (`requestLink`): the panel closes, and a
-    /// refusal comes as the alert at the end of the burst.
-    private func checkEnteredLink(_ link: URL) {
-        if let current = selection.setup?.runtime, !selection.isUnverified,
-           !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
-            beginRecheck()
-        }
+    private func checkEnteredLink(_ request: OpenURLPanel.Request) {
+        guard !isQuitting else { return }
+        recheckChangedRuntime()
         guard let setup = operations.launchableSetup() else {
-            if let waiting = openURLWindow.handOff() { requestLink(waiting) }
+            waitForEnteredRuntime(request)
             return
         }
+        guard openURLWindow.setWaitingForRuntime(false, for: request) else { return }
+        waitingEnteredLink = nil
         enteredLinkCheck?.task.cancel()
+        let link = request.link
         let task = Task {
             let answer = await askMetab(about: link, with: setup)
-            // Dropped by an edit, Cancel, or closing the panel, which cancelled this task
-            // and so killed the dry run (`CommandRunner.finish`): its answer is moot.
+            // Editing or closing the panel cancels this dry run.
             guard !Task.isCancelled else { return }
             enteredLinkCheck = nil
             let text = link.absoluteString
@@ -469,19 +461,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     "Open URL…: could not resolve \(text, privacy: .private): metab \(reason, privacy: .public); its last output: \(output.suffix(PresentDryRun.shownLines).joined(separator: " | "), privacy: .private)")
             }
             guard !isQuitting,
-                  let plan = openURLWindow.answered(answer, for: link, metab: Self.describe(setup))
+                  let plan = openURLWindow.answered(answer, for: request, metab: Self.describe(setup))
             else { return }
-            await open(plan, with: setup)
-            showNextLinkModal()
+            if openEntered(plan) {
+                openURLWindow.presented(for: request)
+            } else if selection.isBusy {
+                waitForEnteredRuntime(request)
+            } else {
+                openURLWindow.failed("Metabrowser could not open a repository window. Try again.", for: request)
+            }
         }
-        enteredLinkCheck = (link, task)
+        enteredLinkCheck = (request, task)
     }
 
-    /// The Open URL… panel no longer awaits the answer about `link`: cancelling its task
-    /// kills the dry run's process group at once (`CommandRunner.finish`), so an edit,
-    /// Cancel, or a closed panel leaves no `metab` running for it.
-    private func stopCheckingEnteredLink(_ link: URL) {
-        guard let check = enteredLinkCheck, check.link == link else { return }
+    private func waitForEnteredRuntime(_ request: OpenURLPanel.Request) {
+        if selection.isBusy {
+            if openURLWindow.setWaitingForRuntime(true, for: request) { waitingEnteredLink = request }
+        } else {
+            waitingEnteredLink = nil
+            openURLWindow.failed(Self.openURLRuntimeUnavailable, for: request)
+        }
+    }
+
+    private static let openURLRuntimeUnavailable =
+        "Metabrowser needs a server runtime to open this URL. Find or choose metab in Settings, then try again."
+
+    private func failEnteredRuntimeWait() {
+        guard let request = waitingEnteredLink else { return }
+        waitingEnteredLink = nil
+        openURLWindow.failed(Self.openURLRuntimeUnavailable, for: request)
+    }
+
+    /// The panel no longer awaits this submission, so it cannot open when a runtime is
+    /// found or after its current dry run returns.
+    private func stopCheckingEnteredLink(_ request: OpenURLPanel.Request) {
+        if waitingEnteredLink == request { waitingEnteredLink = nil }
+        guard let check = enteredLinkCheck, check.request == request else { return }
         check.task.cancel()
         enteredLinkCheck = nil
     }
@@ -492,9 +507,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// resolves the link against its mirror, so a ref with a `/` in it opens the right
     /// page, and a second pull request of the repository opens in the same window.
     ///
-    /// A repository nobody has said may be cloned is looked up in `metab`'s cache in the
-    /// link's turn; one the cache does not hold asks, and its question, with any later
-    /// links into it, waits beside the queue, so the links behind it go on (`CloneQuestions`).
+    /// A sent link looks up its repository in the cache unless it already has approval.
+    /// A repository the cache does not hold needs a question. The question and later
+    /// links into that repository wait beside the queue, so other links go on.
     private func open(_ plan: PresentPlan, with setup: RuntimeSetup) async {
         let root = SessionRoot.repository(plan.repository)
         if let session = sessions[root.key] as? FolderSession {
@@ -513,13 +528,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppLog.app.error(
                 "\(CloneQuestions.limit) repositories wait for an answer about cloning them; a link into \(name, privacy: .public) was dropped")
         case .lookUp:
-            if await isCached(root, with: setup) {
-                if let link = clones.found(root), !isQuitting { openRepository(root, on: link) }
+            let cached = await isCached(root, with: setup)
+            // An explicit open can supersede this lookup while it is suspended.
+            guard !isQuitting, sessions[root.key] == nil else { return }
+            if cached {
+                if let link = clones.found(root) { openRepository(root, on: link) }
             } else {
                 clones.ask(root)
                 showNextLinkModal()
             }
         }
+    }
+
+    /// Opens the plan from a native Open URL submission or a selected recent repository.
+    /// That choice authorizes this open. Once its window is shown, a pending question
+    /// for an earlier link into the same repository has nothing left to decide.
+    private func openEntered(_ plan: PresentPlan) -> Bool {
+        let root = SessionRoot.repository(plan.repository)
+        guard !isQuitting, openRepository(root, on: plan.link, waitForRuntime: false) else { return false }
+        if clones.openedExplicitly(root), let alert = cloneQuestionAlert, NSApp.modalWindow === alert.window {
+            NSApp.abortModal()
+        }
+        showNextLinkModal()
+        return true
     }
 
     /// Whether `metab`'s cache holds `root` (`RepositoryCache`); an answer the app cannot
@@ -545,20 +576,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The repository's window, whose server opens `link`, or a new session whose first
     /// ready server opens it. A new session's window joins the window of an open checkout of
     /// the repository as a tab, if one is on screen (`CheckoutWindow`), and is placed as a
-    /// new folder's otherwise. Without a runtime accepted now, the link waits for one, and
-    /// is resolved again.
+    /// new folder's otherwise. Returns whether a window was shown. A sent link missing its
+    /// runtime waits and is resolved again; a native choice can handle that wait itself.
     ///
     /// Either is an open, so the repository moves to the front of the recent targets: a
     /// new session's server records it as it starts, and the app records one already open
     /// itself, since opening a link in its server records nothing.
-    private func openRepository(_ root: SessionRoot, on link: URL) {
+    @discardableResult
+    private func openRepository(_ root: SessionRoot, on link: URL, waitForRuntime: Bool = true) -> Bool {
         if let session = sessions[root.key] as? FolderSession {
             recentFolders.noteOpened(root.url, isOpen: true)
-            return session.open(link: link)
+            session.open(link: link, showingProgress: !waitForRuntime)
+            return true
         }
-        guard selection.setupForOpening(link) != nil, let session = session(for: root, link: link) else {
-            if !selection.isBusy { showSettings(nil) }
-            return
+        let setup = waitForRuntime ? selection.setupForOpening(link) : operations.launchableSetup()
+        guard setup != nil, let session = session(for: root, link: link) else {
+            if waitForRuntime, !selection.isBusy { showSettings(nil) }
+            return false
         }
         let window = session.makeWindow()
         if let checkout = checkout(of: root.url) {
@@ -572,6 +606,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await session.startServer()
             self.recentFolders.refreshAfterOpen()
         }
+        return true
     }
 
     /// The open checkout of `repository` whose window a new window of its mirror joins as
@@ -637,7 +672,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Metabrowser has no copy of \(name) yet. Opening this link clones the repository into metab’s cache, and reads it and its pull requests with your gh sign-in."
         alert.addButton(withTitle: "Cancel")  // the first button is the default
         alert.addButton(withTitle: "Clone and Open")
+        cloneQuestionAlert = alert
+        defer { cloneQuestionAlert = nil }
         let clone = alert.runModal() == .alertSecondButtonReturn
+        guard clones.asking == root else { return false }
         AppLog.app.info("\(name, privacy: .public): clone \(clone ? "confirmed" : "declined", privacy: .public)")
         return clone
     }
@@ -753,10 +791,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 folderWindows.place(session.makeWindow())
             }
         case .openHere(let url):
-            recentFolders.openListed(url) { [weak self] in self?.request($0, into: window) }
+            recentFolders.openListed(url) { [weak self] in self?.requestRecent($0, into: window) }
         case .openInNewWindow(let url):
-            recentFolders.openListed(url) { [weak self] in self?.request($0) }
+            recentFolders.openListed(url) { [weak self] in self?.requestRecent($0) }
         }
+    }
+
+    /// Reopens the canonical repository the user chose in Open Recent, the Dock menu,
+    /// or the folder chooser. A recent folder follows the usual native folder path.
+    private func requestRecent(_ url: URL, into window: BrowserWindowController? = nil) {
+        guard !isQuitting else { return }
+        guard let repository = PresentPlan.repositoryURL(url.absoluteString) else {
+            return request(url, into: window)
+        }
+        recheckChangedRuntime()
+        let plan = PresentPlan(kind: .repository, repository: repository, link: repository)
+        guard !openEntered(plan) else { return }
+        _ = selection.setupForOpening(repository)
+        if selection.waitingFolders.contains(repository) { waitingRecentRepositories.insert(repository) }
+        if selection.droppedLinks > 0 { showNextLinkModal() }
+        if !selection.isBusy { showSettings(nil) }
     }
 
     /// File > Close Folder, for the folder the key window shows. Returns false, having
@@ -798,7 +852,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Opens the folders that waited for a runtime, each in the window it was asked to
     /// open in if that window is still open.
     private func openReleased(_ folders: [URL]) {
-        for (folder, window) in waitingWindows.release(folders) { request(folder, into: window) }
+        for (folder, window) in waitingWindows.release(folders) {
+            if waitingRecentRepositories.remove(folder) != nil {
+                requestRecent(folder, into: window)
+            } else {
+                request(folder, into: window)
+            }
+        }
     }
 
     @objc func openFolder(_ sender: Any?) {
@@ -842,9 +902,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch (finish.operation, finish.outcome) {
         case (_, .adopted(let found)):
             adopted(found, opening: finish.released)
+            if let request = waitingEnteredLink { checkEnteredLink(request) }
             switch finish.operation {
             case .search:
-                if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty, linksAreIdle {
+                if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty,
+                   linksAreIdle, !hasPendingEnteredLink {
                     openFolder(nil)
                 }
                 showPanelAfterDiscovery = false
@@ -863,6 +925,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Folders already open keep their servers; new ones wait for a runtime.
             AppLog.app.error("no usable metab in \(report.tried.count) places")
             lastLoginPath = report.loginPath
+            failEnteredRuntimeWait()
             await prepareGuide()
             showSettings(nil)
         case (.recheck(let path, let result), .notFound):
@@ -873,8 +936,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             runtimeModel.notice = MetabRequirement.flagShortfall(version).map {
                 "\(path) is metab \(version), \($0), which Metabrowser needs."
             } ?? "\(path) is metab \(version), and Metabrowser needs \(MetabRequirement.minimum) or later."
+            if !selection.needsRecheck && !selection.needsSearch { failEnteredRuntimeWait() }
         case (.choice(let path), .rejected(let rejected)):
             runtimeModel.notice = "\(path) is not a working metab: \(RuntimeView.describe(rejected))."
+            if !selection.needsRecheck && !selection.needsSearch { failEnteredRuntimeWait() }
         case (.search, _):
             AppLog.app.info("a search finished after a newer choice; its result is dropped")
         case (.recheck, _):
@@ -1007,6 +1072,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 self?.lookForRuntimeChanges()
             }
+        }
+    }
+
+    /// Open requests check immediately because the watch waits for files to settle.
+    private func recheckChangedRuntime() {
+        if let runtime = selection.setup?.runtime, !selection.isUnverified,
+           !runtime.isCurrent(fingerprint: FileFingerprint.of(runtime.executable)) {
+            beginRecheck()
         }
     }
 

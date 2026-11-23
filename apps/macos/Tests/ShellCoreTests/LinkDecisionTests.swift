@@ -186,6 +186,60 @@ nonisolated private let failed = ServerState.failed(ServerFailure(summary: "The 
         #expect(questions.arrive(link(4), into: r) == .lookUp)
     }
 
+    @Test func anExplicitOpenSupersedesAnOlderCacheLookup() {
+        var questions = CloneQuestions()
+        #expect(questions.arrive(link(1), into: r) == .lookUp)
+
+        let wasShowing = questions.openedExplicitly(r)
+        #expect(!wasShowing)
+        questions.ask(r)
+        #expect(questions.nextQuestion() == nil)
+
+        // The explicit request does not authorize another link after its session closes.
+        #expect(questions.arrive(link(2), into: r) == .lookUp)
+    }
+
+    @Test func aLateCacheHitDoesNotReopenTheOlderLink() {
+        var questions = CloneQuestions()
+        #expect(questions.arrive(link(1), into: r) == .lookUp)
+        let wasShowing = questions.openedExplicitly(r)
+        #expect(!wasShowing)
+
+        #expect(questions.found(r) == nil)
+        #expect(questions.isIdle)
+    }
+
+    @Test func anExplicitOpenOnlySupersedesTheMatchingQuestion() {
+        var questions = CloneQuestions()
+        _ = questions.arrive(link(1), into: r)
+        _ = questions.arrive(link(1, in: s), into: s)
+        questions.ask(r)
+        questions.ask(s)
+
+        #expect(questions.nextQuestion() == r)
+        let dismissedOtherQuestion = questions.openedExplicitly(s)
+        #expect(!dismissedOtherQuestion)
+        #expect(questions.asking == r)
+        let dismissedActiveQuestion = questions.openedExplicitly(r)
+        #expect(dismissedActiveQuestion)
+        #expect(questions.answer(r, clone: false) == nil)
+        #expect(questions.nextQuestion() == nil)
+        #expect(questions.endBurst().isEmpty)
+    }
+
+    @Test func anExplicitOpenLeavesEarlierExternalDeclinesInTheirBurst() {
+        var questions = CloneQuestions()
+        _ = questions.arrive(link(1), into: r)
+        questions.ask(r)
+        _ = questions.nextQuestion()
+        _ = questions.answer(r, clone: false)
+
+        let wasShowing = questions.openedExplicitly(r)
+        #expect(!wasShowing)
+        #expect(questions.arrive(link(2), into: r) == .declined)
+        #expect(questions.endBurst() == [r: 1])
+    }
+
     /// A decline with no other link into the repository has nothing more to say.
     @Test func aLoneDeclineSaysNothingMore() {
         var questions = CloneQuestions()

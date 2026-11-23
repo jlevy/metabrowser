@@ -182,6 +182,12 @@ import Testing
         #expect(open.filter { if case .target = $0 { true } else { false } } == dock)
     }
 
+    @Test func theMenusKeepTheMostRecentSixteenTargets() {
+        let targets = (0..<16).map(RecentTargets.Row.target)
+        #expect(RecentTargets.rows(for: .openRecent, count: 20) == targets + [.separator, .clear])
+        #expect(RecentTargets.rows(for: .dock, count: 20) == targets)
+    }
+
     @Test func withNothingRecentOpenRecentSaysSoAndTheDockMenuAddsNothing() {
         #expect(RecentTargets.rows(for: .openRecent, count: 0) == [.empty, .separator, .clear])
         #expect(RecentTargets.rows(for: .dock, count: 0) == [])
