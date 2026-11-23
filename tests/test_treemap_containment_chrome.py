@@ -5,8 +5,9 @@ The layout's rectangles are contained by construction, which
 what the stylesheet draws from them: a border-box cell is never smaller than its padding and
 its edge, and that floor once drew a 2 px cell 10 px wide, over its neighbours and past its
 folder's edge (mb-coqj). ``tests/dom/treemap-containment-chrome.mjs`` serves a wide, deep
-folder of files whose sizes span four orders of magnitude, opens the Treemap tab, and reads
-every drawn cell's box at a wide and a narrow window. This holds that:
+folder of files whose sizes span four orders of magnitude, reads every cell the Overview's
+compact map draws, then opens the Treemap tab and reads every drawn cell's box at a wide and
+a narrow window. This holds that:
 
 - the map draws hundreds of cells, many of them under 8 px on a side, and nests past two
   levels, so the reading covers the cells the floor used to widen;
@@ -35,7 +36,7 @@ from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_gro
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "treemap-containment-chrome.mjs"
-# A server start, one Chrome, a page load, a switch to the Treemap tab, and two readings,
+# A server start, one Chrome, a page load, a switch to the Treemap tab, and three readings,
 # as the Treemap legend's Chrome test does (its bound is set out there); this session waits
 # on nothing longer than that one does.
 SESSION_TIMEOUT_S = 90
@@ -105,5 +106,6 @@ def test_every_treemap_cell_lies_inside_its_folder_and_the_border_in_chrome(
     # Shown with a failure: every reading, and each phase's time.
     print(result.stdout, result.stderr)
     measured: dict[str, Any] = json.loads(result.stdout.strip().splitlines()[-1])
+    _contained(measured["compact"], "the Overview's compact map")
     _contained(measured["wide"], "1280 by 900")
     _contained(measured["narrow"], "760 by 600")

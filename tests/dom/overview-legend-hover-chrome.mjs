@@ -170,7 +170,13 @@ const READ = `(async () => {
     if (element.closest(".folder-totals")) return row.querySelector("th").textContent + " " + element.dataset.segmentKey;
     return "Details " + row.dataset.typeKey;
   };
-  const marked = [...document.querySelectorAll("[data-hovered]")];
+  // The compact treemap under the breakdown joins the section's hover; its cells are read
+  // apart from the bars and the legend, as the map's own marks.
+  const hovered = [...document.querySelectorAll("[data-hovered]")];
+  const marked = hovered.filter((element) => element.dataset.tmPath === undefined);
+  const mapViewport = document.querySelector(".tm-viewport-compact");
+  const mapCells = mapViewport ? [...mapViewport.querySelectorAll(".tm-cell")] : [];
+  const mapMarked = hovered.filter((element) => element.dataset.tmPath !== undefined);
   const bars = marked.filter((element) => element.classList.contains("file-type-summary-fill"));
   const style = (element) => {
     const computed = getComputedStyle(element);
@@ -260,8 +266,30 @@ const READ = `(async () => {
   const hoveredEntry = document.querySelector(".file-type-summary-legend-item:hover");
   const pointedSegment = bars.find((bar) => bar.matches(":hover"));
   const handle = hoveredEntry ?? pointedSegment;
+  const colorOf = (cell) => cell.style.getPropertyValue("--mb-distribution-color-light");
+  const mapBox = mapViewport?.getBoundingClientRect();
   return {
     marked: marked.map(nameOf),
+    map: {
+      cells: mapCells.length,
+      marked: mapMarked.map((cell) => cell.dataset.tmPath + " (" + cell.dataset.hovered + ")"),
+      // Every cell painted the color of the first marked cell: the cells of one family.
+      family: mapMarked.length
+        ? mapCells.filter((cell) => colorOf(cell) === colorOf(mapMarked[0])).map((cell) => cell.dataset.tmPath + " (family)")
+        : [],
+      liftedNotGrown: mapMarked.every((cell) => {
+        const { scaleY, scaleX, filter } = style(cell);
+        return scaleY === 1 && scaleX === 1 && filter !== "none";
+      }),
+      othersAtRest: mapCells.filter((cell) => !mapMarked.includes(cell)).every((cell) => getComputedStyle(cell).filter === "none"),
+      inside: mapCells.every((cell) => {
+        const r = cell.getBoundingClientRect();
+        const left = mapBox.left + mapViewport.clientLeft;
+        const top = mapBox.top + mapViewport.clientTop;
+        return r.left >= left - 0.05 && r.top >= top - 0.05 && r.right <= left + mapViewport.clientWidth + 0.05 && r.bottom <= top + mapViewport.clientHeight + 0.05;
+      }),
+      layout: mapCells.map(box),
+    },
     barStyle: bars.map(style),
     // Every other bar, and every bar outside the tally rows and an open Details, at rest.
     othersAtRest: fills
@@ -315,7 +343,7 @@ try {
   await chrome.send("Page.enable");
   await chrome.send("Page.navigate", { url: `${base}/view/` });
   await chrome.waitFor(
-    `document.querySelectorAll(".file-type-summary-legend-item").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-ignored-row [data-segment-key]").length > 0`,
+    `document.querySelectorAll(".file-type-summary-legend-item").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-ignored-row [data-segment-key]").length > 0 && document.querySelectorAll(".tm-viewport-compact .tm-cell").length > 0`,
     30000,
   );
   phase("loaded");

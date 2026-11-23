@@ -20,7 +20,10 @@
 // the population the shares are of is for screen readers only, so it is not in the text;
 // a step with one prints it apart as `caption`. A hover step prints the segments marked
 // as hovered and the tooltip the shell would show, with the handle it is anchored on, the
-// legend entry or the segment the pointer is on. Exits 1 on a failed invariant.
+// legend entry or the segment the pointer is on. Each step also prints the compact
+// treemap's box under the breakdown, which follows the breakdown's answer: left out, its
+// skeleton, unavailable, or drawn, and whether it has asked for its own deep tree. Exits 1
+// on a failed invariant.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -188,6 +191,21 @@ const COMPLETE_ROLLUP = {
   indexed_files: 3,
   max_files: 500000,
   truncated: false,
+  // The folder itself, without its tree, as a depth 0 request answers.
+  node: {
+    name: "docs",
+    path: "docs",
+    type: "dir",
+    state: "complete",
+    total_files: 3,
+    total_size: 3000,
+    unignored_files: 2,
+    unignored_size: 2000,
+    mtime: 1700000000.0,
+    gitignored: false,
+    dominant_ext: ".py",
+    children: null,
+  },
   file_type_breakdown: {
     schema: "file-type-breakdown-v1",
     registry: { schema_version: 1, revision: 1, fingerprint: "session" },
@@ -290,6 +308,7 @@ const rollupError = (status) =>
   function page(dir, firstAnswer) {
     const answers = { next: firstAnswer };
     let requests = 0;
+    let mapRequests = 0;
     // The page's one tooltip, as the shell keeps it: what it shows and the element it is
     // anchored on, until a hide puts it away. A hide within an element puts away only a
     // tooltip anchored there (docs/design-system.md, "A Surface Puts Away Only Its Own
@@ -334,32 +353,38 @@ const rollupError = (status) =>
         },
       },
       viewState: { isActive: () => true, subscribeActive: () => () => {} },
-      // The section's compact treemap (treemap-compact.js) watches its own deep rollup, the
-      // tree alone. This session follows the breakdown's rollup, the one that asks for no
-      // tree (depth 0), so the treemap's watch is inert here and takes none of the answers.
-      watchRollup: (scope, options, onUpdate) =>
-        options.depth !== 0
-          ? { dispose() {}, refresh: async () => {}, stale: () => false }
-          : window.MetabrowserInventoryScope.createInventoryWatch(
-              scope,
-              {
-                active: options.active,
-                debounceMs: 0,
-                fetch: async () => {
-                  requests += 1;
-                  const answer = answers.next;
-                  if (typeof answer === "function") {
-                    return answer();
-                  }
-                  if (answer instanceof Error) {
-                    throw answer;
-                  }
-                  return JSON.parse(JSON.stringify(answer));
-                },
-                onError: options.onError,
-              },
-              onUpdate,
-            ),
+      // Two requests, told apart by shape. The breakdown asks for no tree (depth 0) and
+      // takes every answer a step gives. The section's compact treemap (treemap-compact.js)
+      // asks for the deepest tree, and only once the breakdown says the index has settled;
+      // its watch is counted and never answers, so the map shows its skeleton wherever it
+      // keeps its box. What the map draws from a tree is treemap-compact-session.js's.
+      watchRollup: (scope, options, onUpdate) => {
+        if (options.depth !== 0) {
+          assert(options.depth === "max", `the map asked for depth ${options.depth}`);
+          mapRequests += 1;
+          return { dispose() {}, refresh: async () => {}, stale: () => false };
+        }
+        return window.MetabrowserInventoryScope.createInventoryWatch(
+          scope,
+          {
+            active: options.active,
+            debounceMs: 0,
+            fetch: async () => {
+              requests += 1;
+              const answer = answers.next;
+              if (typeof answer === "function") {
+                return answer();
+              }
+              if (answer instanceof Error) {
+                throw answer;
+              }
+              return JSON.parse(JSON.stringify(answer));
+            },
+            onError: options.onError,
+          },
+          onUpdate,
+        );
+      },
     };
     const controls = createFolderRollupControls(mb);
     const container = new FakeElement("div");
@@ -377,6 +402,19 @@ const rollupError = (status) =>
     const settle = () => new Promise((resolve) => setImmediate(resolve));
     const totals = () => container.querySelector(".folder-totals");
     const summary = () => container.querySelector(".file-type-summary-body");
+    /** The compact treemap's box: left out, its skeleton, unavailable, or drawn. */
+    const mapState = () => {
+      const box = container.querySelector(".tm-compact");
+      if (!box || box.hidden) {
+        return "left out";
+      }
+      const html = box.querySelector(".tm-viewport")?.html ?? "";
+      return html.includes("tm-loading")
+        ? "skeleton"
+        : html.includes("Treemap unavailable.")
+          ? "unavailable"
+          : "drawn";
+    };
     return {
       answers,
       controls,
@@ -392,7 +430,7 @@ const rollupError = (status) =>
           return { totals: "nothing", distribution: container.textContent, retry: false };
         }
         const caption = summary().querySelector(".file-type-summary-caption");
-        return {
+        const shown = {
           totals: shownTotals.html.includes("folder-totals-loading")
             ? "skeleton"
             : shownTotals.querySelector(".folder-totals-table")
@@ -410,7 +448,24 @@ const rollupError = (status) =>
               }
             : {}),
           retry: summary().html.includes("data-file-types-retry"),
+          map: mapState(),
+          mapAsked: mapRequests > 0,
         };
+        // The map's box is decided by the breakdown's answer: no box where the breakdown
+        // offers Retry or the totals have nothing to say, and no deep request while the
+        // breakdown still waits.
+        if (shown.retry || (shown.totals === "nothing" && shown.distribution !== "skeleton")) {
+          assert(shown.map === "left out", `the map kept its box: ${JSON.stringify(shown)}`);
+        }
+        assert(mapRequests <= 1, `the map asked for its tree ${mapRequests} times`);
+        if (shown.distribution === "skeleton") {
+          assert(shown.map === "skeleton", `the map did not wait: ${JSON.stringify(shown)}`);
+          assert(
+            !shown.mapAsked,
+            `the map asked before the index settled: ${JSON.stringify(shown)}`,
+          );
+        }
+        return shown;
       },
       retry() {
         summary().querySelector("[data-file-types-retry]").listeners.click();

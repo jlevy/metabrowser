@@ -14,9 +14,11 @@
 // belong side by side, and every number under them answers to both.
 //
 // The bodies stay in their own modules. They have genuinely different data
-// lifecycles — the breakdown owns the rollup fetch and projects its result to
-// the totals (see rollup-projection.js) — and merging their code would have
-// entangled that for the sake of a heading.
+// lifecycles — the breakdown owns the tallies' rollup fetch and projects its
+// result to the totals (see rollup-projection.js), and the compact treemap
+// fetches its own deep tree once the breakdown's answers say the index has
+// settled — and merging their code would have entangled that for the sake of
+// a heading.
 //
 // They share one hover. The breakdown's legend names the families of one of
 // the totals' bars, so pointing at an entry lifts that bar's segment: the
@@ -80,6 +82,13 @@ export function mountFileOverviewPanel(
   const unmountControls = rollupControls.mount(controls);
   const hover = createDistributionHover();
 
+  // Last on the page: where the files sit, below what they are. It mounts
+  // first, so the breakdown's first answer can decide its box.
+  const treemap = mountCompactTreemap(treemapContainer, context, mb, palette, rollupControls, {
+    ...options,
+    hover,
+  });
+
   // Totals first, then the breakdown that refines them — the same order a
   // reader asks the two questions in. The breakdown mounts second but drives
   // the rollup fetch both bodies read.
@@ -104,15 +113,12 @@ export function mountFileOverviewPanel(
       hover,
       onNoTotals: () => totals.stopLoading(),
       onTotalsPending: () => totals.resumeLoading(),
+      // The map's box is decided by the breakdown's answer, the one the first paint
+      // waits for below, so it is there or not from that paint on.
+      onSnapshot: (snapshot) => treemap.follow(snapshot),
+      onRetry: () => treemap.refresh(),
     },
   );
-
-  // Last: where the files sit, below what they are. It holds no first paint,
-  // since its box keeps a fixed height whether or not its rollup has answered.
-  const treemap = mountCompactTreemap(treemapContainer, context, mb, palette, rollupControls, {
-    ...options,
-    hover,
-  });
 
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let waiting;

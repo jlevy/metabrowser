@@ -32,7 +32,14 @@ import {
   normalizeFolderTotals,
   notIndexedStatement,
 } from "./folder-totals.js";
-import { createTreemapMap, treemapRollupQuery } from "./treemap-map.js";
+import {
+  createTreemapMap,
+  isCompleteSnapshot,
+  TREEMAP_LOADING_HTML,
+  TREEMAP_VIEW_ID,
+  treemapAvailability,
+  treemapRollupQuery,
+} from "./treemap-map.js";
 import { parentNavigation } from "./treemap-model.js";
 
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} TreemapPalette */
@@ -41,7 +48,6 @@ import { parentNavigation } from "./treemap-model.js";
 
 /** @param {MetabrowserPublicSdk} mb @param {TreemapPalette} palette @param {{mount: (container: HTMLElement) => () => void, get: () => TreemapState, subscribe: (listener: (state: TreemapState) => void) => () => void}} rollupControls */
 export function registerTreemap(mb, palette, rollupControls) {
-  const TREEMAP_VIEW_ID = "treemap";
   /** Viewport height bounds: the map fills the space between its own
    * top edge and the window bottom (minus the status line and pane
    * padding), so wrapped toolbars or long breadcrumbs never push it
@@ -50,8 +56,6 @@ export function registerTreemap(mb, palette, rollupControls) {
   const VIEWPORT_MIN_H = 280;
   const VIEWPORT_MAX_H = 900;
   const VIEWPORT_BOTTOM_RESERVE = 64;
-  const LOADING_HTML =
-    '<div class="tm-loading mb-delayed-loading" aria-hidden="true"></div><span class="sr-only">Loading treemap…</span>';
 
   /**
    * Exceptional status copy; steady-state totals render above the map.
@@ -249,17 +253,6 @@ export function registerTreemap(mb, palette, rollupControls) {
       }
     }
 
-    /**
-     * The index has stopped, and has said all it will about this folder.
-     * @param {Record<string, any> | null} snapshot
-     */
-    function isCompleteSnapshot(snapshot) {
-      return (
-        (snapshot?.index_status === "done" || snapshot?.index_status === "truncated") &&
-        snapshot.node?.state !== "pending"
-      );
-    }
-
     // The cells, and their part of the hover the map shares with its bars and legend.
     const map = createTreemapMap(mb, palette, viewport, {
       size: "full",
@@ -278,26 +271,20 @@ export function registerTreemap(mb, palette, rollupControls) {
       const failed = envelope?.index_status === "failed";
       status.dataset.severity = failed ? "error" : "warning";
       status.setAttribute("role", failed ? "alert" : "status");
-      const node = envelope ? envelope.node : null;
-      const terminal = isCompleteSnapshot(envelope);
-      if (!terminal || !node) {
-        // The index has finished without this folder, stopped at its cap before
-        // finishing it, or the last request failed with no map to keep: nothing
-        // is coming, so no skeleton either.
+      const availability = treemapAvailability(envelope, rollupFailed);
+      if (availability !== "map") {
+        // Nothing is coming when it is unavailable, so no skeleton either.
         map.render(null, {
           placeholderHtml:
-            envelope?.index_status === "failed" ||
-            (terminal && !node) ||
-            (envelope?.index_status === "truncated" && node?.state === "pending") ||
-            rollupFailed
+            availability === "unavailable"
               ? '<div class="preview-empty">Treemap unavailable.</div>'
-              : LOADING_HTML,
+              : TREEMAP_LOADING_HTML,
         });
         return;
       }
-      map.render(node, {
+      map.render(envelope?.node ?? null, {
         // A box too small to draw in yet is a map still arriving.
-        placeholderHtml: LOADING_HTML,
+        placeholderHtml: TREEMAP_LOADING_HTML,
         emptyHtml:
           '<div class="preview-empty">This folder is empty, so there is nothing to draw yet.</div>',
       });
@@ -350,7 +337,6 @@ export function registerTreemap(mb, palette, rollupControls) {
       ctx.path,
       {
         active: isVisible,
-        ext_rank: "dual",
         ...treemapRollupQuery(),
         onError: onRollupError,
       },

@@ -34,10 +34,17 @@ const SIZE_PRESETS = Object.freeze({
     restLabels: true,
   }),
   // The same cell cap: the smaller box already culls by geometry, and a
-  // lower cap only turned files that had room into remainder cells. Headers
-  // need a wider folder, so small folders frame rather than spend a line.
+  // lower cap only turned files that had room into remainder cells. A
+  // folder's label is smaller here, so the label bounds are lower, and a
+  // frame may be a little smaller, since its cells are drawn small anyway.
+  // The compact cell's label is the full map's 12 px type with 1 px of padding
+  // (styles.css): measured in Chrome, its title box is 13.6 to 14.5 px tall and
+  // its ink ends inside 14 px, and 44 px leaves 36 px of text, about five
+  // characters before the ellipsis. A 12 px frame leaves an 8 px interior, room
+  // for a child twice minCellPx on each side, where the full map's 14 px asks
+  // for more room than most of the compact map's small folders have.
   compact: Object.freeze({
-    layout: Object.freeze({ nestMinW: 96, nestMinH: 40, frameNestMinPx: 12 }),
+    layout: Object.freeze({ frameNestMinPx: 12 }),
     labelMinW: 44,
     labelMinH: 14,
     values: false,
@@ -45,16 +52,62 @@ const SIZE_PRESETS = Object.freeze({
   }),
 });
 
+/** The Treemap view, which a map cell opens at its folder (treemap.js registers it). */
+export const TREEMAP_VIEW_ID = "treemap";
+
+/** What a map shows while its tree is on its way. */
+export const TREEMAP_LOADING_HTML =
+  '<div class="tm-loading mb-delayed-loading" aria-hidden="true"></div><span class="sr-only">Loading treemap…</span>';
+
 /**
  * The rollup a treemap requests: the deepest tree the server returns, with
  * the most children per folder (the route resolves "max" to ROLLUP_MAX_DEPTH
- * and ROLLUP_MAX_TOP, settings.py). The server's node budget, not these, bounds
- * the response, and the layout folds whatever has no room into remainder
- * cells.
- * @returns {{depth: "max", top: "max"}}
+ * and ROLLUP_MAX_TOP, settings.py), and the tallies the Treemap's legend reads.
+ * The server's node budget, not these, bounds the response, and the layout
+ * folds whatever has no room into remainder cells. Every map asks in this one
+ * shape, so the server's body cache answers the Overview's map and the
+ * Treemap view with one body.
+ * @returns {{ext_rank: "dual", depth: "max", top: "max"}}
  */
 export function treemapRollupQuery() {
-  return { depth: "max", top: "max" };
+  return { ext_rank: "dual", depth: "max", top: "max" };
+}
+
+/**
+ * The index has stopped, and has said all it will about this folder.
+ * @param {Record<string, any> | null} snapshot
+ * @returns {boolean}
+ */
+export function isCompleteSnapshot(snapshot) {
+  return (
+    (snapshot?.index_status === "done" || snapshot?.index_status === "truncated") &&
+    snapshot.node?.state !== "pending"
+  );
+}
+
+/**
+ * What a map's host shows for a rollup snapshot: the map; its skeleton while
+ * the tree is on its way; or nothing, since nothing is coming, when the index
+ * failed, finished without this folder, or stopped at its cap before finishing
+ * it, or the last request failed with no map to keep.
+ * @param {Record<string, any> | null} snapshot
+ * @param {boolean} failed  the last request failed
+ * @returns {"map" | "loading" | "unavailable"}
+ */
+export function treemapAvailability(snapshot, failed) {
+  const terminal = isCompleteSnapshot(snapshot);
+  if (terminal && snapshot?.node) {
+    return "map";
+  }
+  if (
+    failed ||
+    snapshot?.index_status === "failed" ||
+    terminal ||
+    (snapshot?.index_status === "truncated" && snapshot?.node?.state === "pending")
+  ) {
+    return "unavailable";
+  }
+  return "loading";
 }
 
 /**

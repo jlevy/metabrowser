@@ -1,5 +1,5 @@
-// Whether every cell the Treemap draws lies inside its parent folder's cell and inside the
-// map's border, as Chrome lays the cells out: a served folder, the shell's page, and
+// Whether every cell the Treemap draws, in its view and in the Overview's compact map, lies
+// inside its parent folder's cell and inside the map's border, as Chrome lays the cells out: a served folder, the shell's page, and
 // headless Chrome.
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
@@ -69,12 +69,16 @@ async function serve() {
   };
 }
 
+// The Treemap view's map, and the compact one on the Overview.
+const FULL = ".tm-viewport:not(.tm-viewport-compact)";
+const COMPACT = ".tm-viewport-compact";
+
 // Every drawn cell against its parent folder's drawn cell (a remainder carries its folder's
 // own path) and against the viewport's padding box, the box cells are placed in. A cell
 // may meet an edge; past it by more than a rounding step is an escape.
-const READ = `(() => {
+const read = (selector) => `(() => {
   const SLACK = 0.05;
-  const viewport = document.querySelector(".tm-viewport");
+  const viewport = document.querySelector(${JSON.stringify(selector)});
   const outer = viewport.getBoundingClientRect();
   const inner = {
     left: outer.left + viewport.clientLeft,
@@ -148,16 +152,20 @@ try {
   phase("chrome");
   await chrome.send("Page.enable");
   await chrome.send("Page.navigate", { url: `${base}/view/` });
+  // The Overview opens first, with the compact map under the type breakdown.
+  await chrome.waitFor(`document.querySelectorAll("${COMPACT} .tm-cell").length > 50`, 30000);
+  await chrome.evaluate(`new Promise((resolve) => setTimeout(resolve, 500))`);
+  /** @type {Record<string, any>} */
+  const result = { compact: await chrome.evaluate(read(COMPACT)) };
   const TAB = `document.querySelector('#preview-pane > .tab-bar > .tab-btn[data-tab="treemap"]')`;
   await chrome.waitFor(`${TAB} !== null`, 30000);
   await chrome.evaluate(`${TAB}.click()`);
   // The map draws once the index has finished; the count settles when the last answer
   // has been laid out.
-  await chrome.waitFor(`document.querySelectorAll(".tm-viewport .tm-cell").length > 100`, 30000);
+  await chrome.waitFor(`document.querySelectorAll("${FULL} .tm-cell").length > 100`, 30000);
   await chrome.evaluate(`new Promise((resolve) => setTimeout(resolve, 500))`);
   phase("loaded");
-  /** @type {Record<string, any>} */
-  const result = { wide: await chrome.evaluate(READ) };
+  result.wide = await chrome.evaluate(read(FULL));
   // A narrower window: the same tree in less room, so more of it is drawn small.
   await chrome.send("Emulation.setDeviceMetricsOverride", {
     width: 760,
@@ -166,7 +174,7 @@ try {
     mobile: false,
   });
   await chrome.evaluate(`new Promise((resolve) => setTimeout(resolve, 800))`);
-  result.narrow = await chrome.evaluate(READ);
+  result.narrow = await chrome.evaluate(read(FULL));
   phase("measured");
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {

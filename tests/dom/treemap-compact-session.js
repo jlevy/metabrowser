@@ -1,10 +1,12 @@
 // Run the production compact treemap (treemap-compact.js, over treemap-map.js and
-// treemap-layout.js) through its states: the skeleton while the rollup is on its way,
-// the drawn tree once the index has finished, the section's legend hover marking a
-// family's cells, activation, a control change, a failed refresh that keeps the map, and
-// stepping out of the section when the first rollup fails or the folder is empty.
-// Disposal releases every listener, the watch, and the observer, and puts away only the
-// map's own tooltip.
+// treemap-layout.js) through its states. Its box follows the section breakdown's answers:
+// kept with a skeleton while the index scans, without asking for the deep tree; left out
+// when the breakdown's request failed, the index stopped at its cap, or the folder holds no
+// files in the population shown; and drawn once the index has settled and the map's own
+// rollup answers. It follows the section's legend hover, measure, Show ignored, and the
+// tab's activation; a cell opens the Treemap view at its folder; a failed rollup keeps the
+// box and recovers on Retry. Disposal releases every listener, the watch, and the observer,
+// and puts away only the map's own tooltip.
 //
 // The DOM is a stand-in for the calls the map makes. A cell element is parsed back out
 // of the HTML the map writes, so what the session reads is what the map drew.
@@ -25,9 +27,10 @@ const folder = (name) =>
 
 /** A drawn cell, parsed from the map's HTML. */
 class FakeCell {
-  constructor(index, kind, pathName, classes) {
+  constructor(index, kind, pathName, classes, box) {
     this.dataset = { tmCell: String(index), tmKind: kind, tmPath: pathName };
     this.classes = classes;
+    this.box = box;
   }
   closest(selector) {
     return selector === "[data-tm-cell]" ? this : null;
@@ -52,9 +55,10 @@ class FakeElement {
     this._html = html;
     this.cells = [];
     const pattern =
-      /<div class="([^"]*)"[^>]*data-tm-cell="(\d+)" data-tm-kind="(\w+)" data-tm-path="([^"]*)"/g;
+      /<div class="([^"]*)"[^>]*data-tm-cell="(\d+)" data-tm-kind="(\w+)" data-tm-path="([^"]*)" style="left:([\d.]+)px;top:([\d.]+)px;width:([\d.]+)px;height:([\d.]+)px/g;
     for (const match of html.matchAll(pattern)) {
-      this.cells.push(new FakeCell(Number(match[2]), match[3], match[4], match[1].split(" ")));
+      const box = match.slice(5, 9).map(Number);
+      this.cells.push(new FakeCell(Number(match[2]), match[3], match[4], match[1].split(" "), box));
     }
   }
   get innerHTML() {
@@ -94,13 +98,18 @@ class FakeElement {
 
 const EXTENSION_FAMILIES = { ".py": "python", ".md": "markdown" };
 
-function file(name, filePath, size, ext) {
-  return { name, path: filePath, type: "file", size, ext, gitignored: false, mtime: 1 };
+function file(name, filePath, size, ext, gitignored = false) {
+  return { name, path: filePath, type: "file", size, ext, gitignored, mtime: 1 };
 }
 
-function dir(name, dirPath, children) {
-  const files = children.reduce((sum, c) => sum + (c.type === "dir" ? c.total_files : 1), 0);
-  const size = children.reduce((sum, c) => sum + (c.type === "dir" ? c.total_size : c.size), 0);
+function dir(name, dirPath, children, gitignored = false) {
+  const sum = (pick) => children.reduce((total, c) => total + pick(c), 0);
+  const files = sum((c) => (c.type === "dir" ? c.total_files : 1));
+  const size = sum((c) => (c.type === "dir" ? c.total_size : c.size));
+  const unignoredFiles = sum((c) => (c.type === "dir" ? c.unignored_files : c.gitignored ? 0 : 1));
+  const unignoredSize = sum((c) =>
+    c.type === "dir" ? c.unignored_size : c.gitignored ? 0 : c.size,
+  );
   const counts = {};
   for (const c of children) {
     const ext = c.type === "dir" ? c.dominant_ext : c.ext;
@@ -114,9 +123,9 @@ function dir(name, dirPath, children) {
     state: "complete",
     total_files: files,
     total_size: size,
-    unignored_files: files,
-    unignored_size: size,
-    gitignored: false,
+    unignored_files: unignoredFiles,
+    unignored_size: unignoredSize,
+    gitignored,
     dominant_ext: dominant,
     mtime: 1,
     children,
@@ -134,7 +143,16 @@ const TREE = dir("src", "src", [
     file("notes.md", "src/docs/notes.md", 1500, ".md"),
   ]),
   file("README.md", "src/README.md", 2500, ".md"),
+  file("cache.md", "src/cache.md", 9000, ".md", true),
 ]);
+const ONLY_IGNORED = dir("src", "src", [file("cache.md", "src/cache.md", 9000, ".md", true)]);
+const EMPTY = dir("src", "src", []);
+
+/** What the section's breakdown is told: its tally rollup has the folder's node, no tree. */
+const breakdownAnswer = (indexStatus, tree, nodeState = "complete") => ({
+  index_status: indexStatus,
+  node: { ...tree, children: null, state: nodeState },
+});
 
 async function main() {
   // A failed rollup is logged; the session reports those lines as data instead.
@@ -143,9 +161,7 @@ async function main() {
   const { createDistributionHover } = await import(folder("distribution-hover.js"));
   const { mountCompactTreemap } = await import(folder("treemap-compact.js"));
 
-  global.window = {
-    METABROWSER_SETTINGS: { ROLLUP_MAX_DEPTH: 12, ROLLUP_MAX_TOP: 200 },
-  };
+  global.window = {};
   global.document = { createElement: (tag) => new FakeElement(tag) };
   const observers = [];
   global.ResizeObserver = class {
@@ -164,10 +180,10 @@ async function main() {
   };
 
   /** One mount: its rollup watch, navigation, tooltip, and controls. */
-  function mount() {
+  function mount({ width = 600 } = {}) {
     const navigation = [];
     const tooltipHides = [];
-    const watch = { options: null, apply: null, disposed: false };
+    const watch = { options: null, apply: null, disposed: false, refreshes: 0, stale: false };
     let controlsState = { metric: "size", includeIgnored: true };
     const controlListeners = new Set();
     const activeListeners = new Set();
@@ -191,14 +207,17 @@ async function main() {
       },
       watchRollup(scope, options, apply) {
         assert.equal(scope, "src");
+        assert.equal(watch.options, null, "the map asks for its tree once");
         watch.options = options;
         watch.apply = apply;
         return {
           dispose() {
             watch.disposed = true;
           },
-          refresh: async () => {},
-          stale: () => false,
+          refresh: async () => {
+            watch.refreshes += 1;
+          },
+          stale: () => watch.stale,
         };
       },
     };
@@ -212,13 +231,20 @@ async function main() {
     const palette = { classFor: (key) => `c-${key}`, styleFor: () => "", paint() {} };
     const hover = createDistributionHover();
     const container = new FakeElement("div");
+    // The box the stylesheet gives the compact map, inside its border; set before the
+    // mount, as the stylesheet sizes it before the first paint.
+    const created = document.createElement;
+    document.createElement = (tag) => {
+      const element = created(tag);
+      element.clientWidth = width;
+      element.clientHeight = 218;
+      return element;
+    };
     const handle = mountCompactTreemap(container, { path: "src" }, mb, palette, controls, {
       hover,
     });
+    document.createElement = created;
     const viewport = container.children[0];
-    // The box the stylesheet gives the compact map, inside its border.
-    viewport.clientWidth = 600;
-    viewport.clientHeight = 218;
     return {
       handle,
       container,
@@ -235,7 +261,13 @@ async function main() {
           listener(next);
         }
       },
-      resize() {
+      activate() {
+        for (const listener of [...activeListeners]) {
+          listener(true);
+        }
+      },
+      resize(width) {
+        viewport.clientWidth = width;
         for (const observer of observers) {
           if (observer.observed.includes(viewport)) {
             observer.callback();
@@ -248,41 +280,41 @@ async function main() {
   const summary = (page) => ({
     hidden: page.container.hidden,
     skeleton: page.viewport.innerHTML.includes("tm-loading"),
-    cells: page.viewport.cells.map((cell) => `${cell.dataset.tmKind} ${cell.dataset.tmPath}`),
+    unavailable: page.viewport.innerHTML.includes("Treemap unavailable."),
+    asked: page.watch.options !== null,
+    cells: page.viewport.cells.map(
+      (cell) =>
+        `${cell.dataset.tmKind} ${cell.dataset.tmPath} ${cell.box[2].toFixed(0)}x${cell.box[3].toFixed(0)}`,
+    ),
   });
   const steps = [];
 
-  // ── a folder whose rollup arrives ─────────────────────────────
+  // ── a folder whose index settles ──────────────────────────────
   const page = mount();
+  steps.push({ step: "mounted, before the breakdown answers", ...summary(page) });
+
+  page.handle.follow(breakdownAnswer("scanning", TREE, "pending"));
+  steps.push({ step: "the breakdown says the index is still scanning", ...summary(page) });
+
+  page.handle.follow(breakdownAnswer("done", TREE));
   steps.push({
-    step: "mounted, before any answer",
+    step: "the breakdown says the index has finished",
     request: {
       depth: page.watch.options.depth,
       top: page.watch.options.top,
-      ext_top: page.watch.options.ext_top,
-      filename_top: page.watch.options.filename_top,
-      remaining_top: page.watch.options.remaining_top,
+      ext_rank: page.watch.options.ext_rank,
     },
     ...summary(page),
   });
 
-  page.watch.apply({ index_status: "scanning", node: { ...TREE, state: "pending" } });
-  steps.push({ step: "the index is still scanning", ...summary(page) });
-
-  page.resize();
   page.watch.apply({ index_status: "done", node: TREE });
   // Every cell fits inside the border: the map lays out to the client box, not to the
   // bounding box, which is larger by the border and pushed edge cells under it.
-  const boxes = [
-    ...page.viewport.innerHTML.matchAll(
-      /left:([\d.]+)px;top:([\d.]+)px;width:([\d.]+)px;height:([\d.]+)px/g,
-    ),
-  ].map((m) => m.slice(1).map(Number));
-  const insideBorder = boxes.every(
-    ([left, top, width, height]) =>
+  const insideBorder = page.viewport.cells.every(
+    ({ box: [left, top, width, height] }) =>
       left + width <= page.viewport.clientWidth && top + height <= page.viewport.clientHeight,
   );
-  steps.push({ step: "the index has finished", insideBorder, ...summary(page) });
+  steps.push({ step: "the map's tree arrives", insideBorder, ...summary(page) });
 
   const entry = { tag: "legend-entry" };
   page.hover.enter({ population: "all", key: "python", anchor: entry, marks: "family" });
@@ -300,16 +332,29 @@ async function main() {
   );
 
   const click = page.viewport.listeners.get("click");
-  for (const target of ["src/lib/app.py", "src/docs"]) {
+  for (const target of ["src/lib/app.py", "src/docs", "src/README.md"]) {
     const cell = page.viewport.cells.find((c) => c.dataset.tmPath === target);
     if (cell) {
       click({ target: cell });
     }
   }
-  steps.push({ step: "activating a file cell and a folder cell", navigation: page.navigation });
+  steps.push({
+    step: "activating two file cells and a folder cell opens the Treemap at their folders",
+    navigation: page.navigation,
+  });
 
   page.setControls({ metric: "files", includeIgnored: true });
   steps.push({ step: "the measure switches to Files", ...summary(page) });
+
+  page.setControls({ metric: "files", includeIgnored: false });
+  steps.push({ step: "Show ignored is turned off", ...summary(page) });
+
+  page.watch.stale = true;
+  page.activate();
+  steps.push({
+    step: "the tab is shown again after a change while hidden",
+    refreshes: page.watch.refreshes,
+  });
 
   const drawn = page.viewport.innerHTML;
   page.watch.options.onError(new Error("refresh failed"));
@@ -330,17 +375,67 @@ async function main() {
     hidOwnTooltipOnly: page.tooltipHides.at(-1) === page.container,
   });
 
-  // ── a folder whose first rollup fails ─────────────────────────
+  // ── the breakdown's request fails, and Retry recovers ─────────
+  const retried = mount();
+  retried.handle.follow(null);
+  steps.push({ step: "the breakdown's request fails", ...summary(retried) });
+  retried.handle.refresh();
+  retried.handle.follow(breakdownAnswer("done", TREE));
+  retried.watch.apply({ index_status: "done", node: TREE });
+  steps.push({
+    step: "Retry: the breakdown answers, and the map follows",
+    hidden: retried.container.hidden,
+    drawn: retried.viewport.cells.length > 0,
+  });
+  retried.handle.dispose();
+
+  // ── the map's own first rollup fails, and Retry recovers ──────
   const failing = mount();
+  failing.handle.follow(breakdownAnswer("done", TREE));
   failing.watch.options.onError(new Error("no rollup"));
-  steps.push({ step: "the first rollup fails", ...summary(failing) });
+  steps.push({ step: "the map's first rollup fails", ...summary(failing) });
+  failing.handle.refresh();
+  failing.watch.apply({ index_status: "done", node: TREE });
+  steps.push({
+    step: "Retry: the map asks again, and its tree arrives",
+    refreshes: failing.watch.refreshes,
+    hidden: failing.container.hidden,
+    drawn: failing.viewport.cells.length > 0,
+  });
   failing.handle.dispose();
 
-  // ── an empty folder ───────────────────────────────────────────
+  // ── an index stopped at its cap before finishing this folder ──
+  const capped = mount();
+  capped.handle.follow(breakdownAnswer("truncated", TREE, "pending"));
+  steps.push({ step: "the index stopped at its cap mid-folder", ...summary(capped) });
+  capped.handle.dispose();
+
+  // ── an empty folder, and one whose files are all ignored ──────
   const empty = mount();
-  empty.watch.apply({ index_status: "done", node: dir("src", "src", []) });
+  empty.handle.follow(breakdownAnswer("done", EMPTY));
   steps.push({ step: "the folder is empty", ...summary(empty) });
   empty.handle.dispose();
+
+  const ignored = mount();
+  ignored.setControls({ metric: "size", includeIgnored: false });
+  ignored.handle.follow(breakdownAnswer("done", ONLY_IGNORED));
+  steps.push({ step: "every file is ignored, and Show ignored is off", ...summary(ignored) });
+  ignored.setControls({ metric: "size", includeIgnored: true });
+  steps.push({ step: "Show ignored is turned on", ...summary(ignored) });
+  ignored.handle.dispose();
+
+  // ── a box too small to draw in yet ────────────────────────────
+  const narrow = mount({ width: 6 });
+  narrow.handle.follow(breakdownAnswer("done", TREE));
+  narrow.watch.apply({ index_status: "done", node: TREE });
+  steps.push({ step: "the box is too narrow to draw in", ...summary(narrow) });
+  narrow.resize(600);
+  steps.push({
+    step: "the pane widens",
+    hidden: narrow.container.hidden,
+    drawn: narrow.viewport.cells.length > 0,
+  });
+  narrow.handle.dispose();
 
   console.log(JSON.stringify({ steps, warnings }, null, 2));
 }

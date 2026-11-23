@@ -6,13 +6,17 @@ env:
 ---
 # Golden Test: The Overview’s Compact Treemap
 
-The production compact treemap under File Overview’s type breakdown asks for the
-deepest, widest tree the server returns, shows a skeleton until the index has finished,
-then draws every folder and file inside the map’s border.
-The section’s legend hover marks the family’s cells, a cell opens its folder or file,
-and a change of measure lays the map out again.
-A refresh that fails keeps the map; a first rollup that fails, or an empty folder, takes
-the map out of the section.
+The production compact treemap under File Overview’s type breakdown follows the section
+breakdown’s answers.
+While the index scans it keeps its box with a skeleton and does not ask for the deep
+tree; once the index has finished it asks for the deepest, widest tree the server
+returns, the same request the Treemap view makes, and draws every folder and file inside
+the map’s border. The section’s legend hover marks the family’s cells, a cell opens the
+Treemap view at its folder, and a change of measure or of Show ignored lays the map out
+again. A refresh that fails keeps the map; a first rollup that fails shows that the map
+is unavailable and recovers on Retry.
+The box is left out when the breakdown failed, the index stopped at its cap before
+finishing the folder, or the folder holds no files in the population shown.
 Disposal releases every listener, the watch, and the observer, and puts away only the
 map’s own tooltip.
 
@@ -21,38 +25,51 @@ $ node tests/dom/treemap-compact-session.js
 {
   "steps": [
     {
-      "step": "mounted, before any answer",
+      "step": "mounted, before the breakdown answers",
+      "hidden": false,
+      "skeleton": true,
+      "unavailable": false,
+      "asked": false,
+      "cells": []
+    },
+    {
+      "step": "the breakdown says the index is still scanning",
+      "hidden": false,
+      "skeleton": true,
+      "unavailable": false,
+      "asked": false,
+      "cells": []
+    },
+    {
+      "step": "the breakdown says the index has finished",
       "request": {
-        "depth": 12,
-        "top": 200,
-        "ext_top": 0,
-        "filename_top": 0,
-        "remaining_top": 0
+        "depth": "max",
+        "top": "max",
+        "ext_rank": "dual"
       },
       "hidden": false,
       "skeleton": true,
+      "unavailable": false,
+      "asked": true,
       "cells": []
     },
     {
-      "step": "the index is still scanning",
-      "hidden": false,
-      "skeleton": true,
-      "cells": []
-    },
-    {
-      "step": "the index has finished",
+      "step": "the map's tree arrives",
       "insideBorder": true,
       "hidden": false,
       "skeleton": false,
+      "unavailable": false,
+      "asked": true,
       "cells": [
-        "dir src/lib",
-        "dir src/docs",
-        "file src/README.md",
-        "file src/lib/app.py",
-        "file src/lib/util.py",
-        "file src/lib/cli.py",
-        "file src/docs/guide.md",
-        "file src/docs/notes.md"
+        "dir src/lib 243x217",
+        "file src/cache.md 199x217",
+        "dir src/docs 155x139",
+        "file src/README.md 155x77",
+        "file src/lib/app.py 130x191",
+        "file src/lib/util.py 108x114",
+        "file src/lib/cli.py 108x76",
+        "file src/docs/guide.md 100x116",
+        "file src/docs/notes.md 50x116"
       ]
     },
     {
@@ -65,16 +82,30 @@ $ node tests/dom/treemap-compact-session.js
       ]
     },
     {
-      "step": "activating a file cell and a folder cell",
+      "step": "activating two file cells and a folder cell opens the Treemap at their folders",
       "navigation": [
         [
           {
-            "path": "src/lib/app.py"
+            "path": "src/lib"
+          },
+          {
+            "viewId": "treemap"
           }
         ],
         [
           {
             "path": "src/docs"
+          },
+          {
+            "viewId": "treemap"
+          }
+        ],
+        [
+          {
+            "path": "src"
+          },
+          {
+            "viewId": "treemap"
           }
         ]
       ]
@@ -83,30 +114,56 @@ $ node tests/dom/treemap-compact-session.js
       "step": "the measure switches to Files",
       "hidden": false,
       "skeleton": false,
+      "unavailable": false,
+      "asked": true,
       "cells": [
-        "dir src/lib",
-        "dir src/docs",
-        "file src/README.md",
-        "file src/lib/app.py",
-        "file src/lib/util.py",
-        "file src/lib/cli.py",
-        "file src/docs/guide.md",
-        "file src/docs/notes.md"
+        "dir src/lib 256x217",
+        "dir src/docs 170x217",
+        "file src/README.md 170x108",
+        "file src/cache.md 170x108",
+        "file src/lib/app.py 168x95",
+        "file src/lib/util.py 168x95",
+        "file src/lib/cli.py 83x191",
+        "file src/docs/guide.md 166x96",
+        "file src/docs/notes.md 166x96"
       ]
+    },
+    {
+      "step": "Show ignored is turned off",
+      "hidden": false,
+      "skeleton": false,
+      "unavailable": false,
+      "asked": true,
+      "cells": [
+        "dir src/lib 299x217",
+        "dir src/docs 199x217",
+        "file src/README.md 99x217",
+        "file src/lib/app.py 98x190",
+        "file src/lib/util.py 98x190",
+        "file src/lib/cli.py 98x190",
+        "file src/docs/guide.md 97x192",
+        "file src/docs/notes.md 97x192"
+      ]
+    },
+    {
+      "step": "the tab is shown again after a change while hidden",
+      "refreshes": 1
     },
     {
       "step": "a refresh fails after a complete answer",
       "hidden": false,
       "skeleton": false,
+      "unavailable": false,
+      "asked": true,
       "cells": [
-        "dir src/lib",
-        "dir src/docs",
-        "file src/README.md",
-        "file src/lib/app.py",
-        "file src/lib/util.py",
-        "file src/lib/cli.py",
-        "file src/docs/guide.md",
-        "file src/docs/notes.md"
+        "dir src/lib 299x217",
+        "dir src/docs 199x217",
+        "file src/README.md 99x217",
+        "file src/lib/app.py 98x190",
+        "file src/lib/util.py 98x190",
+        "file src/lib/cli.py 98x190",
+        "file src/docs/guide.md 97x192",
+        "file src/docs/notes.md 97x192"
       ]
     },
     {
@@ -120,16 +177,76 @@ $ node tests/dom/treemap-compact-session.js
       "hidOwnTooltipOnly": true
     },
     {
-      "step": "the first rollup fails",
+      "step": "the breakdown's request fails",
       "hidden": true,
       "skeleton": false,
+      "unavailable": false,
+      "asked": false,
+      "cells": []
+    },
+    {
+      "step": "Retry: the breakdown answers, and the map follows",
+      "hidden": false,
+      "drawn": true
+    },
+    {
+      "step": "the map's first rollup fails",
+      "hidden": false,
+      "skeleton": false,
+      "unavailable": true,
+      "asked": true,
+      "cells": []
+    },
+    {
+      "step": "Retry: the map asks again, and its tree arrives",
+      "refreshes": 1,
+      "hidden": false,
+      "drawn": true
+    },
+    {
+      "step": "the index stopped at its cap mid-folder",
+      "hidden": true,
+      "skeleton": false,
+      "unavailable": false,
+      "asked": false,
       "cells": []
     },
     {
       "step": "the folder is empty",
       "hidden": true,
       "skeleton": false,
+      "unavailable": false,
+      "asked": false,
       "cells": []
+    },
+    {
+      "step": "every file is ignored, and Show ignored is off",
+      "hidden": true,
+      "skeleton": false,
+      "unavailable": false,
+      "asked": false,
+      "cells": []
+    },
+    {
+      "step": "Show ignored is turned on",
+      "hidden": false,
+      "skeleton": true,
+      "unavailable": false,
+      "asked": true,
+      "cells": []
+    },
+    {
+      "step": "the box is too narrow to draw in",
+      "hidden": false,
+      "skeleton": true,
+      "unavailable": false,
+      "asked": true,
+      "cells": []
+    },
+    {
+      "step": "the pane widens",
+      "hidden": false,
+      "drawn": true
     }
   ],
   "warnings": [
@@ -137,6 +254,7 @@ $ node tests/dom/treemap-compact-session.js
     "Could not load the compact treemap."
   ]
 }
+? 0
 ```
 
 <!-- This document follows common-doc-guidelines.md.
