@@ -191,10 +191,15 @@ language, or only whitespace and line wrapping.
 A block whose destination, title, alt text, comment, attribute, or fence language
 changed is never folded away.
 
+Raw HTML, such as `<br>`, `<details>`, or a centered `<p align="center">`, renders as
+the Document view renders it, through the same sanitizer; an HTML edit it does not show,
+such as a class or a style, is a change that only **Source** shows.
+A task list renders as the Document view renders an untrusted document, without its
+boxes, so ticking or unticking one is a change that only **Source** shows.
+
 These files open in **Source**:
 
-- files with raw HTML other than comments, such as `<br>` or `<details>`
-- files with task lists (`- [ ]`) or footnotes
+- files with footnotes
 - files too large for the rendered view
 
 Rendered also shows math and Mermaid diagrams as their source text, and does not

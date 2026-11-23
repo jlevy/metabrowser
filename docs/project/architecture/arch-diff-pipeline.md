@@ -252,17 +252,28 @@ hardening. `tests/test_markdown_diff_projection.py` checks the joined blocks aga
 KPress’s own render.
 Changed words are marked by a bounded word diff.
 
-- **Fallback:** a side with raw HTML other than comments, a task list, footnotes, or
-  nesting past what MarkdownIt keeps is refused with that `reason`, and the file shows
-  Source with its Rendered chip unavailable and saying why.
-  The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement, bound only a
-  projection in a thread, which nothing can stop; past them the pair goes to the
-  Markdown child, whose deadline bounds it (`markdown_projection_worker.py`), and the
-  pull request route reads a pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
+- **Fallback:** a side with footnotes, or nesting past what MarkdownIt keeps, is refused
+  with that `reason`, and the file shows Source with its Rendered chip unavailable and
+  saying why. The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement,
+  bound only a projection in a thread, which nothing can stop; past them the pair goes
+  to the Markdown child, whose deadline bounds it (`markdown_projection_worker.py`), and
+  the pull request route reads a pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
   `builtin_plugins/github/pull_rendered_diff.py` (mb-rm40). The projection renders with
   math and diagrams off and without code highlighting.
+- **Raw HTML:** renders as the Document view renders it, through the same sanitizer and
+  allowlist. The blocks are rendered together with a numbered marker at each boundary,
+  and a boundary whose marker the render does not carry at its top level, inside a
+  `<div>` or a `<details>` that raw HTML opened in one block and closed in a later one,
+  parts nothing, so those blocks are one block of all their lines (`_units`). Raw HTML
+  the render drops whole, such as a script, has no block, as a comment has none.
+  `_trusted` says when a top-level boundary can still be misplaced, and how the
+  projection then finds it.
+  A task list’s box is raw HTML that KPress’s task list plugin writes and the allowlist
+  drops, so a task list renders without its boxes and a tick is in the hidden signature
+  only, until KPress draws the box from a token of its own (mb-rm6u).
 - **Hidden signature:** whatever a block’s source says that its render does not show,
-  such as a link destination, a title, alt text, or a fence’s info string.
+  such as a link destination, a title, alt text, a fence’s info string, or raw HTML the
+  allowlist drops (an attribute, an element with its content, a comment).
   A changed block whose hidden signature differs is flagged `source_only`, as is a file
   whose source changes include one with no visible counterpart.
   A flagged block never folds, and the page draws no note for it: Source is how a reader

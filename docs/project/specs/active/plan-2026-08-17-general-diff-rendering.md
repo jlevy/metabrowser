@@ -466,8 +466,6 @@ shown on its own, and changed words are marked by a bounded word diff whose span
 occur exactly once in the changed source lines.
 These remain readable only in Source:
 
-- raw HTML, including inline tags such as `<br>` (HTML comments are allowed),
-- task lists, whose checkbox the inert render drops,
 - footnotes, and
 - documents past the projection’s budgets: 48 KiB of Markdown across both sides, 256 `[`
   per side, 2,000 tokens per side, 2,400 rendered nodes, and nesting 32 deep, each

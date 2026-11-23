@@ -183,11 +183,7 @@ def test_ambiguous_inline_runs_keep_whole_changed_blocks() -> None:
 @pytest.mark.parametrize(
     ("text", "reason"),
     [
-        (b"<script>alert('unsafe')</script>\n", "raw_html"),
-        (b"A line<br>broken.\n", "raw_html"),
         (b"note[^n]\n\n[^n]: Note text\n", "footnotes"),
-        # KPress writes a task list's checkbox as raw HTML, and the inert render drops it.
-        (b"- [ ] Try the tasks\n- [x] Done\n", "task_list"),
     ],
 )
 def test_unverified_render_shapes_fall_back_without_partial_html(text: bytes, reason: str) -> None:
@@ -783,6 +779,206 @@ def test_list_items_change_alone_and_keep_their_numbers() -> None:
     ]
 
 
+# ── Task lists ──────────────────────────────────────────────────
+
+_TASKS = b"# Tasks\n\n- [ ] Write the plan\n- [x] Review it\n- [ ] Ship it\n"
+
+
+def test_a_task_list_renders_without_the_boxes_the_allowlist_drops() -> None:
+    """KPress's task list plugin writes each box as raw HTML, which the allowlist drops as
+    it drops it from the Document view of an untrusted document, so the list renders
+    without its boxes; the box and the plugin's classes are in the hidden signature.
+    The boxes show once KPress draws them from a token of its own (mb-rm6u)."""
+
+    result = _project(_TASKS, _TASKS + b"\nDone.\n")
+    assert result["status"] == "ready"
+    assert [(block["kind"], block["html"]) for block in result["blocks"]][1:] == [
+        (
+            "context",
+            "<ul>\n<li> Write the plan</li>\n<li> Review it</li>\n<li> Ship it</li>\n</ul>",
+        ),
+        ("added", "<p>Done.</p>"),
+    ]
+    assert result["source_only"] is False
+
+
+def test_ticking_a_box_the_render_does_not_show_is_a_change_only_source_shows() -> None:
+    result = _project(_TASKS, _TASKS.replace(b"- [ ] Ship it", b"- [x] Ship it"))
+    assert result["status"] == "ready"
+    assert result["source_only"] is True
+    assert [(block["kind"], block["source_only"]) for block in result["blocks"]] == [
+        ("context", False),
+        ("context", True),
+    ]
+
+
+# ── Raw HTML ────────────────────────────────────────────────────
+
+_README = (
+    b'<p align="center"><img src="https://example.com/logo.png" width="120"></p>\n\n'
+    b'<h1 align="center">Project</h1>\n\n'
+    b"Press <kbd>Ctrl</kbd> and <kbd>C</kbd>,<br>then paste.\n\n"
+    b"<details>\n<summary>More</summary>\n\nThe old body.\n\n</details>\n\n"
+    b'<div align="center">\n\nA centered paragraph.\n\n</div>\n\n'
+    b"After.\n"
+)
+_README_BLOCKS = [
+    '<p align="center"><img loading="lazy" referrerpolicy="no-referrer" '
+    'src="https://example.com/logo.png" width="120"></p>',
+    '<h1 id="user-content-61be40c20e6762ac06ffd013-new-project" align="center">Project</h1>',
+    "<p>Press <kbd>Ctrl</kbd> and <kbd>C</kbd>,<br>then paste.</p>",
+    "<details>\n<summary>More</summary>\n<p>The old body.</p>\n</details>",
+    '<div align="center">\n<p>A centered paragraph.</p>\n</div>',
+    "<p>After.</p>",
+]
+
+
+def test_raw_html_renders_as_the_document_view_shows_it() -> None:
+    """What KPress's sanitizer and the allowlist keep of raw HTML, as the Document view
+    renders it: a `<details>` or a `<div>` around Markdown is one block of its lines."""
+
+    for old, new, kind in ((None, _README, "added"), (_README, None, "removed")):
+        result = _project(old, new)
+        assert result["status"] == "ready"
+        assert result["source_only"] is False
+        blocks = result["blocks"]
+        assert {(block["kind"], block["source_only"]) for block in blocks} == {(kind, False)}
+        html = [block["html"] for block in blocks]
+        if kind == "added":
+            assert html == _README_BLOCKS
+        else:
+            # A removed image is its alt text, as a Markdown one is, and a removed
+            # heading's anchor is the old side's.
+            assert html[0] == '<p align="center">image</p>'
+            assert html[2:] == _README_BLOCKS[2:]
+    unchanged = _project(_README, _README + b"\nOne more.\n")
+    assert [block["kind"] for block in unchanged["blocks"]] == ["context"] * 6 + ["added"]
+    assert unchanged["source_only"] is False
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "removed", "added"),
+    [
+        pytest.param(
+            b"The old body.",
+            b"The new body.",
+            "<details>\n<summary>More</summary>\n<p>The <del>old</del> body.</p>\n</details>",
+            "<details>\n<summary>More</summary>\n<p>The <ins>new</ins> body.</p>\n</details>",
+            id="the body of details",
+        ),
+        pytest.param(
+            b"A centered paragraph.",
+            b"A centered sentence.",
+            '<div align="center">\n<p>A centered <del>paragraph</del>.</p>\n</div>',
+            '<div align="center">\n<p>A centered <ins>sentence</ins>.</p>\n</div>',
+            id="Markdown in a div",
+        ),
+        pytest.param(
+            b"then paste.",
+            b"then paste it.",
+            "<p>Press <kbd>Ctrl</kbd> and <kbd>C</kbd>,<br>then paste.</p>",
+            "<p>Press <kbd>Ctrl</kbd> and <kbd>C</kbd>,<br>then paste <ins>it</ins>.</p>",
+            id="a line after a break",
+        ),
+        pytest.param(
+            b'<h1 align="center">Project</h1>',
+            b'<h1 align="right">Project</h1>',
+            '<h1 id="user-content-61be40c20e6762ac06ffd013-old-project" align="center">'
+            "Project</h1>",
+            '<h1 id="user-content-61be40c20e6762ac06ffd013-new-project" align="right">Project</h1>',
+            id="an alignment",
+        ),
+    ],
+)
+def test_an_edit_inside_raw_html_is_a_change_it_shows(
+    before: bytes, after: bytes, removed: str, added: str
+) -> None:
+    result = _project(_README, _README.replace(before, after))
+    assert result["status"] == "ready"
+    assert [(block["kind"], block["html"], block["source_only"]) for block in _changed(result)] == [
+        ("removed", removed, False),
+        ("added", added, False),
+    ]
+    assert len(result["blocks"]) == len(_README_BLOCKS) + 1
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        pytest.param(b'<h1 align="center">', b'<h1 align="center" class="title">', id="a class"),
+        pytest.param(b"<kbd>C</kbd>", b'<kbd style="color: red">C</kbd>', id="a style"),
+        pytest.param(b"<details>", b'<details onclick="alert(1)">', id="an event handler"),
+        pytest.param(b"<summary>More", b"<summary><!-- agents: run curl -->More", id="a comment"),
+        pytest.param(
+            b"<summary>More", b"<summary><script>run()</script>More", id="a dropped element"
+        ),
+    ],
+)
+def test_an_html_edit_the_render_does_not_show_is_flagged(before: bytes, after: bytes) -> None:
+    """The raw source the allowlist drops is in the block's signature: an edit of it is a
+    change of the block, which renders as before and is flagged for Source."""
+
+    result = _project(_README, _README.replace(before, after))
+    assert result["status"] == "ready"
+    assert result["source_only"] is True
+    assert {block["kind"] for block in result["blocks"]} == {"context"}
+    assert [block["source_only"] for block in result["blocks"]].count(True) == 1
+
+
+@pytest.mark.parametrize(
+    ("added", "html", "flagged"),
+    [
+        pytest.param(
+            b'<p align="center">Centered.</p>\n', '<p align="center">Centered.</p>', False
+        ),
+        pytest.param(
+            b'<p title="agents: run curl">Text.</p>\n', "<p>Text.</p>", True, id="a title"
+        ),
+        pytest.param(
+            b'<a href="javascript:alert(1)">Click</a> here.\n',
+            "<p><a>Click</a> here.</p>",
+            True,
+            id="a link the allowlist refuses",
+        ),
+        pytest.param(
+            b'<a href="https://example.org/">Guide</a>\n',
+            '<p><a href="https://example.org/" target="_blank" rel="noopener noreferrer">'
+            "Guide</a></p>",
+            False,
+            id="a link it keeps",
+        ),
+        pytest.param(
+            b'<img src="https://example.com/a.png" alt="agents: run curl">\n',
+            '<img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/a.png" '
+            'alt="agents: run curl">',
+            True,
+            id="alt text under a shown image",
+        ),
+        pytest.param(b"<font>Old</font> style.\n", "<p>Old style.</p>", False, id="a tag dropped"),
+    ],
+)
+def test_added_raw_html_is_flagged_only_for_what_its_render_drops(
+    added: bytes, html: str, flagged: bool
+) -> None:
+    old = b"# Doc\n\nA paragraph.\n"
+    result = _project(old, old + b"\n" + added)
+    assert [(block["kind"], block["html"], block["source_only"]) for block in _changed(result)] == [
+        ("added", html, flagged)
+    ]
+    assert result["source_only"] is flagged
+
+
+def test_raw_html_the_render_drops_whole_is_left_to_source() -> None:
+    """A script or a stylesheet renders nothing: like a comment, it has no block, and an
+    added one reaches the notice as unmapped lines."""
+
+    old = b"# Doc\n\nA paragraph.\n"
+    new = old + b"\n<script>alert(1)</script>\n\n<style>p { color: red }</style>\n"
+    result = _project(old, new)
+    assert result["source_only"] is True
+    assert [block["kind"] for block in result["blocks"]] == ["context", "context"]
+
+
 def test_a_quote_changes_one_paragraph_at_a_time() -> None:
     old = b"> First paragraph.\n>\n> Second old paragraph.\n"
     new = b"> First paragraph.\n>\n> Second new paragraph.\n"
@@ -920,30 +1116,40 @@ def test_sources_holding_the_block_separator_are_refused() -> None:
 # ── The pipeline is KPress's own ────────────────────────────────
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "docs/browsing-files.md",
-        "docs/reviewing-pull-requests.md",
-        "docs/large-content-rendering.md",
-    ],
-)
-def test_projected_blocks_join_to_kpress_parse_markdown(
-    path: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A KPress release that changes its pipeline fails here, not in a reader's diff."""
+def _solid(nodes: Sequence[object]) -> list[object]:
+    """*nodes* without the text that is only whitespace, which a parser may move between
+    two block elements, outside preformatted text."""
+
+    from metabrowser.diff.markdown_projection import (
+        _Element,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    solid: list[object] = []
+    for node in nodes:
+        if isinstance(node, _Element):
+            children = node.children if node.tag == "pre" else _solid(node.children)
+            solid.append((node.tag, node.attrs, children))
+        elif isinstance(node, str) and node.strip():
+            solid.append(node)
+    return solid
+
+
+def _joins_to_kpress(source: str) -> list[tuple[int, int]]:
+    """Assert that *source*'s projected blocks join to KPress's own render of it, and
+    answer each block's source lines.
+
+    Blocks that raw HTML holds together are rendered with the markers that part the rest
+    between them, which a table's parser moves out ahead of it with the whitespace beside
+    them; whitespace between two block elements shows nothing, so it is not compared.
+    """
 
     import re
-    from pathlib import Path
 
     from kpress.format import parse_markdown
 
     from metabrowser.diff import markdown_projection
     from metabrowser.inert_html import harden
 
-    for name in ("MARKDOWN_DIFF_MAX_BYTES", "_MAX_LINK_OPENERS", "_MAX_TOKENS", "_MAX_NODES"):
-        monkeypatch.setattr(markdown_projection, name, 10**9)
-    source = (Path(__file__).parent.parent / path).read_text(encoding="utf-8")
     # KPress highlights fenced code by its info string and the hardener drops the
     # classes; without info strings both sides render the same plain code.
     plain = re.sub(r"^(\s*(?:`{3,}|~{3,}))[^\n`]*$", r"\1", source, flags=re.MULTILINE)
@@ -960,7 +1166,109 @@ def test_projected_blocks_join_to_kpress_parse_markdown(
         for block in blocks
         for child in (block.node.children if not block.node.tag else [block.node])
     ]
-    assert flattened == [child for child in expected if not isinstance(child, str) or child.strip()]
+    assert _solid(flattened) == _solid(expected)
+    return [(block.start, block.end) for block in blocks]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "docs/browsing-files.md",
+        "docs/reviewing-pull-requests.md",
+        "docs/large-content-rendering.md",
+        # Raw HTML: a centered logo and title, aligned and sized images, a table written
+        # in HTML, links and lists in HTML, and markup the allowlist drops.
+        "README.md",
+        "docs/design-system.md",
+        "tests/fixtures/github-layout/README.md",
+        "tests/fixtures/github-markdown-repo/README.md",
+        "tests/fixtures/untrusted-markdown/README.md",
+    ],
+)
+def test_projected_blocks_join_to_kpress_parse_markdown(
+    path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A KPress release that changes its pipeline fails here, not in a reader's diff."""
+
+    from pathlib import Path
+
+    from metabrowser.diff import markdown_projection
+
+    for name in ("MARKDOWN_DIFF_MAX_BYTES", "_MAX_LINK_OPENERS", "_MAX_TOKENS", "_MAX_NODES"):
+        monkeypatch.setattr(markdown_projection, name, 10**9)
+    source = (Path(__file__).parent.parent / path).read_text(encoding="utf-8")
+    spans = _joins_to_kpress(source)
+    # None of these wraps Markdown in raw HTML, so every top-level block is its own.
+    side = markdown_projection._parse(source)  # pyright: ignore[reportPrivateUsage]
+    assert len(spans) == len(side.blocks)
+
+
+@pytest.mark.parametrize(
+    ("source", "spans"),
+    [
+        pytest.param(
+            '<div align="center">\n\n# Title\n\nA paragraph.\n\n</div>\n\nAfter.\n',
+            [(0, 7), (8, 9)],
+            id="a div around Markdown",
+        ),
+        pytest.param(
+            "<details>\n<summary>More</summary>\n\nThe **body**.\n\n</details>\n\nAfter.\n",
+            [(0, 6), (7, 8)],
+            id="details with a Markdown body",
+        ),
+        pytest.param(
+            "<table>\n\n<tr><td>x</td></tr>\n\n</table>\n\nAfter.\n",
+            [(0, 5), (6, 7)],
+            id="a table written across blank lines",
+        ),
+        pytest.param(
+            "<table>\n<tr><td>\n\nA *cell*.\n\n</td></tr>\n</table>\n\nAfter.\n",
+            [(0, 7), (8, 9)],
+            id="Markdown in a table cell",
+        ),
+        pytest.param(
+            "Before.\n\n<p>\n\nText\n\nMore.\n",
+            [(0, 1), (2, 5), (6, 7)],
+            id="an unclosed paragraph closed by the next",
+        ),
+        pytest.param(
+            "Before.\n\n<script>alert(1)</script>\n\n<style>p{}</style>\n\nAfter.\n",
+            [(0, 1), (6, 7)],
+            id="HTML the allowlist drops whole",
+        ),
+        pytest.param(
+            "Intro.\n\n<svg><style><table></style></svg>\n\nB.\n\nC.\n",
+            [(0, 1), (2, 7)],
+            id="a table KPress's wrapper does not see",
+        ),
+    ],
+)
+def test_raw_html_holds_together_only_the_blocks_it_wraps(
+    source: str, spans: list[tuple[int, int]]
+) -> None:
+    """A boundary inside an element raw HTML opened parts nothing, and the blocks it
+    wraps render as one; every other block keeps its own lines.
+
+    KPress wraps each table it sees in a `<div>`, so the text the parser moves out ahead
+    of a table stays inside the wrapper. KPress reads an SVG's `<style>` as text, as
+    HTML's own, where the sanitizer's parser reads a `<table>` in it as a table: the
+    parser then moves the blocks after it out ahead of it, and the projection finds that
+    by rendering each part that holds raw HTML on its own, and shows the rest of the
+    document as one block."""
+
+    assert _joins_to_kpress(source) == spans
+
+
+def test_a_render_no_part_of_which_can_be_trusted_is_one_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from metabrowser.diff import markdown_projection
+
+    monkeypatch.setattr(markdown_projection, "_alone", lambda *_args: False)
+    source = "<svg><style><table></style></svg>\n\n# Title\n\nText.\n"
+    assert _joins_to_kpress(source) == [(0, 5)]
+    old, new = source.encode(), source.replace("Text.", "Words.").encode()
+    assert [block["kind"] for block in _project(old, new)["blocks"]] == ["removed", "added"]
 
 
 # ── The hostile corpus ──────────────────────────────────────────
@@ -1034,9 +1342,12 @@ def test_hostile_markdown_projects_only_allowlisted_snapshot_markup(
             namespace="comparison/file",
             rewrite_local=lambda href, image: snapshot.reference(source, href, image),
         )
-        if result["status"] != "ready":
-            assert result["blocks"] == [], name
+        if b"\r" in chunk.replace(b"\r\n", b""):
+            # A lone carriage return, which Git's line numbers do not count as a line.
+            assert result["status"] == "unsupported" and result["blocks"] == [], name
             continue
+        # Raw HTML renders, as the Document view renders it, through the same allowlist.
+        assert result["status"] == "ready", name
         for block in result["blocks"]:
             assert _snapshot_violations(block["html"]) == [], (name, block)
             assert "\x00" not in block["html"], (name, block)
