@@ -34,6 +34,10 @@ status: 200
     "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
   },
   "step_count": 2,
+  "titles": [
+    "Start with the count",
+    "Read the new guide"
+  ],
   "step": 1,
   "title": "Start with the count",
   "note": "Check that the original value is preserved.",
@@ -205,6 +209,10 @@ status: 200
     "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
   },
   "step_count": 2,
+  "titles": [
+    "Start with the count",
+    "Read the new guide"
+  ],
   "step": 2,
   "title": "Read the new guide",
   "note": "Check the new docs against the behavior.",
@@ -431,6 +439,10 @@ status: 200
     "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
   },
   "step_count": 2,
+  "titles": [
+    "Start with the count",
+    "Read the new guide"
+  ],
   "step": 1,
   "title": "Start with the count",
   "note": "Check that the original value is preserved.",

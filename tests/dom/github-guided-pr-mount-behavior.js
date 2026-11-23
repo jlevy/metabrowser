@@ -45,6 +45,7 @@ function step(generation, number, count = 2) {
     record_revision: revisionOf(generation),
     comparison: { merge_base: "a".repeat(40), head: "b".repeat(40) },
     step_count: count,
+    titles: Array.from({ length: count }, (_, index) => `Step ${index + 1}`),
     step: number,
     title: `Step ${number}`,
     note: "Check <b>this</b> first.\nThen that.",
@@ -185,6 +186,26 @@ function host() {
           handle.setTab(next);
         },
         guided: () => container.querySelector(".github-pull-guided-pr"),
+        /** Click the guide's button named *label*, as a reader does. */
+        press(label) {
+          [...container.descendants()]
+            .find((node) => node.tag === "button" && node.getAttribute("aria-label") === label)
+            .events.get("click")();
+        },
+        /** The step list's place: the introduction or a step, and how many. */
+        position: () => container.querySelector(".github-pull-guide-position")?.textContent ?? null,
+        /** The step list as it reads: each step, the one shown marked. */
+        outline: () =>
+          container
+            .querySelectorAll(".github-pull-guide-steps-link")
+            .map(
+              (link) =>
+                `${link.getAttribute("aria-current") === "step" ? "> " : ""}${link.children
+                  .map((part) => part.textContent)
+                  .filter(Boolean)
+                  .join(" ")}`,
+            )
+            .join(" | "),
         /** The step on screen, as the reader sees it, or null while there is none. */
         shown() {
           const title = container
@@ -245,12 +266,18 @@ async function run() {
       },
     });
     await settle();
+    // The guide opens on its introduction, under the step list, with the changed steps marked.
+    steps.push(`a stale guide opens on: ${view.position()}; ${view.outline()}`);
     const top = view.guided().children[0];
     const notice = view.container.querySelector(".github-pull-guide-stale");
     assert.ok(top.children.includes(notice), "the notice is the page's first thing");
     steps.push(
       `a stale guide's notice: ${notice.children.map((child) => child.textContent).join(" / ")}`,
     );
+    const kept = late.reads.length;
+    view.press("Next step");
+    await settle();
+    assert.equal(late.reads.length, kept, "step 1 is the introduction's own answer");
     const card = view.container.querySelector(".github-pull-guide-card");
     steps.push(
       `and its step, in a card: ${card.querySelector(".github-pull-card-head").textContent}; ${view.shown()}; ` +
@@ -287,6 +314,19 @@ async function run() {
     // the shell's highlighter, which takes `pre code`, cannot select.
     first.pending()[0].answer(step(1, 1));
     await settle();
+    // The introduction is step 0: the description shows, under the step list, and Next goes
+    // to step 1 with the answer the introduction already has.
+    // The page's wrapper of the description card, third after the notice and the step list.
+    const wrapper = view.guided().children[2];
+    assert.ok([...wrapper.descendants()].includes(introduction));
+    assert.equal(wrapper.hidden, false);
+    steps.push(
+      `the guide opens on: ${view.position()}; ${view.outline()}; step shown ${view.shown()}`,
+    );
+    view.press("Next step");
+    await settle();
+    assert.equal(wrapper.hidden, true, "a step replaces the introduction");
+    assert.equal(first.reads.length, 1);
     const commentary = view.container.querySelector(".github-pull-guide-commentary");
     assert.equal(commentary.textContent, "Check <b>this</b> first.\nThen that.");
     assert.ok(
@@ -335,9 +375,7 @@ async function run() {
 
     // Next asks for step 2 alone; leaving the tab with that read on its way disposes the
     // view and aborts the read, and its late answer paints nothing.
-    [...view.container.descendants()]
-      .find((node) => node.tag === "button" && node.textContent === "Next")
-      .events.get("click")();
+    view.press("Next step");
     await settle();
     const second = first.pending()[0];
     assert.equal(second.step, 2);
@@ -350,7 +388,8 @@ async function run() {
     await settle();
     assert.equal(view.guided(), null);
 
-    // Back on the tab, a view of its own is mounted again, from step 1.
+    // Back on the tab, a view of its own is mounted again, on its introduction, which reads
+    // step 1.
     view.arrive("guided");
     await settle();
     steps.push(`its tab again: asked ${asked(first.reads.slice(2))}`);
@@ -380,7 +419,7 @@ async function run() {
     assert.equal(view.shown(), null, "the dropped read's answer paints nothing");
     second.pending()[0].answer(step(2, 1));
     await settle();
-    steps.push(`the new read's answer: ${view.shown()}`);
+    steps.push(`the new read's answer: ${view.position()}`);
     // A poll that finds the same record asks for nothing.
     await second.poll();
     steps.push(`a poll of the same record: asked ${asked(second.reads)}`);

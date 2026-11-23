@@ -164,8 +164,11 @@ The page has up to five tabs:
 
 ### Guided PR
 
-Use **Previous** and **Next** to follow the author’s review order.
-A step can bring changes from several files together.
+The guide opens on its introduction, the description, under a list of its steps.
+The introduction is step 0 and the author’s steps follow it in their review order.
+Choose a step in the list to go straight to it, or use the arrows in the list’s head to
+page through them; below each step, the way on names the next step and the way back the
+one before. A step can bring changes from several files together.
 **Open full diff** goes to the file in Changes.
 
 To publish a guide, have the author or their agent add one top-level `guided-pr` fenced

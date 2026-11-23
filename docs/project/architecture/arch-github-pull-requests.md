@@ -985,8 +985,13 @@ The description introduces the guide, and a collection has no prose of its own:
 block (`without_guide` in `guided_pr.py`), the Guided PR tab opens with that render, and
 Conversation puts a card that opens the guide in the block’s place.
 A block that cannot be read stays in the description, so its author sees it.
-`guided-pr.js` loads on demand when the tab opens, aborts reads on disposal, and matches
-results to the page’s record revision.
+The introduction is the guide’s step 0 (`createGuideNavigation` in `guided-pr.js`): the
+page draws it from the description it already has, under a list of the steps that a step
+answer’s `titles` fill, and it keeps the answer for step 1 that it read for those
+titles, so the first move reads nothing.
+Each answer is kept for its record revision, and a new revision or a moved head drops
+them. `guided-pr.js` loads on demand when the tab opens, aborts reads on disposal, and
+matches results to the page’s record revision.
 
 The tab is shown from a hint, not from the parse: `GUIDED_FENCE` in `pull-page.js`
 matches a line that opens a `guided-pr` fence in the description, and the server’s

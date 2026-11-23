@@ -8084,10 +8084,10 @@ export function mountPullPage(container, ctx, mb) {
         if (guided !== mount || shown === null) {
           return;
         }
-        host.replaceChildren(introduction);
         // The guide's text is KPress prose and its excerpts are the diff plugin's rows.
         mount.view = mountGuidedPR(
           host,
+          introduction,
           number,
           openChangedFile,
           (assets) =>

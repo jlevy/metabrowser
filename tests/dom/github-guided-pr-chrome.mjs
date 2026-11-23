@@ -20,8 +20,10 @@
 //    here: it is highlighted, and the rows are not.
 // 3. A row is one line: its number columns, its mark, and its code share a top and do not overlap,
 //    and the tint is the row's, never the code's.
-// 4. Next and Previous move between steps, Open full diff goes to the file's Changes address, and
-//    a guide that cannot be read says so in place: none, stale, and two blocks.
+// 4. The guide opens on its introduction under a list of its steps; a step in the list, the
+//    arrows, and the way on below a step move between them, the step's text sits at the
+//    description's inset, Open full diff goes to the file's Changes address, and a guide that
+//    cannot be read says so in place: none, stale, and two blocks.
 import { launchChrome } from "./chrome-session.mjs";
 
 const [base] = process.argv.slice(2);
@@ -89,6 +91,15 @@ try {
     waitFor(
       `document.querySelector(".github-pull-guide-step .github-pull-guide-title")?.textContent === ${JSON.stringify(title)}`,
     );
+  const introduced = () =>
+    waitFor(
+      `document.querySelector(".github-pull-guide-position")?.textContent === "Introduction, then 2 steps"`,
+    );
+  /** Click the guide's button named *label*. */
+  const click = (label) =>
+    evaluate(
+      `document.querySelector(${JSON.stringify(`.github-pull-guided-pr button[aria-label="${label}"]`)}).click()`,
+    );
   const said = async () => {
     await waitFor(
       `document.querySelector(".github-pull-guided-pr > p.github-pull-quiet:not([hidden])")?.textContent`,
@@ -111,7 +122,7 @@ try {
     "Changes",
     "Checks",
   ]);
-  await settled("Start with the count");
+  await introduced();
   same(
     "the front page is the guide",
     await evaluate(`${GUIDE_TAB}.getAttribute("aria-selected")`),
@@ -146,7 +157,35 @@ try {
   );
   await pressR();
   await waitFor(`location.pathname === "/pull/7/guided"`);
+  await introduced();
+  same(
+    "the step list",
+    await evaluate(
+      `[...document.querySelectorAll(".github-pull-guide-steps-title")].map((title) => title.textContent)`,
+    ),
+    ["Introduction", "Start with the count", "Read the new guide"],
+  );
+  same(
+    "the arrows are icons",
+    await evaluate(`document.querySelectorAll(".github-pull-guide-arrows button svg").length`),
+    2,
+  );
+  await evaluate(
+    `[...document.querySelectorAll(".github-pull-guide-steps-link")].find((link) => link.textContent.includes("Start with the count")).click()`,
+  );
   await settled("Start with the count");
+  same(
+    "the step's text sits at the description's inset",
+    await evaluate(`getComputedStyle(document.querySelector(".github-pull-guide-prose")).padding`),
+    await evaluate(`(() => {
+      const text = document.createElement("div");
+      text.className = "github-pull-text";
+      document.querySelector(".github-pull-guided-pr").append(text);
+      const padding = getComputedStyle(text).padding;
+      text.remove();
+      return padding;
+    })()`),
+  );
 
   // 2. Rows after the shell's highlighter. Wait until it has loaded, put a control block beside
   // the excerpt, and run the shell's own pass over the page.
@@ -192,9 +231,7 @@ try {
   );
 
   // 4. Steps, Open full diff.
-  await evaluate(
-    `[...document.querySelectorAll(".github-pull-guided-pr button")].find((button) => button.textContent === "Next").click()`,
-  );
+  await click("Next step");
   await settled("Read the new guide");
   const second = await evaluate(ROWS);
   same(
@@ -206,13 +243,15 @@ try {
     "its row too",
     second.every((row) => row.noHighlight && !row.hljs && row.padding === "0px"),
   );
-  await evaluate(
-    `[...document.querySelectorAll(".github-pull-guided-pr button")].find((button) => button.textContent === "Previous").click()`,
-  );
+  await click("Previous step");
   await settled("Start with the count");
-  await evaluate(
-    `[...document.querySelectorAll(".github-pull-guided-pr button")].find((button) => button.textContent === "Next").click()`,
+  // The way on below a step names the next one.
+  same(
+    "the way on below step 1",
+    await evaluate(`document.querySelector(".github-pull-guide-pager-next").textContent`),
+    "Read the new guide",
   );
+  await evaluate(`document.querySelector(".github-pull-guide-pager-next").click()`);
   await settled("Read the new guide");
   await evaluate(`document.querySelector(".github-pull-guide-reference-header a").click()`);
   await waitFor(`location.pathname.startsWith("/pull/7/files")`);
@@ -244,6 +283,8 @@ try {
   // 4. A stale guide (its head is not the record's) still shows its steps, under a notice at
   // the top of the page that says what is out of date; a guide that cannot be read says why.
   await go("/pull/8/guided");
+  await introduced();
+  await click("Next step");
   await settled("Start with the count");
   await waitFor(`document.querySelector(".github-pull-guide-stale") !== null`);
   same(

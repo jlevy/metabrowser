@@ -4,8 +4,11 @@ sandbox: false
 ---
 # Guided PR step navigation
 
-The production navigation waits for the cached PR, requests the selected step, and
-discards late responses after a revision change or disposal.
+The production navigation waits for the cached PR, opens on the introduction, step 0,
+with the answer for step 1, whose titles list the guide, and requests each other step
+once per record revision: a step already read, the first one included, shows with no
+request. A step chosen from the list goes straight to it, and no move passes either end.
+It discards late responses after a revision change or disposal.
 An edited guide with fewer steps returns the reviewer to its first step.
 A head GitHub reports past the cached record asks for the step again, and the server
 answers a stale guide with its step, so a stale guide’s steps still move.
@@ -16,36 +19,44 @@ $ node tests/dom/github-guided-pr-session.js
   "calls": [
     1,
     2,
+    3,
     1,
+    2,
+    2,
+    3,
+    3,
     1,
-    2,
-    2,
-    2,
-    2,
     1,
     1,
     1
   ],
   "states": [
-    "preview",
-    "loading",
-    "step 1 of 2",
-    "loading",
-    "step 2 of 2",
-    "loading",
-    "loading",
-    "stale step 1 of 2",
-    "loading",
-    "stale step 2 of 2",
-    "loading",
-    "step 1 of 2",
-    "loading",
-    "step 2 of 2",
-    "loading",
-    "step 1 of 1",
-    "loading",
-    "updated",
-    "loading"
+    "introduction: preview",
+    "introduction: loading",
+    "introduction: step 1 of 3",
+    "step 1: step 1 of 3",
+    "step 2: loading",
+    "step 2: step 2 of 3",
+    "introduction: step 1 of 3",
+    "step 2: step 2 of 3",
+    "step 3: loading",
+    "step 3: step 3 of 3",
+    "step 1: step 1 of 3",
+    "step 1: loading",
+    "step 1: stale step 1 of 3",
+    "step 2: loading",
+    "step 1: stale step 1 of 3",
+    "step 2: loading",
+    "step 2: stale step 2 of 3",
+    "step 3: loading",
+    "step 3: stale step 3 of 3",
+    "step 3: loading",
+    "step 1: step 1 of 3",
+    "step 1: loading",
+    "step 1: updated",
+    "step 1: loading",
+    "step 1: invalid",
+    "step 1: loading"
   ]
 }
 ? 0
@@ -57,8 +68,9 @@ The production page imports and mounts the guide only when its tab first paints,
 Conversation never reads it.
 A pull request whose description has a guide opens on it, and Conversation, at its own
 address, shows a card where the description had its guided-pr block.
-The guide opens with the description’s card, as Conversation draws it, and each step is
-a card headed as a guided review.
+The guide opens on its introduction, the description’s card as Conversation draws it,
+under a list of its steps, and Next step goes to a step with no read, since the
+introduction already has its answer; each step is a card headed as a guided review.
 A stale guide still shows its steps, under a notice at the top of the page that names
 the revision it was written for, the commits since, and the steps that cite changed
 files. A tab left while the import is on its way mounts nothing, and neither does a page
@@ -74,12 +86,14 @@ the route for the file’s Changes address.
 $ node tests/dom/github-guided-pr-mount-behavior.js
 [
   "the front page: guide mounted; asked step 1",
+  "a stale guide opens on: Introduction, then 3 steps; > Introduction | 1 Step 1 changed since the guide | 2 Step 2 | 3 Step 3 changed since the guide",
   "a stale guide's notice:  / This guide is out of date. / It was written for head bbbbbbb. The pull request is now at head ccccccc. / 12 commits since the guide: / ccccccc Count to <b>three</b>and 11 earlier commits / Steps 1 and 3 cite 1 file changed since: src/app.txt. The other steps still match; the changed ones are marked. Its author can update the guide's pins and ranges in the description.",
   "and its step, in a card: Guided review Step 1 of 3 · cites files changed since the guide; Step 1; This file changed after the guide was written. The excerpt is from the guide's revision.",
   "Conversation: guide not mounted; asked nothing",
   "its description's block: This description has a guided review. Open Guided PR",
   "its tab opens: guide mounted; asked step 1",
   "the guide's introduction: rendered",
+  "the guide opens on: Introduction, then 2 steps; > Introduction | 1 Step 1 | 2 Step 2; step shown null",
   "step 1: Step 1; rows context one, del <i>two</i>, add three",
   "a path outside the comparison says: This path is not in the comparison.",
   "Open full diff: files src/app.txt",
@@ -88,7 +102,7 @@ $ node tests/dom/github-guided-pr-mount-behavior.js
   "the page ends: read aborted true",
   "opened on its tab: asked step 1",
   "a newer record arrives with the read on its way: old read aborted true; asked step 1, step 1",
-  "the new read's answer: Step 1",
+  "the new read's answer: Introduction, then 2 steps",
   "a poll of the same record: asked step 1, step 1",
   "Guided PR opened and left before its import settled: guide not mounted; asked nothing",
   "the page ended before the import settled: asked nothing"

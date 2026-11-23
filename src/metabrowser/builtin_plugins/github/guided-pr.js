@@ -9,7 +9,7 @@
  *   commits: {sha: string, subject: string}[], changed_paths: string[] | null,
  *   changed_steps: number[] | null}} Staleness
  * @typedef {{state: "ready" | "stale", record_revision: string, step: number,
- *   step_count: number, title: string, note: string, references: Reference[],
+ *   step_count: number, titles: string[], title: string, note: string, references: Reference[],
  *   stale?: Staleness, assets?: unknown}} Step
  * @typedef {{state: "absent" | "invalid" | "stale" | "comparison_unavailable" |
  *   "description_truncated" | "step_not_found" | "not_cached", record_revision: string | null,
@@ -18,18 +18,25 @@
  */
 
 /**
+ * The guide's place and its reads. Step 0 is the introduction, the description the page
+ * draws itself; steps 1 to `step_count` are the guide's. The introduction shows the answer
+ * for step 1, whose step titles list the guide, so the first step the reader moves to is
+ * already in hand. Answers are kept for the record revision they were read for.
+ *
  * @param {{
  *   read(step: number, signal: AbortSignal): Promise<Step | Refusal>,
- *   render(state: GuideState): void,
+ *   render(state: GuideState, at: number): void,
  * }} deps
  */
 export function createGuideNavigation(deps) {
   /** @type {string | null | undefined} */
   let revision;
   let headMoved = false;
-  let selected = 1;
-  /** @type {Step | null} */
-  let ready = null;
+  let selected = 0;
+  /** The step count of the last answer that had a step, which bounds a move. */
+  let count = 0;
+  /** @type {Map<number, Step | Refusal>} */
+  let answers = new Map();
   /** @type {AbortController | null} */
   let pending = null;
   let disposed = false;
@@ -37,40 +44,55 @@ export function createGuideNavigation(deps) {
   /** @param {string} expected */
   async function load(expected) {
     pending?.abort();
+    const at = selected;
+    const asked = Math.max(at, 1);
+    const kept = answers.get(asked);
+    if (kept !== undefined) {
+      pending = null;
+      deps.render(kept, at);
+      return;
+    }
     const request = new AbortController();
     pending = request;
-    ready = null;
-    deps.render({ state: "loading" });
+    deps.render({ state: "loading" }, at);
     try {
-      let result = await deps.read(selected, request.signal);
+      let result = await deps.read(asked, request.signal);
       if (request.signal.aborted) {
         return;
       }
-      if (
-        result.record_revision === expected &&
-        result.state === "step_not_found" &&
-        selected > 1
-      ) {
+      if (result.record_revision === expected && result.state === "step_not_found" && asked > 1) {
         selected = 1;
-        result = await deps.read(selected, request.signal);
+        result = await deps.read(1, request.signal);
       }
       if (request.signal.aborted) {
         return;
       }
       if (result.record_revision !== expected) {
-        deps.render({ state: "updated" });
+        deps.render({ state: "updated" }, selected);
         return;
       }
-      ready = "step" in result ? result : null;
-      deps.render(result);
+      answers.set(Math.max(selected, 1), result);
+      count = "step" in result ? result.step_count : 0;
+      deps.render(result, selected);
     } catch {
       if (!request.signal.aborted) {
-        deps.render({ state: "error" });
+        deps.render({ state: "error" }, selected);
       }
     } finally {
       if (pending === request) {
         pending = null;
       }
+    }
+  }
+
+  /** @param {number} target */
+  function go(target) {
+    if (disposed || !revision || count === 0 || target === selected) {
+      return;
+    }
+    if (target >= 0 && target <= count) {
+      selected = target;
+      void load(revision);
     }
   }
 
@@ -82,10 +104,11 @@ export function createGuideNavigation(deps) {
       }
       revision = nextRevision;
       headMoved = moved;
+      answers = new Map();
+      count = 0;
       if (nextRevision === null) {
         pending?.abort();
-        ready = null;
-        deps.render({ state: "preview" });
+        deps.render({ state: "preview" }, selected);
         return;
       }
       // A head GitHub reports past the record's is the server's to read: it answers the
@@ -94,19 +117,13 @@ export function createGuideNavigation(deps) {
     },
     /** @param {-1 | 1} by */
     move(by) {
-      if (ready === null || !revision) {
-        return;
-      }
-      const target = ready.step + by;
-      if (target >= 1 && target <= ready.step_count) {
-        selected = target;
-        void load(revision);
-      }
+      go(selected + by);
     },
+    go,
     dispose() {
       disposed = true;
       pending?.abort();
-      ready = null;
+      answers = new Map();
     },
   };
 }
@@ -158,7 +175,9 @@ function proseHost(prose) {
   article.append(prose);
   const host = element("div", "", "metabrowser-kpress-host");
   host.append(article);
-  const text = element("div", "", "github-pull-guide-prose chrome-prose");
+  // A text in a card, as the page sets a description's: its inset and edge margins are
+  // `.github-pull-text`'s (styles.css).
+  const text = element("div", "", "github-pull-text github-pull-guide-prose chrome-prose");
   text.append(host);
   return text;
 }
@@ -335,8 +354,63 @@ export function staleNotice(stale, stepCount, shortCommit) {
   return box;
 }
 
+// Lucide v1.17.0 (ISC; https://lucide.dev), by Lucide id. Only Guided PR draws them, so they
+// arrive with this module.
+const STROKE =
+  'viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+const GLYPHS = Object.freeze({
+  arrowLeft: // Lucide `arrow-left`
+  `<svg ${STROKE}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>`,
+  arrowRight: // Lucide `arrow-right`
+  `<svg ${STROKE}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`,
+});
+
+/**
+ * A glyph as an element, hidden from assistive technology: its button carries the name.
+ *
+ * @param {keyof typeof GLYPHS} name
+ * @returns {Node | null}
+ */
+function glyph(name) {
+  if (typeof DOMParser !== "function") {
+    return null;
+  }
+  const shape = new DOMParser().parseFromString(GLYPHS[name], "text/html").body.firstElementChild;
+  if (shape === null) {
+    return null;
+  }
+  shape.setAttribute("aria-hidden", "true");
+  shape.setAttribute("class", "github-pull-guide-arrow-glyph");
+  return document.importNode(shape, true);
+}
+
+/**
+ * A step button with an arrow: the way back's before its words, the way on's after them.
+ *
+ * @param {"previous" | "next"} way
+ * @param {string} className
+ * @returns {[HTMLButtonElement, HTMLElement]} The button and its words.
+ */
+function arrowButton(way, className) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `btn ${className}`;
+  const mark = glyph(way === "previous" ? "arrowLeft" : "arrowRight");
+  const label = element("span", "", "github-pull-guide-arrow-label");
+  button.append(
+    ...(way === "previous" ? [mark, label] : [label, mark]).filter((node) => node !== null),
+  );
+  return [button, label];
+}
+
+/** The introduction's name in the step list and on its buttons. */
+const INTRODUCTION = "Introduction";
+
 /**
  * @param {HTMLElement} host
+ * @param {HTMLElement} introduction The description's card, which the page draws and keeps
+ *   current: the guide's step 0, shown while it is the step and while no step can be.
  * @param {number} number
  * @param {(path: string) => void} open
  * @param {(assets: unknown) => Promise<unknown>} loadStyles The stylesheets the guide is
@@ -344,32 +418,92 @@ export function staleNotice(stale, stepCount, shortCommit) {
  *   guide waits for them, as a description does.
  * @param {(commit: string) => string} shortCommit The SDK's `shortCommit`.
  */
-export function mountGuidedPR(host, number, open, loadStyles, shortCommit) {
+export function mountGuidedPR(host, introduction, number, open, loadStyles, shortCommit) {
   /** @type {Promise<unknown> | null} */
   let styles = null;
-  const controls = element("div", "", "github-pull-guide-controls");
-  const previous = document.createElement("button");
-  const next = document.createElement("button");
-  previous.type = next.type = "button";
-  previous.className = next.className = "btn";
-  previous.textContent = "Previous";
-  next.textContent = "Next";
-  const status = element("span", "", "github-pull-quiet");
+  // The guide's steps, listed above the one shown: each names its step and goes to it, and
+  // the arrows page through them in order.
+  const outline = element("nav", "", "page-card github-pull-card github-pull-guide-outline");
+  outline.setAttribute("aria-label", "Guided review steps");
+  const outlineHead = element("div", "", "github-pull-card-head github-pull-guide-outline-head");
+  const badge = element(
+    "span",
+    "Guided review",
+    "file-header-badge github-pull-badge github-pull-guide-badge",
+  );
+  const status = element("span", "", "github-pull-guide-position");
   status.setAttribute("role", "status");
-  controls.append(previous, status, next);
+  const [previous] = arrowButton("previous", "github-pull-guide-arrow");
+  const [next] = arrowButton("next", "github-pull-guide-arrow");
+  previous.setAttribute("aria-label", "Previous step");
+  next.setAttribute("aria-label", "Next step");
+  previous.title = "Previous step";
+  next.title = "Next step";
+  const arrows = element("span", "", "github-pull-guide-arrows");
+  arrows.append(previous, status, next);
+  outlineHead.append(badge, arrows);
+  const list = element("ol", "", "github-pull-guide-steps");
+  outline.append(outlineHead, list);
+  outline.hidden = true;
   const detail = element("section", "", "github-pull-guide-step");
   const notice = element("p", "", "github-pull-quiet");
   notice.setAttribute("role", "status");
-  host.append(controls, detail, notice);
-  // What a stale guide is out of date with leads the page, above its introduction.
+  // After a step, the way on names where it goes, so the reader need not scroll back up.
+  const pager = element("div", "", "github-pull-guide-pager");
+  const [back, backLabel] = arrowButton("previous", "github-pull-guide-pager-previous");
+  const [onward, onwardLabel] = arrowButton("next", "github-pull-guide-pager-next");
+  pager.append(back, onward);
+  pager.hidden = true;
+  // What a stale guide is out of date with leads the page, above its steps.
   const outdated = element("div", "", "github-pull-guide-outdated");
   outdated.hidden = true;
-  host.prepend(outdated);
+  host.replaceChildren(outdated, outline, introduction, detail, notice, pager);
   /** @param {Staleness | null | undefined} stale @param {number | null} count */
   const showStale = (stale, count) => {
     outdated.hidden = !stale;
     outdated.replaceChildren(...(stale ? [staleNotice(stale, count, shortCommit)] : []));
   };
+  /** @type {string[]} */
+  let titles = [];
+  /** @type {number[]} */
+  let changedSteps = [];
+  /** @param {number} at */
+  const nameOf = (at) => (at === 0 ? INTRODUCTION : (titles[at - 1] ?? `Step ${at}`));
+
+  /** @param {number} at */
+  function paintOutline(at) {
+    outline.hidden = titles.length === 0;
+    const count = titles.length;
+    status.textContent =
+      at === 0 ? `${INTRODUCTION}, then ${plural(count, "step")}` : `Step ${at} of ${count}`;
+    previous.disabled = at <= 0;
+    next.disabled = at >= count;
+    list.replaceChildren(
+      ...[INTRODUCTION, ...titles].map((title, index) => {
+        const item = element("li", "", "github-pull-guide-steps-item");
+        const link = document.createElement("button");
+        link.type = "button";
+        link.className = "github-pull-guide-steps-link";
+        link.append(
+          element("span", index === 0 ? "" : String(index), "github-pull-guide-steps-number"),
+          element("span", title, "github-pull-guide-steps-title"),
+        );
+        if (changedSteps.includes(index)) {
+          link.append(element("span", "changed since the guide", "github-pull-guide-step-changed"));
+        }
+        if (index === at) {
+          link.setAttribute("aria-current", "step");
+        }
+        link.addEventListener("click", () => navigation.go(index));
+        item.append(link);
+        return item;
+      }),
+    );
+    back.hidden = at <= 0;
+    onward.hidden = at >= count;
+    backLabel.textContent = at > 0 ? nameOf(at - 1) : "";
+    onwardLabel.textContent = at < count ? nameOf(at + 1) : "";
+  }
 
   const navigation = createGuideNavigation({
     async read(step, signal) {
@@ -390,10 +524,17 @@ export function mountGuidedPR(host, number, open, loadStyles, shortCommit) {
       }
       return result;
     },
-    render(state) {
+    render(state, at) {
       if (state.state === "loading") {
+        // The introduction is the page's own, so it shows at once; a step waits for its read.
+        introduction.hidden = at !== 0;
+        pager.hidden = true;
         previous.disabled = next.disabled = true;
         notice.hidden = true;
+        if (at === 0) {
+          detail.replaceChildren();
+          return;
+        }
         const wait = element("div", "", "mb-delayed-loading");
         wait.setAttribute("role", "status");
         wait.setAttribute("aria-label", "Loading the review step");
@@ -408,9 +549,12 @@ export function mountGuidedPR(host, number, open, loadStyles, shortCommit) {
         "stale" in state ? state.stale : null,
         available ? /** @type {Step} */ (state).step_count : null,
       );
-      controls.hidden = !available;
       if (!available) {
-        previous.disabled = next.disabled = true;
+        titles = [];
+        changedSteps = [];
+        paintOutline(0);
+        introduction.hidden = false;
+        pager.hidden = true;
         detail.replaceChildren();
         notice.hidden = false;
         notice.textContent =
@@ -420,9 +564,15 @@ export function mountGuidedPR(host, number, open, loadStyles, shortCommit) {
         return;
       }
       notice.hidden = true;
-      status.textContent = `Step ${state.step} of ${state.step_count}`;
-      previous.disabled = state.step <= 1;
-      next.disabled = state.step >= state.step_count;
+      titles = state.titles;
+      changedSteps = state.stale?.changed_steps ?? [];
+      paintOutline(at);
+      pager.hidden = false;
+      introduction.hidden = at !== 0;
+      if (at === 0) {
+        detail.replaceChildren();
+        return;
+      }
       const step = element("div", "", "kpress-prose");
       step.append(
         element("h2", state.title, "github-pull-guide-title"),
@@ -446,7 +596,7 @@ export function mountGuidedPR(host, number, open, loadStyles, shortCommit) {
         ),
         ` Step ${state.step} of ${state.step_count}`,
       );
-      if (state.stale?.changed_steps?.includes(state.step)) {
+      if (changedSteps.includes(state.step)) {
         head.append(
           " · ",
           element("span", "cites files changed since the guide", "github-pull-guide-step-changed"),
@@ -461,8 +611,17 @@ export function mountGuidedPR(host, number, open, loadStyles, shortCommit) {
       detail.replaceChildren(card);
     },
   });
-  controls.hidden = true;
   previous.addEventListener("click", () => navigation.move(-1));
   next.addEventListener("click", () => navigation.move(1));
+  // The way on below a step starts the next one at its top, where the step list is.
+  for (const [button, by] of /** @type {const} */ ([
+    [back, -1],
+    [onward, 1],
+  ])) {
+    button.addEventListener("click", () => {
+      navigation.move(by);
+      outline.scrollIntoView?.({ block: "start" });
+    });
+  }
   return navigation;
 }

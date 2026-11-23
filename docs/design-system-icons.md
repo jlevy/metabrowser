@@ -235,6 +235,8 @@ in `/`, so neither draws a folder icon.
 | `gitPullRequestDraft`, Lucide `git-pull-request-draft` | Plugin | A draft pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-draft` | `--icon-glyph` in a row; `1em` of the page’s title |
 | `gitMerge`, Lucide `git-merge` | Plugin | A merged pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-merged` | `--icon-glyph` in a row; `1em` of the page’s title |
 | `gitPullRequestClosed`, Lucide `git-pull-request-closed` | Plugin | A closed pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-closed` | `--icon-glyph` in a row; `1em` of the page’s title |
+| `arrowLeft`, Lucide `arrow-left` | Plugin | Guided PR’s previous step, in the step list’s head and before the way back below a step | `builtin_plugins/github/guided-pr.js` | The button’s | `--icon-glyph` |
+| `arrowRight`, Lucide `arrow-right` | Plugin | Guided PR’s next step, in the step list’s head and after the way on below a step | `builtin_plugins/github/guided-pr.js` | The button’s | `--icon-glyph` |
 | `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `github`, Octicons `mark-github-16` | View bundle | GitHub: the View on GitHub button’s mark, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |

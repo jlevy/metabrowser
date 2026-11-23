@@ -536,6 +536,8 @@ async def guided_pr(host: PullHost, number: int, step_number: int) -> dict[str, 
         **({} if staleness is None else {"stale": staleness}),
         "comparison": guide.comparison.model_dump(),
         "step_count": len(guide.items),
+        # Every step's title, so the page lists the guide's steps above the one it shows.
+        "titles": [item.title for item in guide.items],
         "step": step_number,
         "title": step.title,
         "note": step.note,
