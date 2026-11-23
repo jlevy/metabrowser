@@ -2024,6 +2024,7 @@ so a definition cannot differ between two places.
 | A commit’s summary | Its detail’s refs, the same parser as the row | As its row | As its row | As its row | In the chip |
 | A commit’s tooltip | The same | As its row | As its row | As its row | None: a tooltip owns no action |
 | A pull request’s header | `mb.mergeRefs`, head → base | Remote: GitHub’s branches, a fork’s as `owner:branch` | Never | Never | In the chip |
+| A checkout’s folder details | Its current branch, drawn by `mb.refChip` | Local | By `is_trunk_ref` | Its checked-out branch | In the chip |
 | The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Tag for a tag. A mirror’s branch is remote. A checkout’s own branch is local and its remote-tracking branch remote | Never; the list says “default” beside a mirror’s default branch | Never; the list says “checked out” beside the branch a checkout’s `HEAD` is on | Selected chip; chooser rows select their ref |
 
 The reasons:
@@ -2068,8 +2069,11 @@ the merged purple.
 #### Action Menu
 
 Click a branch or tag chip to open its menu.
-A fixed down chevron overlays the trailing edge on hover, keyboard focus, and while the
-menu is open, so long names use the entire chip at rest.
+Click the same chip again to close it.
+A down chevron fades in over a translucent backdrop at the trailing edge on hover,
+keyboard focus, and while the menu is open.
+The transition uses `--transition-fast` and is skipped under reduced motion.
+Long names use the entire chip at rest.
 The chevron uses neutral ink like the folder details and **View on GitHub** chevrons.
 In a clickable history row or ref chooser, the chip’s menu trigger is a separate control
 above its visible chip.
@@ -4126,8 +4130,8 @@ A copyable path, revision, or other exact identifier pairs its visible value wit
 adjacent `.icon-btn.icon-btn-reveal` using the registry’s `copy` icon.
 The visible value may be abbreviated when its meaning remains clear, but the copy
 payload must preserve the complete identifier.
-The Git commit header therefore shows the short revision
-([Short Commit IDs](#short-commit-ids)) and copies the full commit ID.
+The Git commit header and the checkout’s folder details show the short revision
+([Short Commit IDs](#short-commit-ids)) and copy the full commit ID.
 
 Explicit values use `data-mb-copy="text"`, carry their escaped payload in
 `data-mb-copy-text`, and name the resting action in `data-mb-copy-label`,
