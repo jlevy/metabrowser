@@ -5,7 +5,17 @@ title: "Treemap: deeper nesting, containment fix, compact map on Overview"
 kind: feature
 status: in_progress
 priority: 2
-version: 8
+version: 11
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/722
+    at: 2026-11-23T02:52:15.430Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/723
+    at: 2026-11-23T02:52:15.907Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/724
+    at: 2026-11-23T02:52:16.428Z
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -16,7 +26,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-23T01:05:37.128Z
-updated_at: 2026-11-23T02:11:54.600Z
+updated_at: 2026-11-23T02:52:16.429Z
 started_at: 2026-11-23T01:05:57.669Z
 closed_at: null
 close_reason: null
