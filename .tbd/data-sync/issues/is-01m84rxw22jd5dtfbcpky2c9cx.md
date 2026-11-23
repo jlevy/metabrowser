@@ -3,14 +3,18 @@ type: is
 id: is-01m84rxw22jd5dtfbcpky2c9cx
 title: A checkout's promotion of a waiting background pull job never calls StoreTurn.promoted, so the reader waits for the background holder to finish
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 labels: []
 dependencies: []
 created_at: 2026-11-23T17:58:12.286Z
-updated_at: 2026-11-23T17:58:12.286Z
+updated_at: 2026-11-23T19:05:58.641Z
+closed_at: 2026-11-23T19:05:58.640Z
+close_reason: "Fixed in #762, commit f51c58108: both of a checkout's promotions of a background pull job (the eager-revision branch and _readers_start in builtin_plugins/github/checkout.py) call state.turn.promoted(), as a mirror's do. test_a_readers_join_of_a_prefetch_waiting_at_the_turn_stops_a_background_holder (metadata, comparison, eager_revision) fails 3/3 with origin/main's checkout.py (events ['refresh 13'] while 13 holds the turn) and passes with the fix; removing either promoted() call in a scratch copy fails the cases it covers. Review A of #762, A1."
+resolution: null
+duplicate_of: null
 ---
 Found by review A of #762 (A1, Medium), at head 6fd2b2092. The concern was raised, unverified, by the PR's author.
 

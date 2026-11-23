@@ -3,14 +3,18 @@ type: is
 id: is-01m84rxx9w226sz3h6zeb0aqbb
 title: Another reader's start cancels an optional comparison job a reader already promoted, dropping a joined request
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 labels: []
 dependencies: []
 created_at: 2026-11-23T17:58:13.562Z
-updated_at: 2026-11-23T17:58:13.562Z
+updated_at: 2026-11-23T19:05:59.298Z
+closed_at: 2026-11-23T19:05:59.291Z
+close_reason: "Fixed in #762, commit f51c58108: _readers_start cancels the checkout's optional comparison job for another pull request's start only while eager.mode is idle, and clears state.eager either way. test_an_optional_job_a_reader_promoted_is_not_ended_by_another_readers_start (metadata, comparison) fails 2/2 with origin/main's checkout.py and passes with the fix; in a scratch copy, an unconditional cancel, a state.eager kept for a promoted job, and never cancelling an idle one each fail a test. Changelog fragment changelog.d/mb-qi6a.md. Review A of #762, A2."
+resolution: null
+duplicate_of: null
 ---
 Found by review A of #762 (A2, Medium), at head 6fd2b2092.
 
