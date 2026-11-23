@@ -58,9 +58,10 @@ a server process serves; the arithmetic of :data:`RECORDS_PER_HOUR` and
 :data:`FILES_PER_HOUR` is beside them. What bounds the lane's points, whatever its items
 cost, is speculative work's share of the process's own ceiling
 (:data:`~.gh_budget.SPECULATIVE_CORE_PER_HOUR`), which the lane's jobs are counted toward
-and the governor refuses past. The catalog's backfill and cores walk stop at their own
-part of that share (:data:`~.gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR`), which leaves
-the caps' price to the lane whatever they spent first. What bounds the account as a whole
+and the governor refuses past. While the lane has work queued or running, the cores walk
+leaves it what its caps can still spend this hour (:func:`reserved`), so a walk that
+spends first does not refuse it before its caps do; an idle lane reserves nothing, and
+the walk may then spend the rest of the share. What bounds the account as a whole
 is the governor's floor, read from GitHub's own count of what remains (:mod:`.gh_budget`). :data:`RECORDS_PER_SCAN`
 keeps one scan's changes from spending a whole hour's records at once; a scan is one
 publication of the catalog, its ``fetched_at``, however many pages it read.
@@ -113,15 +114,16 @@ MAX_PREFETCH_NUMBERS: Final = 16
 MERGE_BASES_AT_ONCE: Final = 4
 # The hour's caps are priced to fit speculative work's share of the process's own ceiling
 # (``gh_budget.SPECULATIVE_CORE_PER_HOUR``), which refuses the lane whatever its items turn
-# out to cost. At one page a part a record costs at most 6 points and a files list from
-# GitHub 1 (the module docstring), so the two caps together spend at most
-# 12 × 6 + 20 × 1 = 92 points an hour, under the share's 100. The catalog's backfill and
-# cores walk stop at the 8 that leaves (``gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR``), so
-# they cannot take this part before the lane asks for it (review B1 of #737); the label
-# set's read and whatever the caps do not use are first come, first served with the lane.
-# They were 40 and 100 before the ceiling, at most 40 × 8 + 100 × 3 = 620 points an hour
-# at that day's prices, against a ceiling of 300 for all automatic work (review A1 of
-# #737); ``tests/test_github_pull_prefetch.py`` pins the sum.
+# out to cost. At one page a part a record costs at most :data:`POINTS_PER_RECORD` and a
+# files list from GitHub :data:`POINTS_PER_FILES_LIST`, so the two caps together spend at
+# most 12 × 6 + 20 × 1 = 92 points an hour, under the share's 100. While the lane has work
+# the cores walk leaves it what the caps can still spend at those prices (:func:`reserved`),
+# so the walk cannot take it before the lane asks (review B1 of #737); the catalog's
+# backfill, the label set's read, and whatever the caps do not use are first come, first
+# served with the lane. They were 40 and 100 before the ceiling, at most
+# 40 × 8 + 100 × 3 = 620 points an hour at that day's prices, against a ceiling of 300 for
+# all automatic work (review A1 of #737); ``tests/test_github_pull_prefetch.py`` pins the
+# sum.
 # A scan's cap is eight, above the seven records a page names as the ones it expects
 # opened next, its top rows (``PREFETCH_TOP_ROWS`` in pulls-panel.js) and the open row's
 # two neighbours, so one scan's changes do not crowd them out; it is two thirds of an
@@ -131,6 +133,11 @@ RECORDS_PER_HOUR: Final = 12
 # Lists GitHub must give, since one the store gives is not counted: the rows of one pane
 # in view, at the 16 an ask names, with a few rested on.
 FILES_PER_HOUR: Final = 20
+# What a background record and a files list from GitHub cost at most when each part fits
+# on one page: the pull and five parts, and the list's one page (the module docstring,
+# measured against the fake ``gh`` in ``tests/golden/cli-github-pulls-prefetch.txt``).
+POINTS_PER_RECORD: Final = 6
+POINTS_PER_FILES_LIST: Final = 1
 MAX_RECENT: Final = 16
 # The numbers ``GET pull`` most recently answered, which ``changed`` adds.
 MAX_VIEWED: Final = 16
@@ -256,6 +263,31 @@ def lane_of(served: ServedPulls) -> Lane:
     return lane
 
 
+def reserved(now: datetime) -> int:
+    """What the cores walk leaves the prefetch of speculative work's share at *now*.
+
+    For each lane with work queued or running, what its caps can still spend this hour at
+    the prices they are set at, and the price of the item running, which its cap counted
+    when it started and which may not have spent yet; for a lane with none, nothing.
+    Reserving the caps' whole price in every hour, whatever the prefetch was doing, held a
+    cold catalog's walk of 800 rows, 100 batches of a point, to 8 points an hour, about 13
+    hours (review D1 of #737); reserving nothing let a walk that spent first refuse the
+    prefetch (review B1). So a lane with work has its caps, and the walk spends what an
+    idle one leaves: an ask later in that hour can find less than its caps until the hour
+    rolls. Read on the event loop, which changes the lanes.
+    """
+
+    price = {"record": POINTS_PER_RECORD, "files": POINTS_PER_FILES_LIST}
+    total = 0
+    for lane in list(_LANES.values()):
+        if lane.queue or lane.running is not None:
+            records = max(0, RECORDS_PER_HOUR - lane.used(lane.record_starts, now))
+            files = max(0, FILES_PER_HOUR - lane.used(lane.file_starts, now))
+            total += records * POINTS_PER_RECORD + files * POINTS_PER_FILES_LIST
+            total += price[lane.running.kind] if lane.running is not None else 0
+    return total
+
+
 def note_viewed(served: ServedPulls, number: int) -> None:
     """Remember that ``GET pull`` answered *number*, most recent last, bounded."""
 
@@ -347,8 +379,13 @@ _KIND_STOPS: Final = frozenset({"deferred:hourly_cap", "deferred:scan_cap"})
 async def _run_lane(app: Any, host: PullHost, lane: Lane) -> None:
     # Nobody is looking at what the lane reads: every job it starts copies this context,
     # so what each spends counts toward speculative work's share of the ceiling.
-    with gh_budget.speculative():
-        await _work_lane(app, host, lane)
+    try:
+        with gh_budget.speculative():
+            await _work_lane(app, host, lane)
+    finally:
+        # A lane stopped before its end, as at shutdown, runs nothing it had queued, so it
+        # holds nothing back from the cores walk either (:func:`reserved`).
+        lane.queue.clear()
 
 
 async def _work_lane(app: Any, host: PullHost, lane: Lane) -> None:
@@ -716,10 +753,10 @@ class CeilingWire(TypedDict):
     # governor refuses the lane with ``self_ceiling`` though the ceiling itself has room.
     speculative_per_hour: int
     speculative_hour_used: int
-    # The catalog's part of that share, and what its backfill and cores walk have spent: at
-    # or past it they are refused, and the lane is not.
-    catalog_per_hour: int
-    catalog_hour_used: int
+    # What the cores walk leaves the lanes of that share now, nothing while none has work
+    # (:func:`reserved`), and what the walk has spent.
+    prefetch_reserved: int
+    walk_hour_used: int
 
 
 class GovernorWire(TypedDict):
@@ -782,8 +819,8 @@ async def prefetch_envelope(host: PullHost | None) -> PrefetchEnvelope:
                 hour_used=gh_budget.automatic_spent(now),
                 speculative_per_hour=gh_budget.SPECULATIVE_CORE_PER_HOUR,
                 speculative_hour_used=gh_budget.speculative_spent(now),
-                catalog_per_hour=gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR,
-                catalog_hour_used=gh_budget.catalog_spent(now),
+                prefetch_reserved=reserved(now),
+                walk_hour_used=gh_budget.walk_spent(now),
             ),
         ),
         recent=list(lane.recent),
@@ -793,6 +830,8 @@ async def prefetch_envelope(host: PullHost | None) -> PrefetchEnvelope:
 __all__ = [
     "FILES_PER_HOUR",
     "MAX_PREFETCH_NUMBERS",
+    "POINTS_PER_FILES_LIST",
+    "POINTS_PER_RECORD",
     "PREFETCH_ROUTE",
     "RECORDS_PER_HOUR",
     "RECORDS_PER_SCAN",
@@ -805,4 +844,5 @@ __all__ = [
     "prefetch_envelope",
     "prefetch_request",
     "request_prefetch",
+    "reserved",
 ]

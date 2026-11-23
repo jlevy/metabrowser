@@ -4690,6 +4690,57 @@ def test_a_spent_speculative_share_holds_the_cores_walk_and_not_the_rows_on_scre
     assert gh_budget.automatic_spent(now) == others + gh_budget.SPECULATIVE_CORE_PER_HOUR + 1
 
 
+def test_the_cores_walk_leaves_a_prefetch_with_work_its_caps_and_spends_what_an_idle_one_leaves(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D1 and D2 of review D on #737: the walk stopped at 8 points an hour whatever the
+    prefetch was doing, so a cold walk of 800 rows took about 13 hours, and no test asked
+    for a walk batch through ``request_preparation`` with that part spent. Its batches are
+    counted as the walk's; while the served repository's prefetch lane has work the walk
+    is held once the share less what the lane's caps can still spend is spent, though the
+    share has room; with the lane idle it is read."""
+
+    from collections import deque
+
+    from metabrowser.builtin_plugins.github import gh_budget, pull_prefetch, pulls
+    from metabrowser.builtin_plugins.github.pull_prefetch import Item
+    from metabrowser.builtin_plugins.github.pull_route import pull_host
+
+    async def spend() -> None:
+        gh_budget.spent(1, now=pulls.utc_now())
+
+    walk, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8,), hold_batch=spend, lane="background"
+    )
+    _stand, client = pinned_pull
+    _drain_visible_cores(client)
+    now = pulls.utc_now()
+    assert (gh_budget.walk_spent(now), gh_budget.speculative_spent(now)) == (1, 1)
+    host = pull_host(app)
+    assert host is not None
+    lane = pull_prefetch.lane_of(host.pulls)
+    ninth = {**walk, "window": {**walk["window"], "id": "walk-9"}, "numbers": [9]}
+    lane.queue = deque([Item("record", 103)])
+    try:
+        reserve = pull_prefetch.reserved(now)
+        assert reserve == (
+            pull_prefetch.RECORDS_PER_HOUR * pull_prefetch.POINTS_PER_RECORD
+            + pull_prefetch.FILES_PER_HOUR * pull_prefetch.POINTS_PER_FILES_LIST
+        )
+        with gh_budget.speculative():
+            gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR - reserve - 1, now=now)
+        assert not gh_budget.over_speculative_share(now)
+        assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "held"
+        assert calls == [(8,)]
+    finally:
+        lane.queue.clear()
+    # An idle lane reserves nothing: the walk spends what is left of the share.
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "started"
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+    assert gh_budget.walk_spent(pulls.utc_now()) == 2
+
+
 def test_visible_core_preempts_a_background_batch_that_reads_none_of_its_rows(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:

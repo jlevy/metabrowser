@@ -78,8 +78,8 @@ status: 200
       "hour_used": 0,
       "speculative_per_hour": 100,
       "speculative_hour_used": 0,
-      "catalog_per_hour": 8,
-      "catalog_hour_used": 0
+      "prefetch_reserved": 0,
+      "walk_hour_used": 0
     }
   },
   "recent": [
@@ -134,8 +134,8 @@ status: 200
       "hour_used": 0,
       "speculative_per_hour": 100,
       "speculative_hour_used": 0,
-      "catalog_per_hour": 8,
-      "catalog_hour_used": 0
+      "prefetch_reserved": 0,
+      "walk_hour_used": 0
     }
   },
   "recent": [
@@ -303,8 +303,8 @@ status: 200
       "hour_used": 1,
       "speculative_per_hour": 100,
       "speculative_hour_used": 1,
-      "catalog_per_hour": 8,
-      "catalog_hour_used": 0
+      "prefetch_reserved": 0,
+      "walk_hour_used": 0
     }
   },
   "recent": [
@@ -376,8 +376,8 @@ status: 200
       "hour_used": 0,
       "speculative_per_hour": 100,
       "speculative_hour_used": 0,
-      "catalog_per_hour": 8,
-      "catalog_hour_used": 0
+      "prefetch_reserved": 0,
+      "walk_hour_used": 0
     }
   },
   "recent": [

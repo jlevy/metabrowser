@@ -120,7 +120,7 @@ class _Session:
         spent: tuple[int, int] | None = None,
     ) -> Invocation:
         """Run one command; *spent* is what speculative work spent earlier in the hour, and
-        how much of that was the catalog's, the backfill's and the cores walk's."""
+        how much of that was the cores walk's."""
 
         if body is not None:
             path = self.tmp_path / "request.json"
@@ -128,11 +128,11 @@ class _Session:
             args = (*args, "--data", str(path))
         gh_budget.forget()
         if spent is not None:
-            spent_all, of_it_catalog = spent
-            with gh_budget.speculative(catalog=True):
-                gh_budget.spent(of_it_catalog, now=self.now)
+            spent_all, of_it_walk = spent
+            with gh_budget.speculative(walk=True):
+                gh_budget.spent(of_it_walk, now=self.now)
             with gh_budget.speculative():
-                gh_budget.spent(spent_all - of_it_catalog, now=self.now)
+                gh_budget.spent(spent_all - of_it_walk, now=self.now)
         result = run_metab(args)
         catalog = read_catalog(self.home, origin_identity(CANONICAL).slug)
         if catalog is not None and catalog.epoch not in self.epochs:
@@ -362,14 +362,14 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     assert (files.payload()["state"], files.payload()["head"]) == ("current", earlier)
 
     session.say(
-        "This server's speculative work has spent its whole share of the ceiling this hour: "
-        "the catalog's backfill and cores walk the part they may, and the prefetch the rest. "
+        "This server's cores walk has spent the whole of speculative work's share of the "
+        "ceiling this hour, while the prefetch had nothing to do, so it reserved nothing. "
         "The ceiling itself has two thirds left, which what is on screen keeps. A visible "
         "page asks for 9 and for 10's and 9's changed files. The record is refused at once "
         "with `self_ceiling`, and the lists go on: the store gives 10's, which costs GitHub "
         "nothing, and 9's, which GitHub would give, is refused when its turn comes."
     )
-    share = (gh_budget.SPECULATIVE_CORE_PER_HOUR, gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR)
+    share = (gh_budget.SPECULATIVE_CORE_PER_HOUR, gh_budget.SPECULATIVE_CORE_PER_HOUR)
     spent_share = session.run(
         CANONICAL,
         "--api",
@@ -385,6 +385,7 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     assert (governor["admits"], governor["reason"]) == (False, "self_ceiling")
     ceiling = governor["ceiling"]
     assert ceiling["speculative_hour_used"] >= ceiling["speculative_per_hour"]
+    assert (ceiling["walk_hour_used"], ceiling["prefetch_reserved"]) == (share[1], 0)
     assert ceiling["hour_used"] < ceiling["per_hour"]
     assert [(entry["number"], entry["outcome"]) for entry in report["recent"]] == [
         (10, "refreshed"),

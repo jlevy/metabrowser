@@ -28,8 +28,11 @@ from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_prefetch import (
     FILES_PER_HOUR,
+    POINTS_PER_FILES_LIST,
+    POINTS_PER_RECORD,
     RECORDS_PER_HOUR,
     RECORDS_PER_SCAN,
+    Item,
     PrefetchRequest,
     PrefetchRequestError,
     lane_of,
@@ -252,40 +255,67 @@ def test_the_lane_leaves_what_is_on_screen_the_ceiling_it_needs(
 
 
 def test_the_caps_priced_at_a_page_a_part_fit_speculative_works_share() -> None:
-    """The arithmetic beside the caps: 6 points a record and 1 a list (A1, review A of #737),
-    and what the catalog's part of the share leaves them (B1, review B of #737)."""
+    """The arithmetic beside the caps: 6 points a record and 1 a list (A1, review A of #737)."""
 
-    priced = RECORDS_PER_HOUR * 6 + FILES_PER_HOUR * 1
+    priced = RECORDS_PER_HOUR * POINTS_PER_RECORD + FILES_PER_HOUR * POINTS_PER_FILES_LIST
     assert priced <= gh_budget.SPECULATIVE_CORE_PER_HOUR
-    assert priced + gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR <= (
-        gh_budget.SPECULATIVE_CORE_PER_HOUR
-    )
-    assert gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR > 0
     assert RECORDS_PER_SCAN <= RECORDS_PER_HOUR
+
+
+_PRICED = RECORDS_PER_HOUR * POINTS_PER_RECORD + FILES_PER_HOUR * POINTS_PER_FILES_LIST
 
 
 def _walk(batches: int) -> int:
     """A cores walk of *batches* of rows, each one GraphQL point, as ``pull_cores`` admits
-    and counts them: how many it was let read."""
+    and counts them: how many it was let read. ``tests/test_github_pulls.py`` runs the
+    walk's own path."""
 
     read = 0
     for _batch in range(batches):
-        if not gh_budget.admission(("graphql",), now=NOW, speculative=True, catalog=True).admitted:
+        now = pulls.utc_now()
+        if not gh_budget.admission(
+            ("graphql",), now=now, speculative=True, reserved=pull_prefetch.reserved(now)
+        ).admitted:
             break
-        with gh_budget.speculative(catalog=True):
-            gh_budget.spent(1, now=NOW)
+        with gh_budget.speculative(walk=True):
+            gh_budget.spent(1, now=now)
         read += 1
     return read
 
 
-def test_a_cold_walk_that_spends_first_leaves_the_prefetch_its_caps(
+def test_what_the_walk_leaves_a_lane_is_what_its_caps_can_still_spend_while_it_has_work(
+    stand: tuple[_Host, dict[int, str], list[int]],
+) -> None:
+    """D1 of review D on #737: nothing for a lane with no work, and for one with work what
+    its caps have left this hour, with the price of the item running, which its cap
+    counted when it started and which may not have spent yet."""
+
+    host, _verdicts, _revision = stand
+    lane = lane_of(host.pulls)  # pyright: ignore[reportArgumentType]
+    assert pull_prefetch.reserved(NOW) == 0
+    lane.queue.append(Item("files", 4))
+    assert pull_prefetch.reserved(NOW) == _PRICED
+    lane.record_starts.extend([NOW] * 3)
+    lane.file_starts.extend([NOW] * 5)
+    left = _PRICED - 3 * POINTS_PER_RECORD - 5 * POINTS_PER_FILES_LIST
+    assert pull_prefetch.reserved(NOW) == left
+    lane.queue.clear()
+    lane.running = Item("record", 2)
+    assert pull_prefetch.reserved(NOW) == left + POINTS_PER_RECORD
+    # An hour on, those starts no longer count against the caps.
+    assert pull_prefetch.reserved(NOW + timedelta(hours=1)) == _PRICED + POINTS_PER_RECORD
+    lane.running = None
+    assert pull_prefetch.reserved(NOW) == 0
+
+
+def test_a_walk_that_spends_while_the_lane_has_work_leaves_the_lane_its_caps(
     stand: tuple[_Host, dict[int, str], list[int]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """B1 of review B on #737: with one first-come share, a cold catalog's walk of 800 rows,
     100 batches of 8, spent all of it, and the prefetch was then refused with
-    ``self_ceiling``. The walk now stops at the catalog's part of the share, and the lane
-    asked after it reads every record and list its caps allow, each at the price the caps
-    are set at."""
+    ``self_ceiling``. A walk while the lane has work stops at the share less what the caps
+    can still spend, and the lane reads every record and list its caps allow, each at the
+    price the caps are set at."""
 
     host, verdicts, revision = stand
     listed = _stub_files(host, monkeypatch)
@@ -293,57 +323,96 @@ def test_a_cold_walk_that_spends_first_leaves_the_prefetch_its_caps(
 
     def paid(*args: Any, **kwargs: Any) -> str:
         # In the lane's context, so counted as the lane's, as the job's requests would be.
-        gh_budget.spent(1, now=NOW)
+        gh_budget.spent(POINTS_PER_FILES_LIST, now=NOW)
         return stubbed(*args, **kwargs)
 
     monkeypatch.setattr(pull_files_route, "start_files_refresh", paid)
-    assert _walk(800 // 8) == gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR
-    assert not gh_budget.over_speculative_share(NOW)
     records = tuple(range(700, 700 + RECORDS_PER_HOUR))
     verdicts.update(dict.fromkeys(records, "changed"))
     for number in records:
-        host.on_refresh[number] = lambda: gh_budget.spent(6, now=NOW)
+        host.on_refresh[number] = lambda: gh_budget.spent(POINTS_PER_RECORD, now=NOW)
     files = tuple(range(1, FILES_PER_HOUR + 1))
     asks = (
         PrefetchRequest(records=records[:RECORDS_PER_SCAN], files=files[:8]),
         PrefetchRequest(records=records[RECORDS_PER_SCAN:], files=files[8:16]),
         PrefetchRequest(files=files[16:]),
     )
-    for ask in asks:
+    walked: list[int] = []
+
+    async def first_ask_with_a_walk_beside_it() -> tuple[str, str | None, int]:
+        host.gates[700], host.entered[700] = asyncio.Event(), asyncio.Event()
+        answer = await request_prefetch(None, host, asks[0])  # pyright: ignore[reportArgumentType]
+        await host.entered[700].wait()
+        # The panel's walk asks while the lane's first record is being read.
+        walked.append(_walk(800 // 8))
+        host.gates[700].set()
+        await host.coordinator.drain(timeout_s=10)
+        await host.coordinator.drain(timeout_s=10)
+        return answer
+
+    revision[0] += 1
+    assert asyncio.run(first_ask_with_a_walk_beside_it())[:2] == ("started", None)
+    assert walked == [gh_budget.SPECULATIVE_CORE_PER_HOUR - _PRICED]
+    for ask in asks[1:]:
         revision[0] += 1
         assert _run(host, ask)[:2] == ("started", None)
     assert [number for number in host.started if number > 0] == list(records)
     assert listed == list(files)
     assert not [entry for entry in _recent(host) if entry[2].startswith("deferred")]
     ceiling = _report(host)["governor"]["ceiling"]
-    assert (ceiling["speculative_hour_used"], ceiling["catalog_hour_used"]) == (
-        gh_budget.SPECULATIVE_CORE_PER_HOUR,
-        gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR,
-    )
-    # The walk, which is refused, got none of it.
+    assert (
+        ceiling["speculative_hour_used"],
+        ceiling["walk_hour_used"],
+        ceiling["prefetch_reserved"],
+    ) == (gh_budget.SPECULATIVE_CORE_PER_HOUR, gh_budget.SPECULATIVE_CORE_PER_HOUR - _PRICED, 0)
+    # The share is spent: the walk, which is refused, got no more of it.
     assert _walk(1) == 0
 
 
-def test_the_catalogs_part_holds_the_walk_and_the_backfill_and_not_the_lane_or_the_labels() -> None:
-    """The order inside the share: the lane and the label set are refused only at all of it."""
+def test_an_idle_lane_leaves_the_walk_the_rest_of_the_share(
+    stand: tuple[_Host, dict[int, str], list[int]],
+) -> None:
+    """D1 of review D on #737: reserving the caps' whole price in every hour held a cold walk
+    of 800 rows to 8 points an hour, about 13 hours with the backfill beside it. A lane
+    with no work reserves nothing, so the walk spends the rest of the share; an ask the
+    page makes later in that hour then finds it spent, until the hour rolls."""
 
-    with gh_budget.speculative(catalog=True):
-        gh_budget.spent(gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR, now=NOW)
-    assert gh_budget.admission(
-        ("graphql",), now=NOW, speculative=True, catalog=True
-    ) == gh_budget.Admission(False, "self_ceiling")
-    assert gh_budget.admission(("core",), now=NOW, speculative=True).admitted
-    assert gh_budget.speculative_spent(NOW) == gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR
-    # What the lane spends counts toward the share, not the catalog's part of it.
+    host, verdicts, _revision = stand
+    assert _walk(800 // 8) == gh_budget.SPECULATIVE_CORE_PER_HOUR
+    assert gh_budget.walk_spent(NOW) == gh_budget.SPECULATIVE_CORE_PER_HOUR
+    verdicts[700] = "changed"
+    assert _run(host, PrefetchRequest(records=(700,))) == ("deferred", "self_ceiling", 0)
+    host.clock[0] = NOW + timedelta(hours=1)  # pyright: ignore[reportAttributeAccessIssue]
+    assert _run(host, PrefetchRequest(records=(700,)))[:2] == ("started", None)
+    assert host.started == [700]
+
+
+def test_only_the_walk_leaves_the_lane_its_reserve_and_only_its_batches_count_as_its() -> None:
+    """The order inside the share: the walk asks with what the lane's caps can still spend
+    reserved, and the lane, the backfill, and the label set ask with nothing reserved, so
+    they are refused only at the whole share. ``tests/test_github_pull_list.py`` runs the
+    backfill's own path."""
+
+    share = gh_budget.SPECULATIVE_CORE_PER_HOUR
+    with gh_budget.speculative(walk=True):
+        gh_budget.spent(10, now=NOW)
+    # What the lane spends counts toward the share, and not as the walk's.
     with gh_budget.speculative():
         gh_budget.spent(1, now=NOW)
-    assert gh_budget.catalog_spent(NOW) == gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR
-    # And the whole share, spent, refuses the catalog's work as well as the lane.
+    assert (gh_budget.speculative_spent(NOW), gh_budget.walk_spent(NOW)) == (11, 10)
+    assert gh_budget.admission(
+        ("graphql",), now=NOW, speculative=True, reserved=share - 11
+    ) == gh_budget.Admission(False, "self_ceiling")
+    assert gh_budget.admission(
+        ("graphql",), now=NOW, speculative=True, reserved=share - 12
+    ).admitted
+    assert gh_budget.admission(("core",), now=NOW, speculative=True).admitted
+    # And the whole share, spent, refuses the walk as well as the lane.
     gh_budget.forget()
     with gh_budget.speculative():
-        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR, now=NOW)
-    assert gh_budget.catalog_spent(NOW) == 0
-    assert not gh_budget.admission(("graphql",), now=NOW, speculative=True, catalog=True).admitted
+        gh_budget.spent(share, now=NOW)
+    assert gh_budget.walk_spent(NOW) == 0
+    assert not gh_budget.admission(("graphql",), now=NOW, speculative=True).admitted
     gh_budget.forget()
 
 
@@ -364,8 +433,8 @@ def test_what_the_lanes_jobs_spend_is_speculative_and_the_lane_stops_at_its_shar
         "hour_used": 6,
         "speculative_per_hour": share,
         "speculative_hour_used": 6,
-        "catalog_per_hour": gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR,
-        "catalog_hour_used": 0,
+        "prefetch_reserved": 0,
+        "walk_hour_used": 0,
     }
     # 10's read spends the rest of the share, and the lane stops there, dropping 11.
     assert _run(host, PrefetchRequest(records=(10, 11, 12))) == ("started", None, 3)

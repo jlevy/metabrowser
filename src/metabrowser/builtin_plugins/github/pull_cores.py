@@ -26,7 +26,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
-from metabrowser.builtin_plugins.github import gh_budget, pulls
+from metabrowser.builtin_plugins.github import gh_budget, pull_prefetch, pulls
 from metabrowser.builtin_plugins.github.gh import GhError, gh_graphql
 from metabrowser.builtin_plugins.github.gh_lists import READ_FAILURES, as_dict
 from metabrowser.builtin_plugins.github.pull_catalog import (
@@ -605,11 +605,11 @@ async def request_preparation(
         # hold them (the owner's rule of 2026-11-22, in :mod:`.gh_budget`'s docstring).
         held = gh_budget.held_until(now) is not None or gh_budget.over_ceiling(now)
     else:
-        # The walk past them prepares rows a reader may open: the catalog's speculative
-        # work, held by the floor and at its part of speculative work's share of the
-        # ceiling as well, which leaves the prefetch its own (:mod:`.gh_budget`).
+        # The walk past them prepares rows a reader may open: speculative work, held by the
+        # floor and by speculative work's share of the ceiling less what a prefetch that
+        # has work can still spend, so the prefetch goes first (:mod:`.gh_budget`).
         held = not gh_budget.admission(
-            ("graphql",), now=now, speculative=True, catalog=True
+            ("graphql",), now=now, speculative=True, reserved=pull_prefetch.reserved(now)
         ).admitted
     if held:
         # What is cached was answered above, with no request.
@@ -732,9 +732,9 @@ async def request_preparation(
             return "partial"
         eligible = (catalog, admitted)
     pulls_set.core_window = window
-    # The walk's batch is the catalog's speculative work, and its job copies the context it
-    # starts in.
-    with gh_budget.speculative(catalog=True) if ask.lane != "visible" else nullcontext():
+    # The walk's batch is speculative work, counted as the walk's, and its job copies the
+    # context it starts in.
+    with gh_budget.speculative(walk=True) if ask.lane != "visible" else nullcontext():
         return coordinator.start(
             key, partial(_prepare, pulls_set, window, running, eligible, carried), network=False
         )

@@ -44,6 +44,9 @@ reader’s other tools.
 - Background work yields to visible work and stops before the account’s budget runs low,
   as `BACKGROUND_FLOOR` already does.
   A change found on the page on screen is still read below the floor.
+- A repository’s first visit fills its catalog as fast as GitHub answers its pages,
+  inside speculative work’s share, since Quick Search across every state and the ref
+  chooser’s pull requests by branch are complete only once it has (review D1 of #737).
 
 ## Non-Goals
 
@@ -214,7 +217,7 @@ Every automatic read of GitHub is one of three kinds, and each has its own caden
 3. **Background preparation** is the prefetch of what the reader may open next.
    It runs only while the account is above `BACKGROUND_FLOOR` and yields to the other
    two, as it did before this plan, and now also only inside speculative work’s share of
-   the self-ceiling, where it goes before the catalog’s backfill and cores walk (see
+   the self-ceiling, where, while it has work, it goes before the cores walk (see
    [Budget](#budget)). A files list the store gives costs GitHub nothing, so no budget
    holds it.
 
@@ -369,13 +372,22 @@ guards and adds one:
   with the arithmetic beside them in `pull_prefetch.py`. Neither number has been
   measured against a real session: `GET pulls-prefetch` reports both and what the hour
   has used of each under `governor.ceiling`. Inside the share the prefetch goes first
-  (review B1 of #737). The catalog’s backfill and cores walk run inside
-  `gh_budget.speculative(catalog=True)` and stop at `CATALOG_SPECULATIVE_CORE_PER_HOUR`,
-  the share less what the prefetch’s caps can spend: with one first-come share, a cold
-  catalog’s walk of 800 rows spent all of it and the prefetch was refused.
-  Their cost grows with the catalog, so no fixed part would cover a cold one, and the
-  rows on screen are prepared outside the share; a cold walk now takes hours, which the
-  constant’s comment works out.
+  while it has work. The cores walk runs inside `gh_budget.speculative(walk=True)` and
+  asks with what the prefetch’s caps can still spend this hour reserved, at the prices
+  they are set at, while a lane has work queued or running, and with nothing reserved
+  while every lane is idle (`pull_prefetch.reserved`). With one first-come share, a cold
+  catalog’s walk of 800 rows spent all of it and the prefetch was refused (review B1 of
+  #737); with the caps’ whole price reserved in every hour, the walk and the backfill
+  had 8 points an hour between them, so a cold catalog of 800 rows took about 13.5
+  hours, and Quick Search and the chooser’s pull requests by branch were incomplete as
+  long (review D1). The catalog’s backfill reserves nothing for the prefetch: it costs a
+  point a page, once per catalog epoch, and those two wait on it.
+  A cold catalog of 800 rows is then 8 points of backfill, read as fast as its pages
+  come, and 100 walk batches, of which an idle prefetch leaves the walk about 90 at once
+  and the rest as the hour rolls.
+  That is arithmetic, not a measurement.
+  The cost of the order is that a walk which ran while the prefetch was idle can leave a
+  prefetch asked later that hour less than its caps, until the hour rolls.
   The label set’s read is refused only at the whole share, as the prefetch is, since a
   page’s chips wait on it.
   A files list the store gives is not refused at all, since it costs GitHub nothing; a
@@ -608,9 +620,9 @@ account check and the bounds on probes.
   A job’s account check is a conditional `gh api user`, so it is counted as any answer
   is: nothing for a `304`, one for a `200`.
 - [x] `SPECULATIVE_CORE_PER_HOUR`, speculative work’s share of that ceiling, with the
-  prefetch’s caps priced to fit it (see [Budget](#budget)), and
-  `CATALOG_SPECULATIVE_CORE_PER_HOUR`, the part of it the catalog’s backfill and cores
-  walk may spend, so the prefetch goes first (review B1 of #737).
+  prefetch’s caps priced to fit it (see [Budget](#budget)), and the cores walk leaving
+  the prefetch what its caps can still spend while it has work
+  (`pull_prefetch.reserved`), so the prefetch goes first (reviews B1 and D1 of #737).
 
 ### Phase 3: Metabrowser’s Own Stores
 
@@ -663,8 +675,8 @@ account check and the bounds on probes.
   probes would overlap their own latency.
 - Is 300 `core` an hour per server the right self-ceiling for automatic work, given how
   much of the account’s hour other tools use, and is a third of it the right share for
-  speculative work, with the catalog’s backfill and cores walk held to what the
-  prefetch’s caps leave of it?
+  speculative work, with the cores walk leaving the prefetch its caps while it has work,
+  and the backfill reserving nothing?
   None has been measured: `governor.ceiling` in `GET pulls-prefetch` reports what an
   hour used, and a few real sessions’ readings, a repository’s first visit among them,
   should be recorded beside the constants.
