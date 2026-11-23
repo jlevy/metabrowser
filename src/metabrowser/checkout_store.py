@@ -652,28 +652,17 @@ class CheckoutStore:
             try:
                 await asyncio.wait_for(self._settled.wait(), wait)
             except TimeoutError:
-                if self.session is None and self._unasked_try_due(loop.time()):
+                # A try that ended in the same loop iteration as the timeout, one a page's
+                # own ask started, still times the wait out: its end moved when the next
+                # is due, so that is worked out again before anything starts.
+                if self._settled.is_set():
+                    continue
+                if self.session is None:
                     try:
                         self.request_acquisition()
                     except RuntimeError:
                         return
         await self.session.run_idle_refresh()
-
-    def _unasked_try_due(self, now: float) -> bool:
-        """Whether the timer, its wait run out at *now*, starts a try or joins the one running.
-
-        Read when the wait ends, not when it began. A visible page's own ask starts the try
-        that was due as soon as it is, and a try that fails at once can end before the
-        timer runs again, in the turn of the loop the timer's wait ran out in: the next
-        try then waits from that one's end (:meth:`retry_at`), and starting one here would
-        be the second in a row with no wait between. One that runs, or was stopped before
-        it began or ended, is joined or started again.
-        """
-
-        if self._pending or self._failed_at is None:
-            return True
-        due = self.retry_at()
-        return due is not None and now >= due
 
     # ── Refresh ─────────────────────────────────────────────────
 
