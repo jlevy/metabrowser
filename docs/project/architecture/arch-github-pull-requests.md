@@ -619,6 +619,13 @@ history entry remembers what it showed (bead `mb-mzcj`).
   reader’s place. A page loaded again on an entry that showed another comparison says so
   in the same line, and one whose reader chose the earlier diff shows it again with the
   offer of the newer. An entry reached by Back after the head moved says it too.
+  The page writes the memory when it mounts a diff and when the page host lands it on an
+  address of its own (`setTab`, `land`, `showFile`), since the shell writes each entry
+  it makes with no state.
+  A key’s walk of the Pulls tab’s changed files replaces the entry once it stops, and a
+  click on a file pushes one, neither mounting a diff (bead `mb-eg5f`). Writing the
+  memory in the page, rather than having the shell keep a replaced entry’s state, covers
+  the push too, and keeps the page the only writer of what it put there.
 - **The reader’s place:** a place in Changes names its file (`PanePlace`), which the
   mounted diff maps to a block and back, so the place held through a replacement, or
   landed on after a reload, is in the same file, at the same offset, where the new diff
@@ -636,7 +643,8 @@ and the place; `tests/dom/github-pull-repair-lifecycle-behavior.js` and
 `tests/dom/github-pull-changes-follow-behavior.js` drives the join: a mounted page with
 a history entry, whose diff view answers `sectionForPath` and `pathForSection` from its
 own sections, follows a head, keeps the place through the emptied pane, and is mounted
-again on the entry, on Changes and on Docs, and moves between the two;
+again on the entry, on Changes and on Docs, moves between the two, and is landed on a
+file through the production page host by a walk and by a click;
 `tests/dom/diff-file-jump-session.js` pins the two accessors of the production diff
 view.
 
