@@ -26,6 +26,9 @@ experiment:
     control: "metab 0.12.0, exact wheel from v0.12.0 (87b8ec812774bb12a4d9f5f29901719b8b66d323)"
     candidate: "metab 0.13.0.dev3019+29f9f8c, exact wheel from 29f9f8c36661ffde18d02990873771088522e662"
     bytecode: cached
+    protocol:
+      path: exp-102-protocol.txt
+      sha256: f51040778437a08f2d93daa21051a2305a4b4b9f14284c457f3e71340b00d93c
     record: "../results/runs.jsonl labels exp-102-cli-013-http-ready-v0120 and exp-102-cli-013-http-ready-candidate"
   results:
     - metric: browser_first_row_ms
@@ -173,6 +176,11 @@ Neither inserted any browser ledger rows.
 
 ## Matched HTTP Readiness
 
+The [archived protocol](exp-102-protocol.txt) copies the matched-HTTP workflow
+byte-for-byte from its commit before the run.
+The earlier socket-ready and later optional-font series used their own workflow
+revisions, linked in their sections.
+
 Both installed wheels kept their original lockfiles.
 The driver polled `/api/routes`, which reads the route list without loading the browser
 shell or tree. It started a fresh Chrome profile immediately after the first HTTP 200
@@ -254,7 +262,8 @@ Every admitted pair exceeded the 1.3× first-row tolerance.
 The two scripts again spent 40–42 ms from response start to end on the candidate and 0–2
 ms on the control. The four-pair result reproduces the remaining delay.
 A release comparison requires five admitted pairs.
-[Optional-font run](https://github.com/jlevy/metabrowser/actions/runs/45113917455)
+[Optional-font run](https://github.com/jlevy/metabrowser/actions/runs/45113917455) ·
+[Optional-font workflow](https://github.com/jlevy/metabrowser/commit/1d2df3b7f499961027bf47fedee4991c0db25e87)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
