@@ -560,6 +560,119 @@ def test_a_change_a_probe_found_starts_the_delta_scan_at_once_and_only_once(
     assert github.statuses == [200, 304]
 
 
+def test_two_asks_that_both_found_the_probe_due_start_one_probe_and_neither_fails(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A2 of review A on #737: the second raised ``AssertionError``, a 500 from the route.
+
+    A Pulls tab and a second window's tab, or a pull request page's ask: each decides in a
+    worker thread, and both decide before either is back on the loop.
+    """
+
+    seed_catalog(repository, [generated_item(2)], fetched_at=STAMP)
+    _succeeded(repository)
+    github = _GitHub(monkeypatch, generated_item(2))
+    ask = RefreshRequest("all", background=True)
+
+    async def exercise() -> tuple[Any, Any]:
+        coordinator = RefreshCoordinator(limit=1)
+        probe = pull_list_probe.list_probe(coordinator, repository.source)
+        view = ListView(repository, coordinator, False, probe, None)
+        github.later(LIST_PROBE_S)
+        github.release = asyncio.Event()
+        first, second = await asyncio.gather(
+            asyncio.to_thread(refresh_wanted, view, ask),
+            asyncio.to_thread(refresh_wanted, view, ask),
+        )
+        assert first == second == "probe"
+        one = asyncio.ensure_future(pull_list_route.probe_list(view))
+        await asyncio.sleep(0)
+        assert probe.probing
+        # The second ask finds the first's probe running, and starts none.
+        other = await pull_list_route.probe_list(view)
+        github.release.set()
+        answers = (await one, other)
+        await coordinator.aclose()
+        return answers
+
+    assert asyncio.run(exercise()) == (False, False)
+    assert len(github.asked) == 1
+
+
+def test_an_ask_that_reaches_the_loop_after_anothers_probe_found_a_change_leaves_it_to_that_ask(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The later of two asks that both found the probe due starts nothing, so the change
+    is scanned for once, by the ask whose probe found it or, past its wait, the next ask."""
+
+    seed_catalog(repository, [generated_item(2)], fetched_at=STAMP)
+    _succeeded(repository)
+    github = _GitHub(monkeypatch, _changed(2))
+    ask = RefreshRequest("all", background=True)
+
+    async def exercise() -> tuple[Any, Any, Any]:
+        coordinator = RefreshCoordinator(limit=1)
+        probe = pull_list_probe.list_probe(coordinator, repository.source)
+        view = ListView(repository, coordinator, False, probe, None)
+        github.later(LIST_PROBE_S)
+        first, second = await asyncio.gather(
+            asyncio.to_thread(refresh_wanted, view, ask),
+            asyncio.to_thread(refresh_wanted, view, ask),
+        )
+        assert first == second == "probe"
+        found = await pull_list_route.probe_list(view)
+        other = await pull_list_route.probe_list(view)
+        # The change waits in ``saw`` for its scan, which the next ask reads first.
+        after = await asyncio.to_thread(refresh_wanted, view, ask)
+        await coordinator.aclose()
+        return found, other, after
+
+    assert asyncio.run(exercise()) == ("changed", False, "changed")
+    assert len(github.asked) == 1
+
+
+def test_a_change_a_probe_found_is_asked_for_before_a_periodic_scan_due_at_the_same_ask(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A8 of review A on #737: the periodic scan started the job, the probe was not told,
+    and the next ask started a second scan for the same row."""
+
+    seed_catalog(repository, [generated_item(2)], fetched_at=STAMP)
+    _succeeded(repository)
+    github = _GitHub(monkeypatch, _changed(2))
+    ask = RefreshRequest("all", background=True)
+
+    async def exercise() -> list[Any]:
+        coordinator = RefreshCoordinator(limit=1)
+        probe = pull_list_probe.list_probe(coordinator, repository.source)
+        scans: list[Any] = []
+
+        async def scan(*_args: Any, **kwargs: Any) -> None:
+            scans.append(kwargs["take_retry"]())
+
+        monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", scan)
+        view = ListView(repository, coordinator, False, probe, None)
+        # No probe vouches, and the last scan is more than a window old: the periodic
+        # scan is due, and a probe that outlasted its ask's wait has found a change.
+        github.later(FRESHNESS_WINDOW_S + 1)
+        await probe.run(repository, coordinator=coordinator)
+        assert probe.saw is not None
+        wanted = await asyncio.to_thread(refresh_wanted, view, ask)
+        assert wanted == "changed"
+        assert pull_list_route.start_refresh(view, ask, wanted=wanted) == "started"
+        assert probe.saw is None
+        await coordinator.drain(timeout_s=2)
+        # The catalog still lacks the row (the stand-in read nothing), and the probe knows
+        # its scan was started: the next finds it behind, not changed again.
+        github.later(LIST_PROBE_S)
+        await probe.run(repository, coordinator=coordinator)
+        assert probe.saw is None and not probe.vouches(github.now)
+        await coordinator.aclose()
+        return scans
+
+    assert asyncio.run(exercise()) == [True]
+
+
 def test_a_change_found_while_the_job_runs_makes_its_next_page_the_delta_scan(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:

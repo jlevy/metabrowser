@@ -380,6 +380,10 @@ absent, failed and due, or wanted for a reader’s prefix or the backfill; the d
 once every `FULL_REFRESH_S` while probes vouch and once a freshness window otherwise;
 and else the probe, one at a time for a repository and `LIST_PROBE_FLOOR_S` apart
 however many tabs ask.
+A change a probe found is asked for before the periodic scan, so the job that scans for
+it is the one the probe is told of.
+Two asks that both found the probe due in their worker threads start one probe: the
+later finds it no longer due on the loop and starts nothing.
 A list probe counts toward the server’s `MAX_PROBES_IN_FLIGHT` with its pull requests’
 probes and is a coordinator job as theirs are.
 Probes that each pay for a `200` and find no pull request changed, as in a repository
