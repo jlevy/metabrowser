@@ -3,9 +3,9 @@ type: is
 id: is-01m84jjarhfsse2yh3gy5mnkqq
 title: "A served test checkout's origin store fetches the real origin: no seam points a subprocess server at a local origin"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 delegate: claude-code@spud10
 labels:
   - ci
@@ -14,8 +14,12 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-23T16:07:02.661Z
-updated_at: 2026-11-23T16:10:58.955Z
+updated_at: 2026-11-23T17:29:17.711Z
 started_at: 2026-11-23T16:10:58.954Z
+closed_at: 2026-11-23T17:29:17.705Z
+close_reason: "Fixed in #762 (6fd2b2092): METABROWSER_ORIGIN_STORE=0 (ORIGIN_STORE_ENV in checkout_store.py) keeps the serve command from keeping a store of a folder's origin; tests/conftest.py sets it, so subprocess servers no longer fetch https://github.com/octo/demo. The three named Chrome tests pass locally, with the gh guard at 1 call from test_ref_selector_pulls_chrome, the count before #740."
+resolution: null
+duplicate_of: null
 ---
 Since the folder origin store (#740, merged in the update-cadence stack at b68cc9571), a metab server started on a checkout whose origin is an https address the grammar accepts acquires a store of that origin when it starts (CheckoutStore.open -> request_acquisition). A Chrome test's server is a subprocess, so monkeypatching acquire.remote_url_for does not reach it, and the acquisition policy's Git environment ignores url.insteadOf, so no test can point it at a local file:// origin. The tests' servers therefore try the real https://github.com/octo/demo, from tests that say nothing is fetched.
 
