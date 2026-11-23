@@ -11,12 +11,10 @@ drives the image route, and writes ``tests/golden/cli-github-pull-rendered.txt``
 Pull request 7's head moves to a commit that edits a heading beside an HTML comment (a
 word mark, and a block the render cannot fully show), adds a task list (``ready``,
 without the boxes the allowlist drops, so ``source_only``), edits the Markdown body of
-a ``<details>`` beside a centered
-image (``ready``, the word marked inside it), adds a file with a footnote (``ready``, its
-note where its definition is) and one holding the private-use character the projection
-once parted its
-blocks with (``unsupported``), a file past what a thread projects, which the
-Markdown child answers (``ready``, kept out of the transcript for its size), a file past
+a ``<details>`` beside a centered image (``ready``, the word marked inside it), adds a
+file with a footnote (``ready``, its note where its definition is) and one holding the
+private-use character the projection parts most renders with (``ready``, parted with
+another), a file past what a thread projects, which the Markdown child answers (``ready``, kept out of the transcript for its size), a file past
 the route's own read bound (``too_large``), a note with front matter, a Markdown file
 renamed without a change (``unsupported``, ``no_changes``), and YAML that does not parse
 (``unsupported``). Its base moves to a merge of YAML and JSON files that the head then
@@ -158,7 +156,7 @@ def _markdown_head(origin: Origin, tmp_path: Path) -> tuple[str, str]:
         "README.md": b"# Demo\n\n- [ ] Try the tasks\n",
         "wiki/layout.md": _LAYOUT.replace(b"old installer", b"new installer"),
         "wiki/footnotes.md": b"# Notes\n\nA claim.[^1]\n\n[^1]: Its source.\n",
-        # The character the projection once parted its blocks with, which a file can hold.
+        # The character the projection parts most renders with, which a file can hold.
         "wiki/separator.md": "# Private use\n\nA \ue000 character.\n".encode(),
         "docs/big.md": _BIG,
         "docs/huge.md": _HUGE,
@@ -246,7 +244,9 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
         "<p>A claim.<sup><a>1</a></sup></p>",
         "<ol>\n<li><p>Its source. <a>\xa0\u2191\xa0</a></p>\n</li>\n</ol>",
     ]
-    assert rendered(f"&file={ids['wiki/separator.md']}")["status"] == "unsupported"
+    private = rendered(f"&file={ids['wiki/separator.md']}")
+    assert private["status"] == "ready"
+    assert private["blocks"][1]["html"] == "<p>A \ue000 character.</p>"  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportGeneralTypeIssues]
     # Past the 48 KiB a thread projects and inside the route's read bound: the Markdown
     # child answers it, started for this one request. Kept out of the transcript for its
     # size (mb-rm40: before, the file was refused, and the page hid its chooser).

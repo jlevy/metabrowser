@@ -262,10 +262,11 @@ Changed words are marked by a bounded word diff.
   math and diagrams off and without code highlighting.
 - **Raw HTML:** renders as the Document view renders it, through the same sanitizer and
   allowlist. The blocks are rendered together with a numbered marker at each boundary,
-  and a boundary whose marker the render does not carry at its top level, inside a
-  `<div>` or a `<details>` that raw HTML opened in one block and closed in a later one,
-  parts nothing, so those blocks are one block of all their lines (`_units`). Raw HTML
-  the render drops whole, such as a script, has no block, as a comment has none.
+  written with a private-use character the render does not hold (`_separator`), and a
+  boundary whose marker the render does not carry at its top level, inside a `<div>` or
+  a `<details>` that raw HTML opened in one block and closed in a later one, parts
+  nothing, so those blocks are one block of all their lines (`_units`). Raw HTML the
+  render drops whole, such as a script, has no block, as a comment has none.
   `_trusted` says when a top-level boundary can still be misplaced, and how the
   projection then finds it.
   A task list’s box is raw HTML that KPress’s task list plugin writes and the allowlist

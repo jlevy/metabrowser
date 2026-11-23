@@ -1263,8 +1263,48 @@ def test_the_route_refuses_html_past_its_cap() -> None:
     assert size < pull_rendered_diff._MAX_HTML_BYTES  # pyright: ignore[reportPrivateUsage]
 
 
-def test_sources_holding_the_block_separator_are_refused() -> None:
-    assert _project(None, "Text  here.\n".encode())["status"] == "unsupported"
+@pytest.mark.parametrize(
+    ("source", "shown"),
+    [
+        pytest.param("Text \ue000 here.", "Text \ue000 here.", id="written"),
+        pytest.param("Text &#xe000; here.", "Text \ue000 here.", id="a Markdown reference"),
+        pytest.param(
+            "<p>Text &#57344; here.</p>", "Text \ue000 here.", id="a reference in raw HTML"
+        ),
+    ],
+)
+def test_a_source_holding_a_separator_parts_its_blocks_with_another(
+    source: str, shown: str
+) -> None:
+    """The projection parts each render with a private-use character the render does
+    not hold, so a source that holds one, written or as a reference, keeps its blocks."""
+
+    old = f"# Title\n\n{source}\n\nThe old end.\n".encode()
+    result = _project(old, old.replace(b"old", b"new"))
+    assert result["status"] == "ready"
+    assert [block["kind"] for block in result["blocks"]] == [
+        "context",
+        "context",
+        "removed",
+        "added",
+    ]
+    assert result["blocks"][1]["html"] == f"<p>{shown}</p>"
+
+
+def test_a_render_holding_the_first_plane_of_separators_takes_the_next() -> None:
+    every = "".join(chr(point) for point in range(0xE000, 0xF900))
+    old = f"{every}\n\nThe old end.\n".encode()
+    result = _project(old, old.replace(b"old", b"new"))
+    assert [block["kind"] for block in result["blocks"]] == ["context", "removed", "added"]
+    assert markdown_projection._separator(every) == "\U000f0000"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_render_holding_every_separator_is_one_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(markdown_projection, "_SEPARATORS", (range(0xE000, 0xE001),))
+    old = b"# Title\n\nText \xee\x80\x80 here.\n\nThe old end.\n"
+    result = _project(old, old.replace(b"old", b"new"))
+    assert [block["kind"] for block in result["blocks"]] == ["removed", "added"]
+    assert "<ins>new</ins>" in result["blocks"][1]["html"]
 
 
 # ── The pipeline is KPress's own ────────────────────────────────

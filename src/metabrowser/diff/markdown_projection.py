@@ -3,9 +3,10 @@
 Each side is parsed once, by the MarkdownIt core KPress itself builds, so a block's
 source range is the map of the very token that renders it. Every top-level block is
 rendered from its own tokens, and the blocks pass KPress's post-processing, its
-sanitizer and :func:`metabrowser.inert_html.harden` together, separated by markers the
-source may not contain, so a rendered block is known to come from its range and heading
-anchors are numbered across the document exactly as the Document view numbers them.
+sanitizer and :func:`metabrowser.inert_html.harden` together, separated by markers of a
+character the render does not hold (:func:`_separator`), so a rendered block is known to
+come from its range and heading anchors are numbered across the document exactly as the
+Document view numbers them.
 Raw HTML renders as the Document view renders it: blocks that an element it opens holds
 together, whose markers land inside that element, are one block of all their lines
 (:func:`_units`). A footnote's note, which the Document view lists at the end, renders
@@ -33,7 +34,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from functools import lru_cache
-from html import escape
+from html import escape, unescape
 from html.parser import HTMLParser
 from itertools import pairwise
 from math import inf
@@ -144,12 +145,14 @@ _CONTAINER_LINE = re.compile(rb"^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*:::", r
 _DEFINITION = re.compile(r"^\s*(?:(?:>|[-*+]|\d{1,9}[.)])\s*)*\[(?:[^\]\\]|\\.)+\]:")
 _WORDS = re.compile(r"\w+(?:[-’']\w+)*|[^\w\s]+|\s+")
 _SPACE = re.compile(r"\s+")
-# Separates rendered blocks through KPress's post-processing, sanitizer and the hardener.
-# A source containing it is refused, so every occurrence is the projection's own. The
-# boundary after block `n` is written as the separator, `n`, and the separator again
-# (_marker), so where each boundary lands in the hardened tree says which blocks it parts.
-_SPLIT = "\ue000"
-_MARKER = re.compile(f"{_SPLIT}(\\d+){_SPLIT}")
+# The characters a render's blocks may be parted with through KPress's post-processing,
+# sanitizer and the hardener: private use, which no Markdown or HTML parser gives a
+# meaning, in the Basic Multilingual Plane and planes 15 and 16 (each but its last two
+# code points, which are not characters). Each render takes the first one its blocks
+# do not hold (_separator), so every occurrence is the projection's own. The boundary
+# after block `n` is written as the separator, `n`, and the separator again (_marker),
+# so where each boundary lands in the hardened tree says which blocks it parts.
+_SEPARATORS = (range(0xE000, 0xF900), range(0xF0000, 0xFFFFE), range(0x100000, 0x10FFFE))
 _REFERENCE = re.compile("\x00(\\d+)\x00")
 _SOURCE_MARK = "\x00src\x00"
 _INFO = "metabrowser_info"
@@ -770,10 +773,30 @@ def _map(token: Token, offset: int, after: int) -> tuple[int, int]:
     return span[0] + offset, span[1] + offset
 
 
-def _marker(index: int) -> str:
+def _separator(text: str) -> str | None:
+    """The first of _SEPARATORS that *text* does not hold, or None when it holds them
+    all."""
+
+    if "\ue000" not in text:
+        return "\ue000"
+    held = set(text)
+    return next(
+        (chr(point) for points in _SEPARATORS for point in points if chr(point) not in held),
+        None,
+    )
+
+
+@lru_cache(maxsize=8)
+def _markers(split: str) -> re.Pattern[str]:
+    """The boundaries a render parted by *split* carries."""
+
+    return re.compile(f"{split}(\\d+){split}")
+
+
+def _marker(index: int, split: str) -> str:
     """The boundary after block *index*, as the render carries it."""
 
-    return f"{_SPLIT}{index}{_SPLIT}"
+    return f"{split}{index}{split}"
 
 
 def _hardened(html: str, budget: float) -> _Html:
@@ -808,20 +831,20 @@ def _joined_nodes(parts: Sequence[Sequence[_Element | str]]) -> list[_Element | 
     return _trimmed(nodes)
 
 
-def _unmarked(node: _Element) -> bool:
+def _unmarked(node: _Element, split: str) -> bool:
     """Remove the boundary markers inside *node*: a boundary inside an element parts
     nothing, so the blocks on either side render as one. False when a separator is left
     anywhere else, such as in an attribute."""
 
-    whole = all(_SPLIT not in value for _, value in node.attrs)
+    whole = all(split not in value for _, value in node.attrs)
     children: list[_Element | str] = []
     for child in node.children:
         if isinstance(child, _Element):
-            whole &= _unmarked(child)
+            whole &= _unmarked(child, split)
             children.append(child)
             continue
-        text = _MARKER.sub("", child)
-        whole &= _SPLIT not in text
+        text = _markers(split).sub("", child)
+        whole &= split not in text
         if text and children and isinstance(children[-1], str):
             children[-1] += text
         elif text:
@@ -839,7 +862,7 @@ class _Unit:
     nodes: list[_Element | str]
 
 
-def _units(root: _Element, count: int) -> list[_Unit] | None:
+def _units(root: _Element, count: int, split: str) -> list[_Unit] | None:
     """The blocks the hardened render parts at its top level, and what each part renders,
     or None when it does not keep its boundaries in order.
 
@@ -856,18 +879,18 @@ def _units(root: _Element, count: int) -> list[_Unit] | None:
     ends: list[int] = []
     for child in root.children:
         if isinstance(child, _Element):
-            if not _unmarked(child):
+            if not _unmarked(child, split):
                 return None
             parts[-1].append(child)
             continue
         position = 0
-        for match in _MARKER.finditer(child):
+        for match in _markers(split).finditer(child):
             parts[-1].append(child[position : match.start()])
             ends.append(int(match.group(1)))
             parts.append([])
             position = match.end()
         parts[-1].append(child[position:])
-    if any(_SPLIT in node for part in parts for node in part if isinstance(node, str)):
+    if any(split in node for part in parts for node in part if isinstance(node, str)):
         return None
     if any(later <= earlier for earlier, later in pairwise(ends)) or (
         ends and ends[-1] >= count - 1
@@ -1044,8 +1067,6 @@ def _parse(text: str, token_budget: float = inf) -> _Side:
         frontmatter, body_start, _ = fmf_split_frontmatter(source, strict=False)
         offset = source.count("\n", 0, body_start)
         source = source[body_start:]
-    if _SPLIT in source:
-        raise _Unsupported("source contains the block separator")
     env: dict[str, object] = {}
     tokens = _KPRESS.parse(source, env)
     if sum(1 + len(token.children or ()) for token in tokens) > token_budget:
@@ -1122,20 +1143,26 @@ def _render(side: _Side, budget: float) -> tuple[list[_Block], int]:
         _KPRESS.renderer.render(tokens[start:stop], _KPRESS.options, {})
         for start, stop in side.blocks
     ]
-    tree = _hardened(
-        "".join(
-            piece + (_marker(index) if index < len(pieces) - 1 else "")
-            for index, piece in enumerate(pieces)
-        ),
-        budget,
-    )
-    units = _units(tree.root, len(pieces))
-    if units is not None and any(side.raw):
-        units = _trusted(units, tree.root, side.raw, pieces, budget)
-    nodes = tree.nodes
+    # A character the render holds, written or as a reference, cannot part its blocks.
+    split = _separator(unescape("".join(pieces)))
+    units: list[_Unit] | None = None
+    nodes = 0
+    if split is not None:
+        tree = _hardened(
+            "".join(
+                piece + (_marker(index, split) if index < len(pieces) - 1 else "")
+                for index, piece in enumerate(pieces)
+            ),
+            budget,
+        )
+        units = _units(tree.root, len(pieces), split)
+        if units is not None and any(side.raw):
+            units = _trusted(units, tree.root, side.raw, pieces, budget)
+        nodes = tree.nodes
     if units is None:
-        # No part of the render can be trusted to be its own blocks', so the side is one
-        # block: the document's own render, which is never refused for its shape.
+        # No part of the render can be trusted to be its own blocks', or it holds every
+        # separator, so the side is one block: the document's own render, which is never
+        # refused for its shape.
         tree = _hardened("".join(pieces), budget)
         units = [_Unit(0, len(pieces) - 1, _trimmed(tree.root.children))] if pieces else []
         nodes = tree.nodes
