@@ -5,7 +5,7 @@ title: "Release 0.13.0: changelog, candidate review, and owner approval"
 kind: task
 status: in_progress
 priority: 1
-version: 9
+version: 10
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/727
@@ -18,10 +18,12 @@ delegate: codex@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7hgpc9550w78kmwqsvv64xh
+child_order_hints:
+  - is-01m838y6g93s7w74dzqmas02ca
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:09.221Z
-updated_at: 2026-11-23T03:43:34.281Z
+updated_at: 2026-11-23T03:59:31.268Z
 started_at: 2026-11-23T03:14:00.397Z
 ---
 
