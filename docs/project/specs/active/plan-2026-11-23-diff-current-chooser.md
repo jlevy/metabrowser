@@ -221,7 +221,7 @@ One stack on #759, one commit per bead:
 - [x] `mb-wexb`: the diff-wide choice, its chooser in the bars of rendered-format files,
   and Rendered Current for Markdown.
 - [x] `mb-wd9o`: Source Current for those files.
-- [ ] `mb-256j`: Rendered Current for YAML and JSON.
+- [x] `mb-256j`: Rendered Current for YAML and JSON.
 - [ ] `mb-ubs0`: the chooser on every bar with a text diff, and the layout control while
   Current is chosen.
 - [ ] `mb-yt73`: `diff.show`, `N`, the browserless session and its golden, and the

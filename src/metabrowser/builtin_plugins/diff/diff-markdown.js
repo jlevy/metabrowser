@@ -73,7 +73,7 @@ const UNREADABLE = {
  *   progress: HTMLElement, progressLabel: HTMLElement,
  *   control: HTMLElement,
  *   id: string, format: RenderedFormat, mode: Mode, pending: boolean, expanded: boolean,
- *   holding: boolean, tree: {dispose: () => void} | null,
+ *   holding: boolean, tree: {dispose: () => void, setCurrent: (next: boolean) => void} | null,
  *   retryAt: number, retries: number,
  *   folds: Map<string, () => void>,
  *   removed: HTMLElement[], gone: boolean,
@@ -622,12 +622,14 @@ export function createMarkdownViews(deps) {
   }
 
   // What Rendered draws of Current: a Markdown file's removed blocks and keys hidden, by
-  // the attribute, so which show is decided here and not by a selector.
+  // the attribute, so which show is decided here and not by a selector, and a YAML or JSON
+  // tree drawn again without its removed entries (`setCurrent` in diff-structured.js).
   /** @param {FileView} file */
   function applyShow(file) {
     for (const part of file.removed) {
       part.hidden = current;
     }
+    file.tree?.setCurrent(current);
   }
 
   // The chooser stays for a file that can only show Source: its Rendered chip is
@@ -789,6 +791,7 @@ export function createMarkdownViews(deps) {
           file.tree?.dispose();
           file.tree = mountStructuredDiff(file.rendered, projection.root, tree, {
             sourceOnly: projection.source_only,
+            current,
           });
           file.state = "ready";
           file.pending = false;
