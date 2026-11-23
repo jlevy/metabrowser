@@ -286,8 +286,11 @@ export function createTypeFilterControl(element, fc, host) {
       }) +
       (note === ""
         ? ""
-        : `<span class="diff-type-note"${state.failed ? ' data-severity="error"' : ""}>` +
-          `${fc.escapeHtml(note)}</span>`) +
+        : state.failed
+          ? // A failed load is an error notice, which interrupts a screen reader.
+            `<span class="notice diff-type-note" data-severity="error" role="alert">` +
+            `${fc.escapeHtml(note)}</span>`
+          : `<span class="diff-type-note">${fc.escapeHtml(note)}</span>`) +
       (state.types === null ? "" : fc.clearHtml({ label: "Clear" }));
     element.setAttribute("aria-busy", state.loading ? "true" : "false");
     restore();

@@ -205,8 +205,11 @@
   white-space: nowrap;
 }
 
-.metabrowser-diff-host .diff-type-note[data-severity="error"] {
+/* The shared notice's identity, at the toolbar's height. */
+.metabrowser-diff-host .diff-type-note.notice {
+  padding: 2px 8px;
   color: var(--status-error-text);
+  line-height: inherit;
 }
 
 .metabrowser-diff-host .diff-type-empty {

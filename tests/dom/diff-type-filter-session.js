@@ -138,11 +138,11 @@ class ControlElement {
         ? `— ${text(match[3])}`
         : `${match[2].includes('aria-checked="true"') ? "[x]" : "[ ]"} ${text(match[3]).replace(/^✓ /, "")}`,
     );
-    const note = /class="diff-type-note"[^>]*>([^<]*)</.exec(this.html);
+    const note = /class="(notice )?diff-type-note"[^>]*>([^<]*)</.exec(this.html);
     return {
       trigger: trigger ? text(trigger[1]) : null,
       ...(this.html.includes('aria-expanded="true"') ? { rows } : {}),
-      note: note ? note[1] : null,
+      note: note ? (note[1] ? `alert: ${note[2]}` : note[2]) : null,
       clear: this.html.includes("data-chip-clear"),
       busy: this.attributes.get("aria-busy") === "true",
     };

@@ -478,7 +478,7 @@ $ node tests/dom/diff-type-filter-session.js
           "[ ] .js 1",
           "[x] .png 1"
         ],
-        "note": "Could not load the files of these types.",
+        "note": "alert: Could not load the files of these types.",
         "clear": true,
         "busy": false
       }
