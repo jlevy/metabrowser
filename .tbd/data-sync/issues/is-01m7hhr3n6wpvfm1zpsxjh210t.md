@@ -5,7 +5,7 @@ title: "Release 0.13.0: changelog, candidate review, and owner approval"
 kind: task
 status: in_progress
 priority: 1
-version: 12
+version: 13
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/727
@@ -23,7 +23,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:09.221Z
-updated_at: 2026-11-23T06:28:46.432Z
+updated_at: 2026-11-23T06:38:05.402Z
 started_at: 2026-11-23T03:14:00.397Z
 ---
 
@@ -40,3 +40,5 @@ started_at: 2026-11-23T03:14:00.397Z
 Reviewed corrected release-prep head a7e85ff98e4ed474845b6219172bca105ced7877, after folding the 118 fragments and preserving v0.12.0+ byte-for-byte. Exact Review D https://github.com/jlevy/metabrowser/pull/727#pullrequestreview-6017123166 . PR CI 45120576350 and isolated full make verify 45120609494 are pending. Earlier 96c06c77 gates caught a public hygiene label in exp-102. Latest local whole-repository public hygiene and changelog checks pass. Exact 0.13.0 tag and notes approval will follow landed main CI.
 
 Release-prep #727 merged at 51ca65a3ecf58bee890ad9c8ec724c8f15840267. Exact full make verify 45120609494 tested the identical a7e85ff tree and exact landed main CI 45123419039 passed. Approval still required for this SHA and release notes with SHA-256 f86937e202650e47c0ca039483b030f2ffad0ffd823c31dfebf49514ea8310bf. Live tag preflight returned 404 and public PyPI and GitHub latest remain 0.12.0. No tag created.
+
+Owner approved the exact 51ca65a3ecf58bee890ad9c8ec724c8f15840267 and reviewed release notes on 2026-11-22 PT. Published the GitHub release titled metab-cli v0.13.0, verified the tag target and complete approved notes, and started Publish to PyPI run 45124967969. PyPI and public installation checks still pending.
