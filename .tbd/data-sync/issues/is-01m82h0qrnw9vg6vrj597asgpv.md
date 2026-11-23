@@ -5,12 +5,15 @@ title: "Live GitHub updates: what is on screen updates within seconds, everythin
 kind: epic
 status: in_progress
 priority: 1
-version: 10
+version: 17
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/696
     at: 2026-11-22T21:01:45.632Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/709
+    at: 2026-11-22T22:59:19.912Z
 labels:
   - linear
   - Feature
@@ -21,8 +24,14 @@ child_order_hints:
   - is-01m82h16wc07dbhpd3msz6w8wj
   - is-01m82hx4dgadx9h9b789deab17
   - is-01m82jn9hd045gp3s3e24bygne
+  - is-01m82szzfax1dcgyjtrbn87gcz
+  - is-01m82t0689c2xsj5yqs9fryy3t
+  - is-01m82s87jvewvbb1kp1a9kyt0k
+  - is-01m82vvzskcz4ey2fk0nzbc47b
+  - is-01m82zjm9d3n6q2qp6pgg1bqar
+  - is-01m834mxptcmj4fvcmktwhzq32
 created_at: 2026-11-22T21:01:28.721Z
-updated_at: 2026-11-22T21:31:47.715Z
+updated_at: 2026-11-23T02:44:33.113Z
 extensions:
   linear:
     id: 0c7789d9-960d-4814-a23b-d2a26e474369

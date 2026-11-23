@@ -3,15 +3,23 @@ type: is
 id: is-01m82hx4dgadx9h9b789deab17
 title: "A visible mirror page on a branch sees a push within seconds: probe the served branch between fetches"
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 1
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m82h0qrnw9vg6vrj597asgpv
+hold: null
+hold_until: null
 created_at: 2026-11-22T21:16:59.182Z
-updated_at: 2026-11-22T21:16:59.182Z
+updated_at: 2026-11-23T02:31:24.286Z
+started_at: 2026-11-23T01:44:00.666Z
+closed_at: 2026-11-23T02:31:24.284Z
+close_reason: "Built in #721 (aa2a820de)"
+resolution: null
+duplicate_of: null
 ---
 Since #632 (mb-pq8y), a mirror's pin on a branch follows the branch when a refresh moves it. But a refresh runs only when the mirror is stale: the page polls status every 30 s and asks when the last fetch is older than FRESHNESS_WINDOW_S (60 s). So a push shows up to about 90 s later, the same delay the pull request page had before the probes (mb-sjgl).
 

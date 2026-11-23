@@ -3,9 +3,9 @@ type: is
 id: is-01m82c8bd5hw5cyz98wty5qm63
 title: "Nightly soak time-limits red since 2026-11-19: chrome 1/4, goldens-and-serial 1/2, unit 3.14t 2/2 p90 past 80% of their limits"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 5
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 refs:
   - kind: pr
@@ -15,11 +15,17 @@ delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m7wysgm9rg3fdch55nst1wrn
+child_order_hints:
+  - is-01m82pjfezpdfpc8a6cknpnz2m
 hold: null
 hold_until: null
 created_at: 2026-11-22T19:38:15.330Z
-updated_at: 2026-11-22T21:23:15.511Z
+updated_at: 2026-11-22T23:07:37.024Z
 started_at: 2026-11-22T19:55:40.236Z
+closed_at: 2026-11-22T23:07:37.020Z
+close_reason: "Fixed by #698 (measured-seconds shard dealing) and #700 (short PR path: one interpreter, no slow Chrome tests, Chrome only for browser changes); merged together as stack into main fea5669."
+resolution: null
+duplicate_of: null
 ---
 make ci-report --check fails the nightly soak (latest run 45023473576 on 48397f596): chrome (*, 1/4) p90 6.3-6.5 of 7 min; goldens and serial (3.12/3.14/3.14t, 1/2) p90 4.2-4.3 of 5 min; unit (3.14t, 2/2) p90 6.0 of 7 min. Rebalance shards or make the slowest tests cheaper so main's soak is green for the release candidate. Related: mb-ohsk.
 

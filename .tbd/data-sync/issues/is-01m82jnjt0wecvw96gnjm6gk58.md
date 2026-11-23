@@ -3,14 +3,18 @@ type: is
 id: is-01m82jnjt0wecvw96gnjm6gk58
 title: Widen the navigation pane's default at wide windows
 kind: feature
-status: open
+status: in_progress
 priority: 1
-version: 1
+version: 2
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m82hy6zdk5e5zzmsan8xhw6q
+hold: null
+hold_until: null
 created_at: 2026-11-22T21:30:20.350Z
-updated_at: 2026-11-22T21:30:20.350Z
+updated_at: 2026-11-23T00:05:12.473Z
+started_at: 2026-11-23T00:05:12.472Z
 ---
 OS-599 part 2b. Widen the navigation pane's default, and its inner padding, at wide windows.
 

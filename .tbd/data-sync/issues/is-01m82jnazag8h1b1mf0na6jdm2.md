@@ -3,14 +3,22 @@ type: is
 id: is-01m82jnazag8h1b1mf0na6jdm2
 title: Center the reading column when the navigation pane is hidden
 kind: feature
-status: open
+status: closed
 priority: 0
-version: 1
+version: 3
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m82hy6zdk5e5zzmsan8xhw6q
+hold: null
+hold_until: null
 created_at: 2026-11-22T21:30:12.274Z
-updated_at: 2026-11-22T21:30:12.274Z
+updated_at: 2026-11-22T22:59:49.339Z
+started_at: 2026-11-22T22:06:46.576Z
+closed_at: 2026-11-22T22:59:49.337Z
+close_reason: Implemented in https://github.com/jlevy/metabrowser/pull/711
+resolution: null
+duplicate_of: null
 ---
 OS-599 part 1. With the navigation pane hidden (`\` or the chevron), center the capped reading column in the frame instead of pinning it to the left gutter. Flush-right chrome stays where it is, and full-width views are unchanged.
 
