@@ -779,6 +779,25 @@ root-size change near a responsive breakpoint can select a different heading tie
 Verify the type boundary at a pane width that stays in the same band and confirm
 computed sizes are identical at two browser root sizes.
 
+### Main View Gutter
+
+The main view’s gutter, `--content-padding-x`, and its block pad, `--content-padding-y`,
+step up with the window, so a wide window’s page has room against the navigation pane
+and the window’s edge, and a narrow window keeps its tight gutter.
+The narrow values are the `:root` rule’s in `static/styles.css`, and the window steps
+are the `@media (min-width: …)` rules right after that block, with the measurement that
+set them.
+
+The window decides rather than the main view, which is the one place the shell sizes
+against the viewport: hiding the navigation pane changes the main view’s width, and a
+gutter keyed to it would jump at every toggle.
+Everything made from the two tokens follows, the view header’s top pad and corner inset,
+the chevron centered in the gutter, and every plugin that pads by them.
+A view header’s narrow container condition is computed from the narrow gutter; see the
+comment beside the steps for the one case, a navigation pane dragged very wide in a wide
+window, where that is not exact.
+`tests/test_reading_column_chrome.py` measures the steps in headless Chrome.
+
 ### Reading Width
 
 Prose reads at a width the reader sets, in **characters**, through “Max text width” in
@@ -5044,10 +5063,34 @@ back from where the frame is, for the share of the time that distance is.
 Under reduced motion the page moves at once.
 The state belongs to the page and is not kept across a reload.
 
+**With the pane hidden, a reading column is centered in the frame.** A column left at
+the gutter put all the room the pane gave up at its end, beside the text, and the point
+of hiding the pane is a calmer page to read.
+A rendered document, with its table of contents when it has one, and a folder’s Overview
+sit in the middle of the pane, the same room before them as after.
+The header’s Up, icon, and title and the first tab move with the column, so the page
+keeps one reading edge, and what is flush right, the header’s corner and the eyebrow’s
+copy button, stays there.
+A view whose body is not a column, source, a table, a diff, or a log, keeps the gutter
+and the frame’s whole width.
+Only in the wide band, a main view wide enough for KPress to dock a document’s table of
+contents (`@container kpress-doc` in `markdown.css`): narrower, the card is nearly all
+the pane holds, and with the pane shown every column starts at the gutter, as before.
+The column glides to its place with the frame’s slide, from where it was drawn, rather
+than jumping when the layout changes, and moves at once under reduced motion.
+
+A view opts in by stating its column’s width as `--reading-unit` on the main view’s
+children; the shell turns it into `--reading-inset` (`static/styles.css`), which the
+header’s rows, the tab bar, and the body add to their start.
+The Markdown plugin (`markdown.css`) and the folder plugin’s Overview (`overview.css`)
+state theirs.
+
 `static/nav-collapse.js` owns it, and `static/shell-keymap.js` binds the key.
 `tests/dom/key-reveal-session.js`, pinned by `cli-ui-nav-collapse.tryscript.md`, runs
-both on the production code; `tests/test_nav_collapse_chrome.py` measures the chevron’s
-place and the slide in headless Chrome with real keys.
+both on the production code, the column’s glide included;
+`tests/test_nav_collapse_chrome.py` measures the chevron’s place and the slide in
+headless Chrome with real keys, and `tests/test_reading_column_chrome.py` where a
+centered column lands and how it glides.
 
 ### Navigation Reveals the Item
 

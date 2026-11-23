@@ -600,6 +600,11 @@ class FakeWindow extends FakeEventTarget {
         return "visible";
       },
       direction: "ltr",
+      // A custom property reads as the inline style sets it, and is empty otherwise, as a
+      // registered one the stylesheet never sets reads its initial value.
+      getPropertyValue(name) {
+        return element.style.getPropertyValue(name);
+      },
       // The lengths a session gives an element's inline style, as it gives it a box: this
       // stand-in lays nothing out, so a length nothing sets is none.
       get columnGap() {

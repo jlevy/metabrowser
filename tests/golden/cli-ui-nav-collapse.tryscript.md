@@ -21,8 +21,17 @@ The frame’s slide takes `--motion-reveal`’s time and easing, which the sessi
 from `styles.css`, and the session finishes each slide as time would.
 The pane is live as a show starts and takes its place in the layout when it ends.
 A second press halfway through a slide turns it back from where the frame is, for half
-the time. The key in the same place on a UK or German keyboard types `#`, which is not
-Backslash. Hiding the pane closes a filter menu it held open.
+the time.
+
+The page holds a reading column, which the stylesheet centers in the frame while the
+pane is out of the layout (`--reading-inset`; the stand-in sets 415 px as it would).
+The column glides by the inset’s change over the slide’s own time rather than jumping
+with the layout: a hide starts it where it was drawn, 415 px back, and brings it to
+rest; a show takes it 415 px toward the frame’s start and holds it there until the slide
+ends and the layout puts it back.
+A turned slide picks the glide up where it is drawn.
+The key in the same place on a UK or German keyboard types `#`, which is not Backslash.
+Hiding the pane closes a filter menu it held open.
 
 `cli-ui-key-reveal.tryscript.md` shows the key live on every screen and its badge beside
 the chevron; `tests/test_nav_collapse_chrome.py` measures the slide in headless Chrome.
@@ -91,7 +100,14 @@ $ node tests/dom/nav-collapse-session.js
         "to": 0,
         "duration": 180,
         "easing": "cubic-bezier(0.2, 0, 0, 1)",
-        "cancelled": 0
+        "cancelled": 0,
+        "glide": {
+          "from": -415,
+          "to": 0,
+          "duration": 180,
+          "fill": "none",
+          "cancelled": 0
+        }
       },
       "nav": {
         "inert": true,
@@ -135,7 +151,14 @@ $ node tests/dom/nav-collapse-session.js
           "to": 300,
           "duration": 180,
           "easing": "cubic-bezier(0.2, 0, 0, 1)",
-          "cancelled": 0
+          "cancelled": 0,
+          "glide": {
+            "from": 0,
+            "to": -415,
+            "duration": 180,
+            "fill": "forwards",
+            "cancelled": 0
+          }
         },
         "nav": {
           "inert": false,
@@ -219,7 +242,14 @@ $ node tests/dom/nav-collapse-session.js
         "to": 300,
         "duration": 90,
         "easing": "cubic-bezier(0.2, 0, 0, 1)",
-        "cancelled": 1
+        "cancelled": 1,
+        "glide": {
+          "from": -207.5,
+          "to": -415,
+          "duration": 90,
+          "fill": "forwards",
+          "cancelled": 1
+        }
       },
       "nav": {
         "inert": false,

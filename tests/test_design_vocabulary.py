@@ -966,7 +966,7 @@ def test_branch_chips_scale_with_their_text() -> None:
             if token in declarations
         ]
         assert defined == [("styles.css", ":root")], f"{token} is defined at {defined}"
-    root = dict(_rules_of(STATIC / "styles.css"))[":root"]
+    root = _root_rule(STATIC / "styles.css")
     scale = float(root["--git-ref-font-scale"])
     assert 0.8 <= scale < 1, "a chip is slightly smaller than its text, not larger or equal"
     assert root["--git-ref-font-size"] == "calc(var(--git-ref-font-scale) * 1em)"
@@ -1413,6 +1413,13 @@ def _rules_of(path: Path) -> list[tuple[str, dict[str, str]]]:
         for selectors, body in _style_rules(path.read_text(encoding="utf-8"))
         for selector in _split_top(selectors, ",")
     ]
+
+
+def _root_rule(path: Path) -> dict[str, str]:
+    """The sheet's first `:root` rule, its unconditional tokens. The window's steps after it
+    in styles.css restate the main view's gutter in `:root` rules inside `@media`."""
+
+    return next(declarations for selector, declarations in _rules_of(path) if selector == ":root")
 
 
 _ROLE_TAB = re.compile(r"""role="tab"|"role",\s*"tab"|role:\s*"tab\"""")
@@ -3332,7 +3339,7 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
     # A person's avatar box and the gap after it are the shell's, declared once on its root,
     # and every page that draws a person reads them: a commit's author and a pull request's
     # alike (mb-nunw). No plugin declares its own.
-    root = shell[":root"]
+    root = _root_rule(STATIC / "styles.css")
     assert (root["--actor-avatar-size"], root["--actor-identity-gap"]) == ("18px", "4px")
     assert "--github-pull-avatar-size" not in github and "--github-pull-identity-gap" not in github
     assert (
