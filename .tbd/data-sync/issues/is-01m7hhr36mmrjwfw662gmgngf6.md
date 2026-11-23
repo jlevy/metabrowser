@@ -5,7 +5,11 @@ title: "Release 0.13: previous-release performance comparison (v0.12.0 vs exact 
 kind: task
 status: in_progress
 priority: 1
-version: 4
+version: 5
+refs:
+  - kind: other
+    url: https://github.com/jlevy/metabrowser/actions/runs/45109522719
+    at: 2026-11-23T04:05:53.983Z
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -13,7 +17,7 @@ parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:08.755Z
-updated_at: 2026-11-23T03:16:14.065Z
+updated_at: 2026-11-23T04:05:54.005Z
 started_at: 2026-11-23T03:13:34.430Z
 ---
 
