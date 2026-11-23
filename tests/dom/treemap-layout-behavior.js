@@ -343,10 +343,7 @@ function fileNode(name, pathStr, size, extras) {
     const inside = cells.filter(
       (c) => c.path.startsWith(`${f.path}/`) || (c.kind === "rest" && c.path === f.path),
     );
-    return [
-      Math.min(...inside.map((c) => c.x)) - f.x,
-      Math.min(...inside.map((c) => c.y)) - f.y,
-    ];
+    return [Math.min(...inside.map((c) => c.x)) - f.x, Math.min(...inside.map((c) => c.y)) - f.y];
   });
   check(
     "a framed folder's children start exactly one pad inside its frame",
