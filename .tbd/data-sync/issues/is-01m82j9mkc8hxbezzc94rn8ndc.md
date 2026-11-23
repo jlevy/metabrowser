@@ -3,14 +3,18 @@ type: is
 id: is-01m82j9mkc8hxbezzc94rn8ndc
 title: "Pull request head follows new pushes: the served code moves to the new head, and Changes follows with a note naming the old and new head and a way back"
 kind: feature
-status: open
+status: in_progress
 priority: 1
-version: 1
+version: 2
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
+hold: null
+hold_until: null
 created_at: 2026-11-22T21:23:48.935Z
-updated_at: 2026-11-22T21:23:48.935Z
+updated_at: 2026-11-23T06:37:51.362Z
+started_at: 2026-11-23T06:37:51.328Z
 ---
 Decided by the owner 2026-11-22 (mb-qp3s, "Take both" in chat): under branch-follow, a pull request's head follows new pushes like a branch.
 
