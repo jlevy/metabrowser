@@ -1452,6 +1452,18 @@ type AgentsExports = {
 };
 
 /** What the GitHub plugin exports for the shell. */
+type DiffExports = {
+  /** One file's hunks, as the diff route answers them, drawn as Changes draws a file's
+   * body: each hunk under its header bar, long changed runs behind fold bars, then changed
+   * runs paired and syntax colored. Unified only. `dispose` stops what is still to come. */
+  mountFilePatch: (
+    body: HTMLElement,
+    change: Record<string, unknown>,
+    patch: Record<string, unknown>,
+    api: MetabrowserPublicSdk,
+  ) => { dispose(): void };
+};
+
 type GithubExports = {
   /** A pull request's state as the Pulls tab draws it: its icon, named for assistive
    * technology unless `named` is false. */
@@ -1494,6 +1506,7 @@ type MarkdownExports = {
 /** A provider plugin's exports, the namespace of its index.js, by the plugin's name. */
 type MetabrowserPluginExports = {
   agents: AgentsExports;
+  diff: DiffExports;
   github: GithubExports;
   markdown: MarkdownExports;
   structured: StructuredExports;

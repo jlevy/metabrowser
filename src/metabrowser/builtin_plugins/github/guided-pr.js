@@ -1,8 +1,15 @@
-// Loaded when Guided PR opens. Only the visible step asks for excerpts.
+// Loaded when Guided Review opens. Only the visible step asks for excerpts.
 
 /**
- * @typedef {{old: number | null, new: number | null, op: "add" | "del" | "context", text: string}} Row
- * @typedef {{path: string, state: string, href: string | null, rows: Row[]}} Reference
+ * @typedef {{op: "add" | "del" | "context", text: string}} Line
+ * @typedef {{old_start: number, old_count: number, new_start: number, new_count: number,
+ *   heading: string | null, lines: Line[]}} Hunk
+ * @typedef {{path: string, state: string, href: string | null, hunks: Hunk[],
+ *   truncated: boolean}} Reference
+ * @typedef {(body: HTMLElement, change: Record<string, unknown>,
+ *   patch: {hunks: Hunk[], truncated: boolean}) => {dispose: () => void}} DrawPatch
+ *   The diff plugin's `mountFilePatch`, bound to the SDK: a file's hunks as Changes draws
+ *   them.
  * @typedef {{merge_base: string | null, head: string}} Pins
  * @typedef {{guide: Pins, current: Pins, github_newer: boolean,
  *   history: "ahead" | "rewritten" | "unavailable", commit_count: number | null,
@@ -18,8 +25,8 @@
  */
 
 /**
- * The guide's place and its reads. Step 0 is the introduction, the description the page
- * draws itself; steps 1 to `step_count` are the guide's. The introduction shows the answer
+ * The guide's place and its reads. Step 0 is the overview, the description the page
+ * draws itself; steps 1 to `step_count` are the guide's. The overview shows the answer
  * for step 1, whose step titles list the guide, so the first step the reader moves to is
  * already in hand. Answers are kept for the record revision they were read for.
  *
@@ -183,17 +190,18 @@ function proseHost(prose) {
 }
 
 /**
- * One reference as the diff plugin draws a changed file (`renderFileSection` and
- * `renderUnifiedLine` in builtin_plugins/diff/diff-view.js): its card, bar, and unified rows,
- * in the plugin's own classes inside `.metabrowser-diff-host`, so an excerpt has the same
- * type, row height, gutter, and change fills as Changes (docs/design-system.md, "Diffs").
- * Rows are text in spans, not `pre code`, which the shell's highlighter would take for a
- * snippet; the excerpt shows the author's selection, not the plugin's syntax tokens.
+ * One reference as Changes draws a changed file: the diff plugin's card and bar, and its
+ * hunks drawn by the diff plugin itself (`mountFilePatch`), each under its header bar with
+ * its long changed runs behind fold bars, in the plugin's type, gutter, change fills, and
+ * syntax (docs/design-system.md, "Diffs"). A range is one hunk of its own lines; a file
+ * named alone is its whole patch.
  *
  * @param {Reference} reference @param {(path: string) => void} open
  * @param {boolean} changed Whether the file changed after the guide was written.
+ * @param {DrawPatch | null} drawPatch Null when the diff plugin did not load.
+ * @param {Array<{dispose: () => void}>} drawn Where each drawn patch is kept for disposal.
  */
-function renderReference(reference, open, changed) {
+function renderReference(reference, open, changed, drawPatch, drawn) {
   const section = element("section", "", "diff-file github-pull-guide-reference");
   const bar = element("div", "", "diff-file-bar github-pull-guide-reference-header");
   const name = element("span", "", "diff-file-toggle");
@@ -229,25 +237,27 @@ function renderReference(reference, open, changed) {
       ),
     );
   }
-  if (reference.state === "ready") {
+  if (reference.state === "ready" && reference.hunks.length === 0) {
+    // A rename, a mode change, or a binary file: a change with no text to show.
+    section.append(element("p", "This file has no text changes to show.", "github-pull-quiet"));
+  } else if (reference.state === "ready" && drawPatch !== null) {
     const body = element("div", "", "diff-file-body github-pull-guide-excerpt");
     body.setAttribute("role", "group");
     body.setAttribute("aria-label", `Diff excerpt for ${reference.path}`);
-    for (const row of reference.rows) {
-      const line = element("div", "", `diff-line diff-line-${row.op} github-pull-guide-line`);
-      line.dataset.op = row.op;
-      line.append(
-        element("span", String(row.old ?? ""), "diff-line-number"),
-        element("span", String(row.new ?? ""), "diff-line-number"),
-        element("span", row.op === "add" ? "+" : row.op === "del" ? "-" : " ", "diff-line-marker"),
-        element("span", row.text, "diff-line-text"),
-      );
-      body.append(line);
-    }
     section.append(body);
-  } else if (reference.state !== "file") {
+    const side = { path: reference.path };
+    drawn.push(
+      drawPatch(
+        body,
+        { id: reference.path, old: side, new: side },
+        { hunks: reference.hunks, truncated: reference.truncated },
+      ),
+    );
+  } else {
     const message =
-      REFERENCE_MESSAGES[/** @type {keyof typeof REFERENCE_MESSAGES} */ (reference.state)];
+      reference.state === "ready"
+        ? REFERENCE_MESSAGES.diff_unavailable
+        : REFERENCE_MESSAGES[/** @type {keyof typeof REFERENCE_MESSAGES} */ (reference.state)];
     section.append(element("p", message ?? "This excerpt is unavailable.", "github-pull-quiet"));
   }
   return section;
@@ -354,7 +364,7 @@ export function staleNotice(stale, stepCount, shortCommit) {
   return box;
 }
 
-// Lucide v1.17.0 (ISC; https://lucide.dev), by Lucide id. Only Guided PR draws them, so they
+// Lucide v1.17.0 (ISC; https://lucide.dev), by Lucide id. Only Guided Review draws them, so they
 // arrive with this module.
 const STROKE =
   'viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
@@ -390,55 +400,82 @@ function glyph(name) {
  *
  * @param {"previous" | "next"} way
  * @param {string} className
+ * @param {boolean} [worded] Whether the button names where it goes beside its arrow; an
+ *   arrow alone has no words box, or the gap beside it would push the arrow off center.
  * @returns {[HTMLButtonElement, HTMLElement]} The button and its words.
  */
-function arrowButton(way, className) {
+function arrowButton(way, className, worded = false) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = `btn ${className}`;
   const mark = glyph(way === "previous" ? "arrowLeft" : "arrowRight");
   const label = element("span", "", "github-pull-guide-arrow-label");
-  button.append(
-    ...(way === "previous" ? [mark, label] : [label, mark]).filter((node) => node !== null),
-  );
+  const parts = worded ? (way === "previous" ? [mark, label] : [label, mark]) : [mark];
+  button.append(...parts.filter((node) => node !== null));
   return [button, label];
 }
 
-/** The introduction's name in the step list and on its buttons. */
-const INTRODUCTION = "Introduction";
+// Guided Review's vocabulary. Every place the guide names itself or a step takes its words from
+// here (docs/design-system.md, "Guided Review"), so the step list, the arrows, the way on and
+// back, and a step's card say the same thing.
+/** The guide's own name: its tab's, and its badge on its own parts. */
+const GUIDE = "Guided Review";
+/** Step 0: the description, the change's overview. */
+const OVERVIEW = "Overview";
+/** @param {number} at @param {number} count Where the reader is: the overview, or a step of
+ * how many. */
+const placeName = (at, count) => (at === 0 ? OVERVIEW : `Step ${at} of ${count}`);
+/** @param {number} at @param {string} title A step by name: the overview, or its number and
+ * title. */
+const stepName = (at, title) => (at === 0 ? OVERVIEW : `Step ${at}: ${title}`);
+/** The badge that marks the guide's own parts apart from the discussion. */
+const guideBadge = () =>
+  element("span", GUIDE, "file-header-badge github-pull-badge github-pull-guide-badge");
 
 /**
  * @param {HTMLElement} host
  * @param {HTMLElement} introduction The description's card, which the page draws and keeps
  *   current: the guide's step 0, shown while it is the step and while no step can be.
  * @param {number} number
- * @param {(path: string) => void} open
- * @param {(assets: unknown) => Promise<unknown>} loadStyles The stylesheets the guide is
- *   drawn in: KPress's, from the manifest a ready step carries, and the diff plugin's. The
- *   guide waits for them, as a description does.
- * @param {(commit: string) => string} shortCommit The SDK's `shortCommit`.
+ * @param {{
+ *   open: (path: string) => void,
+ *   loadStyles: (assets: unknown) => Promise<unknown>,
+ *   loadDrawPatch: () => Promise<DrawPatch>,
+ *   shortCommit: (commit: string) => string,
+ * }} deps *open* goes to a file's Changes address. *loadStyles* loads the stylesheets the
+ *   guide is drawn in: KPress's, from the manifest a ready step carries, and the diff
+ *   plugin's; the guide waits for them, as a description does. *loadDrawPatch* loads the
+ *   diff plugin's file renderer, which draws the excerpts. *shortCommit* is the SDK's.
  */
-export function mountGuidedPR(host, introduction, number, open, loadStyles, shortCommit) {
+export function mountGuidedPR(host, introduction, number, deps) {
+  const { open, loadStyles, loadDrawPatch, shortCommit } = deps;
   /** @type {Promise<unknown> | null} */
   let styles = null;
+  /** @type {Promise<DrawPatch | null> | null} */
+  let drawer = null;
+  /** @type {DrawPatch | null} */
+  let drawPatch = null;
+  /** The patches the shown step drew, disposed when another is drawn or the guide ends. */
+  /** @type {Array<{dispose: () => void}>} */
+  let drawn = [];
+  const undraw = () => {
+    for (const patch of drawn) {
+      patch.dispose();
+    }
+    drawn = [];
+  };
   // The guide's steps, listed above the one shown: each names its step and goes to it, and
   // the arrows page through them in order.
   const outline = element("nav", "", "page-card github-pull-card github-pull-guide-outline");
-  outline.setAttribute("aria-label", "Guided review steps");
+  outline.setAttribute("aria-label", `${GUIDE} steps`);
   const outlineHead = element("div", "", "github-pull-card-head github-pull-guide-outline-head");
-  const badge = element(
-    "span",
-    "Guided review",
-    "file-header-badge github-pull-badge github-pull-guide-badge",
-  );
+  const badge = guideBadge();
   const status = element("span", "", "github-pull-guide-position");
   status.setAttribute("role", "status");
   const [previous] = arrowButton("previous", "github-pull-guide-arrow");
   const [next] = arrowButton("next", "github-pull-guide-arrow");
   previous.setAttribute("aria-label", "Previous step");
   next.setAttribute("aria-label", "Next step");
-  previous.title = "Previous step";
-  next.title = "Next step";
   const arrows = element("span", "", "github-pull-guide-arrows");
   arrows.append(previous, status, next);
   outlineHead.append(badge, arrows);
@@ -450,8 +487,8 @@ export function mountGuidedPR(host, introduction, number, open, loadStyles, shor
   notice.setAttribute("role", "status");
   // After a step, the way on names where it goes, so the reader need not scroll back up.
   const pager = element("div", "", "github-pull-guide-pager");
-  const [back, backLabel] = arrowButton("previous", "github-pull-guide-pager-previous");
-  const [onward, onwardLabel] = arrowButton("next", "github-pull-guide-pager-next");
+  const [back, backLabel] = arrowButton("previous", "github-pull-guide-pager-previous", true);
+  const [onward, onwardLabel] = arrowButton("next", "github-pull-guide-pager-next", true);
   pager.append(back, onward);
   pager.hidden = true;
   // What a stale guide is out of date with leads the page, above its steps.
@@ -468,18 +505,18 @@ export function mountGuidedPR(host, introduction, number, open, loadStyles, shor
   /** @type {number[]} */
   let changedSteps = [];
   /** @param {number} at */
-  const nameOf = (at) => (at === 0 ? INTRODUCTION : (titles[at - 1] ?? `Step ${at}`));
+  const nameOf = (at) => stepName(at, titles[at - 1] ?? "");
 
   /** @param {number} at */
   function paintOutline(at) {
     outline.hidden = titles.length === 0;
     const count = titles.length;
-    status.textContent =
-      at === 0 ? `${INTRODUCTION}, then ${plural(count, "step")}` : `Step ${at} of ${count}`;
+    // What is shown, by name: the overview, or a step and how many there are.
+    status.textContent = placeName(at, count);
     previous.disabled = at <= 0;
     next.disabled = at >= count;
     list.replaceChildren(
-      ...[INTRODUCTION, ...titles].map((title, index) => {
+      ...[OVERVIEW, ...titles].map((title, index) => {
         const item = element("li", "", "github-pull-guide-steps-item");
         const link = document.createElement("button");
         link.type = "button";
@@ -503,6 +540,9 @@ export function mountGuidedPR(host, introduction, number, open, loadStyles, shor
     onward.hidden = at >= count;
     backLabel.textContent = at > 0 ? nameOf(at - 1) : "";
     onwardLabel.textContent = at < count ? nameOf(at + 1) : "";
+    // The arrows say where they go when pointed at, in the same words as the way on and back.
+    previous.dataset.tipText = at > 0 ? `Previous: ${nameOf(at - 1)}` : "Previous step";
+    next.dataset.tipText = at < count ? `Next: ${nameOf(at + 1)}` : "Next step";
   }
 
   const navigation = createGuideNavigation({
@@ -515,18 +555,27 @@ export function mountGuidedPR(host, introduction, number, open, loadStyles, shor
         throw new Error("Could not read the guide");
       }
       const result = await response.json();
-      if ("step" in result && result.assets !== undefined) {
+      if ("step" in result) {
         // A failed stylesheet leaves the text readable in the page's own type.
-        styles ??= loadStyles(result.assets).catch((error) => {
-          console.warn("metabrowser github: the guide's text styles did not load", error);
+        if (result.assets !== undefined) {
+          styles ??= loadStyles(result.assets).catch((error) => {
+            console.warn("metabrowser github: the guide's text styles did not load", error);
+          });
+        }
+        // Without the diff plugin a step still reads, and says its excerpts are unavailable.
+        drawer ??= loadDrawPatch().catch((error) => {
+          console.warn("metabrowser github: the diff plugin did not load for the guide", error);
+          return null;
         });
-        await styles;
+        const [, loaded] = await Promise.all([styles, drawer]);
+        drawPatch = loaded;
       }
       return result;
     },
     render(state, at) {
+      undraw();
       if (state.state === "loading") {
-        // The introduction is the page's own, so it shows at once; a step waits for its read.
+        // The overview is the page's own, so it shows at once; a step waits for its read.
         introduction.hidden = at !== 0;
         pager.hidden = true;
         previous.disabled = next.disabled = true;
@@ -582,26 +631,22 @@ export function mountGuidedPR(host, introduction, number, open, loadStyles, shor
       const references = element("div", "", "metabrowser-diff-host github-pull-guide-references");
       references.append(
         ...state.references.map((reference) =>
-          renderReference(reference, open, changed.has(reference.path)),
+          renderReference(reference, open, changed.has(reference.path), drawPatch, drawn),
         ),
       );
       // A step is a card, as Conversation draws a comment, headed as the author's guided
       // review so it reads apart from the discussion.
       const head = element("div", "", "github-pull-card-head github-pull-guide-card-head");
-      head.append(
-        element(
-          "span",
-          "Guided review",
-          "file-header-badge github-pull-badge github-pull-guide-badge",
-        ),
-        ` Step ${state.step} of ${state.step_count}`,
-      );
+      // The badge leads its label as a page header's state badge leads its line, a gap
+      // apart (`.github-pull-guide-card-head`), never a space's width.
+      const place = element("span", placeName(state.step, state.step_count));
       if (changedSteps.includes(state.step)) {
-        head.append(
+        place.append(
           " · ",
           element("span", "cites files changed since the guide", "github-pull-guide-step-changed"),
         );
       }
+      head.append(guideBadge(), place);
       const card = element(
         "section",
         "",
@@ -623,5 +668,11 @@ export function mountGuidedPR(host, introduction, number, open, loadStyles, shor
       outline.scrollIntoView?.({ block: "start" });
     });
   }
-  return navigation;
+  return {
+    ...navigation,
+    dispose() {
+      navigation.dispose();
+      undraw();
+    },
+  };
 }

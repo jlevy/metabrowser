@@ -29,7 +29,7 @@ from metabrowser.builtin_plugins.github.pull_route import cached_pull_record
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource, display_path
-from metabrowser.diff.format import Availability, LineOp
+from metabrowser.diff.format import Availability, Hunk, LineOp, LineRecord
 from metabrowser.git.process import (
     GIT_NO_DRIVER_ARGS,
     GitCommandError,
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from markdown_it.token import Token
 
     from metabrowser.builtin_plugins.github.pull_route import PullHost
-    from metabrowser.diff.format import FileChange, FilePatch, Hunk
+    from metabrowser.diff.format import FileChange, FilePatch
 
 CONTRACT_ID = "metabrowser.collection:Collection/v1"
 SCHEMA_PATH = Path(__file__).with_name("collection-v1.schema.yaml")
@@ -72,7 +72,11 @@ MAX_REFERENCES = 8
 MAX_ITEMS = 40
 # Eight excerpts totaling 800 one-character rows, just past the PR body ceiling after
 # the per-row charge, mounted and laid out in 11–14 ms in five headless Chrome 157 runs
-# at 1280×900 on the Guided PR page (2026-11-18). A single long row must fit too.
+# at 1280×900 on the Guided Review page (2026-11-18). A single long row must fit too. This
+# bounds a step's ranged excerpts. A reference with no range shows its file's whole patch,
+# which the diff source bounds as it does for Changes, and drawn by the diff plugin's file
+# renderer it folds long changed runs as Changes does; MAX_REFERENCES keeps a step's files
+# within the measured first paint of Changes.
 MAX_EXCERPT_BYTES = MAX_BODY_BYTES
 
 # A stale guide's notice names the commits after the guide's head, newest first, and counts
@@ -255,6 +259,7 @@ def read_guide(key: tuple[str, str, int], revision: str, body: str) -> Collectio
 def _excerpt(
     patch: FilePatch, reference: CollectionReference, budget: int
 ) -> tuple[str, list[dict[str, object]], int]:
+    """A ranged reference as one hunk of the diff route's shape, within *budget*."""
     start, end = reference.start_line, reference.end_line
     assert start is not None and end is not None
     old_side = reference.side == "old"
@@ -268,8 +273,42 @@ def _excerpt(
             )
         )
         if first <= start <= end < first + count:
-            return _hunk_rows(hunk, start, end, old_side, budget)
+            state, rows, used = _hunk_rows(hunk, start, end, old_side, budget)
+            return state, ([_rows_hunk(hunk, rows)] if rows else []), used
     return "range_unavailable", [], 0
+
+
+def _rows_hunk(hunk: Hunk, rows: list[dict[str, object]]) -> dict[str, object]:
+    """*rows* of *hunk* as a hunk of their own, in the diff model's shape (`Hunk`).
+
+    The lines are *hunk*'s own records, so a range's hunk and a whole file's are one shape.
+    A side with no line in the rows starts, as in a unified diff, at the line before them:
+    an added file's range is `@@ -0,0 +1,2 @@`. A hunk with no line on a side states that
+    side's start as the line before already, so its count starts one past it.
+    """
+    wanted = {(row["old"], row["new"]) for row in rows}
+    old = hunk.old_start + (hunk.old_count == 0)
+    new = hunk.new_start + (hunk.new_count == 0)
+    before: tuple[int, int] | None = None
+    lines: list[LineRecord] = []
+    for line in hunk.lines:
+        left = old if line.op is not LineOp.add else None
+        right = new if line.op is not LineOp.delete else None
+        if (left, right) in wanted:
+            before = before or (old - 1, new - 1)
+            lines.append(line)
+        old += left is not None
+        new += right is not None
+    assert before is not None
+    olds = [row["old"] for row in rows if isinstance(row["old"], int)]
+    news = [row["new"] for row in rows if isinstance(row["new"], int)]
+    return Hunk(
+        old_start=olds[0] if olds else before[0],
+        old_count=len(olds),
+        new_start=news[0] if news else before[1],
+        new_count=len(news),
+        lines=tuple(lines),
+    ).model_dump(mode="json")
 
 
 def _hunk_rows(
@@ -317,25 +356,30 @@ def _references(
     for reference in references:
         change = changes.get(reference.path)
         href = None
-        rows: list[dict[str, object]] = []
+        hunks: list[dict[str, object]] = []
+        cut = False
         if change is None:
             state = "manifest_truncated" if truncated else "path_not_changed"
         else:
             href = format_pull_href(number, "files", reference.path)
             patch = patches.get(change.id)
-            if reference.side is None:
-                state = "file"
-            elif patch is None:
+            if patch is None:
                 state = "diff_unavailable"
+            elif reference.side is None:
+                # The file's whole patch, as Changes shows it (MAX_EXCERPT_BYTES).
+                state = "ready"
+                hunks = [hunk.model_dump(mode="json") for hunk in patch.hunks]
+                cut = patch.truncated
             else:
-                state, rows, used = _excerpt(patch, reference, remaining)
+                state, hunks, used = _excerpt(patch, reference, remaining)
                 remaining -= used
         output.append(
             {
                 **reference.model_dump(),
                 "state": state,
                 "href": href,
-                "rows": rows,
+                "hunks": hunks,
+                "truncated": cut,
             }
         )
     return output
@@ -356,8 +400,7 @@ async def _step_references(
         dict.fromkeys(
             change.id
             for ref in step.references
-            if ref.side is not None
-            and (change := changes.get(ref.path)) is not None
+            if (change := changes.get(ref.path)) is not None
             and change.availability is Availability.ready
         )
     )

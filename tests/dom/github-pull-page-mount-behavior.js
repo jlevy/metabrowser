@@ -1570,7 +1570,7 @@ async function tabKeys(page) {
   steps.push(`the next read answers and paintHeader puts the column back: ${keyed().join(", ")}`);
   steps.push(`live: ${live().join(" ")}`);
   steps.push(result("g"));
-  // Guided PR is a tab only where the description opens a `guided-pr` fence, and R is its
+  // Guided Review is a tab only where the description opens a `guided-pr` fence, and R is its
   // key (Docs holds D): the link leads the bar when a record brings the fence,
   // and leaves it when a record no longer has one, unless it is the tab shown. The key
   // waits while the link is out of the page, and the link's return retargets it, which is

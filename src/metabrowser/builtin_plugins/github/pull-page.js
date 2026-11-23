@@ -245,20 +245,20 @@ export const TIMELINE_RETRY_MS = 1000;
 // The longest wait the server may name for a timeline its budget refused (`retry_after_s`,
 // HELD_RETRY_S in pull_timeline.py): the schema's own bound, an hour.
 const TIMELINE_HELD_MAX_S = 3600;
-// Guided PR leads, when the description carries a guide: it is the author's reading order.
+// Guided Review leads, when the description carries a guide: it is the author's reading order.
 export const TABS = Object.freeze(["guided", "", "conversation", "docs", "files", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
 const TITLE_OVERHANG_PX = 4;
 /**
  * Each tab's label and key, in `TABS` order. Conversation, the default, keeps its C, and
- * Docs its D. Guided PR takes the R of gui-ded P-*r*, a review's letter, since Docs holds
+ * Docs its D. Guided Review takes the R of gui-ded P-*r*, a review's letter, since Docs holds
  * D. The other two also start with C, so they take a free letter of their label:
  * chan-*g*es, and ch-*e*-cks, whose H is the Commits tab's (History) and whose K moves a
  * row up (docs/design-system.md, "Keyboard Shortcuts"). `C` is also the Charts tab's,
  * which is never shown beside a page.
  */
 const PULL_TABS = Object.freeze([
-  Object.freeze({ id: "guided", label: "Guided PR", key: "r" }),
+  Object.freeze({ id: "guided", label: "Guided Review", key: "r" }),
   Object.freeze({ id: "", label: "Conversation", key: "c" }),
   Object.freeze({ id: "docs", label: "Docs", key: "d" }),
   Object.freeze({ id: "files", label: "Changes", key: "g" }),
@@ -266,12 +266,12 @@ const PULL_TABS = Object.freeze([
 ]);
 // A cheap tab visibility hint, which does not parse: the server's Markdown parser decides if a
 // guide exists, and counts only a top-level fence, so a description that shows the format inside
-// another fence gets a tab that says there is no guide (arch-github-pull-requests.md, "Guided PR").
+// another fence gets a tab that says there is no guide (arch-github-pull-requests.md, "Guided Review").
 const GUIDED_FENCE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*guided-pr[ \t]*$/m;
 
 /**
  * The tab a route shows, by its id in `PULL_TABS`. `/pull/<n>` is the pull request's front
- * page: Guided PR when the description has a guide, by the same hint the tab bar reads,
+ * page: Guided Review when the description has a guide, by the same hint the tab bar reads,
  * and Conversation otherwise. `/pull/<n>/conversation` names Conversation, whose id is "",
  * so a guided pull request's Conversation has an address that always shows it.
  *
@@ -290,7 +290,7 @@ export function shownTabFor(route, description) {
 }
 
 /**
- * The tab a stack move keeps: the same tab on the next pull request, except that Guided PR
+ * The tab a stack move keeps: the same tab on the next pull request, except that Guided Review
  * goes to its front page, which is its guide when it has one and Conversation otherwise.
  *
  * @param {string} tab The tab on screen.
@@ -301,7 +301,7 @@ export function stackTab(tab) {
 
 /**
  * The route that shows a tab: Conversation's is the front page's address unless the front
- * page is Guided PR, when it is `/pull/<n>/conversation` (`shownTabFor`).
+ * page is Guided Review, when it is `/pull/<n>/conversation` (`shownTabFor`).
  *
  * @param {string} id The tab's id in `PULL_TABS`.
  * @param {string | null} description
@@ -4861,7 +4861,7 @@ export function mountPullPage(container, ctx, mb) {
   /** @type {"none" | "loading" | "conversation" | "checks" | "files" | "guided"} */
   let bodyShows = "none";
   /**
-   * The Guided PR tab while it shows: the guide's view once its module loads, and the
+   * The Guided Review tab while it shows: the guide's view once its module loads, and the
    * description that introduces it.
    *
    * @typedef {{view: ReturnType<typeof import("./guided-pr.js").mountGuidedPR> | null,
@@ -5246,7 +5246,7 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * Load KPress's stylesheets for the page's texts, once, from the manifest a route answers
-   * with: the Markdown route's for a description or comment, the guide's for Guided PR. Both
+   * with: the Markdown route's for a description or comment, the guide's for Guided Review. Both
    * are `kpress_adapter.document_stylesheets`, so no text chooses what the page loads.
    *
    * @param {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} assets
@@ -8000,7 +8000,7 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * The description's card: who opened the pull request and when, then its text.
-   * Conversation and Guided PR draw it alike.
+   * Conversation and Guided Review draw it alike.
    *
    * @param {NonNullable<PullModel["pull"]>} pull
    * @param {HTMLElement} text The description's text block.
@@ -8025,7 +8025,7 @@ export function mountPullPage(container, ctx, mb) {
   function guideCard() {
     return notice(null, [
       "This description has a guided review. ",
-      pageLink({ number, tab: "guided" }, "", ["Open Guided PR"]),
+      pageLink({ number, tab: "guided" }, "", ["Open Guided Review"]),
     ]);
   }
 
@@ -8068,7 +8068,7 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     const introduction = h("div", {}, []);
-    const host = h("section", { class: "github-pull-guided-pr", "aria-label": "Guided PR" }, [
+    const host = h("section", { class: "github-pull-guided-pr", "aria-label": "Guided Review" }, [
       introduction,
       h("div", { class: "mb-delayed-loading", role: "status", "aria-label": "Loading the guide" }, [
         h("div", { class: "recent-loading github-pull-loading", "aria-hidden": "true" }),
@@ -8085,27 +8085,32 @@ export function mountPullPage(container, ctx, mb) {
           return;
         }
         // The guide's text is KPress prose and its excerpts are the diff plugin's rows.
-        mount.view = mountGuidedPR(
-          host,
-          introduction,
-          number,
-          openChangedFile,
-          (assets) =>
+        mount.view = mountGuidedPR(host, introduction, number, {
+          open: openChangedFile,
+          loadStyles: (assets) =>
             Promise.all([
               textStyles(
                 /** @type {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} */ (assets),
               ),
               mb.ensureKindAssets("diff"),
             ]),
-          mb.shortCommit,
-        );
+          // The diff plugin draws the excerpts, as it draws Changes (`requires` in
+          // manifest.toml).
+          loadDrawPatch: async () => {
+            const diff = await mb.plugins.load("diff");
+            return (body, change, patch) => diff.mountFilePatch(body, change, patch, mb);
+          },
+          shortCommit: mb.shortCommit,
+        });
         mount.view.show(shown.recordRevision, shown.newCommits !== null);
       },
       () => {
         if (guided === mount) {
           host.replaceChildren(
             introduction,
-            h("p", { class: "github-pull-quiet", role: "status" }, ["Could not load Guided PR."]),
+            h("p", { class: "github-pull-quiet", role: "status" }, [
+              "Could not load Guided Review.",
+            ]),
           );
         }
       },
@@ -8183,7 +8188,7 @@ export function mountPullPage(container, ctx, mb) {
     paintHeader(model);
     askDocs(model);
     paintStacks(model);
-    // Conversation, Guided PR, and Checks use the reading column. Changes and Docs use the
+    // Conversation, Guided Review, and Checks use the reading column. Changes and Docs use the
     // full pane.
     body.classList.toggle("page-reading-column", model.pull === null || !diffTab(model.tab));
     if (model.pull === null) {

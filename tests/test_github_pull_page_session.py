@@ -822,7 +822,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "Conversation C, Docs D, Changes G, Checks E",
             "live: conversation docs files checks",
             "G: showed Changes",
-            # Guided PR's tab and its key R (Docs holds D) exist only where the description
+            # Guided Review's tab and its key R (Docs holds D) exist only where the description
             # opens a `guided-pr` fence: the link leads the bar when a record brings one, stays while its tab is shown, and leaves the bar, and the
             # key, otherwise. The page cannot tell a block from an example of one inside
             # another fence, which the server's parse can (mb-y0en), so the example shows
@@ -831,18 +831,18 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "live conversation docs files checks",
             "R: not handled",
             "a block in the description: "
-            "Guided PR R, Conversation C, Docs D, Changes G, Checks E; "
+            "Guided Review R, Conversation C, Docs D, Changes G, Checks E; "
             "live conversation docs files guided checks",
             "R: opened the guided route",
-            "the route arrives: Guided PR",
+            "the route arrives: Guided Review",
             "the block leaves while its tab is shown: "
-            "Guided PR R, Conversation C, Docs D, Changes G, Checks E; Guided PR",
+            "Guided Review R, Conversation C, Docs D, Changes G, Checks E; Guided Review",
             "back on Conversation: Conversation C, Docs D, Changes G, Checks E; R: not handled",
             "the block returns while Shift is held: "
-            "badges Guided PR R, Conversation C, Docs D, Changes G, Checks E",
+            "badges Guided Review R, Conversation C, Docs D, Changes G, Checks E",
             "R: opened the guided route",
             "an example of the block inside another fence: "
-            "Guided PR R, Conversation C, Docs D, Changes G, Checks E",
+            "Guided Review R, Conversation C, Docs D, Changes G, Checks E",
             "disposed: keys none",
         ],
         # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):

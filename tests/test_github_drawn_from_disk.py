@@ -541,7 +541,8 @@ def _guided(built: Built, result: Invocation) -> None:
     )
     reference = guide["references"][0]
     assert reference["path"] == "src/app.txt"
-    assert [(row["op"], row["text"]) for row in reference["rows"]] == [
+    (hunk,) = reference["hunks"]
+    assert [(line["op"], line["text"]) for line in hunk["lines"]] == [
         ("context", "one"),
         ("add", "two"),
     ]
@@ -613,7 +614,7 @@ ELEMENTS: Final[tuple[Drawn, ...]] = (
         "Description Markdown", "PR page", "pull-markdown", _fixed("number=7&part=body"), _markdown
     ),
     Drawn("Conversation timeline", "PR page", "pull-timeline", _fixed(""), _timeline),
-    Drawn("Guided PR excerpts", "PR page", "guided-pr", _fixed("number=7"), _guided, _COMPARES),
+    Drawn("Guided Review excerpts", "PR page", "guided-pr", _fixed("number=7"), _guided, _COMPARES),
     Drawn(
         "Diff summary",
         "PR page",

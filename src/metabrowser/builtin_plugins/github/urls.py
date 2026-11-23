@@ -669,7 +669,7 @@ class GithubUrlReducer:
                     return f"{clone_url}/pull/{selection.pull_request}/commits/{selection.commit}"
                 return f"{clone_url}/commit/{selection.commit}" + _anchored(selection.pull_file)
             case "pull_request":
-                # Guided PR's source on GitHub is the description on Conversation.
+                # Guided Review's source on GitHub is the description on Conversation.
                 tab = f"/{selection.pull_tab}" if selection.pull_tab in ("files", "checks") else ""
                 url = f"{clone_url}/pull/{selection.pull_request}{tab}"
                 return url + _anchored(selection.pull_file)

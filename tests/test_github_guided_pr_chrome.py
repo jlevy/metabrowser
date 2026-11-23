@@ -1,4 +1,4 @@
-"""A pull request's Guided PR tab, key, and excerpts on the real shell, in headless Chrome.
+"""A pull request's Guided Review tab, key, and excerpts on the real shell, in headless Chrome.
 
 The shell's highlighter runs over every ``pre code`` that does not carry ``no-highlight``
 (``highlightCode`` in ``static/app.js``), one element at a time. Each row of an excerpt is a

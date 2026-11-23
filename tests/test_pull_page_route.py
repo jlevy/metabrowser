@@ -129,7 +129,7 @@ def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
     assert 'shown?.pull?.htmlUrl ?? "https://github.com/"' in source
     assert 'ensureAsset("inert-html")' in source
     # The routes' one list of KPress's stylesheets, loaded in one place, and nothing a text
-    # could name: a description's from the Markdown route, Guided PR's from the guide route.
+    # could name: a description's from the Markdown route, Guided Review's from the guide route.
     assert source.count("mb.loadKpressAssets(") == 1
     assert "documentStyles = mb.loadKpressAssets(assets)" in source
     assert "textStyles(rendered.assets)" in source
@@ -212,7 +212,7 @@ def test_a_readers_place_is_kept_in_the_entry_and_disposed_with_the_page() -> No
     for released in ("listening.abort();", "heights.disconnect();", "keeper.dispose();"):
         assert released in disposal
     # Only the page's own tab change is a landing: asking for the tab it shows moves nothing,
-    # and the front page and Guided PR's address show the same tab when there is a guide.
+    # and the front page and Guided Review's address show the same tab when there is a guide.
     assert (
         "const changed = controller.snapshot().tab !== shownTabFor(next, shown?.pull?.text ?? null);"
         in source

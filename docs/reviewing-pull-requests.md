@@ -131,17 +131,17 @@ A cached page shows at once and refreshes in the background; the
 
 The page has up to five tabs:
 
-- **Guided PR** (`R`), the first tab when the description includes a guide: the
-  description as the guide’s introduction, then ordered review steps with commentary
-  above selected diff excerpts.
+- **Guided Review** (`R`), the first tab when the description includes a guide: the
+  description as the guide’s overview, then ordered review steps with commentary above
+  selected diff excerpts.
   The tab appears when the description has a line that opens a `guided-pr` fence; the
   server’s reading of the block decides what the tab then shows.
   A pull request with a guide opens on it at `/pull/<n>`, and Conversation moves to
   `/pull/<n>/conversation`; without one, `/pull/<n>` is Conversation.
 - **Conversation** (`C`): the description, then comments, reviews, and commits in
   GitHub’s order, joined by a timeline line.
-  Where the description has its guide, Conversation shows a card that opens Guided PR.
-  Commits that arrive while you read are added after what is shown.
+  Where the description has its guide, Conversation shows a card that opens Guided
+  Review. Commits that arrive while you read are added after what is shown.
   A short commit ID opens that commit on GitHub.
   **Review comments** lists the inline review comments with their files and diff hunks.
 - **Docs** (`D`): the changed documents alone (the File type menu’s Documentation group:
@@ -162,14 +162,14 @@ The page has up to five tabs:
   again.
 - **Checks** (`E`): the check runs and commit statuses, with links to their details.
 
-### Guided PR
+### Guided Review
 
-The guide opens on its introduction, the description, under a list of its steps.
-The introduction is step 0 and the author’s steps follow it in their review order.
+The guide opens on its overview, the description, under a list of its steps.
+The overview is step 0 and the author’s steps follow it in their review order.
 Choose a step in the list to go straight to it, or use the arrows in the list’s head to
 page through them; below each step, the way on names the next step and the way back the
-one before. A step can bring changes from several files together.
-**Open full diff** goes to the file in Changes.
+one before. A step can bring changes from several files together, each drawn as Changes
+draws it. **Open full diff** goes to the file in Changes.
 
 To publish a guide, have the author or their agent add one top-level `guided-pr` fenced
 YAML block to the GitHub PR description.
@@ -177,9 +177,9 @@ Give the agent the PR description and the diff from its merge base to its head.
 Ask it to choose the code to review in dependency or execution order.
 Each step should explain why the reviewer is looking there and what to verify.
 
-The description is the guide’s introduction.
-Guided PR opens with it, rendered as Conversation renders it and without the block, so
-write it to be read first: what the change does and why, then how its parts fit
+The description is the guide’s overview.
+Guided Review opens with it, rendered as Conversation renders it and without the block,
+so write it to be read first: what the change does and why, then how its parts fit
 together. The block itself has no prose of its own.
 
 The block is a collection (`metabrowser.collection:Collection/v1`): the comparison it
@@ -213,17 +213,19 @@ deleted line for a `new` range or an added line for an `old` range, is shown whe
 lies inside the range or touches either end of it, so a changed line appears with what
 it replaced. A step’s excerpts share one size budget (`MAX_EXCERPT_BYTES` in
 `guided_pr.py`); an excerpt past it says it is too large to show.
-A `path` alone links to the file, including binary changes and renames without a text
-diff. The
+A `path` alone shows the file’s whole diff, as Changes draws it: its hunk bars, and its
+long runs folded behind bars you expand.
+A binary change or a rename without a text diff says it has no text changes to show.
+The
 [compiled SoftSchema](../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
 describes the payload, and `MAX_ITEMS` and `MAX_REFERENCES` in `guided_pr.py` bound its
 steps and each step’s references.
 
 The guide is read from the cached description, and its excerpts come from the comparison
 it is pinned to. When the pull request’s head or merge base moves past the guide’s pins,
-the guide is out of date: a notice at the top of Guided PR names the revision the guide
-was written for, the pull request’s current one, and the commits since (or says the
-branch was rebased), and it marks the steps that cite a file changed since.
+the guide is out of date: a notice at the top of Guided Review names the revision the
+guide was written for, the pull request’s current one, and the commits since (or says
+the branch was rebased), and it marks the steps that cite a file changed since.
 Every step still shows, with excerpts from the guide’s own revision; a step that cites
 no changed file still matches the pull request.
 To bring the guide current, update its pins and ranges in the PR description.

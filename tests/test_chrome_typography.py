@@ -49,7 +49,7 @@ MONO_ALLOWED_SELECTORS = frozenset(
         ".md-body:not(.metabrowser-kpress-host) code",
         ".log-event-raw pre",
         ".log-event-raw code",
-        # A diff's lines and its excerpts in review comments and Guided PR.
+        # A diff's lines and its excerpts in review comments and Guided Review.
         ".metabrowser-diff-host .diff-line",
         ".metabrowser-diff-host .diff-split-side",
         ".github-pull-hunk",

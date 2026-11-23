@@ -1959,6 +1959,14 @@
 /* The step list: a card whose head pages through the steps, and whose rows name each one,
    the one shown marked as a document's table of contents marks its section
    (`--highlight-bg`, `--highlight-bar`, static/styles.css). */
+/* A guide's badge leads its label as a page header's state badge leads its line: a flex
+   row, 8px apart (`.github-pull-meta`). As a space's width, the badge sat against the S of
+   "Step 5 of 9". */
+.github-pull-guide-card-head {
+  display: flex;
+  align-items: center;
+  column-gap: 8px;
+}
 .github-pull-guide-outline {
   margin-block-end: 1rem;
 }

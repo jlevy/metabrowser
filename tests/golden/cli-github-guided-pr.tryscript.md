@@ -14,10 +14,11 @@ before: >-
   --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py"
   . --guided > fixture.log 2>&1 || (cat fixture.log >&2 && exit 1)
 ---
-# Guided PR reads the cached description and comparison
+# Guided Review reads the cached description and comparison
 
 The first two steps keep the author’s order and read the actual patches from the fixture
-mirror. The second demonstrates file-only, missing-path, and unresolved-line references.
+mirror. The second demonstrates a reference with no range, which shows its file’s whole
+patch, and missing-path and unresolved-line references.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-pr?number=7'
@@ -49,20 +50,30 @@ status: 200
       "end_line": 2,
       "state": "ready",
       "href": "/pull/7/files/src/app.txt",
-      "rows": [
+      "hunks": [
         {
-          "old": 1,
-          "new": 1,
-          "op": "context",
-          "text": "one"
-        },
-        {
-          "old": null,
-          "new": 2,
-          "op": "add",
-          "text": "two"
+          "old_start": 1,
+          "old_count": 1,
+          "new_start": 1,
+          "new_count": 2,
+          "heading": null,
+          "lines": [
+            {
+              "op": "context",
+              "text": "one",
+              "text_b64": null,
+              "no_newline": false
+            },
+            {
+              "op": "add",
+              "text": "two",
+              "text_b64": null,
+              "no_newline": false
+            }
+          ]
         }
-      ]
+      ],
+      "truncated": false
     }
   ],
   "assets": {
@@ -224,23 +235,56 @@ status: 200
       "end_line": 1,
       "state": "ready",
       "href": "/pull/7/files/docs/new.md",
-      "rows": [
+      "hunks": [
         {
-          "old": null,
-          "new": 1,
-          "op": "add",
-          "text": "# New"
+          "old_start": 0,
+          "old_count": 0,
+          "new_start": 1,
+          "new_count": 1,
+          "heading": null,
+          "lines": [
+            {
+              "op": "add",
+              "text": "# New",
+              "text_b64": null,
+              "no_newline": false
+            }
+          ]
         }
-      ]
+      ],
+      "truncated": false
     },
     {
       "path": "src/app.txt",
       "side": null,
       "start_line": null,
       "end_line": null,
-      "state": "file",
+      "state": "ready",
       "href": "/pull/7/files/src/app.txt",
-      "rows": []
+      "hunks": [
+        {
+          "old_start": 1,
+          "old_count": 1,
+          "new_start": 1,
+          "new_count": 2,
+          "heading": null,
+          "lines": [
+            {
+              "op": "context",
+              "text": "one",
+              "text_b64": null,
+              "no_newline": false
+            },
+            {
+              "op": "add",
+              "text": "two",
+              "text_b64": null,
+              "no_newline": false
+            }
+          ]
+        }
+      ],
+      "truncated": false
     },
     {
       "path": "missing.txt",
@@ -249,7 +293,8 @@ status: 200
       "end_line": null,
       "state": "path_not_changed",
       "href": null,
-      "rows": []
+      "hunks": [],
+      "truncated": false
     },
     {
       "path": "src/app.txt",
@@ -258,7 +303,8 @@ status: 200
       "end_line": 4,
       "state": "range_unavailable",
       "href": "/pull/7/files/src/app.txt",
-      "rows": []
+      "hunks": [],
+      "truncated": false
     }
   ],
   "assets": {
@@ -454,20 +500,30 @@ status: 200
       "end_line": 2,
       "state": "ready",
       "href": "/pull/8/files/src/app.txt",
-      "rows": [
+      "hunks": [
         {
-          "old": 1,
-          "new": 1,
-          "op": "context",
-          "text": "one"
-        },
-        {
-          "old": null,
-          "new": 2,
-          "op": "add",
-          "text": "two"
+          "old_start": 1,
+          "old_count": 1,
+          "new_start": 1,
+          "new_count": 2,
+          "heading": null,
+          "lines": [
+            {
+              "op": "context",
+              "text": "one",
+              "text_b64": null,
+              "no_newline": false
+            },
+            {
+              "op": "add",
+              "text": "two",
+              "text_b64": null,
+              "no_newline": false
+            }
+          ]
         }
-      ]
+      ],
+      "truncated": false
     }
   ],
   "assets": {
@@ -628,7 +684,7 @@ status: 200
 ? 0
 ```
 
-The description introduces the guide: its Markdown, which Conversation and Guided PR
+The description introduces the guide: its Markdown, which Conversation and Guided Review
 both render, leaves out the guided-pr block.
 
 ```console

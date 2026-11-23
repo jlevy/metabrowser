@@ -945,7 +945,7 @@ The plugin registers two views: `pull-request`, which the shell mounts at `/pull
 (`pulls-panel.js`). Their visual rules are in the
 [design system](../../design-system.md#the-pulls-tab).
 
-### Guided PR
+### Guided Review
 
 `guided_pr.py` extracts a top-level fence from the raw, bounded PR description and
 validates its artifact against the installed `Collection/v1` SoftSchema
@@ -969,26 +969,29 @@ guide the first request parsed and an edited description is parsed once.
 An excerpt shows a replacement whole: `_hunk_rows` includes a line that exists only on
 the other side when it lies inside the range or touches either end of it.
 Guide text and diff lines are inserted as text, in the design system’s existing parts:
-each step is a page card headed as a guided review, as Conversation draws a comment, its
-title and note prose in a KPress article, as a description is, and each excerpt is the
-diff plugin’s file card and unified rows (`renderReference` in `guided-pr.js`), so its
-type, row height, gutter, and change fills are Changes’.
-A ready step carries KPress’s stylesheet manifest, as the description’s Markdown route
-does, and the page loads it and the diff plugin’s styles before drawing the step, so the
-tab reads the same when it is the first thing opened.
-Guided PR is the first tab when the description has a guide: it is the author’s reading
-order. `/pull/<n>` is then the guide, and Conversation is `/pull/<n>/conversation`
-(`shownTabFor` in `pull-page.js`); without a guide `/pull/<n>` is Conversation, and its
-`/conversation` address shows Conversation either way.
+each step is a page card headed by the Guided Review badge and its place, as
+Conversation draws a comment, its title and note prose in a KPress article, as a
+description is, and each excerpt is drawn by the diff plugin’s own renderer
+(`mountFilePatch`, which the page loads with `plugins.load("diff")`; `renderReference`
+in `guided-pr.js`), so its hunk bars, folds, type, row height, gutter, and change fills
+are Changes’. A range is one hunk in the diff model’s shape (`_rows_hunk` in
+`guided_pr.py`), and a path alone is its file’s whole patch, bounded by the diff source
+as Changes is. A ready step carries KPress’s stylesheet manifest, as the description’s
+Markdown route does, and the page loads it and the diff plugin’s styles before drawing
+the step, so the tab reads the same when it is the first thing opened.
+Guided Review is the first tab when the description has a guide: it is the author’s
+reading order. `/pull/<n>` is then the guide, and Conversation is
+`/pull/<n>/conversation` (`shownTabFor` in `pull-page.js`); without a guide `/pull/<n>`
+is Conversation, and its `/conversation` address shows Conversation either way.
 The description introduces the guide, and a collection has no prose of its own:
 `part_text` in `pull_markdown.py` renders the description without its readable guided-pr
-block (`without_guide` in `guided_pr.py`), the Guided PR tab opens with that render, and
-Conversation puts a card that opens the guide in the block’s place.
+block (`without_guide` in `guided_pr.py`), the Guided Review tab opens with that render,
+and Conversation puts a card that opens the guide in the block’s place.
 A block that cannot be read stays in the description, so its author sees it.
-The introduction is the guide’s step 0 (`createGuideNavigation` in `guided-pr.js`): the
-page draws it from the description it already has, under a list of the steps that a step
-answer’s `titles` fill, and it keeps the answer for step 1 that it read for those
-titles, so the first move reads nothing.
+The description is the guide’s step 0, its overview (`createGuideNavigation` in
+`guided-pr.js`): the page draws it from the description it already has, under a list of
+the steps that a step answer’s `titles` fill, and it keeps the answer for step 1 that it
+read for those titles, so the first move reads nothing.
 Each answer is kept for its record revision, and a new revision or a moved head drops
 them. `guided-pr.js` loads on demand when the tab opens, aborts reads on disposal, and
 matches results to the page’s record revision.

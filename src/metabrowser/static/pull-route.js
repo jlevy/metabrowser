@@ -43,9 +43,9 @@
   }
 
   /**
-   * Encode a pull request's page: `/pull/<n>` for its front page (Guided PR when the
+   * Encode a pull request's page: `/pull/<n>` for its front page (Guided Review when the
    * description carries a guide, Conversation otherwise), `/pull/<n>/conversation` for
-   * Conversation, `/pull/<n>/files` for Changes, `/pull/<n>/guided` for Guided PR, and
+   * Conversation, `/pull/<n>/files` for Changes, `/pull/<n>/guided` for Guided Review, and
    * `/pull/<n>/checks` for Checks.
    * Only Changes can name a file,
    * with each segment of the path percent-encoded.

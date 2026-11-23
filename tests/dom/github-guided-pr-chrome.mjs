@@ -1,4 +1,4 @@
-// Guided PR in headless Chrome against a live `metab` server that serves the GitHub stand-in
+// Guided Review in headless Chrome against a live `metab` server that serves the GitHub stand-in
 // with guides in the descriptions of pull requests 7 to 9 and none in 10's.
 //
 //   CHROME_BIN=... CHROME_PROFILES=<dir> node tests/dom/github-guided-pr-chrome.mjs <base URL>
@@ -9,18 +9,19 @@
 // What only a browser holds, and the browserless sessions cannot (github-guided-pr-session.js,
 // github-guided-pr-mount-behavior.js, and the tab and key in github-pull-page-mount-behavior.js):
 //
-// 1. The tab and its key on the real shell: Guided PR leads the bar on a pull request whose
+// 1. The tab and its key on the real shell: Guided Review leads the bar on a pull request whose
 //    description has a guide and is its front page, opened by the description; Conversation
 //    has its own address, where the guide's block is a card; R opens the guide once the page
 //    has attached its keys; and on one with no guide there is no tab and R opens nothing.
 // 2. An excerpt's rows after the shell's highlighter has run over the page. The shell highlights
 //    every `pre code` that does not carry `no-highlight` (`highlightCode` in app.js), one row at a
 //    time as a one-line snippet, which gave each row a padded, gray block of its own inside the
-//    row's tint (review A of #599, A3). A control block outside the excerpt proves the pass runs
-//    here: it is highlighted, and the rows are not.
+//    row's tint (review A of #599, A3). The diff plugin draws the excerpt, as it draws Changes, so
+//    no row is a `pre code`. A control block outside the excerpt proves the pass runs here: it is
+//    highlighted, and the rows keep no padding or background of their own.
 // 3. A row is one line: its number columns, its mark, and its code share a top and do not overlap,
-//    and the tint is the row's, never the code's.
-// 4. The guide opens on its introduction under a list of its steps; a step in the list, the
+//    and the tint is the row's, never the code's. The excerpt opens on the diff's hunk bar.
+// 4. The guide opens on its overview under a list of its steps; a step in the list, the
 //    arrows, and the way on below a step move between them, the step's text sits at the
 //    description's inset, Open full diff goes to the file's Changes address, and a guide that
 //    cannot be read says so in place: none, stale, and two blocks.
@@ -45,19 +46,18 @@ const same = (label, got, want) =>
   check(label, JSON.stringify(got) === JSON.stringify(want), `got ${JSON.stringify(got)}`);
 
 const TABS = `[...document.querySelectorAll(".github-pull .tab-btn")].map((tab) => tab.textContent.trim())`;
-const GUIDE_TAB = `[...document.querySelectorAll(".github-pull .tab-btn")].find((tab) => tab.textContent.trim() === "Guided PR")`;
-const ROWS = `[...document.querySelectorAll(".github-pull-guide-line")].map((line) => {
+const GUIDE_TAB = `[...document.querySelectorAll(".github-pull .tab-btn")].find((tab) => tab.textContent.trim() === "Guided Review")`;
+const ROWS = `[...document.querySelectorAll(".github-pull-guide-excerpt .diff-line")].map((line) => {
   const code = line.querySelector(".diff-line-text");
   const style = getComputedStyle(code);
   const boxes = [...line.children].map((child) => child.getBoundingClientRect());
   return {
-    op: line.dataset.op,
+    op: ["add", "del", "context"].find((op) => line.classList.contains(\`diff-line-\${op}\`)),
     text: code.textContent,
     noHighlight: code.closest("pre") === null,
     // The diff's type: the guide's rows are the size of Changes' rows.
     fontSize: style.fontSize,
     monoBlock: getComputedStyle(document.documentElement).getPropertyValue("--mono-block-font-size").trim(),
-    hljs: code.classList.contains("hljs") || code.querySelector("span") !== null,
     padding: style.padding,
     background: style.backgroundColor,
     tinted: getComputedStyle(line).backgroundColor !== "rgba(0, 0, 0, 0)",
@@ -92,9 +92,7 @@ try {
       `document.querySelector(".github-pull-guide-step .github-pull-guide-title")?.textContent === ${JSON.stringify(title)}`,
     );
   const introduced = () =>
-    waitFor(
-      `document.querySelector(".github-pull-guide-position")?.textContent === "Introduction, then 2 steps"`,
-    );
+    waitFor(`document.querySelector(".github-pull-guide-position")?.textContent === "Overview"`);
   /** Click the guide's button named *label*. */
   const click = (label) =>
     evaluate(
@@ -116,7 +114,7 @@ try {
   await go("/pull/7");
   await waitFor(`${GUIDE_TAB} !== undefined`);
   same("the tabs of a pull request with a guide", await evaluate(TABS), [
-    "Guided PR",
+    "Guided Review",
     "Conversation",
     "Docs",
     "Changes",
@@ -163,12 +161,22 @@ try {
     await evaluate(
       `[...document.querySelectorAll(".github-pull-guide-steps-title")].map((title) => title.textContent)`,
     ),
-    ["Introduction", "Start with the count", "Read the new guide"],
+    ["Overview", "Start with the count", "Read the new guide"],
   );
   same(
     "the arrows are icons",
     await evaluate(`document.querySelectorAll(".github-pull-guide-arrows button svg").length`),
     2,
+  );
+  same(
+    "each arrow sits at its button's center",
+    await evaluate(`[...document.querySelectorAll(".github-pull-guide-arrows button")].map((button) => {
+      const outer = button.getBoundingClientRect();
+      const inner = button.querySelector("svg").getBoundingClientRect();
+      const off = (a, b, c, d) => Math.abs((a + b) / 2 - (c + d) / 2) <= 1;
+      return off(outer.left, outer.right, inner.left, inner.right) && off(outer.top, outer.bottom, inner.top, inner.bottom);
+    })`),
+    [true, true],
   );
   await evaluate(
     `[...document.querySelectorAll(".github-pull-guide-steps-link")].find((link) => link.textContent.includes("Start with the count")).click()`,
@@ -199,10 +207,17 @@ try {
     highlightCode(document);
     const highlighted = code.classList.contains("hljs");
     pre.remove();
-    return { highlighted, excerpt: document.querySelectorAll(".github-pull-guide-excerpt .hljs").length };
+    return { highlighted, excerpt: document.querySelectorAll(".github-pull-guide-excerpt pre").length };
   })()`);
   check("the shell's pass highlights a block outside the excerpt", pass.highlighted === true);
-  check("and no row of the excerpt", pass.excerpt === 0, `${pass.excerpt} highlighted`);
+  check("and the excerpt has no block for it", pass.excerpt === 0, `${pass.excerpt} blocks`);
+  same(
+    "the excerpt opens on the diff's hunk bar",
+    await evaluate(
+      `[...document.querySelectorAll(".github-pull-guide-excerpt .diff-hunk-header")].map((bar) => bar.textContent)`,
+    ),
+    ["@@ -1,1 +1,2 @@"],
+  );
   const rows = await evaluate(ROWS);
   same(
     "step 1's rows",
@@ -210,7 +225,7 @@ try {
     ["context one", "add two"],
   );
   for (const row of rows) {
-    check(`${row.op} row's code skips the highlighter`, row.noHighlight && !row.hljs);
+    check(`${row.op} row's code is no block for the highlighter`, row.noHighlight);
     check(`${row.op} row's code has no padding of its own`, row.padding === "0px", row.padding);
     check(
       `${row.op} row's code has no background of its own`,
@@ -235,13 +250,13 @@ try {
   await settled("Read the new guide");
   const second = await evaluate(ROWS);
   same(
-    "step 2's added line",
+    "step 2's added line, then the whole diff of the file it cites with no range",
     second.map((row) => `${row.op} ${row.text}`),
-    ["add # New"],
+    ["add # New", "context one", "add two"],
   );
   check(
     "its row too",
-    second.every((row) => row.noHighlight && !row.hljs && row.padding === "0px"),
+    second.every((row) => row.noHighlight && row.padding === "0px"),
   );
   await click("Previous step");
   await settled("Start with the count");
@@ -249,7 +264,7 @@ try {
   same(
     "the way on below step 1",
     await evaluate(`document.querySelector(".github-pull-guide-pager-next").textContent`),
-    "Read the new guide",
+    "Step 2: Read the new guide",
   );
   await evaluate(`document.querySelector(".github-pull-guide-pager-next").click()`);
   await settled("Read the new guide");
@@ -278,7 +293,7 @@ try {
   same("R opens nothing there", await evaluate("location.pathname"), "/pull/10");
   await go("/pull/10/guided");
   same("its guided address says so", await said(), "This pull request has no guide.");
-  check("and keeps the tab it was asked for", (await evaluate(TABS)).includes("Guided PR"));
+  check("and keeps the tab it was asked for", (await evaluate(TABS)).includes("Guided Review"));
 
   // 4. A stale guide (its head is not the record's) still shows its steps, under a notice at
   // the top of the page that says what is out of date; a guide that cannot be read says why.
@@ -304,9 +319,18 @@ try {
   same(
     "its step is a guided-review card",
     await evaluate(
-      `document.querySelector(".github-pull-guide-card .github-pull-card-head").textContent.replace(/\\s+/g, " ").trim()`,
+      `[...document.querySelector(".github-pull-guide-card .github-pull-card-head").children].map((part) => part.textContent)`,
     ),
-    "Guided review Step 1 of 2 · cites files changed since the guide",
+    ["Guided Review", "Step 1 of 2 · cites files changed since the guide"],
+  );
+  // The badge stands apart from its label, as a page header's state badge from its line.
+  same(
+    "the badge is the page header's gap from its label",
+    await evaluate(`(() => {
+      const [badge, label] = document.querySelector(".github-pull-guide-card .github-pull-card-head").children;
+      return Math.round(label.getBoundingClientRect().left - badge.getBoundingClientRect().right);
+    })()`),
+    8,
   );
   await go("/pull/9/guided");
   same("two blocks", await said(), "Use one guided-pr block in the pull request description.");

@@ -3,8 +3,9 @@ name = "github"
 display_name = "GitHub"
 version = "0.0.1"
 sdk_version = "0.8"
-# A text's Mermaid diagrams are drawn by the Markdown plugin's diagram host.
-requires = ["markdown"]
+# A text's Mermaid diagrams are drawn by the Markdown plugin's diagram host, and Guided Review's
+# excerpts by the diff plugin's file renderer (`mountFilePatch`).
+requires = ["markdown", "diff"]
 
 # GitHub support: the URL reducer, the gh credential helper, and pull-request records
 # reach core through metabrowser.cache.providers, not this manifest. The manifest mounts
@@ -67,7 +68,7 @@ route = "pull-markdown"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_markdown_handler"
 methods = ["GET"]
 
-# A cached PR description's Guided PR artifact and one step of its pinned comparison.
+# A cached PR description's Guided Review artifact and one step of its pinned comparison.
 [[data_hook]]
 route = "guided-pr"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:guided_pr_handler"

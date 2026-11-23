@@ -27,25 +27,25 @@ The setup checks that end the report depend on the host, so they are elided here
 
 ```console
 $ metab --plugins
-NAME           SOURCE   KINDS                   REQUIRES      VIEWS  HOOKS
--------------  -------  ----------------------  ------------  -----  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-agents         builtin  agent-log,agent-thread  structured    8      charts,catalog,sessions,session,records,live
-binary         builtin  -                       -             1      chunk
-delimited      builtin  delimited               table         2      -
-diff           builtin  diff                    structured    1      document,children,comparison
-event-log      builtin  event-log               agents        5      timeline,slowest,kinds,errors
-folder         builtin  -                       markdown      2      -
-fsqlite        builtin  sqlite-store            sqlite,table  3      info,schema,children
-github         builtin  -                       markdown      2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,guided-pr,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
-html           builtin  html                    -             2      -
-image          builtin  -                       -             1      -
-markdown       builtin  markdown,mermaid        -             4      -
-sqlite         builtin  sqlite                  table         3      info,schema,children
-structured     builtin  structured              table         3      parsed
-table          builtin  -                       -             0      tables,schema,rows,record,card
-text           builtin  -                       -             1      -
-unknown-jsonl  builtin  -                       agents        2      -
-? 0
+NAME           SOURCE   KINDS                   REQUIRES       VIEWS  HOOKS
+-------------  -------  ----------------------  -------------  -----  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+agents         builtin  agent-log,agent-thread  structured     8      charts,catalog,sessions,session,records,live
+binary         builtin  -                       -              1      chunk
+delimited      builtin  delimited               table          2      -
+diff           builtin  diff                    structured     1      document,children,comparison
+event-log      builtin  event-log               agents         5      timeline,slowest,kinds,errors
+folder         builtin  -                       markdown       2      -
+fsqlite        builtin  sqlite-store            sqlite,table   3      info,schema,children
+github         builtin  -                       markdown,diff  2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,guided-pr,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
+html           builtin  html                    -              2      -
+image          builtin  -                       -              1      -
+markdown       builtin  markdown,mermaid        -              4      -
+sqlite         builtin  sqlite                  table          3      info,schema,children
+structured     builtin  structured              table          3      parsed
+table          builtin  -                       -              0      tables,schema,rows,record,card
+text           builtin  -                       -              1      -
+unknown-jsonl  builtin  -                       agents         2      -
+? 0 
 ```
 
 ## Test: --plugins --json
@@ -228,7 +228,8 @@ $ metab --plugins --json
       "static_root": "[BUILTIN]/github",
       "kinds": [],
       "requires": [
-        "markdown"
+        "markdown",
+        "diff"
       ],
       "views": [
         "pull-request",
@@ -618,7 +619,7 @@ plugin requirements:
   event-log: requires agents
   folder: requires markdown
   fsqlite: requires sqlite, table
-  github: requires markdown
+  github: requires markdown, diff
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents

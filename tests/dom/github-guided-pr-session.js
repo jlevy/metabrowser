@@ -1,4 +1,4 @@
-// Drive the same navigation used by the Guided PR tab, with a manually settled route.
+// Drive the same navigation used by the Guided Review tab, with a manually settled route.
 const assert = require("node:assert/strict");
 const { setImmediate: settle } = require("node:timers/promises");
 
@@ -15,7 +15,7 @@ async function main() {
       return new Promise((resolve) => pending.push({ signal, resolve }));
     },
     render(answer, at) {
-      const shown = at === 0 ? "introduction" : `step ${at}`;
+      const shown = at === 0 ? "overview" : `step ${at}`;
       states.push(
         "step" in answer
           ? `${shown}: ${answer.state === "ready" ? "" : `${answer.state} `}step ${answer.step} of ${answer.step_count}`
@@ -43,17 +43,17 @@ async function main() {
   guide.move(1);
   assert.deepEqual(calls, []);
 
-  // The guide opens on its introduction, step 0, which shows the answer for step 1: its
+  // The guide opens on its overview, step 0, which shows the answer for step 1: its
   // titles list the guide. Before that answer the guide has no steps to move between.
   guide.show("first", false);
   guide.move(1);
   assert.deepEqual(calls, [1]);
   await respond(answer("first", 1));
-  assert.equal(states.at(-1), "introduction: step 1 of 3");
+  assert.equal(states.at(-1), "overview: step 1 of 3");
   guide.move(-1);
   assert.deepEqual(calls, [1]);
 
-  // Step 1 is already in hand; step 2 is read; back to the introduction and on to step 2
+  // Step 1 is already in hand; step 2 is read; back to the overview and on to step 2
   // again reads nothing, since each answer is kept for its record revision.
   guide.move(1);
   assert.equal(states.at(-1), "step 1: step 1 of 3");
@@ -107,7 +107,7 @@ async function main() {
   await respond(answer("future", 1));
   assert.equal(states.at(-1), "step 1: updated");
 
-  // A guide that cannot be read has no steps: its introduction shows the refusal, and
+  // A guide that cannot be read has no steps: its overview shows the refusal, and
   // nothing moves.
   guide.show("fourth", false);
   await respond({ state: "invalid", record_revision: "fourth" });

@@ -20,7 +20,7 @@ COMMIT_ROUTE_PREFIX = "/commit/"
 PULL_ROUTE_PREFIX = "/pull/"
 # The list of a repository's pull requests, with `?state=` for a filter, as on GitHub.
 PULLS_ROUTE = "/pulls"
-# `/pull/<n>` is the PR's front page: Guided PR when its description carries a guide,
+# `/pull/<n>` is the PR's front page: Guided Review when its description carries a guide,
 # Conversation otherwise. Every tab also has its own address, Conversation's among them,
 # so a link to a guided PR's Conversation names it (pull-page.js, `shownTab`).
 PULL_ROUTE_TABS = ("", "conversation", "docs", "files", "guided", "checks")
@@ -216,7 +216,7 @@ def _pull_file_segments(file: str) -> list[str]:
 
 
 def format_pull_href(number: int, tab: str = "", file: str = "") -> str:
-    """Return the address of a PR's Conversation, Changes, Guided PR or Checks tab.
+    """Return the address of a PR's Conversation, Changes, Guided Review or Checks tab.
 
     A changed file has an address under ``/pull/<n>/files/`` with each segment
     percent-encoded.

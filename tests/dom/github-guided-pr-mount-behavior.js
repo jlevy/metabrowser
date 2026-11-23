@@ -1,4 +1,4 @@
-// Guided PR on the production pull page: its guide is imported and mounted only when its tab
+// Guided Review on the production pull page: its guide is imported and mounted only when its tab
 // first paints, a tab left while the import is on its way mounts nothing, a new record revision
 // asks again for the step on screen and drops the read still on its way, leaving the tab or
 // ending the page disposes the view and aborts its read, and a step is inserted as text, each
@@ -31,14 +31,23 @@ function envelope(generation) {
   return body;
 }
 
-/** One step as the route answers it: a context, a deleted and an added row, and a path the
- * comparison does not have. Its text is markup, which a page that inserted it as HTML would
- * draw as elements. */
+/** One step as the route answers it: one hunk of a context, a deleted and an added line, and
+ * a path the comparison does not have. Its text is markup, which a page that inserted it as
+ * HTML would draw as elements. */
 function step(generation, number, count = 2) {
-  const rows = [
-    { old: 1, new: 1, op: "context", text: "one" },
-    { old: 2, new: null, op: "del", text: "<i>two</i>" },
-    { old: null, new: 2, op: "add", text: "three" },
+  const hunks = [
+    {
+      old_start: 1,
+      old_count: 2,
+      new_start: 1,
+      new_count: 2,
+      heading: null,
+      lines: [
+        { op: "context", text: "one" },
+        { op: "del", text: "<i>two</i>" },
+        { op: "add", text: "three" },
+      ],
+    },
   ];
   return {
     state: "ready",
@@ -57,7 +66,8 @@ function step(generation, number, count = 2) {
         end_line: 2,
         state: "ready",
         href: "/pull/7/files/src/app.txt",
-        rows,
+        hunks,
+        truncated: false,
       },
       {
         path: "gone.txt",
@@ -66,7 +76,8 @@ function step(generation, number, count = 2) {
         end_line: null,
         state: "path_not_changed",
         href: null,
-        rows: [],
+        hunks: [],
+        truncated: false,
       },
     ],
   };
@@ -78,6 +89,34 @@ function host() {
   const reads = [];
   /** The routes the page asked the page to open. */
   const opened = [];
+  /** Each patch the page handed the diff plugin to draw, and whether it was disposed. */
+  const patches = [];
+  /** The diff plugin's export, as `plugins.load("diff")` answers it: it draws each line as
+   * the diff draws a row, its text a span. The diff plugin's own drawing (hunk bars, folds,
+   * syntax) is its own, pinned by its tests and painted in the Chrome check. */
+  const diff = {
+    mountFilePatch(body, change, patch, api) {
+      assert.equal(typeof api.ensureKindAssets, "function", "the diff draws with the SDK");
+      const drawn = { path: change.new.path, patch, disposed: false };
+      patches.push(drawn);
+      for (const hunk of patch.hunks) {
+        for (const line of hunk.lines) {
+          const row = new Element("div");
+          row.className = `diff-line diff-line-${line.op}`;
+          const code = new Element("span");
+          code.className = "diff-line-text hljs";
+          code.textContent = line.text;
+          row.append(code);
+          body.append(row);
+        }
+      }
+      return {
+        dispose() {
+          drawn.disposed = true;
+        },
+      };
+    },
+  };
   let current = null;
   globalThis.document = {
     visibilityState: "visible",
@@ -144,6 +183,7 @@ function host() {
   return {
     reads,
     opened,
+    patches,
     set current(value) {
       current = value;
     },
@@ -175,6 +215,13 @@ function host() {
           sourceKind: () => "git_revision",
           shortCommit: (commit) => commit.slice(0, 7),
           icons: { toggle: "" },
+          ensureKindAssets: async () => {},
+          plugins: {
+            async load(name) {
+              assert.equal(name, "diff", "the guide loads only the diff plugin");
+              return diff;
+            },
+          },
         },
       );
       return {
@@ -192,7 +239,7 @@ function host() {
             .find((node) => node.tag === "button" && node.getAttribute("aria-label") === label)
             .events.get("click")();
         },
-        /** The step list's place: the introduction or a step, and how many. */
+        /** The step list's head: the overview or a step, and how many. */
         position: () => container.querySelector(".github-pull-guide-position")?.textContent ?? null,
         /** The step list as it reads: each step, the one shown marked. */
         outline: () =>
@@ -234,7 +281,7 @@ async function run() {
   const page = await import(pathToFileURL(pagePath).href);
   const steps = [];
 
-  // The front page of a pull request with a guide is Guided PR.
+  // The front page of a pull request with a guide is Guided Review.
   {
     const front = host();
     const view = front.mount(page, "", envelope(1));
@@ -266,7 +313,7 @@ async function run() {
       },
     });
     await settle();
-    // The guide opens on its introduction, under the step list, with the changed steps marked.
+    // The guide opens on its overview, under the step list, with the changed steps marked.
     steps.push(`a stale guide opens on: ${view.position()}; ${view.outline()}`);
     const top = view.guided().children[0];
     const notice = view.container.querySelector(".github-pull-guide-stale");
@@ -277,7 +324,7 @@ async function run() {
     const kept = late.reads.length;
     view.press("Next step");
     await settle();
-    assert.equal(late.reads.length, kept, "step 1 is the introduction's own answer");
+    assert.equal(late.reads.length, kept, "step 1 is the overview's own answer");
     const card = view.container.querySelector(".github-pull-guide-card");
     steps.push(
       `and its step, in a card: ${card.querySelector(".github-pull-card-head").textContent}; ${view.shown()}; ` +
@@ -308,14 +355,14 @@ async function run() {
     steps.push(`its tab opens: guide mounted; asked ${asked(first.reads)}`);
     // The guide opens with the description, as Conversation renders it.
     const introduction = view.container.querySelector(".github-pull-guide-introduction");
-    steps.push(`the guide's introduction: ${introduction?.textContent ?? "none"}`);
+    steps.push(`the guide's overview: ${introduction?.textContent ?? "none"}`);
 
     // A step is text, not markup, and each row is the diff plugin's: its text a span, which
     // the shell's highlighter, which takes `pre code`, cannot select.
     first.pending()[0].answer(step(1, 1));
     await settle();
-    // The introduction is step 0: the description shows, under the step list, and Next goes
-    // to step 1 with the answer the introduction already has.
+    // The overview is step 0: the description shows, under the step list, and Next goes
+    // to step 1 with the answer the overview already has.
     // The page's wrapper of the description card, third after the notice and the step list.
     const wrapper = view.guided().children[2];
     assert.ok([...wrapper.descendants()].includes(introduction));
@@ -325,7 +372,7 @@ async function run() {
     );
     view.press("Next step");
     await settle();
-    assert.equal(wrapper.hidden, true, "a step replaces the introduction");
+    assert.equal(wrapper.hidden, true, "a step replaces the overview");
     assert.equal(first.reads.length, 1);
     const commentary = view.container.querySelector(".github-pull-guide-commentary");
     assert.equal(commentary.textContent, "Check <b>this</b> first.\nThen that.");
@@ -333,7 +380,14 @@ async function run() {
       commentary.children.every((child) => typeof child === "string"),
       "the commentary holds text and no element",
     );
-    const lines = view.container.querySelectorAll(".github-pull-guide-line");
+    // The diff plugin draws the excerpt from the step's hunks, as it draws Changes.
+    assert.deepEqual(
+      first.patches.map(({ path, patch }) => [path, patch.hunks.length, patch.truncated]),
+      [["src/app.txt", 1, false]],
+    );
+    const lines = view.container
+      .querySelector(".github-pull-guide-excerpt")
+      .querySelectorAll(".diff-line");
     steps.push(
       `step 1: ${view.shown()}; rows ${lines
         .map((line) => {
@@ -344,7 +398,10 @@ async function run() {
             code.children.every((child) => typeof child === "string"),
             "a row's text holds text and no element",
           );
-          return `${line.dataset.op} ${code.textContent}`;
+          const op = ["context", "del", "add"].find((name) =>
+            line.classes.has(`diff-line-${name}`),
+          );
+          return `${op} ${code.textContent}`;
         })
         .join(", ")}`,
     );
@@ -379,6 +436,7 @@ async function run() {
     await settle();
     const second = first.pending()[0];
     assert.equal(second.step, 2);
+    assert.equal(first.patches[0].disposed, true, "the next step's read disposes this diff");
     view.arrive("conversation");
     await settle();
     steps.push(
@@ -388,7 +446,7 @@ async function run() {
     await settle();
     assert.equal(view.guided(), null);
 
-    // Back on the tab, a view of its own is mounted again, on its introduction, which reads
+    // Back on the tab, a view of its own is mounted again, on its overview, which reads
     // step 1.
     view.arrive("guided");
     await settle();
@@ -436,7 +494,7 @@ async function run() {
     view.arrive("conversation");
     await settle();
     steps.push(
-      `Guided PR opened and left before its import settled: guide ${view.guided() === null ? "not mounted" : "mounted"}; asked ${asked(third.reads)}`,
+      `Guided Review opened and left before its import settled: guide ${view.guided() === null ? "not mounted" : "mounted"}; asked ${asked(third.reads)}`,
     );
     view.arrive("guided");
     view.handle.dispose();

@@ -14,6 +14,7 @@ from metabrowser.builtin_plugins.github.guided_pr import (
     Collection,
     CollectionReference,
     GuideError,
+    _excerpt,  # pyright: ignore[reportPrivateUsage]
     _hunk_rows,  # pyright: ignore[reportPrivateUsage]
     _references,  # pyright: ignore[reportPrivateUsage]
     parse_guide,
@@ -290,10 +291,14 @@ def test_a_step_names_what_became_of_each_reference() -> None:
         "b.py": _change("b.py", 3),
         "cut.py": _change("cut.py", 4),
     }
-    patches = {"file-2": _long_row_patch("file-2", 3), "file-3": _long_row_patch("file-3", 3)}
+    patches = {
+        "file-1": _long_row_patch("file-1", 3),
+        "file-2": _long_row_patch("file-2", 3),
+        "file-3": _long_row_patch("file-3", 3),
+    }
     # cut.py is changed, but its patch was not hydrated; gone.py is not in the comparison.
     assert _states(references, changes, patches) == [
-        "file",
+        "ready",
         "ready",
         "range_unavailable",
         "diff_unavailable",
@@ -322,3 +327,84 @@ def test_a_steps_excerpts_share_one_budget() -> None:
     only = [CollectionReference(path="a.py", **new)]  # pyright: ignore[reportArgumentType]
     big = {"file-1": _long_row_patch("file-1", MAX_EXCERPT_BYTES // 6 + 1)}
     assert _states(only, changes, big) == ["excerpt_too_large"]
+
+
+def test_a_file_with_no_range_shows_its_whole_patch() -> None:
+    """A reference that names a file alone shows every hunk of its patch, as Changes does,
+    and says when the diff source cut the patch short."""
+
+    second = Hunk(
+        old_start=9,
+        old_count=1,
+        new_start=10,
+        new_count=1,
+        lines=(LineRecord(op=LineOp.context, text="z"),),
+    )
+    patch = FilePatch(file_id="file-1", hunks=(_REPLACED, second), truncated=True)
+    shown = _references(
+        7,
+        [CollectionReference(path="a.py")],
+        {"a.py": _change("a.py", 1)},
+        {"file-1": patch},
+        truncated=False,
+    )
+    assert shown[0]["state"] == "ready"
+    assert shown[0]["truncated"] is True
+    hunks = shown[0]["hunks"]
+    assert isinstance(hunks, list)
+    assert [(hunk["old_start"], hunk["new_start"], len(hunk["lines"])) for hunk in hunks] == [
+        (1, 1, 5),
+        (9, 10, 1),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "old_side", "header"),
+    [
+        # A range's own lines, numbered from where they are in the file.
+        (1, 4, False, (1, 3, 1, 4)),
+        (2, 2, False, (2, 1, 2, 1)),
+        # Added lines alone start their old side at the line before them, as git does.
+        (3, 3, False, (2, 0, 3, 1)),
+        # A deleted line alone does the same on its new side.
+        (2, 2, True, (2, 1, 2, 2)),
+    ],
+)
+def test_a_range_is_one_hunk_numbered_as_in_the_file(
+    start: int, end: int, old_side: bool, header: tuple[int, int, int, int]
+) -> None:
+    reference = CollectionReference(
+        path="a.py", side="old" if old_side else "new", start_line=start, end_line=end
+    )
+    patch = FilePatch(file_id="file-1", hunks=(_REPLACED,), truncated=False)
+    state, hunks, _ = _excerpt(patch, reference, 10_000)
+    assert state == "ready"
+    (hunk,) = hunks
+    assert (hunk["old_start"], hunk["old_count"], hunk["new_start"], hunk["new_count"]) == header
+    # Its lines are the diff model's own records, as a whole file's hunks are.
+    lines = hunk["lines"]
+    assert isinstance(lines, list)
+    assert all(
+        isinstance(line, dict) and set(line) == {"op", "text", "text_b64", "no_newline"}
+        for line in lines
+    )
+
+
+@pytest.mark.parametrize(("start", "end", "header"), [(1, 2, (0, 0, 1, 2)), (2, 3, (0, 0, 2, 2))])
+def test_a_range_of_an_added_file_starts_its_old_side_at_zero(
+    start: int, end: int, header: tuple[int, int, int, int]
+) -> None:
+    """An added file's hunk is `@@ -0,0 +1,3 @@`: its old start is already the line before."""
+    added = Hunk(
+        old_start=0,
+        old_count=0,
+        new_start=1,
+        new_count=3,
+        lines=tuple(LineRecord(op=LineOp.add, text=text) for text in "xyz"),
+    )
+    reference = CollectionReference(path="new.py", side="new", start_line=start, end_line=end)
+    patch = FilePatch(file_id="file-1", hunks=(added,), truncated=False)
+    state, hunks, _ = _excerpt(patch, reference, 10_000)
+    assert state == "ready"
+    (hunk,) = hunks
+    assert (hunk["old_start"], hunk["old_count"], hunk["new_start"], hunk["new_count"]) == header
