@@ -2368,7 +2368,7 @@ export function createPullsController(deps, options = {}) {
     const needsCatalog = !envelope.complete && !envelope.refreshing;
     // A list the server probes: a catalog whose last refresh did not fail, with no job
     // running. Its asks keep the probe's interval, not the window.
-    const probeMs =
+    const probeIntervalMs =
       probing &&
       shown &&
       typeof envelope.probe_every_s === "number" &&
@@ -2382,7 +2382,7 @@ export function createPullsController(deps, options = {}) {
       !reconnect &&
       !needsRows &&
       !needsCatalog &&
-      probeMs === null &&
+      probeIntervalMs === null &&
       (envelope.refreshing ||
         (!failureDue && envelope.state !== "absent" && envelope.state !== "stale"))
     ) {
@@ -2392,7 +2392,7 @@ export function createPullsController(deps, options = {}) {
       !reconnect &&
       !needsRows &&
       list.askedAt !== null &&
-      now - list.askedAt < (probeMs ?? windowMs)
+      now - list.askedAt < (probeIntervalMs ?? windowMs)
     ) {
       return false;
     }
