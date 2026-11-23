@@ -5,7 +5,7 @@ title: Keep the Pulls and Commits tabs scoped to the owning repository
 kind: bug
 status: in_progress
 priority: 1
-version: 3
+version: 4
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/720
@@ -17,7 +17,11 @@ parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 hold: null
 hold_until: null
 created_at: 2026-11-23T00:40:59.086Z
-updated_at: 2026-11-23T00:59:24.779Z
+updated_at: 2026-11-23T01:05:13.883Z
 started_at: 2026-11-23T00:42:49.860Z
 ---
 Treat Pulls and Commits as repository-scoped navigation on the working tree and on pinned branches, tags or commits, including views of subdirectories where supported. Browsing a file or revision should not implicitly narrow or disable the repository tabs. Preserve explicit filters and the pinned Files view.
+
+## Notes
+
+Live Commits reported the actual repository working-tree HEAD while Files was pinned and returned all-ref history. Existing branch, tag, remote and commit history tests passed. #720 now keeps the same PR catalog available under local checkout pins. The refreshed catalog was verified on the active checkout and in an isolated pinned session. Pending hosted merge gates.
