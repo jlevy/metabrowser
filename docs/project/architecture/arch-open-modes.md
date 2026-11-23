@@ -295,6 +295,53 @@ cost alone
 Open: whether a row marks where the reader’s own `origin/<branch>` differs from the
 origin’s, so a branch the reader has not pulled is visible.
 
+What a mirror’s store already has, and what this still needs (surveyed 2026-11-22, when
+the mirror’s cadences were built):
+
+- **Freshness is built for a store, but only a served one.** The probe of a visible
+  branch, the fetch once a window, and the idle fetch
+  ([Refresh Cadence](arch-mirror-acquisition-and-refresh.md#refresh-cadence)) live in
+  `MirrorSession`, which the lifespan makes only when a mirror is the served root, and
+  which reads the served pin to know what to follow and probe.
+  A folder’s server has none.
+  So the first step is to split what belongs to the store, its fetch, its turn, its
+  probe and hold rules, its idle timer, and its last outcome, from what belongs to the
+  pin, so a folder’s server can own the store half with the working tree served.
+- **The store has two owners today.** Beside a folder, the GitHub plugin acquires the
+  overlay itself (`_acquire_comparison` in `builtin_plugins/github/checkout.py`) and
+  keeps its own `StoreTurn` for it (`checkout_store_turn`). Core must take both, and the
+  plugin ask core for the store and its turn, or two turns will meet at one fetch lock
+  and report each other as a refresh running elsewhere.
+- **Acquisition:** `acquire_source` with the served checkout as the lender and
+  `allow_clone_fallback=False`, as the plugin calls it, started as a background job
+  after the folder’s first paint.
+  Which remote is the origin is the lender check’s existing answer; a folder with no
+  remote the URL grammar accepts has no store, and the chooser says so.
+- **The chooser:** `GET /api/source/refs` for a folder merges two readers that exist,
+  `CheckoutRevisions.list_refs` for the checkout’s own branches and its other refs and
+  `StoreMirror.list_refs` for the origin’s branches and tags, and its envelope gains the
+  store’s state: ready with the last fetch’s time, or absent with the reason.
+- **Serving an origin branch:** `StoreMirror.open_selection`, as a mirror’s pin, which
+  makes that pin refreshable and followed, so `source_status` stops answering every pin
+  of a folder with `UNSERVED_FRESHNESS`. A local branch is still read from the checkout
+  in place.
+- **Refresh and the page’s asks** reach the store’s half of the session in both modes,
+  so `POST /api/source/refresh` is no longer refused for a folder that has a store.
+- **The never-written rule needs its own test:** every file under the checkout, its
+  `.git` included, compared before and after an acquisition, a fetch, a probe, and an
+  idle fetch, as `tests/test_checkout_revisions.py` does for revision views.
+  The probe’s `ls-remote` and the fetch run with the store as their Git directory, never
+  the checkout.
+
+Not decided:
+
+- Whether a folder’s store is fetched on a timer from the moment the folder is served,
+  or only once the reader has opened the chooser or Pulls.
+  The first keeps the owner’s “whenever possible, not out of date”; the second keeps a
+  server opened on a folder from reaching the network for a reader who only reads files.
+- What the chooser shows for an origin that needs credentials the provider helper does
+  not have, since no fetch here may prompt.
+
 ## What Is Never Written
 
 In no mode does Metabrowser write a user’s Git directory: no index, ref, or object.

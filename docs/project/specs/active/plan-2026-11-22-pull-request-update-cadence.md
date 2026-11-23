@@ -373,23 +373,30 @@ each, at a load average of about 330:
 | The fetch with the store’s refspecs (`--dry-run`) | 1.7 to 5.3 s | 0.2 to 0.6 s | 28 to 35 MB |
 
 A probe of one branch costs about a tenth of a refresh’s CPU, so it is the probe that
-runs often and the fetch that runs when the probe saw a move or the interval is up:
+runs often and the fetch that runs when the probe saw a move or the interval is up.
+The first two rows are built
+([Refresh Cadence](../../architecture/arch-mirror-acquisition-and-refresh.md#refresh-cadence)),
+and each constant is in `mirror_refresh.py` beside the measurement that set it:
 
-- **A visible page of a mirror on a branch:** probe the served branch every
-  `STORE_PROBE_S` (proposed 5 s) and fetch at once when its tip moved; fetch everything
-  every `FRESHNESS_WINDOW_S` as today.
-- **A served store with no visible page:** fetch every `STORE_IDLE_REFRESH_S` (proposed
-  300 s) while the server runs, as background work that yields to everything a reader
-  waits on, so a page opened later starts at most that old and its first ask catches up.
-  Today a hidden server never fetches.
-- **A store beside a checkout:** a repository folder shows its origin’s branches and
-  tags as Metabrowser last fetched them into its own store, which borrows the checkout’s
-  objects, and that store is fetched by the same rules; the checkout itself is still
-  never fetched into
+- **A visible page of a mirror on a branch:** the served branch is probed every
+  `STORE_PROBE_S`, and the fetch starts at once when its tip moved.
+  Everything is fetched every `FRESHNESS_WINDOW_S` while such a page is visible.
+  Before this, a page asked for a fetch once each time it became visible, not once a
+  window, so the plan’s “as today” was wrong and this is new.
+- **A served store with no visible page:** fetched every `STORE_IDLE_REFRESH_S` while
+  the server runs, as background work that yields to everything a reader waits on, so a
+  page opened later starts at most that old and its first ask catches up.
+  Before this, a hidden server never fetched.
+- **A store beside a checkout** (not built): a repository folder shows its origin’s
+  branches and tags as Metabrowser last fetched them into its own store, which borrows
+  the checkout’s objects, and that store is fetched by the same rules; the checkout
+  itself is still never fetched into
   ([Origin Branches in a Repository Folder](../../architecture/arch-open-modes.md#origin-branches-in-a-repository-folder)).
-- **The same guards as today:** one fetch per store at a time (its fetch lock), another
-  process’s fetch followed rather than repeated, a failed fetch tried again after a
-  window, and nothing while offline.
+- **The guards:** one fetch per store at a time (its fetch lock), another process’s
+  fetch followed rather than repeated, and a failed fetch or probe tried again only
+  after a window. The server has no test for being offline, so that case is the last one:
+  an origin it cannot reach is asked once a window by a visible page and once an idle
+  interval otherwise, and each attempt fails at the name lookup.
 
 ### Alternatives Considered
 
@@ -442,17 +449,22 @@ account check and the bounds on probes.
 
 ### Phase 3: Metabrowser’s Own Stores
 
-- [ ] A visible mirror page on a branch probes that branch’s tip every `STORE_PROBE_S`
+- [x] A visible mirror page on a branch probes that branch’s tip every `STORE_PROBE_S`
   between fetches, so a followed branch follows a push within seconds rather than a
-  freshness window and a poll later.
-  Core stays provider-agnostic (`ls-remote` of the one ref); the GitHub plugin may use a
-  conditional read of the ref if it measures cheaper.
-- [ ] A served store with no visible page is fetched every `STORE_IDLE_REFRESH_S` as
-  background work.
+  freshness window and a poll later (bead `mb-6pzh`): `MirrorSession.page_ask`, the
+  status’s `probe_every_s`, and the page’s own ask in `static/source-freshness.js`. Core
+  stays provider-agnostic (`ls-remote` of the one ref).
+- [ ] The GitHub plugin’s conditional read of the ref (`git/ref/heads/<branch>` with an
+  ETag), if it measures cheaper than `ls-remote`. Not measured: it would spend a `core`
+  call on every push, where `ls-remote` spends none.
+- [x] A served store with no visible page is fetched every `STORE_IDLE_REFRESH_S` as
+  background work (bead `mb-l89x`): `MirrorSession.run_idle_refresh`.
 - [ ] A repository folder keeps a store beside its checkout and lists its origin’s
-  branches and tags from it
-  ([Origin Branches in a Repository Folder](../../architecture/arch-open-modes.md#origin-branches-in-a-repository-folder)).
-- [ ] Both measured again on an idle machine before their constants are set.
+  branches and tags from it (bead `mb-ay84`); the design so far is in
+  [Origin Branches in a Repository Folder](../../architecture/arch-open-modes.md#origin-branches-in-a-repository-folder).
+- [ ] Both measured again on an idle machine.
+  The constants were set from measurements at a load average near 300, recorded beside
+  them; no idle machine was to hand.
 
 ## Testing Strategy
 
