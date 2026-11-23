@@ -1523,12 +1523,22 @@ def test_what_a_probe_saw_of_the_issue_is_kept_when_a_newer_record_arrived_meanw
 # ── Review B of #726 ───────────────────────────────────────────
 
 
-@pytest.mark.parametrize("askers", [13, served_pull.MAX_KEPT_PULLS])
+@pytest.mark.parametrize(
+    "askers",
+    [
+        13,
+        served_pull.MAX_KEPT_PULLS,
+        served_pull.MAX_KEPT_PULLS + 1,
+        2 * served_pull.MAX_KEPT_PULLS,
+    ],
+)
 def test_however_many_ask_past_the_cap_each_that_keeps_asking_is_probed(askers: int) -> None:
     """B1: a refusal kept the time it was first made and lapsed two intervals later, so
     with the cap at four the thirteenth asker onward went to the back each time and was
     never probed. A refusal renewed each time it is refused lapses only when its asker
-    stops asking."""
+    stops asking. D1 of review D on #726: past ``MAX_KEPT_PULLS`` askers each new refusal
+    evicted the asker whose turn was next, so after the first round none was probed: 4 of
+    240 probes in 60 rounds at 65 askers, and 61 never probed."""
 
     cap = served_pull.MAX_PROBES_IN_FLIGHT
     assert askers > 3 * cap
@@ -1570,8 +1580,10 @@ def test_the_pull_requests_the_cap_remembers_refusing_are_bounded(
         assert not served_pull._may_probe(f"demo:pull/{asker}", NOW)  # pyright: ignore[reportPrivateUsage]
     refused = served_pull._REFUSED  # pyright: ignore[reportPrivateUsage]
     assert len(refused) == served_pull.MAX_KEPT_PULLS
-    # The oldest are the ones forgotten.
-    assert next(iter(refused)) == "demo:pull/5"
+    # Those remembered keep their places, and the newest are not remembered (review D1 of
+    # #726: forgetting the oldest forgot whose turn was next).
+    assert next(iter(refused)) == "demo:pull/0"
+    assert f"demo:pull/{served_pull.MAX_KEPT_PULLS}" not in refused
 
 
 def test_a_settle_wait_that_lapsed_unanswered_is_renewed_for_a_record_read_long_after(
