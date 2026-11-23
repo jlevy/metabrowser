@@ -589,16 +589,25 @@ def test_diff_file_bar_keeps_copy_by_the_name_and_its_controls_at_its_end() -> N
     assert "flex: 0 1 auto;" in wrapping_end
     assert "flex-wrap: wrap;" in wrapping_end
     assert "justify-content: flex-end;" in wrapping_end
-    # Copy path shows while the pointer is on the bar or the focus is in it, the reveal
-    # contract of every `.icon-btn-reveal` ("Copyable Identifiers Use One Delegate").
+    # Copy path shows while the pointer is on the bar or the keyboard's focus is in it, the
+    # reveal contract of every `.icon-btn-reveal` ("Copyable Identifiers Use One Delegate"),
+    # and through its own "Copied!", as a file header's does. The focus is `:focus-visible`:
+    # in headless Chrome a mouse press on the name focused the disclosure, and under
+    # `:focus-within` the control stayed at full opacity with the pointer off the bar.
     reveal = (
         f"{host} .diff-file-bar:hover .diff-file-copy,\n"
-        f"{host} .diff-file-bar:focus-within .diff-file-copy {{\n"
+        f"{host} .diff-file-bar:has(:focus-visible) .diff-file-copy,\n"
+        f"{host} .diff-file-copy.copied {{\n"
         "  opacity: 1;\n"
         "  pointer-events: auto;\n"
         "}"
     )
-    assert reveal in diff_css, "the bar no longer reveals Copy path on hover and focus"
+    assert reveal in diff_css, "the bar no longer reveals Copy path on hover and keyboard focus"
+    assert ":focus-within .diff-file-copy" not in diff_css, (
+        "a press on a bar's name would hold Copy path shown"
+    )
+    copied = f"{host} .diff-file-copy.copied {{\n  color: var(--status-success-text);\n}}"
+    assert copied in diff_css, "a copied path no longer shows in the success ink"
 
 
 def test_preview_navigation_arrival_motion_is_shared_and_reduced_motion_safe() -> None:

@@ -374,13 +374,24 @@
   flex: none;
 }
 
-/* The reveal contract: the copy control appears while its row is
-   hovered or holds focus, like every other revealed icon button. At rest
-   it keeps its place, unseen, so nothing in the bar moves when it shows. */
+/* The reveal contract: the copy control appears while its row is hovered
+   or the keyboard's focus is in it, like every other revealed icon button.
+   The focus is asked for as `:focus-visible`, not `:focus-within`: a press
+   on the name focuses the disclosure in Chrome, and `:focus-within` then
+   held the control shown beside that name, the pointer long gone, until
+   the focus moved on. After a copy it stays shown, in the success ink,
+   until the shared delegate takes its "Copied!" back, as the file header's
+   does. At rest it keeps its place, unseen, so nothing in the bar moves
+   when it shows. */
 .metabrowser-diff-host .diff-file-bar:hover .diff-file-copy,
-.metabrowser-diff-host .diff-file-bar:focus-within .diff-file-copy {
+.metabrowser-diff-host .diff-file-bar:has(:focus-visible) .diff-file-copy,
+.metabrowser-diff-host .diff-file-copy.copied {
   opacity: 1;
   pointer-events: auto;
+}
+
+.metabrowser-diff-host .diff-file-copy.copied {
+  color: var(--status-success-text);
 }
 
 /* The disclosure-motion recipe from the core stylesheet: bodies travel
