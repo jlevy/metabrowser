@@ -5,7 +5,7 @@ title: "Guided PR walkthroughs (PR #599, outside contributor): bring current wit
 kind: feature
 status: closed
 priority: 2
-version: 20
+version: 22
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/599
@@ -32,10 +32,12 @@ child_order_hints:
   - is-01m84gc3ds49nh02t0hx7wmq21
   - is-01m84geezvx0ydtz7hhkg2ta3v
   - is-01m84gf2pk6kv6whk2ths7cnft
+  - is-01m84h65fwhv8t9hnx44bnhq3c
+  - is-01m84h7czgy6yrj10dt058b600
 hold: null
 hold_until: null
 created_at: 2026-11-20T18:29:05.420Z
-updated_at: 2026-11-23T15:30:18.963Z
+updated_at: 2026-11-23T15:43:35.907Z
 started_at: 2026-11-20T18:32:15.781Z
 closed_at: 2026-11-20T22:53:20.340Z
 close_reason: "Guided PR implementation and review fixes recovered in draft #677. Tab, D shortcut, and lazy-mount coverage landed on the draft branch, and all applicable checks passed on run 44831509620. The draft awaits the owner’s merge decision."
