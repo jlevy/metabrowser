@@ -108,6 +108,7 @@ from metabrowser.file_extensions import (
 from metabrowser.file_kinds import classify_by_ext
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.file_type_legend import build_file_type_legend
+from metabrowser.file_type_match import name_matches_types, semantic_extension_tokens
 from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.folder_discovery import choose_readme_name
 from metabrowser.fs_paths import derive_ext
@@ -318,15 +319,6 @@ def _filter_tail_ext(path: GitPath) -> str:
     return derive_ext(_display_basename(path))
 
 
-def _semantic_extension_tokens(types: tuple[str, ...]) -> frozenset[str]:
-    registry = load_file_type_registry()
-    return frozenset(
-        token
-        for token in types
-        if token.startswith(".") and registry.classify("", token).family_id is not None
-    )
-
-
 def _plugin_kind_for_git_path(
     path: GitPath,
     *,
@@ -452,27 +444,6 @@ def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
     if entry.is_tree:
         return True
     return entry.size is not None and entry.size >= floor
-
-
-def _matches_types(
-    path: GitPath,
-    types: tuple[str, ...],
-    *,
-    semantic: frozenset[str] | None = None,
-) -> bool:
-    """Match like the SPA type filter: dotted tokens are logical extensions."""
-
-    name = ascii_casefold(_display_basename(path))
-    ext = _filter_tail_ext(path)
-    semantic_tokens = semantic if semantic is not None else _semantic_extension_tokens(types)
-    for token in types:
-        folded = ascii_casefold(token)
-        if folded.startswith("."):
-            if ext and (ext == folded or (folded in semantic_tokens and ext.endswith(folded))):
-                return True
-        elif name == folded:
-            return True
-    return False
 
 
 def _git_filter_active(tree_filter: TreeFilter) -> bool:
@@ -711,8 +682,8 @@ def _git_base_matches(
     semantic: frozenset[str],
 ) -> bytearray:
     """Which of the index's blobs the filter's types, File type group, and size floor keep,
-    one byte each in index order. Same rules as ``_matches_types``; the time filter is
-    `_git_filter_matches`'s.
+    one byte each in index order. Same rules as ``file_type_match.name_matches_types``;
+    the time filter is `_git_filter_matches`'s.
 
     A name is decoded only for what reads it: a type token that names a file, or a File type
     group. An age group, a window, and a size floor read none.
@@ -892,7 +863,9 @@ def _git_entry_visible(
             return True
         prefix = _join_git_prefix(index_prefix, entry.path.segments[-1])
         return view.tally(prefix).total_files > 0
-    if tree_filter.types and not _matches_types(entry.path, tree_filter.types, semantic=semantic):
+    if tree_filter.types and not name_matches_types(
+        _display_basename(entry.path), tree_filter.types, semantic=semantic
+    ):
         return False
     if not _git_group_keeps(
         _display_basename(entry.path), _filter_tail_ext(entry.path), tree_filter, {}
@@ -1717,7 +1690,7 @@ async def git_revision_recent(
         recency_seconds=int(seconds or 0), types=types, min_size=min_size, include_ignored=True
     )
     times = _git_times(ages, tree_filter, _request_instant())
-    semantic = _semantic_extension_tokens(types)
+    semantic = semantic_extension_tokens(types)
 
     def build() -> tuple[list[dict[str, Any]], int, int]:
         stamps = times.stamps(index)
@@ -1900,7 +1873,7 @@ async def _git_revision_tree_payload(
             return dict(_NOT_FOUND), 404
         source = subject.tree_source
         index = await source.blob_index(path)
-        semantic = _semantic_extension_tokens(tree_filter.types)
+        semantic = semantic_extension_tokens(tree_filter.types)
         if ages_status is None:
             ages_status = await _git_ages_status(subject)
         times = _git_times(ages_status.ages, tree_filter, instant, memo)
