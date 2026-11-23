@@ -36,6 +36,22 @@ import { applyMarkOps, markOps, paintCells, paintList } from "./treemap-paint.js
  * the layout and the paint each about half. This repository's rollup, 4,000
  * nodes, lays out as 3,714 cells in 7 ms. 25,000 keeps a relayout near two
  * frames on a loaded host.
+ *
+ * In WebKit, by the WebKit gate's treemap case (apps/macos/webkit-gate/run.mjs,
+ * treemap-100k) on 2026-11-23, 9 back-to-back pairs at load averages of 84 to
+ * 165: the Treemap's own 32,000-node rollup of a 100,000-file folder, laid out
+ * at 837 by 393 and a pixel ratio of 2, best of five, took 0.92 to 1.29 times
+ * Chrome's time at every cap from 5,000 to 33,000 cells (medians 70 and 65 ms
+ * at 25,000), so WebKit asks for no lower bound. That tree costs more a cell
+ * than the one above, and the load leaves the two-frame budget unconfirmed in
+ * either engine. A family hover's marks, at most one op a cell, took 1.2 to
+ * 2.0 times Chrome's (14 and 8 ms at 25,000); most of WebKit's was the palette
+ * key drawCellHover looked up for every cell on every hover, not the cell count.
+ * With each extension's key looked up once a layout (cellPaletteKey), a run of
+ * 5 pairs that day at load averages of 70 to 150 passed every metric: the
+ * hover's handler 3 ms in both engines, its frame work 0.81 to 0.85 times
+ * Chrome's, the metric switch 1.01 to 1.21 times, and the layout at 25,000
+ * cells 0.88 to 0.94 times (56 and 61 ms).
  */
 export const PAINT_MAX_CELLS = 25_000;
 
@@ -235,6 +251,21 @@ export function createTreemapMap(mb, palette, viewport, options) {
   const win = doc.defaultView ?? (typeof window === "undefined" ? null : window);
   /** @type {Record<string, any>[]} */
   let cells = [];
+  /**
+   * Each cell's palette key, which changes only with a layout. A family hover reads
+   * every cell's; looked up again on each hover, it was most of the hover's cost in
+   * WebKit (PAINT_MAX_CELLS, beside the measurement).
+   * @type {string[]}
+   */
+  let paletteKeys = [];
+  /**
+   * The palette key of each extension in the layout, looked up once a layout: a map
+   * holds tens of extensions among its thousands of cells, and the lookup was most of
+   * a family hover's cost in WebKit (PAINT_MAX_CELLS, beside the measurement). Cleared
+   * at each layout, so a registry that changed is read again.
+   * @type {Map<string, string>}
+   */
+  const extensionKeys = new Map();
   /** @type {import("./treemap-paint.js").PaintRect[]} */
   let paintRects = [];
   let emptyCells = 0;
@@ -363,7 +394,13 @@ export function createTreemapMap(mb, palette, viewport, options) {
     if (cell.kind === "dir" && cell.nested) {
       return NESTED_FOLDER_KEY;
     }
-    return mb.fileTypes.distributionKeyForExtension(cell.ext || "(none)");
+    const extension = cell.ext || "(none)";
+    let key = extensionKeys.get(extension);
+    if (key === undefined) {
+      key = mb.fileTypes.distributionKeyForExtension(extension);
+      extensionKeys.set(extension, key);
+    }
+    return key;
   }
 
   /**
@@ -727,7 +764,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
           marked = (index) => index === own;
         }
       } else {
-        const keys = cells.map(cellPaletteKey);
+        const keys = paletteKeys;
         marked = (index) => keys[index] === target.key;
       }
     }
@@ -1027,6 +1064,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
     clearPointerCell();
     if (laidOut.length === 0) {
       cells = [];
+      paletteKeys = [];
       paintRects = [];
       emptyCells = 0;
       actionableIndexes = [];
@@ -1040,6 +1078,8 @@ export function createTreemapMap(mb, palette, viewport, options) {
       return 0;
     }
     cells = laidOut;
+    extensionKeys.clear();
+    paletteKeys = cells.map(cellPaletteKey);
     laidOutBox = box;
     ensureLayers();
     const listed = paintList(cells, cellStyleKey, dpr);

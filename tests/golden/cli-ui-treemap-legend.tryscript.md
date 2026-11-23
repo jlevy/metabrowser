@@ -15,8 +15,8 @@ what it is anchored on.
 The map paints its cells on a canvas, which has no context here, so the cells it marks
 and the cell under the pointer are read through `inspectTreemap`, and the pointer is a
 mousemove on the viewport at a cell’s coordinates.
-Pointing at a legend entry marks every cell of its family, the files of its type and the
-folder it is the dominant type of, the family’s segment in every tally row that has one,
+Pointing at a legend entry marks every cell of its family, the files of its type but no
+nested folder, which is neutral, the family’s segment in every tally row that has one,
 and the entry, with one tooltip: the counts of the family’s segment in the row the
 legend’s shares are of, anchored on the entry.
 Pointing at a cell marks the cell and its family’s entry and shows the cell’s own

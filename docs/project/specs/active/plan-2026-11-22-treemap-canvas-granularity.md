@@ -429,8 +429,11 @@ grafts are needed at all.
   so the map does not depend on the encoding’s child order.
 - [x] Set `ROLLUP_MAX_NODES`, `top`, and the body cache bound from the measurement
   (`settings.py`, beside each constant).
-- [ ] A treemap case in the WebKit gate at the raised budget; profile the layout; set
-  `PAINT_MAX_CELLS` from both engines (mb-72rg).
+- [x] A treemap case in the WebKit gate at the raised budget; profile the layout; set
+  `PAINT_MAX_CELLS` from both engines (mb-72rg). The layout held in WebKit and the cap
+  stays; the family hover failed until each extension’s palette key was kept a layout
+  ([QA addendum](../../qa/qa-2026-11-11-webkit-measurement-gate.md)). The first paint’s
+  second layout is `mb-zcs0`.
 - [x] Parity rows, docs, a changelog fragment.
   The measurement asks for no grafts: at `ROLLUP_MAX_NODES` the unexpanded share of the
   map is under 1%, and with Show ignored off the visible tree fits the default budget
