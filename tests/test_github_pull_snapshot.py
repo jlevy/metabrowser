@@ -609,6 +609,121 @@ def test_rendered_markdown_past_the_html_cap_is_too_large(
     }
 
 
+def _guide_address(stand: _Stand, client: TestClient) -> str:
+    """The rendered route's address for ``docs/guide.md`` of pull request 8."""
+
+    stand.refresh(8)
+    envelope = client.get("/api/plugin/github/pull", params={"number": 8}).json()
+    file = next(
+        change
+        for change in client.get(envelope["comparison_route"]).json()["manifest"]["files"]
+        if change["new"]["path"] == "docs/guide.md"
+    )
+    return f"{envelope['rendered_route']}&file={file['id']}"
+
+
+def test_a_markdown_pair_past_the_read_bound_is_too_large(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The route reads a Markdown pair past what a thread projects, up to its own bound."""
+
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+    from metabrowser.diff.markdown_projection import MARKDOWN_DIFF_MAX_BYTES
+
+    assert pull_rendered_diff._MARKDOWN_PAIR_MAX_BYTES > MARKDOWN_DIFF_MAX_BYTES  # pyright: ignore[reportPrivateUsage]
+    stand, client = pinned_pull
+    address = _guide_address(stand, client)
+    monkeypatch.setattr(pull_rendered_diff, "_MARKDOWN_PAIR_MAX_BYTES", 8)
+    assert client.get(address).json() == {
+        "version": "markdown-diff-v1",
+        "status": "too_large",
+        "blocks": [],
+        "source_only": False,
+    }
+
+
+def test_a_file_whose_content_did_not_change_says_so(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+    from metabrowser.diff.format import FilePatch
+
+    async def no_hunks(_self: object, *_args: object) -> FilePatch:
+        # What a rename or a mode change hydrates to.
+        return FilePatch(file_id="renamed", hunks=(), truncated=False)
+
+    stand, client = pinned_pull
+    address = _guide_address(stand, client)
+    monkeypatch.setattr(pull_rendered_diff._Patches, "get", no_hunks)  # pyright: ignore[reportPrivateUsage]
+    assert client.get(address).json() == {
+        "version": "markdown-diff-v1",
+        "status": "unsupported",
+        "blocks": [],
+        "source_only": False,
+        "reason": "no_changes",
+    }
+
+
+def test_a_projection_the_child_could_not_finish_is_not_kept_as_the_files_answer(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pair no child could run is asked again at once, and one the child was stopped on
+    after a while: neither is the pair's own answer, which the route keeps (mb-rm40)."""
+
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+    from metabrowser.diff.markdown_projection import (
+        MarkdownRefusal,
+        PreparedMarkdownDiff,
+        unavailable_markdown_diff,
+    )
+    from metabrowser.diff.markdown_projection_worker import ProjectionWorker
+
+    refusing: list[MarkdownRefusal | None] = []
+    asked: list[str] = []
+
+    class Scripted(ProjectionWorker):
+        async def prepare(self, **pair: Any) -> PreparedMarkdownDiff:
+            asked.append("asked")
+            if refusing:
+                return unavailable_markdown_diff("too_large", refusing.pop(0))
+            return await super().prepare(**pair)
+
+    now = [1_000.0]
+    monkeypatch.setattr(pull_rendered_diff, "monotonic", lambda: now[0])
+    stand, client = pinned_pull
+    address = _guide_address(stand, client)
+    application: Any = client.app
+    monkeypatch.setattr(
+        application.state, "pull_rendered_diff_worker", Scripted(processes=False), raising=False
+    )
+
+    # No child could run it: the thread's budget refuses, and the next request asks again.
+    refusing.append(None)
+    unavailable = client.get(address).json()
+    assert (unavailable["status"], "reason" in unavailable) == ("too_large", False)
+    assert client.get(address).json()["status"] == "ready"
+    assert asked == ["asked", "asked"]
+
+    # Stopped at the deadline: refused without asking the child again, for a while. The
+    # answer kept above is dropped first, as a server that had none would stand.
+    monkeypatch.setattr(application.state, "pull_rendered_diff_cache", None, raising=False)
+    refusing.append("deadline")
+    stopped = {
+        "version": "markdown-diff-v1",
+        "status": "too_large",
+        "blocks": [],
+        "source_only": False,
+        "reason": "deadline",
+    }
+    assert client.get(address).json() == stopped
+    now[0] += pull_rendered_diff._STOPPED_TTL_S - 1  # pyright: ignore[reportPrivateUsage]
+    assert client.get(address).json() == stopped
+    assert asked == ["asked", "asked", "asked"], "the child is not asked again yet"
+    now[0] += 2
+    assert client.get(address).json()["status"] == "ready"
+    assert asked == ["asked", "asked", "asked", "asked"]
+
+
 def test_one_git_diff_hydrates_the_markdown_files_after_the_one_asked_for() -> None:
     import asyncio
     from types import SimpleNamespace

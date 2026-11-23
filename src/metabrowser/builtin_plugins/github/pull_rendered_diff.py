@@ -7,10 +7,17 @@ Markdown shows (``GET github/pull-image``). A Markdown file answers ``markdown-d
 ``structured-diff-v1`` (:mod:`metabrowser.diff.structured_projection`), the formats the
 file view draws from data rather than as text. Anything else answers the Markdown
 format's refusal, and the route itself refuses with its own code; a YAML or JSON file
-the route refuses answers its own format's refusal. A page's request sent before the
-reader asks names ``prefetch=1``, which also starts the projection process and waits for
-it, so the first screen of Changes is computed in that process while the reader is still
-on Conversation.
+the route refuses answers its own format's refusal. A refusal names its ``reason`` where
+one says more than its status, and the page says it on the file's Rendered chip, which
+it never hides. A page's request sent before the reader asks names ``prefetch=1``, which
+also starts the projection process and waits for it, so the first screen of Changes is
+computed in that process while the reader is still on Conversation.
+
+A Markdown pair is read up to :data:`_MARKDOWN_PAIR_MAX_BYTES`, whatever a projection in
+a thread may hold: past the thread's budgets the pair is the Markdown child's, whose
+deadline bounds it (:meth:`ProjectionWorker.prepare`). A pair the child was stopped on is
+refused for :data:`_STOPPED_TTL_S` and then asked again, and one no child could run is
+not kept at all: neither is the pair's own answer, which the route keeps.
 """
 
 from __future__ import annotations
@@ -21,6 +28,7 @@ import hashlib
 import json
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
+from time import monotonic
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from starlette.requests import Request
@@ -40,11 +48,16 @@ from metabrowser.diff.format import (
     FilePatch,
 )
 from metabrowser.diff.markdown_projection import (
-    MARKDOWN_DIFF_MAX_BYTES,
     MARKDOWN_DIFF_VERSION,
+    MarkdownRefusal,
     bind_markdown_diff,
 )
-from metabrowser.diff.markdown_projection_worker import ProjectionWorker, shared_worker
+from metabrowser.diff.markdown_projection_worker import (
+    MAX_STOPPED,
+    STOPPED_TTL_S,
+    ProjectionWorker,
+    shared_worker,
+)
 from metabrowser.diff.structured_projection import (
     Format,
     structured_byte_budget,
@@ -69,17 +82,56 @@ if TYPE_CHECKING:
 type Status = Literal["unsupported", "too_large"]
 _NO_STORE = {"cache-control": "no-store"}
 _MARKDOWN = frozenset({".md", ".markdown", ".mdown", ".mkd"})
-# Rendered blocks and front matter text the route sends at most. The 434 real pairs of
-# this repository's history answer with at most 45,677 bytes of HTML, and the most a pair
-# inside every projection budget was found to make is 110,840 bytes: 255 links into the
-# snapshot, each address about 400 bytes. Front matter counts too: a 30 KB `!!binary`
-# value is 40 KB of base64 text (mb-8274 review B9).
-_MAX_HTML_BYTES = 256 * 1024
-# The encoded answers the route keeps, in bytes. A Markdown answer is at most about
-# _MAX_HTML_BYTES, so 32 of them held about 8 MiB; a tree's answer was kept as Python
-# objects, which a 120 KB list of 39,999 empty mappings made 2.9 MB (mb-8274 review B7).
-# Kept encoded, an answer weighs what is sent: real answers are at most 120 KiB.
+# Both sides of a Markdown file together, which the route reads at most. It is not the
+# projection's bound: past a thread's budgets (MARKDOWN_DIFF_MAX_BYTES and the bounds
+# beside it) a pair is projected in the Markdown child, where a deadline stops it. It
+# bounds what the server's own interpreter does with a pair, which nothing stops: framing
+# the request, in a thread, and reading, binding and encoding the answer, on the event
+# loop. Measured 2026-11-23 on an Apple M1 Pro (MacBookPro18,1), macOS 26.5.2, Python
+# 3.14.7, KPress 0.3.9, as process CPU time, the least of two runs, at a load average of
+# 355 to 450, where wall time measures the load: pairs made of this repository's tracked
+# Markdown that projects, as one word changed in every 40th paragraph, as a new file,
+# and as two different texts.
+#
+# | Pair, bytes         | Server, ms    | Of it framing, ms | Child, s     |
+# | ---                 | ---           | ---               | ---          |
+# | 266,809-275,731     | 3.3-10.2      | 1.2-6.5           | 0.34-0.36    |
+# | 529,293-533,637     | 6.3-20.1      | 2.2-12.7          | 0.71-0.75    |
+# | 1,063,137-1,080,454 | 12.0-43.9     | 4.2-28.3          | 1.32-1.53    |
+# | 2,100,073-2,140,262 | 24.0-82.1     | 8.7-51.3          | 2.80-3.10    |
+# | 4,200,274-4,412,112 | 51.6-165.9    | 21.4-106.8        | 5.80-7.26    |
+#
+# Both grow with the pair's bytes, and the server's with its patch lines too: a new file
+# or a rewrite frames every line (19,294 lines at 1 MiB), an edit a few hundred. One MiB
+# is the largest size measured that keeps the server's share inside the 50 ms the
+# repository budgets for an unrelated request's delay
+# (``inventory_engine/providers/python_inventory.py``), and leaves the child's deadline
+# over six times its time. The largest Markdown pair in the pull request that showed the
+# earlier 48 KiB bound for what it was, a 241,628-byte research document, is 483,256
+# bytes (mb-rm40).
+_MARKDOWN_PAIR_MAX_BYTES = 1024 * 1024
+# Rendered blocks and front matter text the route sends at most. A pair at the read bound
+# answered at most 1,333,821 bytes of HTML in the measurement above, a new file of
+# 1,070,079 bytes, and the 434 real pairs of this repository's history at most 45,677.
+# Bytes read do not bound it: each link into the snapshot is an address of about 400
+# bytes, so 255 links made 110,840 bytes of a pair inside 48 KiB. Front matter counts
+# too: a 30 KB `!!binary` value is 40 KB of base64 text (mb-8274 review B9). The page
+# builds the blocks it draws, changed ones and the unchanged ones beside them, and a new
+# file's are all changed: in headless Chrome a 1,426-node answer built in 1.6-1.7 ms
+# with 4.3-4.6 ms of layout (review C of #349); what an answer at this cap costs a page
+# has not been measured (mb-qq0c).
+_MAX_HTML_BYTES = 2 * 1024 * 1024
+# The encoded answers the route keeps, in bytes: four at _MAX_HTML_BYTES, and real ones
+# are far smaller, since the 434 real pairs answer at most 120 KiB. A tree's answer was
+# kept as Python objects, which a 120 KB list of 39,999 empty mappings made 2.9 MB
+# (mb-8274 review B7); kept encoded, an answer weighs what is sent.
 _MAX_KEPT_BYTES = 8 * 1024 * 1024
+# How long the route refuses a pair the child was stopped on before it asks the child
+# again, and how many such pairs it remembers: an inert render's own, for its reasons
+# (``markdown_projection_worker.py``). A stopped pair cost the child its deadline, and one
+# stopped at a moment of heavy load renders ten minutes later.
+_STOPPED_TTL_S = STOPPED_TTL_S
+_MAX_STOPPED = MAX_STOPPED
 # The Markdown files one `git diff` hydrates when a reader reaches the first of them: the
 # Source view's own run is a different request, so this route reads its patches itself.
 # For this repository one file took 15.7 ± 1.9 ms and sixteen 20.0 ± 1.6 ms (hyperfine,
@@ -98,7 +150,11 @@ _KEPT_LINES = 20_000
 _MAX_WAITING = 4
 
 
-def _fallback(status: Status = "unsupported", rendered: _Rendered = "markdown") -> dict[str, Any]:
+def _fallback(
+    status: Status = "unsupported",
+    rendered: _Rendered = "markdown",
+    reason: MarkdownRefusal | None = None,
+) -> dict[str, Any]:
     """The route's refusal, in the format the file would have answered (review A10)."""
 
     if rendered != "markdown":
@@ -108,7 +164,18 @@ def _fallback(status: Status = "unsupported", rendered: _Rendered = "markdown") 
         "status": status,
         "blocks": [],
         "source_only": False,
+        **({} if reason is None else {"reason": reason}),
     }
+
+
+class _Unkept(Exception):
+    """An answer the route gives and does not keep, since asking again may answer better:
+    the Markdown child could not run a pair past a thread's budgets, or was stopped on it."""
+
+    def __init__(self, body: bytes, *, stopped: bool) -> None:
+        super().__init__("an answer that is not kept")
+        self.body = body
+        self.stopped = stopped
 
 
 def _encoded(answer: dict[str, Any]) -> bytes:
@@ -287,7 +354,9 @@ async def _project(
         assert oid is not None
         return await read_store_blob(target, oid, max_blob_bytes=budget)
 
-    budget = MARKDOWN_DIFF_MAX_BYTES if rendered == "markdown" else structured_byte_budget(rendered)
+    budget = (
+        _MARKDOWN_PAIR_MAX_BYTES if rendered == "markdown" else structured_byte_budget(rendered)
+    )
     try:
         # One cat-file process for both sides where nothing else holds the store's: with
         # none held, the two reads took p50 5.6-6.5 ms a file, most of a JSON file's
@@ -299,17 +368,23 @@ async def _project(
         return _fallback("too_large", rendered)
     if rendered != "markdown":
         # The tree compares parsed values, so it reads no patch, and shows no images.
-        return dict(
+        tree = dict(
             await projection_worker(state).project_structured(old=old, new=new, fmt=rendered)
         )
+        if tree.get("reason") == "deadline":
+            raise _Unkept(_encoded(tree), stopped=True)
+        return tree
     patches = getattr(state, "pull_rendered_diff_patches", None)
     if patches is None:
         patches = state.pull_rendered_diff_patches = _Patches()
     patch = await cast("_Patches", patches).get(
         (published.store_id, snapshot.base, snapshot.head), source, resolved, manifest, file_id
     )
-    if patch is None or not patch.hunks:
+    if patch is None:
         return _fallback()
+    if not patch.hunks:
+        # A rename or a mode change: the content did not change, and the page says so.
+        return _fallback(reason="no_changes")
     rewrite: Callable[[str, bool], str | None] | None = None
     if change.new is not None:
         path = _path(change.new)
@@ -322,6 +397,11 @@ async def _project(
     prepared = await projection_worker(state).prepare(
         old=old, new=new, patch=patch, namespace=namespace
     )
+    answered = prepared.projection
+    if answered["status"] == "too_large" and answered.get("reason") in (None, "deadline"):
+        # Not the pair's own answer: the child has no input budget, so this is a thread's
+        # budget where no child could be had, or the child's deadline.
+        raise _Unkept(_encoded(dict(answered)), stopped="reason" in answered)
     projection = bind_markdown_diff(prepared, rewrite)
     shown = sum(len(block["html"].encode()) for block in projection["blocks"])
     frontmatter = projection.get("frontmatter")
@@ -384,12 +464,31 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
     slot = cast("_Slot", slot)
     key = (published.store_id, snapshot.store, str(number), base, head, file_id)
     namespace = "diff-" + hashlib.sha256("\0".join(key).encode()).hexdigest()[:20]
+    # The pairs the child was stopped on, each with when and with the refusal it answered.
+    stopped = getattr(state, "pull_rendered_diff_stopped", None)
+    if stopped is None:
+        stopped = state.pull_rendered_diff_stopped = OrderedDict[
+            tuple[str, ...], tuple[float, bytes]
+        ]()
+    stopped = cast("OrderedDict[tuple[str, ...], tuple[float, bytes]]", stopped)
+    refused = stopped.get(key)
+    if refused is not None:
+        if monotonic() - refused[0] < _STOPPED_TTL_S:
+            return Response(refused[1], media_type="application/json", headers=_NO_STORE)
+        del stopped[key]
 
     async def load() -> bytes:
         return _encoded(await _project(published, snapshot, file_id, namespace, state))
 
     try:
         body = await cache.get(key, lambda: slot.run(load))
+    except _Unkept as answered:
+        if answered.stopped:
+            stopped[key] = (monotonic(), answered.body)
+            stopped.move_to_end(key)
+            while len(stopped) > _MAX_STOPPED:
+                stopped.popitem(last=False)
+        body = answered.body
     except _Busy:
         return JSONResponse({"code": "rendered_diff_busy"}, status_code=429, headers=_NO_STORE)
     except (DiffSourceError, GitError):

@@ -4131,6 +4131,17 @@ a.tab-btn {
   color: var(--link);
   font-weight: var(--weight-medium);
 }
+/* A choice that cannot be made keeps its place, dimmed, and answers neither the pointer
+   nor a press. Its tooltip and its accessible name say why, so it is `aria-disabled`,
+   which leaves it the pointer and focus, and never `disabled`. A changed file's Rendered
+   is one, where only Source can be shown (builtin_plugins/diff/diff-markdown.js). */
+.chip-group > .chip[aria-disabled="true"],
+.chip-group > .chip[aria-disabled="true"]:hover {
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+  opacity: var(--dimmed-content-opacity);
+}
 /* Multi-select: neutral fill plus its own inset frame, so a row of
    them reads as several independent switches rather than one
    exclusive choice. The frame is doing real work — --hover-bg alone

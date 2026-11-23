@@ -21,11 +21,11 @@
 // validates; only the routes the session's own recording names decide anything here.
 //
 // Each step prints the requests the page made, and for each file whose state the step
-// changed: its chooser (`*` marks the chosen format, and `none` for a file that can show
-// only Source), what its body shows (`rendered`,
-// `source`, or `nothing` while it waits within the loading delay), whether its progress
-// mark is counting down to visible, and the rendered rows: each block's kind and text,
-// and a fold as `[N unchanged blocks]`, open or closed.
+// changed: its chooser (`*` marks the chosen format, and a Rendered that cannot be chosen
+// says `unavailable` and why, as its tooltip and its accessible name do), what its body
+// shows (`rendered`, `source`, or `nothing` while it waits within the loading delay),
+// whether its progress mark is counting down to visible, and the rendered rows: each
+// block's kind and text, and a fold as `[N unchanged blocks]`, open or closed.
 
 const fs = require("node:fs");
 const { registerHooks } = require("node:module");
@@ -217,6 +217,9 @@ class PageElement {
     for (const option of spec.options) {
       const chip = element("button");
       chip.dataset.chipValue = option.value;
+      if (option.tip !== undefined) {
+        chip.dataset.tipText = option.tip;
+      }
       chip.textContent = option.label;
       chip.setAttribute("aria-checked", String(spec.value === option.value));
       this.append(chip);
@@ -481,24 +484,38 @@ function serialize(nodes) {
 
 function describe(file) {
   const chips = file.control.children.map((chip) => {
-    // Rendered is disabled only for a file that can show only Source, whose chooser is hidden.
-    assert(file.control.hidden || !chip.disabled, `${file.name}: a shown chooser disables a chip`);
     const chosen = chip.getAttribute("aria-checked") === "true" ? "*" : "";
-    return `${chosen}${chip.textContent}`;
+    // A chip is never `disabled`, which would take the pointer and focus from it: one that
+    // cannot be chosen is `aria-disabled`, and says why as its tooltip and in its name.
+    assert(!chip.disabled, `${file.name}: a chip is disabled, so it cannot say why`);
+    const why = chip.dataset.tipText;
+    if (chip.getAttribute("aria-disabled") !== "true") {
+      assert(why === undefined, `${file.name}: a chip that can be chosen explains itself`);
+      return `${chosen}${chip.textContent}`;
+    }
+    assert(chip.textContent === "Rendered" && chosen === "", `${file.name}: only Rendered goes`);
+    assert(typeof why === "string" && why !== "", `${file.name}: nothing says why`);
+    assert(
+      chip.getAttribute("aria-label") === `Rendered, unavailable. ${why}`,
+      `${file.name}: the chip's name does not say what its tooltip says`,
+    );
+    return `${chip.textContent} (unavailable: ${why})`;
   });
   const shows = !file.rendered.hidden ? "rendered" : !file.source.hidden ? "source" : "nothing";
-  // A file with no chooser has no progress mark either, and its bar drops the layout that
-  // makes room for the chooser.
-  const chooserless =
-    file.control.hidden &&
-    file.progress.hidden &&
-    !file.bar.classList.contains("diff-file-bar-markdown");
-  assert(chooserless === file.control.hidden, `${file.name}: the chooser and its bar disagree`);
-  // Showing Source instead of Rendered is a behavior, never a message: nothing but the
+  // Every file of a rendered format keeps its chooser, its progress mark's place, and the
+  // bar layout that makes room for them, whatever the server answered.
+  assert(
+    chips.length === 2 &&
+      !file.control.hidden &&
+      !file.progress.hidden &&
+      file.bar.classList.contains("diff-file-bar-markdown"),
+    `${file.name}: the chooser is gone`,
+  );
+  // Showing Source instead of Rendered is never a message in the body: nothing but the
   // Rendered body goes beside Source.
   assert(file.section.childNodes.length === 3, `${file.name}: something announces the format`);
   return {
-    chooser: file.control.hidden ? "none" : chips.join(" | "),
+    chooser: chips.join(" | "),
     shows,
     ...(file.progress.classList.contains("mb-delayed-loading") ? { progress: "counting" } : {}),
     ...(file.rendered.childNodes.length > 0 ? { rows: rows(file.rendered) } : {}),
@@ -533,7 +550,9 @@ async function main() {
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-markdown.js")).href
   );
 
-  const supported = recorded.manifest.filter((entry) => markdown.supportsRenderedChange(entry));
+  // Every file of a rendered format is drawn with the chooser; a projection is asked only
+  // for one whose changes loaded.
+  const formatted = recorded.manifest.filter((entry) => markdown.renderedFormat(entry) !== null);
   const ahead = markdown.firstScreenRendered(recorded.manifest);
 
   // The plugin mounts the pull request's comparison, as its Changes does, on each page, and
@@ -636,7 +655,7 @@ async function main() {
     cancel: clock.cancel,
   });
 
-  const files = supported.map((entry) => {
+  const files = formatted.map((entry) => {
     const section = element("section");
     const bar = element("div");
     const toggle = element("button");
@@ -646,6 +665,13 @@ async function main() {
     source.id = `diff-file-${entry.id}`;
     section.append(bar, source);
     root.append(section);
+    // As diff-view.js adds a file: one whose changes did not load says, in its Source
+    // body and on its Rendered chip, what the diff's own table says for its availability
+    // (`AVAILABILITY_COPY`; tests/dom/diff-view-behavior.js holds that the diff passes it).
+    assert(
+      markdown.supportsRenderedChange(entry) || entry.availability === "too_large",
+      `${entry.id}: the session knows no sentence for ${entry.availability}`,
+    );
     const state = views.add({
       section,
       bar,
@@ -653,7 +679,10 @@ async function main() {
       toggle,
       source,
       id: entry.id,
-      format: "markdown",
+      format: markdown.renderedFormat(entry),
+      ...(markdown.supportsRenderedChange(entry)
+        ? {}
+        : { unavailable: "This change is too large to show inline." }),
     });
     const [progress, control] = end.childNodes;
     const [, rendered] = section.childNodes;
@@ -683,7 +712,11 @@ async function main() {
     asks: ahead,
     lookahead: observer.options.rootMargin,
   });
-  step("mount: every Markdown file waits for Rendered with Source hidden", files);
+  step(
+    "mount: a Markdown file waits for Rendered with Source hidden; " +
+      "one whose changes did not load shows Source",
+    files,
+  );
 
   observer.notify(
     files.map((file) => ({
@@ -704,7 +737,10 @@ async function main() {
 
   answer("f2");
   await settle();
-  step("an unsupported file stays in Source and has no chooser", files);
+  step("a file Rendered cannot show stays in Source, and its chooser says why", files);
+
+  await choose(byId.f2, "rendered");
+  step("choosing an unavailable Rendered changes nothing and asks for nothing", files);
 
   near("f3");
   await settle();
@@ -721,7 +757,10 @@ async function main() {
   near("f4");
   await settle();
   await choose(byId.f4, "source");
-  step("a file over budget shows Source; Source chosen while a request runs", files);
+  step(
+    "a file nested too deeply shows Source and says why; Source chosen while a request runs",
+    files,
+  );
 
   answer("f4");
   await settle();
@@ -750,6 +789,16 @@ async function main() {
     "front matter that did not change is closed above the body's change, " +
       "and front matter removed is one removed row",
     [byId.f6, byId.f7],
+  );
+
+  near("f8", "f9");
+  await settle();
+  answer("f8");
+  await settle();
+  step(
+    "a file past the route's read bound says it is too large; " +
+      "no projection is asked for a file whose changes did not load",
+    [byId.f8, byId.f9],
   );
 
   // Another tab switched the server's pin: a link to a file of the head would open that
