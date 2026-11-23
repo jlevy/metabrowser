@@ -3,9 +3,9 @@ type: is
 id: is-01m84hw0nn5n2eydwsqpft9w17
 title: A reader joining a checkout's background pull job that is being stopped is answered joined and then dropped
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 delegate: claude-code@spud10
 labels: []
@@ -13,8 +13,12 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-23T15:54:51.444Z
-updated_at: 2026-11-23T16:10:30.079Z
+updated_at: 2026-11-23T17:29:16.295Z
 started_at: 2026-11-23T16:10:30.078Z
+closed_at: 2026-11-23T17:29:16.293Z
+close_reason: "Fixed in #762 (6fd2b2092): RefreshCoordinator.start_again_when_stopped, shared by MirrorSession and checkout.start_pull_refresh, restarts a pull job a reader joins while it is being stopped, including the eager-revision promotion and the optional comparison. test_a_readers_start_that_joins_a_job_being_stopped_gets_its_job fails 4/4 with origin/main's checkout.py and mirror_refresh.py and passes with the fix. Review C of #721, C1."
+resolution: null
+duplicate_of: null
 ---
 Found by #721 review C (C1), post-merge follow-up of a91a1b8c9 (mb-iz5l). mb-iz5l fixed the race only for a mirror (MirrorSession.request_pull_refresh, mirror_refresh.py). A folder that serves a checkout starts its pull jobs through checkout.start_pull_refresh (builtin_plugins/github/checkout.py), which has the same shape: a reader's start for a pull request whose background (prefetch) job is running promotes it and answers "joined" (checkout.py:470-476 on origin/main 889f47752; the eager-revision branch at :432-437 likewise), but when a reader's job has just arrived at the checkout's store turn the background holder was already told to stop (preempt=partial(coordinator.cancel, key), :857-862), so the promoted job ends cancelled and nothing refreshes the pull request.
 
