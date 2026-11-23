@@ -25,6 +25,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import checkout_store, server
+from metabrowser.checkout_revisions import CHECKOUT_REFS_POLL_S
 from metabrowser.checkout_store import (
     ABSENCE_DETAIL,
     CheckoutStoreError,
@@ -310,10 +311,11 @@ def test_an_origin_branch_is_served_from_the_store_inert_and_follows_a_fetch(
     # The checkout's own branch is read from the checkout, and nothing fetches into it.
     local = _post(served, "/api/source/pin", {"ref": "refs/heads/trunk"}).json()["status"]
     assert local["pin"] == folder.behind
-    assert local["follows"] is False and local["probe_every_s"] is None
+    # It follows the checkout's own ref, read every few seconds and never fetched.
+    assert local["follows"] is True and local["probe_every_s"] == CHECKOUT_REFS_POLL_S
     # A tag only the checkout has is the checkout's; one the origin has is the store's.
     own = _post(served, "/api/source/pin", {"ref": "refs/tags/local-only"}).json()["status"]
-    assert own["pin"] == folder.behind and own["follows"] is False
+    assert own["pin"] == folder.behind and own["probe_every_s"] == CHECKOUT_REFS_POLL_S
     theirs = _post(served, "/api/source/pin", {"ref": "refs/tags/v2"}).json()["status"]
     assert theirs["pin"] == folder.replica["M4"] and theirs["follows"] is True
     back = _post(served, "/api/source/pin", {"working_tree": True}).json()
@@ -648,7 +650,9 @@ def test_every_page_of_a_folder_with_a_store_has_the_freshness_row_and_its_statu
     folder: _Folder, served: TestClient
 ) -> None:
     """The working tree's page and a local branch's say when the origin's store was
-    fetched and can refresh it; nothing of theirs follows or is probed."""
+    fetched and can refresh it. The working tree follows nothing; the local branch
+    follows the checkout's own ref, and its page's ask reads that ref beside the store's
+    own answer."""
 
     _ready(served)
     assert 'id="source-freshness"' in served.get("/view/").text
@@ -660,8 +664,18 @@ def test_every_page_of_a_folder_with_a_store_has_the_freshness_row_and_its_statu
     folder.clock.advance(3600)
     assert served.get("/api/source/status").json()["stale"] is True
     local = _post(served, "/api/source/pin", {"ref": "refs/heads/trunk"}).json()["status"]
-    assert local["refreshable"] is True and local["follows"] is False
-    assert local["probe_every_s"] is None
+    assert local["refreshable"] is True and local["follows"] is True
+    assert local["probe_every_s"] == CHECKOUT_REFS_POLL_S
+    # The reader commits on trunk: the page's ask finds it, and the store, an hour old
+    # by the clock above, is fetched for the same ask, quietly.
+    pinned_git(folder.checkout, "commit", "-q", "--allow-empty", "-m", "local")
+    committed = pinned_git(folder.checkout, "rev-parse", "HEAD")
+    asked = _post(served, "/api/source/refresh", {"for": "page"})
+    assert asked.status_code == 202, asked.text
+    assert asked.json()["status"]["pin"] == committed
+    assert _settled(served)["pin"] == committed
+    again = _post(served, "/api/source/refresh", {"for": "page"})
+    assert (again.status_code, again.json()["refresh"]) == (200, "probed")
 
 
 def test_a_checkout_that_keeps_no_store_has_no_freshness_row(folder: _Folder) -> None:

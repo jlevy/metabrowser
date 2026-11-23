@@ -607,10 +607,58 @@ def pull_head_number(ref: str | None) -> int | None:
 _FOLLOWED_REF_PREFIXES: Final = ("refs/remotes/origin/", "refs/tags/")
 
 
-def follows_moves(ref: str | None) -> bool:
-    """Whether a pin served under *ref* moves when a fetch moves that ref."""
+def follows_moves(ref: str | None, prefixes: tuple[str, ...] = _FOLLOWED_REF_PREFIXES) -> bool:
+    """Whether a pin served under *ref* moves when that ref does.
 
-    return ref is not None and ref.startswith(_FOLLOWED_REF_PREFIXES)
+    *prefixes* are the namespaces that follow: a mirror's by default, which a fetch moves.
+    A checkout names its own (``FOLLOWED_CHECKOUT_REFS`` in ``checkout_revisions.py``),
+    which the reader's commit or fetch moves.
+    """
+
+    return ref is not None and ref.startswith(prefixes)
+
+
+async def follow_served_ref(
+    subject: GitRevisionSubject,
+    tip: tuple[str, str | None] | None,
+    *,
+    follows: Callable[[str | None], bool],
+    open_tip: Callable[[str], Awaitable[GitRevisionSubject]],
+) -> GitRevisionSubject | None:
+    """Serve the ref *subject* is served under at its new tip; the revision now served, or ``None``.
+
+    *tip* is the ref and its commit as last observed where the subject is read from, a
+    mirror's store or a checkout. A pin whose ref follows (*follows*) and was observed at
+    another commit is replaced by the one *open_tip* opens for the ref, under a new
+    generation. ``None`` when nothing moved, when the pin does not follow, and when the tip
+    could not be opened: the pin then stays, and status reports the tip as ``latest``,
+    where the page asks for the switch itself.
+
+    The caller holds the lock every change of what is served is made under, as a switch
+    does: a reader's switch that ran meanwhile is the pin now, and this follows only the
+    pin it is given.
+    """
+
+    if (
+        not follows(subject.ref)
+        or tip is None
+        or tip[0] != subject.ref
+        or tip[1] is None
+        or tip[1] == subject.commit_oid
+    ):
+        return None
+    ref = tip[0]
+    try:
+        moved = await open_tip(ref)
+    except Exception:
+        log.warning("could not follow the served ref to its new tip", exc_info=True)
+        return None
+    if moved.ref != ref or moved.commit_oid == subject.commit_oid:
+        await moved.aclose()
+        return None
+    await replace_owned_subject(moved)
+    log.info("followed %s to %s", ref, moved.commit_oid)
+    return moved
 
 
 def probes_origin(ref: str | None) -> bool:
@@ -1653,33 +1701,22 @@ class MirrorSession(StoreSession):
         # pin now, and this follows only the pin it finds.
         async with self._pin_lock:
             subject = self.served()
-            tip = self._tip
-            if (
-                subject is None
-                or not follows_moves(subject.ref)
-                or tip is None
-                or tip[0] != subject.ref
-                or tip[1] is None
-                or tip[1] == subject.commit_oid
-            ):
+            if subject is None:
                 return
-            try:
-                moved = await self.mirror.open_selection(ref=subject.ref, oid=None)
-            except Exception:
-                # The pin stays, and status reports the tip as latest, where the page
-                # asks for the switch itself.
-                log.warning("could not follow the served ref to its new tip", exc_info=True)
+            moved = await follow_served_ref(
+                subject,
+                self._tip,
+                follows=follows_moves,
+                open_tip=lambda ref: self.mirror.open_selection(ref=ref, oid=None),
+            )
+            if moved is None:
                 return
-            if moved.ref != subject.ref or moved.commit_oid == subject.commit_oid:
-                await moved.aclose()
-                return
-            await replace_owned_subject(moved)
-            self._tip = (tip[0], moved.commit_oid)
+            assert moved.ref is not None
+            self._tip = (moved.ref, moved.commit_oid)
             if self._selection_state == "found":
                 # The URL's address was served on the commit before; a page that follows
                 # stays where its reader is rather than going back to it.
                 self._selection_state = "superseded"
-            log.info("followed %s to %s", subject.ref, moved.commit_oid)
 
     async def _observe_tip(self) -> None:
         # One observation or switch at a time: a refresh that ends while a switch is

@@ -115,15 +115,15 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": false,
-  "follows": false,
-  "latest": null,
+  "follows": true,
+  "latest": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
   "ref_on_origin": null,
   "last_fetch_at": null,
   "last_outcome": null,
   "refreshing": false,
   "refresh_quiet": false,
   "stale": false,
-  "probe_every_s": null,
+  "probe_every_s": 2.0,
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
@@ -430,7 +430,7 @@ status: 200
 }
 --- stderr ---
 
-== The checkout's own branch is read from the checkout, at M5, and nothing fetches into it: it follows nothing and is not probed, and its status says only how fresh the store of the origin is. A tag the origin has is the store's.
+== The checkout's own branch is read from the checkout, at M5, and nothing fetches into it: it follows the checkout's own ref, which a visible page asks about every probe_every_s and the server answers by reading the checkout, and what is refreshable is the store of the origin. A tag the origin has is the store's.
 
 # metab checkout --api /api/source/pin --data pin-local-trunk.json
 exit: 0
@@ -451,8 +451,8 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": true,
-    "follows": false,
-    "latest": null,
+    "follows": true,
+    "latest": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
     "ref_on_origin": null,
     "last_fetch_at": "2026-09-17T12:00:00Z",
     "last_outcome": {
@@ -463,7 +463,7 @@ status: 200
     "refreshing": false,
     "refresh_quiet": false,
     "stale": false,
-    "probe_every_s": null,
+    "probe_every_s": 2.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
@@ -573,8 +573,8 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": true,
-    "follows": false,
-    "latest": null,
+    "follows": true,
+    "latest": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
     "ref_on_origin": null,
     "last_fetch_at": "2026-09-17T12:00:00Z",
     "last_outcome": {
@@ -585,7 +585,7 @@ status: 200
     "refreshing": false,
     "refresh_quiet": false,
     "stale": false,
-    "probe_every_s": null,
+    "probe_every_s": 2.0,
     "pull_request": null,
     "selection_state": null,
     "selection_href": null

@@ -111,8 +111,9 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
     ),
     (
         "The checkout's own branch is read from the checkout, at M5, and nothing fetches "
-        "into it: it follows nothing and is not probed, and its status says only how fresh "
-        "the store of the origin is. A tag the origin has is the store's.",
+        "into it: it follows the checkout's own ref, which a visible page asks about every "
+        "probe_every_s and the server answers by reading the checkout, and what is "
+        "refreshable is the store of the origin. A tag the origin has is the store's.",
         (
             (("checkout", "--api", "/api/source/pin", "--data", "pin-local-trunk.json"), 0),
             (("checkout", "--api", "/api/source/pin", "--data", "pin-origin-tag.json"), 0),

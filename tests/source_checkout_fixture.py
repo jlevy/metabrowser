@@ -243,6 +243,7 @@ def write_bodies(directory: Path) -> None:
         "pin-syntax.json": {"ref": "topic~1"},
         "pin-working-tree.json": {"working_tree": True},
         "pin-working-tree-and-ref.json": {"working_tree": True, "ref": "topic"},
+        "page-ask.json": {"for": "page"},
     }
     for name, body in bodies.items():
         (directory / name).write_text(json.dumps(body) + "\n", encoding="utf-8")
