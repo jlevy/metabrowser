@@ -684,6 +684,52 @@ status: 200
 ? 0
 ```
 
+A step past the guide’s last, a step that is not a positive integer, and a pull request
+with no cached record are each answered as that.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-pr?number=7&step=3'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/guided-pr?number=7&step=3
+status: 200
+{
+  "record_revision": "6b9e97e5934ebf840e7d3fdcd16a1a8cc20054aaf9056324f57ecb8b5e3c88ff",
+  "state": "step_not_found"
+}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-pr?number=7&step=0'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/guided-pr?number=7&step=0
+status: 400
+{
+  "error": "step must be a positive integer",
+  "code": "invalid_request"
+}
+Error: /api/plugin/github/guided-pr?number=7&step=0 returned HTTP 400
+? 1
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-pr?number=11'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/guided-pr?number=11
+status: 200
+{
+  "record_revision": null,
+  "state": "not_cached"
+}
+? 0
+```
+
 The description introduces the guide: its Markdown, which Conversation and Guided Review
 both render, leaves out the guided-pr block.
 

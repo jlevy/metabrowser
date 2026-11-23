@@ -1,0 +1,379 @@
+"""The guided-pr route on a cached pull request: its staleness, its refusals, and the
+description rendered beside the guide.
+
+Each route test caches pull request 7 of the GitHub stand-in (``tests/github_pull_fixture.py``)
+with a guide in its description, through the production refresh, and asks the route as its
+handler does. The stand-in's pull request 7 is ``base`` → ``fork_earlier`` ("extra") →
+``fork_head`` ("count to two"), and its record's comparison is ``base``..``fork_head``.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from collections.abc import Iterator
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from metabrowser.builtin_plugins.github import guided_pr, pull_manifest, pull_markdown
+from metabrowser.builtin_plugins.github.pull_record import MAX_BODY_BYTES, PullRecord
+from metabrowser.builtin_plugins.github.pull_route import PullHost, PullView
+from metabrowser.builtin_plugins.github.served_pull import ServedPulls
+from metabrowser.diff.adapters.base import DiffSourceError
+from metabrowser.git.process import GitLocation, RepositoryStoreTarget
+from tests.diff_fixture_repo import git
+from tests.github_pull_fixture import guide_body, scenario
+from tests.required_tools import needs_git
+from tests.test_github_pulls import _Stand
+from tests.test_github_pulls import stand as stand
+
+_MISSING = "e" * 40
+
+
+def _cache(stand: _Stand, body: str) -> PullRecord:
+    """Pull request 7 cached with *body* as its description."""
+    answers = scenario(stand.origin)
+    answers["api"]["repos/octo/demo/pulls/7"]["body"]["body"] = body
+    stand.answer(answers)
+    record = stand.refresh(7)
+    assert record.comparison is not None
+    assert (record.comparison.base, record.comparison.head) == (
+        stand.origin["base"],
+        stand.origin["fork_head"],
+    )
+    return record
+
+
+def _pinned(stand: _Stand, *, merge_base: str | None = None, head: str | None = None) -> str:
+    """The stand-in's guide with its pins replaced."""
+    body = guide_body(stand.origin)
+    if head is not None:
+        body = body.replace(f'head: "{stand.origin["fork_head"]}"', f'head: "{head}"')
+    if merge_base is not None:
+        body = body.replace(f'merge_base: "{stand.origin["base"]}"', f'merge_base: "{merge_base}"')
+    return body
+
+
+def _ask(stand: _Stand, step: int = 1, number: int = 7) -> dict[str, Any]:
+    host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
+    return asyncio.run(guided_pr.guided_pr(host, number, step))
+
+
+def _rows(answer: dict[str, Any], at: int = 0) -> list[str]:
+    return [
+        f"{line['op']}:{line['text']}"
+        for hunk in answer["references"][at]["hunks"]
+        for line in hunk["lines"]
+    ]
+
+
+def test_a_guide_one_push_behind_is_ahead_and_read_from_its_own_pins(stand: _Stand) -> None:
+    """The ordinary stale guide: its author pushed after writing it."""
+    origin = stand.origin
+    _cache(stand, _pinned(stand, head=origin["fork_earlier"]))
+    answer = _ask(stand)
+    assert answer["state"] == "stale"
+    assert answer["stale"] == {
+        "guide": {"merge_base": origin["base"], "head": origin["fork_earlier"]},
+        "current": {"merge_base": origin["base"], "head": origin["fork_head"]},
+        "github_newer": False,
+        "history": "ahead",
+        "commit_count": 1,
+        "commits": [{"sha": origin["fork_head"], "subject": "count to two"}],
+        "changed_paths": ["docs/new.md", "src/app.txt"],
+        "changed_steps": [1, 2],
+    }
+    # The excerpt is the guide's revision's, where the file said "extra", not "two".
+    assert answer["comparison"] == {"merge_base": origin["base"], "head": origin["fork_earlier"]}
+    assert _rows(answer) == ["context:one", "add:extra"]
+
+
+def test_reading_a_stale_guide_keeps_the_pull_requests_manifest(stand: _Stand) -> None:
+    """A guide's own pins are another comparison, which never replaces the record's kept
+    manifest (B8 of review B on #677): Changes reads that one on its next cold start."""
+    origin = stand.origin
+    _cache(stand, _pinned(stand, head=origin["fork_earlier"]))
+    asyncio.run(
+        pull_manifest.shared_pull_manifest(stand.published, 7, origin["base"], origin["fork_head"])
+    )
+    kept = stand.published.home / pull_manifest._path(stand.published, 7)
+    before = kept.read_bytes()
+    document = json.loads(before)["document"]
+    assert document["resolved"]["right"]["id"] == origin["fork_head"]
+    assert _ask(stand)["state"] == "stale"
+    assert kept.read_bytes() == before
+
+
+def test_a_moved_merge_base_marks_what_moved_with_it(stand: _Stand) -> None:
+    """Pinned at the same head on a later merge base, the guide's comparison is narrower:
+    the paths between the two merge bases changed, whatever the head did."""
+    origin = stand.origin
+    _cache(stand, _pinned(stand, merge_base=origin["fork_earlier"]))
+    answer = _ask(stand)
+    stale = answer["stale"]
+    assert (stale["history"], stale["commit_count"], stale["commits"]) == ("ahead", 0, [])
+    assert (stale["changed_paths"], stale["changed_steps"]) == (["src/app.txt"], [1, 2])
+    assert _rows(answer) == ["context:one", "del:extra", "add:two"]
+
+
+def test_a_rebased_branch_is_rewritten(stand: _Stand) -> None:
+    origin = stand.origin
+    _cache(stand, _pinned(stand, head=origin["merged_head"]))
+    stale = _ask(stand)["stale"]
+    assert (stale["history"], stale["commit_count"]) == ("rewritten", 2)
+    assert [commit["subject"] for commit in stale["commits"]] == ["count to two", "extra"]
+    assert stale["changed_paths"] == ["docs/new.md", "src/app.txt"]
+
+
+def test_a_guide_this_copy_lacks_is_stale_with_no_step(stand: _Stand) -> None:
+    """The store lacks the guide's head: its commits and what changed are unknown, and its
+    steps cannot be read."""
+    _cache(stand, _pinned(stand, head=_MISSING))
+    answer = _ask(stand)
+    assert answer["state"] == "stale"
+    assert "step" not in answer
+    stale = answer["stale"]
+    assert (stale["history"], stale["commit_count"], stale["changed_paths"]) == (
+        "unavailable",
+        None,
+        None,
+    )
+
+
+def test_a_newer_head_on_github_leaves_what_changed_unknown(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub reports a head this copy lacks. A guide that matches this copy is then stale,
+    and since the store lacks the newer commits, neither list is answered, so the page
+    never says that every step still matches (B1 of review B on #677)."""
+    origin = stand.origin
+    _cache(stand, guide_body(origin))
+    assert _ask(stand)["state"] == "ready"
+    monkeypatch.setattr(guided_pr, "_head_moved", lambda _store, _record: True)
+    answer = _ask(stand)
+    assert answer["state"] == "stale"
+    assert answer["stale"] == {
+        "guide": {"merge_base": origin["base"], "head": origin["fork_head"]},
+        "current": {"merge_base": origin["base"], "head": origin["fork_head"]},
+        "github_newer": True,
+        "history": "ahead",
+        "commit_count": 0,
+        "commits": [],
+        "changed_paths": None,
+        "changed_steps": None,
+    }
+    # Its steps are still read, from its pins.
+    assert (answer["step"], _rows(answer)) == (1, ["context:one", "add:two"])
+
+
+def test_pins_that_name_no_comparison_are_refused(stand: _Stand) -> None:
+    """A merge_base that is not where the guide's head leaves the base would answer excerpts
+    read against another merge base under the pinned one's name (B9 of review B on #677)."""
+    origin = stand.origin
+    _cache(stand, _pinned(stand, merge_base=origin["topic"]))
+    answer = _ask(stand)
+    assert (answer["state"], answer["message"]) == (
+        "invalid",
+        "The guided-pr block's merge_base is not the merge base of its head.",
+    )
+    assert "step" not in answer
+
+
+def test_a_file_too_large_for_a_step_is_not_read(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A path alone whose changed lines charge past a step's whole files is refused from
+    the manifest's counts, without reading its patch."""
+    old = "        - {path: src/app.txt, side: old, start_line: 2, end_line: 4}\n"
+    body = guide_body(stand.origin)
+    assert old in body
+    _cache(stand, body.replace(old, ""))
+    # src/app.txt adds one line here, which charges at least 80 bytes.
+    monkeypatch.setattr(guided_pr, "MAX_STEP_PATCH_BYTES", 79)
+    asked: list[tuple[str, ...]] = []
+    real = guided_pr.GitDiffSource.hydrate
+
+    async def hydrate(self: Any, resolved: Any, ids: tuple[str, ...], **kwargs: Any) -> Any:
+        asked.append(ids)
+        return await real(self, resolved, ids, **kwargs)
+
+    monkeypatch.setattr(guided_pr.GitDiffSource, "hydrate", hydrate)
+    answer = _ask(stand, step=2)
+    assert [(ref["path"], ref["state"]) for ref in answer["references"]] == [
+        ("docs/new.md", "ready"),
+        ("src/app.txt", "patch_too_large"),
+        ("missing.txt", "path_not_changed"),
+    ]
+    assert [len(ids) for ids in asked] == [1]
+
+
+def test_a_step_past_the_guide_and_an_uncached_pull_request(stand: _Stand) -> None:
+    _cache(stand, guide_body(stand.origin))
+    assert _ask(stand, step=3)["state"] == "step_not_found"
+    assert _ask(stand, number=11) == {"record_revision": None, "state": "not_cached"}
+
+
+def test_a_comparison_the_store_cannot_read_is_unavailable(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cache(stand, guide_body(stand.origin))
+
+    async def unreadable(*_args: object, **_kwargs: object) -> object:
+        raise DiffSourceError("the store cannot list it")
+
+    monkeypatch.setattr(guided_pr, "shared_pull_manifest", unreadable)
+    answer = _ask(stand)
+    assert answer["state"] == "comparison_unavailable"
+    assert "stale" not in answer
+
+
+def test_a_description_cut_inside_its_block_is_truncated_not_invalid(stand: _Stand) -> None:
+    """The record keeps MAX_BODY_BYTES of a description, so a block past that is cut, and
+    reads as an unclosed fence the author closed on GitHub (B12 of review B on #677)."""
+    record = _cache(stand, "x" * (MAX_BODY_BYTES - 200) + "\n\n" + guide_body(stand.origin))
+    assert record.pull.body_truncated
+    assert _ask(stand)["state"] == "description_truncated"
+
+
+async def _commits_since(root: Path, subject: str) -> dict[str, object]:
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    (root / "a.txt").write_text("one\n", encoding="utf-8")
+    git(root, "add", "a.txt")
+    git(root, "commit", "-q", "-m", "first")
+    old = git(root, "rev-parse", "HEAD").decode().strip()
+    (root / "a.txt").write_text("one\ntwo\n", encoding="utf-8")
+    git(root, "commit", "-q", "-am", subject)
+    new = git(root, "rev-parse", "HEAD").decode().strip()
+    target = RepositoryStoreTarget(root / ".git", "sha1")
+    return await guided_pr._commits_since(GitLocation.revision(target, new), old, new)
+
+
+@needs_git
+def test_a_long_subject_is_counted_not_listed(tmp_path: Path) -> None:
+    """Git prints a subject whole, so one past the log's bound costs the list, not the
+    count, nor the history and the changed paths read after it (B10 of review B on #677)."""
+    short = asyncio.run(_commits_since(tmp_path / "short", "count to two"))
+    assert (short["history"], short["commit_count"]) == ("ahead", 1)
+    assert short["commits"] == [{"sha": short["commits"][0]["sha"], "subject": "count to two"}]  # type: ignore[index]
+    long = asyncio.run(_commits_since(tmp_path / "long", "word " * 2400))
+    assert long == {"history": "ahead", "commit_count": 1, "commits": []}
+
+
+_VIEW = PullView(
+    number=7,
+    host=SimpleNamespace(pulls=SimpleNamespace(home=Path(), slug="octo/demo")),  # pyright: ignore[reportArgumentType]
+    pin=None,
+    pin_ref=None,
+    refreshing=False,
+    kept=None,
+)
+_KEY = (str(Path()), "octo/demo", 7)
+
+
+@pytest.fixture
+def rendered(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
+    """Each text the Markdown route asks the Markdown child to render."""
+    texts: list[str] = []
+
+    class Child:
+        async def render_inert(self, request: Any) -> dict[str, Any]:
+            texts.append(request.source_text)
+            return {"html": "<p>rendered</p>"}
+
+    monkeypatch.setattr(pull_markdown, "shared_worker", Child)
+    monkeypatch.setattr(pull_markdown.kpress_adapter, "document_stylesheets", dict)
+    guided_pr._READS.clear()
+    yield texts
+    guided_pr._READS.clear()
+
+
+def _record(body: str) -> PullRecord:
+    fixtures = Path(__file__).parent / "fixtures" / "github-pull-page-responses.json"
+    recorded = json.loads(fixtures.read_text(encoding="utf-8"))
+    record = PullRecord.model_validate(recorded["current"]["body"]["record"])
+    return record.model_copy(
+        update={"number": 7, "pull": record.pull.model_copy(update={"body": body})}
+    )
+
+
+_GUIDE = """Explain the change.
+
+```guided-pr
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    head: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  items:
+    - title: Start here
+      note: Check it.
+      references:
+        - {path: a.py}
+```"""
+
+
+@pytest.mark.parametrize(
+    ("body", "shown"),
+    [
+        (_GUIDE, "Explain the change."),
+        # A block the guide route refuses is the description's own text, shown as written:
+        # the wrong contract, a field the contract lacks, and YAML that does not parse.
+        (_GUIDE.replace("status: enforced", "status: soft"), None),
+        (_GUIDE.replace("note: Check it.", "nope: Check it."), None),
+        (_GUIDE.replace("  items:\n", "  items: [\n"), None),
+    ],
+)
+def test_the_description_renders_without_only_a_readable_guide(
+    rendered: list[str], monkeypatch: pytest.MonkeyPatch, body: str, shown: str | None
+) -> None:
+    record = _record(body)
+    monkeypatch.setattr(pull_markdown, "cached_pull_record", lambda *_: (record, None, "f" * 64))
+    status, _answer = asyncio.run(pull_markdown.render_part(_VIEW, "body"))
+    assert status == 200
+    assert rendered == [body if shown is None else shown]
+
+
+def test_a_core_previews_description_renders_without_its_guide(
+    rendered: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A preview's description is drawn as the record's will be, so a guided pull request's
+    front page, its guide, opens on the same introduction (B3 of review B on #677)."""
+    record = _record(_GUIDE)
+    monkeypatch.setattr(pull_markdown, "cached_pull_record", lambda *_: ("not_cached", None, None))
+    preview: Any = {"pull": record.pull.model_dump(mode="json"), "revision": "a" * 64}
+
+    async def core() -> Any:
+        return preview
+
+    status, answer = asyncio.run(pull_markdown.render_part(_VIEW, "body", current_core=core))
+    assert (status, answer["core_revision"]) == (200, "a" * 64)
+    assert rendered == ["Explain the change."]
+
+
+def test_the_guide_and_its_introduction_share_one_parse(
+    rendered: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The route's parse, kept for the record revision, cuts the description too, off the
+    event loop (B11 of review B on #677)."""
+    record = _record(_GUIDE)
+    parses: list[str] = []
+    real = guided_pr._read_description
+
+    def counting(body: str) -> Any:
+        parses.append(body)
+        return real(body)
+
+    monkeypatch.setattr(guided_pr, "_read_description", counting)
+    monkeypatch.setattr(pull_markdown, "cached_pull_record", lambda *_: (record, None, "f" * 64))
+    assert guided_pr.read_guide(_KEY, "f" * 64, _GUIDE) is not None
+    for _ in range(2):
+        asyncio.run(pull_markdown.render_part(_VIEW, "body"))
+    assert rendered == ["Explain the change."] * 2
+    assert len(parses) == 1

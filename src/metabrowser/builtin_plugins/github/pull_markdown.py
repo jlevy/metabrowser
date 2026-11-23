@@ -46,6 +46,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Final
 
 from metabrowser import kpress_adapter
+from metabrowser.builtin_plugins.github.guided_pr import guide_introduction
 from metabrowser.builtin_plugins.github.pull_record import PullRecord
 from metabrowser.builtin_plugins.github.pull_route import PullView, cached_pull_record
 from metabrowser.diff.markdown_projection_worker import (
@@ -62,17 +63,13 @@ PART_PATTERN: Final = re.compile(r"^(?:body|(?:issue_comment|review|review_comme
 
 
 def part_text(record: PullRecord, part: str) -> str | None:
-    """The text *part* names in *record*, or ``None`` when it names none."""
+    """The text *part* names in *record*, as the record has it, or ``None`` when it names none.
+
+    :func:`render_part` renders the description without its guide (:func:`_description`).
+    """
 
     if part == "body":
-        body = record.pull.body
-        if "guided-pr" not in body:
-            return body
-        # The guide's block is the Guided Review tab's: the description renders as its
-        # introduction, in Conversation and above the guide's steps alike.
-        from metabrowser.builtin_plugins.github.guided_pr import without_guide
-
-        return without_guide(body)
+        return record.pull.body
     kind, _, ident = part.partition("/")
     wanted = int(ident)
     items = {
@@ -81,6 +78,19 @@ def part_text(record: PullRecord, part: str) -> str | None:
         "review_comment": record.review_comments,
     }[kind]
     return next((item.body for item in items if item.id == wanted), None)
+
+
+async def _description(key: tuple[str, str, int], revision: str, body: str) -> str:
+    """The description as Conversation and Guided Review render it.
+
+    The guide's block is the Guided Review tab's, so the description renders as its
+    introduction, without the block, once the block reads as a guide; a block that does
+    not stays, so its author sees what they wrote. The parse is the guide route's, kept
+    for the revision (`read_guide` in guided_pr.py), off the event loop.
+    """
+    if "guided-pr" not in body:
+        return body
+    return await asyncio.to_thread(guide_introduction, key, revision, body)
 
 
 async def render_part(
@@ -109,8 +119,13 @@ async def render_part(
         if not isinstance(record, PullRecord) and part == "body" and current_core is not None
         else None
     )
+    key = (str(served.home), served.slug, number)
     if preview is not None:
-        text = str(preview["pull"].get("body") or "")
+        # A preview's description is drawn as the record's will be, so a guided pull
+        # request's front page opens on its guide with the same introduction.
+        text = await _description(
+            key, f"core:{preview['revision']}", str(preview["pull"].get("body") or "")
+        )
         link_base = str(preview["pull"].get("html_url") or "")
         answered = {
             "fetched_at": None,
@@ -123,7 +138,11 @@ async def render_part(
         found = part_text(record, part)
         if found is None:
             return 404, {"error": "the record has no such part", "code": "unknown_part"}
-        text = found
+        text = (
+            await _description(key, revision, found)
+            if part == "body" and revision is not None
+            else found
+        )
         link_base = record.pull.html_url
         answered = {"fetched_at": record.fetched_at, "record_revision": revision}
     # KPress caches a render by this key, and the Markdown child joins a request to one in

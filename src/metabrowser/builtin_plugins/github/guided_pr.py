@@ -35,6 +35,7 @@ from metabrowser.git.process import (
     GitCommandError,
     GitError,
     GitLocation,
+    GitOutputTooLargeError,
     RepositoryStoreTarget,
     run_git_at,
 )
@@ -59,7 +60,9 @@ _CONTRACT = Contract(
 _MARKDOWN = MarkdownIt("commonmark").disable("inline")
 
 # Each item hydrates at most as many paths as the measured first paint of Changes
-# (INITIAL_PULL_FILES in sidekick.py). It renders only the selected ranges.
+# (INITIAL_PULL_FILES in sidekick.py), in one run of the diff source. A ranged reference
+# renders its lines (MAX_EXCERPT_BYTES), and a path alone its file's whole patch
+# (MAX_STEP_PATCH_BYTES).
 MAX_REFERENCES = 8
 # A reviewer reads a guide one item at a time, and parse_guide costs by the item: markdown-it,
 # YAML, JSON Schema and pydantic, in Python that holds the GIL, take 3.3 ms an item of
@@ -70,14 +73,32 @@ MAX_REFERENCES = 8
 # took 322 ms, so this keeps the largest guide the caps admit near 150 ms. read_guide pays
 # it once for each record revision.
 MAX_ITEMS = 40
-# Eight excerpts totaling 800 one-character rows, just past the PR body ceiling after
-# the per-row charge, mounted and laid out in 11–14 ms in five headless Chrome 157 runs
-# at 1280×900 on the Guided Review page (2026-11-18). A single long row must fit too. This
-# bounds a step's ranged excerpts. A reference with no range shows its file's whole patch,
-# which the diff source bounds as it does for Changes, and drawn by the diff plugin's file
-# renderer it folds long changed runs as Changes does; MAX_REFERENCES keeps a step's files
-# within the measured first paint of Changes.
+# A step's ranged excerpts share this budget, each row charged _row_cost: what JSON's
+# escaping and a drawn row cost, so even rows of control characters or empty lines stay
+# bounded on the wire and in the render. A single long row must fit too. Drawn by the diff
+# plugin's file renderer (mountFilePatch), in headless Chrome 152 on the Guided Review page
+# from a step's click to its last row laid out, median (range) of three interleaved runs
+# with a discarded warm-up, at a load average near 280 on 10 cores, so upper bounds
+# (2026-11-23): eight excerpts of 184 rows of 40–60 characters at 63,974 bytes of charge
+# took 24 ms (24–50) with no long task, and eight of 800 one-character rows, the old shape,
+# 50 ms (31–88).
 MAX_EXCERPT_BYTES = MAX_BODY_BYTES
+# A step's whole-file references share this budget, in _row_cost's charge too: a path alone
+# shows its file's whole patch, which one hydrate run admits up to MAX_FILE_PATCH_BYTES
+# (8 MiB) across the step's files, all drawn when the step renders. Measured as
+# MAX_EXCERPT_BYTES was, with eight .py files, each hunk an eight-line replacement and a
+# 60-line run that folds, from the click to the last row laid out: 66 KB of patch (487,010
+# bytes of charge, 720 rows drawn behind 16 fold bars) took 48 ms (36–80), its longest task
+# 0–53 ms; 267 KB (1,956,140 bytes of charge, 2,880 rows behind 64 fold bars) 208 ms
+# (117–210), longest task 91–103 ms, settled with syntax and changed-run pairs in 368–479 ms;
+# 1.07 MB 560 ms with a 388 ms task, and 8.39 MB, the hydrate bound, 9.0 s with 3.5 s tasks.
+# The drawing is the cost, not the files' enrichment: one file of 1.05 MB took 510 ms with a
+# 379 ms task, as eight of the same total did, though mountFilePatch enriches each file on
+# its own where Changes serializes them. So this bounds the drawing just under the largest
+# step measured to draw within about 200 ms here, the 1,956,140 bytes of charge. A file past
+# what is left says its diff is too large to show in the step, beside its Open full diff
+# link.
+MAX_STEP_PATCH_BYTES: Final = 1_950_000
 
 # A stale guide's notice names the commits after the guide's head, newest first, and counts
 # the rest: it is read at a glance above the guide, and one bounded `git log` writes it.
@@ -174,29 +195,41 @@ def _guide_fence(body: str) -> tuple[Token, list[str]] | None:
     return fence, lines
 
 
+def _read_description(body: str) -> tuple[Collection | None, str]:
+    """The guide in the raw PR description, and the description without its block.
+
+    Without a guide the description is *body* itself. Raises :class:`GuideError` for a
+    block that is not a guide, which is then the description's own text.
+    """
+    found = _guide_fence(body)
+    if found is None:
+        return None, body
+    fence, lines = found
+    guide = _collection(fence)
+    assert fence.map is not None
+    start, end = fence.map
+    return guide, "\n".join([*lines[:start], *lines[end:]]).strip("\n")
+
+
 def without_guide(body: str) -> str:
     """*body* without its guided-pr block: the description as the guide's introduction.
 
-    A description whose block cannot be read keeps it, so its author sees what they wrote.
+    Only a block :func:`parse_guide` reads is taken out. A description whose block cannot
+    be read keeps it, so its author sees what they wrote.
     """
     try:
-        found = _guide_fence(body)
+        return _read_description(body)[1]
     except GuideError:
         return body
-    if found is None:
-        return body
-    fence, lines = found
-    assert fence.map is not None
-    start, end = fence.map
-    return "\n".join([*lines[:start], *lines[end:]]).strip("\n")
 
 
 def parse_guide(body: str) -> Collection | None:
     """Read one top-level fenced SoftSchema artifact from the raw PR description."""
-    found = _guide_fence(body)
-    if found is None:
-        return None
-    fence, _ = found
+    return _read_description(body)[0]
+
+
+def _collection(fence: Token) -> Collection:
+    """The guide one guided-pr fence holds, or :class:`GuideError` for why it is none."""
     try:
         document: object = parse_yaml_text(fence.content)
     except ValueError as exc:
@@ -227,33 +260,47 @@ class _Read:
     revision: str
     guide: Collection | None
     message: str | None
+    # The description the page renders: without its block only when the block is a guide.
+    introduction: str
 
 
 # One parse for each pull request, kept with the record revision (a hash of the record's
 # content) that it read, so a Previous or Next click reads the guide the first request
-# parsed and an edited description is parsed once. A guide that does not parse is kept as
-# its message, since it costs as much to refuse as to read.
+# parsed, the description's render reads the introduction that parse cut, and an edited
+# description is parsed once. A guide that does not parse is kept as its message, since it
+# costs as much to refuse as to read. Each entry holds at most two bodies of MAX_BODY_BYTES.
 _READS: dict[tuple[str, str, int], _Read] = {}
 _READS_LOCK: Final = threading.Lock()
 _MAX_READS: Final = 16
 
 
-def read_guide(key: tuple[str, str, int], revision: str, body: str) -> Collection | None:
-    """:func:`parse_guide` of *body*, reused while *key*'s record has this *revision*."""
+def _reading(key: tuple[str, str, int], revision: str, body: str) -> _Read:
     with _READS_LOCK:
         hit = _READS.get(key)
     if hit is None or hit.revision != revision:
         try:
-            hit = _Read(revision, parse_guide(body), None)
+            guide, introduction = _read_description(body)
+            hit = _Read(revision, guide, None, introduction)
         except GuideError as exc:
-            hit = _Read(revision, None, str(exc))
+            hit = _Read(revision, None, str(exc), body)
         with _READS_LOCK:
             if key not in _READS and len(_READS) >= _MAX_READS:
                 _READS.pop(next(iter(_READS)))
             _READS[key] = hit
+    return hit
+
+
+def read_guide(key: tuple[str, str, int], revision: str, body: str) -> Collection | None:
+    """:func:`parse_guide` of *body*, reused while *key*'s record has this *revision*."""
+    hit = _reading(key, revision, body)
     if hit.message is not None:
         raise GuideError(hit.message)
     return hit.guide
+
+
+def guide_introduction(key: tuple[str, str, int], revision: str, body: str) -> str:
+    """:func:`without_guide` of *body*, from the parse :func:`read_guide` keeps. Blocking."""
+    return body if "guided-pr" not in body else _reading(key, revision, body).introduction
 
 
 def _excerpt(
@@ -334,13 +381,19 @@ def _hunk_rows(
         opposite = left is None if old_side else right is None
         if selected > end + opposite:
             break
-        # Count JSON's escaping as well as text. Keep the wire and the render bounded
-        # even on rows made entirely of control characters or empty lines.
-        size += 80 + 6 * len(line.text)
+        size += _row_cost(line)
         if size > budget:
             return "excerpt_too_large", [], 0
         rows.append({"old": left, "new": right, "op": line.op, "text": line.text})
     return "ready", rows, size
+
+
+def _row_cost(line: LineRecord) -> int:
+    """What one row of an excerpt or a whole patch charges its step's budget.
+
+    JSON's escaping as well as the text: a control character is six bytes on the wire.
+    """
+    return 80 + 6 * len(line.text)
 
 
 def _references(
@@ -350,9 +403,16 @@ def _references(
     patches: dict[str, FilePatch],
     *,
     truncated: bool,
+    too_large: frozenset[str] = frozenset(),
 ) -> list[dict[str, object]]:
+    """Each reference of a step as the page draws it, its excerpt or its file's patch.
+
+    *too_large* are the changes whose patches the diff source left out for their size,
+    alone or beside the step's other files.
+    """
     output: list[dict[str, object]] = []
     remaining = MAX_EXCERPT_BYTES
+    whole = MAX_STEP_PATCH_BYTES
     for reference in references:
         change = changes.get(reference.path)
         href = None
@@ -364,12 +424,17 @@ def _references(
             href = format_pull_href(number, "files", reference.path)
             patch = patches.get(change.id)
             if patch is None:
-                state = "diff_unavailable"
+                state = "patch_too_large" if change.id in too_large else "diff_unavailable"
             elif reference.side is None:
-                # The file's whole patch, as Changes shows it (MAX_EXCERPT_BYTES).
-                state = "ready"
-                hunks = [hunk.model_dump(mode="json") for hunk in patch.hunks]
-                cut = patch.truncated
+                # The file's whole patch, as Changes shows it, within the step's budget.
+                used = sum(_row_cost(line) for hunk in patch.hunks for line in hunk.lines)
+                if used > whole:
+                    state = "patch_too_large"
+                else:
+                    whole -= used
+                    state = "ready"
+                    hunks = [hunk.model_dump(mode="json") for hunk in patch.hunks]
+                    cut = patch.truncated
             else:
                 state, hunks, used = _excerpt(patch, reference, remaining)
                 remaining -= used
@@ -386,31 +451,68 @@ def _references(
 
 
 async def _step_references(
-    store: PublishedSource, number: int, guide: Collection, step: CollectionItem
+    store: PublishedSource, record: PullRecord, guide: Collection, step: CollectionItem
 ) -> list[dict[str, object]]:
+    """The step's references, read from the guide's own comparison.
+
+    Raises :class:`GuideError` when the pins do not name a comparison: the merge base Git
+    resolves for them is another commit than the guide's ``merge_base``.
+    """
+    number = record.number
     base, head = guide.comparison.merge_base, guide.comparison.head
-    compared = await shared_pull_manifest(store, number, base, head)
+    current = record.comparison
+    # Only the record's own comparison is the pull request's kept manifest
+    # (pull_manifest.py); a stale guide's is read beside it, never over it.
+    compared = await shared_pull_manifest(
+        store,
+        number,
+        base,
+        head,
+        bank=current is not None and (current.base, current.head) == (base, head),
+    )
+    if compared.resolved.left.id != base:
+        raise GuideError("The guided-pr block's merge_base is not the merge base of its head.")
+    if compared.resolved.right.id != head:
+        raise GuideError("The guided-pr block's head does not name a commit.")
     manifest = compared.manifest
     changes = {
         display_path(change): change
         for change in manifest.files
         if (side := change.new or change.old) is not None and side.path_b64 is None
     }
-    ids = tuple(
-        dict.fromkeys(
-            change.id
-            for ref in step.references
-            if (change := changes.get(ref.path)) is not None
-            and change.availability is Availability.ready
-        )
-    )
+    ranged = {ref.path for ref in step.references if ref.side is not None}
+    wanted: dict[str, None] = {}
+    skipped: set[str] = set()
+    for ref in step.references:
+        change = changes.get(ref.path)
+        if change is None or change.availability is not Availability.ready:
+            continue
+        # A file whose changed lines alone charge past a step's whole files is never drawn
+        # whole, so it is not read for that: every row charges at least 80 bytes.
+        lines = (change.additions or 0) + (change.deletions or 0)
+        if ref.path not in ranged and 80 * lines > MAX_STEP_PATCH_BYTES:
+            skipped.add(change.id)
+        else:
+            wanted[change.id] = None
     patches: dict[str, FilePatch] = {}
-    if ids:
+    too_large: frozenset[str] = frozenset(skipped)
+    if wanted:
         target = RepositoryStoreTarget(store.git_dir, store.object_format)
         diff = GitDiffSource(GitLocation.revision(target, head))
-        patches = (await diff.hydrate(compared.resolved, ids, manifest=manifest)).patches
+        # One run, as Changes asks for its first files. A file past its bound alone, or past
+        # what the run had room for beside the others, is too large to show in a step, whose
+        # whole files share a budget far below the run's (MAX_STEP_PATCH_BYTES).
+        hydrated = await diff.hydrate(compared.resolved, tuple(wanted), manifest=manifest)
+        patches = dict(hydrated.patches)
+        too_large |= {*hydrated.too_large, *hydrated.deferred}
     return await asyncio.to_thread(
-        _references, number, step.references, changes, patches, truncated=manifest.truncated
+        _references,
+        number,
+        step.references,
+        changes,
+        patches,
+        truncated=manifest.truncated,
+        too_large=too_large,
     )
 
 
@@ -433,19 +535,24 @@ async def _commits_since(location: GitLocation, old: str, new: str) -> dict[str,
         history = "rewritten"
     span = f"{old}..{new}"
     count = await run_git_at(["rev-list", "--first-parent", "--count", span, "--"], location)
-    out = await run_git_at(
-        [
-            "log",
-            *GIT_NO_DRIVER_ARGS,
-            "--first-parent",
-            f"--max-count={MAX_STALE_COMMITS}",
-            "--format=%H%x00%s%x00",
-            span,
-            "--",
-        ],
-        location,
-        max_bytes=MAX_STALE_COMMITS * (200 + 4 * MAX_STALE_SUBJECT_BYTES),
-    )
+    try:
+        out = await run_git_at(
+            [
+                "log",
+                *GIT_NO_DRIVER_ARGS,
+                "--first-parent",
+                f"--max-count={MAX_STALE_COMMITS}",
+                "--format=%H%x00%s%x00",
+                span,
+                "--",
+            ],
+            location,
+            max_bytes=MAX_STALE_COMMITS * (200 + 4 * MAX_STALE_SUBJECT_BYTES),
+        )
+    except GitOutputTooLargeError:
+        # Git prints a subject whole, so one long enough passes the bound, which is sized
+        # for subjects as the notice cuts them: the commits are then counted, not listed.
+        return {"history": history, "commit_count": int(count), "commits": []}
     fields = out.decode("utf-8", errors="replace").split("\0")
     commits = [
         {"sha": sha.strip(), "subject": cut_text(subject, MAX_STALE_SUBJECT_BYTES)[0]}
@@ -476,7 +583,9 @@ async def _staleness(
     ``changed_paths`` are the guide's referenced paths that differ between the guide's
     comparison and the current one, at either end, and ``changed_steps`` the one-based
     steps that cite one; each is ``None`` when that cannot be read. A step that cites no
-    changed path still matches the pull request.
+    changed path still matches the pull request. With *newer*, GitHub reports a head this
+    copy lacks, so what changed is unknown: the commits since are this copy's, and neither
+    list is read.
     """
     comparison = record.comparison
     pinned = guide.comparison
@@ -499,6 +608,8 @@ async def _staleness(
             answer.update(history="ahead", commit_count=0)
         else:
             answer.update(await _commits_since(location, pinned.head, head))
+        if newer:
+            return answer
         changed = (
             await _paths_between(location, pinned.head, head) if pinned.head != head else set()
         )
@@ -538,6 +649,10 @@ async def guided_pr(host: PullHost, number: int, step_number: int) -> dict[str, 
             read_guide, (str(served.home), served.slug, number), revision, record.pull.body
         )
     except GuideError as exc:
+        if record.pull.body_truncated:
+            # The record's bound cut the description, so the block it read is not the one
+            # on GitHub: the cut is the cause, not the author's block.
+            return {**identity, "state": "description_truncated"}
         return {**identity, "state": "invalid", "message": str(exc)}
     if guide is None:
         return {
@@ -566,7 +681,9 @@ async def guided_pr(host: PullHost, number: int, step_number: int) -> dict[str, 
         return {**identity, "state": "step_not_found"}
     step = guide.items[step_number - 1]
     try:
-        references = await _step_references(published, number, guide, step)
+        references = await _step_references(published, record, guide, step)
+    except GuideError as exc:
+        return {**identity, "state": "invalid", "message": str(exc)}
     except (DiffSourceError, GitError):
         return (
             {**identity, "state": "stale", "stale": staleness}

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import contextlib
+import re
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from softschema.compile import compile_model
@@ -10,6 +13,7 @@ from metabrowser.builtin_plugins.github.guided_pr import (
     CONTRACT_ID,
     MAX_EXCERPT_BYTES,
     MAX_ITEMS,
+    MAX_STEP_PATCH_BYTES,
     SCHEMA_PATH,
     Collection,
     CollectionReference,
@@ -68,12 +72,42 @@ def test_the_description_without_its_guide_is_the_guides_introduction() -> None:
     body = f"Explain the feature.\r\n\r\n{_GUIDE}\r\n\r\nThen merge it."
     assert without_guide(body) == "Explain the feature.\n\n\nThen merge it."
     assert without_guide(_GUIDE) == ""
-    # A block that cannot be read stays, so its author sees what they wrote.
-    for kept in (f"{_GUIDE}\n\n{_GUIDE}", _GUIDE.removesuffix("```"), "No guide here."):
-        assert without_guide(kept) == kept
+    # A block that cannot be read stays, so its author sees what they wrote: two blocks, an
+    # unclosed one, invalid YAML, another contract, and a field the contract lacks.
+    for kept in (
+        f"{_GUIDE}\n\n{_GUIDE}",
+        _GUIDE.removesuffix("```"),
+        _GUIDE.replace("  items:\n", "  items: [\n"),
+        _GUIDE.replace("Collection/v1", "Collection/v9"),
+        _GUIDE.replace("start_line: 2", "start_line: 2, extra: 3"),
+        "No guide here.",
+    ):
+        with pytest.raises(GuideError) if "guided-pr" in kept else contextlib.nullcontext():
+            parse_guide(kept)
+        assert without_guide(f"Explain it.\n\n{kept}") == f"Explain it.\n\n{kept}"
     # An example of a block, inside another fence, is the description's own text.
     example = f"````markdown\n{_GUIDE}\n````"
     assert without_guide(example) == example
+
+
+def test_the_user_guides_example_block_is_a_guide() -> None:
+    """The block docs/reviewing-pull-requests.md gives authors to copy reads as a guide once
+    its two placeholders are filled (B17 of review B on #677)."""
+    guide = Path(__file__).parents[1] / "docs" / "reviewing-pull-requests.md"
+    found = re.search(
+        r"\n````markdown\n(```guided-pr\n.*?\n```)\n````\n", guide.read_text("utf-8"), re.S
+    )
+    assert found is not None
+    example = found[1]
+    for placeholder, sha in (
+        ("<full merge-base commit ID>", "a" * 40),
+        ("<full PR head commit ID>", "b" * 40),
+    ):
+        assert placeholder in example
+        example = example.replace(placeholder, sha)
+    parsed = parse_guide(example)
+    assert parsed is not None
+    assert [step.title for step in parsed.items] == ["Inspect the request path"]
 
 
 def test_ignores_the_marker_inside_an_example_of_markdown() -> None:
@@ -119,16 +153,16 @@ def test_a_guide_may_have_at_most_max_items_items() -> None:
 
 @pytest.fixture
 def parses(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
-    """Each body :func:`parse_guide` is asked to read, with the guide cache empty."""
+    """Each body the guide cache reads, with the cache empty."""
     asked: list[str] = []
-    real = parse_guide
+    real = guided_pr._read_description  # pyright: ignore[reportPrivateUsage]
 
-    def counting(body: str) -> Collection | None:
+    def counting(body: str) -> tuple[Collection | None, str]:
         asked.append(body)
         return real(body)
 
     guided_pr._READS.clear()  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(guided_pr, "parse_guide", counting)
+    monkeypatch.setattr(guided_pr, "_read_description", counting)
     yield asked
     guided_pr._READS.clear()  # pyright: ignore[reportPrivateUsage]
 
@@ -327,6 +361,38 @@ def test_a_steps_excerpts_share_one_budget() -> None:
     only = [CollectionReference(path="a.py", **new)]  # pyright: ignore[reportArgumentType]
     big = {"file-1": _long_row_patch("file-1", MAX_EXCERPT_BYTES // 6 + 1)}
     assert _states(only, changes, big) == ["excerpt_too_large"]
+
+
+def _whole(references: list[CollectionReference], **kwargs: object) -> list[str]:
+    changes = {path: _change(path, at) for at, path in enumerate(("a.py", "b.py", "c.py"), 1)}
+    return [str(entry["state"]) for entry in _references(7, references, changes, **kwargs)]  # pyright: ignore[reportArgumentType]
+
+
+def test_a_steps_whole_files_share_one_budget() -> None:
+    """A path alone draws its file's whole patch, all of a step's within
+    MAX_STEP_PATCH_BYTES; its excerpts have their own budget. A file the diff source left
+    out for its size says so, not that its diff is unavailable (B4 and B13 of review B on
+    #677)."""
+    half = MAX_STEP_PATCH_BYTES // 2 // 6 + 1
+    whole = [CollectionReference(path="a.py"), CollectionReference(path="b.py")]
+    ranged = CollectionReference(path="c.py", side="new", start_line=1, end_line=1)
+    patches = {
+        "file-1": _long_row_patch("file-1", half),
+        "file-2": _long_row_patch("file-2", half),
+        "file-3": _long_row_patch("file-3", 3),
+    }
+    assert _whole([*whole, ranged], patches=patches, truncated=False) == [
+        "ready",
+        "patch_too_large",
+        "ready",
+    ]
+    alone = {"file-1": _long_row_patch("file-1", MAX_STEP_PATCH_BYTES // 6)}
+    assert _whole(whole[:1], patches=alone, truncated=False) == ["patch_too_large"]
+    # No patch: the diff source left it out for its size, or could not read it.
+    assert _whole(whole, patches={}, truncated=False, too_large=frozenset({"file-1"})) == [
+        "patch_too_large",
+        "diff_unavailable",
+    ]
 
 
 def test_a_file_with_no_range_shows_its_whole_patch() -> None:
