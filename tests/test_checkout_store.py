@@ -552,6 +552,65 @@ def test_a_failing_acquisition_is_tried_again_less_often_each_time(
     )
 
 
+def _hold_the_loop_until(when: float) -> None:
+    """Keep the running loop from turning until *when* on its clock, as load can: what fell
+    due meanwhile runs in the turns after the caller's next ``await``, together."""
+
+    while time.monotonic() < when:
+        time.sleep(0.01)
+
+
+def test_a_try_a_page_starts_as_the_timer_falls_due_is_the_only_one(
+    folder: _Folder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The timer's wait and a visible page's ask fall due in one turn of the loop. The ask
+    starts the try, which fails before the timer looks again, and the timer then waits
+    from that try's end rather than starting a second at once (mb-0tw5)."""
+
+    from metabrowser.checkout_store import CheckoutStore
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    idle = 0.5
+    attempts: list[float] = []
+
+    async def unreachable(*_args: Any, **_kwargs: Any) -> Any:
+        attempts.append(time.monotonic())
+        raise CheckoutStoreError("network_error", "the repository could not be read")
+
+    monkeypatch.setattr(checkout_store, "acquire_checkout_store", unreachable)
+    monkeypatch.setattr(checkout_store, "STORE_IDLE_REFRESH_S", idle)
+
+    async def scenario() -> str:
+        coordinator = RefreshCoordinator()
+        store = CheckoutStore(folder.checkout, coordinator, serving=True)
+        try:
+            await store.open()
+            deadline = time.monotonic() + 30
+            while (due := store.retry_at()) is None:
+                assert time.monotonic() < deadline, attempts
+                await asyncio.sleep(0.01)
+            # The timer has looked at the first failure and waits for the try it makes due.
+            for _ in range(5):
+                await asyncio.sleep(0)
+            _hold_the_loop_until(due + 0.05)
+            asked, _ = await store.refresh("page")
+            # The try the ask started, the end of the timer's wait, and what the timer does
+            # then each take a turn or two of the loop.
+            for _ in range(10):
+                await asyncio.sleep(0)
+            return asked
+        finally:
+            await store.aclose()
+            await coordinator.aclose()
+
+    assert asyncio.run(scenario()) == "started"
+    waits = [later - earlier for earlier, later in itertools.pairwise(attempts)]
+    # Lower bounds: the page's try came an idle interval after the first, and any the timer
+    # made before it stopped, which only load lets it reach, twice the wait before.
+    least = (idle * 2**at for at in itertools.count())
+    assert waits and all(wait >= bound for wait, bound in zip(waits, least, strict=False)), waits
+
+
 def test_an_acquisition_that_ran_out_its_deadline_waits_for_a_reader_to_ask(
     folder: _Folder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
