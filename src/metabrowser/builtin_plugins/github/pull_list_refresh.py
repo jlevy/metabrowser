@@ -308,6 +308,15 @@ def backfill_admitted() -> bool:
     only once it has, where reserving the prefetch's caps held a cold catalog of 800 rows
     to 8 points an hour with the walk (review D1 of #737). A reader's own pages, its
     filter's prefix and the scan that keeps the list current, are never asked.
+
+    So a backfill of more pages than the share has left takes it first come until it is
+    done, and the prefetch and the label set's first read get what it leaves: a record not
+    read ahead is read by its page when opened, and a page's label chips wait. In review
+    B2's model of #761, a model and not a measurement, that costs the prefetch little
+    below about 12,000 rows, and from about 15,000 leaves it about two records in each
+    whole hour the backfill runs after the first. Leaving the prefetch a scan's records
+    here too kept it at its cap but left a backfill of 20,000 rows unfinished after six
+    hours.
     """
 
     return gh_budget.admission(("graphql",), now=pull_list.utc_now(), speculative=True).admitted

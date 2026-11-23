@@ -1042,9 +1042,13 @@ export function createPullsController(deps, options = {}) {
       return;
     }
     const reset = typeof failure?.reset_at === "string" ? Date.parse(failure.reset_at) : NaN;
-    const delay = Number.isFinite(reset)
-      ? Math.max(CORE_BUSY_RETRY_MS, reset - deps.now())
-      : warmRetryDelay;
+    // A reset still ahead is the one wake worth waiting for. One already past backs off
+    // like any other hold: waiting for it meant a retry every second while the walk was
+    // held for another reason, such as the catalog's backfill (review B1 of #761).
+    const delay =
+      Number.isFinite(reset) && reset > deps.now()
+        ? Math.max(CORE_BUSY_RETRY_MS, reset - deps.now())
+        : warmRetryDelay;
     warmRetryDelay = Math.min(warmRetryDelay * 2, SLOW_POLL_MS);
     warmTimer = deps.schedule(() => {
       warmTimer = null;

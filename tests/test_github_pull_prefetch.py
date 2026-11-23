@@ -8,6 +8,7 @@ the governor, a reader's work, and preemption are each pinned without Git.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from collections import deque
 from collections.abc import Iterator
@@ -124,6 +125,17 @@ def _verdict(kind: str) -> RecordFreshness:
     return RecordFreshness("unverified", FETCHED, "fetch", False, False)
 
 
+class _Logged(logging.Handler):
+    """What the lane logged as a bug, which no test of the stand expects."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.ERROR)
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
+
+
 @pytest.fixture
 def stand(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -131,9 +143,13 @@ def stand(
     """A host, each number's verdict (absent: no record), and the catalog's publication.
 
     A publication is one scan's ``fetched_at``; ``host.pages`` is the checkpoint's revision,
-    which moves with each page a scan publishes.
+    which moves with each page a scan publishes. A test fails on anything the lane logs as
+    a bug: the lane goes on after one, so a stand that took its bug path still passed
+    (review A7 of #761, B4).
     """
 
+    logged = _Logged()
+    pull_prefetch.log.addHandler(logged)
     gh_budget.forget()
     host = _Host(tmp_path)
     verdicts: dict[int, str] = {}
@@ -161,8 +177,12 @@ def stand(
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
     host.clock = clock  # pyright: ignore[reportAttributeAccessIssue]
     host.pages = pages  # pyright: ignore[reportAttributeAccessIssue]
-    yield host, verdicts, revision
-    gh_budget.forget()
+    try:
+        yield host, verdicts, revision
+    finally:
+        gh_budget.forget()
+        pull_prefetch.log.removeHandler(logged)
+    assert logged.messages == []
 
 
 def _run(host: _Host, ask: PrefetchRequest) -> tuple[str, str | None, int]:
@@ -314,6 +334,9 @@ def test_what_the_walk_leaves_a_lane_is_what_its_caps_can_still_spend_while_it_h
     late = NOW + timedelta(seconds=ASKED_WITHIN_S)
     assert pull_prefetch.reserved(late) == RECORDS_PER_SCAN * POINTS_PER_RECORD
     assert pull_prefetch.reserved(late + timedelta(seconds=1)) == 0
+    # An ask dated after now, as a wall clock stepped back leaves one, keeps nothing either,
+    # so the reserve cannot outlast its window by the step (review B6 of #761).
+    assert pull_prefetch.reserved(NOW - timedelta(seconds=1)) == 0
     lane.asked_at = None
     lane.queue.append(Item("files", 4))
     assert pull_prefetch.reserved(NOW) == _PRICED
@@ -505,15 +528,23 @@ def test_a_lane_stopped_mid_item_keeps_back_only_what_an_idle_lane_does(
 
 
 def test_a_live_panel_asks_within_the_window_the_lane_keeps_its_scans_records_for() -> None:
-    """``ASKED_WITHIN_S`` covers the longest gap between a live panel's asks: a scan is due
-    ``FULL_REFRESH_S`` apart while the list probe vouches, a freshness window apart
-    otherwise, and the panel sees it at its next poll, ``SLOW_POLL_MS`` in pull-page.js."""
+    """``ASKED_WITHIN_S`` covers the longest gap between a live panel's asks, less the
+    difference between two scans' run times: a scan is due ``FULL_REFRESH_S`` after the
+    last started while the list probe vouches, a freshness window otherwise; the panel
+    starts it at its next ask, at most ``SLOW_POLL_MS`` later, and sees it end within
+    ``FAST_POLL_MS``, both in pull-page.js (review B5 of #761). The slack past that sum is
+    a judgment, which this does not pin."""
 
     page = Path(pull_prefetch.__file__).with_name("pull-page.js").read_text(encoding="utf-8")
-    stated = re.search(r"^export const SLOW_POLL_MS = (\d+);$", page, re.MULTILINE)
-    assert stated is not None
-    poll_s = int(stated.group(1)) / 1000
-    assert max(FULL_REFRESH_S, FRESHNESS_WINDOW_S) + poll_s <= ASKED_WITHIN_S
+
+    def stated_s(name: str) -> float:
+        stated = re.search(rf"^export const {name} = (\d+);$", page, re.MULTILINE)
+        assert stated is not None, name
+        return int(stated.group(1)) / 1000
+
+    started_within = stated_s("SLOW_POLL_MS")
+    seen_within = stated_s("FAST_POLL_MS")
+    assert max(FULL_REFRESH_S, FRESHNESS_WINDOW_S) + started_within + seen_within <= ASKED_WITHIN_S
 
 
 def test_only_the_walk_leaves_the_lane_its_reserve_and_only_its_batches_count_as_its() -> None:
@@ -924,6 +955,12 @@ def test_a_request_outside_its_shape_is_refused(body: dict[str, Any]) -> None:
 
 
 def test_nothing_named_starts_nothing(stand: tuple[_Host, dict[int, str], list[int]]) -> None:
+    """An ask that names nothing reads nothing, but it is a page looking at the list, so
+    the lane keeps its next scan's records from the cores walk: a quiet repository's asks
+    name nothing, and the reserve must outlast them (B4 of review B on #761)."""
+
     host, _verdicts, _revision = stand
     assert prefetch_request({}) == PrefetchRequest()
+    assert pull_prefetch.reserved(NOW) == 0
     assert _run(host, PrefetchRequest()) == ("not_due", None, 0)
+    assert pull_prefetch.reserved(NOW) == RECORDS_PER_SCAN * POINTS_PER_RECORD

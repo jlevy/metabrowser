@@ -406,6 +406,17 @@ guards and adds one:
   held from it whether or not a scan finds a record changed, so beside a quiet
   repository the walk spends the share less those records.
   That was chosen on review A1 of #761 over a walk budget of its own beside the share.
+  The other cost is the prefetch’s and the label set’s, beside a backfill longer than
+  the share has room for: the backfill reserves nothing, so until it is done they get
+  what it leaves of the share.
+  That is a catalog of more pages of `PAGE_SIZE` rows, a point each, than the share has
+  left. In review B’s model of #761, a model and not a measurement, the backfill outlasts
+  the first hour’s share from about 6,000 rows, costs the prefetch little to about
+  12,000, and from about 15,000 leaves it about two records in each whole hour it runs
+  after the first. Leaving an asked lane its scan’s records there too kept the prefetch
+  at `RECORDS_PER_HOUR`, but left a backfill of 20,000 rows unfinished after six hours,
+  so the backfill keeps its place (review B2 of #761). Neither the rows on screen nor
+  the open pull request’s page waits on the backfill.
   The label set’s read is refused only at the whole share, as the prefetch is, since a
   page’s chips wait on it.
   A files list the store gives is not refused at all, since it costs GitHub nothing; a

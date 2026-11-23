@@ -43,6 +43,10 @@ async function run() {
     fails = () => false,
     // Whether to hold an answer the server already gave until the request is aborted.
     holdAnswer = null,
+    // Every demand before this time is answered `held` with this failure, as a walk held
+    // for the share or the catalog's backfill is.
+    heldFailure = undefined,
+    heldUntil = 0,
   } = {}) {
     let now = 0,
       online = true,
@@ -118,6 +122,9 @@ async function run() {
               }
             }
             return { status: 200, body: { preparation: "released" } };
+          }
+          if (heldFailure !== undefined && now < heldUntil) {
+            return { status: 200, body: { preparation: "held", failure: heldFailure } };
           }
           if (heldCore?.owner === body.window.id && !heldCore.cancelled) {
             return { status: 202, body: { preparation: "joined" } };
@@ -1058,6 +1065,31 @@ async function run() {
   const staggeredFailures = [...failedBy.values()].map((times) => times.length);
   staggered.controller.dispose();
 
+  // A walk held for two minutes, as for the catalog's backfill, backs off to the slow poll
+  // whatever failure the answer names. A rate limit whose reset is still ahead is waited
+  // for, with one wake at the reset. One whose reset had passed was waited for too, a
+  // second at a time: 119 asks in the two minutes (review B1 of #761).
+  const heldBackoff = {};
+  for (const [label, failure] of [
+    ["none", null],
+    [
+      "lapsedRateLimit",
+      { outcome: "rate_limited", message: null, reset_at: new Date(-60000).toISOString() },
+    ],
+    ["staleNetworkError", { outcome: "network_error", message: null, reset_at: null }],
+    [
+      "rateLimitAhead",
+      { outcome: "rate_limited", message: null, reset_at: new Date(60000).toISOString() },
+    ],
+  ]) {
+    const held = rig({ heldFailure: failure, heldUntil: 120000 });
+    await held.start();
+    await held.until(() => held.now() >= 120000, 2000);
+    const asks = held.prepares.filter((p) => p.at < 120000).map((p) => p.at);
+    heldBackoff[label] = { asks: asks.length, gapsMs: asks.slice(1).map((at, i) => at - asks[i]) };
+    held.controller.dispose();
+  }
+
   return {
     catalogRows: rows.length,
     settledOwnershipReleases,
@@ -1080,6 +1112,7 @@ async function run() {
     giveUpMs,
     tornDown,
     staggeredFailures,
+    heldBackoff,
   };
 }
 run()

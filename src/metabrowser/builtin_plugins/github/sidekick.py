@@ -611,7 +611,11 @@ async def pull_cores_prepare_handler(request: Request) -> Response:
 
 
 async def _core_window_answer(request: Request, ask: CoreRequest) -> JSONResponse:
-    from metabrowser.builtin_plugins.github.pull_cores import cached_batch, request_preparation
+    from metabrowser.builtin_plugins.github.pull_cores import (
+        cached_batch,
+        failure_held,
+        request_preparation,
+    )
     from metabrowser.builtin_plugins.github.pull_route import pull_host, status_route
 
     await _resolve(request)
@@ -658,7 +662,13 @@ async def _core_window_answer(request: Request, ask: CoreRequest) -> JSONRespons
                         pulls.utc_now() + timedelta(seconds=FRESHNESS_WINDOW_S)
                     )
     elif preparation in {"failed", "held"}:
-        failure = host.pulls.core_failure
+        # A batch held for another reason, the share or the catalog's backfill, names the
+        # last failure only while it still holds the walk: a rate limit whose reset has
+        # passed told the panel to wait for that reset, so it asked again every second
+        # (review B1 of #761).
+        failure = (
+            host.pulls.core_failure if preparation == "failed" or failure_held(host.pulls) else None
+        )
         answer["failure"] = (
             {"outcome": failure.outcome, "message": failure.message, "reset_at": failure.reset_at}
             if failure is not None

@@ -141,17 +141,21 @@ FILES_PER_HOUR: Final = 20
 POINTS_PER_RECORD: Final = 6
 POINTS_PER_FILES_LIST: Final = 1
 # How long after a page's last ask its lane, idle, still keeps a scan's records from the
-# cores walk (:func:`reserved`). The Pulls panel asks after each scan it sees
-# (``prefetchAfterScan`` in pulls-panel.js), and while the list probe vouches for the
-# catalog a scan is due ``FULL_REFRESH_S`` apart, a freshness window apart otherwise
-# (``pull_list_route.scan_is_due``); the panel sees it at its next poll, ``SLOW_POLL_MS``
-# later. So a live panel asks at least every 90 + 30 = 120 s, and 30 s more leaves a scan's
-# own run and a timer made late. The walk asks again at most ``SLOW_POLL_MS`` after it is
-# held (``pauseCoreQueue``), so a window shorter than the gap between two asks gave the walk
-# the share in between: reserving only while the lane had work, a walk longer than one
-# hour's share held the prefetch to 2 records an hour at 5,000 rows in review A1's model of
-# #761. Over the process's ceiling a scan waits ``CEILING_FULL_READ_S``, but the ceiling
-# then refuses the walk as well. ``tests/test_github_pull_prefetch.py`` pins the sum.
+# cores walk (:func:`reserved`). The Pulls panel asks once for each scan it sees end
+# (``prefetchAfterScan`` in pulls-panel.js). A scan is due ``FULL_REFRESH_S`` after the
+# last one started while the list probe vouches for the catalog, and a freshness window
+# after it otherwise (``pull_list_route.scan_is_due``). The panel starts a due scan at its
+# next ask, the probe's or its poll's, at most ``SLOW_POLL_MS`` later, and polling fast
+# while it runs, sees it end within ``FAST_POLL_MS`` (both in pull-page.js). So a live
+# panel's asks are at most the longer interval plus those two apart, and the difference
+# between two scans' run times; the rest of the window is slack for that difference and a
+# timer made late, a judgment no test pins. The walk asks again at most ``SLOW_POLL_MS``
+# after it is held (``pauseCoreQueue``), so a window shorter than the gap between two asks
+# gave the walk the share in between: reserving only while the lane had work, a walk
+# longer than one hour's share held the prefetch to 2 records an hour at 5,000 rows in
+# review A1's model of #761. Over the process's ceiling a scan waits
+# ``CEILING_FULL_READ_S``, but the ceiling then refuses the walk as well.
+# ``tests/test_github_pull_prefetch.py`` pins the sum without the slack.
 ASKED_WITHIN_S: Final = 150.0
 MAX_RECENT: Final = 16
 # The numbers ``GET pull`` most recently answered, which ``changed`` adds.
@@ -319,7 +323,7 @@ def reserved(now: datetime) -> int:
             files = max(0, FILES_PER_HOUR - lane.used(lane.file_starts, now))
             total += records * POINTS_PER_RECORD + files * POINTS_PER_FILES_LIST
             total += price[lane.running.kind] if lane.running is not None else 0
-        elif lane.asked_at is not None and now - lane.asked_at <= asked:
+        elif lane.asked_at is not None and timedelta(0) <= now - lane.asked_at <= asked:
             total += min(RECORDS_PER_SCAN, records) * POINTS_PER_RECORD
     return total
 

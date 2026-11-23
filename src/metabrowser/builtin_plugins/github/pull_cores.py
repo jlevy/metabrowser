@@ -312,7 +312,10 @@ def _cached_previews(
     }
 
 
-def _failure_held(pulls_set: ServedPulls) -> bool:
+def failure_held(pulls_set: ServedPulls) -> bool:
+    """Whether the set's last core failure still holds its walk: a rate limit until its
+    reset, any other failure for :data:`~metabrowser.mirror_refresh.FRESHNESS_WINDOW_S`."""
+
     failure = pulls_set.core_failure
     if failure is None:
         return False
@@ -340,7 +343,7 @@ def _backfill_first(
     walk too, which asks the same with part of the share reserved, so it is not asked
     here. A backfill whose last refresh failed is due again only after its retry window,
     so unless its job is running it does not hold the walk: one that keeps failing holds
-    it no longer than the failure itself does (:func:`_failure_held`).
+    it no longer than the failure itself does (:func:`failure_held`).
     """
 
     if catalog is None or catalog.done["all"]:
@@ -623,7 +626,7 @@ async def request_preparation(
             )
         ):
             pulls_set.core_failure = failure
-    if _failure_held(pulls_set):
+    if failure_held(pulls_set):
         return (
             "failed"
             if current is not None and current.ask == ask and current.failure is not None
@@ -693,7 +696,7 @@ async def request_preparation(
             return "busy"
         # The background job may have failed during that check. Its window stays owned, so
         # its failure holds the source here as it would have before the check.
-        if _failure_held(pulls_set):
+        if failure_held(pulls_set):
             return "held"
         if catalog is None:
             return "not_owner"
@@ -716,7 +719,7 @@ async def request_preparation(
             return "busy"
         # The revoked job records no failure, but another request may have read one that
         # another process persisted while this one waited.
-        if _failure_held(pulls_set):
+        if failure_held(pulls_set):
             return "held"
         eligible = (catalog, admitted)
     elif current is not None:
