@@ -16,6 +16,7 @@ from metabrowser.diff.markdown_projection import (
     MARKDOWN_DIFF_MAX_BYTES,
     MarkdownDiffBlock,
     MarkdownDiffProjection,
+    prepare_markdown_diff,
     project_markdown_diff,
 )
 
@@ -180,19 +181,23 @@ def test_ambiguous_inline_runs_keep_whole_changed_blocks() -> None:
 
 
 @pytest.mark.parametrize(
-    "text",
+    ("text", "reason"),
     [
-        b"<script>alert('unsafe')</script>\n",
-        b"note[^n]\n\n[^n]: Note text\n",
+        (b"<script>alert('unsafe')</script>\n", "raw_html"),
+        (b"A line<br>broken.\n", "raw_html"),
+        (b"note[^n]\n\n[^n]: Note text\n", "footnotes"),
+        # KPress writes a task list's checkbox as raw HTML, and the inert render drops it.
+        (b"- [ ] Try the tasks\n- [x] Done\n", "task_list"),
     ],
 )
-def test_unverified_render_shapes_fall_back_without_partial_html(text: bytes) -> None:
+def test_unverified_render_shapes_fall_back_without_partial_html(text: bytes, reason: str) -> None:
     result = _project(None, text)
     assert result == {
         "version": "markdown-diff-v1",
         "status": "unsupported",
         "blocks": [],
         "source_only": False,
+        "reason": reason,
     }
 
 
@@ -204,6 +209,7 @@ def test_mismatched_patch_never_labels_a_different_snapshot() -> None:
     )
     assert result["status"] == "unsupported"
     assert result["blocks"] == []
+    assert "reason" not in result, "a refusal the page has no sentence for names no reason"
 
 
 class _Unexpected:
@@ -837,6 +843,61 @@ def test_the_node_budget_refuses_before_the_second_side_renders(
     result = _project(items, items + b"- more\n")
     assert result["status"] == "too_large"
     assert len(rendered) <= 1, "the second side rendered past the combined node budget"
+
+
+def _prepared(text: bytes, *, stoppable: bool) -> MarkdownDiffProjection:
+    return prepare_markdown_diff(
+        old=None, new=text, patch=_patch(None, text), namespace="n", stoppable=stoppable
+    ).projection
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param(b"A line of prose.\n\n" * 3_000, id="bytes"),
+        pytest.param(b"Some *emphasis* and a [link](a.md) here.\n\n" * 250, id="tokens"),
+        pytest.param(b"[a](b.md) " * 300 + b"\n", id="link openers"),
+        pytest.param(b"::: note\ntext\n:::\n\n" * 150, id="container lines"),
+    ],
+)
+def test_a_projection_a_deadline_stops_has_no_input_budget(text: bytes) -> None:
+    """The input budgets bound a projection nothing stops, one in a thread; the Markdown
+    child's is stopped at its deadline, so a pair of any size projects there (mb-rm40)."""
+
+    refused = _prepared(text, stoppable=False)
+    assert refused["status"] == "too_large"
+    assert "reason" not in refused, "a budget's refusal names no cause: the child is asked"
+    assert _prepared(text, stoppable=True)["status"] == "ready"
+
+
+def test_the_node_budget_does_not_refuse_a_stoppable_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from metabrowser.diff import markdown_projection
+
+    monkeypatch.setattr(markdown_projection, "_MAX_TOKENS", 10**6)
+    items = b"".join(b"- item *%d*\n" % i for i in range(460))
+    old, new = items, items + b"- more\n"
+    patch = _patch(old, new)
+    bounded = prepare_markdown_diff(old=old, new=new, patch=patch, namespace="n")
+    assert bounded.projection["status"] == "too_large"
+    stoppable = prepare_markdown_diff(
+        old=old, new=new, patch=patch, namespace="n", stoppable=True
+    ).projection
+    assert stoppable["status"] == "ready"
+    assert any(
+        "<ins>" in block["html"] or block["kind"] == "added" for block in stoppable["blocks"]
+    )
+
+
+def test_nesting_is_refused_whether_or_not_a_deadline_stops_the_projection() -> None:
+    """Past the nesting limit MarkdownIt drops the rest of a block, which no deadline
+    restores, so the limit holds in the child too, and the refusal says so."""
+
+    nested = (b"1. " * 40)[:-1] + b"\n"
+    for stoppable in (False, True):
+        refused = _prepared(nested, stoppable=stoppable)
+        assert (refused["status"], refused.get("reason")) == ("too_large", "nesting")
 
 
 def test_the_route_refuses_html_past_its_cap() -> None:

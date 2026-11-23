@@ -1282,8 +1282,11 @@ Build a chip group with `metabrowser.filterControls.groupHtml` and `bind`, inclu
 outside a filter bar: an exclusive choice is the same control whatever it chooses.
 A consumer may repaint the group from its state on every change, and `bind` puts focus
 back on the chosen chip, so the arrow keys keep working.
-Show a Rendered | Source chooser only for a file with both formats available.
-A file that falls back permanently to Source has no format chooser.
+Every changed file of a rendered format has a Rendered | Source chooser, whatever its
+size and whatever the server answers.
+Where only Source can be shown, Rendered keeps its place, dimmed and `aria-disabled`,
+and its tooltip and accessible name say why: a disabled button takes no pointer and no
+focus, so nothing could say it.
 
 `test_a_toggle_cannot_fork_the_family` fails when a stylesheet or a source states a
 toggle’s ARIA outside this family, and

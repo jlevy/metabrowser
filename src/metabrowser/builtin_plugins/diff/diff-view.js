@@ -192,6 +192,9 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   unsupported: "This change cannot be shown as a text diff.",
 });
 
+// What a file whose availability the table does not name says.
+const UNAVAILABLE_COPY = "These changes are unavailable.";
+
 // A single file's answer owes the file or a reason. `deferred` there is neither, so it is
 // said as what it is and not as a failure of this page; in a document with no source to
 // ask, a deferred file is simply unavailable, which the table above's fallback says.
@@ -2940,6 +2943,7 @@ function renderFileSection(change, patch, context, view, draw) {
   // synthesized click bubbles here. Only the copy control, a file's
   // Rendered | Source chooser, and the View file controls opt out.
   const format = view.markdown?.format(change) ?? null;
+  const availability = String(change.availability);
   const markdown =
     format === null
       ? null
@@ -2947,10 +2951,14 @@ function renderFileSection(change, patch, context, view, draw) {
           section,
           bar,
           end,
-          toggle,
           source: body,
           id: String(change.id),
           format,
+          // A file whose changes did not load has no Rendered either, for the reason its
+          // body gives below.
+          ...(availability === "ready" || availability === "deferred"
+            ? {}
+            : { unavailable: AVAILABILITY_COPY[availability] || UNAVAILABLE_COPY }),
         });
   let expanded = true;
   /** @param {boolean} next */
@@ -2982,13 +2990,12 @@ function renderFileSection(change, patch, context, view, draw) {
     }
   });
 
-  const availability = String(change.availability);
   if (availability === "deferred" && context.revision) {
     queueDeferredHydration(section, body, change, context.revision, view);
     return section;
   }
   if (availability !== "ready" || patch === undefined) {
-    const copy = AVAILABILITY_COPY[availability] || "These changes are unavailable.";
+    const copy = AVAILABILITY_COPY[availability] || UNAVAILABLE_COPY;
     body.append(el("div", "diff-availability", copy));
     return section;
   }

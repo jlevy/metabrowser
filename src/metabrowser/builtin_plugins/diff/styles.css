@@ -627,14 +627,7 @@
   visibility: hidden;
 }
 
-.metabrowser-diff-host
-  :is(
-    .diff-markdown-control,
-    .diff-markdown-progress,
-    .diff-markdown,
-    .diff-structured,
-    .diff-file-body
-  )[hidden] {
+.metabrowser-diff-host :is(.diff-markdown, .diff-structured, .diff-file-body)[hidden] {
   display: none;
 }
 

@@ -125,9 +125,12 @@ class Element {
       return;
     }
     // Stand in for parsing the shared chip family's groupHtml output.
-    this.children = spec.options.map(({ value }) => {
+    this.children = spec.options.map(({ value, tip }) => {
       const chip = make("button");
       chip.dataset.chipValue = value;
+      if (tip !== undefined) {
+        chip.dataset.tipText = tip;
+      }
       chip.setAttribute("aria-checked", String(spec.value === value));
       chip.addEventListener("click", () => sharedChange(spec.key, value, spec.select));
       return chip;
@@ -212,6 +215,7 @@ async function main() {
     createMarkdownViews,
     firstScreenRendered,
     markdownTargets,
+    refusalReason,
     renderedFormat,
     supportsRenderedChange,
   } = await import(pathToFileURL(path.join(plugin, "diff-markdown.js")));
@@ -259,8 +263,12 @@ async function main() {
     null,
     "a file that became a symlink",
   );
+  // The format alone decides the chooser, so a file whose changes did not load has one
+  // too (mb-rm40); no projection is asked for it.
   for (const availability of ["binary", "too_large", "unavailable", undefined]) {
-    assert.equal(renderedFormat({ availability, new: side("a.json") }), null, `${availability}`);
+    const change = { availability, new: side("a.json") };
+    assert.equal(renderedFormat(change), "json", `${availability}`);
+    assert.equal(supportsRenderedChange(change), false, `${availability}`);
   }
   const md = { entry_type: "file", path: "docs/readme.MD" };
   assert.equal(supportsRenderedChange({ availability: "ready", old: null, new: md }), true);
@@ -272,6 +280,42 @@ async function main() {
   assert.equal(
     supportsRenderedChange({ availability: "ready", new: { ...md, entry_type: "symlink" } }),
     false,
+  );
+
+  // Why the server refused, as the sentence the Rendered chip says: the reason it names,
+  // its status where it names none or one this page does not know, and the format's own
+  // sentence for a file it could not read as its format.
+  const refused = (status, reason) => ({ status, ...(reason === undefined ? {} : { reason }) });
+  assert.equal(
+    refusalReason(refused("unsupported", "task_list"), "markdown"),
+    "Rendered cannot show a file with a task list.",
+  );
+  assert.equal(
+    refusalReason(refused("unsupported", "no_changes"), "yaml"),
+    "This file's content did not change.",
+  );
+  assert.equal(
+    refusalReason(refused("too_large", "deadline"), "markdown"),
+    "Rendering this file took too long, so it was stopped. Reload to try again.",
+  );
+  assert.equal(
+    refusalReason(refused("too_large"), "json"),
+    "This file is too large to show rendered.",
+  );
+  assert.equal(
+    refusalReason(refused("too_large", "a reason of a later server"), "markdown"),
+    "This file is too large to show rendered.",
+  );
+  assert.equal(
+    refusalReason(refused("unsupported"), "markdown"),
+    "Rendered cannot match this file's changes to its Markdown.",
+  );
+  assert.match(refusalReason(refused("unsupported"), "yaml"), /^Rendered cannot show YAML /);
+  assert.match(refusalReason(null, "json"), /^Rendered cannot show JSON /);
+  assert.equal(
+    refusalReason(refused("unsupported", "toString"), "markdown"),
+    "Rendered cannot match this file's changes to its Markdown.",
+    "a reason is looked up among the sentences, not on the table's prototype",
   );
 
   // An image opens on the comparison's own image route, which the server names, completed
@@ -428,7 +472,7 @@ async function main() {
     const viewFile = make("a");
     end.append(viewFile);
     bar.append(...(lead ? [make("span"), toggle, end] : [toggle, end]));
-    const state = view.add({ section, bar, end, toggle, source, id, format: "markdown" });
+    const state = view.add({ section, bar, end, source, id, format: "markdown" });
     assert.equal(section.children.length, 3, "Rendered is all that goes beside Source");
     const [, rendered] = section.children;
     assert.equal(bar.children.at(-1), end, "the chooser adds nothing to the bar itself");
@@ -560,21 +604,32 @@ async function main() {
     ["a", "b", "b", "c"],
   );
   c.renderedChoice.focus();
-  calls[3].resolve({ status: "too_large" });
+  calls[3].resolve({ version: "markdown-diff-v1", status: "too_large", blocks: [] });
   await new Promise(setImmediate);
   assert.equal(c.sourceChoice.attributes.get("aria-checked"), "true");
-  assert.equal(c.renderedChoice.disabled, true);
-  assert.equal(c.control.hidden, true, "a source-only file has no format chooser");
-  assert.equal(c.progress.hidden, true, "nor a progress mark");
+  assert.equal(c.control.hidden, false, "a file that can only show Source keeps its chooser");
+  assert.equal(c.progress.hidden, false, "and its progress mark's place");
+  assert.ok(c.bar.classList.contains("diff-file-bar-markdown"), "and its bar's layout");
+  const why = "This file is too large to show rendered.";
+  assert.equal(c.renderedChoice.attributes.get("aria-disabled"), "true");
+  assert.equal(c.renderedChoice.disabled, undefined, "it takes the pointer, so it can say why");
+  assert.equal(c.renderedChoice.dataset.tipText, why, "as its tooltip");
   assert.equal(
-    c.bar.classList.contains("diff-file-bar-markdown"),
-    false,
-    "its bar lays out as any other file's",
+    c.renderedChoice.attributes.get("aria-label"),
+    `Rendered, unavailable. ${why}`,
+    "and in its accessible name",
   );
-  assert.equal(document.activeElement, c.toggle, "a removed chooser returns focus to the file");
+  assert.equal(c.sourceChoice.dataset.tipText, undefined);
+  assert.equal(c.sourceChoice.attributes.get("aria-disabled"), undefined);
+  assert.equal(document.activeElement, c.sourceChoice, "focus follows the format shown");
   assert.equal(c.source.hidden, false, "it shows Source");
   assert.equal(c.rendered.hidden, true);
-  assert.equal(c.section.children.length, 3, "and adds nothing to say so");
+  assert.equal(c.section.children.length, 3, "and adds nothing beside Source to say so");
+  await c.renderedChoice.click();
+  await new Promise(setImmediate);
+  assert.equal(calls.length, 4, "choosing an unavailable Rendered asks for nothing");
+  assert.equal(c.sourceChoice.attributes.get("aria-checked"), "true", "and changes nothing");
+  assert.equal(c.source.hidden, false);
 
   await a.renderedChoice.click();
   assert.equal(calls.length, 4, "the answer that arrived after Source was chosen is reused");
@@ -601,7 +656,12 @@ async function main() {
   assert.equal(warned.length, 1, "a failed render is logged to the console");
   assert.equal(warned[0][1].message, "Server is broken");
   assert.equal(d.sourceChoice.attributes.get("aria-checked"), "true");
-  assert.equal(d.renderedChoice.disabled, false, "a transport error allows another attempt");
+  assert.equal(
+    d.renderedChoice.attributes.get("aria-disabled"),
+    undefined,
+    "a transport error allows another attempt",
+  );
+  assert.equal(d.renderedChoice.dataset.tipText, undefined);
   assert.equal(d.control.hidden, false, "a retryable failure keeps the chooser");
   assert.equal(d.progress.hidden, false);
   assert.ok(d.bar.classList.contains("diff-file-bar-markdown"));
@@ -618,6 +678,55 @@ async function main() {
   calls[5].resolve(ready);
   await new Promise(setImmediate);
   assert.equal(d.rendered.hidden, true);
+
+  // A file whose changes the page holds no patch of has the chooser too: it shows Source,
+  // which says why, from the start, its Rendered is unavailable for the same reason, and
+  // no projection is ever asked for it.
+  const asked = [];
+  const root4 = make("div");
+  const view4 = createMarkdownViews({
+    controls: { groupHtml: (spec) => spec, bind: () => () => {} },
+    load: (id) => new Promise(() => asked.push(id)),
+    ensureInert: async () => inert,
+    async loadStyles() {},
+    mutate: (change) => change(),
+    now: time.now,
+    later: time.later,
+    cancel: time.cancel,
+  });
+  const section4 = make("section");
+  root4.append(section4);
+  const bar4 = make("div");
+  const source4 = make("div");
+  source4.id = "h";
+  const toggle4 = make("button");
+  const end4 = make("div");
+  bar4.append(toggle4, end4);
+  section4.append(bar4, source4);
+  view4.add({
+    section: section4,
+    bar: bar4,
+    end: end4,
+    source: source4,
+    id: "h",
+    format: "yaml",
+    unavailable: "This change is too large to show inline.",
+  });
+  const [, control4] = end4.children;
+  assert.equal(source4.hidden, false, "it shows Source at once, with no wait for Rendered");
+  assert.equal(control4.children[1].attributes.get("aria-checked"), "true");
+  assert.equal(control4.children[0].attributes.get("aria-disabled"), "true");
+  assert.equal(control4.children[0].dataset.tipText, "This change is too large to show inline.");
+  let settled4 = false;
+  void view4.firstScreen.then(() => {
+    settled4 = true;
+  });
+  view4.observe(root4, null);
+  observer.notify([{ target: section4, isIntersecting: true }]);
+  await new Promise(setImmediate);
+  assert.deepEqual(asked, [], "no projection is asked for it");
+  assert.equal(settled4, true, "and the first screen does not wait for it");
+  view4.dispose();
 
   // A sanitizer that loaded nothing, or whose load failed, is loaded again when Rendered
   // is chosen again. Each failure is logged, not shown.
@@ -723,7 +832,7 @@ async function main() {
       const toggle = make("button");
       const end = make("div");
       bar.append(toggle, end);
-      view3.add({ section, bar, end, toggle, source, id, format: "markdown" });
+      view3.add({ section, bar, end, source, id, format: "markdown" });
       return section;
     });
     let settled = false;
