@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import difflib
 import random
+import re
 import time
 from collections.abc import Callable, Sequence
 from html import escape
@@ -942,6 +943,110 @@ def test_an_html_edit_the_render_does_not_show_is_flagged(before: bytes, after: 
     assert result["source_only"] is True
     assert {block["kind"] for block in result["blocks"]} == {"context"}
     assert [block["source_only"] for block in result["blocks"]].count(True) == 1
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        pytest.param(
+            b"Visible old <%s>secret one</%s> end.\n" % (tag, tag),
+            b"Visible new <%s>secret two</%s> end.\n" % (tag, tag),
+            id=f"text inside an inline {tag.decode()}",
+        )
+        for tag in (b"svg", b"title", b"script", b"style")
+    ]
+    + [
+        pytest.param(
+            b"<details><summary>S</summary>\n\nold body\n\n</details>\n",
+            b"<details open><summary>S</summary>\n\nnew body\n\n</details>\n",
+            id="details made open, which KPress's sanitizer drops",
+        ),
+    ],
+)
+def test_a_hidden_edit_beside_a_visible_one_is_flagged(old: bytes, new: bytes) -> None:
+    """The text between two inline tags is the content of the element they write, so an
+    element the render drops with its content hides it as a block's `html_block` would,
+    and an attribute KPress's sanitizer drops before the allowlist reads it is shown
+    nowhere either. The visible edit beside each is marked as usual."""
+
+    result = _project(old, new)
+    assert result["status"] == "ready"
+    changed = _changed(result)
+    assert [block["kind"] for block in changed] == ["removed", "added"]
+    assert all(block["source_only"] for block in changed)
+    assert result["source_only"] is True
+
+
+def test_what_kpress_drops_first_is_what_the_projection_says_it_drops() -> None:
+    """KPress's sanitizer runs before the allowlist, and what it drops of what the allowlist
+    would keep the render shows nowhere (`_SANITIZER_DROPPED_TAGS` and
+    `_SANITIZER_DROPPED_ATTRIBUTES`). A KPress release that changes its policy fails here."""
+
+    from kpress.format.sanitize import sanitize_raw_html
+
+    from metabrowser.inert_html import ALLOWED_ATTRIBUTES, ALLOWED_TAGS
+
+    values = {
+        "href": "https://example.org/",
+        "src": "https://example.org/a.png",
+        "target": "_blank",
+        "rel": "noopener",
+        "class": "x",
+        "loading": "lazy",
+        "referrerpolicy": "no-referrer",
+        "start": "3",
+        "lang": "mermaid",
+        "data-tip-text": "t",
+        "open": "",
+        "id": "x",
+        "alt": "a",
+    }
+
+    def placed(tag: str, attributes: str = "") -> str:
+        element = f"<{tag}{attributes}>x</{tag}>"
+        if tag in {"td", "th"}:
+            return f"<table><tbody><tr>{element}</tr></tbody></table>"
+        if tag in {"tr", "thead", "tbody", "tfoot"}:
+            row = "<tr><td>x</td></tr>"
+            if tag == "tr":
+                return f"<table><tbody><tr{attributes}><td>x</td></tr></tbody></table>"
+            return f"<table><{tag}{attributes}>{row}</{tag}></table>"
+        if tag == "li":
+            return f"<ul>{element}</ul>"
+        if tag in {"dt", "dd"}:
+            return f"<dl>{element}</dl>"
+        return element
+
+    tags = {
+        tag
+        for tag in ALLOWED_TAGS | {"img"}
+        if f"<{tag}" not in sanitize_raw_html(placed(tag), "sanitized")[0]
+    }
+    # An element the sanitizer drops takes its attributes with it.
+    attributes = {
+        (tag, name)
+        for tag, names in ALLOWED_ATTRIBUTES.items()
+        if tag not in tags
+        for name in names
+        if not re.search(
+            rf" {name}[=>]",
+            sanitize_raw_html(placed(tag, f' {name}="{values.get(name, "1")}"'), "sanitized")[0],
+        )
+    }
+    assert tags == markdown_projection._SANITIZER_DROPPED_TAGS  # pyright: ignore[reportPrivateUsage]
+    assert attributes == markdown_projection._SANITIZER_DROPPED_ATTRIBUTES  # pyright: ignore[reportPrivateUsage]
+
+
+def test_only_raw_html_as_short_as_a_tag_is_cached() -> None:
+    """A whole `html_block` is read where it stands, so the cache never keeps one."""
+
+    reader = markdown_projection._raw_markup_once  # pyright: ignore[reportPrivateUsage]
+    reader.cache_clear()
+    long_block = b"<div>\n" + b"<p>raw</p>\n" * 2_000 + b"</div>\n"
+    assert _project(None, long_block)["status"] == "ready"
+    assert reader.cache_info().currsize == 0
+    _project(None, b"A line<br>break.\n")
+    assert reader.cache_info().currsize == 1
 
 
 @pytest.mark.parametrize(

@@ -608,6 +608,18 @@ _HTML_VOID = frozenset(
 # alignment is: every other attribute it keeps, a destination or an alt text, is shown
 # nowhere or only on hover, as a Markdown link's is.
 _RAW_DESTINATIONS = frozenset({"href", "src", "alt"})
+# What KPress's sanitizer drops before the allowlist reads it, though the allowlist would
+# keep it: an element whose content stays, and attributes. The render shows neither; the
+# hardener writes an image's referrer policy itself. Asked of the sanitizer by
+# test_what_kpress_drops_first_is_what_the_projection_says_it_drops.
+_SANITIZER_DROPPED_TAGS = frozenset({"tfoot"})
+_SANITIZER_DROPPED_ATTRIBUTES = frozenset(
+    {("details", "open"), ("img", "referrerpolicy"), ("pre", "lang")}
+)
+# Raw HTML at most this long is read once for each spelling (_raw_markup): a tag such as
+# `<br>` or `</kbd>` is a few dozen characters, and longer content, a whole `html_block`,
+# is read where it stands, so the cache's 1,024 entries hold at most about 256 KiB.
+_CACHED_RAW_CHARS = 256
 
 
 class _RawMarkup(HTMLParser):
@@ -621,12 +633,13 @@ class _RawMarkup(HTMLParser):
     through the render itself, so they are not part of the signature.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, dropped: int = 0) -> None:
         super().__init__(convert_charrefs=True)
         self.entries: list[tuple[str, ...]] = []
         self.concealed = self.alt = False
-        # Depth inside an element dropped with its content.
-        self.dropped = 0
+        # Depth inside an element dropped with its content, which raw HTML before this
+        # may have opened.
+        self.dropped = dropped
 
     def _hide(self, *entry: str) -> None:
         self.entries.append(entry)
@@ -639,7 +652,7 @@ class _RawMarkup(HTMLParser):
                 self.dropped += 1
             self._hide("dropped", tag, *written)
             return
-        if tag not in ALLOWED_TAGS and tag != "img":
+        if (tag not in ALLOWED_TAGS and tag != "img") or tag in _SANITIZER_DROPPED_TAGS:
             # The element goes and its content stays: its name changes nothing the page
             # draws, and its attributes are shown nowhere.
             self.entries.append(("element", tag))
@@ -647,7 +660,11 @@ class _RawMarkup(HTMLParser):
                 self._hide(tag, *written)
             return
         values = dict(attrs)
-        kept = {name for name, _ in allowed_attributes(tag, values, None)}
+        kept = {
+            name
+            for name, _ in allowed_attributes(tag, values, None)
+            if (tag, name) not in _SANITIZER_DROPPED_ATTRIBUTES
+        }
         shown = [f"{name}={value or ''}" for name, value in attrs if name in _RAW_DESTINATIONS]
         if shown:
             self.entries.append((tag, *shown))
@@ -682,20 +699,32 @@ class _RawMarkup(HTMLParser):
         self._hide("declaration", data)
 
 
-@lru_cache(maxsize=1024)
-def _raw_markup(content: str) -> tuple[tuple[tuple[str, ...], ...], bool, bool]:
-    """Raw HTML's hidden entries, whether it conceals anything, and whether it holds alt
-    text under an image. Inline HTML repeats a handful of tags, such as `<br>`, so each is
-    read once."""
+type _RawRead = tuple[tuple[tuple[str, ...], ...], bool, bool, int]
 
-    parser = _RawMarkup()
+
+def _raw_markup(content: str, dropped: int) -> _RawRead:
+    """Raw HTML's hidden entries, whether it conceals anything, whether it holds alt text
+    under an image, and the depth inside dropped elements after it, read from *dropped*.
+    Inline HTML repeats a handful of tags, such as `<br>`, so each short one is read once
+    (_CACHED_RAW_CHARS)."""
+
+    if len(content) <= _CACHED_RAW_CHARS:
+        return _raw_markup_once(content, dropped)
+    return _read_raw_markup(content, dropped)
+
+
+def _read_raw_markup(content: str, dropped: int) -> _RawRead:
+    parser = _RawMarkup(dropped)
     parser.feed(content)
     if parser.rawdata.startswith("<"):
         # A tag the content does not finish, which a browser drops with what it holds, and
         # which in the document reads on into what follows.
         parser._hide("unfinished", parser.rawdata)  # pyright: ignore[reportPrivateUsage]
     parser.close()
-    return tuple(parser.entries), parser.concealed, parser.alt
+    return tuple(parser.entries), parser.concealed, parser.alt, parser.dropped
+
+
+_raw_markup_once = lru_cache(maxsize=1024)(_read_raw_markup)
 
 
 def _hidden(tokens: Sequence[Token]) -> _Hidden:
@@ -708,15 +737,21 @@ def _hidden(tokens: Sequence[Token]) -> _Hidden:
     found: list[tuple[str, ...]] = []
     links: list[tuple[str, str]] = []
     concealed = alt = False
+    # Depth inside an element raw HTML opened that the render drops with its content: the
+    # text between two inline tags, `<svg>` and `</svg>`, is its content too.
+    dropped = 0
     for token in tokens:
         # The label of each link being read, as its text arrives.
         open_links: list[tuple[str, list[str]]] = []
         for member in (token, *(token.children or ())):
             if member.type in {"html_block", "html_inline"}:
-                entries, conceals, holds_alt = _raw_markup(member.content)
+                entries, conceals, holds_alt, dropped = _raw_markup(member.content, dropped)
                 found.extend(entries)
                 concealed |= conceals
                 alt |= holds_alt
+            elif dropped and not member.children and member.content.strip():
+                found.append(("dropped", member.content))
+                concealed = True
             attrs = {
                 name: str(value)
                 for name, value in (member.attrs or {}).items()
