@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Any, cast
 
 from kpress.runtime import get_static_asset
 
 from metabrowser import server as proc_browser
 from metabrowser.settings import DOC_MAX_CHARS_DEFAULT, client_settings_dict
+from tests.shell_request import shell_request
 
 KPRESS_DOC_MIN_WIDTH_QUERY_RE = re.compile(r"@container kpress-doc \(min-width: [\d.]+rem\) \{")
 
@@ -27,13 +27,7 @@ def _read_icons_js() -> str:
 
 
 def _render_index_html() -> str:
-    class _FakeReq:
-        def __init__(self) -> None:
-            self.query_params: dict[str, str] = {}
-            self.headers: dict[str, str] = {}
-            self.cookies: dict[str, str] = {}
-
-    resp = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
+    resp = asyncio.run(proc_browser.index(shell_request()))
     return resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else str(resp.body)
 
 

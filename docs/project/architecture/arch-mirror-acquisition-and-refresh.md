@@ -208,11 +208,13 @@ What happens when a reader names a checkout:
 | The store already borrows from another checkout that can still lend | Keeps that lender and says so |
 | The route is under `/api/cache/` | Says the flag is not applied to a cache route and answers it |
 
-Beside a served folder, the GitHub plugin acquires an overlay for a pull request’s
-comparison with the folder’s checkout as the lender, never falling back to a full clone
-(`allow_clone_fallback=False` in `builtin_plugins/github/checkout.py`). A served
-subdirectory resolves to its enclosing checkout first, and the lender’s path stays in
-private cache metadata.
+Beside a served folder, core acquires an overlay with the folder’s checkout as the
+lender, never falling back to a full clone (`acquire_checkout_store` in
+`checkout_store.py`). A folder’s server makes it to list its origin’s branches and tags
+([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)),
+and the GitHub plugin asks core for the same store for a pull request’s comparison.
+A served subdirectory resolves to its enclosing checkout first, and the lender’s path
+stays in private cache metadata.
 [GitHub Pull Requests](arch-github-pull-requests.md#beside-a-checkout) covers when it
 runs.
 
@@ -288,7 +290,11 @@ GitHub rate limit, so what limits it is process time and network.
 Three cadences follow, each constant beside its measurement in `mirror_refresh.py`: a
 visible page on a branch has that branch probed every `STORE_PROBE_S`, a visible page
 has the whole mirror fetched once it is older than `FRESHNESS_WINDOW_S`, and a server no
-page is looking at fetches every `STORE_IDLE_REFRESH_S`.
+page is looking at fetches every `STORE_IDLE_REFRESH_S`. The same three hold for the
+store a repository folder keeps of its checkout’s origin
+([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)):
+`StoreSession` is the store’s half of the session, which reads no served subject, and
+`MirrorSession` adds the pin.
 
 - **The coordinator:** `RefreshCoordinator`, on the application state, keeps one job per
   key, a store key or a store key and a pull-request number, so concurrent requests join
@@ -380,17 +386,20 @@ startup starts no repair fetch.
 ### Following a Branch
 
 A mirror is browsed as github.com is: as of the data last fetched.
-A reader who opened a branch or a tag reads that ref, not one commit of it, so the
-served pin follows the ref when a fetch moves it, by a push or a force-push.
+A reader who opened a branch, a tag, or a pull request reads that ref, not one commit of
+it, so the served pin follows the ref when a fetch moves it, by a push or a force-push.
 The owner set this on 2026-11-19, replacing the earlier rule that a refresh never moved
-the served commit and offered the new one behind a **Switch** button (bead `mb-pq8y`).
+the served commit and offered the new one behind a **Switch** button (bead `mb-pq8y`),
+and on 2026-11-22 for a pull request’s head (bead `mb-6a6w`).
 
-- **Which pins follow:** one served under the origin’s branch or a tag (`follows_moves`
-  in `mirror_refresh.py`), which status reports as `follows`. A commit opened by its ID
-  is served under no ref, or under one only while it is that ref’s tip, as View file’s
-  way back is, and then follows it as the selector names it.
-  A pull request’s head does not follow yet, which waits on bead `mb-qp3s`, so its new
-  head is still offered.
+- **Which pins follow:** one served under the origin’s branch, a tag, or a pull
+  request’s head, `refs/pull/<n>/head` (`follows_moves` in `mirror_refresh.py`), which
+  status reports as `follows`. A commit opened by its ID is served under no ref, or
+  under one only while it is that ref’s tip, as View file’s way back is, and then
+  follows it as the selector names it.
+  A pull request’s head moves in the mirror when that pull request’s refresh fetches it,
+  so the job that refreshes a pull request observes the mirror when it ends, as a fetch
+  of the mirror does.
 - **The server follows:** `MirrorSession.observe`, which runs after every refresh job
   and after following another process’s, opens the ref’s new tip under the pin lock and
   serves it under a new generation.
@@ -404,8 +413,11 @@ the served commit and offered the new one behind a **Switch** button (bead `mb-p
   nothing once the server has followed and serves the tip when it could not yet, and the
   answer’s `view_href` says where the page lands: the same file or folder when the new
   commit has it, where the page reloads in place and keeps its line and scroll, or the
-  root. A refused follow says why and offers a reload, and is not asked again until the
-  reader’s refresh.
+  root. A pull request’s page reloads where it is; its Changes then shows the new head’s
+  diff, says which head it showed before, and holds the reader’s place in its file
+  ([Changes Follows the Head](arch-github-pull-requests.md#changes-follows-the-head)). A
+  refused follow says why and offers a reload, and is not asked again until the reader’s
+  refresh.
 - **A switch made in another tab** to another ref still only offers a reload: the reader
   did not ask for that ref.
 

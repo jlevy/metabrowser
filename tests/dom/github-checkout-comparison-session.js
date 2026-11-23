@@ -180,7 +180,6 @@ async function run() {
     await run.controller.poll();
     assert.equal(run.model.canRetryComparison, false);
     assert.equal(run.model.browse, null, "an unpinned folder offers no Browse code");
-    assert.equal(run.model.headOffer, null, "nor a switch to the head");
     assert.equal(run.model.comparison.route, recorded.ready.body.comparison_route);
     snapshot(run, "the finished comparison stays beside the folder");
     run.controller.dispose();

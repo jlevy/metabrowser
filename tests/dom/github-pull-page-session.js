@@ -15,7 +15,7 @@
 // Timers, the clock, visibility, and paint are injected; the browser glue's
 // IntersectionObserver is played by asking for parts in reading order. Each step prints
 // the requests the page made, the timer it left, how many times it painted, what it
-// would paint, whether it reloaded, and which parts it rendered as Markdown.
+// would paint, and which parts it rendered as Markdown.
 //
 // `place` is the reader's place in the pane through history, from createScrollKeeper, on a
 // stage standing for the pane: see placeStory.
@@ -95,7 +95,6 @@ function summarizeState(model) {
     ...(model.revalidating ? { revalidating: true } : {}),
     failure: model.failure,
     browse: browseCode(model),
-    headOffer: model.headOffer === null ? null : model.headOffer.ref,
   };
 }
 
@@ -153,15 +152,10 @@ function summarize(model) {
           },
     notes: model.notes,
     browse: browseCode(model),
-    // The offer's two commits as its sentence names them, each a short commit ID.
-    headOffer:
-      model.headOffer === null
-        ? null
-        : `code ${window.metabrowser.shortCommit(model.headOffer.pin)}, head ${window.metabrowser.shortCommit(model.headOffer.head)} [Switch to the head] -> ${model.headOffer.ref}`,
     comparison:
       model.comparison === null
         ? null
-        : `${model.comparison.left.slice(0, 12)}...${model.comparison.right.slice(0, 12)}${model.comparison.headMoved ? " (head moved)" : ""}`,
+        : `${model.comparison.left.slice(0, 12)}...${model.comparison.right.slice(0, 12)}`,
   };
 }
 
@@ -268,7 +262,6 @@ function createPage(runtime, options) {
   // The model last painted, in any step, for an invariant the brief summary leaves out.
   let lastModel = null;
   let rendered = [];
-  let reloads = 0;
   let navigations = [];
   // What the conversation last painted, to run the page's own paint decision on each paint.
   let conversation = { key: "", textRevision: null };
@@ -326,9 +319,6 @@ function createPage(runtime, options) {
     renderMarkdown(part, body) {
       rendered.push({ part, html: body.html });
     },
-    reload() {
-      reloads += 1;
-    },
     navigate(href) {
       navigations.push(href);
     },
@@ -367,7 +357,6 @@ function createPage(runtime, options) {
       log.length = 0;
       paints = [];
       rendered = [];
-      reloads = 0;
       navigations = [];
       await action();
       await settle();
@@ -392,9 +381,6 @@ function createPage(runtime, options) {
       } else if (ask !== undefined && ask.delayMs > 0) {
         // A current record's next probe ask, every `probe_every_s` while the page is visible.
         entry.probeAskMs = ask.delayMs;
-      }
-      if (reloads > 0) {
-        entry.reloads = reloads;
       }
       if (navigations.length > 0) {
         entry.navigated = navigations;
@@ -583,7 +569,16 @@ function hunkCases() {
 function placeStory(runtime) {
   const timers = new Map();
   let nextTimer = 1;
-  const stage = { heights: [], scrollTop: 0, entry: null, anchored: false, writes: 0 };
+  // `files` names each block's changed file, as Changes' blocks have one; null on a page of
+  // cards, whose places name none.
+  const stage = {
+    heights: [],
+    files: null,
+    scrollTop: 0,
+    entry: null,
+    anchored: false,
+    writes: 0,
+  };
   const tops = () => {
     let next = 120;
     return stage.heights.map((height) => {
@@ -599,9 +594,13 @@ function placeStory(runtime) {
         stage.entry = place;
         stage.writes += 1;
       },
-      measure: () => runtime.placeAt(tops(), stage.scrollTop),
+      measure() {
+        const at = runtime.placeAt(tops(), stage.scrollTop);
+        return stage.files === null || at.block < 0 ? at : { ...at, file: stage.files[at.block] };
+      },
       apply(place) {
-        const top = runtime.scrollTopOf(place, tops());
+        const fileBlock = stage.files === null ? -1 : stage.files.indexOf(place.file);
+        const top = runtime.scrollTopOf(place, tops(), fileBlock);
         if (top === null) {
           return false;
         }
@@ -751,6 +750,43 @@ function placeStory(runtime) {
     stage.scrollTop = 200;
     step(`what is not a place is no place: ${JSON.stringify(value)}`, () => keeper.land());
   }
+
+  // Changes, whose blocks are files. The diff is replaced by a newer head's, with a file
+  // added above the reader's and one removed: the place is its file's, not its index's.
+  stage.entry = null;
+  reopen([300, 400, 500]);
+  stage.files = ["a.py", "b.py", "c.py"];
+  keeper.land();
+  stage.scrollTop = 460;
+  let reading = null;
+  step("in Changes a place names its file", () => {
+    keeper.scrolled();
+    fireWrite();
+    reading = keeper.snapshot().holding ?? stage.entry;
+  });
+  stage.heights = [];
+  stage.scrollTop = 0;
+  step("the diff is replaced: the place is held, and written for a reload", () =>
+    keeper.holdAt(reading),
+  );
+  stage.heights = [250, 300, 400, 500];
+  stage.files = ["new.py", "a.py", "b.py", "c.py"];
+  step("the newer diff paints: the pane is in the same file, a block further on", () =>
+    keeper.contentChanged(),
+  );
+  stage.heights = [250, 900, 400, 500];
+  step("a file above it draws its lines: the pane is put back", () => keeper.contentChanged());
+  fireSettle();
+  stage.files = ["new.py", "a.py", "c.py"];
+  stage.heights = [250, 900, 500];
+  reopen(stage.heights);
+  step("loaded again on a diff without the file: the place is its index's", () => keeper.land());
+  keeper.readerMoved();
+  stage.files = null;
+  stage.entry = { block: 1, offset: 5, top: 400, file: 7 };
+  reopen([300, 400]);
+  stage.scrollTop = 200;
+  step("a place whose file is not a name is no place", () => keeper.land());
 
   stage.entry = { block: 1, offset: 5, top: 400 };
   reopen([300, 400]);
@@ -1361,18 +1397,17 @@ async function main() {
     ),
   );
 
-  // Served an older head of this pull request, a refresh found a newer one: the existing
-  // offer, which reloads on the newer head.
-  const behind = createPage(runtime, { number: 7, tab: "", brief: true });
-  behind.clock.now = Date.parse("2026-09-17T12:41:30Z");
-  behind.server.pull = recorded.behind_head;
+  // Served an older head of this pull request when a refresh found a newer one: the server
+  // followed the head, as it follows a branch, so the page is on it and offers nothing.
+  const followed = createPage(runtime, { number: 7, tab: "", brief: true });
+  followed.clock.now = Date.parse("2026-09-17T12:41:30Z");
+  followed.server.pull = recorded.followed_head;
   steps.push(
-    await behind.step("served an older head, the page offers the newer one", () =>
-      behind.controller.start(),
+    await followed.step("the served head followed the pull request, and nothing is offered", () =>
+      followed.controller.start(),
     ),
   );
-  behind.server.pin.push(recorded.switch_to_head);
-  steps.push(await behind.step("taking the offer reloads", () => behind.controller.switchToHead()));
+  followed.controller.dispose();
 
   // A previous failed attempt leaves a manual Fetch. Reopening or showing the page
   // does not keep retrying, and a refused manual request explains why it stopped.
@@ -1522,8 +1557,9 @@ async function main() {
     inertHtml.sanitizeNodes(templateNodes(kpressTree.tree), pageDocument, base),
   );
 
-  // Files changed keeps the diff it opened: a record whose comparison moved offers it.
-  // The diff opened before the switch compared the base with the pin served then.
+  // Changes follows the pull request: a record whose comparison moved replaces the diff
+  // shown, and the reader who went back to the earlier one is offered the newer instead.
+  // The earlier diff here compared the base with the pin served before the switch.
   const comparison = recorded.current.body.record.comparison;
   const recordComparison = { left: comparison.base, right: comparison.head };
   const openedOnPin = { left: comparison.base, right: recorded.current.body.pin };
@@ -1531,8 +1567,62 @@ async function main() {
     ["nothing open yet", null, recordComparison],
     ["open on the record's comparison", recordComparison, recordComparison],
     ["open on an older head", openedOnPin, recordComparison],
+    ["open on an older head the reader went back to", openedOnPin, recordComparison, true],
     ["no comparison in the record", recordComparison, null],
-  ].map(([when, mounted, next]) => `${when}: ${runtime.filesAction(mounted, next)}`);
+  ].map(
+    ([when, mounted, next, chosen]) => `${when}: ${runtime.filesAction(mounted, next, chosen)}`,
+  );
+  // What Changes says over a diff that replaced another, as the page paints `followedNote`:
+  // both heads and the way back. The diff it replaced is the one shown before, on this page
+  // or as the history entry remembers it across the reload a followed pin makes.
+  const commit = (oid) => window.metabrowser.shortCommit(oid);
+  const noted = (last, from, next) => {
+    const earlier = runtime.followedFrom(last, from, next);
+    const note = runtime.followedNote(earlier, next);
+    if (note === null) {
+      return "no note";
+    }
+    const said =
+      note.kind === "head"
+        ? `The pull request’s head moved from ${commit(note.from)} to ${commit(note.to)}.`
+        : "The comparison has changed.";
+    return `${said} [Show the earlier changes] -> ${commit(earlier.left)}...${commit(earlier.right)}`;
+  };
+  const laterHead = { left: comparison.base, right: "c".repeat(40) };
+  const otherBase = { left: "b".repeat(40), right: comparison.head };
+  const entry = (state) => runtime.rememberedChanges(JSON.parse(JSON.stringify(state)));
+  const reloaded = entry({ shown: { ...openedOnPin, route: "/r", junk: 1 }, from: null });
+  assert(
+    JSON.stringify(reloaded.shown) === JSON.stringify({ ...openedOnPin, route: "/r" }),
+    "an entry's memory kept something other than the comparison's commits and routes",
+  );
+  const kept = entry({ shown: recordComparison, from: openedOnPin });
+  for (const junk of [null, "nonsense", {}, { shown: { left: 1, right: "a" } }]) {
+    assert(runtime.rememberedChanges(junk) === null, `not a memory: ${JSON.stringify(junk)}`);
+  }
+  assert(entry({ shown: recordComparison, from: "x" }).from === null, "a from that is none");
+  const changesFollowed = {
+    "the first diff of a page": noted(null, null, recordComparison),
+    "a newer head replaces the diff shown": noted(openedOnPin, null, recordComparison),
+    "the same diff mounted again keeps its note": noted(
+      recordComparison,
+      openedOnPin,
+      recordComparison,
+    ),
+    "a second head names the one before it": noted(recordComparison, openedOnPin, laterHead),
+    "the same head from another base": noted(otherBase, null, recordComparison),
+    "the page loaded again on the newer head, its entry remembering the earlier diff": noted(
+      reloaded.shown,
+      reloaded.from,
+      recordComparison,
+    ),
+    "the page loaded again after it had followed": noted(kept.shown, kept.from, recordComparison),
+    "an entry that last showed this diff and no other": noted(
+      entry({ shown: recordComparison, from: null }).shown,
+      null,
+      recordComparison,
+    ),
+  };
 
   // What Files changed says instead, for a record whose comparison could not be made and
   // for one whose merge base the store's shallow history cannot settle. A record without a
@@ -1588,7 +1678,6 @@ async function main() {
         when,
         {
           browse: browseCode(model),
-          headOffer: model.headOffer,
           checkoutAtHead: model.checkoutAtHead,
           comparison: model.comparison,
           files: model.filesUnavailable,
@@ -1664,6 +1753,7 @@ async function main() {
     wire: runtime.gitPathWire("src/app.txt"),
     pageDefense: inert,
     filesChanged: files,
+    changesFollowed,
   };
   // Which address is the page's entry on a tab, for a tab switch from beside the page and for
   // writing a reader's place: a changed file's address is its Files changed too.

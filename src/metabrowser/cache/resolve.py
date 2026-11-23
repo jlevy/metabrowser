@@ -444,6 +444,12 @@ def _newest_first(entry: MirrorRef) -> tuple[bool, bool, float, str]:
     return (not entry.default, not dated, -(entry.committed_at or 0.0), entry.name)
 
 
+def in_listing_order(entries: tuple[MirrorRef, ...]) -> tuple[MirrorRef, ...]:
+    """*entries* in a listing's order (:func:`_newest_first`), for a list read from two places."""
+
+    return tuple(sorted(entries, key=_newest_first))
+
+
 async def list_mirror_refs(
     target: RepositoryStoreTarget,
     kind: RefKind,
@@ -815,6 +821,7 @@ __all__ = [
     "MAX_DISAMBIGUATION_OBJECTS",
     "MAX_REF_CANDIDATES",
     "MIRROR_REFS",
+    "in_listing_order",
     "RefCandidate",
     "RefNamespaces",
     "ResolvedPin",

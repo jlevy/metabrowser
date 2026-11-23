@@ -497,6 +497,36 @@ def suggested_checkout(source: GitSource, working_directory: Path) -> Path | Non
     return root
 
 
+# The remote whose repository a checkout's own store mirrors: the one ``git clone`` names.
+ORIGIN_REMOTE: Final = "origin"
+
+
+def checkout_origin(root: Path) -> GitSource | None:
+    """The source the ``origin`` remote of the checkout at *root* names, or ``None``.
+
+    Read as :func:`check_lender` reads a checkout's remotes, from its configuration file
+    and in the command line's grammar, so the store a folder keeps beside its checkout is
+    the one ``metab <URL> --checkout <root>`` would make, and :func:`check_lender` then
+    finds that remote for it. ``None`` for a path that is no checkout, one with no remote
+    named ``origin``, and an address the grammar refuses. Blocking and bounded; run it
+    off the event loop.
+    """
+
+    try:
+        resolved = root.expanduser().resolve()
+    except (OSError, RuntimeError):
+        return None
+    common_dir = _common_dir_of(resolved)
+    parser = None if common_dir is None else _read_config(common_dir)
+    if common_dir is None or parser is None:
+        return None
+    base = _checkout_root(common_dir)
+    for name, url in _remotes(parser):
+        if name == ORIGIN_REMOTE:
+            return _identity(url, base)
+    return None
+
+
 def _write_atomic(path: Path, text: str) -> None:
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(6)}")
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -1033,12 +1063,14 @@ __all__ = [
     "redact_userinfo",
     "sweep_dangling_refs",
     "MAX_NEGOTIATION_TIPS",
+    "ORIGIN_REMOTE",
     "CheckoutRefusedError",
     "Lender",
     "LenderRefusal",
     "LenderRefusalCode",
     "attach_lender",
     "check_lender",
+    "checkout_origin",
     "checkout_command",
     "lender_boundary_path",
     "negotiation_tips",

@@ -97,7 +97,9 @@ class _EagerComparison:
 @dataclass
 class _CheckoutPulls:
     pulls: ServedPulls
-    turn: StoreTurn = field(default_factory=StoreTurn)
+    # The store's one turn in this server, which core keeps: the folder's own fetch of the
+    # store takes it too (``metabrowser/checkout_store.py``).
+    turn: StoreTurn
     eager: _EagerComparison | None = None
     # The revision each pull request's idle comparison last failed for, so it is not
     # tried again; as many as the pull states a set holds.
@@ -227,6 +229,7 @@ def _checkout_key(repository: CheckoutRepository) -> tuple[str, str, str]:
 
 def _checkout_state(repository: CheckoutRepository) -> _CheckoutPulls:
     from metabrowser.builtin_plugins.github.served_pull import ServedPulls
+    from metabrowser.checkout_store import store_turn
 
     key = _checkout_key(repository)
     with _LOCK:
@@ -234,7 +237,10 @@ def _checkout_state(repository: CheckoutRepository) -> _CheckoutPulls:
         if held is None:
             if len(_PULLS) >= _MAX_RESOLVED:
                 _PULLS.pop(next(iter(_PULLS)))
-            held = _PULLS[key] = _CheckoutPulls(ServedPulls(repository.cached or repository))
+            held = _PULLS[key] = _CheckoutPulls(
+                ServedPulls(repository.cached or repository),
+                store_turn(repository.home, repository.git_source),
+            )
         return held
 
 
@@ -487,55 +493,33 @@ async def _wait_for_cold_open(repository: CheckoutRepository) -> None:
         log.debug("could not wait for another cold open", exc_info=True)
 
 
+# What a reader's comparison is told for each way core's acquisition of the store fails
+# (``metabrowser/checkout_store.py``). ``refreshing_elsewhere`` keeps core's own words,
+# which can name the reservation's lock file for a reader to find the holder.
+_ACQUISITION_FAILURE: Final[dict[str, str]] = {
+    "lender_missing": "the checkout cannot supply this comparison",
+    "not_found_or_private": "the repository could not be read from its origin",
+    "network_error": "the repository could not be read from its origin",
+    "git_failed": "Git could not prepare this comparison",
+    "fetch_failed": "the comparison store could not be prepared",
+}
+
+
 async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource:
-    from metabrowser.cache.acquire import (
-        AcquiringElsewhereError,
-        AcquisitionError,
-        LenderMissingError,
-        RemoteAccessError,
-        acquire_source,
-    )
-    from metabrowser.cache.atomic import RecordError
-    from metabrowser.cache.identity import SlugCollisionError, StoreKeyCollisionError
-    from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
-    from metabrowser.cache.lender import CheckoutRefusedError
-    from metabrowser.cache.locks import LockBusyError
-    from metabrowser.git.process import GitError
-    from metabrowser.home import PrivateStorageError, StorageDirectoryError
+    """The checkout's store, acquired by core, which owns it and its turn.
+
+    The store is the one a folder's server lists its origin's branches from, so core
+    makes it (:func:`~metabrowser.checkout_store.acquire_checkout_store`) and this only
+    words its failures for a comparison. The caller holds the store's turn.
+    """
+    from metabrowser.checkout_store import CheckoutStoreError, acquire_checkout_store
 
     try:
-        return await acquire_source(
-            repository.git_source,
-            home=repository.home,
-            checkout=repository.checkout_root,
-            allow_clone_fallback=False,
+        return await acquire_checkout_store(
+            repository.git_source, home=repository.home, checkout=repository.checkout_root
         )
-    except (LenderMissingError, CheckoutRefusedError) as exc:
-        raise PullDataError("lender_missing", "the checkout cannot supply this comparison") from exc
-    except RemoteAccessError as exc:
-        state = "not_found_or_private" if exc.state == "not_found_or_private" else "network_error"
-        raise PullDataError(state, "the repository could not be read from its origin") from exc
-    except GitError as exc:
-        raise PullDataError("git_failed", "Git could not prepare this comparison") from exc
-    except LockBusyError as exc:
-        raise PullDataError(
-            "refreshing_elsewhere", "another refresh is preparing the store"
-        ) from exc
-    except AcquiringElsewhereError as exc:
-        # Its message names the reservation's lock file, for a reader to find the holder.
-        raise PullDataError("refreshing_elsewhere", str(exc)) from exc
-    except (
-        AcquisitionError,
-        RecordError,
-        SlugCollisionError,
-        StoreKeyCollisionError,
-        LayoutError,
-        FutureLayoutFormatError,
-        PrivateStorageError,
-        StorageDirectoryError,
-        OSError,
-    ) as exc:
-        raise PullDataError("fetch_failed", "the comparison store could not be prepared") from exc
+    except CheckoutStoreError as exc:
+        raise PullDataError(exc.code, _ACQUISITION_FAILURE.get(exc.code, str(exc))) from exc
 
 
 async def _keep_comparison_failure(

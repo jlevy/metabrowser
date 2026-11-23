@@ -42,10 +42,10 @@ registered, any other status, and a golden that never runs the route.
 | `/api/identity` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md`, `cli-github-pull.tryscript.md` |
 | `/api/counterpart` | covered | `--api` | `cli-api-counterpart.tryscript.md` |
 | `/api/source/status` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md`, `cli-checkout-overlay.tryscript.md`, `cli-checkout-overlay.txt` |
-| `/api/source/refresh` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md`, `cli-git-refresh.txt` |
+| `/api/source/refresh` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md`, `cli-git-refresh.txt`, `cli-api-source-checkout-store.txt` |
 | `/api/source/pin` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-shell.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
 | `/api/source/link` | covered | `--api --data` | `cli-api-source-link.txt`, `app-contract.txt` |
-| `/api/source/refs` | covered | `--api` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-shell.tryscript.md` |
+| `/api/source/refs` | covered | `--api` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-source-checkout-store.txt`, `cli-api-shell.tryscript.md` |
 | `/api/git/repo` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/refs` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/summary` | covered | `--api` | `cli-api-git.tryscript.md` |
@@ -215,6 +215,12 @@ interaction session and fails when a named function did not execute.
 | `source.checkout-refs` | data | `/api/source/refs` | `owned-route` | `metab checkout --api /api/source/refs` | `cli-api-source-checkout.txt` |
 | `source.ref-pulls` | data | `/api/source/refs` | `owned-route` | `metab https://github.com/octo/demo --api '/api/source/refs?kind=branch&q=%2328'` | `cli-github-ref-pulls.txt` |
 | `source.checkout-revision` | data | `/api/source/pin` | `owned-route` | `metab checkout --api /api/source/pin --data pin-feature-view.json` | `cli-api-source-checkout.txt` |
+| `source.checkout-origin-refs` | data | `/api/source/refs` | `owned-route` | `metab checkout --api '/api/source/refs?kind=remote'` | `cli-api-source-checkout-store.txt` |
+| `source.checkout-origin-refresh` | data | `/api/source/refresh` | `owned-route` | `metab checkout --api /api/source/refresh --data refresh.json` | `cli-api-source-checkout-store.txt` |
+| `source.checkout-origin-branch` | data | `/api/source/pin` | `owned-route` | `metab checkout --api /api/source/pin --data pin-origin-trunk.json` | `cli-api-source-checkout-store.txt` |
+| `source.folder-freshness` | interaction | `static/source-freshness.js#describe`, `static/source-freshness.js#createController` | `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
+| `source.checkout-origin-short-name` | data | `/api/source/pin` | `owned-route` | `metab checkout --api /api/source/pin --data pin-short-origin.json` | `cli-api-source-checkout-store.txt` |
+| `source.ref-selector-origin` | interaction | `static/source-ref-selector.js#askForOrigin`, `static/source-ref-selector.js#describe`, `static/source-ref-selector.js#sameListing`, `static/source-ref-selector.js#watchPulls` | `/api/source/refs`, `/api/source/refresh`, `/api/source/pin` | `node tests/dom/source-ref-selector-origin-session.js` | `cli-ui-source-ref-selector-origin.tryscript.md` |
 | `source.checkout-ref-option` | data | `/api/source/status` | `owned-route` | `metab checkout --ref feature --api /api/source/status` | `cli-api-source-checkout.txt` |
 | `source.checkout-revision-content` | data | `/api/catalog` | `owned-route` | `metab checkout --ref feature --api /api/catalog` | `cli-api-source-checkout.txt` |
 | `source.checkout-commits-unpinned` | data | `/api/git/log` | `owned-route` | `metab checkout --ref feature --api '/api/git/log?limit=2'` | `cli-api-source-checkout.txt` |
@@ -248,7 +254,7 @@ interaction session and fails when a named function did not execute.
 | `github.pull-base-uncertain` | data | `/api/plugin/github/pull` | `owned-route` | `metab --cache-dir home-shallow --config-dir config https://github.com/octo/demo/pull/1 --api '/api/plugin/github/pull?number=1'` | `cli-checkout-overlay.tryscript.md` |
 | `github.sign-in-status` | data | `/api/plugin/github/status` | `owned-route` | `metab statusroot --api /api/plugin/github/status --data empty.json` | `cli-github-status.tryscript.md` |
 | `github.pull-file-anchor` | data | `/api/plugin/github/pull-files` | `owned-route` | `metab 'https://github.com/octo/demo/pull/7/files#diff-eae8d22bc4fc6d599e92d3cc7266ae3adb0e1ffa3c89a8d9cbbb33eec9462386L1-R1' --api '/api/plugin/github/pull-files?number=7'` | `cli-github-pull-file-anchor.txt` |
-| `github.pull-page-paint-decisions` | interaction | `builtin_plugins/github/pull-page.js#conversationAction`, `builtin_plugins/github/pull-page.js#conversationKey`, `builtin_plugins/github/pull-page.js#filesAction`, `builtin_plugins/github/pull-page.js#filesUnavailableText` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-second-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.pull-page-paint-decisions` | interaction | `builtin_plugins/github/pull-page.js#conversationAction`, `builtin_plugins/github/pull-page.js#conversationKey`, `builtin_plugins/github/pull-page.js#filesAction`, `builtin_plugins/github/pull-page.js#followedFrom`, `builtin_plugins/github/pull-page.js#followedNote`, `builtin_plugins/github/pull-page.js#rememberedChanges`, `builtin_plugins/github/pull-page.js#shownComparison`, `builtin_plugins/github/pull-page.js#filesUnavailableText` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-second-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-page-place` | interaction | `builtin_plugins/github/pull-page.js#createScrollKeeper`, `builtin_plugins/github/pull-page.js#placeAt`, `builtin_plugins/github/pull-page.js#scrollTopOf`, `builtin_plugins/github/pull-page.js#keyMovesPane` | `local-only` | `node tests/dom/github-pull-page-second-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `diff.layout-fit` | interaction | `builtin_plugins/diff/diff-view.js#tooNarrowForSplit`, `builtin_plugins/diff/diff-view.js#opensTooNarrowForSplit`, `builtin_plugins/diff/diff-view.js#drawnLayout`, `builtin_plugins/diff/diff-view.js#setLayout`, `builtin_plugins/diff/diff-view.js#mountDiffView` | `local-only` | `node tests/dom/diff-layout-fit-session.js` | `cli-ui-diff-layout-fit.tryscript.md` |
 | `diff.layout-key` | interaction | `builtin_plugins/diff/diff-view.js#toggleLayout`, `builtin_plugins/diff/diff-view.js#setLayout` | `local-only` | `node tests/dom/diff-layout-fit-session.js` | `cli-ui-diff-layout-fit.tryscript.md` |

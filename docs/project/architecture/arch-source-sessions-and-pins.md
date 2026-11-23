@@ -472,9 +472,15 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   one of its own at the foot of the pane, where every tab shows it: the Pulls tab’s
   requests and a comparison’s are refused as the Files tab’s are, and the selector is in
   the Files toolbar, which the other tabs hide.
+- **The origin’s branches and tags** are the exception to reading in place: they are
+  listed and served from the store Metabrowser keeps beside the checkout, which borrows
+  the checkout’s objects, and such a pin is fetched and followed as a mirror’s is
+  ([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)).
+  `CheckoutRevisions.serves` answers for a revision of either, so the page of one is
+  still the folder’s.
 - **Not yet.** A revision of a checkout has no Pulls tab, and its branch list shows no
-  pull requests; a branch that moves while it is shown is not followed; and a revision
-  is read in place, never through a store that borrows the checkout’s objects.
+  pull requests; and one of the checkout’s own branches that moves while it is shown is
+  not followed.
 
 ## How a Mirror’s Page Names Itself
 

@@ -481,10 +481,10 @@ and each constant is in `mirror_refresh.py` beside the measurement that set it:
   the server runs, as background work that yields to everything a reader waits on, so a
   page opened later starts at most that old and its first ask catches up.
   Before this, a hidden server never fetched.
-- **A store beside a checkout** (not built): a repository folder shows its origin’s
-  branches and tags as Metabrowser last fetched them into its own store, which borrows
-  the checkout’s objects, and that store is fetched by the same rules; the checkout
-  itself is still never fetched into
+- **A store beside a checkout** (built, `checkout_store.py`): a repository folder shows
+  its origin’s branches and tags as Metabrowser last fetched them into its own store,
+  which borrows the checkout’s objects, and that store is fetched by the same rules from
+  the moment the folder is served; the checkout itself is still never fetched into
   ([Origin Branches in a Repository Folder](../../architecture/arch-open-modes.md#origin-branches-in-a-repository-folder)).
 - **The guards:** one fetch per store at a time (its fetch lock), another process’s
   fetch followed rather than repeated, and a failed fetch or probe tried again only
@@ -578,8 +578,11 @@ account check and the bounds on probes.
   call on every push, where `ls-remote` spends none.
 - [x] A served store with no visible page is fetched every `STORE_IDLE_REFRESH_S` as
   background work (bead `mb-l89x`): `MirrorSession.run_idle_refresh`.
-- [ ] A repository folder keeps a store beside its checkout and lists its origin’s
-  branches and tags from it (bead `mb-ay84`); the design so far is in
+- [x] A repository folder keeps a store beside its checkout and lists its origin’s
+  branches and tags from it (bead `mb-ay84`): `CheckoutStore` in `checkout_store.py`,
+  the `StoreSession` half of `MirrorSession`, the `origin` block of
+  `GET /api/source/refs`, and the chooser’s own ask in `static/source-ref-selector.js`.
+  What was built, the defaults it rests on, and what is left are in
   [Origin Branches in a Repository Folder](../../architecture/arch-open-modes.md#origin-branches-in-a-repository-folder).
 - [ ] Both measured again on an idle machine.
   The constants were set from measurements at a load average near 300, recorded beside
