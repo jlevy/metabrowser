@@ -91,7 +91,20 @@ const READ = `(() => {
   const escapes = [];
   let tiny = 0;
   let deepest = 0;
+  // The keyboard reaches each actionable cell by one data-tm-index: its label when it
+  // has one and nests, its own cell otherwise, a framed folder's included.
+  let misindexed = 0;
+  let framed = 0;
   for (const cell of cells) {
+    const indexed = [cell, ...cell.querySelectorAll("[data-tm-index]")].filter((element) =>
+      element.hasAttribute("data-tm-index"),
+    );
+    const actionable = cell.classList.contains("tm-actionable");
+    if (cell.classList.contains("tm-framed")) {
+      framed += 1;
+      if (actionable && cell.getAttribute("role") !== "button") misindexed += 1;
+    }
+    if (indexed.length !== (actionable ? 1 : 0)) misindexed += 1;
     const box = cell.getBoundingClientRect();
     const declared = parseFloat(cell.style.width);
     if (declared < 8 || parseFloat(cell.style.height) < 8) tiny += 1;
@@ -112,7 +125,15 @@ const READ = `(() => {
       });
     }
   }
-  return { cells: cells.length, tiny, deepest, escapes: escapes.length, sample: escapes.slice(0, 8) };
+  return {
+    cells: cells.length,
+    tiny,
+    deepest,
+    framed,
+    misindexed,
+    escapes: escapes.length,
+    sample: escapes.slice(0, 8),
+  };
 })()`;
 
 const server = await serve();

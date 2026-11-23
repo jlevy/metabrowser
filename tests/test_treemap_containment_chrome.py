@@ -11,7 +11,9 @@ every drawn cell's box at a wide and a narrow window. This holds that:
 - the map draws hundreds of cells, many of them under 8 px on a side, and nests past two
   levels, so the reading covers the cells the floor used to widen;
 - no cell is drawn wider than the width the map gave it;
-- no cell passes its parent folder's cell or the viewport's padding box.
+- no cell passes its parent folder's cell or the viewport's padding box;
+- the keyboard reaches every actionable cell by exactly one ``data-tm-index``, and a framed
+  folder, which has no label, by its own cell.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``), and CI runs
 it. The session leads a process group of its own, which Chrome and the server join, and the
@@ -79,6 +81,8 @@ def _contained(reading: dict[str, Any], label: str) -> None:
     assert reading["tiny"] >= 50, (label, reading)
     assert reading["deepest"] >= 3, (label, reading)
     assert reading["escapes"] == 0, (label, reading)
+    assert reading["framed"] >= 10, (label, reading)
+    assert reading["misindexed"] == 0, (label, reading)
 
 
 def test_every_treemap_cell_lies_inside_its_folder_and_the_border_in_chrome(
