@@ -447,6 +447,45 @@ Error: /api/plugin/diff/comparison?revision=HEAD&types=.md&file=src/app.py retur
 ? 1
 ```
 
+## Test: `group=type:docs` keeps the change set’s documents
+
+`&group=type:<id>` keeps the changed files in one File type group, as the Files tab’s
+Group by places them, either side counting.
+A pull request’s Docs tab asks for `type:docs`: here the edited `README.md` and the
+rename of `notes.txt` to `notes.md`, and not the Python file or the image.
+
+```console
+$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&group=type:docs' | grep -E '^status|"path"|"files"|"truncated"'
+status: 200
+    "files": [
+          "path": "README.md",
+          "path": "README.md",
+          "path": "notes.txt",
+          "path": "notes.md",
+      "files": 2,
+    "truncated": false
+      "truncated": false
+      "truncated": false
+? 0
+```
+
+## Test: a group that is no File type group is refused
+
+A comparison’s files have no ages, so only a `type:` group narrows one.
+
+```console
+$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&group=age:live'
+api: /api/plugin/diff/comparison?revision=HEAD&group=age:live
+status: 400
+{
+  "error": "diff_comparison",
+  "message": "group is a File type group, type:<id>.",
+  "path": "HEAD"
+}
+Error: /api/plugin/diff/comparison?revision=HEAD&group=age:live returned HTTP 400
+? 1
+```
+
 ## Test: `view=types` answers the comparison’s File type counts
 
 The rows the Files tab’s File type menu reads, over every listed change: the diff view’s

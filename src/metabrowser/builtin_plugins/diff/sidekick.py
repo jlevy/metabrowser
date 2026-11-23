@@ -22,7 +22,9 @@ surface of its own. A pinned revision does not need a working tree. On a
 store, a request naming full commit IDs is kept and validated;
 ``comparison_cache.py`` says what the answer depends on. ``&types=`` narrows
 the answer to the changed files of those types, the Files tab's File type
-vocabulary (``tree_filter.parse_types``, matched by ``file_type_match``).
+vocabulary (``tree_filter.parse_types``, matched by ``file_type_match``), and
+``&group=type:<id>`` to those of one File type group, the Files tab's Group by
+vocabulary (``tree_groups.parse_group``).
 
 The patch handlers read through the content reader, which serves an attached
 folder and a pinned revision alike and keeps the blocking part off the event
@@ -67,6 +69,7 @@ from metabrowser.diff.format import (
     dump_document,
 )
 from metabrowser.file_type_match import (
+    change_in_type_group,
     change_matches_types,
     change_sides,
     semantic_extension_tokens,
@@ -97,6 +100,7 @@ from metabrowser.plugin_api import (
     resolve_content_container,
 )
 from metabrowser.tree_filter import parse_types
+from metabrowser.tree_groups import parse_group
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -346,10 +350,15 @@ async def comparison_at(
     is applied, so the hydrated files are the first matching ones. Totals are then the
     kept files'; ``truncated`` still says the listing stopped at its own bound, past
     which a matching file may exist.
+    ``&group=type:<id>`` keeps only the changes in one File type group, the registry's
+    display group either side classifies into (``file_type_match.change_in_type_group``),
+    by the same rule and with the same totals: ``type:docs`` is a change set's documents,
+    which a pull request's Docs tab shows. With ``types`` it keeps the changes both keep.
+    A group that is no File type group is refused: a comparison's files have no ages.
     ``&view=types`` answers the comparison's File type counts instead of a document
     (``_type_tally_answer``), for the diff view's File type menu: the rows the Files
-    tab's menu reads, over every listed change whatever ``types`` and ``file`` say, so
-    the menu does not shrink as the reader narrows.
+    tab's menu reads, over every listed change whatever ``types``, ``group`` and
+    ``file`` say, so the menu does not shrink as the reader narrows.
     On a pinned revision, ``HEAD`` is that object id.
 
     A request naming two commit IDs on a store sends an entity tag that names the build
@@ -372,6 +381,15 @@ async def comparison_at(
         return _error(
             "diff_comparison",
             "view is types, or absent for the comparison itself.",
+            400,
+            path=revision or f"{left}..{right}",
+        )
+    wanted_group = request.query_params.get("group", "")
+    group = parse_group(wanted_group) if wanted_group else None
+    if wanted_group and (group is None or group.by != "type"):
+        return _error(
+            "diff_comparison",
+            "group is a File type group, type:<id>.",
             400,
             path=revision or f"{left}..{right}",
         )
@@ -408,9 +426,9 @@ async def comparison_at(
     # for the commits, so a store holding neither answers its plain refusal.
     revalidate = False
     if kept_key is not None:
-        # A narrowed answer is kept apart from the whole one. With no types the key is the
-        # one it was, so a whole comparison's tag does not move. The counts depend on the
-        # listing alone, so every request for them shares one key.
+        # A narrowed answer is kept apart from the whole one. With no types and no group the
+        # key is the one it was, so a whole comparison's tag does not move. The counts depend
+        # on the listing alone, so every request for them shares one key.
         answer_key = (
             (*kept_key, "", "view=types")
             if view == "types"
@@ -419,6 +437,7 @@ async def comparison_at(
                 wanted_file,
                 str(max_initial_files),
                 *((",".join(types),) if types else ()),
+                *((f"group={group.key}",) if group is not None else ()),
             )
         )
         # The body identity includes the initial hydration count: callers share the
@@ -488,6 +507,8 @@ async def comparison_at(
                 continue
             if types and not change_matches_types(change, types, semantic=semantic):
                 continue
+            if group is not None and not change_in_type_group(change, group.id):
+                continue
             if change.availability is not Availability.ready:
                 projected.append(change)
                 continue
@@ -544,7 +565,7 @@ async def comparison_at(
         manifest = manifest.model_copy(
             update={"totals": _listed_totals(projected), "truncated": False, "cursor": None}
         )
-    elif types:
+    elif types or group is not None:
         manifest = manifest.model_copy(update={"totals": _listed_totals(projected)})
     if hydration.left_out:
         projected, resolved = say_left_out(projected, resolved, hydration.left_out)

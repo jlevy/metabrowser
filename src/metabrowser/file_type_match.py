@@ -3,7 +3,8 @@
 One rule for every surface that narrows by type: the Files tree on a Git revision
 (``git/content_routes.py``) and a diff narrowed to the changed files of some types. The
 browser's own filter (``static/filter-state.js``, ``rowMatches``) states the same rule
-for rows it already holds.
+for rows it already holds. A diff narrowed to one File type group, as a pull request's
+Docs tab is, asks ``change_in_type_group``.
 
 The tokens are ``tree_filter.parse_types``'s vocabulary, lowercased and deduplicated.
 A dotted token is a logical extension, matched against the file's compound tail
@@ -107,6 +108,26 @@ def change_matches_types(
         and name_matches_types(basename_of(side.path), types, semantic=semantic_tokens)
         for side in (change.new, change.old)
     )
+
+
+def change_in_type_group(change: FileChange, group_id: str) -> bool:
+    """Whether a changed file is in the File type group *group_id* on either side.
+
+    A file's group is the registry display group it classifies into, by its name where
+    the registry knows the name (``README``, ``LICENSE``) and else by its extension, as
+    ``type_tally`` counts a preset and a grouped tree places a file; ``other`` holds what
+    the registry does not recognize. Either side counts, as for ``change_matches_types``:
+    a rename from ``notes.txt`` to ``notes.py`` is in Documentation and in Code.
+    """
+
+    registry = load_file_type_registry()
+    for side in (change.new, change.old):
+        if side is None:
+            continue
+        name = basename_of(side.path)
+        if registry.classify(ascii_casefold(name), derive_ext(name)).group_id == group_id:
+            return True
+    return False
 
 
 def change_sides(change: FileChange) -> tuple[tuple[str, str], ...]:
