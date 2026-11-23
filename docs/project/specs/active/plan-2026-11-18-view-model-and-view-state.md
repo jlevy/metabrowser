@@ -404,7 +404,12 @@ agent ◄── outcome: a status and the view state ── server ◄── a p
   such a subject it is served with `ui` events alone.
   A later slice adds `?ui=states`, which sends each published state as a `ui.state`
   event to an agent that follows the UI without polling.
-  The plan calls that client an observer, since “watcher” is the capability’s name.
+  Since `21dc39da7`, `main` identifies a page’s stream by a server-minted `connection`
+  id in `fs.snapshot` and delivers `file.changed` to that one connection
+  ([File Watches](../../architecture/arch-live-delivery.md#file-watches)). The relay
+  maps a viewer to its current connection the same way; the viewer id stays beside it
+  because a viewer survives a reload and a connection does not (Decision VM-6). The plan
+  calls that client an observer, since “watcher” is the capability’s name.
 - **Applied as an open.** The page turns the target into an address and opens it through
   one `openAddress`, which dispatches to the openers that exist: `navigateToPath`,
   `openQuickSearchPull`, and the Git panel’s `selectCommit` (`static/app.js:9712`,
@@ -825,6 +830,9 @@ These points state A exactly.
   intent it is applying beside it, so the publish after a full load still names that
   intent. A duplicated tab copies it, so the server reassigns a second live claim.
 - **C. Per connection, assigned by the server.** A reconnect is a new viewer.
+  File Watches’ `connection` id, which `main` mints since `21dc39da7`, is this identity,
+  and it is why the relay still needs B: a watch is re-registered on each new
+  connection, but a viewer must keep its claim and its pending intent across a reload.
 - **D. The app’s window and tab identifiers.** The app alone has them.
 
 **Decided 2026-11-18: B.** [Hosts](#hosts) lists what is verified in the app’s web view

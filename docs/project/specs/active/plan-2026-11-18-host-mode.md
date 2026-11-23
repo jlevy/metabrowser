@@ -100,6 +100,8 @@ from the
 as beads `mb-qzny`, `mb-5xi4`, `mb-1zyp`, `mb-54r1`, `mb-idri`, `mb-rtgh`, and
 `mb-ko5d`, which [HM-1](#decision-hm-1-when-discovery-lands) A split into the beads of
 the [Implementation Plan](#implementation-plan).
+`mb-ko5d`, the skill’s `--present` recipe, closed on 2026-11-20 with #562; the skill’s
+later update follows under `mb-idri`.
 [Opening Anything from the CLI and the App](plan-2026-11-17-open-anything-from-cli-and-app.md)
 took a first-release slice of its front door, `--present` through LaunchServices, and
 its Phase 2, the round trip, rests on the same beads.
@@ -482,7 +484,7 @@ macOS app epic like the beads they split from.
 | H2 | The server record’s contract and the ready-line flag, which the app adopts through its `ServerLaunch` seam in place of the `serving` line [its contract](../../architecture/arch-app-contract.md) declares | `mb-wpel`, from `mb-qzny` | After T0.7, the one groundwork pull request discovery needs |
 | H3 | The registry entry, the liveness tests, and the listing mode | `mb-baee`, from `mb-5xi4` | Beside Tier 1, before V5 |
 | H4 | `--live` on `--api` | `mb-77x9` | Stack V, after V5 |
-| H5 | The find-or-start lock; `--present` finds the root’s server, sends the `present` intent, and reports `confirmed` from the view state; idle exit for a detached server; the skill and the guide follow | `mb-5xi4`, `mb-idri`, `mb-ko5d`, and `mb-k3yz`, from `mb-qzny` | The later V slice, after V8, which adds the skill’s sections |
+| H5 | The find-or-start lock; `--present` finds the root’s server, sends the `present` intent, and reports `confirmed` from the view state; idle exit for a detached server; the skill and the guide follow | `mb-5xi4`, `mb-idri` (with the skill’s update), and `mb-k3yz`, from `mb-qzny` | The later V slice, after V8, which adds the skill’s sections |
 | H6 | The sticky port; pages reload once on a new boot ID and refuse a root mismatch | `mb-e74k`, from `mb-qzny`; `mb-54r1`, whose follow half is V4’s applier | After Stack V |
 | H7 | The control socket, with `close` | `mb-1zyp` | After H3 |
 | H8 | The token: a measurement first, then the stdin token, the shell’s helper, the first-load and event-stream gates, and the Credentials check | `mb-qzny` | Last, after H7 |

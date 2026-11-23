@@ -48,7 +48,10 @@ Four facts about today’s plugin contract constrain the design.
   its `[[kind]]` and `[[view]]` blocks name (`server.py:5254-5255`) and loads them when
   one is selected (`static/plugin-sdk.js:384`). A list drawn on another plugin’s page
   selects none of them
-  ([Decision PS-6](#decision-ps-6-loading-the-plugins-a-list-needs)).
+  ([Decision PS-6](#decision-ps-6-loading-the-plugins-a-list-needs)). Since `21dc39da7`,
+  a plugin can also load another’s exports by name with `mb.plugins.load`, declared in
+  its manifest’s `requires` and checked at discovery
+  ([Declared Dependencies](../../../plugins.md#declared-dependencies)).
 - **A plugin cannot register an address**
   ([Registration Surfaces Not Built](../../architecture/arch-plugin-system.md#registration-surfaces-not-built)).
   A plugin type’s page is therefore a kind’s page at a `/view/` address, or a place
@@ -129,8 +132,11 @@ facet ([The View State](plan-2026-11-18-view-model-and-view-state.md#the-view-st
 `[[kind]]`, `[[view]]`, and `[[data_hook]]` are unchanged.
 A type is not a kind (the parent plan’s Decision 4), and `page_kind` joins the two; a
 `[[view]]` is the `page` shape; and every `route` and `batch_route` above names a
-`[[data_hook]]`, still the only Python a manifest mounts, so `--api` reaches each by
-construction. An operator-directory plugin is JavaScript-only
+`[[data_hook]]`, still the only Python that mounts a route of its own, so `--api`
+reaches each by construction.
+(Since `21dc39da7`, `[[table_source]]`, a folder view’s `offer`, and `[plugin] register`
+also name Python, and none serves a route `--api` would miss.)
+An operator-directory plugin is JavaScript-only
 ([Discovery](../../architecture/arch-plugin-system.md#discovery)), so it may declare
 `[[object_view]]` and `[[view.part]]` and is refused the three blocks that name routes.
 
@@ -149,7 +155,7 @@ Problems print as they do now (`cli/plugins.py:421`):
 
 ```text
 metab --doctor: 1 problem(s):
-  • plugin 'agent-log': object_view (agent-session, card) reads facet 'usage', which
+  • plugin 'agents': object_view (agent-session, card) reads facet 'usage', which
     object_type 'agent-session' does not declare
 ```
 
@@ -332,22 +338,31 @@ A type’s Python is a contract, a projection, and routes.
 
 ### A Worked Example
 
-A hypothetical extension of the built-in `agent-log` plugin, a candidate type in the
-parent plan: an agent session, listed under a folder.
+A hypothetical object model for the built-in `agents` plugin’s agent sessions, a
+candidate type in the parent plan.
+Today that plugin lists sessions through its `sessions` route, in an envelope of its own
+(`sessions`, `offset`, `next_offset`, `total`), in the Sessions folder view
+(`agent-sessions`, key `s`), which an `offer` predicate shows only on a folder that
+holds an agent home.
+Adopting the object model moves `sessions` onto the collection convention and the
+Sessions view onto `mountList`; it adds no view.
+(Updated 2026-11-23: the first draft extended the `agent-log` plugin, which `main` has
+since folded into `agents`.)
 
-**Manifest**, added to `builtin_plugins/agent_log/manifest.toml`, with three
-`[[data_hook]]` routes: `sessions`, the collection; `session`, one session by its `id`;
-and `session-batch`, many by `?ids=`:
+**Manifest**, in `builtin_plugins/agents/manifest.toml`, with three `[[data_hook]]`
+routes: `sessions`, the collection, moved onto the collection convention;
+`session-object`, one session by its `id`; and `session-batch`, many by `?ids=`. The
+plugin’s existing `session` route keeps its own job:
 
 ```toml
 [[object_type]]
 id = "agent-session"
-contract = "metabrowser.agent-log:AgentSession/v1"
+contract = "metabrowser.agents:AgentSession/v1"
 schema = "agent-session-v1.schema.yaml"
 corpus = "agent-session-conformance.json"
-model = "metabrowser.builtin_plugins.agent_log.objects:AgentSession"
+model = "metabrowser.builtin_plugins.agents.objects:AgentSession"
 page_kind = "agent-log"
-route = "session"
+route = "session-object"
 batch_route = "session-batch"
 facets = ["tally"]
 
@@ -371,22 +386,25 @@ kind = "agent-log"
 id = "log"
 label = "Log"
 key = "v"
-default = true
 
 [[view.part]]       # open or closed
 id = "tool-output"
 
-[[view]]            # a tab on the folder kind, which mounts the list
+[[view]]            # the Sessions view that exists, which now mounts the list
 kind = "folder"
 id = "agent-sessions"
 label = "Sessions"
-key = "n"
+key = "s"
+offer = "metabrowser.builtin_plugins.agents.homes:holds_homes"
 ```
 
-The compiled schema and the corpus sit beside the manifest, in
-`builtin_plugins/agent_log/`.
+`page_kind` names `agent-log`; a session read as a thread, the `agent-thread` kind,
+would need `page_kind` to admit more than one kind, which this plan leaves open.
 
-**Contract and projection**, in `builtin_plugins/agent_log/objects.py`:
+The compiled schema and the corpus sit beside the manifest, in
+`builtin_plugins/agents/`.
+
+**Contract and projection**, in `builtin_plugins/agents/objects.py`:
 
 ```python
 class SessionTally(BaseModel):
@@ -398,7 +416,7 @@ class SessionTally(BaseModel):
 
 class AgentSession(ObjectHeader):  # type, id, href, title, updated_at, actor
     type: Literal["agent-session"]
-    agent: Literal["claude", "gemini", "pi"]
+    agent: Literal["claude", "codex", "codex-rollout", "gemini", "pi"]
     size: int
     tally: SessionTally | None = None  # a facet: whole or absent
 ```
@@ -406,11 +424,11 @@ class AgentSession(ObjectHeader):  # type, id, href, title, updated_at, actor
 An object’s `id` is the log’s inventory path, its `href` `/view/<id>`, its `title` the
 file name, and its `updated_at` the modification time.
 The summary is what a folder listing holds, plus the adapter, sniffed from each log’s
-first records as the Charts projection sniffs it (`charts.py:131`); `sessions` bounds
+first records as the Charts projection sniffs it (`agents/charts.py`); `sessions` bounds
 how many logs it sniffs for one answer and records the measurement.
-The `tally` facet is what a full parse yields: the `summary` that projection builds
-(`charts.py:168-173`), read through its fingerprint memo (`charts.py:43`) by `session`
-for one object and by `session-batch` for the rows in view.
+The `tally` facet is what a full parse yields: the `summary` that projection builds,
+read through its fingerprint memo by `session-object` for one object and by
+`session-batch` for the rows in view.
 `project_session` and `project_tally` are the projections.
 The corpus has a `claude` base record, a valid case for each agent and for a `tally`,
 and the four invalid cases.
@@ -468,19 +486,19 @@ const parts = mb.ui.bind(container, {
 ```
 
 It registers no collection and no loader: the store reads `sessions` and
-`session-batch`, and a reference leads to `session`. With the Log view open, the view
-state’s `pane` holds `kind: agent-log`, `view: log`, and
+`session-batch`, and a reference leads to `session-object`. With the Log view open, the
+view state’s `pane` holds `kind: agent-log`, `view: log`, and
 `parts: {tool-output: {open: true}}`.
 
 **The evidence it needs:**
 
 | Evidence | Form |
 | --- | --- |
-| The routes `sessions`, `session`, and `session-batch` | Route rows in the [Parity Registry](../../architecture/arch-parity-registry.md), with `--api` goldens in `cli-api-plugins.tryscript.md`, where the plugin’s `charts` route is pinned |
+| The routes `sessions`, `session-object`, and `session-batch` | Route rows in the [Parity Registry](../../architecture/arch-parity-registry.md), replacing the `agents.session-list-*` rows for `sessions`, with `--api` goldens beside `cli-api-agent-logs.tryscript.md` |
 | The type | Validated rows in the `sessions` golden, the parent plan’s rule for a type `--show` does not report ([Decision PS-5](#decision-ps-5-a-type-whose-objects-are-files)) |
-| `agent-log.session-views` | An interaction row naming `describeSessionWideRow` and `describeSessionCard`; its session prints each description of each corpus object, pinned as `cli-ui-agent-log-session-views.tryscript.md` |
-| `agent-log.log-parts` | An interaction row naming `describeLogParts`; its session ends by printing the view state |
-| The Sessions tab | A `--show` case for a folder that lists the view, and a row in [Views, Models, and Routes](../../architecture/arch-views-models-routes.md) |
+| `agents.session-views` | An interaction row naming `describeSessionWideRow` and `describeSessionCard`; its session prints each description of each corpus object, pinned as `cli-ui-agents-session-views.tryscript.md` |
+| `agents.log-parts` | An interaction row naming `describeLogParts`; its session ends by printing the view state |
+| The Sessions view | Its existing `--show` case and row in [Views, Models, and Routes](../../architecture/arch-views-models-routes.md), updated to say it draws the list host |
 | Paint | A paint-exempt row for the wide row’s grid, measured in headless Chrome |
 
 ### Versioning
@@ -577,8 +595,9 @@ asks the object route once for each reference.
 
 - **A. A data-hook route.** `--api` reaches it, a golden pins it, and #380’s worker
   hooks cover it with no new call.
-- **B. A sidekick callable:** a second Python registration surface, which that plan’s
-  Decision 15 declines for a dispatcher.
+- **B. A sidekick callable:** Python the store calls with no route, which `--api` could
+  not reach and a golden could not pin; #380’s Decision 15 also declines it for a
+  dispatcher.
 
 **Decided 2026-11-18: A.**
 
@@ -621,8 +640,12 @@ An agent session’s address is its file’s, and one address parses to one type
   that declare or draw its collection’s `members` before first paint.
 - **B. Draw the header fallback, then repaint.** Rows change under the reader.
 - **C. Load every plugin with an object view eagerly,** against the loading tiers.
+- **D. The mounting plugin `requires` the member types’ plugins** and loads them with
+  `mb.plugins.load`, which ships since `21dc39da7`.
 
-**Decided 2026-11-18: A.**
+**Decided 2026-11-18: A.** D was added on 2026-11-23, after `requires` shipped: it
+serves a plugin’s own list, but the list host is core and declares no `requires`, and a
+mixed list’s members are not known when a plugin is written.
 
 ### Decision PS-7: One Validation Path
 
