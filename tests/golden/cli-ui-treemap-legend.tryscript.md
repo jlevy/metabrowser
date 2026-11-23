@@ -238,7 +238,6 @@ $ node tests/dom/treemap-legend-session.js
       "controls": 1
     },
     "focusOrder": [
-      "docs",
       "docs/a.md",
       "docs/b.md",
       "docs/c.py",
@@ -249,11 +248,6 @@ $ node tests/dom/treemap-legend-session.js
     "keys": [
       {
         "key": "(none)",
-        "on": "docs",
-        "label": "docs (folder, 5 files)"
-      },
-      {
-        "key": "ArrowRight",
         "on": "docs/a.md",
         "label": "a.md (file, 100 B)"
       },
@@ -261,31 +255,36 @@ $ node tests/dom/treemap-legend-session.js
         "key": "ArrowRight",
         "on": "docs/b.md",
         "label": "b.md (file, 100 B)"
+      },
+      {
+        "key": "ArrowRight",
+        "on": "docs/c.py",
+        "label": "c.py (file, 300 B)"
       },
       {
         "key": "ArrowLeft",
-        "on": "docs/a.md",
-        "label": "a.md (file, 100 B)"
+        "on": "docs/b.md",
+        "label": "b.md (file, 100 B)"
       },
       {
         "key": "ArrowRight",
-        "on": "docs/b.md",
-        "label": "b.md (file, 100 B)"
+        "on": "docs/c.py",
+        "label": "c.py (file, 300 B)"
       },
       {
         "key": "Enter",
-        "on": "docs/b.md",
-        "label": "b.md (file, 100 B)"
+        "on": "docs/c.py",
+        "label": "c.py (file, 300 B)"
       },
       {
         "key": "Backspace",
-        "on": "docs/b.md",
-        "label": "b.md (file, 100 B)"
+        "on": "docs/c.py",
+        "label": "c.py (file, 300 B)"
       }
     ],
     "navigation": [
       [
-        "docs/b.md"
+        "docs/c.py"
       ],
       [
         "",

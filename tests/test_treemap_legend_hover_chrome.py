@@ -168,8 +168,9 @@ def test_the_treemap_legend_hovers_its_familys_cells_in_chrome(
     entry = measured["entry"]
     _legend_in_place(entry, "the Python entry")
     cells = [mark for mark in entry["marked"] if mark.startswith("cell ")]
-    # Every cell of the family's color, the folder of Python files among them, and no other.
-    assert cells == entry["familyCells"] and "cell lib (family)" in cells, entry
+    # Every cell of the family's color and no other. The folder of Python files is not
+    # among them: a nested folder's header and frame are neutral (mb-lzmo).
+    assert cells == entry["familyCells"] and "cell lib (family)" not in cells, entry
     assert entry["marked"] == [*_PYTHON_BARS, _PYTHON_ENTRY, *cells], entry
     _cells_lifted(entry, "the Python entry")
     assert entry["anchor"] is None, entry

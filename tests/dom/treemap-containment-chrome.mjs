@@ -152,7 +152,12 @@ const read = (selector) => `(async () => {
     deepest = Math.max(deepest, cell.path ? cell.path.split("/").length : 0);
     if (cell.w < 8 || cell.h < 8) tiny += 1;
   }
-  const actionable = map.cells.filter((c) => c.kind === "dir" || c.kind === "file").length;
+  // Every folder and file opens something, but in the Treemap view the outer box is the
+  // view's own folder and opens nothing; on the compact map it opens the view.
+  const ownFolderOpens = ${JSON.stringify(selector)} === ${JSON.stringify(COMPACT)};
+  const actionable = map.cells.filter(
+    (c) => (c.kind === "dir" || c.kind === "file") && (ownFolderOpens || c.parent !== -1),
+  ).length;
   return {
     cells: map.cells.length,
     painted: map.paint.length,
