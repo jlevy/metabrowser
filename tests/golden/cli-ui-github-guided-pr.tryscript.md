@@ -48,20 +48,26 @@ $ node tests/dom/github-guided-pr-session.js
 
 The production page imports and mounts the guide only when its tab first paints, so
 Conversation never reads it.
+A pull request whose description has a guide opens on it, and Conversation, at its own
+address, shows a card where the description had its guided-pr block.
+The guide opens with the description, rendered as Conversation renders it.
 A tab left while the import is on its way mounts nothing, and neither does a page that
 ends there. A new record revision asks again for the step on screen and aborts the read
 still on its way, whose late answer paints nothing, and a poll of the same record asks
 for nothing. Leaving the tab, or ending the page, disposes the view and aborts its read.
-A step is inserted as text, so markup in the guide stays markup, and each row’s code
-carries `no-highlight`, which the shell’s highlighter skips.
-Open full diff reaches the page’s own `openChangedFile`, which asks the route for the
-file’s Changes address.
+A step is inserted as text, so markup in the guide stays markup, and each row is the
+diff plugin’s, its code a span, which the shell’s highlighter, which takes `pre code`,
+skips. Open full diff reaches the page’s own `openChangedFile`, which asks the route for
+the file’s Changes address.
 
 ```console
 $ node tests/dom/github-guided-pr-mount-behavior.js
 [
+  "the front page: guide mounted; asked step 1",
   "Conversation: guide not mounted; asked nothing",
+  "its description's block: This description has a guided review. Open Guided PR",
   "its tab opens: guide mounted; asked step 1",
+  "the guide's introduction: rendered",
   "step 1: Step 1; rows context one, del <i>two</i>, add three",
   "a path outside the comparison says: This path is not in the comparison.",
   "Open full diff: files src/app.txt",

@@ -1144,7 +1144,7 @@ Every page also has none when the served folder has no repository on github.com
 | `/view/<path>` | `blob/<ref>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
 | `/view/<path>/` | `tree/<ref>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
 | `/view/` | `tree/<ref>/<served prefix>`, or repository URL or `tree/<name>` at the repository root | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
-| `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/guided`, `/pull/<n>/checks` | `pull/<n>`, `pull/<n>/files`, `pull/<n>`, `pull/<n>/checks` | None |
+| `/pull/<n>`, `/pull/<n>/conversation`, `/pull/<n>/files`, `/pull/<n>/guided`, `/pull/<n>/checks` | `pull/<n>`, `pull/<n>`, `pull/<n>/files`, `pull/<n>`, `pull/<n>/checks` | None |
 | `/pull/<n>/files/<path>` | `pull/<n>/files#diff-<hash>` | None |
 | `/commit/<sha>` | `commit/<sha>` | `not_on_origin` |
 | `/commit/<sha>/<path>` | `commit/<sha>#diff-<hash>` | `not_on_origin` |

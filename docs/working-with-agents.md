@@ -96,7 +96,7 @@ move it, and its pull-request pages answer for any pull request of the repositor
 | `/commit/<full-id>` | What one commit changed, by its full ID from `git rev-parse` |
 | `/commit/<full-id>/<path>` | One file’s change in that commit |
 | `/pulls` | The repository’s pull requests |
-| `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/guided`, `/pull/<n>/checks` | A pull request, its changes, its guide, and its checks |
+| `/pull/<n>`, `/pull/<n>/conversation`, `/pull/<n>/files`, `/pull/<n>/guided`, `/pull/<n>/checks` | A pull request (its guide when it has one, else its conversation), its conversation, its changes, its guide, and its checks |
 | `/pull/<n>/files/<path>` | One changed file in a pull request’s changes |
 
 The page stays live while the agent works: new and changed files appear in the tree, and

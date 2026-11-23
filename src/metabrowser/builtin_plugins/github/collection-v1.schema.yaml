@@ -70,6 +70,11 @@ $defs:
     type: string
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
+description: |-
+  Ordered annotated items over one comparison.
+
+  A collection has no prose of its own: the document that holds it introduces it, as a
+  pull request's description introduces its guide.
 properties:
   comparison:
     $ref: '#/$defs/CollectionComparison'
@@ -80,17 +85,11 @@ properties:
     minItems: 1
     title: Items
     type: array
-  overview:
-    $ref: '#/$defs/Prose'
-  summary:
-    $ref: '#/$defs/Prose'
 required:
 - comparison
 - items
-- overview
-- summary
 title: Collection
 type: object
 x-softschema:
   contract: metabrowser.collection:Collection/v1
-  schema_sha256: 70639051bb9cada013f51ad4e4e16c2607d087d2158fc8ce75743722e0850221
+  schema_sha256: 79e2014a05617673a42af60d1cf2145d609e2c162fc9d772d40e31f343e5d4c9

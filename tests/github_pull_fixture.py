@@ -1280,7 +1280,8 @@ def build_home(directory: Path, *, files: bool = False, guided: bool = False) ->
 
 def guide_body(origin: Origin) -> str:
     """An author-written description for the stand-in pull request 7."""
-    return f"""The app learns to count to two.
+    return f"""The app learns to count to two. Its count and its explanation live in separate
+files.
 
 ```guided-pr
 softschema:
@@ -1291,8 +1292,6 @@ collection:
   comparison:
     merge_base: "{origin["base"]}"
     head: "{origin["fork_head"]}"
-  summary: Teach the app to count to two.
-  overview: The app's count and its explanation live in separate files.
   items:
     - title: Start with the count
       note: Check that the original value is preserved.

@@ -211,8 +211,12 @@ def test_a_readers_place_is_kept_in_the_entry_and_disposed_with_the_page() -> No
     disposal = glue[glue.index("dispose() {") :]
     for released in ("listening.abort();", "heights.disconnect();", "keeper.dispose();"):
         assert released in disposal
-    # Only the page's own tab change is a landing: asking for the tab it shows moves nothing.
-    assert "const changed = controller.snapshot().tab !== next;" in source
+    # Only the page's own tab change is a landing: asking for the tab it shows moves nothing,
+    # and the front page and Guided PR's address show the same tab when there is a guide.
+    assert (
+        "const changed = controller.snapshot().tab !== shownTabFor(next, shown?.pull?.text ?? null);"
+        in source
+    )
     assert "place?.dispose();" in source
 
 

@@ -27,10 +27,8 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-pr?number=7
 status: 200
 {
-  "record_revision": "eecb696cd6a2d4032d6da4feeb8ffaaf7847044f30d5d0d85ac9e98a6194ec60",
+  "record_revision": "6b9e97e5934ebf840e7d3fdcd16a1a8cc20054aaf9056324f57ecb8b5e3c88ff",
   "state": "ready",
-  "summary": "Teach the app to count to two.",
-  "overview": "The app's count and its explanation live in separate files.",
   "comparison": {
     "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
     "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
@@ -200,10 +198,8 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-pr?number=7&step=2
 status: 200
 {
-  "record_revision": "eecb696cd6a2d4032d6da4feeb8ffaaf7847044f30d5d0d85ac9e98a6194ec60",
+  "record_revision": "6b9e97e5934ebf840e7d3fdcd16a1a8cc20054aaf9056324f57ecb8b5e3c88ff",
   "state": "ready",
-  "summary": "Teach the app to count to two.",
-  "overview": "The app's count and its explanation live in separate files.",
   "comparison": {
     "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
     "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
@@ -397,7 +393,7 @@ pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-pr?number=8
 status: 200
 {
-  "record_revision": "0dd0882d8f17ed3b7129d5f890f5b7aa03f44d2fa24af1f92a5b7c79cd6bebb7",
+  "record_revision": "ce4077098a6b84f3ed1b2ca6b74719b42e30725a1f0591e60eebd91a56cfaf7c",
   "state": "stale"
 }
 ? 0
@@ -411,7 +407,7 @@ pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 api: /api/plugin/github/guided-pr?number=9
 status: 200
 {
-  "record_revision": "07fc5ffa0d4da8a0c6611f8997f7837dbb7e6f7af2f7b79cc42abc0f8b5e3a9e",
+  "record_revision": "16abc83200fb357d12ee0318f3437b56c3c9450d7f10921f04a89cc4a5b27eed",
   "state": "invalid",
   "message": "Use one guided-pr block in the pull request description."
 }
@@ -432,7 +428,48 @@ status: 200
 ? 0
 ```
 
-The guide’s local address opens the pull request description on GitHub.
+The description introduces the guide: its Markdown, which Conversation and Guided PR
+both render, leaves out the guided-pr block.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?number=7&part=body' | grep -c 'softschema\|guided-pr'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+0
+? 1
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?number=7&part=body' | grep -o 'The app learns to count to two.'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+The app learns to count to two.
+? 0
+```
+
+The guide’s local address, and Conversation’s, open the pull request description on
+GitHub.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/counterpart?page=/pull/7/conversation'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/counterpart?page=/pull/7/conversation
+status: 200
+{
+  "page": "/pull/7/conversation",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/pull/7"
+  },
+  "reason": null
+}
+? 0
+```
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/counterpart?page=/pull/7/guided'

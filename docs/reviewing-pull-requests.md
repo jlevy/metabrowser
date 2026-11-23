@@ -130,12 +130,15 @@ A cached page shows at once and refreshes in the background; the
 ### Tabs
 
 - **Guided PR** (`D`), the first tab when the description includes a guide: the
-  feature’s purpose, an architecture overview, and ordered review steps with commentary
+  description as the guide’s introduction, then ordered review steps with commentary
   above selected diff excerpts.
   The tab appears when the description has a line that opens a `guided-pr` fence; the
   server’s reading of the block decides what the tab then shows.
+  A pull request with a guide opens on it at `/pull/<n>`, and Conversation moves to
+  `/pull/<n>/conversation`; without one, `/pull/<n>` is Conversation.
 - **Conversation** (`C`): the description, then comments, reviews, and commits in
   GitHub’s order, joined by a timeline line.
+  Where the description has its guide, Conversation shows a card that opens Guided PR.
   Commits that arrive while you read are added after what is shown.
   A short commit ID opens that commit on GitHub.
   **Review comments** lists the inline review comments with their files and diff hunks.
@@ -154,14 +157,19 @@ A step can bring changes from several files together.
 To publish a guide, have the author or their agent add one top-level `guided-pr` fenced
 YAML block to the GitHub PR description.
 Give the agent the PR description and the diff from its merge base to its head.
-Ask it to explain the feature, trace the main components, and choose the code to review
-in dependency or execution order.
+Ask it to choose the code to review in dependency or execution order.
 Each step should explain why the reviewer is looking there and what to verify.
-The block is a collection (`metabrowser.collection:Collection/v1`): a `summary`, shown
-under “What this changes”, an `overview`, shown under “Architecture”, and ordered
-`items`, each a step with a `title`, a `note` saying what to verify, and its
-`references`. Write every guide field as plain text: the page shows it as typed and
-keeps its line breaks, so Markdown such as backticks, lists, and links prints literally.
+
+The description is the guide’s introduction.
+Guided PR opens with it, rendered as Conversation renders it and without the block, so
+write it to be read first: what the change does and why, then how its parts fit
+together. The block itself has no prose of its own.
+
+The block is a collection (`metabrowser.collection:Collection/v1`): the comparison it
+was written against and ordered `items`, each a step with a `title`, a `note` saying
+what to verify, and its `references`. Write each step’s fields as plain text: the page
+shows them as typed and keeps their line breaks, so Markdown such as backticks, lists,
+and links prints literally.
 
 ````markdown
 ```guided-pr
@@ -173,8 +181,6 @@ collection:
   comparison:
     merge_base: "<full merge-base commit ID>"
     head: "<full PR head commit ID>"
-  summary: Readers can keep using cached data while a refresh runs.
-  overview: A request serves the last snapshot while a worker builds the next one.
   items:
     - title: Inspect the request path
       note: Does the request return the snapshot before the worker finishes?

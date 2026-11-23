@@ -65,7 +65,14 @@ def part_text(record: PullRecord, part: str) -> str | None:
     """The text *part* names in *record*, or ``None`` when it names none."""
 
     if part == "body":
-        return record.pull.body
+        body = record.pull.body
+        if "guided-pr" not in body:
+            return body
+        # The guide's block is the Guided PR tab's: the description renders as its
+        # introduction, in Conversation and above the guide's steps alike.
+        from metabrowser.builtin_plugins.github.guided_pr import without_guide
+
+        return without_guide(body)
     kind, _, ident = part.partition("/")
     wanted = int(ident)
     items = {

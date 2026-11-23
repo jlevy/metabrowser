@@ -3,9 +3,8 @@
 /**
  * @typedef {{old: number | null, new: number | null, op: "add" | "del" | "context", text: string}} Row
  * @typedef {{path: string, state: string, href: string | null, rows: Row[]}} Reference
- * @typedef {{state: "ready", record_revision: string, summary: string, overview: string,
- *   step: number, step_count: number, title: string, note: string,
- *   references: Reference[], assets?: unknown}} Step
+ * @typedef {{state: "ready", record_revision: string, step: number, step_count: number,
+ *   title: string, note: string, references: Reference[], assets?: unknown}} Step
  * @typedef {{state: "absent" | "invalid" | "stale" | "comparison_unavailable" |
  *   "description_truncated" | "step_not_found" | "not_cached", record_revision: string | null,
  *   message?: string}} Refusal
@@ -227,17 +226,6 @@ function renderReference(reference, open) {
  *   guide waits for them, as a description does.
  */
 export function mountGuidedPR(host, number, open, loadStyles) {
-  const feature = element("p");
-  const architecture = element("p");
-  const summary = element("div", "", "kpress-prose");
-  summary.append(
-    element("h2", "What this changes"),
-    feature,
-    element("h2", "Architecture"),
-    architecture,
-  );
-  const overview = proseHost(summary);
-  overview.classList.add("github-pull-guide-overview");
   /** @type {Promise<unknown> | null} */
   let styles = null;
   const controls = element("div", "", "github-pull-guide-controls");
@@ -253,7 +241,7 @@ export function mountGuidedPR(host, number, open, loadStyles) {
   const detail = element("section", "", "github-pull-guide-step");
   const notice = element("p", "", "github-pull-quiet");
   notice.setAttribute("role", "status");
-  host.append(overview, controls, detail, notice);
+  host.append(controls, detail, notice);
 
   const navigation = createGuideNavigation({
     async read(step, signal) {
@@ -288,7 +276,7 @@ export function mountGuidedPR(host, number, open, loadStyles) {
         return;
       }
       const available = state.state === "ready";
-      overview.hidden = controls.hidden = !available;
+      controls.hidden = !available;
       if (!available) {
         previous.disabled = next.disabled = true;
         detail.replaceChildren();
@@ -300,8 +288,6 @@ export function mountGuidedPR(host, number, open, loadStyles) {
         return;
       }
       notice.hidden = true;
-      feature.textContent = state.summary;
-      architecture.textContent = state.overview;
       status.textContent = `Step ${state.step} of ${state.step_count}`;
       previous.disabled = state.step <= 1;
       next.disabled = state.step >= state.step_count;
@@ -315,7 +301,7 @@ export function mountGuidedPR(host, number, open, loadStyles) {
       detail.replaceChildren(proseHost(step), references);
     },
   });
-  overview.hidden = controls.hidden = true;
+  controls.hidden = true;
   previous.addEventListener("click", () => navigation.move(-1));
   next.addEventListener("click", () => navigation.move(1));
   return navigation;

@@ -236,7 +236,7 @@ const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 // Give a transient queue or provider failure one chance to clear while the reader stays.
 export const TIMELINE_RETRY_MS = 1000;
 // Guided PR leads, when the description carries a guide: it is the author's reading order.
-export const TABS = Object.freeze(["guided", "", "files", "checks"]);
+export const TABS = Object.freeze(["guided", "", "conversation", "files", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
 const TITLE_OVERHANG_PX = 4;
 /**
@@ -254,6 +254,48 @@ const PULL_TABS = Object.freeze([
 // guide exists, and counts only a top-level fence, so a description that shows the format inside
 // another fence gets a tab that says there is no guide (arch-github-pull-requests.md, "Guided PR").
 const GUIDED_FENCE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*guided-pr[ \t]*$/m;
+
+/**
+ * The tab a route shows, by its id in `PULL_TABS`. `/pull/<n>` is the pull request's front
+ * page: Guided PR when the description has a guide, by the same hint the tab bar reads,
+ * and Conversation otherwise. `/pull/<n>/conversation` names Conversation, whose id is "",
+ * so a guided pull request's Conversation has an address that always shows it.
+ *
+ * @param {string} route The route's tab: "", "conversation", or another tab's id.
+ * @param {string | null} description The description, or null before the record.
+ * @returns {string}
+ */
+export function shownTabFor(route, description) {
+  if (route === "conversation") {
+    return "";
+  }
+  if (route === "") {
+    return GUIDED_FENCE.test(description ?? "") ? "guided" : "";
+  }
+  return route;
+}
+
+/**
+ * The tab a stack move keeps: the same tab on the next pull request, except that Guided PR
+ * goes to its front page, which is its guide when it has one and Conversation otherwise.
+ *
+ * @param {string} tab The tab on screen.
+ */
+export function stackTab(tab) {
+  return tab === "guided" ? "" : tab;
+}
+
+/**
+ * The route that shows a tab: Conversation's is the front page's address unless the front
+ * page is Guided PR, when it is `/pull/<n>/conversation` (`shownTabFor`).
+ *
+ * @param {string} id The tab's id in `PULL_TABS`.
+ * @param {string | null} description
+ * @returns {string}
+ */
+export function routeForTab(id, description) {
+  return id === "" && shownTabFor("", description) !== "" ? "conversation" : id;
+}
 
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
@@ -1958,7 +2000,10 @@ export function createPullController(deps, options) {
   let envelope = null;
   /** @type {string | null} */
   let etag = null;
-  let tab = TABS.includes(options.tab) ? options.tab : "";
+  // What the address asks for: a tab, or "" for the front page, which `shownTab` resolves.
+  let routeTab = TABS.includes(options.tab) ? options.tab : "";
+  /** The tab on screen: the route's, with the front page resolved against the record. */
+  const shownTab = () => shownTabFor(routeTab, partText(envelope?.record ?? null, "body"));
   /** @type {unknown} */
   let timer = null;
   /** When `timer` fires, by `deps.now()`. */
@@ -2138,8 +2183,10 @@ export function createPullController(deps, options) {
       askTimer !== null ||
       rateLimitHolds() ||
       (envelope.record?.unavailable?.comparison === "no_store" &&
-        (tab === "files" ||
-          (tab === "" && deps.ownsConversation?.() === true && hasFreshComparisonMetadata())))
+        (shownTab() === "files" ||
+          (shownTab() === "" &&
+            deps.ownsConversation?.() === true &&
+            hasFreshComparisonMetadata())))
     ) {
       return false;
     }
@@ -2217,7 +2264,7 @@ export function createPullController(deps, options) {
   function pageState() {
     return {
       number: options.number,
-      tab,
+      tab: shownTab(),
       nowMs: deps.now(),
       error,
       errorFromComparison,
@@ -2331,7 +2378,7 @@ export function createPullController(deps, options) {
 
   function pollsFast() {
     // Optional comparison work says nothing to Conversation, so it is polled slowly there.
-    const quiet = envelope?.preparing_comparison === true && tab !== "files";
+    const quiet = envelope?.preparing_comparison === true && shownTab() !== "files";
     return (
       envelope === null ||
       (envelope.refreshing && !quiet) ||
@@ -2807,7 +2854,7 @@ export function createPullController(deps, options) {
   function idleCandidate() {
     if (
       disposed ||
-      tab !== "" ||
+      shownTab() !== "" ||
       !deps.isVisible() ||
       deps.ownsConversation?.() !== true ||
       !hasPolled ||
@@ -2852,7 +2899,7 @@ export function createPullController(deps, options) {
   async function requestComparison() {
     if (
       !disposed &&
-      tab === "files" &&
+      shownTab() === "files" &&
       deps.isVisible() &&
       inFlightRefreshes === 0 &&
       envelope?.refreshing === false &&
@@ -2930,7 +2977,7 @@ export function createPullController(deps, options) {
     if (disposed || !TABS.includes(next)) {
       return;
     }
-    tab = next;
+    routeTab = next;
     cancelIdleComparison();
     walkSettling = next === "files" && how.settling === true;
     // Whichever call leaves the address owning Changes under a hold, the route's confirmation
@@ -3221,7 +3268,7 @@ export function createPullController(deps, options) {
     snapshot: () => ({
       state: envelope?.state ?? null,
       etag,
-      tab,
+      tab: shownTab(),
       timer: timer === null ? null : pollsFast() ? "fast" : "slow",
       markdown: [...markdown.keys()],
       queued: [...queue],
@@ -4417,7 +4464,14 @@ export function mountPullPage(container, ctx, mb) {
   /** What the body last painted: another tab's content is never held on screen. */
   /** @type {"none" | "loading" | "conversation" | "checks" | "files" | "guided"} */
   let bodyShows = "none";
-  /** @type {{view: ReturnType<typeof import("./guided-pr.js").mountGuidedPR> | null} | null} */
+  /**
+   * The Guided PR tab while it shows: the guide's view once its module loads, and the
+   * description that introduces it.
+   *
+   * @typedef {{view: ReturnType<typeof import("./guided-pr.js").mountGuidedPR> | null,
+   *   introduction: {node: HTMLElement, key: string | null, block: HTMLElement | null}}} GuidedMount
+   */
+  /** @type {GuidedMount | null} */
   let guided = null;
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
@@ -5065,6 +5119,23 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
+   * Whether the address is this page's and shows *tab*, by its id in `PULL_TABS`: the front
+   * page, `/pull/<n>`, shows what `shownTabFor` resolves it to.
+   *
+   * @param {string} tab
+   */
+  function addressShows(tab) {
+    const page = `/pull/${number}`;
+    const here = window.location.pathname.replace(/\/$/, "");
+    const route =
+      here === page
+        ? ""
+        : (TABS.find((candidate) => candidate !== "" && onPageRoute(here, number, candidate)) ??
+          null);
+    return route !== null && shownTabFor(route, shown?.pull?.text ?? null) === tab;
+  }
+
+  /**
    * A link to a tab of this page or to another pull request's page. A plain click stays
    * in the app: the shell's `open` puts the route in the URL and shows it.
    *
@@ -5144,14 +5215,18 @@ export function mountPullPage(container, ctx, mb) {
 
   /** One link per tab, kept across paints so a poll does not take focus from one. */
   const tabLinks = PULL_TABS.map(({ id, label }) => {
-    const link = pageLink({ number, tab: id }, "tab-btn", [label]);
+    // Conversation's route is the front page's or `/pull/<n>/conversation` (`routeForTab`);
+    // paintHeader keeps the link's route and address current.
+    /** @type {{number: number, tab: string}} */
+    const route = { number, tab: id };
+    const link = pageLink(route, "tab-btn", [label]);
     if (id === "guided") {
       link.classList.add("github-pull-guide-tab");
     } else {
       tabBar.append(link);
     }
     link.setAttribute("role", "tab");
-    return { id, link };
+    return { id, link, route };
   });
   /** The links' keys, from `attachTabKeys` once the page can end them. @type {MetabrowserPublicPluginShortcutHandle[]} */
   let tabKeys = [];
@@ -5189,7 +5264,7 @@ export function mountPullPage(container, ctx, mb) {
         return menu.element;
       }
       menu = createStackMenu(stack, number, {
-        link: (target) => pageLink(memberRoute(target, model.tab), "", []),
+        link: (target) => pageLink(memberRoute(target, stackTab(model.tab)), "", []),
         icon: stackSvg === null ? null : document.importNode(stackSvg, true),
         currentTitle: model.pull?.title ?? "",
         named,
@@ -5230,7 +5305,7 @@ export function mountPullPage(container, ctx, mb) {
       shown === null ||
       shown.pull === null ||
       document.visibilityState !== "visible" ||
-      !onPageRoute(window.location.pathname, number, controller.snapshot().tab)
+      !addressShows(controller.snapshot().tab)
     ) {
       return null;
     }
@@ -5857,7 +5932,11 @@ export function mountPullPage(container, ctx, mb) {
     if (model.pull === null && model.status === "unavailable") {
       tabColumn.remove();
     } else {
-      for (const [at, { id, link }] of tabLinks.entries()) {
+      for (const [at, { id, link, route }] of tabLinks.entries()) {
+        if (id === "") {
+          route.tab = routeForTab(id, model.pull?.text ?? null);
+          link.setAttribute("href", `/pull/${number}${route.tab ? `/${route.tab}` : ""}`);
+        }
         if (id === "guided") {
           if (model.tab !== id && !GUIDED_FENCE.test(model.pull?.text ?? "")) {
             link.remove();
@@ -6117,6 +6196,7 @@ export function mountPullPage(container, ctx, mb) {
             age(pull.created),
           ]),
           textBlock("body", pull.text, pull.truncated),
+          ...(GUIDED_FENCE.test(pull.text) ? [guideCard()] : []),
         ]),
     );
     /** @type {Map<string, {node: HTMLElement, pending: boolean}>} */
@@ -7299,28 +7379,65 @@ export function mountPullPage(container, ctx, mb) {
     guided = null;
   }
 
+  /**
+   * Where Conversation's description had its guided-pr block: the server renders the
+   * description without it (`part_text`), and this says where the guide is read.
+   */
+  function guideCard() {
+    return notice(null, [
+      "This description has a guided review. ",
+      pageLink({ number, tab: "guided" }, "", ["Open Guided PR"]),
+    ]);
+  }
+
+  /**
+   * The guide's introduction: the description, rendered as Conversation renders it and
+   * without its guided-pr block. It is drawn again only when its text or its render changes.
+   *
+   * @param {PullModel} model
+   * @param {GuidedMount} mount
+   */
+  function paintGuideIntroduction(model, mount) {
+    const pull = /** @type {NonNullable<PullModel["pull"]>} */ (model.pull);
+    const key = JSON.stringify([pull.text, pull.truncated, pull.state, model.textRevision]);
+    const shown = mount.introduction;
+    if (shown.key !== key || shown.block === null) {
+      shown.key = key;
+      shown.block = textBlock("body", pull.text, pull.truncated);
+      shown.block.classList.add("github-pull-guide-introduction");
+      shown.node.replaceChildren(shown.block);
+    }
+    // Each paint of the tab clears the page's texts: the description's is registered again
+    // so its Markdown lands here.
+    askForTexts([shown.block]);
+  }
+
   /** @param {PullModel} model */
   function paintGuided(model) {
     const moved = model.newCommits !== null;
     if (guided !== null) {
+      paintGuideIntroduction(model, guided);
       guided.view?.show(model.recordRevision, moved);
       return;
     }
+    const introduction = h("div", {}, []);
     const host = h("section", { class: "github-pull-guided-pr", "aria-label": "Guided PR" }, [
+      introduction,
       h("div", { class: "mb-delayed-loading", role: "status", "aria-label": "Loading the guide" }, [
         h("div", { class: "recent-loading github-pull-loading", "aria-hidden": "true" }),
       ]),
     ]);
-    /** @type {{view: ReturnType<typeof import("./guided-pr.js").mountGuidedPR> | null}} */
-    const mount = { view: null };
+    /** @type {GuidedMount} */
+    const mount = { view: null, introduction: { node: introduction, key: null, block: null } };
     guided = mount;
     body.replaceChildren(host);
+    paintGuideIntroduction(model, mount);
     void import("./guided-pr.js").then(
       ({ mountGuidedPR }) => {
         if (guided !== mount || shown === null) {
           return;
         }
-        host.replaceChildren();
+        host.replaceChildren(introduction);
         // The guide's text is KPress prose and its excerpts are the diff plugin's rows.
         mount.view = mountGuidedPR(host, number, openChangedFile, (assets) =>
           Promise.all([
@@ -7335,6 +7452,7 @@ export function mountPullPage(container, ctx, mb) {
       () => {
         if (guided === mount) {
           host.replaceChildren(
+            introduction,
             h("p", { class: "github-pull-quiet", role: "status" }, ["Could not load Guided PR."]),
           );
         }
@@ -7706,7 +7824,7 @@ export function mountPullPage(container, ctx, mb) {
       discussion === null ||
       held === null ||
       document.visibilityState !== "visible" ||
-      !onPageRoute(window.location.pathname, number, "")
+      !addressShows("")
     ) {
       cancelTimeline();
       return;
@@ -7728,10 +7846,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     const read = { cachedOnly, abort: new AbortController() };
     held.read = read;
-    const owns = () =>
-      commitTimeline === held &&
-      held.read === read &&
-      onPageRoute(window.location.pathname, number, "");
+    const owns = () => commitTimeline === held && held.read === read && addressShows("");
     const load = async () => {
       if (!owns()) {
         return;
@@ -7866,7 +7981,12 @@ export function mountPullPage(container, ctx, mb) {
   const listening = new AbortController();
   // The tab keys end with it too: cancelPending() aborts the signal. A page the shell
   // stages for a retained navigation is inert, so its keys wait until it is shown.
-  tabKeys = attachTabKeys(mb.shortcuts, tabLinks, (tab) => page.setTab(tab), listening.signal);
+  tabKeys = attachTabKeys(
+    mb.shortcuts,
+    tabLinks,
+    (tab) => page.setTab(routeForTab(tab, shown?.pull?.text ?? null)),
+    listening.signal,
+  );
   const controller = createPullController(
     {
       async request(method, route, options) {
@@ -7910,10 +8030,7 @@ export function mountPullPage(container, ctx, mb) {
       // A hold's lift time as the reader's clock says it, short (`holdLiftText`).
       formatHold: (liftMs, nowMs) => holdLiftText(liftMs, nowMs),
       ownsChanges: () => onPageRoute(window.location.pathname, number, "files"),
-      ownsConversation: () =>
-        active &&
-        mb.sourceKind() === "filesystem" &&
-        onPageRoute(window.location.pathname, number, ""),
+      ownsConversation: () => active && mb.sourceKind() === "filesystem" && addressShows(""),
       scheduleComparison(callback) {
         /** @type {(() => void) | undefined} */
         let cancelIdle;
@@ -8023,7 +8140,7 @@ export function mountPullPage(container, ctx, mb) {
     if (pane === null) {
       return;
     }
-    place = keepPlace(pane, body, () => shown?.tab ?? "", number);
+    place = keepPlace(pane, body, () => addressShows(shown?.tab ?? ""));
     place.keeper.land();
   }
 
@@ -8083,7 +8200,7 @@ export function mountPullPage(container, ctx, mb) {
       }
       const at = stack.pulls.indexOf(number) + delta;
       if (at >= 0 && at < stack.pulls.length) {
-        void open(memberRoute(stack.pulls[at], controller.snapshot().tab));
+        void open(memberRoute(stack.pulls[at], stackTab(controller.snapshot().tab)));
       }
       return true;
     },
@@ -8100,7 +8217,7 @@ export function mountPullPage(container, ctx, mb) {
         void open({ number, tab: next });
         return;
       }
-      const changed = controller.snapshot().tab !== next;
+      const changed = controller.snapshot().tab !== shownTabFor(next, shown?.pull?.text ?? null);
       controller.setTab(next);
       if (changed) {
         place?.keeper.land();
@@ -8198,10 +8315,9 @@ export function mountPullPage(container, ctx, mb) {
  *
  * @param {HTMLElement} pane
  * @param {HTMLElement} body
- * @param {() => string} tab
- * @param {number} number
+ * @param {() => boolean} owns Whether the address still shows this page's tab.
  */
-function keepPlace(pane, body, tab, number) {
+function keepPlace(pane, body, owns) {
   const tops = () => {
     const viewTop = pane.getBoundingClientRect().top;
     return Array.from(
@@ -8214,7 +8330,7 @@ function keepPlace(pane, body, tab, number) {
     write(place) {
       // History can move on before this page is told: the entry is written only while
       // it is still this page's.
-      if (onPageRoute(window.location.pathname, number, tab())) {
+      if (owns()) {
         window.history.replaceState({ ...window.history.state, [PLACE_KEY]: place }, "");
       }
     },

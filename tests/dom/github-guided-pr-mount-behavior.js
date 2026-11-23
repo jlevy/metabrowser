@@ -43,8 +43,6 @@ function step(generation, number, count = 2) {
   return {
     state: "ready",
     record_revision: revisionOf(generation),
-    summary: "Teach the app to <b>count</b>.",
-    overview: "Two files.\nThe count and its words.",
     comparison: { merge_base: "a".repeat(40), head: "b".repeat(40) },
     step_count: count,
     step: number,
@@ -214,18 +212,37 @@ async function run() {
   const page = await import(pathToFileURL(pagePath).href);
   const steps = [];
 
+  // The front page of a pull request with a guide is Guided PR.
+  {
+    const front = host();
+    const view = front.mount(page, "", envelope(1));
+    await settle();
+    steps.push(
+      `the front page: guide ${view.guided() === null ? "not mounted" : "mounted"}; asked ${asked(front.reads)}`,
+    );
+    view.handle.dispose();
+  }
+
   // Lazy mount: Conversation never reads the guide, and its tab mounts it at first paint.
   {
     const first = host();
-    const view = first.mount(page, "", envelope(1));
+    const view = first.mount(page, "conversation", envelope(1));
     await settle();
     steps.push(
       `Conversation: guide ${view.guided() === null ? "not mounted" : "mounted"}; asked ${asked(first.reads)}`,
     );
+    // The description's guided-pr block is a card there, which opens the guide.
+    const card = view.container
+      .querySelectorAll(".notice")
+      .find((node) => node.textContent.includes("guided review"));
+    steps.push(`its description's block: ${card?.textContent ?? "no card"}`);
     view.arrive("guided");
     await settle();
     assert.equal(first.pending().length, 1);
     steps.push(`its tab opens: guide mounted; asked ${asked(first.reads)}`);
+    // The guide opens with the description, as Conversation renders it.
+    const introduction = view.container.querySelector(".github-pull-guide-introduction");
+    steps.push(`the guide's introduction: ${introduction?.textContent ?? "none"}`);
 
     // A step is text, not markup, and each row is the diff plugin's: its text a span, which
     // the shell's highlighter, which takes `pre code`, cannot select.
@@ -285,7 +302,7 @@ async function run() {
     await settle();
     const second = first.pending()[0];
     assert.equal(second.step, 2);
-    view.arrive("");
+    view.arrive("conversation");
     await settle();
     steps.push(
       `left for Conversation with step 2 on its way: read aborted ${second.signal.aborted}; guide ${view.guided() === null ? "gone" : "still there"}`,
@@ -335,10 +352,10 @@ async function run() {
   // ends there: each is a view that nothing disposes if it were mounted late.
   {
     const third = host();
-    const view = third.mount(page, "", envelope(1));
+    const view = third.mount(page, "conversation", envelope(1));
     await settle();
     view.arrive("guided");
-    view.arrive("");
+    view.arrive("conversation");
     await settle();
     steps.push(
       `Guided PR opened and left before its import settled: guide ${view.guided() === null ? "not mounted" : "mounted"}; asked ${asked(third.reads)}`,

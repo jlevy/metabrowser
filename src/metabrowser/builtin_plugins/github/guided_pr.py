@@ -29,6 +29,8 @@ from metabrowser.git.process import GitError, GitLocation, RepositoryStoreTarget
 from metabrowser.view_routes import format_pull_href
 
 if TYPE_CHECKING:
+    from markdown_it.token import Token
+
     from metabrowser.builtin_plugins.github.pull_route import PullHost
     from metabrowser.diff.format import FileChange, FilePatch, Hunk
 
@@ -106,14 +108,21 @@ class CollectionItem(_Model):
 
 
 class Collection(_Model):
+    """Ordered annotated items over one comparison.
+
+    A collection has no prose of its own: the document that holds it introduces it, as a
+    pull request's description introduces its guide.
+    """
+
     comparison: CollectionComparison
-    summary: Prose
-    overview: Prose
     items: list[CollectionItem] = Field(min_length=1, max_length=MAX_ITEMS)
 
 
-def parse_guide(body: str) -> Collection | None:
-    """Read one top-level fenced SoftSchema artifact from the raw PR description."""
+def _guide_fence(body: str) -> tuple[Token, list[str]] | None:
+    """The description's one top-level guided-pr fence and the body's lines, or ``None``.
+
+    Raises :class:`GuideError` for two such fences or one that is not closed.
+    """
     if "guided-pr" not in body:
         return None
     fences = [
@@ -128,12 +137,38 @@ def parse_guide(body: str) -> Collection | None:
     fence = fences[0]
     mapped = fence.map
     assert mapped is not None
-    last = body.replace("\r\n", "\n").replace("\r", "\n").split("\n")[mapped[1] - 1]
+    lines = body.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     marker = re.escape(fence.markup[0])
     if mapped[1] <= mapped[0] + 1 or not re.fullmatch(
-        rf" {{0,3}}{marker}{{{len(fence.markup)},}}[ \t]*", last
+        rf" {{0,3}}{marker}{{{len(fence.markup)},}}[ \t]*", lines[mapped[1] - 1]
     ):
         raise GuideError("Close the guided-pr block with a matching code fence.")
+    return fence, lines
+
+
+def without_guide(body: str) -> str:
+    """*body* without its guided-pr block: the description as the guide's introduction.
+
+    A description whose block cannot be read keeps it, so its author sees what they wrote.
+    """
+    try:
+        found = _guide_fence(body)
+    except GuideError:
+        return body
+    if found is None:
+        return body
+    fence, lines = found
+    assert fence.map is not None
+    start, end = fence.map
+    return "\n".join([*lines[:start], *lines[end:]]).strip("\n")
+
+
+def parse_guide(body: str) -> Collection | None:
+    """Read one top-level fenced SoftSchema artifact from the raw PR description."""
+    found = _guide_fence(body)
+    if found is None:
+        return None
+    fence, _ = found
     try:
         document: object = parse_yaml_text(fence.content)
     except ValueError as exc:
@@ -358,8 +393,6 @@ async def guided_pr(host: PullHost, number: int, step_number: int) -> dict[str, 
     return {
         **identity,
         "state": "ready",
-        "summary": guide.summary,
-        "overview": guide.overview,
         "comparison": guide.comparison.model_dump(),
         "step_count": len(guide.items),
         "step": step_number,

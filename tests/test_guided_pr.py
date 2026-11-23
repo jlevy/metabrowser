@@ -18,6 +18,7 @@ from metabrowser.builtin_plugins.github.guided_pr import (
     _references,  # pyright: ignore[reportPrivateUsage]
     parse_guide,
     read_guide,
+    without_guide,
 )
 from metabrowser.diff.format import (
     Availability,
@@ -43,8 +44,6 @@ collection:
   comparison:
     merge_base: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     head: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-  summary: Explain the feature.
-  overview: Trace the request through the worker.
   items:
     - title: Read the request first
       note: Does the request wait for the worker?
@@ -62,6 +61,18 @@ def test_parses_an_ordered_guide_from_the_description() -> None:
     assert guide is not None
     assert [step.title for step in guide.items] == ["Read the request first", "Follow the worker"]
     assert guide.items[0].references[0].end_line == 5
+
+
+def test_the_description_without_its_guide_is_the_guides_introduction() -> None:
+    body = f"Explain the feature.\r\n\r\n{_GUIDE}\r\n\r\nThen merge it."
+    assert without_guide(body) == "Explain the feature.\n\n\nThen merge it."
+    assert without_guide(_GUIDE) == ""
+    # A block that cannot be read stays, so its author sees what they wrote.
+    for kept in (f"{_GUIDE}\n\n{_GUIDE}", _GUIDE.removesuffix("```"), "No guide here."):
+        assert without_guide(kept) == kept
+    # An example of a block, inside another fence, is the description's own text.
+    example = f"````markdown\n{_GUIDE}\n````"
+    assert without_guide(example) == example
 
 
 def test_ignores_the_marker_inside_an_example_of_markdown() -> None:
@@ -82,7 +93,8 @@ def test_packaged_schema_matches_the_model() -> None:
         _GUIDE.replace("path: read.py", "path: ../read.py"),
         _GUIDE.replace("start_line: 2", "start_line: true"),
         _GUIDE.replace("start_line: 2", "start_line: 2, extra: 3"),
-        _GUIDE.replace("summary: Explain the feature.", "summary: [one, two]"),
+        # The description introduces the guide; the collection has no prose of its own.
+        _GUIDE.replace("  items:\n", "  summary: Explain the feature.\n  items:\n"),
         _GUIDE.replace("status: enforced", "status: soft"),
         _GUIDE.replace("Collection/v1", "Collection/v2"),
     ],

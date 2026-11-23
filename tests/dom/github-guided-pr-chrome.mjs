@@ -10,8 +10,9 @@
 // github-guided-pr-mount-behavior.js, and the tab and key in github-pull-page-mount-behavior.js):
 //
 // 1. The tab and its key on the real shell: Guided PR leads the bar on a pull request whose
-//    description has a guide, D opens it once the page has attached its keys, and on
-//    one with no guide there is no tab and D opens nothing.
+//    description has a guide and is its front page, opened by the description; Conversation
+//    has its own address, where the guide's block is a card; D opens the guide once the page
+//    has attached its keys; and on one with no guide there is no tab and D opens nothing.
 // 2. An excerpt's rows after the shell's highlighter has run over the page. The shell highlights
 //    every `pre code` that does not carry `no-highlight` (`highlightCode` in app.js), one row at a
 //    time as a one-line snippet, which gave each row a padded, gray block of its own inside the
@@ -74,11 +75,16 @@ try {
     await chrome.send("Page.navigate", { url: `${base}${route}` });
     await waitFor(`location.pathname === ${JSON.stringify(route)}`);
   };
-  const pressD = async () => {
-    const code = { key: "d", code: "KeyD", windowsVirtualKeyCode: 68 };
-    await chrome.send("Input.dispatchKeyEvent", { type: "keyDown", text: "d", ...code });
+  const press = async (key) => {
+    const code = {
+      key,
+      code: `Key${key.toUpperCase()}`,
+      windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
+    };
+    await chrome.send("Input.dispatchKeyEvent", { type: "keyDown", text: key, ...code });
     await chrome.send("Input.dispatchKeyEvent", { type: "keyUp", ...code });
   };
+  const pressD = () => press("d");
   const settled = (title) =>
     waitFor(
       `document.querySelector(".github-pull-guide-step .github-pull-guide-title")?.textContent === ${JSON.stringify(title)}`,
@@ -93,8 +99,9 @@ try {
   };
   await chrome.send("Page.enable");
 
-  // 1. A pull request with a guide: the tab joins the bar once its record is in, and D opens it
-  // once the page has attached its keys.
+  // 1. A pull request with a guide: the tab leads the bar once its record is in, its front
+  // page is the guide, opened by the description, and Conversation has an address of its own,
+  // where the description's block is a card. D opens the guide once the page has its keys.
   await go("/pull/7");
   await waitFor(`${GUIDE_TAB} !== undefined`);
   same("the tabs of a pull request with a guide", await evaluate(TABS), [
@@ -103,15 +110,42 @@ try {
     "Changes",
     "Checks",
   ]);
-  await waitFor(`${GUIDE_TAB}.getAttribute("aria-keyshortcuts") !== null`);
-  await pressD();
-  await waitFor(`location.pathname === "/pull/7/guided"`);
   await settled("Start with the count");
   same(
-    "the guide's tab is the one shown",
+    "the front page is the guide",
     await evaluate(`${GUIDE_TAB}.getAttribute("aria-selected")`),
     "true",
   );
+  await waitFor(`document.querySelector(".github-pull-guide-introduction .kpress-prose") !== null`);
+  same(
+    "the guide opens with the description, without its block",
+    await evaluate(
+      `document.querySelector(".github-pull-guide-introduction").textContent.replace(/\\s+/g, " ").trim()`,
+    ),
+    "The app learns to count to two. Its count and its explanation live in separate files.",
+  );
+  same(
+    "Conversation's address",
+    await evaluate(
+      `[...document.querySelectorAll(".github-pull .tab-btn")].find((tab) => tab.textContent.trim() === "Conversation").getAttribute("href")`,
+    ),
+    "/pull/7/conversation",
+  );
+  await waitFor(`${GUIDE_TAB}.getAttribute("aria-keyshortcuts") !== null`);
+  await press("c");
+  await waitFor(`location.pathname === "/pull/7/conversation"`);
+  await waitFor(
+    `[...document.querySelectorAll(".github-pull-text + .notice")].some((node) => node.textContent.includes("guided review"))`,
+  );
+  check(
+    "Conversation's description has no guided-pr block",
+    await evaluate(
+      `!document.querySelector(".github-pull-text").textContent.includes("softschema")`,
+    ),
+  );
+  await pressD();
+  await waitFor(`location.pathname === "/pull/7/guided"`);
+  await settled("Start with the count");
 
   // 2. Rows after the shell's highlighter. Wait until it has loaded, put a control block beside
   // the excerpt, and run the shell's own pass over the page.
