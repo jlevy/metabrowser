@@ -144,13 +144,19 @@
 
   /**
    * What the row calls the ref a status serves: its short name, and for a pull request's
-   * head, whose only name is `refs/pull/<n>/head`, the pull request. Pure.
+   * head, whose only name is `refs/pull/<n>/head`, the pull request. *start* is for a
+   * sentence the label starts: the row's own words are capitalized there, as its link to the
+   * pull request reads, and a ref's name never is, since it is the ref's. Pure.
    *
    * @param {MetabrowserSourceStatus} status
+   * @param {{start?: boolean}} [where]
    */
-  function refLabel(status) {
+  function refLabel(status, where = {}) {
     const pull = /^refs\/pull\/([1-9][0-9]*)\/head$/.exec(status.ref ?? "");
-    return pull !== null ? `pull request #${pull[1]}` : (status.ref_name ?? status.ref ?? "");
+    if (pull === null) {
+      return status.ref_name ?? status.ref ?? "";
+    }
+    return `${where.start === true ? "Pull request" : "pull request"} #${pull[1]}`;
   }
 
   /**
@@ -225,12 +231,11 @@
     // offer below, rather than claiming to update.
     const follow = error === null ? followTarget(status, page.shown) : null;
     if (follow !== null) {
-      const name = refLabel(status);
       return {
         visible: true,
         tone: "refreshing",
-        label: `Updating to ${name}…`,
-        detail: `${name} is now at ${window.MetabrowserFormatters.shortCommit(follow.commit)}, and this page follows it.`,
+        label: `Updating to ${refLabel(status)}…`,
+        detail: `${refLabel(status, { start: true })} is now at ${window.MetabrowserFormatters.shortCommit(follow.commit)}, and this page follows it.`,
         offer: null,
         error,
         pull,
@@ -281,12 +286,12 @@
         latest: status.latest,
         // "Now at", not "newer": a force-push can move a branch back. The commit follows
         // the words in the commit-ID face, as every line names one.
-        text: `${refLabel(status)} is now at`,
+        text: `${refLabel(status, { start: true })} is now at`,
         commit: window.MetabrowserFormatters.shortCommit(status.latest),
         button: "Switch",
       };
     } else if (status.ref !== null && status.ref_on_origin === false && !refreshing) {
-      detail = `${detail} ${refLabel(status)} is no longer on the origin; its commits stay readable here.`;
+      detail = `${detail} ${refLabel(status, { start: true })} is no longer on the origin; its commits stay readable here.`;
     }
     // The attended pull request's page is one link away from every page on its pin.
     return { visible: true, tone, label, detail, offer, error, pull, follow: null };
@@ -799,34 +804,50 @@
     }
 
     /**
-     * Go with the page's ref to the commit the server serves for it now.
+     * Ask the pin route for *ref* by name and go where the page is on the commit the server
+     * then serves for it.
      *
-     * Asks the pin route for the ref, which changes nothing once the server has followed
-     * and serves the tip when it has not yet, naming the page's own `/view/` address, so
-     * the answer says where the page is on the new commit: the same file or folder when
-     * the commit has it, else the root. The page reloads in place when that is where it
-     * is, which keeps its line anchor and scroll, and otherwise goes there. Any other
-     * page, a pull request's or a commit's, reloads.
+     * Names the page's own `/view/` address, so the answer says where the page is on that
+     * commit: the same file or folder when the commit has it, else the root. The page
+     * reloads in place when that is where it is, which keeps its line anchor and scroll,
+     * and otherwise goes there. Any other page, a pull request's or a commit's, reloads.
+     * Answers whether the server took the ref, or null when the row was disposed meanwhile;
+     * a request that could not be made throws.
+     *
+     * @param {string} ref
+     * @returns {Promise<boolean | null>}
+     */
+    async function goWith(ref) {
+      const view = deps.address();
+      const response = await deps.request("POST", PIN_ROUTE, {
+        body: view === null ? { ref } : { ref, view },
+      });
+      if (disposed) {
+        return null;
+      }
+      if (response.status !== 200) {
+        return false;
+      }
+      const answer = /** @type {{view_href?: unknown} | null} */ (response.body);
+      const href = answer !== null ? answer.view_href : undefined;
+      if (typeof href === "string" && view !== null && !sameAddress(href, view)) {
+        deps.navigate(href);
+      } else {
+        deps.reload();
+      }
+      return true;
+    }
+
+    /**
+     * Go with the page's ref to the commit the server serves for it now (`goWith`), which
+     * changes nothing on the server once it has followed and serves the tip when it has not
+     * yet.
      *
      * @param {string} ref
      */
     async function follow(ref) {
-      const view = deps.address();
       try {
-        const response = await deps.request("POST", PIN_ROUTE, {
-          body: view === null ? { ref } : { ref, view },
-        });
-        if (disposed) {
-          return;
-        }
-        const answer = /** @type {{view_href?: unknown} | null} */ (response.body);
-        if (response.status === 200) {
-          const href = answer !== null ? answer.view_href : undefined;
-          if (typeof href === "string" && view !== null && !sameAddress(href, view)) {
-            deps.navigate(href);
-          } else {
-            deps.reload();
-          }
+        if ((await goWith(ref)) !== false) {
           return;
         }
         followError = `Could not follow ${status === null ? ref : refLabel(status)} to its new commit.`;
@@ -964,11 +985,12 @@
         await requestRefresh();
         return;
       }
+      // A switch asks for the ref by name, which the server follows from then on, and lands
+      // where the page is on its new tip, as the row's own follow does: reloaded in place, a
+      // page on a file that tip lacks would ask for it again (B2 of review B on #745).
       switching = true;
       try {
-        const response = await deps.request("POST", PIN_ROUTE, { body: { ref: offer.ref } });
-        if (response.status === 200) {
-          deps.reload();
+        if ((await goWith(offer.ref)) !== false) {
           return;
         }
         error = "Could not switch to that commit.";

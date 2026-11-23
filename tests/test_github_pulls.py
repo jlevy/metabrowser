@@ -2030,11 +2030,14 @@ def test_a_record_another_process_published_moves_the_pin_on_that_pull_requests_
 def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """View file on Files changed switches by commit ID: to the merge base and back.
+    """A commit asked for by its ID alone: the merge base, and back to the head.
 
-    Back on the head, the server serves ``refs/pull/7/head`` again, so the selector
-    names the pull request rather than a bare commit, also after a branch was served
-    in between.
+    Back on the head, the server serves it under ``refs/pull/7/head`` again, so the
+    selector names the pull request rather than a bare commit, also after a branch was
+    served in between. Asked for by ID, the head stays put (``follows`` is false) and the
+    attended pull request stays the one the URL named: only a request that names the ref,
+    as View on branch does with ``under``, follows it (A2 of review A, B5 of review B on
+    #745).
     """
 
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
@@ -2056,12 +2059,14 @@ def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
             assert (at_base["pin"], at_base["ref"], at_base["pull_request"]) == (base, None, 7)
             at_head = pin({"oid": head})
             assert (at_head["pin"], at_head["ref"]) == (head, "refs/pull/7/head")
+            assert (at_head["follows"], at_head["pull_request"]) == (False, 7)
             # A branch served in between is the ref last served; the head is still the
             # pull request's.
             assert pin({"ref": DEFAULT_BRANCH})["ref"] == f"refs/remotes/origin/{DEFAULT_BRANCH}"
             assert pin({"oid": base})["ref"] is None
             again = pin({"oid": head})
             assert (again["pin"], again["ref"]) == (head, "refs/pull/7/head")
+            assert (again["follows"], again["pull_request"]) == (False, 7)
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()

@@ -923,7 +923,10 @@ def test_changes_follows_a_moved_head_in_the_readers_file_and_entry() -> None:
     file, the emptied pane's clamp to its top is not written while the newer comparison is
     read (A3), the newer diff keeps the reader's file, a page mounted again on the entry says
     the same note and lands there, the reader's choice of the earlier diff outlives a reload
-    (A5), and a file the newer diff lacks lands on a block's top (A8).
+    (A5), and a file the newer diff lacks lands on a block's top (A8). While a followed diff
+    is read, what replaces it keeps the place already kept: a second push, a push on a page
+    loaded again on its entry, and **Show the earlier changes** pressed over the read (B1 of
+    review B).
     """
 
     assert run_session("github-pull-changes-follow-behavior.js") == {
@@ -933,6 +936,9 @@ def test_changes_follows_a_moved_head_in_the_readers_file_and_entry() -> None:
         "reloadSaysAndLands": True,
         "choiceSurvivesReload": True,
         "missingFileLandsOnABlockTop": True,
+        "secondFollowDuringReadKeepsTheFile": True,
+        "followDuringReloadReadKeepsTheFile": True,
+        "wayBackDuringReadKeepsTheFile": True,
     }
 
 
