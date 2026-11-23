@@ -9,8 +9,9 @@ the Treemap tab and reads it at a wide and a narrow window. This holds that:
 
 - the map paints hundreds of cells, nested past two levels, and in the compact map and a
   narrow window many of them under 8 px on a side;
-- the canvas holds each cell's fill at its center, and cells of different styles paint
-  different colors;
+- the canvas holds each sampled cell's fill at its center, the color its style resolved to
+  from its probe, and cells of different styles paint different colors;
+- in the other theme the map paints every cell again, in that theme's fills;
 - no label passes its cell or the viewport's padding box;
 - the DOM stays small: one label per labelled cell, one focus proxy, no element per cell;
 - the pointer on a small unlabelled file hovers it, names it in the tooltip, and a click
@@ -119,6 +120,16 @@ def test_treemap_paints_labels_and_answers_the_pointer_and_keys_in_chrome(
     _contained(measured["compact"], "the Overview's compact map", small=True)
     _contained(measured["wide"], "1280 by 900", small=False)
     _contained(measured["narrow"], "760 by 600", small=True)
+    themed = measured["themed"]
+    _contained(themed, "1280 by 900 in the other theme", small=False)
+    wide = measured["wide"]
+    assert themed["theme"] != wide["theme"], (wide["theme"], themed["theme"])
+    shared = wide["resolved"].keys() & themed["resolved"].keys()
+    assert len(shared) >= 2, (wide["resolved"], themed["resolved"])
+    assert all(wide["resolved"][key] != themed["resolved"][key] for key in shared), (
+        wide["resolved"],
+        themed["resolved"],
+    )
     assert measured["pointer"]["hovered"], measured["pointer"]
     assert measured["pointer"]["tooltip"], measured["pointer"]
     assert measured["pointer"]["opened"], measured["pointer"]

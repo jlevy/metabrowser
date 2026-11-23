@@ -184,7 +184,7 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
 
 def test_treemap_pointer_activates_the_deepest_actionable_cell_under_it() -> None:
     """The map paints its cells on a canvas, so the viewport takes the click and asks the
-    hit grid for the deepest cell under the pointer, a label's or not, and activates it
+    hit grid for the cell painted under the pointer, a label's or not, and activates it
     only when it is actionable; the cursor says which. The grid's answer is held against a
     scan in ``tests/dom/treemap-paint-hit-behavior.js``, and a click on a small unlabelled
     file in Chrome in ``tests/test_treemap_containment_chrome.py``."""
@@ -193,7 +193,11 @@ def test_treemap_pointer_activates_the_deepest_actionable_cell_under_it() -> Non
     treemap = (folder_root / "treemap-map.js").read_text()
     assert 'viewport.addEventListener("click", /** @type {EventListener} */ (onClick))' in treemap
     click_block = treemap[treemap.index("function onClick(") : treemap.index("// ---- Keyboard")]
-    assert "hitGrid.lookup(at.x, at.y)" in click_block
+    assert "cellAtClient(e)" in click_block
+    lookup_block = treemap[
+        treemap.index("function cellAtClient(") : treemap.index("function pointerPosition(")
+    ]
+    assert "hitGrid.lookup(at.x, at.y)" in lookup_block
     assert "cellIsActionable(cell)" in click_block
     assert 'viewport.style.cursor = cellIsActionable(cell) ? "pointer" : ""' in treemap
 

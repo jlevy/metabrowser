@@ -82,7 +82,9 @@ const MAP_MODULE = `performance.getEntriesByType("resource").map((e) => e.name).
 // Every painted cell's pixels and every label's box, against the map's own reading. A label
 // may meet its cell's edge; past it, or past the viewport's padding box, by more than its
 // rounding is an escape. A cell's center pixel is its fill: sampled for every cell at
-// least 6 device pixels on a side, whose center no child covers.
+// least 6 device pixels on a side, whose center no child covers, and held against the
+// color its style resolved to from its probe (inspectTreemap's styles), for the opaque
+// styles, whose pixel is that color alone.
 const read = (selector) => `(async () => {
   // A label's left and width are written to a tenth of a pixel, each rounding by up to 0.05.
   const SLACK = 0.1 + 1e-6;
@@ -107,7 +109,16 @@ const read = (selector) => `(async () => {
     if (over > SLACK) escapes.push({ path: cell.path, over: Math.round(over * 100) / 100 });
   }
   // The paint canvas's pixel at each sampled cell's center, against the fill its probe
-  // resolved, drawn once on a scratch canvas over the same surface.
+  // resolved, drawn once on a scratch canvas.
+  const scratch = document.createElement("canvas");
+  scratch.width = scratch.height = 1;
+  const scratchCtx = scratch.getContext("2d", { willReadFrequently: true });
+  const rgb = (color) => {
+    scratchCtx.clearRect(0, 0, 1, 1);
+    scratchCtx.fillStyle = color;
+    scratchCtx.fillRect(0, 0, 1, 1);
+    return [...scratchCtx.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+  };
   const canvas = viewport.querySelector("canvas.tm-paint");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -118,19 +129,18 @@ const read = (selector) => `(async () => {
   const wrongSample = [];
   const fills = new Map();
   for (const [i, rect] of byCell) {
-    if (covered.has(i) || rect.w < 6 || rect.h < 6) continue;
+    const style = map.styles[rect.style];
+    if (covered.has(i) || rect.w < 6 || rect.h < 6 || !style || style.alpha !== 1) continue;
     const cx = rect.x + Math.floor(rect.w / 2);
     const cy = rect.y + Math.floor(rect.h / 2);
     const k = (cy * canvas.width + cx) * 4;
     const got = [pixels[k], pixels[k + 1], pixels[k + 2]];
-    // Cells of one style share one fill: the first sampled sets it, the rest must match.
-    const seen = fills.get(rect.style);
+    const want = rgb(style.fill);
+    fills.set(rect.style, want);
     sampled += 1;
-    if (!seen) {
-      fills.set(rect.style, got);
-    } else if (got.some((v, c) => Math.abs(v - seen[c]) > 2)) {
+    if (got.some((v, c) => Math.abs(v - want[c]) > 2)) {
       wrong += 1;
-      if (wrongSample.length < 4) wrongSample.push({ path: map.cells[i].path, got, seen });
+      if (wrongSample.length < 4) wrongSample.push({ path: map.cells[i].path, got, want });
     }
   }
   // Distinct styles paint distinct colors: two styles with one color would be a probe that
@@ -156,6 +166,7 @@ const read = (selector) => `(async () => {
     distinct,
     wrongFill: wrong,
     wrongSample,
+    resolved: Object.fromEntries([...fills].map(([key, value]) => [key, value.join(",")])),
     focusable: viewport.querySelectorAll('[tabindex="0"]').length,
     focusOrder: map.focusOrder.length,
     actionable,
@@ -215,6 +226,19 @@ try {
   await chrome.evaluate(`new Promise((resolve) => setTimeout(resolve, 500))`);
   phase("loaded");
   result.wide = await chrome.evaluate(read(FULL));
+  // The other theme: the map reads its probes again and paints every cell in its new
+  // fill, then the theme goes back.
+  const THEME = `document.documentElement.getAttribute("data-theme")`;
+  const shownTheme = await chrome.evaluate(THEME);
+  const setTheme = (theme) =>
+    chrome.evaluate(
+      `(document.documentElement.setAttribute("data-theme", ${JSON.stringify(theme)}), new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 300))))`,
+    );
+  await setTheme(shownTheme === "dark" ? "light" : "dark");
+  result.themed = await chrome.evaluate(read(FULL));
+  result.themed.theme = await chrome.evaluate(THEME);
+  await setTheme(shownTheme);
+  result.wide.theme = shownTheme;
   // The pointer on a small unlabelled file: the map hovers it and the tooltip names it.
   const target = await chrome.evaluate(point(FULL));
   await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: target.x, y: target.y });

@@ -216,17 +216,6 @@
     var(--viz-hover-grow-duration) infinite;
 }
 
-/* Two-tone focus ring: the accent ring is backed by a neutral halo so
-   it stays distinct from every categorical cell wash. */
-.tm-cell:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
-  box-shadow:
-    inset 0 0 0 1px var(--tm-edge),
-    inset 0 0 0 5px var(--viz-surface);
-  z-index: 3;
-}
-
 .tm-dir {
   --tm-edge: var(--viz-border);
 }
@@ -269,22 +258,6 @@
   gap: 6px;
   max-width: 100%;
   min-width: 0;
-}
-
-/* A nested directory's label strip is the cell's button because the
-   body is covered by child cells. The whole cell remains the only
-   hover surface. */
-.tm-cell-title[role="button"] {
-  cursor: pointer;
-  padding: 0 3px;
-  margin-left: -3px;
-  border-radius: var(--radius-chrome);
-}
-
-.tm-cell-title[role="button"]:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
-  box-shadow: 0 0 0 2px var(--viz-surface);
 }
 
 .tm-cell-file-icon {

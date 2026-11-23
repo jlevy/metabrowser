@@ -183,8 +183,8 @@ const READ = `(async () => {
   const map = mapViewport ? inspectTreemap(mapViewport) : null;
   const mapCells = map?.cells ?? [];
   const mapMarked = map?.marked ?? [];
-  // A cell's family is the first part of its paint style's key (treemap-map.js, cellStyleKey).
-  const familyOf = new Map((map?.paint ?? []).filter((r) => r.tone === "fill").map((r) => [r.cell, r.style.split("|")[0]]));
+  // A cell's family is the first element of its paint style's key (treemap-map.js, cellStyleKey).
+  const familyOf = new Map((map?.paint ?? []).filter((r) => r.tone === "fill").map((r) => [r.cell, JSON.parse(r.style)[0]]));
   // Each painted cell's own pixel on the marks canvas: a leaf's fill centre, a nesting
   // folder's frame's left column where one is drawn. A marked cell's is a copy of the
   // paint canvas's; any other cell's is clear.

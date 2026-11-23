@@ -4,8 +4,11 @@
 // geometry (treemap-map.js), so what it paints, which pixels a hover lifts, and
 // which cell a point is on are pure functions of the layout. These checks run
 // the production modules (treemap-layout.js, treemap-paint.js, treemap-hit.js)
-// on a seeded tree and compare each against a brute-force reading of the same
-// geometry. Prints one summary line; exits 1 on a failed invariant.
+// on a seeded tree. Which cell each device pixel shows is read by painting the
+// paint list onto a buffer of cell indexes, in the order paintCells paints; the
+// hit grid and the hover's lift are each held against that reading, at every
+// device pixel and at points that fall between them, at several pixel ratios.
+// Prints one summary line; exits 1 on a failed invariant.
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -84,175 +87,194 @@ async function main() {
   const { buildHitGrid } = await import(pathToFileURL(path.join(folder, "treemap-hit.js")).href);
 
   const box = { w: 480, h: 300 };
-  const dpr = 2;
   const tree = seededTree(3000);
-  const cells = layoutTree(tree, box, {
-    metric: "files",
-    includeIgnored: true,
-    minCellPx: 1 / dpr,
-    maxCells: 5000,
-  });
-  check("the seeded layout is dense", cells.length > 1000, `${cells.length} cells`);
-
-  // ── Hit grid: the deepest cell containing a point, as a scan finds it ──────
-  const grid = buildHitGrid(cells, box);
-  /** @param {number} x @param {number} y */
-  const scan = (x, y) => {
-    let found = -1;
-    for (let i = 0; i < cells.length; i += 1) {
-      const c = cells[i];
-      if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) {
-        found = i;
-      }
-    }
-    return found;
-  };
   let seed = 3;
   const rnd = () => {
     seed = (seed * 1103515245 + 12345) % 2147483648;
     return seed / 2147483648;
   };
-  let mismatches = 0;
-  for (let k = 0; k < 4000; k += 1) {
-    const x = rnd() * box.w;
-    const y = rnd() * box.h;
-    if (grid.lookup(x, y) !== scan(x, y)) {
-      mismatches += 1;
-    }
-  }
-  check("the grid finds the deepest cell a scan finds", mismatches === 0, `${mismatches} of 4000`);
-  check(
-    "a point outside the box hits nothing",
-    grid.lookup(-1, 5) === -1 && grid.lookup(5, box.h) === -1,
-  );
-  const framed = cells.findIndex((c) => c.framed && c.inner && c.inner.x - c.x >= 1);
-  if (framed >= 0) {
-    const c = cells[framed];
+  let summary = "";
+
+  // Pixel ratios: a plain screen, a Retina screen, and fractional ones, where
+  // CSS edges fall between device pixels.
+  for (const dpr of [1, 2, 1.25, 2.2]) {
+    const at = `at ${dpr}x`;
+    const cells = layoutTree(tree, box, {
+      metric: "files",
+      includeIgnored: true,
+      minCellPx: 1 / dpr,
+      maxCells: 5000,
+    });
+    check(`the seeded layout is dense ${at}`, cells.length > 1000, `${cells.length} cells`);
+
+    // ── Paint list: snapped, inside each cell, separated when large enough ──────
+    const { rects, empty } = paint.paintList(cells, (c) => String(cells.indexOf(c)), dpr);
+    const snapped = cells.map((c) => paint.snapRect(c, dpr));
     check(
-      "a point in a folder's frame hits the folder",
-      grid.lookup(c.x + 0.25, c.y + c.h / 2) === framed,
-      JSON.stringify({ framed, hit: grid.lookup(c.x + 0.25, c.y + c.h / 2) }),
+      `a cell whose snapped rectangle is empty paints nothing, and is counted ${at}`,
+      empty === snapped.filter((r) => r.w === 0 || r.h === 0).length,
+      `${empty}`,
     );
-  }
-  check("one parent-first cell list is what the grid indexes", grid.entries >= cells.length);
-
-  // ── Paint list: snapped, inside each cell, separated when large enough ──────
-  const { rects, empty } = paint.paintList(cells, (c) => c.ext || c.kind, dpr);
-  const snapped = cells.map((c) => paint.snapRect(c, dpr));
-  check(
-    "a cell whose snapped rectangle is empty paints nothing, and is counted",
-    empty === snapped.filter((r) => r.w === 0 || r.h === 0).length,
-    `${empty}`,
-  );
-  let outside = 0;
-  let unseparated = 0;
-  for (const r of rects) {
-    const s = snapped[r.cell];
-    if (r.x < s.x || r.y < s.y || r.x + r.w > s.x + s.w || r.y + r.h > s.y + s.h) {
-      outside += 1;
-    }
-    if (
-      r.tone === "fill" &&
-      s.w >= paint.SEPARATOR_MIN_DEVICE_PX &&
-      s.h >= paint.SEPARATOR_MIN_DEVICE_PX &&
-      (r.w !== s.w - 1 || r.h !== s.h - 1)
-    ) {
-      unseparated += 1;
-    }
-  }
-  check("every painted rectangle lies inside its cell", outside === 0, `${outside}`);
-  check("a cell large enough draws one device pixel short, so its edge shows", unseparated === 0);
-  check(
-    "every nesting folder paints its interior in its edge tone",
-    cells.every((c, i) => !c.nested || rects.some((r) => r.cell === i && r.tone === "edge")),
-  );
-
-  // ── Paint order: a folder, then its interior, then its children ──────────────
-  const order = [];
-  const ctx = {
-    globalAlpha: 1,
-    fillStyle: "",
-    fillRect() {
-      order.push(this.fillStyle);
-    },
-  };
-  const tagged = rects.map((r, k) => ({ ...r, style: String(k) }));
-  paint.paintCells(ctx, tagged, (style) => ({ fill: `f${style}`, edge: `e${style}`, alpha: 1 }));
-  const position = new Map(order.map((style, k) => [style, k]));
-  let misordered = 0;
-  for (const r of tagged) {
-    const own = position.get(`${r.tone === "edge" ? "e" : "f"}${r.style}`);
-    const parent = cells[r.cell].parent;
-    if (r.tone === "fill" && parent >= 0) {
-      const interior = tagged.find((t) => t.cell === parent && t.tone === "edge");
-      if (interior && position.get(`e${interior.style}`) > own) {
-        misordered += 1;
+    let outside = 0;
+    let unseparated = 0;
+    for (const r of rects) {
+      const s = snapped[r.cell];
+      if (r.x < s.x || r.y < s.y || r.x + r.w > s.x + s.w || r.y + r.h > s.y + s.h) {
+        outside += 1;
+      }
+      if (
+        r.tone === "fill" &&
+        s.w >= paint.SEPARATOR_MIN_DEVICE_PX &&
+        s.h >= paint.SEPARATOR_MIN_DEVICE_PX &&
+        (r.w !== s.w - 1 || r.h !== s.h - 1)
+      ) {
+        unseparated += 1;
       }
     }
-    if (r.tone === "edge") {
-      const fill = tagged.find((t) => t.cell === r.cell && t.tone === "fill");
-      if (fill && position.get(`f${fill.style}`) > own) {
-        misordered += 1;
-      }
-    }
-  }
-  check(
-    "each folder paints under its interior, and its interior under its children",
-    misordered === 0,
-    `${misordered}`,
-  );
-  check("every rectangle is painted once", order.length === tagged.length);
+    check(`every painted rectangle lies inside its cell ${at}`, outside === 0, `${outside}`);
+    check(
+      `a cell large enough draws one device pixel short, so its edge shows ${at}`,
+      unseparated === 0,
+    );
+    check(
+      `a folder's interior lies inside its own fill ${at}`,
+      rects.every((r) => {
+        if (r.tone !== "edge") {
+          return true;
+        }
+        const fill = rects.find((f) => f.cell === r.cell && f.tone === "fill");
+        return (
+          fill &&
+          r.x >= fill.x &&
+          r.y >= fill.y &&
+          r.x + r.w <= fill.x + fill.w &&
+          r.y + r.h <= fill.y + fill.h
+        );
+      }),
+    );
+    check(
+      `every nesting folder paints its interior in its edge tone ${at}`,
+      cells.every(
+        (c, i) =>
+          !c.nested ||
+          !c.inner ||
+          paint.snapRect(c.inner, dpr).w < 2 ||
+          rects.some((r) => r.cell === i && r.tone === "edge"),
+      ),
+    );
 
-  // ── Mark ops: the lifted pixels are exactly the marked cells' own pixels ──────
-  // Each device pixel shows the deepest cell whose snapped rectangle holds it;
-  // after the ops, a pixel is lifted exactly when that cell is marked.
-  const W = Math.round(box.w * dpr);
-  const H = Math.round(box.h * dpr);
-  const owner = new Int32Array(W * H).fill(-1);
-  snapped.forEach((r, i) => {
-    for (let y = r.y; y < r.y + r.h; y += 1) {
-      owner.fill(i, y * W + r.x, y * W + r.x + r.w);
-    }
-  });
-  const families = ["js", "py", "md"];
-  for (const family of families) {
-    const marked = (i) => cells[i].ext === family;
-    const ops = paint.markOps(cells, marked, dpr);
-    const lifted = new Uint8Array(W * H);
-    for (const op of ops) {
-      for (let y = op.y; y < op.y + op.h; y += 1) {
-        lifted.fill(op.op === "copy" ? 1 : 0, y * W + op.x, y * W + op.x + op.w);
+    // ── Paint order, and which cell each device pixel shows ──────────────────────
+    // Each cell paints in a style of its own, so a fill names its cell; painting
+    // the list into a buffer of indexes, in paintCells's order, gives each pixel's
+    // owner, -1 for the surface.
+    const W = Math.round(box.w * dpr);
+    const H = Math.round(box.h * dpr);
+    const owner = new Int32Array(W * H).fill(-1);
+    let painted = 0;
+    const ctx = {
+      globalAlpha: 1,
+      fillStyle: "",
+      fillRect(x, y, w, h) {
+        painted += 1;
+        const index = Number(this.fillStyle.slice(1));
+        for (let row = y; row < y + h; row += 1) {
+          owner.fill(index, row * W + x, row * W + x + w);
+        }
+      },
+    };
+    paint.paintCells(ctx, rects, (style) => ({ fill: `f${style}`, edge: `e${style}`, alpha: 1 }));
+    check(`every rectangle is painted once ${at}`, painted === rects.length);
+    // A cell shows over its parent, or the paint order put the parent on top.
+    let buried = 0;
+    const shown = new Set(owner);
+    for (const r of rects) {
+      if (r.tone === "fill" && !shown.has(r.cell)) {
+        buried += 1;
       }
     }
-    let wrong = 0;
-    for (let p = 0; p < W * H; p += 1) {
-      const expected = owner[p] >= 0 && marked(owner[p]) ? 1 : 0;
-      if (lifted[p] !== expected) {
-        wrong += 1;
+    check(`every painted cell shows at least one pixel ${at}`, buried === 0, `${buried}`);
+
+    // ── Hit grid: the cell painted at a point ───────────────────────────────────
+    const grid = buildHitGrid(cells, box, dpr);
+    let missed = 0;
+    let firstMiss = null;
+    for (let py = 0; py < H; py += 1) {
+      for (let px = 0; px < W; px += 1) {
+        const hit = grid.lookup((px + 0.5) / dpr, (py + 0.5) / dpr);
+        if (hit !== owner[py * W + px]) {
+          missed += 1;
+          firstMiss ??= { px, py, hit, owner: owner[py * W + px] };
+        }
       }
     }
     check(
-      `a ${family} family's ops lift exactly its cells' own pixels`,
-      wrong === 0,
-      `${wrong} pixels`,
+      `the grid names the cell painted at every device pixel ${at}`,
+      missed === 0,
+      `${missed} of ${W * H}: ${JSON.stringify(firstMiss)}`,
     );
+    let offCentre = 0;
+    for (let k = 0; k < 20000; k += 1) {
+      const x = rnd() * box.w;
+      const y = rnd() * box.h;
+      const px = Math.min(W - 1, Math.floor(x * dpr));
+      const py = Math.min(H - 1, Math.floor(y * dpr));
+      if (grid.lookup(x, y) !== owner[py * W + px]) {
+        offCentre += 1;
+      }
+    }
+    check(
+      `the grid names the painted cell between pixel centres ${at}`,
+      offCentre === 0,
+      `${offCentre}`,
+    );
+    check(
+      `a point outside the box hits nothing ${at}`,
+      grid.lookup(-1, 5) === -1 && grid.lookup(5, box.h) === -1 && grid.lookup(box.w, 5) === -1,
+    );
+    const unreachable = rects.filter((r) => r.tone === "fill" && !shown.has(r.cell)).length;
+    check(`every painted cell can be pointed at ${at}`, unreachable === 0, `${unreachable}`);
+
+    // ── Mark ops: the lifted pixels are exactly the marked cells' own pixels ──────
+    for (const family of ["js", "py", "md"]) {
+      const marked = (i) => cells[i].ext === family || cells[i].dominant_ext === family;
+      const ops = paint.markOps(cells, marked, dpr);
+      const lifted = new Uint8Array(W * H);
+      for (const op of ops) {
+        for (let row = op.y; row < op.y + op.h; row += 1) {
+          lifted.fill(op.op === "copy" ? 1 : 0, row * W + op.x, row * W + op.x + op.w);
+        }
+      }
+      let wrong = 0;
+      for (let p = 0; p < W * H; p += 1) {
+        const expected = owner[p] >= 0 && marked(owner[p]) ? 1 : 0;
+        if (lifted[p] !== expected) {
+          wrong += 1;
+        }
+      }
+      check(
+        `a ${family} family's ops lift exactly its cells' own pixels ${at}`,
+        wrong === 0,
+        `${wrong} pixels`,
+      );
+    }
+    const everything = paint.markOps(cells, () => true, dpr);
+    check(
+      `a hover that marks every cell is one copy per top-level cell ${at}`,
+      everything.every((op) => op.op === "copy" && cells[op.cell].parent === -1),
+      `${everything.length} ops`,
+    );
+    check(
+      `a hover that marks nothing has no ops ${at}`,
+      paint.markOps(cells, () => false, dpr).length === 0,
+    );
+    summary += ` ${at}: ${cells.length} cells, ${rects.length} rectangles;`;
   }
-  const everything = paint.markOps(cells, () => true, dpr);
-  check(
-    "a hover that marks every cell is one copy per top-level cell",
-    everything.every((op) => op.op === "copy" && cells[op.cell].parent === -1),
-    `${everything.length} ops`,
-  );
-  check(
-    "a hover that marks nothing has no ops",
-    paint.markOps(cells, () => false, dpr).length === 0,
-  );
 
   if (failures.length > 0) {
     console.error(`treemap paint and hit FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);
   }
-  console.log(`treemap paint and hit OK: ${cells.length} cells, ${rects.length} rectangles`);
+  console.log(`treemap paint and hit OK:${summary}`);
 }
 
 main().catch((error) => {

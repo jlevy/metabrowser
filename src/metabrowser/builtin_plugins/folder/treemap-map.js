@@ -167,6 +167,8 @@ export function withOuterBox(node) {
  * @property {number} hovered  index of the cell under the pointer, or -1
  * @property {ReadonlyArray<number>} marked  indexes the hover marks
  * @property {ReadonlyArray<import("./treemap-paint.js").MarkOp>} markOps
+ * @property {Readonly<Record<string, import("./treemap-paint.js").PaintStyle>>} styles  the
+ *   colors each style key resolved to from its probe, as last painted
  * @property {number} dpr
  */
 
@@ -224,8 +226,12 @@ export function createTreemapMap(mb, palette, viewport, options) {
   /** The last node and content drawn, which a pixel-ratio or theme change draws again. */
   /** @type {{node: Record<string, any> | null, content: {placeholderHtml?: string, emptyHtml?: string}} | null} */
   let lastRender = null;
-  /** The pointer's position in the viewport's padding box, while it is over the map. */
-  /** @type {{x: number, y: number} | null} */
+  /**
+   * The pointer's last client position while it is over the map. The viewport
+   * can move under a still pointer (the legend's row wrapping above it), so a
+   * lookup measures the viewport again rather than keeping a position in it.
+   */
+  /** @type {{clientX: number, clientY: number} | null} */
   let pointer = null;
   let pointerFrame = 0;
   let hoveredIndex = -1;
@@ -238,6 +244,12 @@ export function createTreemapMap(mb, palette, viewport, options) {
   let cellHover = null;
   /** @type {Map<string, PaintStyle>} */
   const styleCache = new Map();
+  /**
+   * What each style key stands for. A key is a JSON array, so a family key may
+   * hold any character, a `|` an extension keeps among them, and still read back.
+   * @type {Map<string, {paletteKey: string, rest: boolean, ignored: boolean, pending: boolean}>}
+   */
+  const styleParts = new Map();
 
   /** @typedef {import("./treemap-paint.js").PaintStyle} PaintStyle */
 
@@ -338,9 +350,17 @@ export function createTreemapMap(mb, palette, viewport, options) {
    */
   function cellStyleKey(cell) {
     const state = options.getState();
-    const ignored = cell.gitignored && state.includeIgnored ? 1 : 0;
-    const pending = cell.state === "pending" ? 1 : 0;
-    return `${cellPaletteKey(cell)}|${cell.kind === "rest" ? "rest" : "cell"}|${ignored}|${pending}`;
+    const parts = {
+      paletteKey: cellPaletteKey(cell),
+      rest: cell.kind === "rest",
+      ignored: Boolean(cell.gitignored && state.includeIgnored),
+      pending: cell.state === "pending",
+    };
+    const key = JSON.stringify([parts.paletteKey, parts.rest, parts.ignored, parts.pending]);
+    if (!styleParts.has(key)) {
+      styleParts.set(key, parts);
+    }
+    return key;
   }
 
   /**
@@ -355,15 +375,20 @@ export function createTreemapMap(mb, palette, viewport, options) {
     if (cached) {
       return cached;
     }
-    const [paletteKey, kind, ignored, pending] = key.split("|");
+    const { paletteKey, rest, ignored, pending } = styleParts.get(key) ?? {
+      paletteKey: "",
+      rest: true,
+      ignored: false,
+      pending: false,
+    };
     const probe = doc.createElement("div");
     probe.className = [
       "tm-cell",
       "tm-type-fill",
-      kind === "rest" ? "tm-rest" : "tm-file",
+      rest ? "tm-rest" : "tm-file",
       palette.classFor(paletteKey),
-      ignored === "1" ? "tm-ignored" : "",
-      pending === "1" ? "tm-pending-still" : "",
+      ignored ? "tm-ignored" : "",
+      pending ? "tm-pending-still" : "",
     ]
       .filter(Boolean)
       .join(" ");
@@ -622,8 +647,10 @@ export function createTreemapMap(mb, palette, viewport, options) {
     if (canvas.height !== height) {
       canvas.height = height;
     }
-    canvas.style.width = `${box.w}px`;
-    canvas.style.height = `${box.h}px`;
+    // The CSS size is the backing store's, so each backing pixel is one device
+    // pixel at a fractional ratio too, and no edge is resampled.
+    canvas.style.width = `${width / dpr}px`;
+    canvas.style.height = `${height / dpr}px`;
     return typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
   }
 
@@ -765,12 +792,22 @@ export function createTreemapMap(mb, palette, viewport, options) {
     if (disposed || !pointer || !hitGrid) {
       return;
     }
-    pointAt(hitGrid.lookup(pointer.x, pointer.y));
+    pointAt(cellAtClient(pointer));
   }
 
   /**
-   * The pointer's position in the viewport's padding box.
-   * @param {MouseEvent} e
+   * The cell painted at a client position, or -1.
+   * @param {{clientX: number, clientY: number}} client
+   * @returns {number}
+   */
+  function cellAtClient(client) {
+    const at = pointerPosition(client);
+    return at && hitGrid ? hitGrid.lookup(at.x, at.y) : -1;
+  }
+
+  /**
+   * A client position in the viewport's padding box.
+   * @param {{clientX: number, clientY: number}} e
    * @returns {{x: number, y: number} | null}
    */
   function pointerPosition(e) {
@@ -786,7 +823,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
 
   /** @param {MouseEvent} e */
   function onMouseMove(e) {
-    pointer = pointerPosition(e);
+    pointer = { clientX: e.clientX, clientY: e.clientY };
     // One lookup a frame: mousemove can fire several times between frames.
     if (!pointerFrame) {
       pointerFrame = win?.requestAnimationFrame ? win.requestAnimationFrame(trackPointer) : 0;
@@ -803,8 +840,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
 
   /** @param {MouseEvent} e */
   function onClick(e) {
-    const at = pointerPosition(e);
-    const index = at && hitGrid ? hitGrid.lookup(at.x, at.y) : -1;
+    const index = cellAtClient(e);
     const cell = index >= 0 ? cells[index] : null;
     if (cell && cellIsActionable(cell)) {
       options.onActivate(cell);
@@ -924,7 +960,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
       // A canvas raises no mouseover when what is under a still pointer changes,
       // so the map asks itself which cell the pointer is on now.
       if (pointer && hitGrid) {
-        pointAt(hitGrid.lookup(pointer.x, pointer.y));
+        pointAt(cellAtClient(pointer));
       }
     }
   }
@@ -948,6 +984,10 @@ export function createTreemapMap(mb, palette, viewport, options) {
             includeIgnored: state.includeIgnored,
           })
         : [];
+    // The cell the focus proxy is on, so a relayout keeps it there: a key
+    // pressed after a refresh acts on the cell the user chose.
+    const focusedCell = cells[actionableIndexes[focusPos]];
+    const focusedKey = focusedCell ? `${focusedCell.kind}\u0000${focusedCell.path}` : null;
     clearPointerCell();
     if (laidOut.length === 0) {
       cells = [];
@@ -969,7 +1009,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
     const listed = paintList(cells, cellStyleKey, dpr);
     paintRects = listed.rects;
     emptyCells = listed.empty;
-    hitGrid = buildHitGrid(cells, box);
+    hitGrid = buildHitGrid(cells, box, dpr);
     paintMap();
     reconcileLabels(state);
     // The focus proxy walks every folder and file cell in layout order;
@@ -986,7 +1026,10 @@ export function createTreemapMap(mb, palette, viewport, options) {
         );
       }
     });
-    focusPos = 0;
+    const kept = focusedKey
+      ? actionableIndexes.findIndex((i) => `${cells[i].kind}\u0000${cells[i].path}` === focusedKey)
+      : -1;
+    focusPos = kept >= 0 ? kept : 0;
     placeFocus();
     return cells.length;
   }
@@ -1002,6 +1045,7 @@ export function createTreemapMap(mb, palette, viewport, options) {
       hovered: hoveredIndex,
       marked: markedIndexes,
       markOps: currentMarkOps,
+      styles: Object.fromEntries(styleCache),
       dpr,
     }),
   );

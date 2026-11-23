@@ -46,8 +46,44 @@ export function snapRect(rect, dpr) {
 }
 
 /**
+ * The rectangle a cell's fill covers, in device pixels: its snapped rectangle,
+ * one device pixel short on the right and bottom when it is at least
+ * `separatorMinDevicePx` on each side, so its edge shows; null when it snaps
+ * to nothing. Every pixel of the paint canvas shows the deepest cell whose fill
+ * covers it, or the surface, so the hover's lift (markOps) and the pointer
+ * (treemap-hit.js) take each pixel from this rectangle too.
+ * @param {Readonly<Record<string, any>>} cell  x, y, w, and h in CSS pixels
+ * @param {number} dpr
+ * @param {number} [separatorMinDevicePx]
+ * @returns {DeviceRect | null}
+ */
+export function fillRect(cell, dpr, separatorMinDevicePx = SEPARATOR_MIN_DEVICE_PX) {
+  const snapped = snapRect(cell, dpr);
+  if (snapped.w === 0 || snapped.h === 0) {
+    return null;
+  }
+  const separated = snapped.w >= separatorMinDevicePx && snapped.h >= separatorMinDevicePx;
+  return separated ? { ...snapped, w: snapped.w - 1, h: snapped.h - 1 } : snapped;
+}
+
+/**
+ * The part of `a` inside `b`, or null.
+ * @param {DeviceRect} a
+ * @param {DeviceRect} b
+ * @returns {DeviceRect | null}
+ */
+function intersect(a, b) {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const w = Math.min(a.x + a.w, b.x + b.w) - x;
+  const h = Math.min(a.y + a.h, b.y + b.h) - y;
+  return w > 0 && h > 0 ? { x, y, w, h } : null;
+}
+
+/**
  * The paint list for `cells`, parent first: each cell's fill, and before a
- * nesting folder's children its interior in the folder's edge tone. A cell whose
+ * nesting folder's children its interior in the folder's edge tone, inside its
+ * fill, so a folder drawn edge to edge keeps its own separator. A cell whose
  * snapped rectangle is empty paints nothing.
  * @param {ReadonlyArray<Record<string, any>>} cells  layoutTree's output
  * @param {(cell: Record<string, any>) => string} styleOf  the cell's style key
@@ -61,25 +97,16 @@ export function paintList(cells, styleOf, dpr, separatorMinDevicePx = SEPARATOR_
   let empty = 0;
   for (let i = 0; i < cells.length; i += 1) {
     const cell = cells[i];
-    const snapped = snapRect(cell, dpr);
-    if (snapped.w === 0 || snapped.h === 0) {
+    const fill = fillRect(cell, dpr, separatorMinDevicePx);
+    if (!fill) {
       empty += 1;
       continue;
     }
     const style = styleOf(cell);
-    const separated = snapped.w >= separatorMinDevicePx && snapped.h >= separatorMinDevicePx;
-    rects.push({
-      ...snapped,
-      w: separated ? snapped.w - 1 : snapped.w,
-      h: separated ? snapped.h - 1 : snapped.h,
-      cell: i,
-      style,
-      tone: "fill",
-      depth: cell.depth,
-    });
+    rects.push({ ...fill, cell: i, style, tone: "fill", depth: cell.depth });
     if (cell.nested && cell.inner) {
-      const inner = snapRect(cell.inner, dpr);
-      if (inner.w > 0 && inner.h > 0) {
+      const inner = intersect(snapRect(cell.inner, dpr), fill);
+      if (inner) {
         rects.push({ ...inner, cell: i, style, tone: "edge", depth: cell.depth });
       }
     }
@@ -133,10 +160,11 @@ export function paintCells(ctx, rects, resolve) {
 
 /**
  * The ops that put the marked cells on the hover canvas: walking the cells
- * parent first, copy a marked cell whose parent is not marked, and clear an
- * unmarked cell whose parent is. A copy brings the cell's descendants with it,
- * so the clears take back those that are not marked, and a marked folder lifts
- * without its unmarked children. A family that marks every cell is one copy per
+ * parent first, copy a marked cell's fill whose parent is not marked, and clear
+ * an unmarked cell's fill whose parent is. A copy brings the cell's descendants
+ * with it, so the clears take back those that are not marked, and a marked
+ * folder lifts without its unmarked children but with the edges between them,
+ * which are its own pixels. A family that marks every cell is one copy per
  * top-level cell.
  * @param {ReadonlyArray<Record<string, any>>} cells
  * @param {(index: number) => boolean} marked
@@ -154,8 +182,8 @@ export function markOps(cells, marked, dpr) {
     const own = marked(i);
     state[i] = own;
     if (own !== parentMarked) {
-      const rect = snapRect(cells[i], dpr);
-      if (rect.w > 0 && rect.h > 0) {
+      const rect = fillRect(cells[i], dpr);
+      if (rect) {
         ops.push({ op: own ? "copy" : "clear", cell: i, ...rect });
       }
     }

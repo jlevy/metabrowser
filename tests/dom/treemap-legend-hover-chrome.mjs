@@ -134,8 +134,8 @@ const READ = `(async () => {
   // the pointer is on marked as itself.
   const marks = [...host.querySelectorAll("[data-hovered]")].filter((element) => element !== anchor);
   const cellName = (i) => "cell " + map.cells[i].path + " (" + (i === map.hovered && anchor?.dataset.hovered === "self" ? "self" : "family") + ")";
-  // A cell's family is the first part of its paint style's key (treemap-map.js, cellStyleKey).
-  const familyOf = new Map(map.paint.filter((r) => r.tone === "fill").map((r) => [r.cell, r.style.split("|")[0]]));
+  // A cell's family is the first element of its paint style's key (treemap-map.js, cellStyleKey).
+  const familyOf = new Map(map.paint.filter((r) => r.tone === "fill").map((r) => [r.cell, JSON.parse(r.style)[0]]));
   // What the canvases hold: the paint canvas every cell, the marks canvas the marked cells'
   // copies. A leaf's fill centre is its own pixel; a nesting folder's is its frame's left
   // column, where one is drawn.

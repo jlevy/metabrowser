@@ -4937,12 +4937,16 @@ again on the new cell, and draws an entry’s hover again on the new cells.
 The complete visible rectangle of every folder or file is its pointer target, including
 the uncovered header, gutter, and frame of a nested folder.
 A canvas says nothing about what is painted on it, so the map answers the pointer from
-the layout: a grid of buckets over the map lists the cells over each, and the deepest
-cell under the pointer wins (`treemap-hit.js`). An inert remainder cell does not fall
-through to its parent.
+the layout: a grid of buckets over the map lists the cells over each, and the pointer
+names the cell painted at the device pixel under it, the deepest whose fill covers it
+(`treemap-hit.js`), so a cell a pixel wide is the cell it names, and the edge between
+two cells is their folder’s. An inert remainder cell does not fall through to its
+parent. A hover lifts the same pixels: a marked cell’s own, with the edges inside a
+marked folder and without those around a marked file.
 The keyboard reaches every folder and file cell through the focus proxy, which the arrow
-keys move in layout order and which takes the cell’s accessible name, with the folder’s
-remainder named when it has one; Enter or Space opens it.
+keys move in layout order and which stays on its cell when the map is laid out again and
+which takes the cell’s accessible name, with the folder’s remainder named when it has
+one; Enter or Space opens it.
 One control rather than one per cell keeps the page’s focus order short and never makes
 a button inside another.
 

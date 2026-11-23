@@ -213,8 +213,11 @@ sandbox.devicePixelRatio = 1;
 // This cascade resolves an element's background to its inline style, so what a canvas
 // fills names the palette style its probe was given.
 const probedClasses = [];
+// Each probe's classes and inline style, as the map styled it.
+const probedStyles = [];
 sandbox.getComputedStyle = (element) => {
   probedClasses.push(element.className);
+  probedStyles.push({ className: element.className, style: element.getAttribute?.("style") ?? "" });
   return { backgroundColor: element.getAttribute?.("style") ?? "", opacity: "1" };
 };
 // The shell's tooltip, recording what each hide is given: the map's disposal puts away only
@@ -711,17 +714,19 @@ sandbox.MetabrowserNavigationRoute.attachController({
     treemapStyles,
   );
   {
-    // The whole rectangle of a folder or file cell is its pointer target, from corner to
-    // corner, and the viewport shows the pointer cursor over it; a remainder cell, which
-    // opens nothing, shows none.
+    // The whole painted rectangle of a folder or file cell is its pointer target, from
+    // corner to corner, and the viewport shows the pointer cursor over it; the edge past
+    // it is its parent's. A remainder cell, which opens nothing, shows no cursor. The
+    // paint is in device pixels, one a CSS pixel here.
     const pointerOver = [];
     for (const cellPath of ["docs", "a.py"]) {
       const index = cellIndexOf(container, cellPath);
-      const cell = drawnMap().cells[index];
+      const fill = drawnMap().paint.find((rect) => rect.cell === index && rect.tone === "fill");
       for (const at of [
-        { x: cell.x + 0.5, y: cell.y + 0.5 },
-        { x: cell.x + cell.w / 2, y: cell.y + cell.h / 2 },
-        { x: cell.x + cell.w - 0.5, y: cell.y + cell.h - 0.5 },
+        { x: fill.x + 0.5, y: fill.y + 0.5 },
+        { x: fill.x + fill.w / 2, y: fill.y + fill.h / 2 },
+        { x: fill.x + fill.w - 0.5, y: fill.y + fill.h - 0.5 },
+        { x: fill.x + fill.w + 0.5, y: fill.y + fill.h / 2 },
       ]) {
         dispatch(container, "mousemove", clientAt(container, index, at));
         pointerOver.push(
@@ -759,6 +764,52 @@ sandbox.MetabrowserNavigationRoute.attachController({
       dispatch(restPane, "click", clientAt(restPane, restIndex));
     }
     restShown.dispose();
+
+    // An extension keeps any character but a slash, a `|` among them: the cell still
+    // paints in its own family, dimmed as ignored, and not as a family its key's first
+    // part names.
+    rollupOverride = {
+      ok: true,
+      json: async () => {
+        const body = JSON.parse(JSON.stringify(envelope));
+        body.node.children.push({
+          name: "x.b|c",
+          path: "x.b|c",
+          type: "file",
+          size: 400,
+          mtime: 1700000000,
+          ext: ".b|c",
+          gitignored: true,
+        });
+        return body;
+      },
+    };
+    const pipePane = makeElement();
+    pipePane.viewport = makeElement();
+    pipePane.status = makeElement();
+    pipePane.totals = makeElement();
+    pipePane.rollupControls = makeElement();
+    sandbox.MetabrowserViewState.setActive(pipePane, true);
+    const probesBefore = probedStyles.length;
+    const pipeShown = view.render(pipePane, { path: "", kind: "folder", raw: {} });
+    await new Promise((resolve) => setImmediate(resolve));
+    rollupOverride = null;
+    // The palette files a family it does not know as other-type, so x.b|c is the one
+    // ignored cell of that style; misread, its key's later parts said not ignored and
+    // still scanning.
+    const pipeProbes = probedStyles
+      .slice(probesBefore)
+      .filter((probe) => probe.className.includes("tm-type-fill"));
+    check(
+      "a cell whose extension holds a | paints in its own family, dimmed as ignored",
+      cellIndexOf(pipePane, "x.b|c") >= 0 &&
+        pipeProbes.some(
+          (probe) => probe.style.includes("other-type") && probe.className.includes("tm-ignored"),
+        ) &&
+        pipeProbes.every((probe) => !probe.className.includes("tm-pending-still")),
+      JSON.stringify(pipeProbes),
+    );
+    pipeShown.dispose();
     check(
       "actionable cells expose a whole-rectangle pointer target",
       JSON.stringify(pointerOver) ===
@@ -766,9 +817,11 @@ sandbox.MetabrowserNavigationRoute.attachController({
           "docs hovered pointer",
           "docs hovered pointer",
           "docs hovered pointer",
+          "docs missed no cursor",
           "a.py hovered pointer",
           "a.py hovered pointer",
           "a.py hovered pointer",
+          "a.py missed no cursor",
           "left no cursor",
           "the remainder hovered no cursor",
         ]) && navigationCalls.length === navigationsBeforeRest,
@@ -991,6 +1044,37 @@ sandbox.MetabrowserNavigationRoute.attachController({
           : !opened.options?.viewId),
       JSON.stringify({ focused: focusedCell?.path, opened }),
     );
+
+    // A relayout keeps the focus proxy on the cell it was on, so a key pressed after a
+    // refresh acts on the cell the user chose, not on the first one.
+    const keptPath = drawnMap().cells[drawnMap().focused]?.path;
+    sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
+    check(
+      "a relayout keeps the focus proxy on its cell",
+      drawnMap().focused !== drawnMap().focusOrder[0] &&
+        drawnMap().cells[drawnMap().focused]?.path === keptPath,
+      JSON.stringify({ keptPath, now: drawnMap().cells[drawnMap().focused]?.path }),
+    );
+
+    // A still pointer is looked up where the viewport is now: the viewport moving under
+    // it, as when the legend's row wraps above the map, puts it over another cell.
+    const pointed = cellIndexOf(container, "a.py");
+    const client = clientAt(container, pointed);
+    dispatch(container, "mousemove", client);
+    const box = container.viewport.getBoundingClientRect;
+    const shift = drawnMap().cells[pointed].h + 1;
+    container.viewport.getBoundingClientRect = () => ({ ...box(), top: box().top + shift });
+    sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
+    const afterMove = drawnMap().hovered;
+    dispatch(container, "mousemove", client);
+    check(
+      "a relayout looks a still pointer up where the viewport is now",
+      afterMove === drawnMap().hovered && afterMove !== pointed,
+      JSON.stringify({ pointed, afterMove, fresh: drawnMap().hovered }),
+    );
+    dispatch(container, "mouseleave");
+    container.viewport.getBoundingClientRect = box;
+    sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
   }
 
   // Viewport height is measured, not the CSS calc: innerHeight 1000
