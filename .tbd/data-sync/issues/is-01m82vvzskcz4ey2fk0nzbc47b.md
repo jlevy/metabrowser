@@ -5,15 +5,18 @@ title: "PR #696 + #709 (merge): pull request update cadence plan and Phase 1a pr
 kind: task
 status: in_progress
 priority: 1
-version: 2
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m82h0qrnw9vg6vrj597asgpv
+child_order_hints:
+  - is-01m82xey0wss692acqkvv0yv31
+  - is-01m82xz0pt2h9wt2hs1vexy0be
 hold: null
 hold_until: null
 created_at: 2026-11-23T00:11:07.439Z
-updated_at: 2026-11-23T00:11:15.900Z
+updated_at: 2026-11-23T00:47:43.831Z
 started_at: 2026-11-23T00:11:15.885Z
 ---
