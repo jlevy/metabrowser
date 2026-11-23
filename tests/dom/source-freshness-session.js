@@ -390,6 +390,96 @@ async function runFolder() {
   return steps;
 }
 
+// A repository folder's page on one of the checkout's own branches. It reads that branch,
+// not one commit of it: the page asks as often as its status says, the server reads the
+// checkout's refs for the ask and fetches nothing, and when the reader's commit moved the
+// branch the page goes to the new commit at its own address. With a store of the origin
+// the row is the store's as on every page of the folder; with none there is no row but
+// while the page follows, or when its follow was refused.
+async function runCheckoutBranch() {
+  const steps = [];
+  {
+    const opened = recordedFolder.switch_local_branch.body;
+    const page = createPage();
+    page.setAddress(opened.view_href);
+    const controller = freshness.createController(page.deps, {
+      checkout: true,
+      shown: { pin: opened.status.pin, ref: opened.status.ref },
+    });
+    page.setStatus(opened.status);
+    await page.start(controller);
+    steps.push(page.observe("a page on the checkout's own branch asks where the branch is"));
+    await page.fireTimer();
+    steps.push(page.observe("the branch is where it was: nothing repaints, and it asks again"));
+
+    // The reader committed on the branch: the server read the refs and serves the commit.
+    page.answerPageAsk(recordedFolder.ask_local_moved.status, recordedFolder.ask_local_moved.body);
+    page.answerPost(
+      "/api/source/pin",
+      recordedFolder.follow_local_branch.status,
+      recordedFolder.follow_local_branch.body,
+    );
+    await page.fireTimer();
+    steps.push(page.observe("the reader committed on the branch; the page follows it"));
+    controller.dispose();
+  }
+  {
+    // A checkout that keeps no store: nothing is refreshable, and the branch still follows.
+    const opened = recordedFolder.plain_switch.body;
+    const page = createPage();
+    page.setAddress(opened.view_href);
+    const controller = freshness.createController(page.deps, {
+      checkout: true,
+      shown: { pin: opened.status.pin, ref: opened.status.ref },
+    });
+    page.setStatus(opened.status);
+    await page.start(controller);
+    steps.push(page.observe("with no store of an origin there is no row, and the page still asks"));
+    assert(steps.at(-1).paint === null, "a folder with no store drew a row for an unmoved branch");
+
+    page.answerPageAsk(recordedFolder.plain_ask_moved.status, recordedFolder.plain_ask_moved.body);
+    page.answerPost(
+      "/api/source/pin",
+      recordedFolder.plain_follow_refused.status,
+      recordedFolder.plain_follow_refused.body,
+    );
+    await page.fireTimer();
+    steps.push(page.observe("a follow the server refused says the branch moved, and why"));
+
+    // The reader presses the row: the follow is asked for again, and the page goes.
+    page.answerPost(
+      "/api/source/pin",
+      recordedFolder.plain_follow.status,
+      recordedFolder.plain_follow.body,
+    );
+    await controller.requestRefresh();
+    await settle();
+    steps.push(page.observe("pressed, the page asks again and follows"));
+    controller.dispose();
+  }
+  {
+    // A hidden page asks nothing, and a commit opened by its ID is never asked about.
+    const opened = recordedFolder.plain_switch.body;
+    const page = createPage();
+    page.setVisible(false);
+    const controller = freshness.createController(page.deps, {
+      checkout: true,
+      shown: { pin: opened.status.pin, ref: opened.status.ref },
+    });
+    page.setStatus(opened.status);
+    await page.start(controller);
+    steps.push(page.observe("a hidden page asks nothing"));
+    controller.dispose();
+    const commit = { ...opened.status, ref: null, follows: false, probe_every_s: null };
+    const model = freshness.describe(
+      { ...commit, pin: recordedFolder.plain_ask_moved.body.status.pin },
+      { shown: { pin: opened.status.pin, ref: null }, nowMs: NOW_MS, checkout: true },
+    );
+    assert(model.visible === false && model.follow === null, "a commit opened by its ID moved");
+  }
+  return steps;
+}
+
 async function run() {
   const steps = [];
   // The steps of a page's own ask, printed under the `asks` argument: one transcript of
@@ -397,6 +487,7 @@ async function run() {
   const asks = [];
   const topic = recorded.refreshed.ref;
   const folder = await runFolder();
+  const checkoutBranch = await runCheckoutBranch();
 
   // One page through a whole refresh, which moves its branch: the server follows the
   // branch, and the page goes with it, with nothing to accept.
@@ -1241,17 +1332,19 @@ async function run() {
     );
   }
 
-  return { steps, asks, folder, guard, landing, wired, history };
+  return { steps, asks, folder, checkoutBranch, guard, landing, wired, history };
 }
 
 run()
-  .then(({ asks, folder, ...transcript }) => {
+  .then(({ asks, folder, checkoutBranch, ...transcript }) => {
     const printed =
       process.argv[2] === "asks"
         ? { part: "asks", steps: asks }
         : process.argv[2] === "folder"
           ? { part: "folder", steps: folder }
-          : transcript;
+          : process.argv[2] === "checkout-branch"
+            ? { part: "checkout-branch", steps: checkoutBranch }
+            : transcript;
     process.stdout.write(`${JSON.stringify(printed, null, 2)}\n`);
   })
   .catch((error) => {

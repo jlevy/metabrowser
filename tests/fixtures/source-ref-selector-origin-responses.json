@@ -786,9 +786,132 @@
       ]
     }
   },
+  "switch_local_branch": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 5,
+        "pin": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "checkout",
+        "origin": null,
+        "location": "/sandbox/checkout",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout",
+      "view_href": "/view/g1-bQ"
+    }
+  },
+  "committed": "1667009ff139a77291c6126702df7e9c50b478cd",
+  "ask_local_moved": {
+    "status": 200,
+    "body": {
+      "refresh": "probed",
+      "origin": {
+        "state": "ready",
+        "reason": null,
+        "detail": null,
+        "address": "https://github.com/octo/demo",
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": false
+      },
+      "status": {
+        "subject": "git_revision",
+        "generation": 6,
+        "pin": "1667009ff139a77291c6126702df7e9c50b478cd",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "checkout",
+        "origin": null,
+        "location": "/sandbox/checkout",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "1667009ff139a77291c6126702df7e9c50b478cd",
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "follow_local_branch": {
+    "status": 200,
+    "body": {
+      "changed": false,
+      "status": {
+        "subject": "git_revision",
+        "generation": 6,
+        "pin": "1667009ff139a77291c6126702df7e9c50b478cd",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "checkout",
+        "origin": null,
+        "location": "/sandbox/checkout",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "follows": true,
+        "latest": "1667009ff139a77291c6126702df7e9c50b478cd",
+        "ref_on_origin": null,
+        "last_fetch_at": "2026-09-17T13:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T13:00:00Z"
+        },
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout",
+      "view_href": "/view/g1-bQ"
+    }
+  },
   "status_refresh_failed": {
     "subject": "attached_filesystem",
-    "generation": 5,
+    "generation": 7,
     "pin": null,
     "ref": null,
     "ref_name": null,
@@ -814,5 +937,140 @@
     "pull_request": null,
     "selection_state": null,
     "selection_href": null
+  },
+  "plain_switch": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 9,
+        "pin": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout",
+      "view_href": "/view/g1-bQ"
+    }
+  },
+  "plain_ask": {
+    "status": 200,
+    "body": {
+      "refresh": "probed",
+      "status": {
+        "subject": "git_revision",
+        "generation": 9,
+        "pin": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "9ba2923c729806c02f3be25e89656a4af1f40db3",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "plain_ask_moved": {
+    "status": 200,
+    "body": {
+      "refresh": "probed",
+      "status": {
+        "subject": "git_revision",
+        "generation": 10,
+        "pin": "732574d6427eb28f5df07467792de539900a3648",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "732574d6427eb28f5df07467792de539900a3648",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
+  },
+  "plain_follow": {
+    "status": 200,
+    "body": {
+      "changed": false,
+      "status": {
+        "subject": "git_revision",
+        "generation": 10,
+        "pin": "732574d6427eb28f5df07467792de539900a3648",
+        "ref": "refs/heads/trunk",
+        "ref_name": "trunk",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "732574d6427eb28f5df07467792de539900a3648",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout",
+      "view_href": "/view/g1-bQ"
+    }
+  },
+  "plain_follow_refused": {
+    "status": 404,
+    "body": {
+      "error": "no branch or tag with that name is in the checkout",
+      "code": "selection_not_found"
+    }
   }
 }

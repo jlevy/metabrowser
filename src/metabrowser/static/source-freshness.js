@@ -24,6 +24,12 @@
 // page, its working tree's too: what is fetched there is that store, never the checkout,
 // and the row says so (`describe` with `checkout`). Its ref selector offers the reload.
 //
+// A repository folder's page on one of the checkout's own branches follows that branch
+// too, when the reader's commit or fetch moves it. The status says how often to ask
+// (`probe_every_s`), the ask is the same one, and for it the server reads the checkout's
+// refs and fetches nothing. A folder that keeps no store has no row but for that: it is
+// drawn while the page goes to the new commit, and when the follow was refused.
+//
 // A commit the mirror lacks is an address not fetched too. The commit view hands it to
 // `openMissingCommit`, which asks through the page's controller for the fetch such a
 // commit waits for, waits for it to end, and then opens the commit or says, in the
@@ -155,12 +161,37 @@
   function describe(status, page) {
     const error = page.error ?? null;
     const folder = page.checkout === true;
-    if (status === null || !status.refreshable || (status.subject !== "git_revision" && !folder)) {
+    /** @type {MetabrowserSourceFreshnessModel} */
+    const hidden = {
+      visible: false,
+      tone: "quiet",
+      label: "",
+      detail: "",
+      offer: null,
+      error,
+      pull: null,
+      follow: null,
+    };
+    if (status === null || (status.subject !== "git_revision" && !folder)) {
+      return hidden;
+    }
+    if (!status.refreshable) {
+      // A folder that keeps no store of an origin has nothing fetched to speak of. Its
+      // page on one of the checkout's own branches still follows that branch when the
+      // reader's commit or fetch moves it, and the row is drawn only for that.
+      const moved = folder ? followTarget(status, page.shown) : null;
+      if (moved === null) {
+        return hidden;
+      }
+      if (error === null) {
+        return following(status, moved, null);
+      }
+      const name = status.ref_name ?? moved.ref;
       return {
-        visible: false,
-        tone: "quiet",
-        label: "",
-        detail: "",
+        visible: true,
+        tone: "warning",
+        label: `${name} moved`,
+        detail: `${name} is now at ${window.MetabrowserFormatters.shortCommit(moved.commit)}, and this page shows the commit before.`,
         offer: null,
         error,
         pull: null,
@@ -213,17 +244,7 @@
     // offer below, rather than claiming to update.
     const follow = error === null ? followTarget(status, page.shown) : null;
     if (follow !== null) {
-      const name = status.ref_name ?? follow.ref;
-      return {
-        visible: true,
-        tone: "refreshing",
-        label: `Updating to ${name}…`,
-        detail: `${name} is now at ${window.MetabrowserFormatters.shortCommit(follow.commit)}, and this page follows it.`,
-        offer: null,
-        error,
-        pull,
-        follow,
-      };
+      return following(status, follow, pull);
     }
     const selection = status.selection_state ?? null;
     const retrySelection = selection === "fetch_failed" && !refreshing;
@@ -280,6 +301,28 @@
   }
 
   /**
+   * What the row says while a page goes with its branch or tag to the commit it moved to.
+   *
+   * @param {MetabrowserSourceStatus} status
+   * @param {MetabrowserSourceFollow} follow
+   * @param {MetabrowserSourceFreshnessModel["pull"]} pull
+   * @returns {MetabrowserSourceFreshnessModel}
+   */
+  function following(status, follow, pull) {
+    const name = status.ref_name ?? follow.ref;
+    return {
+      visible: true,
+      tone: "refreshing",
+      label: `Updating to ${name}…`,
+      detail: `${name} is now at ${window.MetabrowserFormatters.shortCommit(follow.commit)}, and this page follows it.`,
+      offer: null,
+      error: null,
+      pull,
+      follow,
+    };
+  }
+
+  /**
    * The branch or tag a page follows to a new commit, and that commit, or `null`. Pure.
    *
    * A page on a branch or tag reads that ref as the mirror has it, not one commit of it:
@@ -289,6 +332,10 @@
    * it. A page drawn for another ref than the one served was switched by another tab or
    * a restart, which a reload offer answers instead, and a commit or a pull request's head
    * does not move.
+   *
+   * A repository folder's page on one of its checkout's own branches follows the same
+   * way: there the ref moves by the reader's own commit or fetch, which the server reads
+   * from the checkout when a visible page asks, and nothing is fetched.
    *
    * @param {MetabrowserSourceStatus} status
    * @param {MetabrowserSourcePage | null} shown
@@ -631,11 +678,13 @@
     /**
      * How long the page waits before its own ask, or null when it sends none: only a
      * page of a pin the server probes asks, and not one whose ask the server refused.
+     * A folder's page on one of its checkout's own branches asks too, with or without a
+     * store to refresh: that ask has the server read where the branch is in the checkout.
      *
      * @returns {number | null}
      */
     function pageAskMs() {
-      const every = status?.refreshable && pageAskAnswered ? status.probe_every_s : null;
+      const every = status !== null && pageAskAnswered ? status.probe_every_s : null;
       return typeof every === "number" && every > 0 ? every * 1000 : null;
     }
 
@@ -779,6 +828,11 @@
     async function requestRefresh(body = {}) {
       following = false;
       followError = null;
+      if (status !== null && !status.refreshable) {
+        // Nothing to fetch, as in a folder with no store: the press lets a refused
+        // follow be asked for again.
+        render();
+      }
       return (await ask(body, { own: false }))?.refresh ?? null;
     }
 

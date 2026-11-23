@@ -1417,3 +1417,127 @@ $ node tests/dom/source-freshness-session.js folder
 }
 ? 0
 ```
+
+A repository folder’s page on one of the checkout’s own branches reads that branch, not
+one commit of it, as a mirror’s page on a branch does.
+Its status says how often to ask (`probe_every_s`), and the ask is the page’s own,
+`{"for": "page"}`: for it the server reads where the branch is in the checkout, fetching
+nothing, and serves the new commit when the reader’s commit or fetch moved it.
+The page then asks the pin route for its ref with its own address and reloads there.
+A folder with no store of an origin has nothing refreshable and so no row, and follows
+all the same: the row is drawn only while the page goes to the new commit, or to say
+that a follow was refused, which a press asks for again.
+A hidden page asks nothing.
+The answers are a real folder’s, from the same recording.
+
+```console
+$ node tests/dom/source-freshness-session.js checkout-branch
+{
+  "part": "checkout-branch",
+  "steps": [
+    {
+      "step": "a page on the checkout's own branch asks where the branch is",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Origin fetched 5 d ago",
+        "tone": "quiet",
+        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the branch is where it was: nothing repaints, and it asks again",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Origin fetched 5 d ago",
+        "tone": "quiet",
+        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the reader committed on the branch; the page follows it",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}",
+        "POST /api/source/pin {\"ref\":\"refs/heads/trunk\",\"view\":\"/view/g1-bQ\"}"
+      ],
+      "timer": "ask",
+      "reloads": 1,
+      "repaints": 1,
+      "paint": {
+        "label": "Updating to trunk…",
+        "tone": "refreshing",
+        "detail": "trunk is now at 1667009, and this page follows it.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "with no store of an origin there is no row, and the page still asks",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": null
+    },
+    {
+      "step": "a follow the server refused says the branch moved, and why",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}",
+        "POST /api/source/pin {\"ref\":\"refs/heads/trunk\",\"view\":\"/view/g1-bQ\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 2,
+      "paint": {
+        "label": "trunk moved",
+        "tone": "warning",
+        "detail": "trunk is now at 732574d, and this page shows the commit before.",
+        "offer": null,
+        "error": "Could not follow trunk to its new commit."
+      }
+    },
+    {
+      "step": "pressed, the page asks again and follows",
+      "requests": [
+        "POST /api/source/pin {\"ref\":\"refs/heads/trunk\",\"view\":\"/view/g1-bQ\"}"
+      ],
+      "timer": "ask",
+      "reloads": 1,
+      "repaints": 1,
+      "paint": {
+        "label": "Updating to trunk…",
+        "tone": "refreshing",
+        "detail": "trunk is now at 732574d, and this page follows it.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a hidden page asks nothing",
+      "requests": [],
+      "timer": null,
+      "reloads": 0,
+      "repaints": 0,
+      "paint": null
+    }
+  ]
+}
+? 0
+```

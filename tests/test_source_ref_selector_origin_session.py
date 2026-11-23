@@ -28,6 +28,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import checkout_store, server
+from metabrowser.checkout_revisions import CHECKOUT_REFS_POLL_S
 from metabrowser.checkout_store import CheckoutStoreError, serve_checkout_store
 from tests.checkout_replica import build_linear, clone_checkout
 from tests.golden_harness import (
@@ -46,6 +47,7 @@ from tests.required_tools import needs_git
 RECORDING = "source-ref-selector-origin-responses.json"
 TRANSCRIPT = "cli-ui-source-ref-selector-origin.tryscript.md"
 ORIGIN_TRUNK = "refs/remotes/origin/trunk"
+LOCAL_TRUNK = "refs/heads/trunk"
 VIEW = "/view/m"
 
 pytestmark = [
@@ -173,6 +175,18 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 client, "/api/source/pin", {"ref": ORIGIN_TRUNK, "view": VIEW}
             )
             recorded["remotes_on_origin_branch"] = listing(client, "remote")
+            # The checkout's own branch follows the checkout: the reader commits on it,
+            # a visible page's own ask reads the refs and finds the commit, and the page
+            # asks the pin route where it is on that commit.
+            on_origin = recorded["switch_origin_branch"]["body"]["view_href"]
+            local = post(client, "/api/source/pin", {"ref": LOCAL_TRUNK, "view": on_origin})
+            recorded["switch_local_branch"] = local
+            pinned_git(checkout, "commit", "-q", "--allow-empty", "-m", "local")
+            recorded["committed"] = pinned_git(checkout, "rev-parse", "HEAD")
+            recorded["ask_local_moved"] = post(client, "/api/source/refresh", {"for": "page"})
+            recorded["follow_local_branch"] = post(
+                client, "/api/source/pin", {"ref": LOCAL_TRUNK, "view": local["body"]["view_href"]}
+            )
             # Back on the working tree, a Refresh that fails.
             post(client, "/api/source/pin", {"working_tree": True})
             failing.append(True)
@@ -183,6 +197,24 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     finally:
         gate.set()
         fetch_gate.set()
+
+    # A checkout whose origin is on this machine keeps no store, so nothing of it is
+    # refreshable; a page on its own branch follows that branch all the same.
+    plain = sandbox / "plain"
+    pinned_git(sandbox, "clone", "-q", replica.url, str(plain))
+    server._set_root_dir(plain)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as client:
+        local = post(client, "/api/source/pin", {"ref": LOCAL_TRUNK, "view": VIEW})
+        recorded["plain_switch"] = local
+        recorded["plain_ask"] = post(client, "/api/source/refresh", {"for": "page"})
+        pinned_git(plain, "commit", "-q", "--allow-empty", "-m", "plain")
+        recorded["plain_ask_moved"] = post(client, "/api/source/refresh", {"for": "page"})
+        recorded["plain_follow"] = post(
+            client, "/api/source/pin", {"ref": LOCAL_TRUNK, "view": local["body"]["view_href"]}
+        )
+        recorded["plain_follow_refused"] = post(
+            client, "/api/source/pin", {"ref": "refs/heads/gone", "view": VIEW}
+        )
     return stand_in_sandbox(recorded, sandbox, home=isolated.home)
 
 
@@ -233,6 +265,22 @@ def test_recording_is_what_a_served_checkout_with_a_store_answers(
     assert switched["status"]["location"] == "/sandbox/checkout"
     on_branch = recorded["remotes_on_origin_branch"]["body"]
     assert [row["name"] for row in on_branch["refs"] if row["current"]] == ["origin/trunk"]
+    # The checkout's own branch follows the checkout, with a store and without one.
+    local = recorded["switch_local_branch"]["body"]["status"]
+    assert (local["ref"], local["follows"], local["refreshable"]) == (LOCAL_TRUNK, True, True)
+    assert local["probe_every_s"] == CHECKOUT_REFS_POLL_S
+    moved = recorded["ask_local_moved"]
+    assert (moved["status"], moved["body"]["refresh"]) == (200, "probed")
+    assert moved["body"]["status"]["pin"] == recorded["committed"] != local["pin"]
+    followed = recorded["follow_local_branch"]["body"]
+    assert followed["changed"] is False
+    assert followed["view_href"] == recorded["switch_local_branch"]["body"]["view_href"]
+    plain = recorded["plain_switch"]["body"]["status"]
+    assert (plain["follows"], plain["refreshable"]) == (True, False)
+    assert plain["probe_every_s"] == CHECKOUT_REFS_POLL_S
+    assert recorded["plain_ask"]["body"]["status"]["pin"] == plain["pin"]
+    assert recorded["plain_ask_moved"]["body"]["status"]["pin"] != plain["pin"]
+    assert recorded["plain_follow_refused"]["status"] == 404
     check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
 
 
