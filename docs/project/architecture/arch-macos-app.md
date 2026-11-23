@@ -201,11 +201,11 @@ and the server, which resolves the link against its mirror, announces the right 
   A checkout with no window on screen, or no answer yet, is passed over.
   The checkout’s `.git/config` can name any repository, so a planted one can at most
   choose which window a mirror’s tab joins; what the tab serves is still the mirror.
-- **Asking before a clone.** A link that would start a new session asks first unless
-  `metab`’s cache holds the repository (`RepositoryCache`), which the app learns from
-  `metab FOLDER --api /api/cache/sources --format json`, page by page, run in the app’s
-  support folder; a published source whose `identity.display_url` is the root, with no
-  problems, is one `metab URL` serves from without cloning.
+- **Asking before a clone.** An external link that would start a new session asks first
+  unless `metab`’s cache holds the repository (`RepositoryCache`), which the app learns
+  from `metab FOLDER --api /api/cache/sources --format json`, page by page, run in the
+  app’s support folder; a published source whose `identity.display_url` is the root,
+  with no problems, is one `metab URL` serves from without cloning.
   An answer it cannot read asks; `tests/test_macos_app_pins.py` holds the keys and the
   value the app reads to what the route prints.
   The confirmation names the repository and says that it clones and reads with the
@@ -217,6 +217,9 @@ and the server, which resolves the link against its mirror, announces the right 
   A repository found or agreed to is not asked about again while the app runs; one
   declined is not asked about again until the burst ends, and the links it turned away
   are counted in the burst’s alert.
+  A submitted Open URL… or a selected recent repository opens directly.
+  When its window is shown, it supersedes an older question about the same repository
+  without authorizing a later external request.
 - **A burst.** One `metab` resolves at a time, a link equal to one waiting or being
   resolved is dropped, and past `LinkQueue.limit` waiting links the rest are counted, as
   are links past `CloneQuestions.limit` repositories waiting for a question and past
@@ -330,24 +333,22 @@ only shows its state and passes on edits, Open, and Cancel.
   may not show, such as U+3164 HANGUL FILLER, are refused, as `metab` refuses them.
   `LiveMetabTests` gives `metab` both the text as typed and the link the panel sends,
   and expects one plan.
-- **`metab` decides.** Open runs the dry run `resolveLink` runs (`askMetab`), outside
-  the link queue, so that a refusal is said in the panel and not in the alert that ends
-  a burst. A plan closes the panel and goes to `open(_:with:)`, so from there it is a
-  link sent to the app: the question before a clone, one window per repository, and
-  always the mirror, never a checkout.
-  A refusal shows `refusal.message`; an answer the app cannot read names the `metab` and
-  the reason, never its output, which goes to the app’s log.
-  Either way the panel stays open with the text.
-- **One dry run at a time.** An edit, Cancel, or closing the panel drops the answer
-  still awaited, and the app cancels the task that awaits it
-  (`stopCheckingEnteredLink`), which kills the dry run’s process group at once
-  (`CommandRunner.finish`). So the panel has at most one `metab` running, and Open,
-  enabled again by the edit, starts the next.
-- **With no `metab` the app can run now,** as while it finds `metab` or checks it again
-  after its file changed, the panel closes and the link goes to the link queue
-  (`requestLink`), which waits for one as it does for any link: the link is checked once
-  `metab` is ready, and a refusal comes as the alert at the end of the burst, not under
-  the field.
+- **Checking and opening.** The panel runs the same `askMetab` dry run as incoming links
+  and shows any refusal under the field.
+  An unreadable response identifies `metab` and the failure in the panel and sends its
+  output to the app log.
+  When the dry run returns a plan, the panel shows “Opening repository…” until
+  `openEntered` places a new window or tab or brings the existing one forward.
+  The repository window shows its own progress while the server starts, clones, or
+  resolves the link.
+- **Waiting for the runtime.** When runtime discovery or verification is in progress,
+  the panel shows that it is waiting.
+  It resumes the dry run when the app adopts a usable runtime.
+  If discovery ends without one, the panel explains how to retry.
+- **One request at a time.** An edit, Cancel, or closing the panel invalidates the
+  current request. The app cancels its dry run (`stopCheckingEnteredLink`), which
+  terminates the process group (`CommandRunner.finish`). The next Open has a new request
+  identifier even when its URL is the same.
 - **Not built.** The offer of a known checkout, “borrow from the checkout” and “open the
   checkout instead”, which [Open Modes](arch-open-modes.md#the-file-menu) designs, waits
   for a way to tell that an open folder is a checkout of the URL’s repository:

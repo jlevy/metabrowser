@@ -323,9 +323,8 @@ struct LiveMetabTests {
         #expect(!report.rows.contains { $0.state == .other("unreadable") })
     }
 
-    /// File > Open URL… asks the command a link sent to the app is resolved with: a
-    /// supported URL closes the panel on `metab`'s plan, and one `metab` refuses keeps the
-    /// panel open with `metab`'s own message.
+    /// File > Open URL… accepts the plan from the same dry run as a sent link. It waits
+    /// for window placement on success and shows `metab`'s reason on refusal.
     @Test(arguments: [
         ("https://github.com/jlevy/metabrowser/pull/540", true),
         ("https://github.com/jlevy/metabrowser/blob/main/docs/macos-app.md", true),
@@ -336,11 +335,14 @@ struct LiveMetabTests {
         var panel = OpenURLPanel()
         panel.edit(text)
         let opened = panel.open()
-        let link = try #require(opened)
-        let answer = try await dryRun(link.absoluteString)
-        let plan = panel.answered(answer, for: link, metab: "metab")
+        let request = try #require(opened)
+        let answer = try await dryRun(request.link.absoluteString)
+        let plan = panel.answered(answer, for: request, metab: "metab")
         if opens {
             #expect(plan?.link.absoluteString == text)
+            #expect(panel.phase == .opening(request))
+            let presented = panel.presented(for: request)
+            #expect(presented)
             #expect(panel.phase == .closed)
         } else {
             guard case .refused(let refusal) = answer else {
@@ -363,13 +365,13 @@ struct LiveMetabTests {
         var panel = OpenURLPanel()
         panel.edit(text)
         let opened = panel.open()
-        let link = try #require(opened)
-        #expect(link == expected)
+        let request = try #require(opened)
+        #expect(request.link == expected)
         #expect(panel.text == expected.absoluteString)
-        let answer = try await dryRun(link.absoluteString)
-        let plan = panel.answered(answer, for: link, metab: "metab")
+        let answer = try await dryRun(request.link.absoluteString)
+        let plan = panel.answered(answer, for: request, metab: "metab")
         #expect(plan == PresentPlan(kind: .repository, repository: expected, link: expected))
-        #expect(panel.phase == .closed)
+        #expect(panel.phase == .opening(request))
     }
 
     /// The panel opens what `metab URL` opens as typed: the link the panel sends, its path

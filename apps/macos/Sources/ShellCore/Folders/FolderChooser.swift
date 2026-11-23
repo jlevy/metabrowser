@@ -116,11 +116,12 @@ public nonisolated enum FolderChooser {
     }
 
     /// The chooser's rows: `open` in the order the folders opened, then `recent` less
-    /// those that are open, in their order.
+    /// those that are open, up to the native menu limit, in their order.
     public static func menuRows(
         open: [OpenFolder], recent: [RecentTargets.Item], home: String = FileChecks.canonicalPath(NSHomeDirectory())
     ) -> [Row] {
-        open.map(row) + recentRows(recent, excluding: Set(open.map(\.key)), home: home)
+        let recent = recentRows(recent, excluding: Set(open.map(\.key)), home: home)
+        return open.map(row) + recent.prefix(RecentTargets.menuLimit)
     }
 
     /// The panel's rows: `open` most recently shown first, as `byRecency` orders their

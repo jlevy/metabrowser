@@ -56,6 +56,7 @@ final class FolderSession: ManagedServer {
     private var restartWait = RestartWait<FolderPage>()
     /// Asks the ready server to open a link into the repository (`SourceLink`).
     private var linkRequest: Task<Void, Never>?
+    private weak var linkProgressPage: FolderPage?
     /// The folder's title changed, so every open folder's window title may change.
     var onTitleChange: ((FolderSession) -> Void)?
     /// The folder's last page closed, shown or in the background: the folder closes.
@@ -273,6 +274,7 @@ final class FolderSession: ManagedServer {
     func shutDown() async {
         identityRequest?.cancel()
         linkRequest?.cancel()
+        clearLinkProgress()
         links.shutDown()  // a link held for a start under way opens nothing now
         await supervisor.shutDown()
     }
@@ -314,12 +316,12 @@ final class FolderSession: ManagedServer {
     /// to its end first, and the newest link sent meanwhile opens then; a failed or
     /// stopped server starts again, and the link opens once it is ready
     /// (`RepositoryLinks`).
-    func open(link: URL) {
+    func open(link: URL, showingProgress: Bool = false) {
         bringForward(frontPage)
         let name = root.lastPathComponent
         switch links.receive(link, state: supervisor.state, restarting: restartsInFlight > 0) {
         case .open:
-            if let endpoint { request(link, from: endpoint) }
+            if let endpoint { request(link, from: endpoint, showingProgress: showingProgress) }
         case .hold:
             AppLog.app.info("\(name, privacy: .public): a link waits for the start under way to end")
         case .start:
@@ -333,12 +335,19 @@ final class FolderSession: ManagedServer {
     /// Asks the ready server to open `link`, and shows the page it names in the front
     /// window. An answer from a server that has since restarted, or for a link a newer one
     /// replaced, is dropped.
-    private func request(_ link: URL, from ready: ServerEndpoint) {
+    private func request(_ link: URL, from ready: ServerEndpoint, showingProgress: Bool = false) {
         linkRequest?.cancel()
+        clearLinkProgress()
+        if showingProgress {
+            linkProgressPage = frontPage
+            linkProgressPage?.showOpeningLink(true)
+        }
         let authorization = supervisor.launch.authorization(for: ready)
         linkRequest = Task { [weak self] in
             let outcome = await SourceLink.open(link, origin: ready.origin, authorization: authorization)
-            guard !Task.isCancelled, let self, self.endpoint == ready else { return }
+            guard !Task.isCancelled, let self else { return }
+            self.clearLinkProgress()
+            guard self.endpoint == ready else { return }
             let name = self.root.lastPathComponent
             switch outcome {
             case .page(let address):
@@ -351,6 +360,11 @@ final class FolderSession: ManagedServer {
                 AppLog.app.error("\(name, privacy: .public): a link was not opened: \(reason, privacy: .public)")
             }
         }
+    }
+
+    private func clearLinkProgress() {
+        linkProgressPage?.showOpeningLink(false)
+        linkProgressPage = nil
     }
 
     /// Whether the server still answers, asked before a window joins it
@@ -436,6 +450,7 @@ final class FolderSession: ManagedServer {
 
     private func serverChanged(_ state: ServerState) {
         linkRequest?.cancel()
+        clearLinkProgress()
         restartWait.serverChanged()
         switch state {
         case .starting:
