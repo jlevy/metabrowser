@@ -25,6 +25,14 @@ Before, at 760 px, the Diff summary was 13 px on both pages, a pull request’s 
 ages and status line were 12 px and 18 px tall, its header 229 and 255 px, and the
 commit’s metadata one line 8 px under its subject.
 
+On 2026-11-22, the same Chrome fixture measured the Commit and pull request size rows at
+980, 560, and 360 px pane widths.
+Both rows use the 21 px body line.
+At the default gutter step, the Commit page has 6 px on each side of its size row and 16
+px from its Diff summary to its description card.
+The pull request has 9 px on each side of its size row and 10 px from its Diff summary
+to its tabs.
+
 ## Type by Role
 
 For [Type Scale](../../docs/design-system.md#type-scale), recorded on 2026-11-16, when
