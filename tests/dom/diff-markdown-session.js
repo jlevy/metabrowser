@@ -155,9 +155,11 @@ class PageElement {
     }
   }
 
-  prepend(node) {
-    node.parentElement = this;
-    this.childNodes.unshift(node);
+  prepend(...nodes) {
+    for (const node of nodes) {
+      node.parentElement = this;
+    }
+    this.childNodes.unshift(...nodes);
   }
 
   replaceChildren(...nodes) {
@@ -638,13 +640,22 @@ async function main() {
     const section = element("section");
     const bar = element("div");
     const toggle = element("button");
-    bar.append(toggle);
+    const end = element("div");
+    bar.append(toggle, end);
     const source = element("div");
     source.id = `diff-file-${entry.id}`;
     section.append(bar, source);
     root.append(section);
-    const state = views.add({ section, bar, toggle, source, id: entry.id, format: "markdown" });
-    const [, control, progress] = bar.childNodes;
+    const state = views.add({
+      section,
+      bar,
+      end,
+      toggle,
+      source,
+      id: entry.id,
+      format: "markdown",
+    });
+    const [progress, control] = end.childNodes;
     const [, rendered] = section.childNodes;
     return {
       name: `${entry.id} ${(entry.new ?? entry.old).path}`,

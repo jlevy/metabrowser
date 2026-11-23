@@ -65,8 +65,11 @@ class Element {
     }
   }
 
-  prepend(child) {
-    this.children.unshift(child);
+  prepend(...children) {
+    for (const child of children) {
+      child.parent = this;
+    }
+    this.children.unshift(...children);
   }
 
   replaceChildren(...children) {
@@ -409,8 +412,10 @@ async function main() {
     later: time.later,
     cancel: time.cancel,
   });
-  // `lead` puts another control before the disclosure, so a test can tell the disclosure
-  // the module was handed from whatever happens to lead the bar.
+  // A bar as diff-view.js builds it: the disclosure, then the group of controls at its
+  // end, which holds a View file control before the chooser arrives. `lead` puts another
+  // control before the disclosure, so a test can tell the disclosure the module was
+  // handed from whatever happens to lead the bar.
   function file(id, { lead = false } = {}) {
     const section = make("section");
     root.append(section);
@@ -419,12 +424,18 @@ async function main() {
     source.id = id;
     section.append(bar, source);
     const toggle = make("button");
-    bar.append(...(lead ? [make("span"), toggle] : [toggle]));
-    const state = view.add({ section, bar, toggle, source, id, format: "markdown" });
+    const end = make("div");
+    const viewFile = make("a");
+    end.append(viewFile);
+    bar.append(...(lead ? [make("span"), toggle, end] : [toggle, end]));
+    const state = view.add({ section, bar, end, toggle, source, id, format: "markdown" });
     assert.equal(section.children.length, 3, "Rendered is all that goes beside Source");
     const [, rendered] = section.children;
-    const at = bar.children.indexOf(toggle);
-    const [control, progress] = bar.children.slice(at + 1, at + 3);
+    assert.equal(bar.children.at(-1), end, "the chooser adds nothing to the bar itself");
+    const [progress, control, last] = end.children;
+    assert.equal(end.children.length, 3);
+    assert.equal(progress.getAttribute("role"), "status", "the progress mark leads its chooser");
+    assert.equal(last, viewFile, "the chooser leads the controls at the bar's end");
     return {
       section,
       bar,
@@ -647,16 +658,18 @@ async function main() {
   source2.id = "e";
   section2.append(bar2, source2);
   const toggle2 = make("button");
-  bar2.append(toggle2);
+  const end2 = make("div");
+  bar2.append(toggle2, end2);
   view2.add({
     section: section2,
     bar: bar2,
+    end: end2,
     toggle: toggle2,
     source: source2,
     id: "e",
     format: "markdown",
   });
-  const [, control2] = bar2.children;
+  const [, control2] = end2.children;
   const [, rendered2] = section2.children;
   view2.observe(root2, null);
   observer.notify([{ target: section2, isIntersecting: true }]);
@@ -708,8 +721,9 @@ async function main() {
       source.id = id;
       section.append(bar, source);
       const toggle = make("button");
-      bar.append(toggle);
-      view3.add({ section, bar, toggle, source, id, format: "markdown" });
+      const end = make("div");
+      bar.append(toggle, end);
+      view3.add({ section, bar, end, toggle, source, id, format: "markdown" });
       return section;
     });
     let settled = false;

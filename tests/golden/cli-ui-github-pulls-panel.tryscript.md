@@ -766,6 +766,14 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "poll": null,
       "probeInMs": null,
       "firstRow": "Retitled between scans"
+    },
+    {
+      "step": "pause while the next ask waits 10000 ms: no timer waits to ask",
+      "probeInMs": null
+    },
+    {
+      "step": "dispose while the next ask waits 10000 ms: no timer waits to ask",
+      "probeInMs": null
     }
   ],
   "reader": [
