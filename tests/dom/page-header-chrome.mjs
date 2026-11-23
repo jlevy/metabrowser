@@ -287,7 +287,18 @@ const MEASURE = `async (which, width) => {
     nameLeft: name ? round(name.getBoundingClientRect().left - contentLeft) : null,
     name: name ? { text: name.textContent, ...type(name) } : null,
   });
+  const sizeIndex = lines.findIndex((line) => line.matches(".git-commit-size, .github-pull-size"));
+  const sizeBox = lines[sizeIndex].getBoundingClientRect();
+  const lineSpace = {
+    sizeHeight: round(sizeBox.height),
+    aboveSize: round(sizeBox.top - lines[sizeIndex - 1].getBoundingClientRect().bottom),
+    belowSize: round(lines[sizeIndex + 1].getBoundingClientRect().top - sizeBox.bottom),
+    afterSummary: round(header.nextElementSibling.getBoundingClientRect().top - lines.at(-1).getBoundingClientRect().bottom),
+    regular: parseFloat(getComputedStyle(header).rowGap),
+    contentPadding: parseFloat(getComputedStyle(header).getPropertyValue("--content-padding-y")),
+  };
   const out = {
+    lineSpace,
     title: { cls: title.className, height: round(title.getBoundingClientRect().height), ...type(title) },
     gap: getComputedStyle(header).rowGap,
     // The space under the title, a page title's gap to its metadata (mb-wcbc).
@@ -477,9 +488,18 @@ async function main() {
             [...commit.lines, ...pull.lines].map((line) => [line.cls, line.lineHeight]),
           ),
         );
-        // One structure: the author first under the title, the age before the size line and
-        // the Diff summary, which is last; the commit's revision where the pull request has
-        // its branches.
+        check(
+          `${where}: Commit keeps the reference gaps while Pull adds equal room around the size`,
+          commit.lineSpace.aboveSize === commit.lineSpace.regular &&
+            commit.lineSpace.belowSize === commit.lineSpace.regular &&
+            pull.lineSpace.sizeHeight === commit.lineSpace.sizeHeight &&
+            pull.lineSpace.aboveSize === pull.lineSpace.regular * 1.5 &&
+            pull.lineSpace.belowSize === pull.lineSpace.aboveSize &&
+            pull.lineSpace.afterSummary === pull.lineSpace.contentPadding - pull.lineSpace.regular,
+          JSON.stringify({ commit: commit.lineSpace, pull: pull.lineSpace }),
+        );
+        // The pull request puts its state and ages first. A commit puts its author and
+        // revision before its age. The size line and Diff summary end both headers.
         const order = (page, parts) =>
           parts.map((part) => page.lines.findIndex((line) => line.cls.includes(part)));
         const commitOrder = order(commit, [
@@ -490,9 +510,9 @@ async function main() {
           "git-commit-diff-summary",
         ]);
         const pullOrder = order(pull, [
+          "github-pull-opened",
           "github-pull-meta",
           "github-pull-branches",
-          "github-pull-opened",
           "github-pull-size",
           "github-pull-summary",
         ]);
@@ -502,7 +522,7 @@ async function main() {
           JSON.stringify(commit.lines.map((line) => line.cls)),
         );
         check(
-          `${where}: the pull request's are its author, branches, ages, ..., size, and Diff summary`,
+          `${where}: the pull request's lines are its state and ages, author, branches, ..., size, and Diff summary`,
           JSON.stringify(pullOrder.slice(0, 3)) === "[0,1,2]" &&
             pullOrder[3] === pull.lines.length - 2 &&
             pullOrder[4] === pull.lines.length - 1,
@@ -532,8 +552,8 @@ async function main() {
         ]) {
           const author = page.author;
           check(
-            `${where}: the ${name}'s author is the first line's, an 18 px box holding the glyph`,
-            author.line === 1 &&
+            `${where}: the ${name}'s author starts its line with an 18 px box holding the glyph`,
+            author.line === (name === "commit" ? 1 : 2) &&
               author.box?.width === 18 &&
               author.box.height === 18 &&
               author.box.left === 0 &&

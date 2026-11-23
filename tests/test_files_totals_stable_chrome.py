@@ -36,6 +36,8 @@ default pane and the narrowest. This judges it:
   keeps its box as "No ignored files";
 - the tracked and ignored lines' tooltips, each its line's whole phrase, show only while
   the line is cut short, and in the narrowest pane the ignored line is;
+- a Source Sans response held until after the rows first paint does not move the
+  navigation when the font arrives;
 - the tree's hold is bounded: a load whose ``filter-controls.js`` fails never fills the
   bar, and the tree is shown at the bound in the hold's rule, which this reads from
   styles.css, with nothing moved.
@@ -68,7 +70,7 @@ from tests.required_tools import require_chrome, require_node
 SESSION = Path(__file__).resolve().parent / "dom" / "files-totals-stable-chrome.mjs"
 STYLES = Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "styles.css"
 _METAB = Path(sys.executable).with_name("metab")
-# Three server starts, one Chrome, and thirty-one loads, eighteen of them holding the tally
+# Three server starts, one Chrome, and thirty-two loads, eighteen of them holding the tally
 # 2 s and two the event stream 1.5 s (eight more hold it only until first paint, inside
 # their tally's 2 s): the session took 71 s, and the test 98 s, on a 10-core Mac at a
 # load average near 30. A cold Chrome start in CI has taken 28.2 s, and each server's
@@ -246,6 +248,10 @@ def test_nothing_in_the_files_panel_moves_from_document_start_to_settled(
         assert tracked is not None and tracked["shows"] is tracked["cut"], f"{name}: {tracked}"
     provisional = [result for result in results if result["provisional"]]
     assert len(provisional) == 2 and all(result["settled"] for result in provisional)
+
+    late_font: dict[str, Any] = output["lateFont"]
+    assert late_font["settled"] and late_font["fontArrivedAfterRows"], late_font
+    assert not _still(late_font) and late_font["shift"] == 0, late_font
 
     # The hold is bounded: with filter-controls.js failed, the bar is never filled, and the
     # tree is shown at the bound, not hidden for good, and nothing moves.
