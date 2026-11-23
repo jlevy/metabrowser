@@ -20,7 +20,9 @@ a Git comparison at the active subject's ``GitLocation``, so the history
 view renders diffs through this plugin's view instead of growing a diff
 surface of its own. A pinned revision does not need a working tree. On a
 store, a request naming full commit IDs is kept and validated;
-``comparison_cache.py`` says what the answer depends on.
+``comparison_cache.py`` says what the answer depends on. ``&types=`` narrows
+the answer to the changed files of those types, the Files tab's File type
+vocabulary (``tree_filter.parse_types``, matched by ``file_type_match``).
 
 The patch handlers read through the content reader, which serves an attached
 folder and a pinned revision alike and keeps the blocking part off the event
@@ -64,6 +66,7 @@ from metabrowser.diff.format import (
     Totals,
     dump_document,
 )
+from metabrowser.file_type_match import change_matches_types, semantic_extension_tokens
 from metabrowser.git.process import (
     GitError,
     GitLocation,
@@ -88,6 +91,7 @@ from metabrowser.plugin_api import (
     resolve_content,
     resolve_content_container,
 )
+from metabrowser.tree_filter import parse_types
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -328,6 +332,11 @@ async def comparison_at(
     ``&file=<path>`` narrows to one change and hydrates it regardless of
     the bound — the deferred sections' on-demand loader. It is the path exactly, since
     a name can begin or end with a space.
+    ``&types=`` (repeated or comma-separated, as the Files tab sends it) keeps only
+    the changes of those types, either side of a rename counting, before the bound
+    is applied, so the hydrated files are the first matching ones. Totals are then the
+    kept files'; ``truncated`` still says the listing stopped at its own bound, past
+    which a matching file may exist.
     On a pinned revision, ``HEAD`` is that object id.
 
     A request naming two commit IDs on a store sends an entity tag that names the build
@@ -344,6 +353,7 @@ async def comparison_at(
     left = request.query_params.get("left", "").strip()
     right = request.query_params.get("right", "").strip()
     base_policy = request.query_params.get("base_policy", "").strip()
+    types = parse_types(request.query_params.getlist("types"))
     if base_policy and (revision or base_policy not in _TWO_ENDPOINT_POLICIES):
         return _error(
             "diff_comparison",
@@ -377,7 +387,14 @@ async def comparison_at(
     # for the commits, so a store holding neither answers its plain refusal.
     revalidate = False
     if kept_key is not None:
-        answer_key = (*kept_key, wanted_file, str(max_initial_files))
+        # A narrowed answer is kept apart from the whole one. With no types the key is the
+        # one it was, so a whole comparison's tag does not move.
+        answer_key = (
+            *kept_key,
+            wanted_file,
+            str(max_initial_files),
+            *((",".join(types),) if types else ()),
+        )
         # The body identity includes the initial hydration count: callers share the
         # manifest, but a PR page and a generic comparison can draw different prefixes.
         identity = hashlib.sha256("\0".join(answer_key[2:]).encode()).hexdigest()[:32]
@@ -434,8 +451,11 @@ async def comparison_at(
         resolved, manifest = comparison.resolved, comparison.manifest
         projected: list[FileChange] = []
         hydrate_ids: list[str] = []
+        semantic = semantic_extension_tokens(types)
         for change in manifest.files:
             if wanted_file and _change_display_path(change) != wanted_file:
+                continue
+            if types and not change_matches_types(change, types, semantic=semantic):
                 continue
             if change.availability is not Availability.ready:
                 projected.append(change)
@@ -490,23 +510,11 @@ async def comparison_at(
         return _git_failure(exc, revision)
 
     if wanted_file:
-        counted = [c for c in projected if c.additions is not None or c.binary]
         manifest = manifest.model_copy(
-            update={
-                "totals": Totals.model_construct(
-                    files=len(projected),
-                    additions=sum(c.additions or 0 for c in projected)
-                    if len(counted) == len(projected)
-                    else None,
-                    deletions=sum(c.deletions or 0 for c in projected)
-                    if len(counted) == len(projected)
-                    else None,
-                    exact=len(counted) == len(projected),
-                ),
-                "truncated": False,
-                "cursor": None,
-            }
+            update={"totals": _listed_totals(projected), "truncated": False, "cursor": None}
         )
+    elif types:
+        manifest = manifest.model_copy(update={"totals": _listed_totals(projected)})
     if hydration.left_out:
         projected, resolved = say_left_out(projected, resolved, hydration.left_out)
     projected = mark_past_the_bounds(projected, hydration)
@@ -519,6 +527,22 @@ async def comparison_at(
     encoded = await asyncio.to_thread(encode_body, body)
     _COMPARISONS.remember_body(answer_key, encoded, generation=body_generation)
     return await _encoded_response(request, encoded, headers)
+
+
+def _listed_totals(changes: list[FileChange]) -> Totals:
+    """The totals of a narrowed answer's own files, by the rule a listing follows.
+
+    A binary change contributes zero lines exactly; an uncounted text change (unmerged,
+    unsupported) makes the line counts unknown.
+    """
+    counted = [c for c in changes if c.additions is not None or c.binary]
+    exact = len(counted) == len(changes)
+    return Totals.model_construct(
+        files=len(changes),
+        additions=sum(c.additions or 0 for c in changes) if exact else None,
+        deletions=sum(c.deletions or 0 for c in changes) if exact else None,
+        exact=exact,
+    )
 
 
 def _json_body(document: ChangeSetDocument) -> bytes:

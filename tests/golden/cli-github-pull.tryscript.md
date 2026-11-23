@@ -409,6 +409,99 @@ status: 200
 ? 0
 ```
 
+## Test: Files changed narrowed to one file type
+
+`types` passes through the GitHub route as `base_policy` does: the diff view’s File type
+chooser asks this route for a pull request’s files of the chosen types.
+`.md` keeps `docs/new.md` and leaves out `src/app.txt`.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&types=.md'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&types=.md
+status: 200
+{
+  "schema": "file-diff-v1",
+  "schema_version": 1,
+  "resolved": {
+    "comparison_id": "git:9479019c56eedd23",
+    "source": {
+      "name": "git"
+    },
+    "kind": "content",
+    "base_policy": "merge_base",
+    "left": {
+      "kind": "commit",
+      "id": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "symbolic": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b"
+    },
+    "right": {
+      "kind": "commit",
+      "id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "symbolic": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+    },
+    "options": {
+      "context": 3,
+      "rename_detection": true,
+      "rename_similarity": 50
+    },
+    "warnings": []
+  },
+  "manifest": {
+    "files": [
+      {
+        "id": "f1",
+        "kind": "added",
+        "new": {
+          "path": "docs/new.md",
+          "entry_type": "file",
+          "mode": "100644",
+          "content": {
+            "kind": "git_object",
+            "oid": "e65f941eafc191b1242e9ef5170ab3426ef3c42b"
+          }
+        },
+        "binary": false,
+        "availability": "ready",
+        "additions": 1,
+        "deletions": 0
+      }
+    ],
+    "totals": {
+      "files": 1,
+      "additions": 1,
+      "deletions": 0,
+      "exact": true
+    },
+    "truncated": false
+  },
+  "patches": {
+    "f1": {
+      "file_id": "f1",
+      "hunks": [
+        {
+          "old_start": 0,
+          "old_count": 0,
+          "new_start": 1,
+          "new_count": 1,
+          "lines": [
+            {
+              "op": "add",
+              "text": "# New",
+              "no_newline": false
+            }
+          ]
+        }
+      ],
+      "truncated": false
+    }
+  }
+}
+? 0
+```
+
 ## Test: a merged pull request compares from its base.sha
 
 ```console

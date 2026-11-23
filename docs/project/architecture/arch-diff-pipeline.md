@@ -133,6 +133,17 @@ A pull request’s first answer hydrates fewer, `INITIAL_PULL_FILES` in
 what one run hydrates: one file past it is `too_large`, and a file that would take a run
 past it is `deferred`. Each constant’s comment records the measurement that set it.
 
+**Narrowing** keeps part of the listed manifest, before the hydration bound applies.
+`&file=` keeps one path, for a deferred file’s own request.
+`&types=` keeps the changed files of some file types, in the Files tab’s File type
+vocabulary (`tree_filter.parse_types`), matched by `file_type_match.py`, the rule the
+Files tree on a revision uses.
+A change matches when either of its sides does, so a rename from `.txt` to `.md` is of
+both. The bound then counts kept files, the totals are the kept files’, and `truncated`
+still says the listing stopped at its own bound.
+A narrowed answer is cached apart from the whole one, whose key and tag are unchanged.
+`cli-api-diff-type-filter.tryscript.md` pins the answers.
+
 **In the page**, `builtin_plugins/diff/diff-view.js` keeps every file’s bar in the page
 and draws rows only near the viewport:
 
