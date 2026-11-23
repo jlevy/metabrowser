@@ -43,11 +43,13 @@ from tests.golden_harness import (
 )
 from tests.loop_gate import held_until
 from tests.required_tools import needs_git
+from tests.source_checkout_fixture import read_refs_at_every_ask
 
 RECORDING = "source-ref-selector-origin-responses.json"
 TRANSCRIPT = "cli-ui-source-ref-selector-origin.tryscript.md"
 ORIGIN_TRUNK = "refs/remotes/origin/trunk"
 LOCAL_TRUNK = "refs/heads/trunk"
+LOCAL_TOPIC = "refs/heads/topic"
 VIEW = "/view/m"
 
 pytestmark = [
@@ -80,6 +82,8 @@ def _until(client: TestClient, wanted: str) -> dict[str, Any]:
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     sandbox = tmp_path.resolve()
     isolated = isolate_cli(sandbox, monkeypatch)
+    # Each page ask below comes right after the commit it is about.
+    read_refs_at_every_ask(monkeypatch)
     replica = build_linear(sandbox)
     checkout = clone_checkout(replica, sandbox / "checkout")
     pinned_git(checkout, "tag", "local-only")
@@ -215,6 +219,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         recorded["plain_follow_refused"] = post(
             client, "/api/source/pin", {"ref": "refs/heads/gone", "view": VIEW}
         )
+        # A branch the reader deletes while its page is shown: its last commit stays.
+        pinned_git(plain, "branch", "topic")
+        recorded["plain_topic"] = post(client, "/api/source/pin", {"ref": LOCAL_TOPIC})
+        pinned_git(plain, "branch", "-D", "topic")
+        recorded["plain_ask_gone"] = post(client, "/api/source/refresh", {"for": "page"})
     return stand_in_sandbox(recorded, sandbox, home=isolated.home)
 
 
@@ -285,6 +294,10 @@ def test_recording_is_what_a_served_checkout_with_a_store_answers(
     assert recorded["plain_ask"]["body"]["status"]["pin"] == plain["pin"]
     assert recorded["plain_ask_moved"]["body"]["status"]["pin"] != plain["pin"]
     assert recorded["plain_follow_refused"]["status"] == 404
+    topic = recorded["plain_topic"]["body"]["status"]
+    gone = recorded["plain_ask_gone"]["body"]["status"]
+    assert (gone["pin"], gone["ref"], gone["follows"]) == (topic["pin"], LOCAL_TOPIC, True)
+    assert (gone["latest"], gone["ref_on_origin"]) == (None, None)
     check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
 
 

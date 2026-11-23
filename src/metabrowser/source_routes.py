@@ -367,7 +367,8 @@ class CheckoutOwnRef(TypedDict):
     when the checkout has no such ref, a branch the reader never fetched. The row says
     that the two differ and no more: which is ahead, and by how many commits, would take
     a walk of the history between them for every branch that differs
-    (``_own_difference`` in ``checkout_revisions.py``).
+    (``_own_difference`` in ``checkout_revisions.py``). It is the wire form of the
+    dataclass of the same name in ``mirror_refresh.py``, which a listing carries.
     """
 
     commit: str | None

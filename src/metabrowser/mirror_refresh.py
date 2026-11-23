@@ -324,15 +324,17 @@ class MirrorRef:
     # Only on a row of a checkout's list of its origin's branches, read from the store
     # Metabrowser keeps of that origin: where the checkout's own remote-tracking branch
     # is, when that is not ``commit`` (``_with_origin`` in ``checkout_revisions.py``).
-    checkout: CheckoutsOwnRef | None = None
+    checkout: CheckoutOwnRef | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class CheckoutsOwnRef:
+class CheckoutOwnRef:
     """Where a checkout's own remote-tracking branch is, beside its origin's branch.
 
     ``commit`` and ``committed_at`` are that ref's, as :class:`MirrorRef` has them, and
     both ``None`` when the checkout has no such ref: a branch the reader never fetched.
+    ``GET /api/source/refs`` sends it under the same name, the TypedDict
+    ``CheckoutOwnRef`` in ``source_routes.py``.
     """
 
     commit: str | None
@@ -649,6 +651,7 @@ async def follow_served_ref(
     *,
     follows: Callable[[str | None], bool],
     open_tip: Callable[[str], Awaitable[GitRevisionSubject]],
+    on_open: Callable[[GitRevisionSubject], None] | None = None,
 ) -> GitRevisionSubject | None:
     """Serve the ref *subject* is served under at its new tip; the revision now served, or ``None``.
 
@@ -662,6 +665,11 @@ async def follow_served_ref(
     The caller holds the lock every change of what is served is made under, as a switch
     does: a reader's switch that ran meanwhile is the pin now, and this follows only the
     pin it is given.
+
+    *on_open* is told the new revision once it is opened and before it is attached, as a
+    switch records what it serves before attaching it: a caller that answers for its own
+    revisions by identity, as a checkout's does (``CheckoutRevisions.serves``), then
+    answers for it from the moment a request can find it served.
     """
 
     if (
@@ -681,6 +689,8 @@ async def follow_served_ref(
     if moved.ref != ref or moved.commit_oid == subject.commit_oid:
         await moved.aclose()
         return None
+    if on_open is not None:
+        on_open(moved)
     await replace_owned_subject(moved)
     log.info("followed %s to %s", ref, moved.commit_oid)
     return moved
@@ -2268,7 +2278,7 @@ __all__ = [
     "STORE_PROBE_WAIT_S",
     "UNSERVED_FRESHNESS",
     "AmbiguousSelectionError",
-    "CheckoutsOwnRef",
+    "CheckoutOwnRef",
     "CommitFetch",
     "CommitFetchAnswer",
     "CompanionRefresh",

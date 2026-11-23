@@ -31,7 +31,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser import server
+from metabrowser import checkout_revisions, server
 from metabrowser.capabilities import (
     DEFAULT_CAPABILITIES,
     UNTRUSTED_CAPABILITIES,
@@ -39,6 +39,7 @@ from metabrowser.capabilities import (
     get_capabilities,
 )
 from metabrowser.checkout_revisions import (
+    CHECKOUT_REFS_FLOOR_S,
     CHECKOUT_REFS_POLL_S,
     NOT_A_CHECKOUT,
     PARTIAL_CLONE_GIT_MINIMUM,
@@ -75,6 +76,7 @@ from tests.source_checkout_fixture import (
     build_partial_clone,
     git,
     git_env,
+    read_refs_at_every_ask,
     signed_branch,
     snapshot,
     view,
@@ -97,6 +99,13 @@ def _installed_git(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[
     """A checkout's revisions are read with an admitted Git; see ``admit_installed_git``."""
 
     admit_installed_git(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
+def _reads_at_every_ask(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Each page ask here reads the refs; see ``read_refs_at_every_ask``."""
+
+    read_refs_at_every_ask(monkeypatch)
 
 
 @pytest.fixture
@@ -456,6 +465,53 @@ def test_a_commit_id_and_the_working_tree_never_move(served: TestClient, checkou
     assert refused.status_code == 409
 
 
+def test_a_commit_opened_by_its_id_at_a_branchs_tip_stays_that_commit(
+    served: TestClient, checkout: Path
+) -> None:
+    """A commit opened by its ID while it is the tip of the branch the page was on is
+    served under that branch, so the selector still names it, and never follows it: only
+    a selection that names a ref does. Choosing the branch again makes it follow."""
+
+    _pin(served, ref="refs/heads/feature")
+    by_id = _pin(served, oid=FEATURE)
+    assert by_id["changed"] is False
+    status = by_id["status"]
+    assert (status["pin"], status["ref"]) == (FEATURE, "refs/heads/feature")
+    assert (status["follows"], status["probe_every_s"], status["latest"]) == (False, None, None)
+    git(checkout, "branch", "-f", "feature", "local-work")
+    local_work = git(checkout, "rev-parse", "local-work")
+    # Nothing that follows is served, and with no store there is nothing else to ask.
+    refused = served.post("/api/source/refresh", json={"for": "page"}, headers=_JSON)
+    assert (refused.status_code, refused.json()["code"]) == (409, "unsupported_for_subject")
+    assert served.get("/api/source/status").json()["pin"] == FEATURE
+
+    # Chosen by its name, the branch is served at its tip and follows from there.
+    named = _pin(served, ref="refs/heads/feature")
+    assert named["changed"] is True
+    assert (named["status"]["pin"], named["status"]["follows"]) == (local_work, True)
+    # Opened by ID while it is the very revision served, it stops following; named again
+    # while the branch has not moved, it follows again. Neither changes what is served.
+    still = _pin(served, oid=local_work)
+    assert (still["changed"], still["status"]["follows"]) == (False, False)
+    again = _pin(served, ref="refs/heads/feature")
+    assert (again["changed"], again["status"]["follows"]) == (False, True)
+    assert again["status"]["latest"] == local_work
+    git(checkout, "branch", "-f", "feature", FEATURE)
+    assert _page_ask(served)["status"]["pin"] == FEATURE
+
+
+def test_a_commit_opened_by_its_id_under_a_named_ref_follows_it(
+    served: TestClient, checkout: Path
+) -> None:
+    """A selection that names the ref a commit is served under, as View on branch's does
+    with ``under``, names a ref, so the pin follows it."""
+
+    under = _pin(served, oid=FEATURE, under="refs/heads/feature")["status"]
+    assert (under["pin"], under["ref"], under["follows"]) == (FEATURE, "refs/heads/feature", True)
+    git(checkout, "branch", "-f", "feature", "local-work")
+    assert _page_ask(served)["status"]["pin"] == git(checkout, "rev-parse", "local-work")
+
+
 def test_following_reads_the_ref_only_when_the_checkouts_refs_changed(
     served: TestClient, checkout: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -492,6 +548,160 @@ def test_a_branch_the_reader_deleted_keeps_its_last_commit_served(
     status = _page_ask(served)["status"]
     assert (status["pin"], status["ref"], status["latest"]) == (FEATURE, "refs/heads/feature", None)
     assert _tree(served) == ["FEATURE.md", "README.md"]
+
+
+class _Clock:
+    """The monotonic clock the floor between two readings is kept on, moved by the test."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class _CountedLock:
+    """A switch's lock that counts how often it is taken."""
+
+    def __init__(self, lock: asyncio.Lock) -> None:
+        self._lock = lock
+        self.taken = 0
+
+    async def __aenter__(self) -> None:
+        self.taken += 1
+        await self._lock.acquire()
+
+    async def __aexit__(self, *_exc: object) -> None:
+        self._lock.release()
+
+
+def _counted(monkeypatch: pytest.MonkeyPatch, module: Any, name: str) -> list[str]:
+    """Each call of *module*'s async *name*, by its last argument, in order."""
+
+    calls: list[str] = []
+    real = getattr(module, name)
+
+    async def counted(*args: Any) -> Any:
+        calls.append(str(args[-1]))
+        return await real(*args)
+
+    monkeypatch.setattr(module, name, counted)
+    return calls
+
+
+def test_an_ask_whose_refs_did_not_move_takes_no_switch_lock(
+    served: TestClient, checkout: Path
+) -> None:
+    """An ask names the ref state before taking the locks a switch is made under, and
+    takes them only when it changed, so it waits for no switch and holds none up."""
+
+    _pin(served, ref="refs/heads/feature")
+    revisions = checkout_revisions.checkout_revisions()
+    assert revisions is not None
+    lock = _CountedLock(revisions._switching)
+    revisions._switching = lock  # type: ignore[assignment]
+    for _ask in range(3):
+        assert _page_ask(served)["status"]["pin"] == FEATURE
+    assert lock.taken == 0
+    git(checkout, "branch", "-f", "feature", "local-work")
+    assert _page_ask(served)["status"]["pin"] == git(checkout, "rev-parse", "local-work")
+    assert lock.taken == 1
+
+
+def test_asks_inside_the_floor_are_answered_from_memory(
+    served: TestClient, checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """However many visible pages ask, the refs are read at most once a floor: an ask
+    under half an interval after the last reading reads nothing, and the next is read."""
+
+    from metabrowser.git import ref_state
+
+    monkeypatch.setattr(checkout_revisions, "CHECKOUT_REFS_FLOOR_S", CHECKOUT_REFS_FLOOR_S)
+    clock = _Clock()
+    monkeypatch.setattr(checkout_revisions, "_monotonic", clock)
+    # The switch reads the ref, which is a reading.
+    _pin(served, ref="refs/heads/feature")
+    named = _counted(monkeypatch, ref_state, "ref_state")
+    git(checkout, "branch", "-f", "feature", "local-work")
+    clock.now += CHECKOUT_REFS_FLOOR_S - 0.1
+    early = _page_ask(served)
+    assert (early["refresh"], early["status"]["pin"]) == ("probed", FEATURE)
+    assert named == []
+    clock.now += 0.1
+    assert _page_ask(served)["status"]["pin"] == git(checkout, "rev-parse", "local-work")
+    assert len(named) == 1
+    # A second page asking at once is answered by that reading.
+    assert _page_ask(served)["status"]["pin"] == git(checkout, "rev-parse", "local-work")
+    assert len(named) == 1
+
+
+def test_a_ref_that_cannot_be_read_is_warned_of_once_a_streak(
+    served: TestClient,
+    checkout: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A reading that keeps failing, as when the Git directory is removed under an open
+    page, warns once, and again only after a reading has succeeded."""
+
+    from metabrowser.cache import resolve
+    from metabrowser.git.process import GitCommandError
+
+    real = resolve.ref_tip
+    failing = [True]
+
+    async def ref_tip(target: Any, ref: str) -> str | None:
+        if failing[0]:
+            raise GitCommandError(["for-each-ref"], 128, "fatal: not a git repository")
+        return await real(target, ref)
+
+    _pin(served, ref="refs/heads/feature")
+    monkeypatch.setattr(resolve, "ref_tip", ref_tip)
+
+    def warned() -> int:
+        return sum(
+            1
+            for record in caplog.records
+            if record.levelname == "WARNING" and "could not be read" in record.getMessage()
+        )
+
+    caplog.set_level("DEBUG", logger="metabrowser.checkout_revisions")
+    for number in range(3):
+        # Each ask finds the refs changed, so each reads the ref, and each reading fails.
+        git(checkout, "update-ref", f"refs/heads/other-{number}", SECOND)
+        assert _page_ask(served)["status"]["pin"] == FEATURE
+    assert warned() == 1
+    failing[0] = False
+    git(checkout, "update-ref", "refs/heads/other-read", SECOND)
+    assert _page_ask(served)["status"]["pin"] == FEATURE
+    failing[0] = True
+    git(checkout, "update-ref", "refs/heads/other-again", SECOND)
+    assert _page_ask(served)["status"]["pin"] == FEATURE
+    assert warned() == 2
+
+
+def test_a_followed_revision_is_the_checkouts_before_it_is_attached(
+    served: TestClient, checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The follow records the new revision as this checkout's before attaching it, as a
+    switch does, so no request can find it served and not the checkout's."""
+
+    from metabrowser import mirror_refresh
+
+    _pin(served, ref="refs/heads/feature")
+    revisions = checkout_revisions.checkout_revisions()
+    assert revisions is not None
+    real = mirror_refresh.replace_owned_subject
+    seen: list[bool] = []
+
+    async def replace(subject: Any) -> Any:
+        seen.append(revisions.serves(subject))
+        return await real(subject)
+
+    monkeypatch.setattr(mirror_refresh, "replace_owned_subject", replace)
+    git(checkout, "branch", "-f", "feature", "local-work")
+    assert _page_ask(served)["status"]["pin"] == git(checkout, "rev-parse", "local-work")
+    assert seen == [True]
 
 
 def test_following_a_branch_writes_nothing_into_the_checkout(checkout: Path) -> None:

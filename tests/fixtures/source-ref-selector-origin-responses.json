@@ -1104,5 +1104,68 @@
       "error": "no branch or tag with that name is in the checkout",
       "code": "selection_not_found"
     }
+  },
+  "plain_topic": {
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 11,
+        "pin": "732574d6427eb28f5df07467792de539900a3648",
+        "ref": "refs/heads/topic",
+        "ref_name": "topic",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": "732574d6427eb28f5df07467792de539900a3648",
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "read_from": "checkout"
+    }
+  },
+  "plain_ask_gone": {
+    "status": 200,
+    "body": {
+      "refresh": "probed",
+      "status": {
+        "subject": "git_revision",
+        "generation": 11,
+        "pin": "732574d6427eb28f5df07467792de539900a3648",
+        "ref": "refs/heads/topic",
+        "ref_name": "topic",
+        "name": "plain",
+        "origin": null,
+        "location": "/sandbox/plain",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": false,
+        "follows": true,
+        "latest": null,
+        "ref_on_origin": null,
+        "last_fetch_at": null,
+        "last_outcome": null,
+        "refreshing": false,
+        "refresh_quiet": false,
+        "stale": false,
+        "probe_every_s": 2.0,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      }
+    }
   }
 }

@@ -37,6 +37,7 @@ from tests.checkout_replica import Replica, build_linear, clone_checkout, finger
 from tests.golden_harness import FixedClock, isolate_cli, pinned_git
 from tests.loop_gate import held_until
 from tests.required_tools import needs_git
+from tests.source_checkout_fixture import read_refs_at_every_ask
 from tests.test_serve_pin import posix_only
 
 pytestmark = [posix_only, needs_git]
@@ -685,13 +686,14 @@ def test_ref_opens_an_origin_branch_from_the_store_once_the_cache_has_one(
 
 
 def test_every_page_of_a_folder_with_a_store_has_the_freshness_row_and_its_status(
-    folder: _Folder, served: TestClient
+    folder: _Folder, served: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The working tree's page and a local branch's say when the origin's store was
     fetched and can refresh it. The working tree follows nothing; the local branch
     follows the checkout's own ref, and its page's ask reads that ref beside the store's
     own answer."""
 
+    read_refs_at_every_ask(monkeypatch)
     _ready(served)
     assert 'id="source-freshness"' in served.get("/view/").text
     status = served.get("/api/source/status").json()
