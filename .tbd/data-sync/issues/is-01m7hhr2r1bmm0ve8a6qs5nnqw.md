@@ -5,7 +5,7 @@ title: "Release 0.13: make verify, opt-in tiers, installed-wheel checkpoint and 
 kind: task
 status: in_progress
 priority: 1
-version: 15
+version: 16
 refs:
   - kind: other
     url: https://github.com/jlevy/metabrowser/actions/runs/45095985926
@@ -35,7 +35,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:08.288Z
-updated_at: 2026-11-23T06:28:51.342Z
+updated_at: 2026-11-23T07:01:04.440Z
 started_at: 2026-11-23T03:13:34.119Z
 ---
 
@@ -56,3 +56,5 @@ The public exact-commit installation to .agents/skills/metabrowser/SKILL.md in t
 TCP #733 and sidebar #731 merged reviewed. Combined focused release tests: 348 passed on 96c06c77. In a7e85ff only the changelog and benchmark explanation changed, with local public-hygiene and changelog gates green. Exact hosted full release gate https://github.com/jlevy/metabrowser/actions/runs/45120609494 is running. Baseline and Agent Skill evidence retained outside scratch.
 
 Exact staged full verify 45120609494 passed (9397 parallel, 66 serial, 66 Chrome, goldens, audits and installed distribution); final main 51ca65a3ecf58bee890ad9c8ec724c8f15840267 has the identical tree and main CI 45123419039 passed. Exact project-local Agent Skill install matched bytes, the active dev app and server restarted, and the saved window was restored. The full earlier opt-in run used the earlier stabilization tree, with its original live-smoke failure fixed and eight live reruns passing there. Repeat published-artifact checks after approval and publishing.
+
+Published metab-cli v0.13.0 on Nov 22, 2026 PT. GitHub v0.13.0 resolves to the approved 51ca65a3ecf58bee890ad9c8ec724c8f15840267 and carries the approved notes. Publish to PyPI 45124967969 passed, including its clean --help and --doctor checks. Public metabrowser 0.13.0 wheel and sdist matched PyPI SHA-256 and expected license and metadata. Isolated installations verified both CLI commands, ordinary SQLite recognition, and the exact project-local Agent Skill bytes.

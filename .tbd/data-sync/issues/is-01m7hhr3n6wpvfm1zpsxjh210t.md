@@ -3,9 +3,9 @@ type: is
 id: is-01m7hhr3n6wpvfm1zpsxjh210t
 title: "Release 0.13.0: changelog, candidate review, and owner approval"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 13
+version: 14
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/727
@@ -23,8 +23,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:47:09.221Z
-updated_at: 2026-11-23T06:38:05.402Z
+updated_at: 2026-11-23T07:01:06.201Z
 started_at: 2026-11-23T03:14:00.397Z
+closed_at: 2026-11-23T07:01:06.175Z
+close_reason: Published metab-cli v0.13.0 on Nov 22, 2026 PT. GitHub v0.13.0 resolves to the approved 51ca65a3ecf58bee890ad9c8ec724c8f15840267 and carries the approved notes. Publish to PyPI 45124967969 passed, including its clean --help and --doctor checks. Public metabrowser 0.13.0 wheel and sdist matched PyPI SHA-256 and expected license and metadata. Isolated installations verified both CLI commands, ordinary SQLite recognition, and the exact project-local Agent Skill bytes.
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes
