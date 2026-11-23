@@ -35,7 +35,7 @@ jobs:
           test "$(git rev-parse 'v0.12.0^{commit}')" = "$CONTROL_SHA"
           test -z "$(git status --porcelain)"
           command -v xvfb-run
-          command -v google-chrome
+          command -v chromium
           support="$RUNNER_TEMP/mb-release-comparison"
           mkdir -p "$support"/{tmp,uv,cargo,evidence}
           export TMPDIR="$support/tmp" UV_CACHE_DIR="$support/uv" CARGO_TARGET_DIR="$support/cargo"
@@ -91,7 +91,7 @@ jobs:
             lscpu | grep -E '^(CPU\(s\)|Model name|Architecture):'
             node --version
             uv --version
-            google-chrome --version
+            chromium --version
             printf 'ImageOS=%s ImageVersion=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
             printf 'control=%s\ncandidate=%s\n' "$CONTROL_SHA" "$CANDIDATE_SHA"
           } > "$results/host.txt"
@@ -132,6 +132,7 @@ jobs:
           launch control > "$results/serve-warmup.log" 2>&1
           "${bench[@]}" fingerprint >> "$results/serve-warmup.log" 2>&1
           candidate_hard_failure=0
+          rejected_captures=0
           for pair in {1..5}; do
             sides=(control candidate)
             if (( pair % 2 == 0 )); then sides=(candidate control); fi
@@ -142,15 +143,23 @@ jobs:
               launch "$side" > "$capture_stem.serve.log" 2>&1
               capture_status=0
               xvfb-run -a -s '-screen 0 1920x1200x24' "${bench[@]}" capture \
-                --headed --chrome "$(command -v google-chrome)" --width 1600 --height 1040 \
+                --headed --chrome "$(command -v chromium)" --width 1600 --height 1040 \
                 --output "$capture_stem.json" --record > "$capture_stem.log" 2>&1 || capture_status=$?
-              grep -q '^recorded ' "$capture_stem.log" || { cat "$capture_stem.log"; exit 1; }
+              if ! grep -q '^recorded ' "$capture_stem.log"; then
+                printf 'Unrecorded pair %s %s (exit %s)\n' "$pair" "$side" "$capture_status" \
+                  | tee -a "$results/rejected-captures.txt"
+                cat "$capture_stem.log"
+                rejected_captures=$((rejected_captures + 1))
+                # Preserve fingerprint continuity even when an attempted capture was refused.
+                "${bench[@]}" fingerprint --timeout 120 > "$capture_stem.fingerprint.log" 2>&1
+                continue
+              fi
               if [[ "$side" = candidate && "$capture_status" != 0 ]]; then candidate_hard_failure=1; fi
               jq -c --arg a "$control_label" --arg b "$candidate_label" \
                 'select(.label==$a or .label==$b)' "$ledger" > "$results/browser-ledger.jsonl"
             done
           done
-          test "$(jq -s length "$results/browser-ledger.jsonl")" = 10
+          printf 'Rejected captures: %s\n' "$rejected_captures"
           # Stock compare treats different dependency environments as incompatible.
           # Both exact wheels pin different KPress versions, so retain that verdict
           # alongside the absolute candidate budgets and interleaved whole-release data.
@@ -163,6 +172,8 @@ jobs:
           printf 'backend_status=%s\ncandidate_hard_failure=%s\ncompare_status=%s\n' \
             "$backend_status" "$candidate_hard_failure" "$compare_status" > "$results/status.txt"
           test "$backend_status" = 0
+          test "$rejected_captures" = 0
+          test "$(jq -s length "$results/browser-ledger.jsonl")" = 10
           test "$candidate_hard_failure" = 0
           test "$compare_status" = 0
       - name: Upload diagnostic evidence
