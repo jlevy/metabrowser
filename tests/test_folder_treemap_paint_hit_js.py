@@ -17,7 +17,7 @@ def test_treemap_paint_and_hit_behavior() -> None:
         ["node", str(BEHAVIOR_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=30,
         check=False,
     )
     assert result.returncode == 0, (
