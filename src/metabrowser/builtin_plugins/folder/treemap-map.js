@@ -87,17 +87,35 @@ export const TREEMAP_LOADING_HTML =
   '<div class="tm-loading mb-delayed-loading" aria-hidden="true"></div><span class="sr-only">Loading treemap…</span>';
 
 /**
- * The rollup a treemap requests: the deepest tree the server returns, with
- * the most children per folder (the route resolves "max" to ROLLUP_MAX_DEPTH
- * and ROLLUP_MAX_TOP, settings.py), and the tallies the Treemap's legend reads.
- * The server's node budget, not these, bounds the response, and the layout
- * folds whatever has no room into remainder cells. Every map asks in this one
- * shape, so the server's body cache answers the Overview's map and the
- * Treemap view with one body.
+ * The rollup the Overview's compact map requests: the deepest tree the server
+ * returns, with the most children per folder (the route resolves "max" to
+ * ROLLUP_MAX_DEPTH and ROLLUP_MAX_TOP, settings.py), and the tallies a legend
+ * reads. The route's default node budget, not these, bounds the response, and
+ * the layout folds whatever has no room into remainder cells. A map of a few
+ * hundred pixels draws no more than that budget holds.
  * @returns {{ext_rank: "dual", depth: "max", top: "max"}}
  */
 export function treemapRollupQuery() {
   return { ext_rank: "dual", depth: "max", top: "max" };
+}
+
+/**
+ * The rollup the Treemap view requests: the compact map's, at the route's
+ * largest node budget (ROLLUP_MAX_NODES), in the compact encoding that carries a
+ * file as one positional entry (treemap-rollup-decode.js), and with gitignored
+ * nodes left out while Show ignored is off, so the budget goes to the nodes the
+ * map draws. Leaving them out changes which nodes are emitted, never a total, a
+ * tally, or a folder's dominant type.
+ * @param {boolean} includeIgnored  Show ignored
+ * @returns {{ext_rank: "dual", depth: "max", top: "max", nodes: "max", encoding: "compact", ignored: "include" | "exclude"}}
+ */
+export function treemapFullRollupQuery(includeIgnored) {
+  return {
+    ...treemapRollupQuery(),
+    nodes: "max",
+    encoding: "compact",
+    ignored: includeIgnored ? "include" : "exclude",
+  };
 }
 
 /**

@@ -16,11 +16,14 @@ from metabrowser.inventory_engine.providers.python_inventory import (
     _PythonInventoryStore as PythonInventoryStore,
 )
 from metabrowser.inventory_rollup import (
+    RollupEncoding,
+    RollupIgnored,
     RollupOptions,
     RollupRank,
     build_rollup,
     group_rollup_children,
 )
+from metabrowser.wire_models import validate_rollup_node
 
 
 def _synthetic_index(files: list[tuple[str, int, bool]]) -> PythonInventoryStore:
@@ -324,6 +327,9 @@ def test_node_budget_weighs_unignored_files_beside_all_files() -> None:
     ``build`` is ignored and holds most of all files; ``src`` holds most of the unignored
     ones. Both expand before ``docs``, which is light by either measure. Weighing all
     files alone leaves ``src`` unexpanded; weighing unignored files alone leaves ``build``.
+    The budget is shared by both populations too: ``src/lib`` emits six of its eight
+    files, its share of the visible entries waiting, where a share of all entries alone
+    gives it one, the map with Show ignored off one file.
     """
 
     entries = _probes(
@@ -343,8 +349,10 @@ def test_node_budget_weighs_unignored_files_beside_all_files() -> None:
 
     nodes = _nodes_by_path(_rollup_root(entries, depth=12, top=50, max_nodes=15))
     assert [child["name"] for child in nodes["build"]["children"] or []] == ["a", "b"]
-    assert len(nodes.get("src/lib", {}).get("children") or []) == 8
-    assert nodes["build/a"]["children"] is None
+    assert len(nodes.get("src/lib", {}).get("children") or []) == 6
+    assert nodes["src/lib"]["rest"]["unignored_files"] == 2
+    assert len(nodes["build/a"]["children"] or []) == 2
+    assert nodes["build/b"]["children"] is None
     assert nodes["docs"]["children"] is None
 
 
@@ -353,6 +361,7 @@ def test_node_budget_weighs_bytes_beside_files() -> None:
 
     ``assets`` holds one large file, ``tests`` many small ones, and ``misc`` is light by
     either measure, though it outweighs ``tests`` by bytes and ``assets`` by files.
+    Each heavy folder emits its share of the budget, and ``misc/x`` is not reached.
     """
 
     entries = _probes(
@@ -368,18 +377,19 @@ def test_node_budget_weighs_bytes_beside_files() -> None:
         *(_file(f"misc/x/m{i}.bin", 500) for i in range(2)),
     )
 
-    nodes = _nodes_by_path(_rollup_root(entries, depth=12, top=50, max_nodes=15))
+    nodes = _nodes_by_path(_rollup_root(entries, depth=12, top=50, max_nodes=13))
     assert len(nodes["assets/img"]["children"] or []) == 1
-    assert len(nodes.get("tests/unit", {}).get("children") or []) == 8
-    assert nodes["misc"]["children"] is None
+    assert len(nodes.get("tests/unit", {}).get("children") or []) == 5
+    assert nodes["misc/x"]["children"] is None
 
 
 def test_node_budget_breaks_an_exact_weight_tie_by_path() -> None:
     """Equal weights at one level expand in path order, whatever order they were found.
 
     ``q`` outweighs ``p``, so ``q/aa`` is found before ``p/zz``; the two weigh exactly the
-    same and the budget expands one, so path order picks ``p/zz``. The emitted tree is the
-    same whatever order the entries arrive in.
+    same, so path order expands ``p/zz`` first, and it takes its share of the budget
+    rounded up, three of five files to two. The emitted tree is the same whatever order
+    the entries arrive in.
     """
 
     probes = (
@@ -396,8 +406,8 @@ def test_node_budget_breaks_an_exact_weight_tie_by_path() -> None:
 
     root = _rollup_root(_probes(*probes), depth=12, top=50, max_nodes=12)
     nodes = _nodes_by_path(root)
-    assert len(nodes["p/zz"]["children"] or []) == 5
-    assert nodes["q/aa"]["children"] is None
+    assert len(nodes["p/zz"]["children"] or []) == 3
+    assert len(nodes["q/aa"]["children"] or []) == 2
     assert _rollup_root(_probes(*reversed(probes)), depth=12, top=50, max_nodes=12) == root
 
 
@@ -523,6 +533,309 @@ def _full_sort_reference(
         rest["unignored_files"] += visible_files
         rest["unignored_size"] += visible_size
     return emitted, rest
+
+
+def test_rollup_options_reject_unknown_ignored_and_encoding() -> None:
+    with pytest.raises(ValueError, match="ignored"):
+        RollupOptions(depth=0, top=0, ext_top=0, max_nodes=0, ignored=cast(Any, "only"))
+    with pytest.raises(ValueError, match="encoding"):
+        RollupOptions(depth=0, top=0, ext_top=0, max_nodes=0, encoding=cast(Any, "msgpack"))
+
+
+def test_budget_share_keeps_a_flat_folder_from_taking_the_budget() -> None:
+    """A flat folder first in the order takes its share of the budget, not all of it.
+
+    ``flat`` holds 200 of the 240 files and expands first. With ``top`` as large as the
+    budget, the first directory expanded emitted up to the whole budget left, and ``b``
+    and ``c`` came back empty-handed. Shared by demand, ``flat`` takes 80 of the 96
+    nodes left (200 of the 240 entries waiting), and ``b`` and ``c`` eight each.
+    """
+
+    entries = _probes(
+        _dir(""),
+        _dir("flat"),
+        _dir("b"),
+        _dir("c"),
+        *(_file(f"flat/f{i:03d}.py", 10) for i in range(200)),
+        *(_file(f"b/f{i:02d}.py", 10) for i in range(20)),
+        *(_file(f"c/f{i:02d}.py", 10) for i in range(20)),
+    )
+
+    nodes = _nodes_by_path(_rollup_root(entries, depth=12, top=10_000, max_nodes=100))
+    assert len(nodes["flat"]["children"]) == 80
+    assert len(nodes["b"]["children"]) == 8
+    assert len(nodes["c"]["children"]) == 8
+    assert nodes["flat"]["rest"]["files"] == 120
+    assert len(nodes) == 100
+
+
+@pytest.mark.parametrize("ignored", ["include", "exclude"])
+def test_a_budget_that_covers_the_tree_emits_all_of_it(ignored: str) -> None:
+    """A budget of one node per entry emits every entry, with no ``rest`` anywhere.
+
+    ``exclude`` needs one per unignored entry only, since its ignored ones take none. A
+    folder left unexpanded is an empty one the order reached after the budget was spent,
+    which costs nothing to leave out.
+    """
+
+    entries = _mixed_tree()
+    if ignored == "include":
+        wanted = {path for path, probe in entries.items() if probe.type in ("dir", "file")}
+    else:
+        wanted = _visible_paths(entries)
+    result = _rollup_result(
+        entries, depth=12, top=10_000, max_nodes=len(wanted), ignored=cast(Any, ignored)
+    )
+    nodes = _nodes_by_path(cast(dict[str, Any], result["node"]))
+    assert set(nodes) == wanted
+    assert all("rest" not in node for node in nodes.values())
+    unexpanded = [path for path, node in nodes.items() if node.get("children", ()) is None]
+    assert all(not any(probe.parent == path for probe in entries.values()) for path in unexpanded)
+
+
+@pytest.mark.parametrize("max_nodes", [10_000, 40, 7])
+def test_exclude_is_the_same_envelope_less_the_ignored_children(max_nodes: int) -> None:
+    """``ignored=exclude`` changes the emitted children and ``rest``, and nothing else.
+
+    With a budget that covers the tree, the excluded node tree is the included one less
+    every ignored node, children compared by path: ``exclude`` ranks children by their
+    unignored weight alone, so the ones left may come in another order. Under any budget, the tallies, the breakdown, and every emitted
+    folder's totals, mtime, ignored flag, and ``dominant_ext`` are those of the included
+    rollup; ``dominant_ext`` ranks every file beneath the folder, ignored ones too.
+    """
+
+    entries = _mixed_tree()
+    whole = _rollup_result(entries, depth=12, top=10_000, max_nodes=10_000)
+    included = _rollup_result(entries, depth=12, top=10_000, max_nodes=max_nodes)
+    excluded = _rollup_result(entries, depth=12, top=10_000, max_nodes=max_nodes, ignored="exclude")
+    assert excluded["ext_tallies"] == included["ext_tallies"]
+    assert excluded["file_type_breakdown"] == included["file_type_breakdown"]
+    whole_nodes = _nodes_by_path(cast(dict[str, Any], whole["node"]))
+    excluded_nodes = _nodes_by_path(cast(dict[str, Any], excluded["node"]))
+    assert not any(node["gitignored"] for node in excluded_nodes.values())
+    for path, node in excluded_nodes.items():
+        expected = {k: v for k, v in whole_nodes[path].items() if k not in ("children", "rest")}
+        assert {k: v for k, v in node.items() if k not in ("children", "rest")} == expected
+    if max_nodes == 10_000:
+        assert _by_path(cast(dict[str, Any], excluded["node"])) == _by_path(
+            _without_ignored(cast(dict[str, Any], included["node"]))
+        )
+    # The fixture reaches the case it is for: a folder whose ignored files outweigh its
+    # unignored ones, so its dominant extension is one Show ignored off does not draw.
+    assert whole_nodes["mixed"]["dominant_ext"] == ".bin"
+    assert max_nodes < 10_000 or "mixed" in excluded_nodes
+
+
+def test_exclude_rest_counts_only_the_unignored_siblings_left_out() -> None:
+    """Under ``exclude`` an ignored child is neither emitted nor counted in ``rest``.
+
+    The fully ignored ``ignored_dir`` does not appear among the children and adds no
+    ``dirs`` to ``rest``, and the ignored logs, the heaviest children by bytes, add no
+    files. ``d1`` keeps its totals (two files, one ignored) and emits its one unignored
+    file with no ``rest``: the ignored one is left out, not omitted.
+    """
+
+    entries = _probes(
+        _dir(""),
+        _dir("ignored_dir", ignored=True),
+        *(_file(f"ignored_dir/f{i}.py", 100) for i in range(5)),
+        *(_file(f"ign{i}.log", 1_000, ignored=True) for i in range(3)),
+        _file("f1.py", 50),
+        _file("f2.py", 40),
+        _file("f3.py", 30),
+        _file("f4.py", 20),
+        _dir("d1"),
+        _file("d1/x.py", 60),
+        _file("d1/y.tmp", 70, ignored=True),
+        _dir("d2"),
+        _file("d2/z.py", 10),
+    )
+
+    result = _rollup_result(entries, depth=2, top=2, max_nodes=1_000, ignored="exclude")
+    root = cast(dict[str, Any], result["node"])
+    assert [child["path"] for child in root["children"]] == ["d1", "f1.py"]
+    assert root["rest"] == {
+        "dirs": 1,
+        "files": 4,
+        "size": 100,
+        "unignored_files": 4,
+        "unignored_size": 100,
+    }
+    assert (root["total_files"], root["unignored_files"]) == (15, 6)
+    d1 = root["children"][0]
+    assert (d1["total_files"], d1["unignored_files"]) == (2, 1)
+    assert [child["path"] for child in d1["children"]] == ["d1/x.py"]
+    assert "rest" not in d1
+
+
+def test_exclude_under_an_ignored_root_emits_no_children() -> None:
+    entries = _probes(_dir("", ignored=True), _dir("a"), _file("a/f.py", 3), _file("g.py", 4))
+    root = cast(
+        dict[str, Any],
+        _rollup_result(entries, depth=12, top=10, max_nodes=100, ignored="exclude")["node"],
+    )
+    assert root["children"] == []
+    assert "rest" not in root
+    assert (root["total_files"], root["total_size"], root["gitignored"]) == (2, 7, True)
+
+
+@pytest.mark.parametrize("root_path", ["", "d01"])
+@pytest.mark.parametrize("ignored", ["include", "exclude"])
+@pytest.mark.parametrize("omit_mtime", [False, True])
+@pytest.mark.parametrize("max_nodes", [10_000, 30])
+def test_compact_decodes_to_the_json_tree(
+    root_path: str, ignored: str, omit_mtime: bool, max_nodes: int
+) -> None:
+    """The compact encoding holds the JSON tree: its file rows decode to the file nodes.
+
+    The decoder below is the client's (``treemap-rollup-decode.js``): a file's path is
+    ``dir.path ? dir.path + "/" + name : name``, a null mtime is the JSON's omitted one,
+    and ``gitignored`` 0 or 1 is false or true. Folders keep their children as
+    folders only, an unexpanded folder has no ``files``, and the budget is spent alike, so
+    the decoded tree equals the JSON one, children compared by path.
+    """
+
+    entries = _mixed_tree()
+    tallies: list[dict[str, Any]] = []
+    trees: list[dict[str, Any]] = []
+    for encoding in ("json", "compact"):
+        result = _rollup_result(
+            entries,
+            root_path=root_path,
+            depth=12,
+            top=10_000,
+            max_nodes=max_nodes,
+            ignored=cast(Any, ignored),
+            encoding=cast(Any, encoding),
+            omit_mtime=omit_mtime,
+        )
+        node = cast(dict[str, Any], result["node"])
+        validate_rollup_node(cast(Any, node), compact=encoding == "compact")
+        tallies.append({k: v for k, v in result.items() if k != "node"})
+        trees.append(_by_path(node) if encoding == "json" else _decode_compact(node))
+    assert tallies[0] == tallies[1]
+    assert trees[1] == trees[0]
+    # The fixture reaches the cases it is for: files at the root, a bounded budget that
+    # leaves folders unexpanded, and file names the derivation must not mangle.
+    decoded = _nodes_by_path(trees[1])
+    assert any(child["type"] == "file" for child in trees[1]["children"])
+    if max_nodes == 30 and root_path == "":
+        assert any(node.get("children", ()) is None for node in decoded.values())
+    assert any(" " in node["name"] or "é" in node["name"] for node in decoded.values())
+
+
+def _mixed_tree() -> dict[str, _RollupProbe]:
+    """Nested folders with ignored folders and files, odd names, and a symlink."""
+
+    rng = random.Random(20261123)
+    probes: list[_RollupProbe] = [_dir("")]
+    for i in range(12):
+        folder = f"d{i:02d}"
+        probes.append(_dir(folder, ignored=i % 4 == 3))
+        for j in range(rng.randint(0, 3)):
+            sub = f"{folder}/s{j}"
+            probes.append(_dir(sub, ignored=j == 2))
+            probes.extend(
+                _file(f"{sub}/f{k}.py", rng.choice((1, 5, 40)), ignored=k == 1 and i % 2 == 0)
+                for k in range(rng.randint(0, 5))
+            )
+        probes.extend(
+            _file(f"{folder}/{name}", rng.choice((2, 7, 300)), ignored=n == 2)
+            for n, name in enumerate(("notes v2.md", "café.txt", "#build.log", "x.tar.gz"))
+        )
+    probes.extend(_file(f"top{i}.cfg", 3 + i, ignored=i == 1) for i in range(3))
+    probes.append(_file("link", 9, kind="symlink"))
+    probes.append(_dir("mixed"))
+    probes.append(_file("mixed/a.py", 10))
+    probes.append(_file("mixed/big.bin", 1_000, ignored=True))
+    return _probes(*probes)
+
+
+def _visible_paths(entries: dict[str, _RollupProbe]) -> set[str]:
+    def hidden(path: str) -> bool:
+        while True:
+            if entries[path].gitignored:
+                return True
+            if path == "":
+                return False
+            path = entries[path].parent
+
+    return {
+        path
+        for path, probe in entries.items()
+        if probe.type in ("dir", "file") and (path == "" or not hidden(path))
+    }
+
+
+def _rollup_result(
+    entries: dict[str, _RollupProbe],
+    *,
+    root_path: str = "",
+    depth: int,
+    top: int,
+    max_nodes: int,
+    ignored: RollupIgnored = "include",
+    encoding: RollupEncoding = "json",
+    omit_mtime: bool = False,
+) -> dict[str, Any]:
+    result = build_rollup(
+        entries,
+        group_rollup_children(entries),
+        root_path,
+        RollupOptions(
+            depth=depth,
+            top=top,
+            ext_top=12,
+            max_nodes=max_nodes,
+            omit_mtime=omit_mtime,
+            ignored=ignored,
+            encoding=encoding,
+        ),
+        False,
+    )
+    assert result is not None
+    return cast(dict[str, Any], result)
+
+
+def _without_ignored(node: dict[str, Any]) -> dict[str, Any]:
+    children = node.get("children")
+    if not isinstance(children, list):
+        return node
+    kept = [_without_ignored(child) for child in children if not child["gitignored"]]
+    return {**node, "children": kept}
+
+
+def _by_path(node: dict[str, Any]) -> dict[str, Any]:
+    children = node.get("children")
+    if not isinstance(children, list):
+        return node
+    ordered = sorted((_by_path(child) for child in children), key=lambda child: child["path"])
+    return {**node, "children": ordered}
+
+
+def _decode_compact(node: dict[str, Any]) -> dict[str, Any]:
+    decoded = {key: value for key, value in node.items() if key not in ("children", "files")}
+    children = node["children"]
+    if children is None:
+        assert "files" not in node
+        decoded["children"] = None
+        return decoded
+    assert all(child["type"] == "dir" for child in children)
+    decoded_children = [_decode_compact(child) for child in children]
+    for name, size, mtime, ext, gitignored in node["files"]:
+        file: dict[str, Any] = {
+            "name": name,
+            "path": f"{node['path']}/{name}" if node["path"] else name,
+            "type": "file",
+            "size": size,
+        }
+        if mtime is not None:
+            file["mtime"] = mtime
+        file["ext"] = ext
+        file["gitignored"] = gitignored == 1
+        decoded_children.append(file)
+    decoded["children"] = sorted(decoded_children, key=lambda child: child["path"])
+    return decoded
 
 
 def _dir(path: str, *, ignored: bool = False) -> _RollupProbe:

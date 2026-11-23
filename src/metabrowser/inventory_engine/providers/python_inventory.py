@@ -111,6 +111,8 @@ from metabrowser.inventory_engine.contract import (
     native_inventory_path,
 )
 from metabrowser.inventory_rollup import (
+    RollupEncoding,
+    RollupIgnored,
     RollupOptions,
     RollupRank,
     SubtreeAggregate,
@@ -118,9 +120,9 @@ from metabrowser.inventory_rollup import (
     build_rollup,
 )
 from metabrowser.settings import (
+    ROLLUP_DEFAULT_NODES,
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
-    ROLLUP_MAX_NODES,
     SLOW_OPERATION_LOG_SECONDS,
 )
 from metabrowser.walker import (
@@ -2113,6 +2115,8 @@ class _PythonInventoryStore:
                 filename_top=query.filename_top,
                 ext_rank=query.rank,
                 max_nodes=query.max_nodes,
+                ignored=query.ignored,
+                encoding=query.encoding,
             )
             # Count the attempt before entering the reducer: a moved view is
             # discarded output, but still real provider work that the fallback
@@ -2303,6 +2307,8 @@ class _PythonInventoryStore:
                 filename_top=query.filename_top,
                 ext_rank=query.rank,
                 max_nodes=query.max_nodes,
+                ignored=query.ignored,
+                encoding=query.encoding,
             )
             computed: SubtreeAggregateCache = {}
             try:
@@ -3370,6 +3376,8 @@ class _PythonInventoryStore:
         filename_top: int = ROLLUP_FILE_TYPE_FILENAME_LIMIT,
         ext_rank: RollupRank = "bytes",
         max_nodes: int | None = None,
+        ignored: RollupIgnored = "include",
+        encoding: RollupEncoding = "json",
     ) -> RollupResult | None:
         """Return the bounded rollup for an indexed directory."""
 
@@ -3380,7 +3388,9 @@ class _PythonInventoryStore:
             remaining_top=remaining_top,
             filename_top=filename_top,
             ext_rank=ext_rank,
-            max_nodes=ROLLUP_MAX_NODES if max_nodes is None else max_nodes,
+            max_nodes=ROLLUP_DEFAULT_NODES if max_nodes is None else max_nodes,
+            ignored=ignored,
+            encoding=encoding,
         )
         try:
             return self._build_rollup_pass(path, options, self._rollup_view(path))

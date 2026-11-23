@@ -477,7 +477,16 @@ function layoutTree(rootNode, viewport, options) {
         rest: true,
       });
     }
-    items.sort((a, b) => b.value - a.value);
+    // Equal values break by path, and the remainder after every child, so the order is
+    // total: the map draws the same whichever order the rollup sent the children in, as
+    // the compact encoding sends a folder's files after its folders
+    // (treemap-rollup-decode.js).
+    items.sort(
+      (a, b) =>
+        b.value - a.value ||
+        Number(Boolean(a.rest)) - Number(Boolean(b.rest)) ||
+        (a.node?.path < b.node?.path ? -1 : a.node?.path > b.node?.path ? 1 : 0),
+    );
 
     const before = cells.length;
     const packed = packLevel(items, rect, capacity, opts.minCellPx);

@@ -4843,12 +4843,18 @@ The map goes as deep as it has room for.
 Both sizes ask the rollup for its deepest and widest tree, and the server spends its
 node budget on the heaviest folders first (`inventory_rollup.py`), so the nodes go where
 the map can draw them.
-The layout fills the largest pending folder next, from a share of the remaining cell
-budget proportional to its area, so the cells reach every large region of the map rather
-than draining into the first folder drawn (`treemap-layout.js`). A folder with room for
-its label is labelled, and nests under its label strip when it is tall enough for a row
-of children too; only a folder too small for a label nests inside a thin frame, with no
-label, and its files are still drawn.
+The compact map asks at the route’s default budget, which a map a few hundred pixels
+tall does not outgrow.
+The Treemap view asks at its largest, in the compact encoding, which sends a file as one
+positional entry and which the view decodes to the ordinary tree before it lays it out
+(`treemapFullRollupQuery` in `treemap-map.js`, `treemap-rollup-decode.js`). While Show
+ignored is off it asks without the gitignored nodes, so the budget goes to the nodes it
+draws. The layout fills the largest pending folder next, from a share of the remaining
+cell budget proportional to its area, so the cells reach every large region of the map
+rather than draining into the first folder drawn (`treemap-layout.js`). A folder with
+room for its label is labelled, and nests under its label strip when it is tall enough
+for a row of children too; only a folder too small for a label nests inside a thin
+frame, with no label, and its files are still drawn.
 Frames thin with depth, and a folder too small for one draws its children edge to edge,
 so deep levels keep their area for cells (`frameDecay` in `treemap-layout.js`). A folder
 whose children all fold into its remainder stays one solid cell.
@@ -4890,7 +4896,10 @@ Both views observe one state object and preference key, so changing either contr
 Overview or Treemap updates the other surface without a second interpretation of scope
 or metric. The metric switches all three totals rows and the map.
 Show ignored changes map membership but leaves the explicit Files and Ignored rows
-intact.
+intact. In the Treemap view it asks again for the tree, with or without the gitignored
+nodes, and keeps the map it has, laid out as Show ignored off, until that tree arrives,
+so no folder is sized by totals whose nodes are missing; a view out of sight asks when
+it shows.
 
 There is no separate color selector.
 Every file maps its exact extension through the taxonomy’s distribution key, a folder

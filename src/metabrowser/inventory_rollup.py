@@ -62,11 +62,22 @@ ROLLUP_NO_EXT_KEY = "(none)"
 ROLLUP_REST_EXT_KEY = ""
 
 RollupRank = Literal["bytes", "dual"]
+# Whether gitignored entries are emitted as children (and spend the node budget).
+RollupIgnored = Literal["include", "exclude"]
+# How a directory's file children are written: as objects among its ``children``, or
+# as positional ``files`` entries (``RollupCompactFile`` in ``wire_models.py``).
+RollupEncoding = Literal["json", "compact"]
 
 
 @dataclass(frozen=True, slots=True)
 class RollupOptions:
-    """Bounds and ranking semantics for one rollup response."""
+    """Bounds and ranking semantics for one rollup response.
+
+    ``ignored="exclude"`` changes only which children are emitted, how the node budget
+    is spent, and what a ``rest`` bucket counts; every total, tally, and breakdown stays
+    as with ``"include"``. ``encoding="compact"`` changes only how file children are
+    written.
+    """
 
     depth: int
     top: int
@@ -76,6 +87,8 @@ class RollupOptions:
     filename_top: int = ROLLUP_FILE_TYPE_FILENAME_LIMIT
     ext_rank: RollupRank = "bytes"
     omit_mtime: bool = False
+    ignored: RollupIgnored = "include"
+    encoding: RollupEncoding = "json"
 
     def __post_init__(self) -> None:
         if (
@@ -92,6 +105,10 @@ class RollupOptions:
             raise ValueError("rollup limits must be nonnegative")
         if self.ext_rank not in ("bytes", "dual"):
             raise ValueError(f"unknown extension ranking mode: {self.ext_rank!r}")
+        if self.ignored not in ("include", "exclude"):
+            raise ValueError(f"unknown ignored mode: {self.ignored!r}")
+        if self.encoding not in ("json", "compact"):
+            raise ValueError(f"unknown rollup encoding: {self.encoding!r}")
         if self.remaining_top > ROLLUP_FILE_TYPE_REMAINING_LIMIT:
             raise ValueError("remaining file-type limit exceeds the response contract")
         if self.filename_top > ROLLUP_FILE_TYPE_FILENAME_LIMIT:
@@ -104,6 +121,10 @@ class _SubtreeAggregate:
     size_all: int = 0
     files_unignored: int = 0
     size_unignored: int = 0
+    # Directories beneath, so a directory knows the nodes its whole expansion would
+    # spend (``_emit_limit``).
+    dirs_all: int = 0
+    dirs_unignored: int = 0
     newest_mtime_ns: int = 0
     ext_files: Counter[str] = field(default_factory=Counter)
     ext_bytes: Counter[str] = field(default_factory=Counter)
@@ -119,6 +140,8 @@ class _SubtreeAggregate:
         self.size_all += other.size_all
         self.files_unignored += other.files_unignored
         self.size_unignored += other.size_unignored
+        self.dirs_all += other.dirs_all
+        self.dirs_unignored += other.dirs_unignored
         self.newest_mtime_ns = max(self.newest_mtime_ns, other.newest_mtime_ns)
         self.ext_files.update(other.ext_files)
         self.ext_bytes.update(other.ext_bytes)
@@ -237,6 +260,9 @@ def _aggregate_subtree(
             aggregate.absorb(
                 _aggregate_subtree(child.path, ignored, children_by_parent, aggregates)
             )
+            aggregate.dirs_all += 1
+            if not ignored:
+                aggregate.dirs_unignored += 1
             continue
         if child.type != "file":
             continue
@@ -273,6 +299,25 @@ def _file_node(entry: RollupEntry, parent_ignored: bool, options: RollupOptions)
     node["ext"] = entry.ext
     node["gitignored"] = parent_ignored or entry.gitignored
     return node
+
+
+def _compact_file(entry: RollupEntry, parent_ignored: bool, options: RollupOptions) -> list[Any]:
+    """The file's ``[name, size, mtime, ext, gitignored]`` entry in its folder's ``files``.
+
+    ``path`` is left out because a client derives it from the folder's, as
+    ``dir.path ? dir.path + "/" + name : name``: every child emitted here is listed
+    under its parent's path (``group_rollup_children``), whose canonical inventory path
+    is the parent's plus ``/`` and the child's name. ``mtime`` is null where the JSON
+    encoding omits it, and ``gitignored`` is 0 or 1.
+    """
+
+    return [
+        entry.name,
+        entry.size,
+        None if options.omit_mtime else entry.mtime_ns / 1_000_000_000.0,
+        entry.ext,
+        1 if parent_ignored or entry.gitignored else 0,
+    ]
 
 
 def _directory_node(
@@ -321,6 +366,8 @@ def _ordered_children(
     aggregates: Mapping[str, _SubtreeAggregate],
     parent_ignored: bool,
     emit_limit: int,
+    *,
+    visible_only: bool = False,
 ) -> list[RollupEntry]:
     """Return a prefix of the children in rollup order that holds *emit_limit* to emit.
 
@@ -330,18 +377,21 @@ def _ordered_children(
     plus the number of other children (symlinks), the prefix holds *emit_limit* files and
     directories or is every child. ``heapq.nsmallest`` selects each ranking's first ``m``
     in the order a full sort gives, in O(n log m) rather than O(n log n); the measurement
-    is beside ``ROLLUP_MAX_DEPTH`` in ``settings.py``.
+    is beside ``ROLLUP_MAX_DEPTH`` in ``settings.py``. *visible_only* ranks by the
+    visible files alone, for a rollup that leaves ignored children out.
     """
 
     other_types = sum(1 for child in children if child.type not in ("dir", "file"))
     span = min(len(children), emit_limit + other_types)
-    all_ranked = heapq.nsmallest(
-        span, children, key=lambda child: (-_all_weight(child, aggregates), child.path)
-    )
     visible_ranked = heapq.nsmallest(
         span,
         children,
         key=lambda child: (-_unignored_weight(child, aggregates, parent_ignored), child.path),
+    )
+    if visible_only:
+        return visible_ranked
+    all_ranked = heapq.nsmallest(
+        span, children, key=lambda child: (-_all_weight(child, aggregates), child.path)
     )
     ordered: list[RollupEntry] = []
     seen: set[str] = set()
@@ -374,40 +424,92 @@ def _emit_bounded_tree(
     zero (directories listed, no files counted yet) still expands level by level, which
     keeps truncation honest as ``inventory_engine/contract.py`` explains; path last, since
     paths are unique, makes the order total and the emitted tree deterministic.
+
+    The order decides which directory expands next; ``_emit_limit`` decides how much of
+    the budget it may spend, so a flat directory early in the order cannot spend the
+    budget the ones after it need.
     """
 
     root_aggregate = aggregates[root_entry.path]
+    exclude = options.ignored == "exclude"
+    compact = options.encoding == "compact"
 
     def weight(aggregate: _SubtreeAggregate) -> float:
-        return max(
-            _share(aggregate.files_all, root_aggregate.files_all),
-            _share(aggregate.size_all, root_aggregate.size_all),
+        visible = max(
             _share(aggregate.files_unignored, root_aggregate.files_unignored),
             _share(aggregate.size_unignored, root_aggregate.size_unignored),
         )
+        if exclude:
+            # The map that asks for this draws visible files only.
+            return visible
+        return max(
+            _share(aggregate.files_all, root_aggregate.files_all),
+            _share(aggregate.size_all, root_aggregate.size_all),
+            visible,
+        )
+
+    def demand(aggregate: _SubtreeAggregate, level: int) -> tuple[int, int]:
+        # The nodes expanding the whole directory would emit, among all entries and
+        # among visible ones, or none past the depth.
+        if level >= options.depth:
+            return (0, 0)
+        visible = aggregate.files_unignored + aggregate.dirs_unignored
+        if exclude:
+            return (visible, visible)
+        return (aggregate.files_all + aggregate.dirs_all, visible)
 
     root_node = _directory_node(root_entry, root_aggregate, root_ignored, options)
     remaining_nodes = max(0, options.max_nodes - 1)
-    pending: list[tuple[float, int, str, int, RollupEntry, dict[str, Any], bool]] = []
+    # The demand of every directory still waiting to expand, the root's at first.
+    waiting_all, waiting_visible = demand(root_aggregate, 0)
+    pending: list[
+        tuple[float, int, str, int, RollupEntry, dict[str, Any], bool, tuple[int, int]]
+    ] = []
     sequence = 0
     heapq.heappush(
-        pending, (-1.0, 0, root_entry.path, sequence, root_entry, root_node, root_ignored)
+        pending,
+        (
+            -1.0,
+            0,
+            root_entry.path,
+            sequence,
+            root_entry,
+            root_node,
+            root_ignored,
+            (waiting_all, waiting_visible),
+        ),
     )
     while pending:
-        _, level, _, _, entry, node, ignored = heapq.heappop(pending)
+        _, level, _, _, entry, node, ignored, (own_all, own_visible) = heapq.heappop(pending)
+        emit_limit = _emit_limit(
+            options.top,
+            remaining_nodes,
+            (own_all, waiting_all),
+            (own_visible, waiting_visible),
+        )
+        waiting_all -= own_all
+        waiting_visible -= own_visible
         if level >= options.depth or remaining_nodes <= 0:
             node["children"] = None
             continue
 
         children = children_by_parent.get(entry.path, ())
-        emit_limit = min(options.top, remaining_nodes)
+        # Ignored children left out of the response: neither emitted nor in ``rest``.
+        dropped: Sequence[RollupEntry] = ()
+        if exclude:
+            dropped = [child for child in children if ignored or child.gitignored]
+            if dropped:
+                children = [child for child in children if not (ignored or child.gitignored)]
         emitted: list[dict[str, Any]] = []
+        files: list[list[Any]] = []
         emitted_entries: list[RollupEntry] = []
         # Children emitted, or passed over as neither file nor directory, before the
         # limit; every child after them folds into ``rest``.
         placed = 0
-        for child in _ordered_children(children, aggregates, ignored, emit_limit):
-            if len(emitted) >= emit_limit:
+        for child in _ordered_children(
+            children, aggregates, ignored, emit_limit, visible_only=exclude
+        ):
+            if len(emitted_entries) >= emit_limit:
                 break
             placed += 1
             child_ignored = ignored or child.gitignored
@@ -417,6 +519,9 @@ def _emit_bounded_tree(
                 emitted.append(child_node)
                 emitted_entries.append(child)
                 sequence += 1
+                child_demand = demand(child_aggregate, level + 1)
+                waiting_all += child_demand[0]
+                waiting_visible += child_demand[1]
                 heapq.heappush(
                     pending,
                     (
@@ -427,19 +532,51 @@ def _emit_bounded_tree(
                         child,
                         child_node,
                         child_ignored,
+                        child_demand,
                     ),
                 )
                 remaining_nodes -= 1
             elif child.type == "file":
-                emitted.append(_file_node(child, ignored, options))
+                if compact:
+                    files.append(_compact_file(child, ignored, options))
+                else:
+                    emitted.append(_file_node(child, ignored, options))
                 emitted_entries.append(child)
                 remaining_nodes -= 1
         node["children"] = emitted
+        if compact:
+            node["files"] = files
         if placed < len(children):
             node["rest"] = _rest_bucket(
-                aggregates[entry.path], children, emitted_entries, aggregates, ignored
+                aggregates[entry.path], children, emitted_entries, aggregates, ignored, dropped
             )
     return root_node
+
+
+def _emit_limit(top: int, remaining_nodes: int, *demands: tuple[int, int]) -> int:
+    """How many children the directory being expanded may emit: its share of the budget.
+
+    A directory's demand is the nodes its whole expansion would emit, every file and
+    directory beneath it. The budget left is shared among the directories waiting to
+    expand in proportion to their demand, so each may emit up to the same fraction of its
+    own: ``remaining_nodes * own / waiting``, rounded up, and at least one. Emitting that
+    fraction of a flat directory leaves the fraction for the ones after it the same, so
+    one flat directory early in the order cannot take the budget.
+
+    Each of *demands* is one population's ``(own, waiting)``: all entries and visible
+    ones when ignored entries are emitted, since one response serves either Show ignored
+    setting, and visible ones twice when they are not. The directory takes the larger
+    share. When the budget covers the waiting demand of every entry it may emit, the share
+    is at least the directory's own demand, which is at least its child count, and the
+    budget left still covers what waits after it, so the whole tree is emitted. *top*
+    bounds every directory beside it. The measurement that chose this rule is beside
+    ``ROLLUP_MAX_TOP`` in ``settings.py``.
+    """
+
+    share = max(
+        -(-remaining_nodes * own // waiting) if waiting > 0 else 0 for own, waiting in demands
+    )
+    return min(top, remaining_nodes, max(1, share))
 
 
 def _rest_bucket(
@@ -448,12 +585,18 @@ def _rest_bucket(
     emitted: Sequence[RollupEntry],
     aggregates: Mapping[str, _SubtreeAggregate],
     parent_ignored: bool,
+    dropped: Sequence[RollupEntry] = (),
 ) -> dict[str, int]:
     """Total the children that were not emitted, as the directory's aggregate less those.
 
     ``_aggregate_subtree`` makes a directory's aggregate the sum of its children, so
     subtracting the emitted ones costs O(top) where summing the omitted ones walked them
     all. Only the directory count reads every child, one type check each.
+
+    *dropped* are the ignored children a rollup that excludes them left out of
+    *children*; they are subtracted too, so ``rest`` counts only the unignored siblings
+    that were omitted. An ignored child holds no unignored file, so only ``files`` and
+    ``size`` change.
     """
 
     rest = {
@@ -463,6 +606,13 @@ def _rest_bucket(
         "unignored_files": aggregate.files_unignored,
         "unignored_size": aggregate.size_unignored,
     }
+    for child in dropped:
+        if child.type == "dir":
+            rest["files"] -= aggregates[child.path].files_all
+            rest["size"] -= aggregates[child.path].size_all
+        elif child.type == "file":
+            rest["files"] -= 1
+            rest["size"] -= child.size
     for child in emitted:
         if child.type == "dir":
             child_aggregate = aggregates[child.path]
@@ -806,6 +956,8 @@ def _partition_file_types(
 __all__ = [
     "ROLLUP_NO_EXT_KEY",
     "ROLLUP_REST_EXT_KEY",
+    "RollupEncoding",
+    "RollupIgnored",
     "RollupOptions",
     "RollupRank",
     "build_rollup",

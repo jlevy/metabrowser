@@ -493,6 +493,33 @@ function ownPointOf(cells, index) {
   const tooltip = { html: null, anchor: null };
   const navigation = [];
   let rollupAnswer = null;
+  /** What the view's current watch asks the route for, beyond the tree's shape. */
+  let asked = null;
+  /** The tree without its gitignored nodes, as the route emits it for ignored=exclude. */
+  const withoutIgnored = (node) => ({
+    ...node,
+    children: Array.isArray(node.children)
+      ? node.children.filter((child) => !child.gitignored).map(withoutIgnored)
+      : node.children,
+  });
+  /** The tree in the compact encoding: a folder's files as `[name, size, mtime, ext, gitignored]`. */
+  const compacted = (node) => {
+    if (!Array.isArray(node.children)) {
+      return node;
+    }
+    const files = node.children.filter((child) => child.type === "file");
+    return {
+      ...node,
+      children: node.children.filter((child) => child.type !== "file").map(compacted),
+      files: files.map((file) => [
+        file.name,
+        file.size,
+        file.mtime ?? null,
+        file.ext,
+        file.gitignored ? 1 : 0,
+      ]),
+    };
+  };
   let sumsListener = null;
   let render = null;
   const mb = {
@@ -544,8 +571,20 @@ function ownPointOf(cells, index) {
       },
     },
     viewState: { isActive: () => true, subscribeActive: () => () => {} },
-    watchRollup(_scope, _options, onUpdate) {
-      rollupAnswer = (envelope) => onUpdate(JSON.parse(JSON.stringify(envelope)));
+    // Answers as the route does: without the gitignored nodes when asked to leave them
+    // out, and in the compact encoding when asked for it, which the view decodes.
+    watchRollup(_scope, options, onUpdate) {
+      asked = { nodes: options.nodes, encoding: options.encoding, ignored: options.ignored };
+      rollupAnswer = (envelope) => {
+        let node = options.ignored === "exclude" ? withoutIgnored(envelope.node) : envelope.node;
+        /** @type {Record<string, any>} */
+        let answer = { ...envelope, node };
+        if (options.encoding === "compact") {
+          node = compacted(node);
+          answer = { ...envelope, encoding: "compact", node };
+        }
+        onUpdate(JSON.parse(JSON.stringify(answer)));
+      };
       return { dispose() {}, refresh: async () => {}, stale: () => false };
     },
   };
@@ -903,12 +942,18 @@ function ownPointOf(cells, index) {
   navigation.length = 0;
 
   // Show ignored turned off under the pointer rebuilds the legend, which lets go of the
-  // hover the entry it removes held. The new entry's shares are of Files, and the map
-  // drops the ignored folder.
+  // hover the entry it removes held, and asks again for the tree without its ignored
+  // nodes. The new entry's shares are of Files, and the map drops the ignored folder.
+  const askedFirst = asked;
   entry("Python").emit("mouseenter");
   controls.set({ includeIgnored: false });
-  const toggled = read();
-  assert(nothing(toggled), `Show ignored turned off under the entry: ${JSON.stringify(toggled)}`);
+  const toggled = { ...read(), asked };
+  assert(
+    nothing(toggled) &&
+      same(askedFirst, { nodes: "max", encoding: "compact", ignored: "include" }) &&
+      same(asked, { nodes: "max", encoding: "compact", ignored: "exclude" }),
+    `Show ignored turned off under the entry: ${JSON.stringify({ askedFirst, toggled })}`,
+  );
   entry("Python").emit("mouseenter");
   const filesOnly = read();
   assert(
@@ -925,8 +970,8 @@ function ownPointOf(cells, index) {
     `the Python entry without ignored files: ${JSON.stringify(filesOnly)}`,
   );
 
-  // A refreshed rollup rebuilds the legend under the pointer and puts the hover away, and
-  // the browser enters the rebuilt entry.
+  // The tree without ignored nodes, or a refresh of it, rebuilds the legend under the
+  // pointer and puts the hover away, and the browser enters the rebuilt entry.
   rollupAnswer(ROLLUP);
   const refreshed = read();
   assert(

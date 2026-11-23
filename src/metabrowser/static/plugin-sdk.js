@@ -891,7 +891,17 @@
     const options = opts && typeof opts === "object" ? opts : {};
     const url = new URL("/api/rollup", global.location.origin);
     url.searchParams.set("path", path);
-    for (const key of ["depth", "top", "ext_top", "filename_top", "remaining_top", "ext_rank"]) {
+    for (const key of [
+      "depth",
+      "top",
+      "nodes",
+      "ext_top",
+      "filename_top",
+      "remaining_top",
+      "ext_rank",
+      "ignored",
+      "encoding",
+    ]) {
       const value = options[key] !== undefined ? options[key] : defaults[key];
       if (value !== undefined && value !== null) {
         url.searchParams.set(key, String(value));

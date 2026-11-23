@@ -215,6 +215,13 @@ class RollupFileNode(TypedDict):
     gitignored: bool
 
 
+# A file child in the compact encoding (``encoding=compact``): name, size, mtime in
+# float seconds or None where the JSON encoding omits it, logical extension, and 1 when
+# gitignored, else 0. Its path is the folder's path, a ``/``, and the name, or the name
+# alone in the root folder.
+type RollupCompactFile = tuple[str, int, float | None, str, int]
+
+
 class RollupRest(TypedDict):
     """Aggregate bucket for children past the per-directory `top` cap."""
 
@@ -234,7 +241,9 @@ class RollupDirNode(TypedDict):
     required and ``None`` when the directory was not expanded: at
     ``depth``, or not reached by the node budget, which expands the
     heaviest folders first (totals stay full-subtree). ``rest``
-    appears only when children were capped.
+    appears only when children were capped. In the compact encoding
+    ``children`` holds only directories, and an expanded directory's file
+    children are its ``files``; an unexpanded one has no ``files``.
     """
 
     name: str
@@ -249,6 +258,7 @@ class RollupDirNode(TypedDict):
     gitignored: bool
     dominant_ext: str
     children: list[Any] | None
+    files: NotRequired[list[RollupCompactFile]]
     rest: NotRequired[RollupRest]
 
 
@@ -379,6 +389,8 @@ class RollupEnvelope(TypedDict):
 
     root: str
     path: str
+    # Present, as "compact", only for ``encoding=compact``.
+    encoding: NotRequired[Literal["compact"]]
     node: RollupDirNode | None
     ext_tallies: list[ExtensionTallyRow]
     file_type_breakdown: FileTypeBreakdown | None
@@ -412,10 +424,14 @@ _ROLLUP_REST_REQUIRED: frozenset[str] = frozenset(
 )
 
 
-def validate_rollup_node(node: Mapping[str, Any], *, _path: str = "") -> None:
+def validate_rollup_node(
+    node: Mapping[str, Any], *, compact: bool = False, _path: str = ""
+) -> None:
     """Raise :class:`AssertionError` if *node* doesn't match
     :class:`RollupFileNode` / :class:`RollupDirNode`. Recurses into
-    ``children``. Route tests call this on every emitted shape."""
+    ``children``. Route tests call this on every emitted shape. *compact*
+    checks the compact encoding: directories alone in ``children`` and a
+    :data:`RollupCompactFile` list in ``files`` exactly when they are a list."""
 
     assert isinstance(node, dict), f"rollup node not a dict at {_path!r}"
     kind = node.get("type")
@@ -446,11 +462,29 @@ def validate_rollup_node(node: Mapping[str, Any], *, _path: str = "") -> None:
         for rest_key in _ROLLUP_REST_REQUIRED:
             assert isinstance(rest[rest_key], int), f"rest.{rest_key} not int at {_path!r}"
     children = node["children"]
+    if compact:
+        assert ("files" in node) == (children is not None), (
+            f"rollup dir at {_path!r}: files must accompany children exactly"
+        )
+        for row in node.get("files", ()):
+            assert isinstance(row, list) and len(row) == 5, f"compact file at {_path!r}: {row!r}"
+            name, size, mtime, ext, gitignored = row
+            assert isinstance(name, str) and name and "/" not in name
+            assert isinstance(size, int) and not isinstance(size, bool)
+            assert mtime is None or (
+                isinstance(mtime, (int, float)) and not isinstance(mtime, bool)
+            )
+            assert isinstance(ext, str)
+            assert gitignored in (0, 1) and not isinstance(gitignored, bool)
+    else:
+        assert "files" not in node, f"rollup dir at {_path!r} has files outside compact"
     if children is not None:
         assert isinstance(children, list), f"rollup dir.children not list/None at {_path!r}"
         for i, child in enumerate(children):
             child_path = f"{_path}/{node['name']}#{i}" if _path else f"{node['name']}#{i}"
-            validate_rollup_node(child, _path=child_path)
+            if compact:
+                assert child.get("type") == "dir", f"compact children hold a file at {child_path!r}"
+            validate_rollup_node(child, compact=compact, _path=child_path)
 
 
 def validate_extension_tallies(rows: Sequence[Sequence[object]]) -> None:
@@ -645,13 +679,13 @@ def validate_file_type_breakdown(raw: object, node: Mapping[str, Any]) -> None:
     )
 
 
-def validate_rollup_result(result: Mapping[str, Any]) -> None:
+def validate_rollup_result(result: Mapping[str, Any], *, compact: bool = False) -> None:
     """Assert one inventory result and the equality of root and tally totals."""
 
     assert set(result) == {"node", "ext_tallies", "file_type_breakdown"}
     node = result["node"]
     assert isinstance(node, dict)
-    validate_rollup_node(node)
+    validate_rollup_node(node, compact=compact)
     rows = result["ext_tallies"]
     assert isinstance(rows, list)
     validate_extension_tallies(rows)
@@ -689,8 +723,11 @@ def validate_rollup_envelope(envelope: Mapping[str, Any]) -> None:
         assert file_type_breakdown is None
         assert file_type_legend is None
         return
+    encoding = envelope.get("encoding", "json")
+    assert encoding in ("json", "compact"), f"unknown rollup encoding {encoding!r}"
     validate_rollup_result(
-        {"node": node, "ext_tallies": rows, "file_type_breakdown": file_type_breakdown}
+        {"node": node, "ext_tallies": rows, "file_type_breakdown": file_type_breakdown},
+        compact=encoding == "compact",
     )
     assert isinstance(file_type_breakdown, dict)
     validate_file_type_legend(file_type_legend, cast("Mapping[str, Any]", file_type_breakdown))
@@ -740,6 +777,7 @@ __all__ = [
     "FileTypeLegendView",
     "FileNode",
     "NavigationTallies",
+    "RollupCompactFile",
     "RollupDirNode",
     "RollupEnvelope",
     "RollupFileNode",

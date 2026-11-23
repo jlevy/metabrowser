@@ -318,9 +318,23 @@ const envelope = {
 };
 /** What the next rollups answer instead of `envelope`, when a step sets it. */
 let rollupOverride = null;
+/** The tree without its gitignored nodes, as the route emits it for ignored=exclude. */
+function withoutIgnored(node) {
+  return {
+    ...node,
+    children: Array.isArray(node.children)
+      ? node.children.filter((child) => !child.gitignored).map(withoutIgnored)
+      : node.children,
+  };
+}
 sandbox.fetch = async (url) => {
   fetchCalls.push(String(url));
-  return rollupOverride ?? { ok: true, json: async () => JSON.parse(JSON.stringify(envelope)) };
+  const exclude = new URL(String(url)).searchParams.get("ignored") === "exclude";
+  const body = JSON.parse(JSON.stringify(envelope));
+  if (exclude) {
+    body.node = withoutIgnored(body.node);
+  }
+  return rollupOverride ?? { ok: true, json: async () => body };
 };
 
 vm.createContext(sandbox);
@@ -340,7 +354,7 @@ for (const relative of [
 }
 // In dependency order, since each runs in the one sandbox with its imports taken out:
 // folder-totals.js and the treemap import the hover they share, the treemap the legend, and
-// the map component the layout, the hit grid, and the paint list.
+// the map component the layout, the hit grid, and the paint list; the treemap its decoder.
 const moduleSources = [
   "src/metabrowser/builtin_plugins/folder/distribution-hover.js",
   "src/metabrowser/builtin_plugins/folder/distribution-legend.js",
@@ -350,6 +364,7 @@ const moduleSources = [
   "src/metabrowser/builtin_plugins/folder/treemap-paint.js",
   "src/metabrowser/builtin_plugins/folder/treemap-map.js",
   "src/metabrowser/builtin_plugins/folder/treemap-model.js",
+  "src/metabrowser/builtin_plugins/folder/treemap-rollup-decode.js",
   "src/metabrowser/builtin_plugins/folder/rollup-controls.js",
 ];
 for (const relative of moduleSources) {
@@ -1114,7 +1129,7 @@ sandbox.MetabrowserNavigationRoute.attachController({
     `${fetchCalls.length} fetches`,
   );
 
-  // Metric and ignored-scope changes relayout without refetching.
+  // A metric change relayouts without refetching; Show ignored asks again.
   const before = fetchCalls.length;
   const filesMetricGeometry = geometry(container);
   const toolbarClick = container.rollupControls.listeners.click?.[0];
@@ -1190,7 +1205,14 @@ sandbox.MetabrowserNavigationRoute.attachController({
   const toolbarChange = container.rollupControls.listeners.change?.[0];
   check("ignored checkbox handler bound", typeof toolbarChange === "function");
   if (toolbarChange) {
-    const totalsBeforeIgnored = JSON.stringify(container.totals.value);
+    // The folder's sums, which a tree without its ignored nodes leaves as they were.
+    const sums = (value) =>
+      JSON.stringify(
+        ["total_files", "total_size", "unignored_files", "unignored_size"].map(
+          (key) => value?.[key],
+        ),
+      );
+    const totalsBeforeIgnored = sums(container.totals.value);
     const totalsMetricBeforeIgnored = container.totals.metric;
     toolbarChange({
       target: {
@@ -1207,10 +1229,24 @@ sandbox.MetabrowserNavigationRoute.attachController({
         container.status.textContent === "",
       geometry(container),
     );
-    check("ignored scope change no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
+    const excludeUrl = new URL(fetchCalls.at(-1));
+    check(
+      "Show ignored off asks again for the tree without its ignored nodes",
+      fetchCalls.length === before + 1 &&
+        excludeUrl.searchParams.get("ignored") === "exclude" &&
+        excludeUrl.searchParams.get("encoding") === "compact" &&
+        excludeUrl.searchParams.get("nodes") === "max",
+      `${fetchCalls.length - before} ${excludeUrl.search}`,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "the tree without ignored nodes draws no ignored cell",
+      cellIndexOf(container, "c.md") === -1 && drawnMap().cells.length > 0,
+      geometry(container),
+    );
     check(
       "ignored scope leaves explicit Files and Ignored context unchanged",
-      JSON.stringify(container.totals.value) === totalsBeforeIgnored &&
+      sums(container.totals.value) === totalsBeforeIgnored &&
         container.totals.metric === totalsMetricBeforeIgnored,
       JSON.stringify({ value: container.totals.value, metric: container.totals.metric }),
     );
@@ -1222,6 +1258,15 @@ sandbox.MetabrowserNavigationRoute.attachController({
         },
       },
     });
+    // Until the tree with ignored nodes arrives, the map keeps the one it has, laid out
+    // as Show ignored off: no folder is sized by totals whose nodes are missing.
+    check(
+      "rechecking Show ignored keeps the map until its tree arrives",
+      cellIndexOf(container, "c.md") === -1 &&
+        new URL(fetchCalls.at(-1)).searchParams.get("ignored") === "include",
+      `${geometry(container)} ${fetchCalls.at(-1)}`,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
     check(
       "rechecking ignored scope restores ignored cells",
       cellIndexOf(container, "c.md") >= 0 &&
@@ -1569,6 +1614,25 @@ sandbox.MetabrowserNavigationRoute.attachController({
     '"max" depth and top reach the route as asked',
     maxUrl.searchParams.get("depth") === "max" && maxUrl.searchParams.get("top") === "max",
     maxUrl.search,
+  );
+  // The node budget, ignored scope, and encoding reach the route as asked, and the SDK
+  // returns a compact body undecoded. The route clamps a node budget as it does depth and
+  // top, and refuses an unknown scope or encoding (tests/test_rollup_route.py).
+  await mb.fetchRollup("dense", { nodes: "max", ignored: "exclude", encoding: "compact" });
+  const denseUrl = new URL(fetchCalls.at(-1));
+  check(
+    "nodes, ignored, and encoding reach the route as asked",
+    denseUrl.searchParams.get("nodes") === "max" &&
+      denseUrl.searchParams.get("ignored") === "exclude" &&
+      denseUrl.searchParams.get("encoding") === "compact",
+    denseUrl.search,
+  );
+  await mb.fetchRollup("plain");
+  const plainUrl = new URL(fetchCalls.at(-1));
+  check(
+    "an unasked node budget, scope, and encoding stay off the query",
+    !["nodes", "ignored", "encoding"].some((key) => plainUrl.searchParams.has(key)),
+    plainUrl.search,
   );
 
   if (failures.length > 0) {

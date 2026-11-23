@@ -421,14 +421,20 @@ grafts are needed at all.
 
 ### Phase 2: A Denser Rollup (layer 5, `claude/treemap-dense-rollup`)
 
-- [ ] `encoding=compact`, `nodes=`, `ignored=exclude` in the rollup and route, with
-  tests and a golden for each through `metab --api`.
-- [ ] The Treemap view asks for them and decodes in the folder plugin.
-- [ ] Set `ROLLUP_MAX_NODES`, `top`, and the body cache bound from the measurement.
+- [x] `encoding=compact`, `nodes=`, `ignored=exclude` in the rollup and route, with
+  tests and a golden through `metab --api` (`cli-api-rollup-dense.tryscript.md`).
+- [x] The Treemap view asks for them and decodes in the folder plugin
+  (`treemap-rollup-decode.js`); the route’s two encodings decode to one tree
+  (`tests/test_treemap_rollup_decode.py`), and the layout orders equal values by path,
+  so the map does not depend on the encoding’s child order.
+- [x] Set `ROLLUP_MAX_NODES`, `top`, and the body cache bound from the measurement
+  (`settings.py`, beside each constant).
 - [ ] A treemap case in the WebKit gate at the raised budget; profile the layout; set
   `PAINT_MAX_CELLS` from both engines (mb-72rg).
-- [ ] Parity rows, docs, a changelog fragment; a follow-up bead for grafts only if the
-  measurement asks for one.
+- [x] Parity rows, docs, a changelog fragment.
+  The measurement asks for no grafts: at `ROLLUP_MAX_NODES` the unexpanded share of the
+  map is under 1%, and with Show ignored off the visible tree fits the default budget
+  whole.
 
 ## Testing Strategy
 

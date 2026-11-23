@@ -147,6 +147,33 @@ today’s 4,000-node budget; with them it is 38,402 nodes, 7.49 MB of JSON (0.79
 gzipped, 2.39 MB as positional arrays without paths), and today’s budget leaves 53.8% of
 the map in unexpanded folders.
 
+The same replay on 2026-11-23 ran the route’s new parameters: a node budget each folder
+spends a share of (`_emit_limit` in `inventory_rollup.py`), `ignored=exclude`, and
+`encoding=compact`. The host’s load average was 270 to 280 on 10 CPUs, so CPU, a median
+of 5 builds and encodes with warm aggregates, is the stable figure.
+The map is laid out with the canvas cell cap, `PAINT_MAX_CELLS`, by the Files metric
+with Show ignored on:
+
+| Request | JSON | Compact | gzip, JSON / compact | CPU, JSON / compact | Cells | Unexpanded | Remainder | File cells |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4,000 nodes | 0.79 MB | 0.43 MB | 0.09 / 0.08 MB | 23 / 20 ms | 3,923 | 19.1% | 25.9% | 5.6% |
+| 8,000 nodes | 1.57 MB | 0.82 MB | 0.19 / 0.14 MB | 43 / 36 ms | 7,668 | 12.2% | 22.7% | 10.3% |
+| 16,000 nodes | 3.19 MB | 1.50 MB | 0.36 / 0.28 MB | 73 / 62 ms | 15,686 | 2.3% | 20.6% | 19.1% |
+| 24,000 nodes | 4.79 MB | 2.10 MB | 0.53 / 0.39 MB | 100 / 82 ms | 23,135 | 0.7% | 13.4% | 27.1% |
+| 32,000 nodes | 6.37 MB | 2.62 MB | 0.68 / 0.50 MB | 130 / 102 ms | 25,000 | 0.2% | 8.5% | 31.2% |
+| Whole tree, 38,402 nodes | 7.50 MB | 2.89 MB | 0.79 / 0.57 MB | 124 / 90 ms | 25,000 | 0.2% | 8.1% | 31.6% |
+| `ignored=exclude`, any budget, 2,740 nodes | 0.51 MB | 0.21 MB | 0.07 / 0.05 MB | 9 / 7 ms | 2,672 | 0% | 0% | 69.2% |
+
+The share brings the unexpanded area at 4,000 nodes from 51.9% to 19.1%. Past about
+26,000 nodes the map reaches the cell cap and folds the rest into remainders, so the
+knee is at 32,000, where `ROLLUP_MAX_NODES` was set; 24,000 to 32,000 draws 4 more
+points of the map as files, and 32,000 to the whole tree 0.4. The compact body measured
+2.89 MB for the whole tree, more than the 2.39 MB estimated above; the difference was
+not investigated. With Show ignored off the map asks for `ignored=exclude`, and the
+visible tree fits the default budget whole.
+The rules the share was chosen over are measured beside `ROLLUP_MAX_TOP` in
+`settings.py`; the browser’s parse and layout at these sizes is not measured here.
+
 ## Conclusions
 
 1. One canvas paints every cell down to about a device pixel: about 25 ms for a 36k-cell

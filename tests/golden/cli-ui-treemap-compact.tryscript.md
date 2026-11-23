@@ -278,8 +278,8 @@ $ node tests/dom/treemap-compact-session.js
         "file src/README.md 170x95",
         "file src/cache.md 170x95",
         "file src/lib/app.py 84x163",
-        "file src/lib/util.py 84x163",
         "file src/lib/cli.py 84x163",
+        "file src/lib/util.py 84x163",
         "file src/docs/guide.md 83x165",
         "file src/docs/notes.md 83x165"
       ],
@@ -290,8 +290,8 @@ $ node tests/dom/treemap-compact-session.js
         "src/README.md",
         "src/cache.md",
         "src/lib/app.py",
-        "src/lib/util.py",
         "src/lib/cli.py",
+        "src/lib/util.py",
         "src/docs/guide.md",
         "src/docs/notes.md"
       ]
@@ -308,8 +308,8 @@ $ node tests/dom/treemap-compact-session.js
         "dir src/docs 199x189",
         "file src/README.md 99x189",
         "file src/lib/app.py 98x163",
-        "file src/lib/util.py 98x163",
         "file src/lib/cli.py 98x163",
+        "file src/lib/util.py 98x163",
         "file src/docs/guide.md 97x164",
         "file src/docs/notes.md 97x164"
       ],
@@ -319,8 +319,8 @@ $ node tests/dom/treemap-compact-session.js
         "src/docs",
         "src/README.md",
         "src/lib/app.py",
-        "src/lib/util.py",
         "src/lib/cli.py",
+        "src/lib/util.py",
         "src/docs/guide.md",
         "src/docs/notes.md"
       ]
@@ -341,8 +341,8 @@ $ node tests/dom/treemap-compact-session.js
         "dir src/docs 199x189",
         "file src/README.md 99x189",
         "file src/lib/app.py 98x163",
-        "file src/lib/util.py 98x163",
         "file src/lib/cli.py 98x163",
+        "file src/lib/util.py 98x163",
         "file src/docs/guide.md 97x164",
         "file src/docs/notes.md 97x164"
       ],
@@ -352,8 +352,8 @@ $ node tests/dom/treemap-compact-session.js
         "src/docs",
         "src/README.md",
         "src/lib/app.py",
-        "src/lib/util.py",
         "src/lib/cli.py",
+        "src/lib/util.py",
         "src/docs/guide.md",
         "src/docs/notes.md"
       ]

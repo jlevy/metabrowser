@@ -15,8 +15,8 @@ what it is anchored on.
 The map paints its cells on a canvas, which has no context here, so the cells it marks
 and the cell under the pointer are read through `inspectTreemap`, and the pointer is a
 mousemove on the viewport at a cell’s coordinates.
-Pointing at a legend entry marks every cell of its family, the files of its type but no
-nested folder, which is neutral, the family’s segment in every tally row that has one,
+Pointing at a legend entry marks every cell of its family, the files of its type and the
+folder it is the dominant type of, the family’s segment in every tally row that has one,
 and the entry, with one tooltip: the counts of the family’s segment in the row the
 legend’s shares are of, anchored on the entry.
 Pointing at a cell marks the cell and its family’s entry and shows the cell’s own
@@ -31,6 +31,8 @@ still pointer points at the cell now under it, on a new anchor: the same cell af
 resize, and another after the measure switches to Bytes.
 The keys move the one focus proxy along the folder and file cells in layout order, Enter
 opens the cell it is on, and Backspace opens the enclosing folder’s Treemap.
+The view asks for the tree at the route’s largest node budget in the compact encoding,
+and Show ignored turned off asks again for it without its ignored nodes.
 Show ignored, a refreshed rollup, or the view’s disposal under the pointer puts the
 hover away, and the browser’s entering the rebuilt entry brings it back.
 
@@ -210,13 +212,13 @@ $ node tests/dom/treemap-legend-session.js
     "legend": "Python 70.6% Markdown 23.5% JSON 5.9%",
     "legendName": "Share of Total (850 B)",
     "marked": [
-      "legend family:markdown",
-      "cell docs/a.md"
+      "legend family:python",
+      "cell docs/c.py"
     ],
-    "pointer": "cell docs/a.md",
+    "pointer": "cell docs/c.py",
     "shimmers": true,
-    "tooltip": "docs/a.md / 1 file · 100 B / modified 2023-11-14",
-    "anchoredOn": "the anchor over docs/a.md"
+    "tooltip": "docs/c.py / 1 file · 300 B / modified 2023-11-14",
+    "anchoredOn": "the anchor over docs/c.py"
   },
   "the measure switched back to Files under the still pointer": {
     "legend": "Markdown 40% Python 40% JSON 20%",
@@ -240,9 +242,9 @@ $ node tests/dom/treemap-legend-session.js
     "focusOrder": [
       "docs/a.md",
       "docs/b.md",
+      "docs/build",
       "docs/c.py",
       "docs/e.json",
-      "docs/build",
       "docs/build/d.py"
     ],
     "keys": [
@@ -258,8 +260,8 @@ $ node tests/dom/treemap-legend-session.js
       },
       {
         "key": "ArrowRight",
-        "on": "docs/c.py",
-        "label": "c.py (file, 300 B)"
+        "on": "docs/build",
+        "label": "build (folder, 1 file)"
       },
       {
         "key": "ArrowLeft",
@@ -268,23 +270,24 @@ $ node tests/dom/treemap-legend-session.js
       },
       {
         "key": "ArrowRight",
-        "on": "docs/c.py",
-        "label": "c.py (file, 300 B)"
+        "on": "docs/build",
+        "label": "build (folder, 1 file)"
       },
       {
         "key": "Enter",
-        "on": "docs/c.py",
-        "label": "c.py (file, 300 B)"
+        "on": "docs/build",
+        "label": "build (folder, 1 file)"
       },
       {
         "key": "Backspace",
-        "on": "docs/c.py",
-        "label": "c.py (file, 300 B)"
+        "on": "docs/build",
+        "label": "build (folder, 1 file)"
       }
     ],
     "navigation": [
       [
-        "docs/c.py"
+        "docs/build",
+        "treemap"
       ],
       [
         "",
@@ -299,7 +302,12 @@ $ node tests/dom/treemap-legend-session.js
     "pointer": null,
     "shimmers": false,
     "tooltip": null,
-    "anchoredOn": null
+    "anchoredOn": null,
+    "asked": {
+      "nodes": "max",
+      "encoding": "compact",
+      "ignored": "exclude"
+    }
   },
   "pointer on the Python entry, Show ignored off": {
     "legend": "Markdown 50% JSON 25% Python 25%",

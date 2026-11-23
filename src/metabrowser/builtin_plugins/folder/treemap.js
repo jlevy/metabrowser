@@ -38,10 +38,11 @@ import {
   TREEMAP_LOADING_HTML,
   TREEMAP_VIEW_ID,
   treemapAvailability,
-  treemapRollupQuery,
+  treemapFullRollupQuery,
   withOuterBox,
 } from "./treemap-map.js";
 import { parentNavigation } from "./treemap-model.js";
+import { decodeRollupEnvelope } from "./treemap-rollup-decode.js";
 
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} TreemapPalette */
 /** @typedef {{acquire: (path: string) => TreemapPalette}} TreemapPalettePool */
@@ -85,6 +86,9 @@ export function registerTreemap(mb, palette, rollupControls) {
   function renderTreemap(container, ctx) {
     /** @type {Record<string, any> | null} */
     let envelope = null;
+    // Whether the envelope's tree holds gitignored nodes: the view asks without them
+    // while Show ignored is off (treemapFullRollupQuery).
+    let envelopeHasIgnored = false;
     let rollupFailed = false;
     let disposed = false;
     const parent = parentNavigation(ctx.path || "", mb.sourceKind());
@@ -257,13 +261,23 @@ export function registerTreemap(mb, palette, rollupControls) {
     // The cells, and their part of the hover the map shares with its bars and legend.
     const map = createTreemapMap(mb, palette, viewport, {
       size: "full",
-      getState: () => state,
+      getState: mapState,
       onActivate: activateCell,
       // The outer box is this view's own folder, so it opens nothing.
       opens: (cell) => !(cell.kind === "dir" && cell.path === (ctx.path || "")),
       hover,
       onParent: openParent,
     });
+
+    /**
+     * The state the map lays its tree out under. A tree asked for without gitignored
+     * nodes draws as Show ignored off until the one with them arrives, so turning it on
+     * keeps the map it had rather than sizing folders by totals whose nodes are missing.
+     * @returns {TreemapState}
+     */
+    function mapState() {
+      return envelopeHasIgnored ? state : { ...state, includeIgnored: false };
+    }
 
     function relayout() {
       if (disposed || !viewport) {
@@ -313,6 +327,9 @@ export function registerTreemap(mb, palette, rollupControls) {
       if (metricChanged || populationChanged) {
         updateTotalsComposition();
       }
+      if (populationChanged) {
+        syncTreeWatch();
+      }
       relayout();
       if (metricChanged || populationChanged) {
         updateLegend();
@@ -336,44 +353,86 @@ export function registerTreemap(mb, palette, rollupControls) {
         relayout();
       }
     }
-    const watch = mb.watchRollup(
-      ctx.path,
-      {
-        active: isVisible,
-        ...treemapRollupQuery(),
-        onError: onRollupError,
-      },
-      (env) => {
-        envelope = env;
-        rollupFailed = false;
-        const completeSnapshot = isCompleteSnapshot(env);
-        if (completeSnapshot && env.node) {
-          totalsView.update(normalizeFolderTotals(env.node));
-        } else if (
-          completeSnapshot ||
-          env.index_status === "failed" ||
-          env.index_status === "truncated"
-        ) {
-          totalsView.stopLoading();
-        } else {
-          // Still scanning, so the map shows its skeleton, whatever a failure or a
-          // finished index ended before this answer.
-          totalsView.resumeLoading();
-        }
-        const breakdown = env.file_type_breakdown;
-        try {
-          totalsEnvelope = breakdown ? normalizeRollupEnvelope(env) : null;
-        } catch (error) {
-          totalsEnvelope = null;
-          console.warn("Could not read the treemap file-type breakdown.", error);
-        }
-        updateTotalsComposition();
-        relayout();
-        updateLegend();
-      },
-    );
+    /**
+     * Watch the folder's tree as Show ignored asks for it now.
+     * @returns {ReturnType<MetabrowserPublicSdk["watchRollup"]>}
+     */
+    function watchTree() {
+      const includeIgnored = state.includeIgnored;
+      watchedIgnored = includeIgnored;
+      return mb.watchRollup(
+        ctx.path,
+        {
+          active: isVisible,
+          ...treemapFullRollupQuery(includeIgnored),
+          onError: onRollupError,
+        },
+        (raw) => onTree(raw, includeIgnored),
+      );
+    }
+    /**
+     * @param {Record<string, any>} raw
+     * @param {boolean} includeIgnored  whether it was asked for with gitignored nodes
+     */
+    function onTree(raw, includeIgnored) {
+      /** @type {Record<string, any>} */
+      let env;
+      try {
+        env = decodeRollupEnvelope(raw);
+      } catch (error) {
+        onRollupError(error);
+        return;
+      }
+      envelope = env;
+      envelopeHasIgnored = includeIgnored;
+      rollupFailed = false;
+      const completeSnapshot = isCompleteSnapshot(env);
+      if (completeSnapshot && env.node) {
+        totalsView.update(normalizeFolderTotals(env.node));
+      } else if (
+        completeSnapshot ||
+        env.index_status === "failed" ||
+        env.index_status === "truncated"
+      ) {
+        totalsView.stopLoading();
+      } else {
+        // Still scanning, so the map shows its skeleton, whatever a failure or a
+        // finished index ended before this answer.
+        totalsView.resumeLoading();
+      }
+      const breakdown = env.file_type_breakdown;
+      try {
+        totalsEnvelope = breakdown ? normalizeRollupEnvelope(env) : null;
+      } catch (error) {
+        totalsEnvelope = null;
+        console.warn("Could not read the treemap file-type breakdown.", error);
+      }
+      updateTotalsComposition();
+      relayout();
+      updateLegend();
+    }
+    /** Whether the watch asks for the tree with its gitignored nodes. */
+    let watchedIgnored = state.includeIgnored;
+    let watch = watchTree();
+    /**
+     * The tree is asked for with or without its gitignored nodes, so a Show ignored that
+     * no longer matches the watch asks again; the totals and the legend above hold both
+     * populations already. A view out of sight asks when it shows, since a watch fetches
+     * as it starts and the switch is shared with File Overview's.
+     */
+    function syncTreeWatch() {
+      if (state.includeIgnored !== watchedIgnored && isVisible()) {
+        watch.dispose();
+        watch = watchTree();
+      }
+    }
     const unsubscribeActive = mb.viewState.subscribeActive(container, (active) => {
-      if (active && watch.stale()) {
+      if (!active) {
+        return;
+      }
+      if (state.includeIgnored !== watchedIgnored) {
+        syncTreeWatch();
+      } else if (watch.stale()) {
         void watch.refresh();
       }
     });
