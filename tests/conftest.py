@@ -387,6 +387,25 @@ def _reset_label_sets() -> Generator[None, None, None]:  # pyright: ignore[repor
     forget()
 
 
+@pytest.fixture(autouse=True)
+def _reset_probe_turns() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start every test with no probe in flight and none refused, as a new process.
+
+    ``served_pull`` keeps both per process, by a pull request's refresh key, and the
+    fixtures share one repository and one clock, so a refusal one test left would hold
+    back the next test's probe. A process that never imported it holds neither.
+    """
+
+    def forget() -> None:
+        loaded = sys.modules.get("metabrowser.builtin_plugins.github.served_pull")
+        if loaded is not None:
+            loaded.forget_probes()
+
+    forget()
+    yield
+    forget()
+
+
 @pytest.fixture(scope="session")
 def _no_server_command(tmp_path_factory: pytest.TempPathFactory) -> str:  # pyright: ignore[reportUnusedFunction]
     refuser = tmp_path_factory.mktemp("no-detached-server") / "metab"

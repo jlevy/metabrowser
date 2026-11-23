@@ -34,6 +34,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
     ServedPull,
     ServedPulls,
 )
+from metabrowser.mirror_refresh import RefreshCoordinator
 from tests.test_github_pulls import _Stand
 from tests.test_github_pulls import stand as stand
 
@@ -207,4 +208,52 @@ def test_an_automatic_ask_past_the_cap_on_probes_in_flight_answers_not_due(
     route = _Route(stand, monkeypatch)
     monkeypatch.setattr(served_pull, "MAX_PROBES_IN_FLIGHT", 0)
     assert route.ask() == "not_due"
+    assert route.probes == [] and route.started == []
+
+
+def test_a_served_probe_is_the_coordinators_job_and_a_one_shots_drain_waits_for_it(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A5: the route hands the probe the host's coordinator. Without it nothing a served
+    probe does is cancelled at shutdown, and a one-shot command ends before its probe."""
+
+    route = _Route(stand, monkeypatch)
+    monkeypatch.setattr(served_pull, "PROBE_WAIT_S", 0.01)
+    route.answers.append(pulls.PullProbe("unchanged", {}))
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator()
+        host = PullHost(
+            route.host.pulls, route.host.running, route.host.start, coordinator=coordinator
+        )
+        route.release = asyncio.Event()
+        assert await start_refresh(host, RefreshRequest(7, False)) == "not_due"
+        assert coordinator.running(route.held.probe_key) and route.held.probing
+        draining = asyncio.ensure_future(coordinator.drain(timeout_s=30))
+        await asyncio.sleep(0.05)
+        assert not draining.done() and route.held.probed_at is None
+        route.release.set()
+        await draining
+        assert route.held.probed_at is not None and not route.held.probing
+        await coordinator.aclose()
+
+    asyncio.run(run())
+
+
+def test_an_automatic_ask_of_a_server_that_is_shutting_down_answers_not_due(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A7: its coordinator has closed, and the ask raised where it now starts nothing."""
+
+    route = _Route(stand, monkeypatch)
+
+    async def run() -> str:
+        coordinator = RefreshCoordinator()
+        await coordinator.aclose()
+        host = PullHost(
+            route.host.pulls, route.host.running, route.host.start, coordinator=coordinator
+        )
+        return await start_refresh(host, RefreshRequest(7, False))
+
+    assert asyncio.run(run()) == "not_due"
     assert route.probes == [] and route.started == []

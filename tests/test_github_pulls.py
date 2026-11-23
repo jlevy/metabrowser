@@ -469,6 +469,84 @@ def test_an_account_check_github_refuses_keeps_the_last_login_for_the_next(
     assert _gh_commands(stand) == ['api user ["user-octo-reader"]']
 
 
+def test_a_304_names_the_account_to_the_budget_as_a_200_does(stand: _Stand) -> None:
+    """Review A5 on #726: the status check can name another account between two checks,
+    and the budget then belongs to the one this check answers for."""
+
+    from metabrowser.builtin_plugins.github import gh_budget
+
+    assert asyncio.run(active_account()) == READER
+    gh_budget.note_account("someone-else")
+    gh_budget.hold("2026-09-17T13:00:00Z", now=FETCHED_AT)
+    assert gh_budget.held_until(FETCHED_AT) is not None
+    assert asyncio.run(active_account()) == READER
+    assert _gh_commands(stand) == ["api user", 'api user ["user-octo-reader"]']
+    # The 304 named octo-reader, so someone-else's hold is forgotten.
+    assert gh_budget.held_until(FETCHED_AT) is None
+
+
+def test_a_saved_token_github_refuses_fails_as_gh_auth_status_says(stand: _Stand) -> None:
+    """Review A5 on #726: gh names the saved account and says GitHub refused its token."""
+
+    refused = {
+        "active": True,
+        "login": READER,
+        "state": "error",
+        "error": "HTTP 401: Bad credentials",
+        "tokenSource": "keyring",
+    }
+    stand.answer(
+        {
+            **scenario(stand.origin),
+            "auth": {"stdout": json.dumps({"hosts": {"github.com": [refused]}}), "exit": 0},
+        }
+    )
+    with pytest.raises(PullDataError) as failed:
+        asyncio.run(active_account())
+    assert failed.value.state == "not_logged_in"
+    # The step gh auth status's own verdict names, not the bare 401's.
+    assert "gh auth login --hostname github.com" in str(failed.value)
+    assert _gh_commands(stand) == ["api user", "auth status"]
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        # The login becomes the record's reader, so it is checked as gh auth status's is.
+        (ok("user", {"login": "not a login"}), "not a GitHub login"),
+        (ok("user", {"login": 7}), "not a GitHub login"),
+        ({"status": 404, "body": {"message": "Not Found"}}, "would not name the account"),
+        # A 304 for a request that sent no ETag names no one.
+        ({"status": 304}, "not conditional"),
+    ],
+)
+def test_an_account_answer_that_names_no_login_fails_the_check(
+    stand: _Stand, entry: dict[str, Any], message: str
+) -> None:
+    stand.answer(_api(scenario(stand.origin), "user", entry))
+    with pytest.raises(PullDataError) as failed:
+        asyncio.run(active_account())
+    assert failed.value.state == "gh_failed" and message in str(failed.value)
+    assert "pull request" not in str(failed.value)
+
+
+def test_an_account_answer_with_no_etag_is_asked_for_unconditionally_next(
+    stand: _Stand,
+) -> None:
+    """Review A5 on #726: the old ETag would be another answer's."""
+
+    assert asyncio.run(active_account()) == READER
+    bare = {
+        "status": 200,
+        "headers": {"X-Ratelimit-Limit": "5000"},
+        "body": {"login": "someone-else"},
+    }
+    stand.answer(_api(scenario(stand.origin), "user", bare))
+    assert asyncio.run(active_account()) == "someone-else"
+    assert asyncio.run(active_account()) == "someone-else"
+    assert _gh_commands(stand) == ["api user", 'api user ["user-octo-reader"]', "api user"]
+
+
 @pytest.mark.parametrize(
     ("state", "diagnostic", "outcome", "message"),
     [
@@ -6271,10 +6349,16 @@ def _probe(
     checks: bool,
     etags: dict[str, str] | None = None,
     seen: pulls.IssueSeen | None = None,
+    mergeability: bool = False,
 ) -> pulls.PullProbe:
     return asyncio.run(
         pulls.probe_pull_request(
-            stand.published, record, etags=etags or {}, checks=checks, seen=seen
+            stand.published,
+            record,
+            etags=etags or {},
+            checks=checks,
+            seen=seen,
+            mergeability=mergeability,
         )
     )
 
@@ -6302,7 +6386,7 @@ def test_a_probe_asks_only_the_issue_and_never_the_account(stand: _Stand) -> Non
     assert first.seen is not None and first.seen.updated_at == record.pull.updated_at
     assert _sent_etags(stand) == [(ISSUE_PATH, None)]
     again = _probe(stand, record, checks=False, seen=first.seen)
-    assert again == pulls.PullProbe("unchanged", {}, first.seen)
+    assert again == pulls.PullProbe("unchanged", {}, first.seen, record.pull.updated_at)
     assert _sent_etags(stand) == [(ISSUE_PATH, first.seen.etag)]
 
 
@@ -6323,7 +6407,9 @@ def test_a_push_to_the_repository_moves_the_pulls_etag_and_not_the_probes(
     assert pushed["headers"]["Etag"] != record.etags[pull_path]
     stand.answer(_api(answers, pull_path, pushed))
     stand.calls()
-    assert _probe(stand, record, checks=False, seen=seen) == pulls.PullProbe("unchanged", {}, seen)
+    assert _probe(stand, record, checks=False, seen=seen) == pulls.PullProbe(
+        "unchanged", {}, seen, record.pull.updated_at
+    )
     assert seen is not None and _sent_etags(stand) == [(ISSUE_PATH, seen.etag)]
 
 
@@ -6345,14 +6431,14 @@ def test_a_probe_finds_a_change_by_the_issues_updated_at_and_keeps_what_it_saw(
     assert _api_paths(stand) == [ISSUE_PATH]
     # A 304 for what that probe saw is still a change beside the older record, for free...
     assert _probe(stand, record, checks=False, seen=found.seen) == pulls.PullProbe(
-        "changed", {}, found.seen
+        "changed", {}, found.seen, "2026-09-17T11:00:00Z"
     )
     assert _sent_etags(stand) == [(ISSUE_PATH, found.seen.etag)]
     # ...and no change beside the record the full read brings.
     newer = stand.refresh(7)
     assert newer.pull.updated_at == "2026-09-17T11:00:00Z"
     assert _probe(stand, newer, checks=False, seen=found.seen) == pulls.PullProbe(
-        "unchanged", {}, found.seen
+        "unchanged", {}, found.seen, "2026-09-17T11:00:00Z"
     )
 
 
@@ -6371,13 +6457,20 @@ def test_a_new_issue_etag_with_the_same_updated_at_changes_nothing(stand: _Stand
     stand.answer(_api(answers, ISSUE_PATH, reacted))
     found = _probe(stand, record, checks=False, seen=seen)
     assert found == pulls.PullProbe(
-        "unchanged", {}, pulls.IssueSeen(record.pull.updated_at, 'W/"rotated"')
+        "unchanged",
+        {},
+        pulls.IssueSeen(record.pull.updated_at, 'W/"rotated"'),
+        record.pull.updated_at,
     )
     # An issue GitHub answers for another number, or without a time, fails the probe.
-    stand.answer(_api(answers, ISSUE_PATH, ok(ISSUE_PATH, {"number": 8, "updated_at": "x"})))
-    with pytest.raises(PullDataError) as unreadable:
-        _probe(stand, record, checks=False, seen=seen)
-    assert unreadable.value.state == "gh_failed"
+    for wrong in (
+        {"number": 8, "updated_at": record.pull.updated_at},
+        {"number": 7, "updated_at": None},
+    ):
+        stand.answer(_api(answers, ISSUE_PATH, ok(ISSUE_PATH, wrong)))
+        with pytest.raises(PullDataError) as unreadable:
+            _probe(stand, record, checks=False, seen=seen)
+        assert unreadable.value.state == "gh_failed"
 
 
 def test_an_app_authored_pull_reads_the_same_through_graphql_and_rest(stand: _Stand) -> None:
@@ -6395,6 +6488,78 @@ def test_an_app_authored_pull_reads_the_same_through_graphql_and_rest(stand: _St
     # A person is named the same both ways, whatever their login.
     graph["author"] = {"__typename": "User", "login": "octocat"}
     assert pulls._graph_pull(graph, 7).author == "octocat"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_probe_of_unknown_mergeability_asks_the_pull_and_sees_github_answer(
+    stand: _Stand,
+) -> None:
+    """Review A1 on #726: GitHub computes ``mergeable`` after the read that first asks, and
+    nothing the issue carries moves when it does. Before, three probes asked the issue and
+    never the pull, and each vouched for "Merge status unknown"."""
+
+    answers = scenario(stand.origin)
+    pull_path = "repos/octo/demo/pulls/7"
+    body = answers["api"][pull_path]["body"]
+    computing = {**body, "state": "open", "merged": False, "mergeable": None}
+    answers = _api(answers, pull_path, ok(pull_path, computing))
+    stand.answer(answers)
+    record = stand.refresh(7)
+    assert record.pull.mergeable == "unknown"
+    assert pulls.mergeability_probe_path(stand.published, record) == pull_path
+    seen = _probe(stand, record, checks=False).seen
+    stand.calls()
+    # Not asked for: the issue alone.
+    assert _probe(stand, record, checks=False, seen=seen).outcome == "unchanged"
+    assert _api_paths(stand) == [ISSUE_PATH]
+    # Still computing: the pull answers 304 to the record's own ETag.
+    waiting = _probe(stand, record, checks=False, seen=seen, mergeability=True)
+    assert (waiting.outcome, waiting.etags) == ("unchanged", {})
+    assert sorted(_sent_etags(stand)) == sorted(
+        [(ISSUE_PATH, seen.etag if seen else None), (pull_path, record.etags[pull_path])]
+    )
+    # The repository moved and GitHub is still computing: the new ETag is kept.
+    base = {**computing["base"], "repo": {"pushed_at": "2026-09-17T11:59:00Z"}}
+    moved = ok(pull_path, {**computing, "base": base})
+    stand.answer(_api(answers, pull_path, moved))
+    still = _probe(stand, record, checks=False, seen=seen, mergeability=True)
+    assert (still.outcome, still.etags) == ("unchanged", {pull_path: moved["headers"]["Etag"]})
+    # GitHub answers, with the same updated_at: the checks are read again.
+    computed = ok(pull_path, {**computing, "mergeable": True})
+    stand.answer(_api(answers, pull_path, computed))
+    assert _probe(stand, record, checks=False, seen=seen, mergeability=True).outcome == (
+        "checks_changed"
+    )
+    resolved = asyncio.run(pulls.refresh_pull_request(stand.published, 7, checks_only=True))
+    assert resolved.pull.mergeable == "mergeable"
+    # A record that holds an answer, or a closed one, never has the pull asked.
+    assert pulls.mergeability_probe_path(stand.published, resolved) is None
+    stand.calls()
+    assert _probe(stand, resolved, checks=False, seen=seen, mergeability=True).outcome == (
+        "unchanged"
+    )
+    assert _api_paths(stand) == [ISSUE_PATH]
+    closed = record.model_copy(update={"pull": record.pull.model_copy(update={"state": "closed"})})
+    assert pulls.mergeability_probe_path(stand.published, closed) is None
+
+
+def test_an_issue_older_than_the_record_is_behind_and_not_a_change(stand: _Stand) -> None:
+    """Review A8 on #726: an answer that lags the pull's would have cost a full read."""
+
+    answers = scenario(stand.origin)
+    record = stand.refresh(7)
+    older = "2000-01-01T00:00:00Z"
+    assert older < record.pull.updated_at
+    stand.answer(_api(answers, ISSUE_PATH, ok(ISSUE_PATH, {"number": 7, "updated_at": older})))
+    stand.calls()
+    found = _probe(stand, record, checks=True)
+    assert (found.outcome, found.updated_at) == ("behind", older)
+    assert _api_paths(stand) == [ISSUE_PATH]
+    # A time in another spelling would not compare as text, so it is not read as one.
+    offset = ok(ISSUE_PATH, {"number": 7, "updated_at": "2030-01-01T00:00:00+00:00"})
+    stand.answer(_api(answers, ISSUE_PATH, offset))
+    with pytest.raises(PullDataError) as unreadable:
+        _probe(stand, record, checks=False)
+    assert unreadable.value.state == "gh_failed"
 
 
 def test_a_checks_probe_reads_the_first_pages_and_sees_a_rerun(stand: _Stand) -> None:

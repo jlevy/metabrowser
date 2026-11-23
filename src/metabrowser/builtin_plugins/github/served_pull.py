@@ -40,7 +40,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
 from metabrowser.builtin_plugins.github import gh_budget, pulls
-from metabrowser.builtin_plugins.github.pull_freshness import checks_pending
+from metabrowser.builtin_plugins.github.pull_freshness import (
+    checks_settling,
+    mergeability_pending,
+)
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
@@ -74,12 +77,16 @@ MAX_KEPT_PULLS: Final = 64
 MAX_ISSUED_COMPARISONS: Final = 8
 
 
-# How often a visible page's pull request is probed: one conditional ``GET`` of the pull
+# How often a visible page's pull request is probed: one conditional ``GET`` of its issue
 # (:func:`.pulls.probe_pull_request`), which GitHub does not count against the rate limit
-# when it answers ``304``. GitHub's ETag moved 2.7 s after a change, and one probe took
-# 0.56 to 0.96 s with gh 2.98.0 and 0.06 s of CPU (2026-11-22, load average near 300), so
-# 5 s shows a change about 6 s after it on average, 10 s at worst, with one ``gh`` process
-# each time. See docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md.
+# when it answers ``304``. One probe took 0.56 to 0.96 s with gh 2.98.0 and 0.06 s of CPU
+# (2026-11-22, load average near 300), so a change shows half an interval and one probe
+# after GitHub's ETag moves, on average, with one ``gh`` process each time.
+# How soon that is after the change is GitHub's: reading 12 NixOS/nixpkgs issues every
+# 3.8 s for 20 minutes on 2026-11-23 (315 rounds) caught two changes, one answered 2 s
+# after its ``updated_at`` and one between about 8 and 13 s after, and reads 15 to 20 s
+# apart had seen two more inside 10 and 19 s. Too few to state an average.
+# See docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md.
 ATTENDED_PROBE_S: Final = 5.0
 # The shortest gap the server keeps between two probes of one pull request, however many
 # pages ask. Below the page's ATTENDED_PROBE_S, so an ask that arrives a little early, as
@@ -92,33 +99,88 @@ PROBE_FLOOR_S: Final = 4.0
 # ``core``; 10 s holds that to about 12 a minute.
 CHECKS_PROBE_S: Final = 10.0
 # How long a record the probes vouch for goes without a full read. A probe cannot see an
-# edited comment, a reaction, or a re-run check of a finished head, so a visible page's
-# record is read in full this often whatever the probes say: the "every minute or two"
-# the plan sets, and an unchanged full read is all ``304``s and its account checks.
+# edited comment, a reaction, a re-run check of a finished head, or a mergeability GitHub
+# recomputes for a record that holds an answer, as when its base moves, so a visible
+# page's record is read in full this often whatever the probes say: the "every minute or
+# two" the plan sets, and an unchanged full read is all ``304``s and its account checks.
 FULL_REFRESH_S: Final = 90.0
+# How long, from the first probe that finds a head's mergeability unknown, the pull itself
+# is asked with each probe (:func:`.pulls.mergeability_probe_path`). GitHub computes
+# ``mergeable`` after the read that first asks: of 12 open NixOS/nixpkgs pull requests
+# read cold on 2026-11-23, all 12 answered ``null``, and all 12 an answer on the next
+# read 3 to 4 s later; review A of #726 saw ``null`` on 8 of 10 and an answer on all 10
+# 8 s later. Thirty seconds is six probes, several times the slowest of those. Past it
+# the pull is asked no more, since its ETag moves with the whole repository and each move
+# costs a call, and the record is no longer vouched for: the window's read asks again.
+MERGEABLE_SETTLE_S: Final = 30.0
 # How long a ``POST`` that started a probe waits for it. A probe normally ends in about a
 # second; past this the request answers ``not_due`` and the probe ends on its own, so a
 # slow network never holds the page's request for gh's own 30 s deadline.
 PROBE_WAIT_S: Final = 3.0
 # Probes running at once in one server, across every pull request; an automatic ask past
 # it answers ``not_due`` and the page asks again at its next interval, so nothing queues.
-# Each probe is one ``gh`` process, three while checks settle (the pull, its check runs,
-# and its status), and one conditional ``gh api`` used 45 MB for 0.6 s (three runs,
-# 2026-11-22, load average 295). A probe is one pull request's, one at a time, so the
-# bound is on pull requests probed in the same second: a reader's visible pages, and a
-# script asking many cached numbers, which ran that many ``gh`` at once before this
-# (review K3 on #709). Four is more visible pull request pages than one server's reader
-# keeps in view, and holds the worst case to twelve processes and about 540 MB for under
-# a second, 180 MB when no checks settle. It is a cost argument, not a measured limit.
+# Each probe is one ``gh`` process, three while checks settle (the issue, the head's check
+# runs, and its status) and one more while mergeability is unknown (the pull), and one
+# conditional ``gh api`` used 45 MB for 0.6 s (three runs, 2026-11-22, load average 295).
+# A probe is one pull request's, one at a time, so the bound is on pull requests probed in
+# the same second: a reader's visible pages, and a script asking many cached numbers,
+# which ran that many ``gh`` at once before this (review K3 on #709). Four is more visible
+# pull request pages than one server's reader keeps in view, and holds the worst case to
+# sixteen processes and about 720 MB for under a second, 180 MB when nothing settles. It
+# is a cost argument, not a measured limit.
 MAX_PROBES_IN_FLIGHT: Final = 4
+# How long a pull request the cap refused keeps its place ahead of those probed since
+# (:func:`_may_probe`): two of a page's intervals, so one whose page asks again gets the
+# next free probe, and one whose page went away holds no one back for longer.
+PROBE_TURN_S: Final = 2 * ATTENDED_PROBE_S
 # The probes running in this process, which is one server.
 _PROBES: set[asyncio.Future[None]] = set()
+# Pull requests the cap refused, oldest first, by the refresh key each asks under, with
+# when. Request text decides how many ask, so it is bounded as the kept pulls are.
+_REFUSED: OrderedDict[str, datetime] = OrderedDict()
 
 
 def probes_in_flight() -> int:
     """How many probes run now in this server, against :data:`MAX_PROBES_IN_FLIGHT`."""
 
     return sum(not task.done() for task in _PROBES)
+
+
+def _may_probe(key: str, now: datetime) -> bool:
+    """Whether the pull request asking under *key* may start a probe at *now*, under the cap.
+
+    Past the cap an ask is refused and remembered. A free probe then goes to those
+    refused longest ago before one that was not, so askers that arrive in the same order
+    each round, as a script's loop over cached numbers does, take turns: before this the
+    first :data:`MAX_PROBES_IN_FLIGHT` were probed every round and the rest never (review
+    A4 on #726), and a record never probed is read in full once a window instead. A
+    refusal is forgotten after :data:`PROBE_TURN_S`, or when its pull request probes.
+    """
+
+    for other, since in list(_REFUSED.items()):
+        if not timedelta(0) <= now - since <= timedelta(seconds=PROBE_TURN_S):
+            del _REFUSED[other]
+    free = MAX_PROBES_IN_FLIGHT - probes_in_flight()
+    ahead = 0
+    for other in _REFUSED:
+        if other == key:
+            break
+        ahead += 1
+    if ahead < free:
+        _REFUSED.pop(key, None)
+        return True
+    if key not in _REFUSED:
+        _REFUSED[key] = now
+        while len(_REFUSED) > MAX_KEPT_PULLS:
+            _REFUSED.popitem(last=False)
+    return False
+
+
+def forget_probes() -> None:
+    """Forget every probe and refusal, as a new process holds none; for tests."""
+
+    _PROBES.clear()
+    _REFUSED.clear()
 
 
 # A measured selected-core path is about 1.7 s. This bounds only the POST's wait,
@@ -313,6 +375,9 @@ class ServedPull:
     _issue_seen: pulls.IssueSeen | None = field(default=None, repr=False)
     _probe_saw_updated: str | None = field(default=None, repr=False)
     _attempted_updated: str | None = field(default=None, repr=False)
+    # The head whose unknown mergeability a probe first asked the pull about, and when:
+    # :data:`MERGEABLE_SETTLE_S` is counted from it.
+    _mergeability_asked: tuple[str, datetime] | None = field(default=None, repr=False)
     _probe_task: asyncio.Future[None] | None = field(default=None, repr=False)
     # When the record held was last read in full, not ``checks_only``, and when a full read
     # was last tried: :data:`FULL_REFRESH_S` is measured from these, since a ``checks_only``
@@ -532,7 +597,9 @@ class ServedPull:
         freshness window of a failed refresh or a failed probe (so a missing ``gh`` or a
         lost network is asked once a window, not every few seconds), nor within
         :data:`PROBE_FLOOR_S` of the last probe, however many pages ask, nor while
-        :data:`MAX_PROBES_IN_FLIGHT` probes of other pull requests run in this server.
+        :data:`MAX_PROBES_IN_FLIGHT` probes of other pull requests run in this server or
+        one the cap refused earlier is still to have its turn (:func:`_may_probe`, which
+        remembers this ask when it refuses it).
         """
 
         window = timedelta(seconds=FRESHNESS_WINDOW_S)
@@ -547,7 +614,7 @@ class ServedPull:
                 self._probe_attempt is not None
                 and now - self._probe_attempt < timedelta(seconds=PROBE_FLOOR_S)
             )
-            or probes_in_flight() >= MAX_PROBES_IN_FLIGHT
+            or not _may_probe(self.key, now)
         )
 
     async def probe(
@@ -561,11 +628,14 @@ class ServedPull:
         With *coordinator*, the server's, the probe is its job under :attr:`probe_key`, so
         shutdown cancels it with every other job, which kills its ``gh``; it takes no
         network slot and no turn at the store. A probe shutdown cancelled ends the wait
-        without an error: it found nothing, and nothing is due from it.
+        without an error: it found nothing, and nothing is due from it. Asked of a
+        coordinator that has closed, it starts nothing, for the same reason.
         """
 
         if self._probe_task is not None and not self._probe_task.done():
             raise AssertionError("probe_due holds a second probe while one runs")
+        if coordinator is not None and coordinator.closed:
+            return
         work: Callable[[], Awaitable[None]] = partial(self._probe, record)
         task: asyncio.Future[None] | None = None
         if coordinator is not None:
@@ -593,7 +663,19 @@ class ServedPull:
     async def _probe(self, record: PullRecord) -> None:
         now = pulls.utc_now()
         self._probe_attempt = now
-        checks = checks_pending(record) and (
+        # A record whose mergeability is unknown has the pull asked too, for
+        # MERGEABLE_SETTLE_S from the first probe that found this head's unknown. A
+        # record that holds an answer ends the wait, so the next unknown has its own; one
+        # that never gets an answer is asked no more until its head moves, however many
+        # records of it are read meanwhile.
+        asked = self._mergeability_asked
+        head = record.pull.head.sha
+        if not mergeability_pending(record):
+            asked = self._mergeability_asked = None
+        elif asked is None or asked[0] != head:
+            asked = self._mergeability_asked = (head, now)
+        mergeability = asked is not None and now - asked[1] <= timedelta(seconds=MERGEABLE_SETTLE_S)
+        checks = checks_settling(record) and (
             self._checks_probe_attempt is None
             # Less the slack PROBE_FLOOR_S allows each probe, so jitter does not push
             # the checks to every third probe (review B7 on #709).
@@ -602,11 +684,12 @@ class ServedPull:
         )
         if checks:
             self._checks_probe_attempt = now
-        # Settling checks a probe cannot see (:func:`.pulls.checks_probe_paths`) are read
-        # once a freshness window, as without probes, so no probe vouches for the record.
+        # Settling checks a probe cannot see (:func:`.pulls.checks_probe_paths`), and a
+        # mergeability still unknown once the pull is asked no more, are read once a
+        # freshness window, as without probes, so no probe vouches for the record.
         vouches = not (
-            checks_pending(record) and pulls.checks_probe_paths(self.published, record) is None
-        )
+            checks_settling(record) and pulls.checks_probe_paths(self.published, record) is None
+        ) and not (mergeability_pending(record) and not mergeability)
         try:
             found = await pulls.probe_pull_request(
                 self.published,
@@ -614,6 +697,7 @@ class ServedPull:
                 etags=dict(self._probe_etags),
                 checks=checks,
                 seen=self._issue_seen,
+                mergeability=mergeability,
             )
         except Exception as exc:
             # Nothing waits on a probe's result but this record's freshness: any failure,
@@ -637,7 +721,11 @@ class ServedPull:
             if vouches:
                 self.probed_at = _stamp(now)
             return
-        updated = found.seen.updated_at if found.seen is not None else None
+        if found.outcome == "behind":
+            # GitHub's issue answer is older than the record: it lags, and a read would
+            # bring nothing, so the record is neither vouched for nor read.
+            return
+        updated = found.updated_at
         if (
             found.outcome == "changed"
             and updated is not None
@@ -1131,11 +1219,14 @@ __all__ = [
     "FULL_REFRESH_S",
     "MAX_KEPT_PULLS",
     "MAX_PROBES_IN_FLIGHT",
+    "MERGEABLE_SETTLE_S",
+    "PROBE_TURN_S",
     "PROBE_WAIT_S",
     "PullRefreshOutcome",
     "ServedPull",
     "ServedPulls",
     "cached_comparison_record",
+    "forget_probes",
     "last_refresh",
     "probes_in_flight",
     "record_revision",

@@ -171,7 +171,8 @@ and rust-lang/rust, 661 rounds in all.
   In the bodies kept, what differed was the base repository’s `open_issues_count`, which
   moves when any issue or pull request opens or closes, its `pushed_at`, and the pull’s
   `mergeable` as GitHub recomputed it.
-  So more than pushes moves a pull’s ETag.
+  So more than pushes moves a pull’s ETag, and one of those moves is something the page
+  shows: `mergeable`, which the issue does not carry.
 - The issue answered `304` in all 90 of those rounds.
 - The issue answered `200` twice, each in the round the pull’s `updated_at` moved:
   labels a bot added, seen 19 s later, and a force-push of the head, seen 10 s later.
@@ -230,10 +231,19 @@ The list probe works because `sort=updated` puts the most recently changed pull 
 first, so its one-row page changes, and its ETag with it, whenever any pull request’s
 `updated_at` moves or a new one appears.
 The pull request probe covers what moves `updated_at` on one pull request: state, merge,
-title, body, labels, comments, reviews, and pushes.
-`mergeable` does not move `updated_at`, and the issue does not carry it, so a
-mergeability GitHub recomputes with nothing else changed shows at the next
-`FULL_REFRESH_S` read.
+title, body, labels, new comments and reviews, and pushes.
+A later edit of a review comment does not move it (review A of #726). `mergeable` does
+not move `updated_at` either, and the issue does not carry it.
+GitHub computes it after the read that first asks, so a full read often stores
+`unknown`: all 12 open nixpkgs pull requests read cold on 2026-11-23 answered `null`,
+and all 12 an answer 3 to 4 s later.
+So while an open record holds `unknown`, the probe also asks the pull itself, for
+`MERGEABLE_SETTLE_S` from the first probe that found that head’s mergeability unknown,
+and an answer starts a read of the checks alone, below the floor too.
+Past that time the pull is asked no more and no probe vouches for the record, so the
+window’s read asks again above the floor, and below it the page says unknown until the
+budget is back. A mergeability GitHub recomputes for a record that holds an answer, as
+when its base moves, shows at the next `FULL_REFRESH_S` read.
 Check runs and statuses are not in the pull request at all, which is why checks have
 their own probe and `pull_freshness.py` has its `checks` verdict.
 
@@ -306,8 +316,14 @@ guards and adds one:
   The bound first proposed here, a probe interval that doubles after `200`s that changed
   nothing (bead `mb-y7ut`), is not built: with the issue such a `200` is a reaction or
   the like, not every push.
-  The list probe of Phase 2 reads a pull’s row, which embeds the same repository
-  objects, so it needs its own measurement, and that bound if it pays per push.
+  What a probe saw of the issue is kept in memory, so the first probe of a number in a
+  process is one paid read, where the pull’s probe sent the record’s own ETag: one
+  `core` per number per server run, and one per one-shot `metab --api` automatic ask.
+  Keeping it on disk would need a new file beside the record, with its transcript and
+  its place in the cache’s clearing, or one more `gh` process in every full read, and
+  neither is worth one call a run (review A2 of #726). The list probe of Phase 2 reads a
+  pull’s row, which embeds the same repository objects, so it needs its own measurement,
+  and that bound if it pays per push.
 - **A self-ceiling** (new), `AUTOMATIC_CORE_PER_HOUR`, in `gh_budget.py`: the `core`
   this process’s automatic work may spend in a rolling hour, counted from what the
   process spends itself, which it knows exactly: one `core` for each REST answer that is
@@ -327,8 +343,9 @@ and the per-server probe cap bounds requests in flight.
 
 Steady-state cost for one visible page with nothing changing on GitHub, from the
 measurements above: probes 0 while the pull request does not change, whatever is pushed
-to its repository; full reads about 0 once the account check is conditional; and 40
-record refreshes and 40 catalog scans an hour, at most 40 GraphQL points.
+to its repository, after one paid read of the issue for each pull request a process
+probes; full reads about 0 once the account check is conditional; and 40 record
+refreshes and 40 catalog scans an hour, at most 40 GraphQL points.
 Today the same page costs about 3 `core` a minute in account checks alone: two per
 record refresh and one per catalog scan, each about once a minute.
 
@@ -474,6 +491,8 @@ account check and the bounds on probes.
 - [x] Probes that are not paid for per push (see [Budget](#budget)): the pull request’s
   probe reads its issue, measured under bead `mb-2ppr`, so the doubling interval of bead
   `mb-y7ut` is not built.
+- [x] The pull itself asked while a record’s mergeability is unknown, bounded by
+  `MERGEABLE_SETTLE_S` (review A1 of #726).
 - [x] A per-server cap on probes in flight, `MAX_PROBES_IN_FLIGHT` in `served_pull.py`,
   and probes as coordinator jobs, which shutdown cancels (bead `mb-et0k`).
 

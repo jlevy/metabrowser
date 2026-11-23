@@ -80,8 +80,19 @@ class RecordFreshness:
     changed_row: str | None = None
 
 
-def checks_pending(record: PullRecord) -> bool:
-    """Whether an open pull request's checks, statuses, or mergeability are still settling.
+def mergeability_pending(record: PullRecord) -> bool:
+    """Whether an open pull request's record does not say whether it can merge.
+
+    GitHub computes ``mergeable`` in the background: the read that asks first is answered
+    ``null``, and a later one the answer. Nothing else about the pull request moves when
+    it does, its ``updated_at`` included.
+    """
+
+    return record.pull.state == "open" and record.pull.mergeable == "unknown"
+
+
+def checks_settling(record: PullRecord) -> bool:
+    """Whether an open pull request's check runs or statuses are still settling.
 
     A record read within :data:`NO_CHECKS_GRACE_S` of the pull request's last update with
     no check run and no status context counts too: its CI may not have registered yet.
@@ -89,8 +100,6 @@ def checks_pending(record: PullRecord) -> bool:
 
     if record.pull.state != "open":
         return False
-    if record.pull.mergeable == "unknown":
-        return True
     if any(run.status != "completed" for run in record.check_runs):
         return True
     status = record.status
@@ -99,6 +108,16 @@ def checks_pending(record: PullRecord) -> bool:
     unregistered = not record.check_runs and (status is None or not status.statuses)
     since_update = _parse(record.fetched_at) - _parse(record.pull.updated_at)
     return unregistered and since_update <= timedelta(seconds=NO_CHECKS_GRACE_S)
+
+
+def checks_pending(record: PullRecord) -> bool:
+    """Whether an open pull request's checks, statuses, or mergeability are still settling.
+
+    Either :func:`mergeability_pending` or :func:`checks_settling`, which a probe asks
+    of different pages.
+    """
+
+    return mergeability_pending(record) or checks_settling(record)
 
 
 def record_freshness(
@@ -161,5 +180,7 @@ __all__ = [
     "VerifiedBy",
     "Verdict",
     "checks_pending",
+    "checks_settling",
+    "mergeability_pending",
     "record_freshness",
 ]

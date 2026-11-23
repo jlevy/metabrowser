@@ -836,6 +836,12 @@ class RefreshCoordinator:
         self._jobs: dict[str, asyncio.Task[None]] = {}
         self._closed = False
 
+    @property
+    def closed(self) -> bool:
+        """Whether :meth:`aclose` has run, after which :meth:`start` starts nothing."""
+
+        return self._closed
+
     def running(self, key: str) -> bool:
         job = self._jobs.get(key)
         return job is not None and not job.done()
@@ -852,9 +858,11 @@ class RefreshCoordinator:
         """Start *work* for *key*, or join the job already running for it.
 
         A *network* job waits for one of the limited slots. Any other does not: one that
-        only watches local state, such as following another process's refresh, or one
-        that waits for its turn at the store first and then takes a :meth:`slot` itself,
-        since a job that is only waiting must not keep the network from one that isn't.
+        only watches local state, such as following another process's refresh; one that
+        waits for its turn at the store first and then takes a :meth:`slot` itself, since
+        a job that is only waiting must not keep the network from one that isn't; or one
+        whose caller bounds its own, as a provider's short conditional read that must not
+        queue behind a fetch does. The event log records each job's ``network``.
         """
 
         if self.running(key):

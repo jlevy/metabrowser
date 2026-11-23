@@ -1231,7 +1231,7 @@ async def refresh_pull_request(
 
 # ── Probing ────────────────────────────────────────────────────
 
-type ProbeOutcome = Literal["unchanged", "changed", "checks_changed"]
+type ProbeOutcome = Literal["unchanged", "changed", "checks_changed", "behind"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1240,6 +1240,12 @@ class IssueSeen:
 
     It outlives the record it was read beside, since a ``304`` for the ETag says the issue
     still has this ``updated_at`` whichever record is held.
+
+    It is kept in memory alone, so the first probe of a number in a process is one paid
+    read, where a probe of the pull sent the record's own ETag for free: one ``core`` per
+    number per server run, and one per one-shot automatic ask. Keeping it on disk would
+    take a new file beside the record or one more ``gh`` process in every full read, and
+    neither is worth that call (review A2 on #726).
     """
 
     updated_at: str
@@ -1250,15 +1256,21 @@ class IssueSeen:
 class PullProbe:
     """What one probe found: whether the record still describes GitHub, and newer ETags.
 
-    ``etags`` holds the ETag of each check-run or status page GitHub answered ``200``
-    without changing anything the record shows, for the next probe to send instead of the
-    record's. ``seen`` is the issue as this probe found it, for the next probe to send;
-    ``None`` when GitHub sent no ETag with it.
+    ``changed`` says the pull request moved past the record, ``checks_changed`` that only
+    its check runs, statuses, or mergeability did, and ``behind`` that GitHub's issue
+    answer is older than the record, which is an answer that lags and not a change.
+
+    ``etags`` holds the ETag of each check-run, status, or pull page GitHub answered
+    ``200`` without changing anything the record shows, for the next probe to send
+    instead of the record's. ``seen`` is the issue as this probe found it, for the next
+    probe to send; ``None`` when GitHub sent no ETag with it. ``updated_at`` is the
+    issue's, whether or not it came with an ETag.
     """
 
     outcome: ProbeOutcome
     etags: dict[str, str]
     seen: IssueSeen | None = None
+    updated_at: str | None = None
 
 
 # What a probe of a pull request reads: its issue, ``repos/o/r/issues/<n>``, not the pull.
@@ -1273,7 +1285,9 @@ class PullProbe:
 #   bodies kept after each pull's first, what differed from the one before was the base
 #   repository's ``open_issues_count`` (56 times, so any issue or pull request opened or
 #   closed), its ``pushed_at`` (40), and the pull's ``mergeable`` as GitHub recomputed
-#   it (20).
+#   it (20). The last is something a page shows and the issue does not carry, which is
+#   why a record whose mergeability is unknown has the pull asked too
+#   (:func:`mergeability_probe_path`).
 # - The issue answered ``304`` in all 90 of those rounds.
 # - The issue answered ``200`` twice, both in the round the pull's ``updated_at`` moved:
 #   labels a bot added (02:08:12, seen 02:08:31) and a force-push of the head (02:19:22,
@@ -1291,12 +1305,33 @@ def probe_path(published: PublishedSource | ListedRepository, number: int) -> st
     return f"repos/{owner}/{repo}/{PROBE_RESOURCE}/{number}"
 
 
+# A time as GitHub's REST API spells one and a record keeps it, so two compare as text.
+_TIMESTAMP = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+
+
 def _issue_updated_at(value: object, number: int) -> str:
     item = as_dict(value)
     updated = item.get("updated_at")
     if item.get("number") != number or not isinstance(updated, str):
         raise UnreadableItemError
+    if not _TIMESTAMP.match(updated):
+        raise UnreadableItemError
     return updated
+
+
+def mergeability_probe_path(
+    published: PublishedSource | ListedRepository, record: PullRecord
+) -> str | None:
+    """The pull's own path, which a probe asks while *record*'s mergeability is unknown.
+
+    ``None`` for any other record: the pull's ETag moves with its whole repository
+    (:data:`PROBE_RESOURCE`), so it is asked only for what no other page says.
+    """
+
+    if record.pull.state != "open" or record.pull.mergeable != "unknown":
+        return None
+    owner, repo = _owner_and_repo(published)
+    return f"repos/{owner}/{repo}/pulls/{record.number}"
 
 
 def checks_probe_paths(
@@ -1340,6 +1375,16 @@ def _same_status(response: GhResponse, record: PullRecord) -> bool:
     return status == record.status and dropped == record.truncated.statuses
 
 
+def _same_mergeability(response: GhResponse, record: PullRecord) -> bool:
+    """Whether the pull GitHub answered with still leaves *record*'s mergeability unknown."""
+
+    try:
+        pull = _pull(response_json(response), record.number)
+    except READ_FAILURES:
+        return False
+    return pull.mergeable == record.pull.mergeable
+
+
 async def probe_pull_request(
     published: PublishedSource | ListedRepository,
     record: PullRecord,
@@ -1347,6 +1392,7 @@ async def probe_pull_request(
     etags: dict[str, str],
     checks: bool,
     seen: IssueSeen | None = None,
+    mergeability: bool = False,
 ) -> PullProbe:
     """Ask GitHub whether *record* still describes pull request ``record.number``.
 
@@ -1356,19 +1402,29 @@ async def probe_pull_request(
 
     The pull request's issue is asked first (:func:`probe_path`), with the ETag of *seen*,
     what the last probe found, whichever record it ran beside. Its ``updated_at`` is the
-    pull request's own, and moves with its state, merge, title, body, labels, comments,
-    reviews, and pushes to its head. So the record is ``changed`` when the issue's
-    ``updated_at``, from a ``200`` or else *seen*'s when GitHub answers ``304``, is not
-    the record's, and a ``200`` with the same one, as a reaction makes, changes nothing.
-    With no *seen*, the first probe of a number in a server, it is asked unconditionally
-    once. The issue does not carry ``mergeable`` or the head: the full read a change
-    starts reads them, and a mergeability GitHub recomputes with nothing else changed
-    waits for the next full read.
+    pull request's own, and moves with its state, merge, title, body, labels, new comments
+    and reviews, and pushes to its head; a later edit of a review comment does not move
+    it (review A6 on #726: 7 of 103 recent review comments in rust-lang/rust and
+    NixOS/nixpkgs were changed after their pull request's ``updated_at``). So the record
+    is ``changed`` when the issue's ``updated_at``, from a ``200`` or else *seen*'s when
+    GitHub answers ``304``, is later than the record's, and a ``200`` with the same one,
+    as a reaction makes, changes nothing. One earlier than the record's is ``behind``:
+    the issue's answer lags the pull's the record was read from, and a full read would
+    bring nothing. With no *seen*, the first probe of a number in a server, it is asked
+    unconditionally once.
+
+    The issue does not carry ``mergeable`` or the head, and the full read a change starts
+    reads them. GitHub computes ``mergeable`` after the read that first asks, so a record
+    often holds ``unknown``. With *mergeability*, once the issue is unchanged, the pull
+    itself is asked for such a record (:func:`mergeability_probe_path`), and an answer
+    that is no longer unknown is ``checks_changed``. A mergeability GitHub recomputes
+    for a record that holds an answer, as when its base moves, waits for the next full
+    read.
 
     With *checks*, once the issue is unchanged, the first pages of the head's check runs
-    and status are asked together (:func:`checks_probe_paths`), each on the ETag in
-    *etags* or else the record's; a ``200`` is compared with what the record holds, and
-    only a real change is ``checks_changed``.
+    and status are asked (:func:`checks_probe_paths`), each on the ETag in *etags* or
+    else the record's; a ``200`` is compared with what the record holds, and only a real
+    change is ``checks_changed``. These and the pull are asked together.
 
     Runs no account check and writes nothing: the full read a change starts checks the
     account and publishes. Raises only :class:`PullDataError`.
@@ -1392,11 +1448,19 @@ async def probe_pull_request(
         except READ_FAILURES as exc:
             raise _unreadable_pull() from exc
         found = IssueSeen(updated_at, response.etag) if response.etag is not None else None
+    if updated_at < record.pull.updated_at:
+        return PullProbe("behind", newer, found, updated_at)
     if updated_at != record.pull.updated_at:
-        return PullProbe("changed", newer, found)
+        return PullProbe("changed", newer, found, updated_at)
+    pull_path = mergeability_probe_path(published, record) if mergeability else None
     paths = checks_probe_paths(published, record) if checks else None
-    if paths is None:
-        return PullProbe("unchanged", newer, found)
+    asked: list[tuple[str, Callable[[GhResponse, PullRecord], bool]]] = []
+    if pull_path is not None:
+        asked.append((pull_path, _same_mergeability))
+    if paths is not None:
+        asked += zip(paths, (_same_check_runs, _same_status), strict=True)
+    if not asked:
+        return PullProbe("unchanged", newer, found, updated_at)
 
     async def ask(path: str) -> GhResponse | None:
         try:
@@ -1404,14 +1468,14 @@ async def probe_pull_request(
         except PageTooLargeError:
             return None
 
-    answers = await asyncio.gather(*(ask(path) for path in paths))
+    answers = await asyncio.gather(*(ask(path) for path, _same in asked))
     changed = False
-    for path, same, response in zip(paths, (_same_check_runs, _same_status), answers, strict=True):
+    for (path, same), response in zip(asked, answers, strict=True):
         if response is None or (response.status != 304 and not same(response, record)):
             changed = True
         elif response.status != 304 and response.etag is not None:
             newer[path] = response.etag
-    return PullProbe("checks_changed" if changed else "unchanged", newer, found)
+    return PullProbe("checks_changed" if changed else "unchanged", newer, found, updated_at)
 
 
 def _keep_stamp(
@@ -1505,6 +1569,7 @@ __all__ = [
     "IssueSeen",
     "PROBE_RESOURCE",
     "checks_probe_paths",
+    "mergeability_probe_path",
     "probe_path",
     "last_refresh",
     "open_pull_request",
