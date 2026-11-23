@@ -66,7 +66,7 @@ _SOURCE_KIND_BLOCK = re.compile(
 )
 # The navigation heading as served: a folder's name, or a pin's ref and short commit.
 _HEADING = re.compile(
-    r'<a href="/view/" class="header-path"[^>]*\sdata-served-root="[^"]*"[^>]*>(.*?)</a>', re.S
+    r'<span class="header-home-name" id="header-home-name">(.*?)</span>\s*</a>', re.S
 )
 
 # The label a pin records for the ref it was resolved from. A label only: it is not read

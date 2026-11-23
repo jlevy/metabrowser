@@ -512,13 +512,26 @@ def test_the_shell_names_the_repository_and_its_pinned_revision(
     # The root is the repository's name, as a checkout of ``origin.git`` would be
     # called, in the heading and as what the file header's prefix reads back. It was
     # the full commit ID (mb-fndz).
-    assert 'data-served-root="origin"' in shell.text
-    assert '<span class="path-base">origin</span>' in shell.text
-    assert f'data-served-root="{origin.second}"' not in shell.text
+    home = re.search(r'<a\b([^>]*\bid="header-home"[^>]*)>(.*?)</a>', shell.text, re.S)
+    assert home is not None
+    attributes, contents = home.groups()
+    assert 'href="/view/"' in attributes
+    assert 'aria-labelledby="header-home-label header-home-name"' in attributes
+    assert 'data-served-root="origin"' in attributes
+    assert re.search(r'id="header-root-kind"[^>]*\bdata-root-kind="mirror"', contents)
     # The ref selector names the ref and the heading stays focused on the name.
-    assert '<span class="path"><span class="path-base">origin</span></span></a>' in shell.text
-    assert "header-revision" not in shell.text
-    tip = shell.text[shell.text.index('data-mirror-tip="') :].split('"', 2)[1]
+    assert re.search(
+        r'<span\b[^>]*\bid="header-home-name"[^>]*>\s*'
+        r'<span class="path"><span class="path-base">origin</span></span>\s*</span>\s*$',
+        contents,
+    )
+    assert "header-revision" not in contents
+    assert re.match(
+        r'\s*<span id="header-home-label" hidden>Home:</span>\s*'
+        r'<details id="root-details"[^>]*>\s*<summary\b',
+        shell.text[home.end() :],
+    )
+    tip = attributes[attributes.index('data-mirror-tip="') :].split('"', 2)[1]
     assert tip == "Bare Git mirror with no checked-out files."
     assert '<span class="source-ref-selector-label">topic</span>' in shell.text, (
         "the ref selector names the ref the heading no longer does"

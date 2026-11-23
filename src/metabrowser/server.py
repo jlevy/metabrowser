@@ -2476,22 +2476,19 @@ async def index(
              the two headers cannot disagree about what the root is. The
              details disclosure uses it for the root's address.
 
-             The folder's name is Home (docs/design-system.md, "Home"): app.js keeps a
-             plain activation in the page and shows the folder's home view as a fresh load
-             of this address does, every tab at its first, and `0` does the same. Its
-             accessible name is "Home:" and then the name it shows, read from its own
-             content, so a pin with no mirror's ref and commit, which stand as its name,
-             stay in it. The header anchors the key's badge, which sits beside the name
-             because the name clips. -->
-        <!-- Which kind of root this is: a glyph-only mark, so its sentence is its tooltip and
-             its accessible name, and it is no control. Its glyph is the server's, one of
-             three (source_kind_marks.py), so the mark is there from the first paint. -->
-        <span class="header-root-kind" id="header-root-kind" role="img"
-              data-root-kind="{root_kind}" data-tip-text="{root_kind_tip}"
-              aria-label="{root_kind_tip}">{root_kind_svg}</span>
+             The folder's icon and name link Home (docs/design-system.md, "Home"). A
+             plain activation in app.js and the `0` shortcut return to the fresh-load
+             view. The accessible name uses just the heading text after "Home:", so a
+             pin's ref and commit count as the name. The header anchors the key badge
+             beside the heading because the name clips. -->
         <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
-           aria-labelledby="header-home-label header-home"
-           data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
+           aria-labelledby="header-home-label header-home-name"
+           data-served-root="{initial_root}"{mirror_attrs}>
+          <span class="header-root-kind" id="header-root-kind" role="img"
+                data-root-kind="{root_kind}" data-tip-text="{root_kind_tip}"
+                aria-label="{root_kind_tip}">{root_kind_svg}</span>
+          <span class="header-home-name" id="header-home-name">{initial_path}</span>
+        </a>
         <span id="header-home-label" hidden>Home:</span>
         <details id="root-details" class="root-details"{root_repository_attr}>
           <summary class="icon-btn root-details-trigger disclosure-toggle" aria-label="{root_kind_label} details"></summary>

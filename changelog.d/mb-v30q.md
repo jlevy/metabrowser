@@ -1,0 +1,1 @@
+- The Agents overview uses muted text for session indexing progress.

@@ -1017,9 +1017,10 @@ header says what KPress lacks.
 
 ## Repository Details
 
-The root name in the navigation column opens Home.
-The chevron beside it opens the root’s details.
+The root icon and name in the navigation column link to Home.
 The folder glyph identifies a local folder, a Git checkout, or a cloud mirror.
+The adjacent chevron opens the root’s details.
+Click it again, click outside the menu, or press Escape to close it.
 The menu shows the local path, file count, and size when available.
 Mirrors and pinned checkouts include a short note about where the files come from.
 A menu chevron points down at rest and while its menu is open.
@@ -3234,6 +3235,10 @@ rule, a statistic’s label and a table’s headers are labels, and a status is 
 badge. Color is an event’s kind or a tool’s family, nothing else: an agent is a label,
 bold, never a color.
 
+The overview shows [inline progress](#progress-spinners-stay-neutral) as it reads
+session history to fill in details such as turn and event counts.
+The checked count includes sessions whose details could not be read.
+
 ### Session Rows
 
 The home’s Running now and Recent sessions are one list of two-line rows
@@ -4065,9 +4070,9 @@ The rules for the page are:
   checkout (GitHub: owner/repo)”, or “Local folder”
   ([Tooltips Add Information](#tooltips-add-information), for a glyph-only mark).
   It is no control, and takes no focus.
-- **It stands outside the name’s link.** The name is [Home](#home), with its own hover
-  surface and focus ring.
-  The chevron opens [Repository Details](#repository-details).
+- **It shares the Home link with the name.** [Home](#home) puts the hover surface and
+  focus ring around both.
+  The adjacent chevron opens [Repository Details](#repository-details).
 - **It is drawn at `--icon-glyph` in `--muted`**, so the bold name stays the heading,
   like a folder’s glyph in a view header, and it shortens nothing: the name still ends
   in an ellipsis where the column is narrow.
@@ -4914,9 +4919,9 @@ In the navigation, a pane too narrow for its tabs wraps the bar between them
 
 ### Home
 
-**The folder’s name at the top of the nav is Home, and so is `0`.** Either shows the
-served folder’s home view exactly as a fresh load of `/view/` shows it, from any tab and
-whatever the reader was doing.
+**The folder icon and name at the top of the nav link to Home, and `0` goes there too.**
+Either shows the served folder’s home view as a fresh load of `/view/` does, from any
+tab and whatever the reader was doing.
 A reader who has wandered off into a pull request’s Changes, a file’s Source, or an old
 commit gets the page back as it first came up.
 
@@ -4959,13 +4964,10 @@ Home keeps what a fresh load would only fetch again, or keeps itself:
   Files already shows the root at `/view/`, so Back returns to where the reader was, and
   a pull request’s page writes its place into its entry first.
 
-The name reads as a link home.
-Its box is the name’s own, and it takes a folder crumb’s treatment: the hover surface
-under the name and the link-colored ring on keyboard focus.
-The mark before it, for the kind of root, is outside the link
-([Source Kind Marks](#source-kind-marks)). Its accessible name is “Home:” and the name
-it shows, read from its own content, so the ref and commit that head a pin with no
-mirror are in it too.
+Home uses a folder crumb’s hover surface and link-colored focus ring around the icon and
+name. The [source kind mark](#source-kind-marks) keeps its own tooltip.
+The link’s accessible name is “Home:” followed by the visible name, including the ref
+and commit for a pin without a mirror.
 It stays a link to `/view/`, so a modified or middle click and its context menu do what
 they do on any link.
 A plain click, or Enter on it, stays in the page.
@@ -6477,6 +6479,12 @@ They must not borrow link, status, file-type, or chart colors because a spinner 
 activity, not meaning.
 Prefer the shared spinner classes; custom sizes must still use the shared spinner tokens
 and keyframe.
+
+When a page can show partial results while an index is built, put the status line
+alongside the content in muted text (`--muted`) with the shared small
+`.index-progress-spinner`. Name the work and show a count when one is known.
+Keep the line in the page’s surface so it reads as secondary information beside the
+results.
 
 ### Loading States Are Shapes, Not Sentences
 

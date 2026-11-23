@@ -337,12 +337,12 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       document,
       "a",
       {
-        "aria-labelledby": "header-home-label header-home",
+        "aria-labelledby": "header-home-label header-home-name",
         class: "header-path",
         href: "/view/",
         id: "header-home",
       },
-      "squares",
+      element(document, "span", { class: "header-home-name", id: "header-home-name" }, "squares"),
     ),
     element(document, "span", { hidden: "", id: "header-home-label" }, "Home:"),
   );

@@ -252,20 +252,15 @@ function pathBaseName(path) {
 }
 
 /**
- * Settle the navigation heading once the tree has loaded. A folder shows the
- * served root's name from the tree payload. A pinned revision keeps the heading
- * the server rendered from its session, its name, or a pin with no mirror's ref
- * and short commit: the tree's root there is the empty GitPath, which has no name
- * to show.
+ * Update the folder name from the tree payload. A pinned revision keeps the
+ * server-rendered heading because its GitPath root is empty.
  */
 function renderServedRootHeading(pathEl, root) {
   if (!pathEl || isGitRevisionSource()) {
     return;
   }
-  // Home draws the tree again, and with it this; rewriting the same name under a pointer
-  // resting on it would replace the nodes it is over for nothing. The name's text is
-  // compared, not markup: `esc` writes a quote as an entity, and the element's own
-  // serialization does not, so a name with one never compared equal.
+  // Keep the name's nodes under the pointer on Home redraws. Compare text
+  // because the browser and esc() serialize quoted names differently.
   if (pathEl.textContent !== pathBaseName(root)) {
     pathEl.innerHTML = pathBaseHtml(root);
   }
@@ -1144,7 +1139,7 @@ async function loadTree(options = {}) {
       observeFileAges(data.ages);
       knownFileCatalog?.observeInitialTree(data.tree);
       var pathEl = queryHtml(".header-path");
-      renderServedRootHeading(pathEl, data.root);
+      renderServedRootHeading(queryHtml("#header-home-name"), data.root);
       var rootTally = rootTallyFromTopLevel(data.tree);
       var newestMtime = rootTally.newestMtime;
       var summaryFiles = rootTally.files;
@@ -2230,10 +2225,18 @@ function initRootDetails() {
     location.textContent = mirrorLocation;
   }
   const actions = details.querySelector(".root-details-actions");
-  document.addEventListener("pointerdown", (event) => {
-    if (details.open && event.target instanceof Node && !details.contains(event.target)) {
-      details.open = false;
-    }
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (details.open && !event.composedPath().includes(details)) {
+        details.open = false;
+      }
+    },
+    true,
+  );
+  // Clicking the HTML preview frame blurs the window.
+  window.addEventListener("blur", () => {
+    details.open = false;
   });
   details.addEventListener("keydown", (event) => {
     if (event.altKey || event.ctrlKey || event.metaKey) {

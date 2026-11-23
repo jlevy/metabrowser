@@ -198,6 +198,25 @@ try {
       30000,
     ),
   );
+  // The status line is secondary text in every phase, including after the spinner leaves.
+  for (const theme of ["light", "dark"]) {
+    await chrome.evaluate(`document.documentElement.setAttribute("data-theme", "${theme}")`);
+    const colors = await chrome.evaluate(`(() => {
+      const status = ${SHOWN}.view.querySelector(".agents-progress > span");
+      const reference = document.createElement("span");
+      reference.style.color = "var(--muted)";
+      status.after(reference);
+      const color = getComputedStyle(status).color;
+      const muted = getComputedStyle(reference).color;
+      reference.remove();
+      return { color, muted };
+    })()`);
+    check(
+      `the home status uses --muted in the ${theme} theme`,
+      colors.color === colors.muted,
+      colors,
+    );
+  }
   const totals = await chrome.evaluate(`(() => {
     const view = ${SHOWN}.view;
     const stats = Object.fromEntries([...view.querySelectorAll(".agents-stat")].map((s) => [

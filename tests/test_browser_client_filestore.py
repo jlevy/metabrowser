@@ -885,7 +885,7 @@ def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() 
     # rule styles a ref beside a name. A pin with no mirror's ref is its name, which
     # narrows, and its commit never does.
     assert ".header-ref" not in css
-    assert "min-width: 0;" in block(".header-path:has(> .header-revision) > .path")
+    assert "min-width: 0;" in block(".header-home-name:has(> .header-revision) > .path")
     assert "flex: none;" in block(".header-revision")
     assert "flex: none;" in block(".root-details")
     assert "\n.header-copy " not in css
@@ -921,7 +921,7 @@ def test_navigation_heading_shows_only_the_root_name() -> None:
         "if (pathEl.textContent !== pathBaseName(root)) {\n"
         "    pathEl.innerHTML = pathBaseHtml(root);"
     ) in heading
-    tree_start = js.index("renderServedRootHeading(pathEl, data.root)")
+    tree_start = js.index('renderServedRootHeading(queryHtml("#header-home-name"), data.root)')
     assert "setServedRoot" not in js
     assert "updateRootDetailsStats()" in js[tree_start : tree_start + 2600]
 
