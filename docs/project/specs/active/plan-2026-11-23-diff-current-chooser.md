@@ -220,7 +220,7 @@ One stack on #759, one commit per bead:
 - [x] `mb-93t2`: this plan.
 - [x] `mb-wexb`: the diff-wide choice, its chooser in the bars of rendered-format files,
   and Rendered Current for Markdown.
-- [ ] `mb-wd9o`: Source Current for those files.
+- [x] `mb-wd9o`: Source Current for those files.
 - [ ] `mb-256j`: Rendered Current for YAML and JSON.
 - [ ] `mb-ubs0`: the chooser on every bar with a text diff, and the layout control while
   Current is chosen.

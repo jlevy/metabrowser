@@ -120,6 +120,13 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  */
 
 /**
+ * What a file's code rows are drawn as: its changes in one of the two layouts, or, in
+ * Current, its new version in one column whatever the layout (`projectionOf`).
+ *
+ * @typedef {"unified" | "split" | "current"} Projection
+ */
+
+/**
  * One bar's Diff | Current chooser: the element its chips are drawn in, the key they carry,
  * and the file's section, whose place a choice there keeps.
  *
@@ -662,6 +669,103 @@ function renderSplitHunk(hunk, state, hunkIndex) {
 }
 
 /**
+ * The rows a hunk draws in Current: its lines of the new file, context and added, in order.
+ * Pure.
+ *
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
+ */
+export function projectCurrentHunk(hunk) {
+  return hunk.lines.filter((line) => line.op !== "del");
+}
+
+/**
+ * A line of the new file: its new number alone, and its marker, so an added line says so
+ * by more than its color.
+ *
+ * @param {FileViewState} state
+ * @param {DiffLine} line
+ */
+function renderCurrentLine(state, line) {
+  const refined = line.intralineRefined ? " diff-line-refined" : "";
+  const row = el("div", `diff-line diff-line-${line.op}${refined}`);
+  row.append(
+    el("span", "diff-line-number", line.newNumber === null ? "" : String(line.newNumber)),
+    el("span", "diff-line-marker", line.op === "add" ? "+" : " "),
+    renderTextHost(state, line, "new"),
+  );
+  if (line.noNewline) {
+    row.append(el("span", "diff-line-no-newline", "⏎ absent"));
+    row.dataset.tipText = "No newline at end of file";
+  }
+  return row;
+}
+
+/**
+ * A hunk in Current: its header names the new side's range alone, and a changed run folds
+ * by the rows Current draws of it, under the key Diff's fold of that run has.
+ *
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
+ * @param {DiffLine[]} rows `projectCurrentHunk`'s.
+ * @param {FileViewState} state
+ * @param {number} hunkIndex
+ */
+function renderCurrentHunk(hunk, rows, state, hunkIndex) {
+  const section = el("div", "diff-hunk diff-hunk-current");
+  const heading = hunk.heading ? ` ${hunk.heading}` : "";
+  section.append(
+    el("div", "diff-hunk-header", `@@ +${hunk.newStart},${hunk.newCount} @@${heading}`),
+  );
+  appendFoldedRows(
+    section,
+    rows,
+    (line) => line.changedRun,
+    (line) => renderCurrentLine(state, line),
+    state,
+    hunkIndex,
+  );
+  return section;
+}
+
+/**
+ * What a file with no lines in its new version says in Current, or null for one that has
+ * lines: a deleted file, and a file left empty, whose one hunk ends at the new side's line
+ * 0. Pure.
+ *
+ * @param {Record<string, unknown>} change
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"]} hunks
+ * @returns {string | null}
+ */
+export function currentAbsence(change, hunks) {
+  if (String(change.kind) === "deleted") {
+    return "This file was deleted, so it has no current version.";
+  }
+  if (hunks.length > 0 && hunks.every((hunk) => hunk.newStart === 0 && hunk.newCount === 0)) {
+    return "This file is empty now.";
+  }
+  return null;
+}
+
+/**
+ * Draw a file's Current: each hunk's lines of the new file. A hunk that only removed lines,
+ * with no context around it, has none and is left out.
+ *
+ * @param {FileViewState} state
+ */
+function renderCurrentBody(state) {
+  const absence = currentAbsence(state.change, state.renderModel.hunks);
+  if (absence !== null) {
+    state.body.append(el("div", "diff-availability diff-current-absent", absence));
+    return;
+  }
+  for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
+    const rows = projectCurrentHunk(hunk);
+    if (rows.length > 0) {
+      state.body.append(renderCurrentHunk(hunk, rows, state, hunkIndex));
+    }
+  }
+}
+
+/**
  * Build the cached semantic state shared by every projection.
  * @param {Record<string, unknown>} change
  * @param {Record<string, unknown>} patch
@@ -700,7 +804,7 @@ export function createFileState(change, patch, api, body, unfold = false) {
 /**
  * Render one active projection from cached source and token facts.
  * @param {FileViewState} state
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 export function renderFileBody(state, layout) {
   cancelFoldMaterializations(state);
@@ -710,12 +814,16 @@ export function renderFileBody(state, layout) {
     () => {
       state.body.replaceChildren();
       state.textHosts = [];
-      for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
-        state.body.append(
-          layout === "split"
-            ? renderSplitHunk(hunk, state, hunkIndex)
-            : renderUnifiedHunk(hunk, state, hunkIndex),
-        );
+      if (layout === "current") {
+        renderCurrentBody(state);
+      } else {
+        for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
+          state.body.append(
+            layout === "split"
+              ? renderSplitHunk(hunk, state, hunkIndex)
+              : renderUnifiedHunk(hunk, state, hunkIndex),
+          );
+        }
       }
       if (state.patch.truncated) {
         state.body.append(
@@ -778,7 +886,7 @@ function refreshTextHosts(state) {
  * @param {DiffViewApi} api
  * @param {AbortSignal} signal
  * @param {() => boolean} isCurrent
- * @param {() => "unified" | "split" | null} currentLayout `null` until a layout is drawn.
+ * @param {() => Projection | null} currentLayout `null` until a layout is drawn.
  */
 async function enhanceFileIntraline(state, api, signal, isCurrent, currentLayout) {
   try {
@@ -904,7 +1012,7 @@ function scheduleFileEnhancement(view, state) {
       api,
       view.controller.signal,
       () => mountIsCurrent(view, generation),
-      () => (view.awaitingWidth ? null : view.layout),
+      () => (view.awaitingWidth ? null : projectionOf(view)),
     );
     await enhanceFileSyntax(state, api, view.controller.signal, () =>
       mountIsCurrent(view, generation),
@@ -1500,7 +1608,18 @@ export function setShow(view, value, anchor) {
 }
 
 /**
- * Draw what the diff shows now: each bar's chooser, and the Rendered layer's files.
+ * What the diff's code rows are drawn as now: Current whatever the layout, or the layout.
+ *
+ * @param {MountedDiffState} view
+ * @returns {Projection}
+ */
+function projectionOf(view) {
+  return view.show === "current" ? "current" : view.layout;
+}
+
+/**
+ * Draw what the diff shows now: each bar's chooser, the code rows of every file, and the
+ * Rendered layer's files.
  *
  * @param {MountedDiffState} view
  * @param {{section: HTMLElement, top: number} | null} anchor
@@ -1511,7 +1630,12 @@ function drawShow(view, anchor) {
     paintShowControl(view, entry);
   }
   view.markdown?.controller.show(view.show === "current");
-  holdPlace(view, anchor);
+  if (view.awaitingWidth) {
+    // Nothing is drawn before the first width, which draws what is chosen then.
+    holdPlace(view, anchor);
+  } else {
+    reproject(view, anchor);
+  }
   view.notifyCurrentFile();
 }
 
@@ -1544,31 +1668,51 @@ function fitLayout(view, width) {
 }
 
 /**
- * Reproject cached file state.
+ * Draw the diff in *layout*. In Current the rows are one column whatever the layout, so
+ * only the first width, before which nothing was drawn, draws them.
  *
  * @param {MountedDiffState} view
  * @param {"unified" | "split"} layout
  */
 function drawLayout(view, layout) {
+  const first = view.awaitingWidth;
   view.awaitingWidth = false;
   view.layout = layout;
   view.root.dataset.layout = layout;
   renderLayoutControl(view);
   view.notifyCurrentFile();
+  if (first || view.show !== "current") {
+    reproject(view);
+  }
+}
+
+/**
+ * Reproject cached file state as `projectionOf` says, in batches above 100 files. With an
+ * *anchor*, that file keeps its place after each batch; without one, as for a layout, the
+ * browser's scroll anchoring keeps it.
+ *
+ * @param {MountedDiffState} view
+ * @param {{section: HTMLElement, top: number} | null} [anchor]
+ */
+function reproject(view, anchor) {
+  const projection = projectionOf(view);
   for (const file of view.deferred.values()) {
-    reserveFileBody(file, layout);
+    reserveFileBody(file, projection);
   }
   view.layoutGeneration += 1;
   const layoutGeneration = view.layoutGeneration;
   if (view.files.length <= LAYOUT_PROJECTION_BATCH_FILES) {
     delete view.root.dataset.layoutPending;
     for (const state of view.files) {
-      renderFileBody(state, layout);
+      renderFileBody(state, projection);
+    }
+    if (anchor !== undefined) {
+      holdPlace(view, anchor);
     }
     return;
   }
   view.root.dataset.layoutPending = "true";
-  projectLayoutBatch(view, layout, layoutGeneration, 0);
+  projectLayoutBatch(view, projection, layoutGeneration, 0, anchor);
 }
 
 /**
@@ -1576,11 +1720,12 @@ function drawLayout(view, layout) {
  * check makes a rapid second switch authoritative without cancelling shared
  * hydration or syntax work.
  * @param {MountedDiffState} view
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  * @param {number} layoutGeneration
  * @param {number} start
+ * @param {{section: HTMLElement, top: number} | null} [anchor] Held after each batch.
  */
-function projectLayoutBatch(view, layout, layoutGeneration, start) {
+function projectLayoutBatch(view, layout, layoutGeneration, start, anchor) {
   if (view.disposed || view.layoutGeneration !== layoutGeneration) {
     return;
   }
@@ -1588,13 +1733,16 @@ function projectLayoutBatch(view, layout, layoutGeneration, start) {
   for (let index = start; index < end; index += 1) {
     renderFileBody(view.files[index], layout);
   }
+  if (anchor !== undefined) {
+    holdPlace(view, anchor);
+  }
   if (end >= view.files.length) {
     delete view.root.dataset.layoutPending;
     return;
   }
   const timer = setTimeout(() => {
     view.timers.delete(timer);
-    projectLayoutBatch(view, layout, layoutGeneration, end);
+    projectLayoutBatch(view, layout, layoutGeneration, end, anchor);
   }, 0);
   view.timers.add(timer);
 }
@@ -2417,17 +2565,32 @@ function isAbortError(error) {
 }
 
 /**
+ * The rows a changed run of *adds* added and *dels* removed lines draws: Split pairs them,
+ * Unified draws each, and Current draws the added alone. Pure.
+ *
+ * @param {number} adds
+ * @param {number} dels
+ * @param {Projection} layout
+ */
+function changedRows(adds, dels, layout) {
+  if (layout === "split") {
+    return Math.max(adds, dels);
+  }
+  return layout === "current" ? adds : adds + dels;
+}
+
+/**
  * Rows a deferred file should reserve until it arrives. An estimate from the manifest's line
  * counts, in the layout it will draw: a long run folds to its visible rows, and a change on
  * both sides has context around it. Pure.
  *
  * @param {Record<string, unknown>} change
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 export function reservedRows(change, layout) {
   const adds = Number(change.additions ?? 0);
   const dels = Number(change.deletions ?? 0);
-  const changed = layout === "split" ? Math.max(adds, dels) : adds + dels;
+  const changed = changedRows(adds, dels, layout);
   const shown = FOLD_THRESHOLD > 0 && changed > FOLD_THRESHOLD ? FOLD_VISIBLE + 1 : changed;
   const context = adds > 0 && dels > 0 ? 6 : 0;
   return shown + context + 1;
@@ -2440,7 +2603,7 @@ export function reservedRows(change, layout) {
  * height accounts for each row kind separately. Soft-wrapped code can grow. Pure.
  *
  * @param {Record<string, unknown>} patch
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 export function patchRows(patch, layout) {
   const { lines, headers, folds, notices } = patchRowCounts(patch, layout);
@@ -2449,18 +2612,22 @@ export function patchRows(patch, layout) {
 
 /**
  * Count each differently sized row without drawing held lines. Soft-wrapped code can
- * grow after rendering; the single-line chrome has its exact shared CSS metrics.
+ * grow after rendering; the single-line chrome has its exact shared CSS metrics. Current
+ * leaves out a hunk with no line of the new file, header and all.
  * @param {Record<string, unknown>} patch
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 export function patchRowCounts(patch, layout) {
   const rows = { lines: 0, headers: 0, folds: 0, notices: patch.truncated ? 1 : 0 };
   for (const hunk of /** @type {{lines?: {op?: unknown}[]}[]} */ (patch.hunks ?? [])) {
+    if (layout === "current" && (hunk.lines ?? []).every((line) => line.op === "del")) {
+      continue;
+    }
     rows.headers += 1;
     let adds = 0;
     let dels = 0;
     const endRun = () => {
-      const run = layout === "split" ? Math.max(adds, dels) : adds + dels;
+      const run = changedRows(adds, dels, layout);
       const folded = FOLD_THRESHOLD > 0 && run > FOLD_THRESHOLD;
       rows.lines += folded ? FOLD_VISIBLE : run;
       rows.folds += folded ? 1 : 0;
@@ -2518,7 +2685,7 @@ function reserveBody(body, rows) {
  * Reserve the rows this file will draw in the current layout. Held answers use
  * their patch; a file not fetched yet uses the manifest estimate.
  * @param {DeferredFile} file
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 function reserveFileBody(file, layout) {
   if (file.held !== null) {
@@ -2527,7 +2694,7 @@ function reserveFileBody(file, layout) {
   }
   const adds = Number(file.change.additions ?? 0);
   const dels = Number(file.change.deletions ?? 0);
-  const changed = layout === "split" ? Math.max(adds, dels) : adds + dels;
+  const changed = changedRows(adds, dels, layout);
   const folds = FOLD_THRESHOLD > 0 && changed > FOLD_THRESHOLD ? 1 : 0;
   reserveBody(file.body, {
     lines: reservedRows(file.change, layout) - 1 - folds,
@@ -2702,7 +2869,7 @@ function spliceDeferred(file, loaded, view) {
   }
   const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body, view.unfold);
   if (!view.awaitingWidth) {
-    renderFileBody(state, view.layout);
+    renderFileBody(state, projectionOf(view));
   }
   // Only a file whose rows are in the page is a file of the view: one whose render threw
   // would throw again at every relayout.
@@ -2764,7 +2931,7 @@ function queueDeferredHydration(section, body, change, revision, view, held = nu
   });
   view.deferredBySection.set(section, id);
   view.hydration.add(id, view.deferred.size);
-  reserveFileBody(/** @type {DeferredFile} */ (view.deferred.get(id)), view.layout);
+  reserveFileBody(/** @type {DeferredFile} */ (view.deferred.get(id)), projectionOf(view));
 }
 
 /** @param {MountedDiffState} view */
@@ -3233,7 +3400,7 @@ function renderFileSection(change, patch, context, view, draw) {
   const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body, view.unfold);
   view.files.push(state);
   if (!view.awaitingWidth) {
-    renderFileBody(state, view.layout);
+    renderFileBody(state, projectionOf(view));
   }
   scheduleFileEnhancement(view, state);
   return section;
@@ -3247,7 +3414,7 @@ function renderFileSection(change, patch, context, view, draw) {
  * @param {Record<string, unknown>} change
  * @param {Record<string, unknown> | undefined} patch
  * @param {{revision?: string}} context
- * @param {"unified" | "split"} layout
+ * @param {Projection} layout
  */
 function bodyRows(change, patch, context, layout) {
   const availability = String(change.availability);
@@ -3575,7 +3742,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         root.append(renderFileSection(change, patch, context, view, draw));
         if (screen !== null) {
           estimatedTop +=
-            screen.barPx + bodyRows(change, patch, context, view.layout) * screen.rowPx;
+            screen.barPx + bodyRows(change, patch, context, projectionOf(view)) * screen.rowPx;
         }
       }
       if (manifest.truncated) {

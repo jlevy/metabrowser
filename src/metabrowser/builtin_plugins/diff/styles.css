@@ -480,6 +480,12 @@
   line-height: 1.5;
 }
 
+/* Current draws the new file's lines in one column, at their new numbers alone
+   (`renderCurrentLine` in diff-view.js), so the row has one number column. */
+.metabrowser-diff-host .diff-hunk-current .diff-line {
+  grid-template-columns: 3.5em 1.25em 1fr;
+}
+
 .metabrowser-diff-host .diff-hunk-split {
   min-width: 44em;
 }

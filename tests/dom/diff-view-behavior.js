@@ -1144,8 +1144,12 @@ async function main() {
   const viewPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js");
   const {
     composeTextRuns,
+    currentAbsence,
     mountDiffSummary,
     mountDiffView: mountDiffViewImpl,
+    patchRowCounts,
+    projectCurrentHunk,
+    reservedRows,
     setChangeLoader,
   } = await import(pathToFileURL(viewPath).href);
   // A count summary and a brief change line are painted by the shell's painters, as the
@@ -1208,6 +1212,47 @@ async function main() {
   const firstNumbers = lines[0].find("diff-line-number").map((cell) => cell.textContent);
   check("context rows carry both numbers", JSON.stringify(firstNumbers) === '["3","3"]');
   check("hunk heading renders", container.text().includes("def f():"));
+
+  // Current's rows, by the rules that draw and reserve them: the new file's lines alone,
+  // a hunk with none of them left out, and a file with no new version said in a sentence.
+  const opsHunk = (...ops) => ({ lines: ops.map((op) => ({ op })) });
+  check(
+    "Current draws a hunk's context and added lines, in order, and no removed one",
+    JSON.stringify(
+      projectCurrentHunk({
+        lines: ["context", "del", "add", "context"].map((op, at) => ({ op, at })),
+      }).map((line) => line.at),
+    ) === "[0,2,3]",
+  );
+  check(
+    "a held patch counts in Current the rows Current draws",
+    JSON.stringify(
+      patchRowCounts(
+        { hunks: [opsHunk("context", "del", "del", "add", "context"), opsHunk("del")] },
+        "current",
+      ),
+    ) === JSON.stringify({ lines: 3, headers: 1, folds: 0, notices: 0 }),
+  );
+  check(
+    "a long removal folds in Diff and draws nothing in Current",
+    patchRowCounts({ hunks: [opsHunk("context", ...Array(50).fill("del"))] }, "current").folds ===
+      0 &&
+      patchRowCounts({ hunks: [opsHunk("context", ...Array(50).fill("del"))] }, "unified").folds ===
+        1,
+  );
+  check(
+    "a deferred file reserves its added lines and context in Current",
+    reservedRows({ additions: 10, deletions: 5 }, "current") === 17 &&
+      reservedRows({ additions: 10, deletions: 5 }, "unified") === 22,
+  );
+  check(
+    "a deleted file and an emptied one say why Current shows no lines",
+    currentAbsence({ kind: "deleted" }, []) ===
+      "This file was deleted, so it has no current version." &&
+      currentAbsence({ kind: "modified" }, [{ newStart: 0, newCount: 0 }]) ===
+        "This file is empty now." &&
+      currentAbsence({ kind: "modified" }, [{ newStart: 4, newCount: 0 }]) === null,
+  );
 
   // Unified syntax is progressive: complete plain text mounts before
   // the asynchronous helper can settle, then only the existing text
