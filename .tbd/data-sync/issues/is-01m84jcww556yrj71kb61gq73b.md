@@ -3,14 +3,18 @@ type: is
 id: is-01m84jcww556yrj71kb61gq73b
 title: "PR #737 D2: no test reaches CATALOG_SPECULATIVE_CORE_PER_HOUR through the cores walk or the backfill"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
+hold: null
+hold_until: null
 created_at: 2026-11-23T16:04:04.608Z
-updated_at: 2026-11-23T16:08:05.385Z
+updated_at: 2026-11-23T16:10:26.318Z
+started_at: 2026-11-23T16:10:26.317Z
 ---
 Review D2 (Medium) of PR #737, a post-merge follow-up review: https://github.com/jlevy/metabrowser/pull/737#pullrequestreview-6024990059 (review D).
 

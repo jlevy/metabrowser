@@ -3,14 +3,18 @@ type: is
 id: is-01m84jcvbcn1d54ba93avka51z
 title: "PR #737 D1: the catalog's part holds a first visit's backfill and cores walk to 8 points an hour, so Quick Search and branch rows stay incomplete for hours"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
+hold: null
+hold_until: null
 created_at: 2026-11-23T16:04:03.050Z
-updated_at: 2026-11-23T16:08:04.331Z
+updated_at: 2026-11-23T16:10:25.844Z
+started_at: 2026-11-23T16:10:25.841Z
 ---
 Review D1 (Medium) of PR #737, a post-merge follow-up review: https://github.com/jlevy/metabrowser/pull/737#pullrequestreview-6024990059 (review D).
 
