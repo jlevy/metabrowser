@@ -1428,6 +1428,9 @@ A folder with no store of an origin has nothing refreshable and so no row, and f
 all the same: the row is drawn only while the page goes to the new commit, or to say
 that a follow was refused, which a press asks for again.
 A hidden page asks nothing.
+A branch the reader deletes while it is shown keeps its last commit served, and its
+status’s `latest` is null: a quiet row says the branch no longer exists in the checkout
+and the page shows its last commit, and with a store the store’s row says it too.
 The answers are a real folder’s, from the same recording.
 
 ```console
@@ -1536,6 +1539,31 @@ $ node tests/dom/source-freshness-session.js checkout-branch
       "reloads": 0,
       "repaints": 0,
       "paint": null
+    },
+    {
+      "step": "the reader deleted the branch: the row says its last commit stays",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 2,
+      "paint": {
+        "label": "topic no longer exists",
+        "tone": "quiet",
+        "detail": "topic no longer exists in this checkout; this page shows its last commit, 732574d.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "with a store, the store's row says the branch is gone",
+      "paint": {
+        "label": "trunk no longer exists · origin fetched 5 d ago",
+        "tone": "quiet",
+        "detail": "trunk no longer exists in this checkout; this page shows its last commit, 0b51e01. Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into."
+      }
     }
   ]
 }

@@ -689,6 +689,14 @@ def test_a_folders_page_follows_its_checkouts_own_branch() -> None:
     assert pressed["reloads"] == 1
     hidden = by_name["a hidden page asks nothing"]
     assert (hidden["requests"], hidden["timer"]) == ([], None)
+    # A branch the reader deleted keeps its last commit shown, and a quiet row says so,
+    # the store's row too when the folder keeps one.
+    gone = by_name["the reader deleted the branch: the row says its last commit stays"]
+    assert (gone["reloads"], gone["paint"]["tone"]) == (0, "quiet")
+    assert gone["paint"]["label"] == "topic no longer exists"
+    assert gone["paint"]["detail"].startswith("topic no longer exists in this checkout;")
+    stored = by_name["with a store, the store's row says the branch is gone"]["paint"]
+    assert stored["label"].startswith("trunk no longer exists · origin fetched ")
 
 
 def test_the_session_runs_on_the_recording() -> None:

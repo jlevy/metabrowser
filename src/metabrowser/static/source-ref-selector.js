@@ -33,9 +33,10 @@
 //   is first there and marked. A row there whose branch the reader's own checkout has
 //   at another commit, or not at all, says so (`ownDifference`): "yours differs" where
 //   the checkout's own `origin/<branch>` is not where the origin's is, which is a branch
-//   the reader has not pulled, or has pushed since. An open list of a checkout, once it shows Remotes or Tags,
-//   makes a visible page's own ask once (`{"for": "page"}`), which fetches a store older
-//   than the server's freshness window, and asks for the list again while that runs.
+//   the reader has not fetched since it moved, or has pushed since. An open list of a
+//   checkout, once it shows Remotes or Tags, makes a visible page's own ask once
+//   (`{"for": "page"}`), which fetches a store older than the server's freshness window,
+//   and asks for the list again while that runs.
 //
 // The selector chooses what the Files tab shows and nothing else, so it leads that tab's
 // toolbar row, beside Group by, where the server draws its button (server.py); the Pulls
@@ -189,7 +190,7 @@
     if (own.commit === null) {
       return {
         text: "not in checkout",
-        tip: `Your checkout has no ${row.name}: your own git fetch has not brought this branch.`,
+        tip: `Your checkout has no ${row.name} of its own. This row is the origin's, as Metabrowser last fetched it.`,
       };
     }
     const mine = own.committed_at;

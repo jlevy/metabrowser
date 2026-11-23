@@ -28,7 +28,8 @@
 // too, when the reader's commit or fetch moves it. The status says how often to ask
 // (`probe_every_s`), the ask is the same one, and for it the server reads the checkout's
 // refs and fetches nothing. A folder that keeps no store has no row but for that: it is
-// drawn while the page goes to the new commit, and when the follow was refused.
+// drawn while the page goes to the new commit, when the follow was refused, and when the
+// branch is gone from the checkout, which leaves its last commit shown (`checkoutRefGone`).
 //
 // A commit the mirror lacks is an address not fetched too. The commit view hands it to
 // `openMissingCommit`, which asks through the page's controller for the fetch such a
@@ -175,13 +176,27 @@
     if (status === null || (status.subject !== "git_revision" && !folder)) {
       return hidden;
     }
+    const gone = folder && checkoutRefGone(status);
     if (!status.refreshable) {
       // A folder that keeps no store of an origin has nothing fetched to speak of. Its
       // page on one of the checkout's own branches still follows that branch when the
-      // reader's commit or fetch moves it, and the row is drawn only for that.
+      // reader's commit or fetch moves it, and the row is drawn only for that, and for a
+      // branch that is gone.
       const moved = folder ? followTarget(status, page.shown) : null;
       if (moved === null) {
-        return hidden;
+        if (!gone) {
+          return hidden;
+        }
+        return {
+          visible: true,
+          tone: "quiet",
+          label: `${status.ref_name ?? status.ref} no longer exists`,
+          detail: goneDetail(status),
+          offer: null,
+          error,
+          pull: null,
+          follow: null,
+        };
       }
       if (error === null) {
         return following(status, moved, null);
@@ -236,6 +251,10 @@
     } else if (outcome !== null && outcome.outcome === "default_branch_unknown") {
       detail = `${detail} ${why("default_branch_unknown")}`;
     }
+    if (gone && !refreshing && !failed) {
+      label = `${status.ref_name ?? status.ref} no longer exists · origin fetched ${age}`;
+      detail = `${goneDetail(status)} ${detail}`;
+    }
     const pull =
       typeof status.pull_request === "number"
         ? { href: `/pull/${status.pull_request}`, text: `Pull request #${status.pull_request}` }
@@ -280,6 +299,38 @@
     }
     // The attended pull request's page is one link away from every page on its pin.
     return { visible: true, tone, label, detail, offer, error, pull, follow: null };
+  }
+
+  /**
+   * Whether a folder's page shows one of its checkout's own refs that is gone: the ref
+   * follows, and as last read in the checkout it names no commit (`latest`), so the page
+   * shows the commit it named before. Pure.
+   *
+   * A ref read from the store of the origin says it is gone from the origin by
+   * `ref_on_origin` instead, as a mirror's does.
+   *
+   * @param {MetabrowserSourceStatus} status
+   * @returns {boolean}
+   */
+  function checkoutRefGone(status) {
+    return (
+      status.follows === true &&
+      status.ref !== null &&
+      status.pin !== null &&
+      status.latest === null &&
+      status.ref_on_origin === null
+    );
+  }
+
+  /**
+   * What the row says of a ref gone from the checkout (`checkoutRefGone`).
+   *
+   * @param {MetabrowserSourceStatus} status
+   * @returns {string}
+   */
+  function goneDetail(status) {
+    const name = status.ref_name ?? status.ref;
+    return `${name} no longer exists in this checkout; this page shows its last commit, ${window.MetabrowserFormatters.shortCommit(status.pin ?? "")}.`;
   }
 
   /**

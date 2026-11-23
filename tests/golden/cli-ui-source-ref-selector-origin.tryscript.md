@@ -92,7 +92,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
         ],
         "own": [
           "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
-          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as Metabrowser last fetched it."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
@@ -123,7 +123,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
         ],
         "own": [
           "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
-          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as Metabrowser last fetched it."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
@@ -184,7 +184,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
         ],
         "own": [
           "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
-          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as Metabrowser last fetched it."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
@@ -215,7 +215,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
         ],
         "own": [
           "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
-          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as Metabrowser last fetched it."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T12:00:00Z) [quiet]",
@@ -249,7 +249,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
         ],
         "own": [
           "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
-          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as Metabrowser last fetched it."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
@@ -282,7 +282,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
         ],
         "own": [
           "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
-          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as Metabrowser last fetched it."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
@@ -313,7 +313,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
         ],
         "own": [
           "origin/trunk: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
-          "origin/feature: Your checkout has no origin/feature: your own git fetch has not brought this branch."
+          "origin/feature: Your checkout has no origin/feature of its own. This row is the origin's, as Metabrowser last fetched it."
         ],
         "note": "",
         "origin": "The origin's branches are as Metabrowser last fetched them (fetched 2026-09-17T13:00:00Z) [quiet]",
@@ -428,7 +428,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
   "ownDifference": {
     "asRecorded": [
       "yours differs: Your checkout's origin/trunk is at 0b51e01, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
-      "not in checkout: Your checkout has no origin/feature: your own git fetch has not brought this branch."
+      "not in checkout: Your checkout has no origin/feature of its own. This row is the origin's, as Metabrowser last fetched it."
     ],
     "yoursEarlier": "yours differs: Your checkout's origin/trunk is at 0b51e01, an earlier commit by date, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",
     "yoursLater": "yours differs: Your checkout's origin/trunk is at 0b51e01, a later commit by date, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.",

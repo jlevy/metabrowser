@@ -472,6 +472,33 @@ async function runCheckoutBranch() {
     );
     assert(model.visible === false && model.follow === null, "a commit opened by its ID moved");
   }
+  {
+    // The reader deleted the branch the page shows: the server keeps its last commit
+    // served, the status reads the branch as naming none, and a quiet row says so.
+    const opened = recordedFolder.plain_topic.body;
+    const page = createPage();
+    const controller = freshness.createController(page.deps, {
+      checkout: true,
+      shown: { pin: opened.status.pin, ref: opened.status.ref },
+    });
+    page.setStatus(opened.status);
+    page.answerPageAsk(recordedFolder.plain_ask_gone.status, recordedFolder.plain_ask_gone.body);
+    await page.start(controller);
+    steps.push(page.observe("the reader deleted the branch: the row says its last commit stays"));
+    controller.dispose();
+    // With a store the row is the store's, and says it as well.
+    const stored = { ...recordedFolder.switch_local_branch.body.status, latest: null };
+    const model = freshness.describe(stored, {
+      shown: { pin: stored.pin, ref: stored.ref },
+      nowMs: NOW_MS,
+      checkout: true,
+    });
+    steps.push({
+      step: "with a store, the store's row says the branch is gone",
+      paint: { label: model.label, tone: model.tone, detail: model.detail },
+    });
+    assert(model.follow === null, "a gone branch was followed");
+  }
   return steps;
 }
 
