@@ -298,7 +298,6 @@ final class FolderSession: ManagedServer {
         guard let page else { return }
         if let window = page.host?.window {
             if window.isMiniaturized { window.deminiaturize(nil) }
-
             window.makeKeyAndOrderFront(nil)
         } else {
             onPlaceWindow?(BrowserWindowController(page: page), separately)

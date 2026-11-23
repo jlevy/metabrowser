@@ -5,7 +5,7 @@ import ShellViews
 /// The folder chooser a window's title opens: the open folders, `metab`'s recent targets
 /// that are not open, and the commands that open or close folders.
 ///
-/// It is native chrome (an `NSMenu`, with section headers, check marks, and subtitles); its rows and what each choice does are `FolderChooser`'s, tested
+/// The native `NSMenu` draws the rows and actions that `FolderChooser` defines and tests
 /// in `ShellCore`. Each root's mark is the page's own glyph (`RootMark`), on the line of
 /// the root's name, with the subtitle under the name, on one line (`NSMenuItem.setMark`),
 /// and the window's own folder's check mark stands on that line too (`TitleLineMenuItem`).
