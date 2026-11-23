@@ -178,6 +178,14 @@ class PageElement {
     this.#insert(0, nodes);
   }
 
+  prepend(...nodes) {
+    for (const node of nodes) {
+      node.remove();
+      node.parentElement = this;
+    }
+    this.childNodes.unshift(...nodes);
+  }
+
   remove() {
     const parent = this.parentElement;
     if (parent !== null) {
@@ -409,13 +417,14 @@ async function main() {
       const section = element("section");
       const bar = element("div");
       const toggle = element("button");
-      bar.append(toggle);
+      const end = element("div");
+      bar.append(toggle, end);
       const source = element("div");
       source.id = `diff-file-${name}`;
       section.append(bar, source);
       diff.append(section);
-      views.add({ section, bar, toggle, source, id: name, format });
-      const [, control] = bar.childNodes;
+      views.add({ section, bar, end, toggle, source, id: name, format });
+      const [, control] = end.childNodes;
       const [, rendered] = section.childNodes;
       return { name, section, bar, source, control, rendered };
     });

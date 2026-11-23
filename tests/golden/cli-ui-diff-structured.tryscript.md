@@ -119,7 +119,7 @@ $ node tests/dom/diff-structured-session.js
           ]
         },
         "deploy/duplicate.yaml": {
-          "chooser": "none",
+          "chooser": "YAML diff format: Rendered | *Source",
           "shows": "source"
         },
         "config/comments.yaml": {
