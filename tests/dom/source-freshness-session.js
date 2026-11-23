@@ -324,12 +324,7 @@ function paintOf(model) {
     label: model.label,
     tone: model.tone,
     detail: model.detail,
-    offer:
-      offer === null
-        ? null
-        : offer.kind === "switch"
-          ? `${offer.text} ${offer.commit} [${offer.button}] → ${offer.ref}`
-          : `${offer.text} [${offer.button}]`,
+    offer: offer === null ? null : `${offer.text} [${offer.button}]`,
     error: model.error,
   };
 }
@@ -1312,23 +1307,25 @@ async function run() {
   }));
 
   // A focused invariant of `describe`, outside the recorded conversation: the recording's
-  // mirror has no pull request heads to pin. A ref the pin does not follow, as a pull
-  // request's head is not, keeps the offer of its new tip, and the page does not follow.
+  // mirror has no pull request heads to pin. A pin on a pull request's head follows it as a
+  // branch's does (`follows_moves` in mirror_refresh.py), so a page drawn for the head
+  // before goes with it and is offered nothing.
   {
-    const unfollowed = {
+    const moved = {
       ...recorded.stale,
       ref: "refs/pull/7/head",
       ref_name: "refs/pull/7/head",
-      follows: false,
+      follows: true,
+      pin: recorded.refreshed.pin,
       latest: recorded.refreshed.pin,
     };
-    const model = freshness.describe(unfollowed, {
-      shown: { pin: unfollowed.pin, ref: unfollowed.ref },
+    const model = freshness.describe(moved, {
+      shown: { pin: recorded.stale.pin, ref: moved.ref },
       nowMs: NOW_MS,
     });
     assert(
-      model.follow === null && model.offer?.kind === "switch" && model.offer.button === "Switch",
-      `a pull request's head is offered, not followed: ${JSON.stringify(model)}`,
+      model.follow?.ref === moved.ref && model.follow.commit === moved.pin && model.offer === null,
+      `a pull request's head is followed, not offered: ${JSON.stringify(model)}`,
     );
   }
 

@@ -196,7 +196,17 @@ async function history() {
       await run.handle.whenFilesReady();
     }
     assert.ok(run.container.textContent.includes("Displayed changes"));
-    assert.deepEqual(run.mounted[1], original, "route return retains the repaired selection");
+    if (outcome === "pending") {
+      assert.deepEqual(run.mounted[1], original, "route return retains the repaired selection");
+    } else {
+      // The refresh found another head while the reader was away: Changes follows it, and
+      // says which diff it showed before, with the way back.
+      assert.equal(run.mounted[1].right, "e".repeat(40), "route return follows the newer head");
+      assert.match(
+        run.container.textContent,
+        /The pull request’s head moved from .+ to .+Show the earlier changes/,
+      );
+    }
     if (outcome === "pending") {
       await run.acknowledge(true);
       await run.tick();
@@ -209,14 +219,32 @@ async function history() {
     run.handle.dispose();
   }
 
+  // A head that advances under Changes is followed, and the way back is the reader's choice:
+  // the earlier diff then stays through a repair and offers the newer one, which a route
+  // return shows again.
   const run = await story();
+  const earlier = run.mounted[0];
   run.advanceHead();
   await run.tick();
+  await run.handle.whenFilesReady();
+  assert.equal(run.mounted.length, 2, "one poll follows the head once");
+  assert.equal(run.mounted[1].right, "e".repeat(40), "Changes follows a newer head");
+  await run.tick();
+  assert.equal(run.mounted.length, 2, "a later poll keeps the followed diff");
+  run.button("Show the earlier changes").events.get("click")();
+  await settle();
+  await run.handle.whenFilesReady();
+  assert.equal(run.mounted.at(-1).right, earlier.right, "the way back shows the earlier diff");
+  assert.equal(run.mounted.at(-1).route, earlier.route);
+  await run.tick();
+  assert.equal(run.mounted.length, 3, "the reader's earlier diff is not followed away");
+  assert.ok(!run.container.textContent.includes("Show the earlier changes"));
   await run.refresh();
   run.button("Show the newer changes").events.get("click")();
   await settle();
   await run.handle.whenFilesReady();
   assert.equal(run.mounted.at(-1).right, "e".repeat(40));
+  run.button("Show the earlier changes");
   await run.land("");
   await run.acknowledge(false);
   await run.land("files");

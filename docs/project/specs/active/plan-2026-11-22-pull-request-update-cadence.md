@@ -319,16 +319,24 @@ guards and adds one:
   pull request’s probe reads its issue, `pulls.probe_path`, whose ETag held through
   every such move measured.
   The bound first proposed here, a probe interval that doubles after `200`s that changed
-  nothing (bead `mb-y7ut`), is not built: with the issue such a `200` is a reaction or
-  the like, not every push.
+  nothing (bead `mb-y7ut`), is not built for the pull request’s keys: with the issue
+  such a `200` is a reaction or the like, not every push.
+  Bead `mb-y7ut` measured the other keys a probe asks on 2026-11-23. The first pages of
+  the head’s check runs and status keep their ETags while the repository moves, and
+  every `200` after a page’s first changed something the record keeps (`CHECKS_PROBE_S`
+  records the numbers).
+  The pull, asked while mergeability is unknown, can answer a paid `200` that still says
+  `null`, and `MERGEABLE_SETTLE_S` bounds those asks; none was seen, since GitHub
+  answered every pull by the next read.
+  The list’s key is the one that needs the doubling, and has it (`MAX_PAID_PROBE_S`).
   What a probe saw of the issue is kept in memory, so the first probe of a number in a
   process is one paid read, where the pull’s probe sent the record’s own ETag: one
   `core` per number per server run, and one per one-shot `metab --api` automatic ask.
   Keeping it on disk would need a new file beside the record, with its transcript and
   its place in the cache’s clearing, or one more `gh` process in every full read, and
-  neither is worth one call a run (review A2 of #726). The list probe of Phase 2 reads a
-  pull’s row, which embeds the same repository objects, so it needs its own measurement,
-  and that bound if it pays per push.
+  neither is worth one call a run (review A2 of #726). The list probe of Phase 2 has
+  that bound, since a busy repository’s list changes before every probe
+  (`pull_list_probe.py`).
 - **A self-ceiling** (new), `AUTOMATIC_CORE_PER_HOUR`, in `gh_budget.py`: the `core`
   this process’s automatic work may spend in a rolling hour, counted from what the
   process spends itself, which it knows exactly: one `core` for each REST answer that is
@@ -524,7 +532,8 @@ account check and the bounds on probes.
   the `FULL_REFRESH_S` reads stop (bead `mb-qngw`).
 - [x] Probes that are not paid for per push (see [Budget](#budget)): the pull request’s
   probe reads its issue, measured under bead `mb-2ppr`, so the doubling interval of bead
-  `mb-y7ut` is not built.
+  `mb-y7ut` is not built for it, nor for the checks and the mergeability it also asks,
+  which that bead measured.
 - [x] The pull itself asked while a record’s mergeability is unknown, bounded by
   `MERGEABLE_SETTLE_S` (review A1 of #726).
 - [x] A per-server cap on probes in flight, `MAX_PROBES_IN_FLIGHT` in `served_pull.py`,

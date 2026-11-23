@@ -97,6 +97,14 @@ PROBE_FLOOR_S: Final = 4.0
 # its head's check runs and status, two more conditional ``GET``s. While CI runs they
 # change every few seconds, and each change costs a ``checks_only`` read of about 2
 # ``core``; 10 s holds that to about 12 a minute.
+# Their ETags move with the head's own checks and not with its repository, so these
+# probes have no bound on paid answers that change nothing, as the list's has
+# (``MAX_PAID_PROBE_S``). Measured 2026-11-23, 06:44 to 07:12 UTC, with gh 2.98.0: of 504
+# conditional reads of both pages for six heads, four with runs in progress, the 56
+# answered ``200`` after a page's first each changed a run's status or conclusion, added
+# a run, or changed the status, all of which a record keeps; and for four pull requests
+# whose checks had ended, both pages answered ``304`` in all 96 reads over 7 minutes in
+# which the pull's own ETag moved seven times.
 CHECKS_PROBE_S: Final = 10.0
 # How long a record the probes vouch for goes without a full read. A probe cannot see an
 # edited comment, a reaction, a re-run check of a finished head, or a mergeability GitHub
@@ -111,7 +119,10 @@ FULL_REFRESH_S: Final = 90.0
 # read 3 to 4 s later; review A of #726 saw ``null`` on 8 of 10 and an answer on all 10
 # 8 s later. Thirty seconds is six probes, several times the slowest of those. A probe
 # that fails does not spend it, and one that ends unanswered is renewed for a record read
-# later, at most once a :data:`FULL_REFRESH_S` (:meth:`ServedPull._probe`). Past it
+# later, at most once a :data:`FULL_REFRESH_S` (:meth:`ServedPull._probe`). That is the
+# bound on what these asks can spend on a pull whose answer never comes; of 10 more read
+# cold that day and then every 5 s, all 10 answered on the next read, and none was a
+# ``200`` that still said ``null``. Past it
 # the pull is asked no more, since its ETag moves with the whole repository and each move
 # costs a call, and the record is no longer vouched for: the window's read asks again.
 MERGEABLE_SETTLE_S: Final = 30.0

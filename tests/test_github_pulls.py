@@ -1789,6 +1789,18 @@ def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
         (b'{"number": 7, "retry": true, "prepare_comparison": "' + b"a" * 64 + b'"}', 400),
         (b'{"number": 7, "retry": true, "comparison": "yes"}', 400),
         (b'{"number": 7, "state": "open"}', 400),
+        # The record an asker holds is named by its whole revision, and not while idle.
+        (b'{"number": 7, "held": null}', 400),
+        (b'{"number": 7, "held": "abc"}', 400),
+        (b'{"number": 7, "held": 7}', 400),
+        (
+            b'{"number": 7, "held": "'
+            + b"a" * 64
+            + b'", "prepare_comparison": "'
+            + b"a" * 64
+            + b'"}',
+            400,
+        ),
     ):
         refused = client.post(_REFRESH_ROUTE, content=content, headers=_JSON)
         assert (refused.status_code, refused.json()["code"]) == (status, "invalid_request")
@@ -1800,6 +1812,45 @@ def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
     assert client.post(_REFRESH_ROUTE, content=b"{}", headers=plain).status_code == 415
     outdated = client.post(_REFRESH_ROUTE, json=_ASK_7, headers={**_JSON, PIN_HEADER: "0" * 40})
     assert (outdated.status_code, outdated.json()["code"]) == (409, "pin_changed")
+
+
+def test_a_refresh_answer_leaves_out_the_record_its_asker_holds(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """An ask that names the record it holds gets every field but that record (mb-jd08).
+
+    A visible page asks every ``probe_every_s``, and the whole envelope each time was
+    344 KiB and 1.7 ms on the event loop for the largest record measured.
+    """
+
+    _stand, client = pinned_pull
+
+    def ask(**fields: Any) -> tuple[int, dict[str, Any]]:
+        answer = client.post(_REFRESH_ROUTE, json={"number": 7, **fields}, headers=_JSON)
+        return answer.status_code, answer.json()["pull"]
+
+    status, whole = ask()
+    assert status == 200 and whole["record"]["number"] == 7 and "record_held" not in whole
+    revision = whole["record_revision"]
+
+    status, held = ask(held=revision)
+    assert status == 200 and held["record_held"] is True and "record" not in held
+    # Everything else an envelope says still arrives: the state, the verdict, the outcome.
+    assert set(held) - {"record_held"} == set(whole) - {"record"}
+    assert (held["record_revision"], held["state"], held["fetched_at"]) == (
+        revision,
+        whole["state"],
+        whole["fetched_at"],
+    )
+    assert len(json.dumps(held)) < len(json.dumps(whole)) / 4
+
+    # Another revision is a record the asker does not have, so it is sent.
+    status, other = ask(held="0" * 64)
+    assert status == 200 and other["record"] == whole["record"] and "record_held" not in other
+
+    # A reader's own refresh may name it too, and its answer as it starts holds that record.
+    status, started = ask(retry=True, held=revision)
+    assert status == 202 and started["record_held"] is True and "record" not in started
 
 
 def _answering_head(stand: _Stand, head: str) -> dict[str, Any]:
@@ -1835,7 +1886,7 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Serve mode: the cold read pins the head, the pull route answers, a refresh runs in
-    the coordinator, and a newer head is offered as ``latest`` rather than switched to."""
+    the coordinator, and the pin follows a newer head that refresh finds (mb-6a6w)."""
 
     monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
     # The session's freshness window reads the wall clock, so records do too here.
@@ -1859,12 +1910,15 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
             started = client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON)
             assert started.status_code == 202 and started.json()["pull"]["refreshing"] is True
             status = settle(client)
-            assert (status["pin"], status["latest"]) == (earlier, head)
+            # The pull request's own job observed the mirror when it ended, and the pin,
+            # served under the pull request's head, went with the ref it had just fetched.
+            assert (status["follows"], status["ref"]) == (True, "refs/pull/7/head")
+            assert (status["pin"], status["latest"]) == (head, head)
             envelope = _read(client, 7).json()
             assert envelope["last_refresh"]["outcome"] == "succeeded"
-            assert (envelope["pin"], envelope["record"]["pull"]["head"]["sha"]) == (earlier, head)
+            assert (envelope["pin"], envelope["record"]["pull"]["head"]["sha"]) == (head, head)
 
-            # Taking the offer switches by the pull request's ref, as the page does.
+            # A page drawn for the earlier head asks for the ref, which changes nothing now.
             taken = client.post("/api/source/pin", json={"ref": "refs/pull/7/head"}, headers=_JSON)
             assert taken.status_code == 200, taken.text
             assert taken.json()["status"]["pin"] == head

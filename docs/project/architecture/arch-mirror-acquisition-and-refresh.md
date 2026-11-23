@@ -330,6 +330,15 @@ store a repository folder keeps of its checkout’s origin
   The request waits for the probe at most `STORE_PROBE_WAIT_S` and never for a fetch.
   Core probes with Git alone and knows no provider.
   A tag, a commit opened by its ID, and a pull request’s head are not probed.
+- **A visible page on a repository folder’s own branch:** such a page sends the same
+  ask, every `CHECKOUT_REFS_POLL_S`, for the server to read where the branch is in the
+  checkout
+  ([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+  Where the folder keeps a store of its origin the ask is the store’s too, so while that
+  page is visible the store is fetched, quietly, once it is older than the freshness
+  window, and not only once for each time the page is shown.
+  That follows the rule for Metabrowser’s own stores: they are fetched as often as is
+  useful, and the checkout is never fetched into.
 - **What holds a probe or a page’s fetch:** one probe runs at a time, no closer than
   `STORE_PROBE_FLOOR_S` to the last, however many tabs ask, and none while a refresh
   runs. A probe that failed, or a fetch that failed, holds the page’s asks for a
@@ -386,17 +395,20 @@ startup starts no repair fetch.
 ### Following a Branch
 
 A mirror is browsed as github.com is: as of the data last fetched.
-A reader who opened a branch or a tag reads that ref, not one commit of it, so the
-served pin follows the ref when a fetch moves it, by a push or a force-push.
+A reader who opened a branch, a tag, or a pull request reads that ref, not one commit of
+it, so the served pin follows the ref when a fetch moves it, by a push or a force-push.
 The owner set this on 2026-11-19, replacing the earlier rule that a refresh never moved
-the served commit and offered the new one behind a **Switch** button (bead `mb-pq8y`).
+the served commit and offered the new one behind a **Switch** button (bead `mb-pq8y`),
+and on 2026-11-22 for a pull request’s head (bead `mb-6a6w`).
 
-- **Which pins follow:** one served under the origin’s branch or a tag (`follows_moves`
-  in `mirror_refresh.py`), which status reports as `follows`. A commit opened by its ID
-  is served under no ref, or under one only while it is that ref’s tip, as View file’s
-  way back is, and then follows it as the selector names it.
-  A pull request’s head does not follow yet, which waits on bead `mb-qp3s`, so its new
-  head is still offered.
+- **Which pins follow:** one served under the origin’s branch, a tag, or a pull
+  request’s head, `refs/pull/<n>/head` (`follows_moves` in `mirror_refresh.py`), which
+  status reports as `follows`. A commit opened by its ID is served under no ref, or
+  under one only while it is that ref’s tip, as View file’s way back is, and then
+  follows it as the selector names it.
+  A pull request’s head moves in the mirror when that pull request’s refresh fetches it,
+  so the job that refreshes a pull request observes the mirror when it ends, as a fetch
+  of the mirror does.
 - **The server follows:** `MirrorSession.observe`, which runs after every refresh job
   and after following another process’s, opens the ref’s new tip under the pin lock and
   serves it under a new generation.
@@ -410,8 +422,11 @@ the served commit and offered the new one behind a **Switch** button (bead `mb-p
   nothing once the server has followed and serves the tip when it could not yet, and the
   answer’s `view_href` says where the page lands: the same file or folder when the new
   commit has it, where the page reloads in place and keeps its line and scroll, or the
-  root. A refused follow says why and offers a reload, and is not asked again until the
-  reader’s refresh.
+  root. A pull request’s page reloads where it is; its Changes then shows the new head’s
+  diff, says which head it showed before, and holds the reader’s place in its file
+  ([Changes Follows the Head](arch-github-pull-requests.md#changes-follows-the-head)). A
+  refused follow says why and offers a reload, and is not asked again until the reader’s
+  refresh.
 - **A switch made in another tab** to another ref still only offers a reload: the reader
   did not ask for that ref.
 - **A repository folder’s own branches** follow by the same step and the same page code,

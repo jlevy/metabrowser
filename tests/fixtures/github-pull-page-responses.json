@@ -997,12 +997,10 @@
         "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
         "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
         "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
-        "record": {
-          "same_as": "refreshed"
-        },
         "core_preview": null,
         "repository_labels": [],
-        "labels_pending": false
+        "labels_pending": false,
+        "record_held": true
       },
       "status_route": "/api/plugin/github/pull?number=7"
     }
@@ -1556,7 +1554,7 @@
       "status_route": "/api/plugin/github/pull?number=8"
     }
   },
-  "behind_head": {
+  "followed_head": {
     "status": 200,
     "etag": "\"pull-13\"",
     "body": {
@@ -1564,7 +1562,7 @@
       "reason": null,
       "source": "https://github.com/octo/demo",
       "number": 7,
-      "pin": "f7c5a9918657080d6aeb455902615b6e17df760a",
+      "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:41:00Z",
       "verified_at": "2026-09-17T12:41:00Z",
@@ -1758,7 +1756,7 @@
       "reason": "not_cached",
       "source": "https://github.com/octo/demo",
       "number": 14,
-      "pin": "f7c5a9918657080d6aeb455902615b6e17df760a",
+      "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": null,
       "verified_at": null,
@@ -1790,7 +1788,7 @@
         "reason": "not_cached",
         "source": "https://github.com/octo/demo",
         "number": 14,
-        "pin": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
         "pin_ref": "refs/pull/7/head",
         "fetched_at": null,
         "verified_at": null,

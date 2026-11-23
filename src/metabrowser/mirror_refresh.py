@@ -21,8 +21,8 @@ memory -- the tip of the pinned ref as last observed, the last fetch time and ou
 whether a refresh is running -- so the status route runs no Git and reads no store. The
 observations are taken again when a job finishes and when the pin changes, one at a
 time, so a pin switch during a refresh cannot leave the other ref's tip behind. A pin on
-a branch or tag follows its ref: when an observation finds that a fetch moved it, the
-server serves the new tip, and a commit opened by its ID stays. When a
+a branch, a tag, or a pull request's head follows its ref: when an observation finds that
+a fetch moved it, the server serves the new tip, and a commit opened by its ID stays. When a
 refresh finds another process refreshing the store, a served mirror follows that one
 and observes the store again once it ends. Switching the pin resolves a selection in
 the mirror, opens the new subject, and replaces the served one under a new generation.
@@ -543,8 +543,8 @@ class FreshnessFields(TypedDict):
 
     ``refreshable`` says whether the refresh and pin routes act on this server's
     subject. ``follows`` says whether the pin moves with its ref (:func:`follows_moves`):
-    true for a branch or tag, whose new tip the server serves itself once a fetch moves
-    it. ``latest`` is the commit the pinned ref names in the mirror as last observed:
+    true for a branch, a tag, or a pull request's head, whose new tip the server serves
+    itself once a fetch moves it. ``latest`` is the commit the pinned ref names in the mirror as last observed:
     equal to the pin when nothing moved, different when a refresh moved a ref the pin
     does not follow, or one it could not follow yet, and ``None`` otherwise.
     ``ref_on_origin`` tells those apart: ``False`` when the origin no longer had the ref
@@ -615,23 +615,32 @@ def pull_head_number(ref: str | None) -> int | None:
 
 # The refs a served pin follows when a fetch moves them: the origin's branches and its
 # tags, where a mirror keeps them (``MIRROR_REFS`` in ``cache/resolve.py``, which this
-# module does not import). A reader who opened a branch reads that branch, so the server
-# serves its new tip itself (:meth:`MirrorSession.observe`) and the page goes with it.
-# A commit opened by its ID is served under no ref, or under one only while it is that
-# ref's tip, and a pull request's head waits on its own decision (mb-qp3s), so neither
-# moves: the page offers the newer head as before.
+# module does not import), and a pull request's head, ``refs/pull/<n>/head``, which that
+# pull request's refresh fetches. A reader who opened a branch reads that branch, and one
+# who opened a pull request reads its head, so the server serves the new tip itself
+# (:meth:`MirrorSession.observe`) and the page goes with it. The owner decided the pull
+# request's case on 2026-11-22 (mb-6a6w): its refresh is probed every few seconds while a
+# page is visible, so a new head offered behind a button was offered seconds after every
+# push of a review. A commit opened by its ID is served under no ref, or under one only
+# while it is that ref's tip, so it stays.
 _FOLLOWED_REF_PREFIXES: Final = ("refs/remotes/origin/", "refs/tags/")
 
 
-def follows_moves(ref: str | None, prefixes: tuple[str, ...] = _FOLLOWED_REF_PREFIXES) -> bool:
+def follows_moves(ref: str | None, prefixes: tuple[str, ...] | None = None) -> bool:
     """Whether a pin served under *ref* moves when that ref does.
 
-    *prefixes* are the namespaces that follow: a mirror's by default, which a fetch moves.
-    A checkout names its own (``FOLLOWED_CHECKOUT_REFS`` in ``checkout_revisions.py``),
-    which the reader's commit or fetch moves.
+    By default a mirror's: one of the origin's branches or tags, or a pull request's
+    head, each of which a fetch moves. *prefixes* are the namespaces that follow where
+    the pin is read from something else: a checkout names its own
+    (``FOLLOWED_CHECKOUT_REFS`` in ``checkout_revisions.py``), which the reader's commit
+    or fetch moves.
     """
 
-    return ref is not None and ref.startswith(prefixes)
+    if ref is None:
+        return False
+    if prefixes is not None:
+        return ref.startswith(prefixes)
+    return ref.startswith(_FOLLOWED_REF_PREFIXES) or pull_head_number(ref) is not None
 
 
 async def follow_served_ref(
@@ -1682,10 +1691,10 @@ class MirrorSession(StoreSession):
     async def _observe_pin(self) -> None:
         """Read the pinned ref's tip again, and follow the ref.
 
-        A pin on a branch or tag (:func:`follows_moves`) whose ref a fetch moved, by a
-        push or a force-push, is replaced by the ref's new tip under a new generation, so
-        the server never serves a branch behind where the mirror has it. Any other pin
-        stays, and status reports the ref's new tip as ``latest``.
+        A pin on a branch, a tag, or a pull request's head (:func:`follows_moves`) whose
+        ref a fetch moved, by a push or a force-push, is replaced by the ref's new tip
+        under a new generation, so the server never serves a ref behind where the mirror
+        has it. Any other pin stays, and status reports the ref's new tip as ``latest``.
         """
 
         await self._observe_tip()
@@ -1946,8 +1955,7 @@ class MirrorSession(StoreSession):
         finally:
             self._background_pulls.discard(key)
         try:
-            # Its fetch can move a ref the pin was resolved from, such as a pull
-            # request's head, which status then reports as newer.
+            # Its fetch moves the pull request's head, which a pin served under it follows.
             await self.observe()
         except Exception:
             log.warning("could not observe the mirror after a refresh", exc_info=True)

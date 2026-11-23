@@ -111,7 +111,7 @@ from metabrowser.view_routes import parse_pull_number
 
 PULL_ROUTE: Final = "/api/plugin/github/pull"
 _REFRESH_FIELDS: Final = frozenset(
-    {"number", "retry", "comparison", "recovery", "wait_core", "prepare_comparison"}
+    {"number", "retry", "comparison", "recovery", "wait_core", "prepare_comparison", "held"}
 )
 NUMBER_REQUIRED: Final = '"number" is a pull-request number'
 
@@ -762,7 +762,9 @@ class RefreshRequest:
     """What a ``POST`` asks for.
 
     *retry* is a reader's own action, or the one comparison request a page on Changes
-    sends by itself for a record without a store.
+    sends by itself for a record without a store. *held* is the ``record_revision`` of
+    the record the asker already has, which the answer then leaves out
+    (:func:`refresh_answer_pull`).
     """
 
     number: int
@@ -771,6 +773,7 @@ class RefreshRequest:
     recovery: tuple[str, str] | None = None
     wait_core: bool = False
     prepare_comparison: str | None = None
+    held: str | None = None
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
@@ -779,7 +782,7 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
     if set(body) - _REFRESH_FIELDS:
         raise PullRequestError(
             'a refresh request names only "number", "retry", "comparison", "recovery", '
-            '"wait_core", and "prepare_comparison"'
+            '"wait_core", "prepare_comparison", and "held"'
         )
     number = body.get("number")
     if (
@@ -834,7 +837,46 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
         ):
             raise PullRequestError('"prepare_comparison" is a record revision and stands alone')
         preparation = revision
-    return RefreshRequest(number, retry, comparison, pair, wait_core, preparation)
+    held = None
+    if "held" in body:
+        held = body["held"]
+        if (
+            not isinstance(held, str)
+            or len(held) != 64
+            or not is_full_revision(held)
+            or preparation is not None
+        ):
+            raise PullRequestError('"held" is a record revision, and not for "prepare_comparison"')
+    return RefreshRequest(number, retry, comparison, pair, wait_core, preparation, held)
+
+
+def refresh_answer_pull(envelope: PullEnvelope, held: str | None) -> dict[str, Any]:
+    """The ``pull`` a refresh answers: *envelope*, without a record the asker holds.
+
+    When *held* is the envelope's ``record_revision``, the answer names ``record_held``
+    in place of ``record``, and the asker keeps the record it has: every other field is
+    sent, so the verdict, the state, and the job's outcome still arrive. Otherwise it is
+    the whole envelope, as for an asker that names no *held*.
+
+    A visible page asks every ``probe_every_s``, and nearly every answer carries a record
+    it already shows. Measured 2026-11-23 on the two largest records in a local cache,
+    as the median of 200 renders of the answer in ``JSONResponse``, which serializes on
+    the event loop, three runs at a load average near 380:
+
+    - a 344 KiB record: 351,924 bytes and 1.70 to 1.72 ms whole, 733 bytes and 0.006 ms
+      held, so 4.2 MB a minute for one visible page became 9 KB;
+    - a 290 KiB record: 296,962 bytes and 1.31 ms whole, 733 bytes and 0.006 ms held.
+
+    The revision is the record's as cached, before a server without a store drops its
+    comparison (``no_store``), so the asker also compares ``no_store`` with its own
+    envelope's and reads the route again when either differs.
+    """
+
+    answer: dict[str, Any] = dict(envelope)
+    if held is not None and envelope["record"] is not None and envelope["record_revision"] == held:
+        del answer["record"]
+        answer["record_held"] = True
+    return answer
 
 
 async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
@@ -1027,6 +1069,7 @@ __all__ = [
     "pull_state",
     "pull_view",
     "record_and_freshness",
+    "refresh_answer_pull",
     "record_stamp",
     "refresh_request",
     "rendered_route",

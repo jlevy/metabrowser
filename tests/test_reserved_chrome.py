@@ -494,8 +494,7 @@ def test_the_status_row_is_one_line_there_while_it_has_something_to_say() -> Non
     # on #506); the browserless sessions hold it (github-pull-page-mount-behavior.js).
     assert "status.hidden = agesRow && statusText.length === 0 && ending.length === 0;" in page
     assert 'class: "github-pull-text-action github-pull-refresh"' in page
-    assert 'class: "github-pull-text-action github-pull-switch"' in page
-    assert "btn github-pull-refresh" not in page and "btn github-pull-switch" not in page
+    assert "btn github-pull-refresh" not in page
     # Shown while offered, and while a refresh it offered waits, disabled, keeping its number
     # (B2 of review B on #506).
     assert "refresh.hidden = !(model.canRefresh || waiting);" in page

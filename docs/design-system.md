@@ -1194,11 +1194,10 @@ Both forms look the same in their context, a tooltip and accessible name say whi
 commit opens and whether the pin switches, and keyboard and screen-reader users still
 get the element they expect.
 The diff file bar’s [View file and View on branch](#diff-file-bar), and
-[Browse code, a review comment’s file, Refresh, and Switch to the head](#chrome) on a
-pull request’s page, are text actions.
-A sortable column header’s label, `.agents-sort` in the session table, is a text action
-in this sense: a bordered button inside a header would read as a different thing from
-the label it sits in.
+[Browse code, a review comment’s file, and Refresh](#chrome) on a pull request’s page,
+are text actions. A sortable column header’s label, `.agents-sort` in the session table,
+is a text action in this sense: a bordered button inside a header would read as a
+different thing from the label it sits in.
 It is a real `<button>` with the cell’s `aria-sort`, takes the label’s type, muted at
 rest and `--text` on hover, shows the sorted direction as an arrow after the label, and
 has the one focus ring.
@@ -2620,8 +2619,8 @@ status row, which would then show it on Changes alone and move the tab bar betwe
 A pull request that cannot be shown has no author’s row and no row of ages, so its
 message and Refresh’s slot are on the status row.
 Only a failure, which says what to do, wraps the status row.
-Refresh or Fetch and Switch to the head are [text actions](#control-families), a line
-tall, as Browse code is, so their rows are no taller than their text.
+Refresh or Fetch is a [text action](#control-families), a line tall, as Browse code is,
+so its row is no taller than its text.
 A cold page holds the labels row while the labels are unknown, since the record may
 bring some: a record with labels lands moving nothing, and one with none takes the row
 and its gap away in the paint that lands it, the one paint that changes the header and
@@ -2861,7 +2860,7 @@ Its measurements in Chrome and the app’s WebKit are in
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
-| Refresh, Fetch, Switch to the head | [Text action](#control-families): `.github-pull-text-action` on a button | Refresh ends the row of ages, after View on GitHub and Browse code, and Switch to the head is on the status row among links such as Browse the checkout, so they look as links do and are a line tall, where a bordered `.btn` is taller than the row of ages |
+| Refresh, Fetch | [Text action](#control-families): `.github-pull-text-action` on a button | Refresh ends the row of ages, after View on GitHub and Browse code, so it looks as a link does and is a line tall, where a bordered `.btn` is taller than the row of ages |
 
 Author, action, and relative age share one metadata size and baseline in a header or
 discussion card. The bold username uses the normal text ink wherever it names an actor.

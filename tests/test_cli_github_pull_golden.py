@@ -129,7 +129,8 @@ class _Session:
 def _body(tmp_path: Path, **fields: Any) -> str:
     """A request body in the sandbox, which the transcript names by its file alone."""
 
-    body = tmp_path / ("reader.json" if fields.get("retry") else "automatic.json")
+    name = "reader" if fields.get("retry") else "held" if "held" in fields else "automatic"
+    body = tmp_path / f"{name}.json"
     body.write_text(json.dumps(fields) + "\n", encoding="utf-8")
     return str(body)
 
@@ -214,6 +215,23 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     )
     assert not_due.exit_code == 0, not_due.stderr
     assert not_due.payload()["refresh"] == "not_due"
+    assert logged_gh_calls(tmp_path) == []
+    # A page left open names the record it shows, and the answer leaves that record out.
+    revision = not_due.payload()["pull"]["record_revision"]
+    session.blocks.append(
+        "## held.json names that record_revision as the record the asker holds: the answer "
+        "says record_held in place of the record.\n"
+    )
+    held = session.run(
+        CANONICAL, "--api", f"{ROUTE}-refresh", "--data", _body(tmp_path, number=10, held=revision)
+    )
+    assert held.exit_code == 0, held.stderr
+    answered = held.payload()["pull"]
+    assert answered["record_held"] is True and "record" not in answered
+    whole = not_due.payload()["pull"]
+    assert {name: answered[name] for name in answered if name != "record_held"} == {
+        name: whole[name] for name in whole if name != "record"
+    }
     assert logged_gh_calls(tmp_path) == []
     # The pin is still the default branch, and status names no pull request.
     status = session.run(CANONICAL, "--api", "/api/source/status").payload()

@@ -440,7 +440,10 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     not due (``not_due``), or there is none (``not_cached``), answered ``200``. Past the bound on
     jobs it is refused, ``too_many``, answered ``429``, and nothing starts. ``pull`` is the
     envelope as of that moment: with a job running, ``refreshing`` is true, and it is
-    ``pending`` while no record is cached yet.
+    ``pending`` while no record is cached yet. With ``held``, the ``record_revision`` of
+    the record the asker has, a ``pull`` whose record is that one names ``record_held``
+    in place of ``record`` (:func:`.pull_route.refresh_answer_pull`), as a visible page's
+    recurring ask does.
     With ``prepare_comparison``, a checkout whose store is attached may prepare the named
     cached record revision as optional work: only while no other pull job of the
     checkout runs, with no network slot, and ended by any reader's refresh. Its envelope
@@ -458,6 +461,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
         pull_answer,
         pull_host,
         pull_view,
+        refresh_answer_pull,
         refresh_request,
         start_refresh,
         status_route,
@@ -504,7 +508,11 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
             envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
         )
     # ``status_route`` is where a one-shot ``--api`` reads how the refresh ended.
-    answer = {"refresh": started, "pull": dict(envelope), "status_route": status_route(ask.number)}
+    answer = {
+        "refresh": started,
+        "pull": refresh_answer_pull(envelope, ask.held),
+        "status_route": status_route(ask.number),
+    }
     if started == "too_many":
         answer.update(_TOO_MANY)
     return JSONResponse(answer, status_code=_REFRESH_STATUS[started], headers=_NO_STORE)

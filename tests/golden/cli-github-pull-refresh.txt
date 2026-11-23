@@ -665,6 +665,50 @@ status: 200
 --- stderr ---
 --- gh ---
 gh api repos/octo/demo/issues/10
+## held.json names that record_revision as the record the asker holds: the answer says record_held in place of the record.
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data held.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pull": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "pin": "c691256511d05858850bc7684ae062fea0d41132",
+    "pin_ref": "refs/remotes/origin/topic",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "verified_at": "2026-09-17T12:00:00Z",
+    "verified_by": "fetch",
+    "head_moved": false,
+    "checks_pending": false,
+    "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
+    "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+    "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+    "size_route": "/api/plugin/github/pull-size?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false,
+    "record_held": true
+  },
+  "status_route": "/api/plugin/github/pull?number=10"
+}
+--- stderr ---
+--- gh ---
+gh api repos/octo/demo/issues/10
 # metab https://github.com/octo/demo --api /api/source/status
 exit: 0
 --- stdout ---

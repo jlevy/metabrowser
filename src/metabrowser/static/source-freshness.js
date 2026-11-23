@@ -1,5 +1,5 @@
 // Freshness of a served mirror: the quiet fetched label, following a branch to its
-// new commit, and switching the pin.
+// new commit, and offering a reload when another ref is served.
 //
 // A page on a pinned revision polls /api/source/status while it is visible: quickly
 // while a refresh runs, slowly otherwise, and with If-None-Match so an unchanged
@@ -13,10 +13,10 @@
 // answers the status, so it stands in for the slow poll, and a hidden page sends none.
 // A fetch nobody asked for, that one or the server's own while no page was looking, is
 // quiet (`refresh_quiet`): the row says and announces nothing for it.
-// A page on a branch or tag reads that ref as the mirror has it,
+// A page on a branch, a tag, or a pull request's head reads that ref as the mirror has it,
 // as github.com shows a branch: when a refresh moves the ref, the server serves its new
-// tip, and the page goes with it to the same address, by itself. Only a ref the pin does
-// not follow, a pull request's head, is offered instead, and accepting switches the pin.
+// tip, and the page goes with it to the same address, by itself. Every ref a mirror
+// serves a pin under follows, so the row offers no switch to a newer commit.
 // When the server serves another ref than the one the page was rendered for -- another
 // tab switched it, or a restart -- the row offers a reload.
 //
@@ -275,24 +275,6 @@
       };
     } else if (retrySelection) {
       offer = { kind: "retry", text: "Fetch the address again", button: "Retry" };
-    } else if (
-      !status.follows &&
-      status.ref !== null &&
-      status.latest !== null &&
-      status.pin !== null &&
-      status.latest !== status.pin
-    ) {
-      // A ref the pin does not follow, a pull request's head, moved: offer its new tip.
-      offer = {
-        kind: "switch",
-        ref: status.ref,
-        latest: status.latest,
-        // "Now at", not "newer": a force-push can move a branch back. The commit follows
-        // the words in the commit-ID face, as every line names one.
-        text: `${status.ref_name ?? status.ref} is now at`,
-        commit: window.MetabrowserFormatters.shortCommit(status.latest),
-        button: "Switch",
-      };
     } else if (status.ref !== null && status.ref_on_origin === false && !refreshing) {
       detail = `${detail} ${status.ref_name ?? status.ref} is no longer on the origin; its commits stay readable here.`;
     }
@@ -301,7 +283,7 @@
   }
 
   /**
-   * What the row says while a page goes with its branch or tag to the commit it moved to.
+   * What the row says while a page goes with its ref to the commit it moved to.
    *
    * @param {MetabrowserSourceStatus} status
    * @param {MetabrowserSourceFollow} follow
@@ -323,15 +305,16 @@
   }
 
   /**
-   * The branch or tag a page follows to a new commit, and that commit, or `null`. Pure.
+   * The ref a page follows to a new commit, and that commit, or `null`. Pure.
    *
-   * A page on a branch or tag reads that ref as the mirror has it, not one commit of it:
+   * A page on a branch, a tag, or a pull request's head reads that ref as the mirror has
+   * it, not one commit of it:
    * the server serves the ref's new tip itself once a fetch moves it (`follows`), and a
    * page still drawn for the commit before goes with it, to the same address. When the
    * server could not follow yet, status reports the tip as `latest`, and the page asks for
    * it. A page drawn for another ref than the one served was switched by another tab or
-   * a restart, which a reload offer answers instead, and a commit or a pull request's head
-   * does not move.
+   * a restart, which a reload offer answers instead, and a commit opened by its ID does
+   * not move.
    *
    * A repository folder's page on one of its checkout's own branches follows the same
    * way: there the ref moves by the reader's own commit or fetch, which the server reads
@@ -618,7 +601,6 @@
     // Whether the server answers the page's own ask. One that refuses it is polled as a
     // page that sends none is, until the page is shown again.
     let pageAskAnswered = true;
-    let switching = false;
     // A page follows its ref at most once: it leaves, or a refused follow says why and
     // waits for the reader's refresh rather than asking on every poll.
     let following = false;
@@ -837,7 +819,7 @@
     }
 
     /**
-     * Go with the page's branch or tag to the commit the server serves for it now.
+     * Go with the page's ref to the commit the server serves for it now.
      *
      * Asks the pin route for the ref, which changes nothing once the server has followed
      * and serves the tip when it has not yet, naming the page's own `/view/` address, so
@@ -991,33 +973,14 @@
     async function acceptOffer() {
       const model = describe(status, { shown, nowMs: deps.now(), error: followError });
       const offer = model.offer;
-      if (disposed || switching || offer === null) {
+      if (disposed || offer === null) {
         return;
       }
       if (offer.kind === "reload") {
         deps.reload();
         return;
       }
-      if (offer.kind === "retry") {
-        await requestRefresh();
-        return;
-      }
-      switching = true;
-      try {
-        const response = await deps.request("POST", PIN_ROUTE, { body: { ref: offer.ref } });
-        if (response.status === 200) {
-          deps.reload();
-          return;
-        }
-        error = "Could not switch to that commit.";
-      } catch {
-        error = "The switch request failed.";
-      } finally {
-        switching = false;
-      }
-      if (!disposed) {
-        render();
-      }
+      await requestRefresh();
     }
 
     function onVisibilityChange() {
@@ -1075,11 +1038,7 @@
       parts.push(model.label);
     }
     if (model.offer !== null) {
-      parts.push(
-        model.offer.kind === "switch"
-          ? `${model.offer.text} ${model.offer.commit}`
-          : model.offer.text,
-      );
+      parts.push(model.offer.text);
     }
     if (model.error !== null) {
       parts.push(model.error.replace(/\.$/, ""));
@@ -1140,12 +1099,6 @@
       offer.className = "source-freshness-offer";
       const text = document.createElement("span");
       text.textContent = model.offer.text;
-      if (model.offer.kind === "switch") {
-        const commit = document.createElement("span");
-        commit.className = "git-commit-sha";
-        commit.textContent = model.offer.commit;
-        text.append(" ", commit);
-      }
       const button = document.createElement("button");
       button.type = "button";
       button.className = "btn source-freshness-accept";
