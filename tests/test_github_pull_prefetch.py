@@ -8,6 +8,7 @@ the governor, a reader's work, and preemption are each pinned without Git.
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -251,10 +252,99 @@ def test_the_lane_leaves_what_is_on_screen_the_ceiling_it_needs(
 
 
 def test_the_caps_priced_at_a_page_a_part_fit_speculative_works_share() -> None:
-    """The arithmetic beside the caps: 6 points a record and 1 a list (A1, review A of #737)."""
+    """The arithmetic beside the caps: 6 points a record and 1 a list (A1, review A of #737),
+    and what the catalog's part of the share leaves them (B1, review B of #737)."""
 
-    assert RECORDS_PER_HOUR * 6 + FILES_PER_HOUR * 1 <= gh_budget.SPECULATIVE_CORE_PER_HOUR
+    priced = RECORDS_PER_HOUR * 6 + FILES_PER_HOUR * 1
+    assert priced <= gh_budget.SPECULATIVE_CORE_PER_HOUR
+    assert priced + gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR <= (
+        gh_budget.SPECULATIVE_CORE_PER_HOUR
+    )
+    assert gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR > 0
     assert RECORDS_PER_SCAN <= RECORDS_PER_HOUR
+
+
+def _walk(batches: int) -> int:
+    """A cores walk of *batches* of rows, each one GraphQL point, as ``pull_cores`` admits
+    and counts them: how many it was let read."""
+
+    read = 0
+    for _batch in range(batches):
+        if not gh_budget.admission(("graphql",), now=NOW, speculative=True, catalog=True).admitted:
+            break
+        with gh_budget.speculative(catalog=True):
+            gh_budget.spent(1, now=NOW)
+        read += 1
+    return read
+
+
+def test_a_cold_walk_that_spends_first_leaves_the_prefetch_its_caps(
+    stand: tuple[_Host, dict[int, str], list[int]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B1 of review B on #737: with one first-come share, a cold catalog's walk of 800 rows,
+    100 batches of 8, spent all of it, and the prefetch was then refused with
+    ``self_ceiling``. The walk now stops at the catalog's part of the share, and the lane
+    asked after it reads every record and list its caps allow, each at the price the caps
+    are set at."""
+
+    host, verdicts, revision = stand
+    listed = _stub_files(host, monkeypatch)
+    stubbed = pull_files_route.start_files_refresh
+
+    def paid(*args: Any, **kwargs: Any) -> str:
+        # In the lane's context, so counted as the lane's, as the job's requests would be.
+        gh_budget.spent(1, now=NOW)
+        return stubbed(*args, **kwargs)
+
+    monkeypatch.setattr(pull_files_route, "start_files_refresh", paid)
+    assert _walk(800 // 8) == gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR
+    assert not gh_budget.over_speculative_share(NOW)
+    records = tuple(range(700, 700 + RECORDS_PER_HOUR))
+    verdicts.update(dict.fromkeys(records, "changed"))
+    for number in records:
+        host.on_refresh[number] = lambda: gh_budget.spent(6, now=NOW)
+    files = tuple(range(1, FILES_PER_HOUR + 1))
+    asks = (
+        PrefetchRequest(records=records[:RECORDS_PER_SCAN], files=files[:8]),
+        PrefetchRequest(records=records[RECORDS_PER_SCAN:], files=files[8:16]),
+        PrefetchRequest(files=files[16:]),
+    )
+    for ask in asks:
+        revision[0] += 1
+        assert _run(host, ask)[:2] == ("started", None)
+    assert [number for number in host.started if number > 0] == list(records)
+    assert listed == list(files)
+    assert not [entry for entry in _recent(host) if entry[2].startswith("deferred")]
+    ceiling = _report(host)["governor"]["ceiling"]
+    assert (ceiling["speculative_hour_used"], ceiling["catalog_hour_used"]) == (
+        gh_budget.SPECULATIVE_CORE_PER_HOUR,
+        gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR,
+    )
+    # The walk, which is refused, got none of it.
+    assert _walk(1) == 0
+
+
+def test_the_catalogs_part_holds_the_walk_and_the_backfill_and_not_the_lane_or_the_labels() -> None:
+    """The order inside the share: the lane and the label set are refused only at all of it."""
+
+    with gh_budget.speculative(catalog=True):
+        gh_budget.spent(gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR, now=NOW)
+    assert gh_budget.admission(
+        ("graphql",), now=NOW, speculative=True, catalog=True
+    ) == gh_budget.Admission(False, "self_ceiling")
+    assert gh_budget.admission(("core",), now=NOW, speculative=True).admitted
+    assert gh_budget.speculative_spent(NOW) == gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR
+    # What the lane spends counts toward the share, not the catalog's part of it.
+    with gh_budget.speculative():
+        gh_budget.spent(1, now=NOW)
+    assert gh_budget.catalog_spent(NOW) == gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR
+    # And the whole share, spent, refuses the catalog's work as well as the lane.
+    gh_budget.forget()
+    with gh_budget.speculative():
+        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR, now=NOW)
+    assert gh_budget.catalog_spent(NOW) == 0
+    assert not gh_budget.admission(("graphql",), now=NOW, speculative=True, catalog=True).admitted
+    gh_budget.forget()
 
 
 def test_what_the_lanes_jobs_spend_is_speculative_and_the_lane_stops_at_its_share(
@@ -274,6 +364,8 @@ def test_what_the_lanes_jobs_spend_is_speculative_and_the_lane_stops_at_its_shar
         "hour_used": 6,
         "speculative_per_hour": share,
         "speculative_hour_used": 6,
+        "catalog_per_hour": gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR,
+        "catalog_hour_used": 0,
     }
     # 10's read spends the rest of the share, and the lane stops there, dropping 11.
     assert _run(host, PrefetchRequest(records=(10, 11, 12))) == ("started", None, 3)
@@ -406,9 +498,9 @@ def test_files_are_listed_within_their_own_cap(
         )
 
     def start_files_refresh(
-        view: Any, ask: Any, *, wanted: bool, local: Any, background: bool
+        view: Any, ask: Any, *, wanted: bool, local: Any, background: bool, fallback: Any
     ) -> str:
-        assert wanted and background and local is None
+        assert wanted and background and local is None and fallback is None
 
         async def work() -> None:
             started.append(ask.number)
@@ -453,9 +545,9 @@ def _stub_files(host: _Host, monkeypatch: pytest.MonkeyPatch) -> list[int]:
         )
 
     def start_files_refresh(
-        _view: Any, ask: Any, *, wanted: bool, local: Any, background: bool
+        _view: Any, ask: Any, *, wanted: bool, local: Any, background: bool, fallback: Any
     ) -> str:
-        assert wanted and background and local is None
+        assert wanted and background and local is None and fallback is None
 
         async def work() -> None:
             listed.append(ask.number)
@@ -522,6 +614,97 @@ def test_a_files_cap_drops_the_lists_and_the_records_queued_behind_it_still_run(
     recent = _recent(host)
     capped = recent.index(("files", 2, "deferred:hourly_cap"))
     assert recent[capped + 1 :] == [("record", 602, "refreshed")]
+
+
+def _store_lists(
+    host: _Host, monkeypatch: pytest.MonkeyPatch, given: set[int], *, git_fails: bool = False
+) -> list[tuple[int, bool | None]]:
+    """Lists the store gives for the numbers in *given*, which the lane prepares first, and
+    GitHub's for the rest; each started is ``(number, fallback)``, where *fallback* is what
+    the lane answered when Git could not give a local one (*git_fails*), else ``None``."""
+
+    started: list[tuple[int, bool | None]] = []
+    _stub_files(host, monkeypatch)
+
+    async def prepare(_host: Any, lane: Any) -> None:
+        numbers = {item.number for item in lane.queue if item.kind == "files"}
+        for number in numbers:
+            lane.prepared[number] = None
+        lane.local_ready |= numbers & given
+        lane.queue = deque(
+            sorted(lane.queue, key=lambda item: not (item.kind == "files" and item.number in given))
+        )
+
+    def wanted(view: Any, _ask: Any, _prepared: Any) -> tuple[bool, Any]:
+        return True, SimpleNamespace(git_dir="store") if view.number in given else None
+
+    def start_files_refresh(
+        _view: Any, ask: Any, *, wanted: bool, local: Any, background: bool, fallback: Any
+    ) -> str:
+        assert wanted and background
+        assert (local is None) is (fallback is None), "only a list the store gives falls back"
+
+        async def work() -> None:
+            answer = await fallback() if git_fails and fallback is not None else None
+            started.append((ask.number, answer))
+            host.started.append(-ask.number)
+
+        return host.coordinator.start(f"files/{ask.number}", work, network=False)
+
+    monkeypatch.setattr(pull_prefetch, "_prepare_lists", prepare)
+    monkeypatch.setattr(pull_files_route, "files_refresh_wanted", wanted)
+    monkeypatch.setattr(pull_files_route, "start_files_refresh", start_files_refresh)
+    return started
+
+
+def test_lists_the_store_gives_are_not_refused_with_the_rest(
+    stand: tuple[_Host, dict[int, str], list[int]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B1 of review B on #737: the refusal stopped files lists that cost GitHub nothing,
+    since the lane asked the governor before it looked at whether the store gives one."""
+
+    host, verdicts, _revision = stand
+    started = _store_lists(host, monkeypatch, {1, 2})
+    with gh_budget.speculative():
+        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR, now=NOW)
+    verdicts[9] = "changed"
+    # The record is dropped at once; the lists go, and GitHub's is refused when it comes.
+    assert _run(host, PrefetchRequest(records=(9,), files=(3, 1, 2))) == (
+        "started",
+        "self_ceiling",
+        3,
+    )
+    assert started == [(1, None), (2, None)]
+    assert _recent(host) == [
+        ("files", 1, "refreshed"),
+        ("files", 2, "refreshed"),
+        ("files", 3, "deferred:self_ceiling"),
+    ]
+    assert _report(host)["files"]["hour_used"] == 0
+    # With no list in the ask, the refusal is the answer.
+    assert _run(host, PrefetchRequest(records=(9,))) == ("deferred", "self_ceiling", 0)
+    assert 9 not in host.started
+
+
+def test_a_list_git_cannot_give_after_all_is_read_from_github_only_past_the_governor(
+    stand: tuple[_Host, dict[int, str], list[int]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    host, _verdicts, _revision = stand
+    started = _store_lists(host, monkeypatch, {1, 2}, git_fails=True)
+    assert _run(host, PrefetchRequest(files=(1,))) == ("started", None, 1)
+    # Admitted, it is a list from GitHub, and the hour's cap counts it.
+    assert started == [(1, True)]
+    assert _report(host)["files"]["hour_used"] == 1
+    with gh_budget.speculative():
+        gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR, now=NOW)
+    # Refused, the lane says why, counts nothing, and the next list the store gives goes.
+    assert _run(host, PrefetchRequest(files=(1, 2))) == ("started", "self_ceiling", 2)
+    assert started[1:] == [(1, False), (2, False)]
+    assert _recent(host)[-2:] == [
+        ("files", 1, "deferred:self_ceiling"),
+        ("files", 2, "deferred:self_ceiling"),
+    ]
+    assert _report(host)["files"]["hour_used"] == 1
 
 
 @pytest.mark.parametrize(

@@ -1090,9 +1090,111 @@
     };
   }
 
+  // ── File type menu rows, for the Files tab and diffs alike ──────
+  // A hard cap that includes the selection: appending unranked selected tokens let one
+  // preset add dozens of rows; its other members stay reachable through its row.
+  const TYPE_MENU_MAX = 20;
+
+  /**
+   * @param {ReadonlyArray<MetabrowserPublicTypeTallyRow> | undefined} rows
+   * @param {boolean} showIgnored
+   * @returns {Array<[string, number]>}
+   */
+  function shownCounts(rows, showIgnored) {
+    return (rows || []).map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]);
+  }
+
+  /**
+   * @param {MetabrowserPublicTypeTally} tally
+   * @param {MetabrowserPublicTypeMenuOptions} [options]
+   * @returns {Array<MetabrowserPublicFilterOption>}
+   */
+  function typeMenuOptions(tally, options = {}) {
+    const canonical = tally.canonical_extensions || [];
+    const ranked = shownCounts(
+      canonical.length > 0 ? canonical : tally.extensions,
+      options.showIgnored !== false,
+    )
+      .filter((row) => row[1] > 0)
+      // Re-rank on the shown count: the server ranks by the total.
+      .sort((a, b) => (b[1] === a[1] ? (a[0] < b[0] ? -1 : 1) : b[1] - a[1]));
+    const iconFor = options.iconFor ?? window.MetabrowserFileTypes?.iconFor;
+    return ranked.slice(0, options.max ?? TYPE_MENU_MAX).map(([ext, count]) => {
+      const fi = iconFor?.(`x${ext}`);
+      return { value: ext, label: ext, count, ...(fi ? { icon: fi.svg, iconClass: fi.cls } : {}) };
+    });
+  }
+
+  /**
+   * Groups, then each display group's families that have files.
+   *
+   * @param {MetabrowserPublicTypeTally} tally
+   * @param {MetabrowserPublicTypeMenuOptions} [options]
+   * @returns {Array<MetabrowserPublicTypePresetSection>}
+   */
+  function typeMenuPresetSections(tally, options = {}) {
+    const showIgnored = options.showIgnored !== false;
+    const presetCounts = new Map(shownCounts(tally.type_presets, showIgnored));
+    const familyCounts = new Map(shownCounts(tally.type_families, showIgnored));
+    const taxonomy = window.MetabrowserFileTypeTaxonomy;
+    const groupPresets = (window.METABROWSER_SETTINGS?.FILTER_TYPE_PRESETS || []).map((preset) => ({
+      ...preset,
+      count: presetCounts.get(preset.id) || 0,
+    }));
+    /** @param {string} groupId */
+    const families = (groupId) =>
+      (taxonomy?.families || [])
+        .filter((family) => (family.groupId || family.category) === groupId)
+        .map((family) => ({
+          id: `family:${family.id}`,
+          label: family.label,
+          values: family.extensions.slice(),
+          count: familyCounts.get(family.id) || 0,
+        }))
+        .filter((family) => family.count > 0);
+    // Display groups in the app's order, Documentation first.
+    const withClass = options.groupIcon ?? window.MetabrowserIcons?.withClass;
+    return [
+      { id: "groups", label: "Groups", presets: groupPresets },
+      ...(taxonomy?.displayGroups || []).map((group) => {
+        const icon = withClass?.(group.icon, "category-icon");
+        return {
+          id: `families:${group.id}`,
+          label: group.label,
+          ...(icon ? { icon } : {}),
+          presets: families(group.id),
+        };
+      }),
+    ];
+  }
+
+  /**
+   * Additive: turning a preset on adds its values, turning it off removes only its own.
+   *
+   * @param {ReadonlyArray<string> | null} current
+   * @param {ReadonlyArray<string>} values
+   * @param {boolean} wasOn
+   * @returns {Array<string> | null}
+   */
+  function togglePreset(current, values, wasOn) {
+    const picked = current || [];
+    const next = wasOn
+      ? picked.filter((value) => values.indexOf(value) < 0)
+      : picked.concat(values.filter((value) => picked.indexOf(value) < 0));
+    return next.length > 0 ? next : null;
+  }
+
+  const typeMenu = Object.freeze({
+    MAX_OPTIONS: TYPE_MENU_MAX,
+    options: typeMenuOptions,
+    presetSections: typeMenuPresetSections,
+    togglePreset,
+  });
+
   const api = {
     activateMenuRow,
     escapeHtml: esc,
+    typeMenu,
     nextSelection,
     isSelected,
     groupHtml,

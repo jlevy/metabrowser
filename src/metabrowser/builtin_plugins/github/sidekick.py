@@ -784,7 +784,8 @@ async def pulls_prefetch_handler(request: Request) -> JSONResponse:
     in a visible page's order of priority, and ``changed``. It replaces the repository's
     background queue and answers ``202`` with ``prefetch`` ``started`` or ``joined`` and
     the ``GET`` as its ``status_route``, or ``200`` with ``not_due`` or ``deferred`` and a
-    ``reason``. The ``GET`` reports the lane from memory.
+    ``reason``. A ``202`` with a ``reason`` says the governor refused the rest and the lane
+    lists only what the store gives. The ``GET`` reports the lane from memory.
     """
 
     from metabrowser.builtin_plugins.github.pull_prefetch import (

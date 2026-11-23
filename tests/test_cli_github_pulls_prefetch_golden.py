@@ -9,7 +9,9 @@ does, with these substitutions and nothing else:
   call, which the transcript lists after each command, so the requests each refresh made
   are its measured cost;
 - one clock, fixed, which a block says where it moves, serves the records and the catalog;
-- the rate-limit governor starts empty before each command, as a new process would.
+- the rate-limit governor starts empty before each command, as a new process would, or,
+  where a block says so, with what the process's speculative work spent earlier in the
+  hour, as a server that has run a while has.
 
 A pull envelope is printed as its freshness alone: ``state``, ``fetched_at``,
 ``verified_at``, ``verified_by``, ``head_moved``, and ``checks_pending``. The whole
@@ -110,12 +112,27 @@ class _Session:
         self.now += timedelta(seconds=seconds)
         self.say(f"The clock moves on {seconds:g} s, to {_stamp(self.now)}.")
 
-    def run(self, *args: str, body: dict[str, Any] | None = None, full: bool = False) -> Invocation:
+    def run(
+        self,
+        *args: str,
+        body: dict[str, Any] | None = None,
+        full: bool = False,
+        spent: tuple[int, int] | None = None,
+    ) -> Invocation:
+        """Run one command; *spent* is what speculative work spent earlier in the hour, and
+        how much of that was the catalog's, the backfill's and the cores walk's."""
+
         if body is not None:
             path = self.tmp_path / "request.json"
             path.write_text(json.dumps(body) + "\n", encoding="utf-8")
             args = (*args, "--data", str(path))
         gh_budget.forget()
+        if spent is not None:
+            spent_all, of_it_catalog = spent
+            with gh_budget.speculative(catalog=True):
+                gh_budget.spent(of_it_catalog, now=self.now)
+            with gh_budget.speculative():
+                gh_budget.spent(spent_all - of_it_catalog, now=self.now)
         result = run_metab(args)
         catalog = read_catalog(self.home, origin_identity(CANONICAL).slug)
         if catalog is not None and catalog.epoch not in self.epochs:
@@ -343,6 +360,37 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     )
     files = session.run(CANONICAL, "--api", "/api/plugin/github/pull-files?number=7&limit=0")
     assert (files.payload()["state"], files.payload()["head"]) == ("current", earlier)
+
+    session.say(
+        "This server's speculative work has spent its whole share of the ceiling this hour: "
+        "the catalog's backfill and cores walk the part they may, and the prefetch the rest. "
+        "The ceiling itself has two thirds left, which what is on screen keeps. A visible "
+        "page asks for 9 and for 10's and 9's changed files. The record is refused at once "
+        "with `self_ceiling`, and the lists go on: the store gives 10's, which costs GitHub "
+        "nothing, and 9's, which GitHub would give, is refused when its turn comes."
+    )
+    share = (gh_budget.SPECULATIVE_CORE_PER_HOUR, gh_budget.CATALOG_SPECULATIVE_CORE_PER_HOUR)
+    spent_share = session.run(
+        CANONICAL,
+        "--api",
+        PREFETCH,
+        body={"records": [9], "files": [10, 9]},
+        full=True,
+        spent=share,
+    )
+    assert spent_share.exit_code == 0, spent_share.stderr
+    assert '"reason": "self_ceiling"' in spent_share.stdout
+    report = json.loads(spent_share.stdout[spent_share.stdout.rindex("status: 200\n{") + 12 :])
+    governor = report["governor"]
+    assert (governor["admits"], governor["reason"]) == (False, "self_ceiling")
+    ceiling = governor["ceiling"]
+    assert ceiling["speculative_hour_used"] >= ceiling["speculative_per_hour"]
+    assert ceiling["hour_used"] < ceiling["per_hour"]
+    assert [(entry["number"], entry["outcome"]) for entry in report["recent"]] == [
+        (10, "refreshed"),
+        (9, "deferred:self_ceiling"),
+    ]
+    assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
 
     session.say(
         "Every REST answer now reports 1,000 of 5,000 core points left, below the 25% floor. "
