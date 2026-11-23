@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Any, cast
 
 from metabrowser import server as proc_browser
+from tests.shell_request import shell_request
 
 
 def _read_app_js() -> str:
@@ -302,13 +302,7 @@ def test_the_view_tab_markup_carries_the_hooks_the_keymap_reads() -> None:
 
 
 def _shell_html() -> str:
-    class _Request:
-        def __init__(self) -> None:
-            self.query_params: dict[str, str] = {}
-            self.headers: dict[str, str] = {}
-            self.cookies: dict[str, str] = {}
-
-    response = asyncio.run(proc_browser.index(cast(Any, _Request())))
+    response = asyncio.run(proc_browser.index(shell_request()))
     return bytes(response.body).decode()
 
 

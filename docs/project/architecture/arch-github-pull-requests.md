@@ -800,7 +800,8 @@ no store.
 
 - **Comparisons need a store.** Without one, the envelope withholds a record’s
   comparison as `no_store`. Opening **Changes** sends
-  `"retry": true, "comparison": true`, which acquires an overlay with the checkout as
+  `"retry": true, "comparison": true`, which asks core for the checkout’s store
+  (`acquire_checkout_store` in `checkout_store.py`), an overlay with the checkout as
   lender
   ([The Lending Checkout](arch-mirror-acquisition-and-refresh.md#the-lending-checkout))
   or reuses a healthy store, and leaves the served folder and its Commits tab unchanged.

@@ -1314,3 +1314,106 @@ $ node tests/dom/source-freshness-session.js asks
 }
 ? 0
 ```
+
+A repository folder that keeps a store of its checkout’s origin has the row on every
+page, its working tree’s too.
+What is fetched there is Metabrowser’s store of the origin, never the checkout, and the
+row says so where a mirror’s says “mirror”.
+A page whose store has grown old asks for one refresh, as a mirror’s does, and a fetch
+that failed says the checkout is unchanged.
+The row offers no reload on a folder’s page: its ref selector does.
+The statuses are a real folder’s, recorded in
+`tests/fixtures/source-ref-selector-origin-responses.json` by
+`tests/test_source_ref_selector_origin_session.py`.
+
+```console
+$ node tests/dom/source-freshness-session.js folder
+{
+  "part": "folder",
+  "steps": [
+    {
+      "step": "the working tree's page, its origin's store grown old, asks once",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {}"
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin into Metabrowser's store. It was last fetched 5 d ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the store was fetched; the row says when, and nothing reloads",
+      "requests": [
+        "GET /api/source/status"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Origin fetched 5 d ago",
+        "tone": "quiet",
+        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a fetch that failed says the checkout is unchanged",
+      "requests": [
+        "GET /api/source/status If-None-Match: \"s2\""
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Refresh failed · origin fetched 5 d ago",
+        "tone": "warning",
+        "detail": "The refresh failed. The origin's branches and tags are as last fetched, and the checkout is unchanged.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "an origin branch's page names the store, not a mirror",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "ask",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Origin fetched 5 d ago",
+        "tone": "quiet",
+        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the server shows the working tree again: this row offers no reload",
+      "requests": [
+        "POST /api/source/refresh {\"for\":\"page\"}"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Origin fetched 6 d ago",
+        "tone": "quiet",
+        "detail": "Metabrowser's store of this checkout's origin was last fetched 6 d ago. The checkout itself is never fetched into.",
+        "offer": null,
+        "error": null
+      }
+    }
+  ]
+}
+? 0
+```

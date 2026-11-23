@@ -448,6 +448,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": null,
   "refs": [
     {
@@ -489,6 +490,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": null,
   "refs": [
     {
@@ -523,6 +525,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": null,
   "refs": [
     {

@@ -3882,7 +3882,26 @@ declare global {
     } | null;
     /** Null where no provider has pull requests for the subject, and for tags. */
     pull_requests: MetabrowserSourceRefPullRequests | null;
+    /** The store Metabrowser keeps of a checkout's origin, which its origin's branches and
+     * tags are listed from once it is ready. Null or absent on a mirror, and for a checkout
+     * that keeps none. */
+    origin?: MetabrowserSourceRefOrigin | null;
     refs: MetabrowserSourceRef[];
+  };
+
+  /** What a listing says of the store of a checkout's origin (`OriginStore` in
+   * metabrowser/checkout_store.py). */
+  type MetabrowserSourceRefOrigin = {
+    state: "ready" | "acquiring" | "absent";
+    /** Why there is no store, as a code, and as a sentence for the page. */
+    reason: string | null;
+    detail: string | null;
+    /** The origin as a page shows it. */
+    address: string | null;
+    last_fetch_at: string | null;
+    last_outcome: { operation: string; outcome: string; at: string } | null;
+    /** Whether a fetch of the store, or its first acquisition, runs now. */
+    refreshing: boolean;
   };
 
   /** What the ref selector holds; see static/source-ref-selector.js. */
@@ -3948,6 +3967,9 @@ declare global {
       pullsTotal: number;
     }>;
     note: string;
+    /** What the list says of the store a checkout's origin is listed from, and when that
+     * store was fetched, which the line shows as an age; null where no list reads one. */
+    origin: { text: string; fetchedAt: string | null; tone: "quiet" | "warning" } | null;
     error: string | null;
     /** What a checkout's page says once the server shows something else; else null. */
     stale: string | null;
@@ -3997,6 +4019,7 @@ declare global {
     /** As tall as every row together, so the list scrolls over all of them. */
     sizer: HTMLElement;
     note: HTMLElement;
+    origin: HTMLElement;
     error: HTMLElement;
     /** The rows the list shows now and which of them are drawn; see `drawWindow`. */
     rows: MetabrowserSourceRefSelectorRows;

@@ -187,6 +187,14 @@ function paintOf(model) {
         `${row.name} ${row.commit} ${committedOf(row.committedAt)}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}${pullsOf(row)}`,
     ),
     note: model.note,
+    // What a checkout's list says of the store its origin's refs are read from, with
+    // when that store was fetched: the page shows it as an age, so the transcript prints
+    // the time itself. Absent where no list reads a store.
+    ...(model.origin === null || model.origin === undefined
+      ? {}
+      : {
+          origin: `${model.origin.text}${model.origin.fetchedAt === null ? "" : ` (fetched ${model.origin.fetchedAt})`} [${model.origin.tone}]`,
+        }),
     error: model.error,
     ...stale,
   };

@@ -20,6 +20,10 @@
 // When the server serves another ref than the one the page was rendered for -- another
 // tab switched it, or a restart -- the row offers a reload.
 //
+// A repository folder that keeps a store of its checkout's origin has the row on every
+// page, its working tree's too: what is fetched there is that store, never the checkout,
+// and the row says so (`describe` with `checkout`). Its ref selector offers the reload.
+//
 // A commit the mirror lacks is an address not fetched too. The commit view hands it to
 // `openMissingCommit`, which asks through the page's controller for the fetch such a
 // commit waits for, waits for it to end, and then opens the commit or says, in the
@@ -72,6 +76,20 @@
     refreshing_elsewhere: "Another Metabrowser process is refreshing this mirror.",
     cancelled: "The refresh was stopped before it finished.",
     failed: "The refresh failed.",
+  });
+
+  // The outcomes whose words name the mirror, as a repository folder's row says them: what
+  // was fetched there is the store Metabrowser keeps of the checkout's origin.
+  /** @type {Readonly<Record<string, string>>} */
+  const FOLDER_OUTCOME_DETAIL = Object.freeze({
+    validation_failed:
+      "The origin's default branch did not arrive in Metabrowser's store as a commit.",
+    default_branch_unknown:
+      "The origin's HEAD names no branch, so the store keeps the default branch it had.",
+    store_unavailable: "Metabrowser's store of the origin could not be opened.",
+    lender_missing:
+      "The checkout can no longer lend its objects to Metabrowser's store of the origin.",
+    refreshing_elsewhere: "Another Metabrowser process is refreshing this store.",
   });
 
   // What the row says about the address a page was opened at, while the server serves
@@ -127,13 +145,17 @@
    * What the label says and offers for one status. Pure.
    *
    * @param {MetabrowserSourceStatus | null} status
-   * @param {{shown: MetabrowserSourcePage | null, nowMs: number, error?: string | null}} page
-   *   *shown* is the pin and ref the page was rendered for.
+   * @param {{shown: MetabrowserSourcePage | null, nowMs: number, error?: string | null, checkout?: boolean}} page
+   *   *shown* is the pin and ref the page was rendered for. *checkout* is whether the page
+   *   is a repository folder's: what is fetched is then the store Metabrowser keeps of the
+   *   checkout's origin, on every page of the folder, its working tree's too, and the row
+   *   says so where a mirror's says "mirror".
    * @returns {MetabrowserSourceFreshnessModel}
    */
   function describe(status, page) {
     const error = page.error ?? null;
-    if (status === null || status.subject !== "git_revision" || !status.refreshable) {
+    const folder = page.checkout === true;
+    if (status === null || !status.refreshable || (status.subject !== "git_revision" && !folder)) {
       return {
         visible: false,
         tone: "quiet",
@@ -156,20 +178,32 @@
     const refreshing = loudlyRefreshing(status);
     /** @type {MetabrowserSourceFreshnessModel["tone"]} */
     let tone = status.stale && !status.refresh_quiet ? "stale" : "quiet";
-    let label = `Fetched ${age}`;
-    let detail = `The mirror was last fetched from its origin ${age}.`;
+    // What a failure is called: a folder's is its store's, never its checkout's.
+    /** @param {string} code */
+    const why = (code) =>
+      (folder ? FOLDER_OUTCOME_DETAIL[code] : undefined) ??
+      OUTCOME_DETAIL[code] ??
+      OUTCOME_DETAIL.failed;
+    let label = folder ? `Origin fetched ${age}` : `Fetched ${age}`;
+    let detail = folder
+      ? `Metabrowser's store of this checkout's origin was last fetched ${age}. The checkout itself is never fetched into.`
+      : `The mirror was last fetched from its origin ${age}.`;
     if (refreshing) {
       tone = "refreshing";
       label = "Refreshing…";
-      detail = `Fetching from the origin. The mirror was last fetched ${age}.`;
+      detail = folder
+        ? `Fetching from the origin into Metabrowser's store. It was last fetched ${age}.`
+        : `Fetching from the origin. The mirror was last fetched ${age}.`;
     } else if (failed) {
       tone = "warning";
-      label = `Refresh failed · fetched ${age}`;
-      detail = `${OUTCOME_DETAIL[outcome.outcome] ?? OUTCOME_DETAIL.failed} The pinned revision is still served from the mirror.`;
+      label = folder ? `Refresh failed · origin fetched ${age}` : `Refresh failed · fetched ${age}`;
+      detail = folder
+        ? `${why(outcome.outcome)} The origin's branches and tags are as last fetched, and the checkout is unchanged.`
+        : `${why(outcome.outcome)} The pinned revision is still served from the mirror.`;
     } else if (outcome !== null && outcome.outcome === "refreshing_elsewhere") {
-      detail = `${OUTCOME_DETAIL.refreshing_elsewhere} It was last fetched here ${age}.`;
+      detail = `${why("refreshing_elsewhere")} It was last fetched here ${age}.`;
     } else if (outcome !== null && outcome.outcome === "default_branch_unknown") {
-      detail = `${detail} ${OUTCOME_DETAIL.default_branch_unknown}`;
+      detail = `${detail} ${why("default_branch_unknown")}`;
     }
     const pull =
       typeof status.pull_request === "number"
@@ -207,7 +241,12 @@
     }
     /** @type {MetabrowserSourceOffer | null} */
     let offer = null;
-    if (page.shown !== null && (status.pin !== page.shown.pin || status.ref !== page.shown.ref)) {
+    // A folder's ref selector makes this offer itself, for its working tree's page too.
+    if (
+      !folder &&
+      page.shown !== null &&
+      (status.pin !== page.shown.pin || status.ref !== page.shown.ref)
+    ) {
       offer = {
         kind: "reload",
         text: "The server now serves another revision",
@@ -484,10 +523,13 @@
    * compared rather than the session generation, which counts from 1 again in every
    * server process, so a page left open across a restart onto another pin notices.
    *
+   * *options.checkout* is whether the page is a repository folder's (`describe`).
+   *
    * @param {MetabrowserSourceFreshnessDependencies} deps
-   * @param {{shown?: MetabrowserSourcePage | null}} [options]
+   * @param {{shown?: MetabrowserSourcePage | null, checkout?: boolean}} [options]
    */
   function createController(deps, options = {}) {
+    const checkout = options.checkout === true;
     /** @type {MetabrowserSourceStatus | null} */
     let status = null;
     /** @type {string | null} */
@@ -543,7 +585,12 @@
     }
 
     function render() {
-      const model = describe(status, { shown, nowMs: deps.now(), error: error ?? followError });
+      const model = describe(status, {
+        shown,
+        nowMs: deps.now(),
+        error: error ?? followError,
+        checkout,
+      });
       if (model.follow !== null && !following && !disposed) {
         following = true;
         void follow(model.follow.ref);
@@ -1103,7 +1150,10 @@
         address: () =>
           window.location.pathname.startsWith("/view/") ? window.location.pathname : null,
       },
-      { shown: window.METABROWSER_SOURCE_PIN ?? null },
+      {
+        shown: window.METABROWSER_SOURCE_PIN ?? null,
+        checkout: Boolean(window.METABROWSER_SOURCE_CHECKOUT),
+      },
     );
     const listening = new AbortController();
     document.addEventListener("visibilitychange", controller.onVisibilityChange, {

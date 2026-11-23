@@ -208,11 +208,13 @@ What happens when a reader names a checkout:
 | The store already borrows from another checkout that can still lend | Keeps that lender and says so |
 | The route is under `/api/cache/` | Says the flag is not applied to a cache route and answers it |
 
-Beside a served folder, the GitHub plugin acquires an overlay for a pull request’s
-comparison with the folder’s checkout as the lender, never falling back to a full clone
-(`allow_clone_fallback=False` in `builtin_plugins/github/checkout.py`). A served
-subdirectory resolves to its enclosing checkout first, and the lender’s path stays in
-private cache metadata.
+Beside a served folder, core acquires an overlay with the folder’s checkout as the
+lender, never falling back to a full clone (`acquire_checkout_store` in
+`checkout_store.py`). A folder’s server makes it to list its origin’s branches and tags
+([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)),
+and the GitHub plugin asks core for the same store for a pull request’s comparison.
+A served subdirectory resolves to its enclosing checkout first, and the lender’s path
+stays in private cache metadata.
 [GitHub Pull Requests](arch-github-pull-requests.md#beside-a-checkout) covers when it
 runs.
 
@@ -288,7 +290,11 @@ GitHub rate limit, so what limits it is process time and network.
 Three cadences follow, each constant beside its measurement in `mirror_refresh.py`: a
 visible page on a branch has that branch probed every `STORE_PROBE_S`, a visible page
 has the whole mirror fetched once it is older than `FRESHNESS_WINDOW_S`, and a server no
-page is looking at fetches every `STORE_IDLE_REFRESH_S`.
+page is looking at fetches every `STORE_IDLE_REFRESH_S`. The same three hold for the
+store a repository folder keeps of its checkout’s origin
+([Origin Branches in a Repository Folder](arch-open-modes.md#origin-branches-in-a-repository-folder)):
+`StoreSession` is the store’s half of the session, which reads no served subject, and
+`MirrorSession` adds the pin.
 
 - **The coordinator:** `RefreshCoordinator`, on the application state, keeps one job per
   key, a store key or a store key and a pull-request number, so concurrent requests join

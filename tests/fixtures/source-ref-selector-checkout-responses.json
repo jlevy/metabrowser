@@ -22,6 +22,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "origin": null,
       "pull_requests": null,
       "refs": [
         {
@@ -73,6 +74,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "origin": null,
       "pull_requests": null,
       "refs": [
         {
@@ -115,6 +117,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "origin": null,
       "pull_requests": null,
       "refs": [
         {
@@ -174,6 +177,7 @@
         "selection_state": null,
         "selection_href": null
       },
+      "read_from": null,
       "view_href": "/view/README.md"
     }
   },
@@ -206,6 +210,7 @@
         "selection_state": null,
         "selection_href": null
       },
+      "read_from": "checkout",
       "view_href": "/view/g1-UkVBRE1FLm1k"
     }
   },
@@ -228,6 +233,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "origin": null,
       "pull_requests": null,
       "refs": [
         {
@@ -289,6 +295,7 @@
         "selection_state": null,
         "selection_href": null
       },
+      "read_from": "checkout",
       "view_href": "/view/g1-UkVBRE1FLm1k"
     }
   },
@@ -321,6 +328,7 @@
         "selection_state": null,
         "selection_href": null
       },
+      "read_from": null,
       "view_href": "/view/README.md"
     }
   },

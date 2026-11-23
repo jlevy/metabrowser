@@ -33,6 +33,16 @@ const recorded = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/source-freshness-responses.json"), "utf8"),
 );
 
+// What a repository folder's server answered for the store it keeps of its checkout's
+// origin, recorded by tests/test_source_ref_selector_origin_session.py: the statuses the
+// freshness row of a folder's pages reads, printed under the `folder` argument.
+const recordedFolder = JSON.parse(
+  fs.readFileSync(
+    path.join(repoRoot, "tests/fixtures/source-ref-selector-origin-responses.json"),
+    "utf8",
+  ),
+);
+
 // A few minutes after the recording's stand-in fetch times, so ages read naturally.
 const NOW_MS = Date.parse("2026-09-23T12:05:00Z");
 
@@ -325,12 +335,63 @@ async function settle() {
   }
 }
 
+// A repository folder that keeps a store of its checkout's origin: the row is on every
+// page of the folder, its working tree's too, says what was fetched is that store, and
+// its Refresh fetches the store. The reload offer is the ref selector's there.
+async function runFolder() {
+  const steps = [];
+  const options = { checkout: true };
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps, options);
+    page.setStatus(recordedFolder.status_stale);
+    page.answerPost("/api/source/refresh", 202, recordedFolder.refresh_started.body);
+    await page.start(controller);
+    steps.push(page.observe("the working tree's page, its origin's store grown old, asks once"));
+
+    page.setStatus(recordedFolder.status_refreshed);
+    await page.fireTimer();
+    steps.push(page.observe("the store was fetched; the row says when, and nothing reloads"));
+
+    page.setStatus(recordedFolder.status_refresh_failed);
+    await page.fireTimer();
+    steps.push(page.observe("a fetch that failed says the checkout is unchanged"));
+    controller.dispose();
+  }
+  {
+    // A page on one of the origin's branches, read from the store.
+    const status = recordedFolder.switch_origin_branch.body.status;
+    const page = createPage();
+    const controller = freshness.createController(page.deps, {
+      ...options,
+      shown: { pin: status.pin, ref: status.ref },
+    });
+    page.setStatus(status);
+    await page.start(controller);
+    steps.push(page.observe("an origin branch's page names the store, not a mirror"));
+    assert(!JSON.stringify(steps.at(-1).paint).includes("mirror"), "a folder's row said mirror");
+    // The server came to serve the working tree: the selector offers the reload, not the row.
+    page.setStatus(recordedFolder.status_working_tree);
+    await page.fireTimer();
+    steps.push(page.observe("the server shows the working tree again: this row offers no reload"));
+    controller.dispose();
+  }
+  // The same statuses on a page that is not a folder's show no row for a working tree.
+  const plain = freshness.describe(recordedFolder.status_working_tree, {
+    shown: null,
+    nowMs: NOW_MS,
+  });
+  assert(plain.visible === false, "a working tree's status drew a row on a page of no folder");
+  return steps;
+}
+
 async function run() {
   const steps = [];
   // The steps of a page's own ask, printed under the `asks` argument: one transcript of
   // every step is more than the golden runner can match as one block.
   const asks = [];
   const topic = recorded.refreshed.ref;
+  const folder = await runFolder();
 
   // One page through a whole refresh, which moves its branch: the server follows the
   // branch, and the page goes with it, with nothing to accept.
@@ -1177,12 +1238,17 @@ async function run() {
     );
   }
 
-  return { steps, asks, guard, landing, wired, history };
+  return { steps, asks, folder, guard, landing, wired, history };
 }
 
 run()
-  .then(({ asks, ...transcript }) => {
-    const printed = process.argv[2] === "asks" ? { part: "asks", steps: asks } : transcript;
+  .then(({ asks, folder, ...transcript }) => {
+    const printed =
+      process.argv[2] === "asks"
+        ? { part: "asks", steps: asks }
+        : process.argv[2] === "folder"
+          ? { part: "folder", steps: folder }
+          : transcript;
     process.stdout.write(`${JSON.stringify(printed, null, 2)}\n`);
   })
   .catch((error) => {

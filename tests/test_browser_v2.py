@@ -75,6 +75,7 @@ _CLAUDE_SAMPLE = (
     )
     + "\n"
 )
+from tests.shell_request import shell_request
 
 
 def test_charts_cache_returns_same_payload_on_repeat(tmp_path: Path) -> None:
@@ -727,7 +728,7 @@ def test_markdown_plugin_has_no_duplicate_client_renderer() -> None:
 
 
 def test_index_omits_duplicate_markdown_runtime() -> None:
-    html = bytes(asyncio.run(proc_browser.index(cast(Any, _FakeRequest({})))).body).decode()
+    html = bytes(asyncio.run(proc_browser.index(shell_request())).body).decode()
     assert "dompurify" not in html.lower()
     assert "marked.min.js" not in html
 
