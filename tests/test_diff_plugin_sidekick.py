@@ -32,6 +32,10 @@ class _FakeQuery:
     def get(self, key: str, default: str = "") -> str:
         return self._params.get(key, default)
 
+    def getlist(self, key: str) -> list[str]:
+        """Every value of *key*, as Starlette's ``QueryParams`` reads a repeated one."""
+        return [self._params[key]] if key in self._params else []
+
 
 def _request(path: str) -> Any:
     request = Mock(spec=["query_params", "headers"])

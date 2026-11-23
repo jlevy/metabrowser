@@ -608,6 +608,54 @@ async function run() {
     assert.equal(waits.hasTimer(60_000) || waits.hasTimer(TIMELINE_RETRY_MS), false);
     waits.handle.dispose();
   }
+  // The wait keeps its end. A page that paints while its refresh ask is on its way cancels
+  // the waiting read, and asks again once that ask is answered for what is left of the
+  // wait, not for the whole of it again (review B3 of #737: the minute started again, so
+  // a page whose own asks kept coming waited longer each time).
+  {
+    const wallClock = Date.now;
+    let now = wallClock();
+    Date.now = () => now;
+    try {
+      const paints = mount(mountPullPage, fixture());
+      await paints.handle.ready;
+      await settle();
+      paints.handle.activate();
+      paints.frame();
+      paints.frame();
+      const refused = paints.timelines[0];
+      refused.answer("unavailable", [], firstRevision, true, 60);
+      await settle();
+      assert.ok(paints.hasTimer(60_000), "the page waits as long as the server said");
+      now += 20_000;
+      // The page's automatic refresh ask, left on its way.
+      paints.timer(0);
+      await settle();
+      // Its poll answers while that ask is on its way, and the page paints.
+      paints.timer(SLOW_POLL_MS);
+      await settle();
+      paints.frame();
+      await settle();
+      assert.equal(paints.hasTimer(60_000), false, "a refresh ask on its way holds the read");
+      now += 5_000;
+      paints.acknowledgeRefresh();
+      await settle();
+      paints.frame();
+      await settle();
+      assert.equal(paints.hasTimer(60_000), false, "the wait does not start again");
+      assert.ok(paints.hasTimer(35_000), "the page waits what is left of it");
+      assert.equal(paints.timelines.length, 1);
+      paints.timer(35_000);
+      assert.equal(paints.timelines.length, 2);
+      assert.deepEqual(paints.timelines[1].request, refused.request);
+      paints.timelines[1].answer("complete", [commit]);
+      await settle();
+      assert.ok(paints.body().querySelector(".github-pull-commit"));
+      paints.handle.dispose();
+    } finally {
+      Date.now = wallClock;
+    }
+  }
 
   // Every review's heading is its author, "reviewed", and its age, and a chip after the age
   // only for a state the verb does not say (mb-novh): Approved, Changes requested, and

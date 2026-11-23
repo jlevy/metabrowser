@@ -62,8 +62,15 @@ Below it is the diff against the commit’s first parent, one section per file w
 Click a file’s bar to collapse it.
 The diff draws **Split** or **Unified**; press `L` or use the layout control to switch,
 and a pane too narrow for Split draws Unified until there is room.
-Large files load as you reach them, and a commit that changes more files than the page
-lists says that its diff is bounded.
+A commit that changes more than one file has a **File type** menu beside the layout
+control, the same menu as the Files tab’s, which counts the commit’s changed files by
+group, family, and extension.
+Choose types in it (`Y` opens it) to show only the changed files of those types; the
+toolbar then says how many of the commit’s files it shows, with **Clear**. A renamed
+file counts under its old type and its new one, the summary at the top still describes
+the whole commit, and a file you jump to from it that the choice hides shows every type
+again. Large files load as you reach them, and a commit that changes more files than the
+page lists says that its diff is bounded.
 
 On a repository opened by its URL, each file’s bar also offers **View file**, which
 opens the file the commit made, at the commit, switching the served commit first when
@@ -215,6 +222,8 @@ route that the page itself uses:
 ```shell
 metab https://github.com/owner/repo --api '/api/plugin/diff/comparison?left=v1.0&right=origin/main'
 metab ./repo --api '/api/plugin/diff/comparison?left=main&right=feature&base_policy=merge_base'
+metab ./repo --api '/api/plugin/diff/comparison?revision=HEAD&types=.md,.py'  # only these types
+metab ./repo --api '/api/plugin/diff/comparison?revision=HEAD&view=types'      # counts by type
 ```
 
 In a mirror, a branch is named as its origin’s, `origin/<branch>`.

@@ -2426,7 +2426,7 @@ async function main() {
                   before.cold &&
                     before.header === "0" &&
                     before.column === "0" &&
-                    before.live.length === 3 &&
+                    before.live.length === 4 &&
                     before.live.every(Boolean),
                   JSON.stringify(before),
                 );

@@ -412,7 +412,7 @@ async function heldTabKeys(page) {
       : `opened the ${route?.tab || "conversation"} route`;
   };
   const live = () =>
-    ["conversation", "files", "checks"].filter((id) =>
+    ["conversation", "docs", "files", "checks"].filter((id) =>
       registry.isLive(`plugin.github.pull.tab.${id}`),
     );
   // Where the tab column is: out of the page, in it but inert, or in it and live.
@@ -464,7 +464,11 @@ async function heldTabKeys(page) {
   };
   assert.equal(whileHeld.holding, true, "the landing's first paint is held");
   assert.equal(whileHeld.tabColumn, "live", "the header does not wait for the body");
-  assert.deepEqual(whileHeld.live, ["conversation", "files", "checks"], "all three while held");
+  assert.deepEqual(
+    whileHeld.live,
+    ["conversation", "docs", "files", "checks"],
+    "all four while held",
+  );
   assert.equal(whileHeld.stackMenus, 1, "the header paints its stack menu while the body waits");
   assert.notEqual(whileHeld.stackKeys, "none", "Control-N and Control-P are live while held");
   while (markdown.length > 0) {
@@ -488,7 +492,11 @@ async function heldTabKeys(page) {
     "control-n": press("n", { ctrlKey: true }),
     "control-p": press("p", { ctrlKey: true }),
   };
-  assert.deepEqual(released.live, ["conversation", "files", "checks"], "all three at release");
+  assert.deepEqual(
+    released.live,
+    ["conversation", "docs", "files", "checks"],
+    "all four at release",
+  );
   assert.equal(released.stackMenus, 1, "the stack menu stays at release");
   assert.equal(
     released.strip,

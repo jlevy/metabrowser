@@ -543,7 +543,10 @@ def test_a_failing_acquisition_is_tried_again_less_often_each_time(
             # once one is due, so asking all the while shortens none of them.
             assert _post(client, "/api/source/refresh", {"for": "page"}).status_code < 300
             time.sleep(0.02)
-    waits = [later - earlier for earlier, later in itertools.pairwise(attempts)]
+        # The timer keeps trying until the client shuts down, which under load can take
+        # past the next wait, so judge only the first five tries.
+        tried = attempts[:5]
+    waits = [later - earlier for earlier, later in itertools.pairwise(tried)]
     assert all(wait >= least for wait, least in zip(waits, (0.2, 0.4, 0.8, 0.8), strict=True)), (
         waits
     )

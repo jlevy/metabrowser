@@ -53,7 +53,7 @@ import os
 import re
 import stat
 import threading
-from collections.abc import AsyncGenerator, Callable, Mapping
+from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import timedelta
@@ -700,6 +700,7 @@ def start_files_refresh(
     wanted: bool,
     local: LocalComparison | None,
     background: bool = False,
+    fallback: Callable[[], Awaitable[bool]] | None = None,
 ) -> FilesRefreshStart:
     """Start the refresh *ask* names, join the one running, or say why it starts none.
 
@@ -709,7 +710,9 @@ def start_files_refresh(
     Like the pull-request jobs, at most :data:`MAX_PULL_JOBS` may be queued or running,
     since the numbers are request text; past it a request is refused, ``too_many``, and
     starts nothing. A *background* job, a prefetch's, counts toward no bound and holds no
-    network slot for its requests; a reader's request that joins it makes it count.
+    network slot for its requests; a reader's request that joins it makes it count. Its
+    *fallback* says whether GitHub's list may be read when *local* gives none, which the
+    job asks only then (:func:`~.pull_files_refresh.refresh_pull_files`).
     """
 
     repository, coordinator = view.repository, view.coordinator
@@ -727,7 +730,7 @@ def start_files_refresh(
             return "too_many"
         _FILE_JOBS.add(key)
     slot: _Slot = _no_slot if background else coordinator.slot
-    work = partial(_run_files_refresh, repository, ask.number, local, slot)
+    work = partial(_run_files_refresh, repository, ask.number, local, slot, fallback)
     return coordinator.start(key, work, network=False)
 
 
@@ -747,9 +750,13 @@ async def _run_files_refresh(
     number: int,
     local: LocalComparison | None,
     slot: _Slot,
+    fallback: Callable[[], Awaitable[bool]] | None = None,
 ) -> None:
     # Here, not at the top: answering from the cache starts no gh, and loads none of it.
-    from metabrowser.builtin_plugins.github.pull_files_refresh import refresh_pull_files
+    from metabrowser.builtin_plugins.github.pull_files_refresh import (
+        FallbackRefused,
+        refresh_pull_files,
+    )
 
     try:
         await refresh_pull_files(
@@ -758,9 +765,14 @@ async def _run_files_refresh(
             local=local,
             slot=slot,
             known_head=partial(known_head, repository.home, repository.slug, number),
+            fallback=fallback,
         )
     except PullDataError:
         # Its stamp says how it ended, and the route reports that.
+        return
+    except FallbackRefused:
+        # Nothing was asked of GitHub, so no stamp says anything; the caller that refused
+        # it reports why.
         return
     except Exception:
         # A bug, which no stamp names; keep one, as the list's job does.

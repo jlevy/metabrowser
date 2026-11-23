@@ -131,10 +131,13 @@ PULLS_LAG_S: Final = 20.0
 # one GraphQL point and an account check each, which costs more than the probes saved.
 # A repository whose issues never rest is the one whose probes slow this far, and there an
 # issue is always newest and just updated, so each probe vouches from ``PULLS_LAG_S``
-# before it asked: 30 + 20 leaves 10 s of the window, one ask interval, for the next probe
-# to start in. At 30 s such a repository costs 120 calls an hour, where every probe paid
-# would cost 360. ``tests/test_github_pull_list_probe.py`` pins the sum.
-MAX_PAID_PROBE_S: Final = 30.0
+# before it asked, and the next starts at the first ask, one ``LIST_PROBE_S`` apart, after
+# this gap. 25 + 20 + 10 leaves 5 s of the window, for an ask that timers and thread hops
+# make late and for the probe to answer before the last one's vouch lapses; at 30 the sum
+# was the window to the second, and a probe a moment late let the catalog's scan run
+# (review B2 of #737). At 25 s such a repository costs 144 calls an hour, where every probe
+# paid would cost 360. ``tests/test_github_pull_list_probe.py`` pins the sum.
+MAX_PAID_PROBE_S: Final = 25.0
 
 type ListProbeOutcome = Literal["unchanged", "changed", "behind"]
 # The first row's number and ``updated_at``; ``None`` for a repository with no pull request.

@@ -605,9 +605,12 @@ async def request_preparation(
         # hold them (the owner's rule of 2026-11-22, in :mod:`.gh_budget`'s docstring).
         held = gh_budget.held_until(now) is not None or gh_budget.over_ceiling(now)
     else:
-        # The walk past them prepares rows a reader may open: speculative work, held by
-        # the floor and at its own share of the ceiling as well (:mod:`.gh_budget`).
-        held = not gh_budget.admission(("graphql",), now=now, speculative=True).admitted
+        # The walk past them prepares rows a reader may open: the catalog's speculative
+        # work, held by the floor and at its part of speculative work's share of the
+        # ceiling as well, which leaves the prefetch its own (:mod:`.gh_budget`).
+        held = not gh_budget.admission(
+            ("graphql",), now=now, speculative=True, catalog=True
+        ).admitted
     if held:
         # What is cached was answered above, with no request.
         return "held"
@@ -729,8 +732,9 @@ async def request_preparation(
             return "partial"
         eligible = (catalog, admitted)
     pulls_set.core_window = window
-    # The walk's batch is speculative work, and its job copies the context it starts in.
-    with gh_budget.speculative() if ask.lane != "visible" else nullcontext():
+    # The walk's batch is the catalog's speculative work, and its job copies the context it
+    # starts in.
+    with gh_budget.speculative(catalog=True) if ask.lane != "visible" else nullcontext():
         return coordinator.start(
             key, partial(_prepare, pulls_set, window, running, eligible, carried), network=False
         )
