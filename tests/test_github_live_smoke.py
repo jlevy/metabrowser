@@ -149,7 +149,7 @@ def test_live_tree_url_with_a_slash_containing_ref(tmp_path: Path) -> None:
         and oid != default_oid
     ]
     if not slashed:
-        pytest.skip(f"{SLASHED} has no slash-named branch with a different tip from HEAD today")
+        pytest.skip(f"{SLASHED} has no branch with a slash today whose tip differs from HEAD")
     oid, branch = slashed[0]
     home = tmp_path / "home"
     anonymous = _no_credentials_path(tmp_path)
