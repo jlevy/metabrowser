@@ -455,7 +455,12 @@ A pull request’s Docs tab asks for `type:docs`: here the edited `README.md` an
 rename of `notes.txt` to `notes.md`, and not the Python file or the image.
 
 ```console
-$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&group=type:docs' | grep -E '^status|"path"|"files"|"truncated"'
+$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&group=type:docs' > docs.json
+? 0
+```
+
+```console
+$ grep -E '^status|"path"|"files"|"truncated"' docs.json
 status: 200
     "files": [
           "path": "README.md",
