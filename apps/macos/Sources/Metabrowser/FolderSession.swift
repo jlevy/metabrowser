@@ -70,7 +70,7 @@ final class FolderSession: ManagedServer {
     var onWaitingForRuntime: (() -> Void)?
     /// A page of the folder's needs a window of its own, placed as a newly opened folder's
     /// is: a folder in the background was opened again, or a link brought it forward.
-    var onPlaceWindow: ((BrowserWindowController) -> Void)?
+    var onPlaceWindow: ((BrowserWindowController, Bool) -> Void)?
     /// A restart or a resumed start of a restored background folder was refused by its
     /// root check: it now waits for one of its tabs to be selected (`FolderWindows`).
     var onRootRefused: ((FolderSession) -> Void)?
@@ -282,24 +282,26 @@ final class FolderSession: ManagedServer {
     /// Brings the folder's front window forward, showing `page` in it if one is given,
     /// and checks that its server still answers: a hung one is stopped, and its windows
     /// say so and offer Retry.
-    func showFrontWindow(page address: PageAddress? = nil) {
+    func showFrontWindow(page address: PageAddress? = nil, separately: Bool = false) {
         let front = frontPage
         if let address, let front {
             front.show(address)  // which checks before it loads
         } else {
             Task { _ = await checkHealth() }
         }
-        bringForward(front)
+        bringForward(front, separately: separately)
     }
 
     /// Brings forward the window showing `page`, or places it in a window of its own if
     /// none does, as for a folder in the background.
-    private func bringForward(_ page: FolderPage?) {
+    private func bringForward(_ page: FolderPage?, separately: Bool) {
         guard let page else { return }
         if let window = page.host?.window {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+
             window.makeKeyAndOrderFront(nil)
         } else {
-            onPlaceWindow?(BrowserWindowController(page: page))
+            onPlaceWindow?(BrowserWindowController(page: page), separately)
         }
     }
 
@@ -316,8 +318,8 @@ final class FolderSession: ManagedServer {
     /// to its end first, and the newest link sent meanwhile opens then; a failed or
     /// stopped server starts again, and the link opens once it is ready
     /// (`RepositoryLinks`).
-    func open(link: URL, showingProgress: Bool = false) {
-        bringForward(frontPage)
+    func open(link: URL, showingProgress: Bool = false, separately: Bool = false) {
+        bringForward(frontPage, separately: separately)
         let name = root.lastPathComponent
         switch links.receive(link, state: supervisor.state, restarting: restartsInFlight > 0) {
         case .open:
