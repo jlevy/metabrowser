@@ -101,14 +101,16 @@ ceiling, `SPECULATIVE_CORE_PER_HOUR`: the prefetch, the backfill past every read
 prefix, the cores walk past the rows on screen, and the label set’s periodic read run
 inside `gh_budget.speculative`, which counts what they spend toward the share too, and
 are refused with `self_ceiling` once it is spent.
-Inside the share the prefetch goes first while it has work: the cores walk, whose cost
-grows with the catalog, asks with what the prefetch’s caps can still spend this hour
-reserved while a lane has work queued or running (`pull_prefetch.reserved`), so it
-cannot take that part before a prefetch with work asks, and with nothing reserved while
-every lane is idle, so it then takes the rest.
-The backfill past every reader’s prefix reserves nothing, since Quick Search across
-every state and the ref chooser’s pull requests by branch are complete only once it is,
-and it costs a point a page once per catalog epoch.
+Inside the share the backfill and the prefetch go before the cores walk, whose cost
+grows with the catalog.
+The walk asks with part of the share reserved (`pull_prefetch.reserved`): what the
+prefetch’s caps can still spend this hour while a lane has work queued or running, a
+scan’s records while a page has asked for the lane within `ASKED_WITHIN_S`, and nothing
+for a lane no page asks for, so it cannot take that part between a page’s asks.
+It also waits while the backfill has pages the budget admits
+(`pull_cores._backfill_first`). The backfill past every reader’s prefix reserves
+nothing, since Quick Search across every state and the ref chooser’s pull requests by
+branch are complete only once it is, and it costs a point a page once per catalog epoch.
 What is on screen is never refused for the share, so it keeps the rest of the ceiling.
 `GET pulls-prefetch` reports the ceiling and the share and what the hour has used of
 each under `governor.ceiling`, beside the governor’s other state.

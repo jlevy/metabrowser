@@ -218,7 +218,7 @@ status: 200
       "hour_used": 6,
       "speculative_per_hour": 100,
       "speculative_hour_used": 6,
-      "prefetch_reserved": 0,
+      "prefetch_reserved": 48,
       "walk_hour_used": 0
     }
   },
@@ -415,7 +415,7 @@ status: 200
       "hour_used": 3,
       "speculative_per_hour": 100,
       "speculative_hour_used": 3,
-      "prefetch_reserved": 0,
+      "prefetch_reserved": 48,
       "walk_hour_used": 0
     }
   },
@@ -477,7 +477,7 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-## This server's cores walk has spent the whole of speculative work's share of the ceiling this hour, while the prefetch had nothing to do, so it reserved nothing. The ceiling itself has two thirds left, which what is on screen keeps. A visible page asks for 9 and for 10's and 9's changed files. The record is refused at once with `self_ceiling`, and the lists go on: the store gives 10's, which costs GitHub nothing, and 9's, which GitHub would give, is refused when its turn comes.
+## This server's cores walk has spent the whole of speculative work's share of the ceiling this hour, before any page asked for the prefetch, so the lane kept nothing back from it. The ceiling itself has two thirds left, which what is on screen keeps. A visible page asks for 9 and for 10's and 9's changed files. The record is refused at once with `self_ceiling`, and the lists go on: the store gives 10's, which costs GitHub nothing, and 9's, which GitHub would give, is refused when its turn comes. From this ask on, the lane keeps a scan's records from the walk.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
 exit: 0
 --- stdout ---
@@ -517,7 +517,7 @@ status: 200
       "hour_used": 100,
       "speculative_per_hour": 100,
       "speculative_hour_used": 100,
-      "prefetch_reserved": 0,
+      "prefetch_reserved": 48,
       "walk_hour_used": 100
     }
   },
@@ -585,7 +585,7 @@ status: 200
       "hour_used": 6,
       "speculative_per_hour": 100,
       "speculative_hour_used": 6,
-      "prefetch_reserved": 0,
+      "prefetch_reserved": 48,
       "walk_hour_used": 0
     }
   },

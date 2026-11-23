@@ -59,8 +59,9 @@ a server process serves; the arithmetic of :data:`RECORDS_PER_HOUR` and
 cost, is speculative work's share of the process's own ceiling
 (:data:`~.gh_budget.SPECULATIVE_CORE_PER_HOUR`), which the lane's jobs are counted toward
 and the governor refuses past. While the lane has work queued or running, the cores walk
-leaves it what its caps can still spend this hour (:func:`reserved`), so a walk that
-spends first does not refuse it before its caps do; an idle lane reserves nothing, and
+leaves it what its caps can still spend this hour, and while a page has asked for it
+within :data:`ASKED_WITHIN_S`, a scan's records (:func:`reserved`), so a walk that spends
+first does not refuse it before its caps do; a lane no page asks for reserves nothing, and
 the walk may then spend the rest of the share. What bounds the account as a whole
 is the governor's floor, read from GitHub's own count of what remains (:mod:`.gh_budget`). :data:`RECORDS_PER_SCAN`
 keeps one scan's changes from spending a whole hour's records at once; a scan is one
@@ -117,8 +118,9 @@ MERGE_BASES_AT_ONCE: Final = 4
 # out to cost. At one page a part a record costs at most :data:`POINTS_PER_RECORD` and a
 # files list from GitHub :data:`POINTS_PER_FILES_LIST`, so the two caps together spend at
 # most 12 × 6 + 20 × 1 = 92 points an hour, under the share's 100. While the lane has work
-# the cores walk leaves it what the caps can still spend at those prices (:func:`reserved`),
-# so the walk cannot take it before the lane asks (review B1 of #737); the catalog's
+# the cores walk leaves it what the caps can still spend at those prices, and between a
+# page's asks a scan's records (:func:`reserved`), so the walk cannot take it before the
+# lane asks (review B1 of #737, review A1 of #761); the catalog's
 # backfill, the label set's read, and whatever the caps do not use are first come, first
 # served with the lane. They were 40 and 100 before the ceiling, at most
 # 40 × 8 + 100 × 3 = 620 points an hour at that day's prices, against a ceiling of 300 for
@@ -138,6 +140,19 @@ FILES_PER_HOUR: Final = 20
 # measured against the fake ``gh`` in ``tests/golden/cli-github-pulls-prefetch.txt``).
 POINTS_PER_RECORD: Final = 6
 POINTS_PER_FILES_LIST: Final = 1
+# How long after a page's last ask its lane, idle, still keeps a scan's records from the
+# cores walk (:func:`reserved`). The Pulls panel asks after each scan it sees
+# (``prefetchAfterScan`` in pulls-panel.js), and while the list probe vouches for the
+# catalog a scan is due ``FULL_REFRESH_S`` apart, a freshness window apart otherwise
+# (``pull_list_route.scan_is_due``); the panel sees it at its next poll, ``SLOW_POLL_MS``
+# later. So a live panel asks at least every 90 + 30 = 120 s, and 30 s more leaves a scan's
+# own run and a timer made late. The walk asks again at most ``SLOW_POLL_MS`` after it is
+# held (``pauseCoreQueue``), so a window shorter than the gap between two asks gave the walk
+# the share in between: reserving only while the lane had work, a walk longer than one
+# hour's share held the prefetch to 2 records an hour at 5,000 rows in review A1's model of
+# #761. Over the process's ceiling a scan waits ``CEILING_FULL_READ_S``, but the ceiling
+# then refuses the walk as well. ``tests/test_github_pull_prefetch.py`` pins the sum.
+ASKED_WITHIN_S: Final = 150.0
 MAX_RECENT: Final = 16
 # The numbers ``GET pull`` most recently answered, which ``changed`` adds.
 MAX_VIEWED: Final = 16
@@ -237,6 +252,8 @@ class Lane:
     # Until when a head fetch that failed is not tried again, so an ask that moves on does
     # not repeat it at once; the lists go to GitHub meanwhile.
     heads_held_until: datetime | None = None
+    # When a page last asked for the lane, refused or not (:func:`request_prefetch`).
+    asked_at: datetime | None = None
 
     def note(self, item: Item, outcome: ItemOutcome) -> None:
         self.recent.append(
@@ -263,28 +280,47 @@ def lane_of(served: ServedPulls) -> Lane:
     return lane
 
 
+def forget_lanes() -> None:
+    """Forget every lane, as a new process holds none; for tests."""
+
+    _LANES.clear()
+
+
 def reserved(now: datetime) -> int:
     """What the cores walk leaves the prefetch of speculative work's share at *now*.
 
     For each lane with work queued or running, what its caps can still spend this hour at
-    the prices they are set at, and the price of the item running, which its cap counted
-    when it started and which may not have spent yet; for a lane with none, nothing.
+    the prices they are set at, and the price of the item running. For an idle lane a
+    page asked for within :data:`ASKED_WITHIN_S`, one scan's records, at most what the
+    hour's cap has left (:data:`RECORDS_PER_SCAN`). For any other lane, nothing.
+
+    The running item's price covers the points its cap has counted and its job has not
+    yet spent. A record is counted twice, at most :data:`POINTS_PER_RECORD` for each busy
+    lane and only in the prefetch's favour, while its checks run, before its start is
+    counted against the cap, and once its job has spent, until it ends (review A8 of
+    #761).
+
     Reserving the caps' whole price in every hour, whatever the prefetch was doing, held a
     cold catalog's walk of 800 rows, 100 batches of a point, to 8 points an hour, about 13
-    hours (review D1 of #737); reserving nothing let a walk that spent first refuse the
-    prefetch (review B1). So a lane with work has its caps, and the walk spends what an
-    idle one leaves: an ask later in that hour can find less than its caps until the hour
-    rolls. Read on the event loop, which changes the lanes.
+    hours (review D1 of #737). Reserving nothing let a walk that spent first refuse the
+    prefetch (review B1). Reserving only while a lane had work let a walk longer than one
+    hour's share take the share between a page's asks, hour after hour (review A1 of
+    #761). So a lane with work has its caps, one a page keeps asking for has a scan's
+    records, and the walk spends what the rest leave. Read on the event loop, which
+    changes the lanes.
     """
 
     price = {"record": POINTS_PER_RECORD, "files": POINTS_PER_FILES_LIST}
+    asked = timedelta(seconds=ASKED_WITHIN_S)
     total = 0
     for lane in list(_LANES.values()):
+        records = max(0, RECORDS_PER_HOUR - lane.used(lane.record_starts, now))
         if lane.queue or lane.running is not None:
-            records = max(0, RECORDS_PER_HOUR - lane.used(lane.record_starts, now))
             files = max(0, FILES_PER_HOUR - lane.used(lane.file_starts, now))
             total += records * POINTS_PER_RECORD + files * POINTS_PER_FILES_LIST
             total += price[lane.running.kind] if lane.running is not None else 0
+        elif lane.asked_at is not None and now - lane.asked_at <= asked:
+            total += min(RECORDS_PER_SCAN, records) * POINTS_PER_RECORD
     return total
 
 
@@ -337,6 +373,9 @@ async def request_prefetch(
 
     assert host.coordinator is not None
     lane = lane_of(host.pulls)
+    # A page is looking at the list, whatever the ask names or the governor says, so the
+    # cores walk leaves the lane a scan's records until it stops asking (:func:`reserved`).
+    lane.asked_at = pulls.utc_now()
     items = _items(lane, ask)
     if not items:
         lane.queue.clear()
@@ -754,7 +793,7 @@ class CeilingWire(TypedDict):
     speculative_per_hour: int
     speculative_hour_used: int
     # What the cores walk leaves the lanes of that share now, nothing while none has work
-    # (:func:`reserved`), and what the walk has spent.
+    # or was asked for lately (:func:`reserved`), and what the walk has spent.
     prefetch_reserved: int
     walk_hour_used: int
 
@@ -828,6 +867,7 @@ async def prefetch_envelope(host: PullHost | None) -> PrefetchEnvelope:
 
 
 __all__ = [
+    "ASKED_WITHIN_S",
     "FILES_PER_HOUR",
     "MAX_PREFETCH_NUMBERS",
     "POINTS_PER_FILES_LIST",
@@ -839,6 +879,7 @@ __all__ = [
     "PrefetchEnvelope",
     "PrefetchRequest",
     "PrefetchRequestError",
+    "forget_lanes",
     "lane_of",
     "note_viewed",
     "prefetch_envelope",

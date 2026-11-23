@@ -4729,16 +4729,77 @@ def test_the_cores_walk_leaves_a_prefetch_with_work_its_caps_and_spends_what_an_
         )
         with gh_budget.speculative():
             gh_budget.spent(gh_budget.SPECULATIVE_CORE_PER_HOUR - reserve - 1, now=now)
-        assert not gh_budget.over_speculative_share(now)
+        assert gh_budget.speculative_spent(now) < gh_budget.SPECULATIVE_CORE_PER_HOUR
         assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "held"
         assert calls == [(8,)]
     finally:
         lane.queue.clear()
-    # An idle lane reserves nothing: the walk spends what is left of the share.
+    # A lane no page asked for reserves nothing: the walk spends what is left of the share.
     assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "started"
     _drain_visible_cores(client)
     assert calls == [(8,), (9,)]
     assert gh_budget.walk_spent(pulls.utc_now()) == 2
+
+
+@pytest.mark.parametrize("releases", ["done", "failed"])
+def test_the_cores_walk_waits_for_a_backfill_that_is_running_or_due_and_runs_once_done(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch, releases: str
+) -> None:
+    """A2 of review A on #761: the walk and the catalog's backfill were first come in
+    speculative work's share, so a cold catalog of 5,000 rows, whose Quick Search and ref
+    chooser wait for the backfill, read it in about an hour in review A's model. While the
+    catalog's backfill has pages and the budget admits them, a background batch is held;
+    the rows on screen are not. A backfill whose last refresh failed is not due, so it
+    does not hold the walk; once the backfill is done the walk runs."""
+
+    from metabrowser.builtin_plugins.github import pull_cores
+    from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
+    from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
+
+    real_catalog, real_listed = pull_cores.read_catalog, pull_cores.read_list_refresh
+    done = [False]
+    failed: list[PullRefreshStamp] = []
+
+    def catalog(home: Path, slug: str) -> Any:
+        state = real_catalog(home, slug)
+        if state is None or done[0]:
+            return state
+        return state.model_copy(update={"done": {**state.done, "all": False}})
+
+    def listed(home: Path, slug: str, name: Any) -> Any:
+        return failed[0] if failed else real_listed(home, slug, name)
+
+    monkeypatch.setattr(pull_cores, "read_catalog", catalog)
+    monkeypatch.setattr(pull_cores, "read_list_refresh", listed)
+    walk, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8,), lane="visible"
+    )
+    _stand, client = pinned_pull
+    _drain_visible_cores(client)
+    assert calls == [(8,)]
+    ninth = {
+        **walk,
+        "window": {**walk["window"], "id": "walk-9"},
+        "numbers": [9],
+        "lane": "background",
+    }
+    # The backfill has pages and nothing refuses them: the walk waits for it.
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "held"
+    assert calls == [(8,)]
+    if releases == "done":
+        # Done, the backfill holds nothing: the walk runs.
+        done[0] = True
+    else:
+        # A backfill whose last refresh failed, longer ago than the failure itself holds
+        # the walk, is due only at its retry: it does not hold the walk meanwhile.
+        failed.append(
+            PullRefreshStamp(
+                outcome="network_error", at=utc_stamp(pulls.utc_now() - timedelta(minutes=5))
+            )
+        )
+    assert client.post(_PREPARE_CORES, json=ninth).json()["preparation"] == "started"
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
 
 
 def test_visible_core_preempts_a_background_batch_that_reads_none_of_its_rows(

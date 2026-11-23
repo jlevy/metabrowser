@@ -62,16 +62,18 @@ timeline, is never refused for the share, so it keeps the rest of the ceiling wh
 speculative work spent (the owner's rule on review A1 of #737: what is on screen updates
 within seconds, everything else every minute or two, inside the rate limit).
 
-Inside the share the prefetch goes first while it has work. The cores walk past the rows
-on screen, whose cost grows with the catalog, runs inside ``speculative(walk=True)`` and
-asks with ``reserved`` set to what the prefetch's caps can still spend this hour while a
-lane has work queued or running, and to nothing while every lane is idle
-(:func:`.pull_prefetch.reserved`). So a walk that spends first does not refuse a prefetch
-that has work before its own caps stop it (review B1 of #737), and an idle prefetch leaves
-the walk the rest of the share (review D1). The catalog's backfill past every reader's
-prefix reserves nothing for anyone: it reads 100 rows a GraphQL point, once per catalog
-epoch, and Quick Search across every state and the ref chooser's pull requests by branch
-are complete only once it has.
+Inside the share the catalog's backfill past every reader's prefix and the prefetch go
+before the cores walk past the rows on screen, whose cost grows with the catalog. The walk
+runs inside ``speculative(walk=True)`` and asks with ``reserved`` set to what the
+prefetch's caps can still spend this hour while a lane has work queued or running, to a
+scan's records while a page has asked for the lane lately, and to nothing for a lane no
+page asks for (:func:`.pull_prefetch.reserved`). So a walk that spends first does not
+refuse the prefetch before its own caps do (review B1 of #737, review A1 of #761), and a
+walk nobody's prefetch is asked beside spends the rest of the share (review D1 of #737).
+The walk also waits while the backfill has pages the budget admits (review A2 of #761).
+The backfill reserves nothing for anyone: it reads a page of rows a GraphQL point, once
+per catalog epoch, and Quick Search across every state and the ref chooser's pull
+requests by branch are complete only once it has.
 """
 
 from __future__ import annotations
@@ -114,10 +116,11 @@ AUTOMATIC_CORE_PER_HOUR: Final = 300
 # speculative work is refused (``admission(..., speculative=True)``) and resumes as the
 # hour rolls. The prefetch's caps are priced against this number beside
 # ``RECORDS_PER_HOUR`` in ``pull_prefetch.py``, and the cores walk leaves the prefetch that
-# price, less what the caps have used, while it has work (``reserved`` there). No session's
-# spending has been measured against either number: ``GET /api/plugin/github/pulls-prefetch``
-# reports both, and what the hour has used of each, under ``governor.ceiling``, for
-# ``metab --api`` to read.
+# price, less what the caps have used, while it has work, and a scan's records while a page
+# asks for it (``reserved`` there). Only a scripted first visit has been measured against
+# either number (the plan named above): ``GET /api/plugin/github/pulls-prefetch`` reports
+# both, and what the hour has used of each, under ``governor.ceiling``, for ``metab --api``
+# to read.
 SPECULATIVE_CORE_PER_HOUR: Final = 100
 # How far apart automatic full reads of one thing are held while the process is over its
 # ceiling: the plan's five minutes, 12 reads an hour for each visible record or list.
@@ -354,12 +357,6 @@ def over_ceiling(now: datetime) -> bool:
     return automatic_spent(now) >= AUTOMATIC_CORE_PER_HOUR
 
 
-def over_speculative_share(now: datetime) -> bool:
-    """Whether speculative work has spent :data:`SPECULATIVE_CORE_PER_HOUR` in the last hour."""
-
-    return speculative_spent(now) >= SPECULATIVE_CORE_PER_HOUR
-
-
 def full_read_interval(usual_s: float, *, now: datetime) -> float:
     """How far apart automatic full reads are held at *now*: *usual_s*, or the ceiling's."""
 
@@ -382,9 +379,8 @@ def admission(
     visible passes ``ceiling=False`` and slows itself instead (:func:`full_read_interval`).
     *speculative* work is refused as well, with the ceiling's reason, once speculative work
     has spent its own share of that ceiling (:data:`SPECULATIVE_CORE_PER_HOUR`) less
-    *reserved*, the part of it the caller leaves to other speculative work: the cores walk
-    leaves the prefetch what its caps can still spend while it has work
-    (:func:`.pull_prefetch.reserved`).
+    *reserved*, the part of it the caller leaves to other speculative work: what the cores
+    walk leaves the prefetch (:func:`.pull_prefetch.reserved`).
     """
 
     if held_until(now) is not None:
@@ -433,7 +429,6 @@ __all__ = [
     "observations",
     "observe",
     "over_ceiling",
-    "over_speculative_share",
     "readers_own",
     "speculative",
     "speculative_spent",

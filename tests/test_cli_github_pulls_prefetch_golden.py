@@ -31,7 +31,7 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh_budget, pull_list, pulls
+from metabrowser.builtin_plugins.github import gh_budget, pull_list, pull_prefetch, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
 from metabrowser.cache import pull_refs
 from metabrowser.cache.urls import GitSource
@@ -126,7 +126,9 @@ class _Session:
             path = self.tmp_path / "request.json"
             path.write_text(json.dumps(body) + "\n", encoding="utf-8")
             args = (*args, "--data", str(path))
+        # Each command is a new process: no budget spent, and no prefetch lane asked for.
         gh_budget.forget()
+        pull_prefetch.forget_lanes()
         if spent is not None:
             spent_all, of_it_walk = spent
             with gh_budget.speculative(walk=True):
@@ -310,6 +312,14 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
         ("record", 10, "refreshed"),
     ]
     assert (report["records"]["hour_used"], report["files"]["hour_used"]) == (1, 0)
+    # The price the reserve counts a record at is what 10's read spent: the pull and five
+    # parts, a page each (review A5 of #761). The page asked a moment ago, so the lane keeps
+    # a scan's records from the cores walk.
+    ceiling = report["governor"]["ceiling"]
+    assert ceiling["speculative_hour_used"] == pull_prefetch.POINTS_PER_RECORD
+    assert ceiling["prefetch_reserved"] == (
+        pull_prefetch.RECORDS_PER_SCAN * pull_prefetch.POINTS_PER_RECORD
+    )
 
     session.say(
         "7's page asks for its automatic refresh. Its checks alone are due, but its last full "
@@ -363,11 +373,12 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
 
     session.say(
         "This server's cores walk has spent the whole of speculative work's share of the "
-        "ceiling this hour, while the prefetch had nothing to do, so it reserved nothing. "
-        "The ceiling itself has two thirds left, which what is on screen keeps. A visible "
-        "page asks for 9 and for 10's and 9's changed files. The record is refused at once "
-        "with `self_ceiling`, and the lists go on: the store gives 10's, which costs GitHub "
-        "nothing, and 9's, which GitHub would give, is refused when its turn comes."
+        "ceiling this hour, before any page asked for the prefetch, so the lane kept nothing "
+        "back from it. The ceiling itself has two thirds left, which what is on screen keeps. "
+        "A visible page asks for 9 and for 10's and 9's changed files. The record is refused "
+        "at once with `self_ceiling`, and the lists go on: the store gives 10's, which costs "
+        "GitHub nothing, and 9's, which GitHub would give, is refused when its turn comes. "
+        "From this ask on, the lane keeps a scan's records from the walk."
     )
     share = (gh_budget.SPECULATIVE_CORE_PER_HOUR, gh_budget.SPECULATIVE_CORE_PER_HOUR)
     spent_share = session.run(
@@ -385,7 +396,10 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     assert (governor["admits"], governor["reason"]) == (False, "self_ceiling")
     ceiling = governor["ceiling"]
     assert ceiling["speculative_hour_used"] >= ceiling["speculative_per_hour"]
-    assert (ceiling["walk_hour_used"], ceiling["prefetch_reserved"]) == (share[1], 0)
+    assert (ceiling["walk_hour_used"], ceiling["prefetch_reserved"]) == (
+        share[1],
+        pull_prefetch.RECORDS_PER_SCAN * pull_prefetch.POINTS_PER_RECORD,
+    )
     assert ceiling["hour_used"] < ceiling["per_hour"]
     assert [(entry["number"], entry["outcome"]) for entry in report["recent"]] == [
         (10, "refreshed"),
@@ -552,6 +566,12 @@ def test_golden_open_pull_requests_are_listed_from_one_head_fetch(
     merged = session.run(CANONICAL, "--api", PREFETCH, body={"files": [8]}, full=True)
     report = json.loads(merged.stdout[merged.stdout.rindex("status: 200\n{") + 12 :])
     assert report["files"]["hour_used"] == 1
+    # The price the reserve counts a list from GitHub at is what 8's spent: its one page
+    # (review A5 of #761).
+    assert (
+        report["governor"]["ceiling"]["speculative_hour_used"]
+        == pull_prefetch.POINTS_PER_FILES_LIST
+    )
     assert fetches == [[topic]]
     listed = session.run(CANONICAL, "--api", "/api/plugin/github/pull-files?number=8&limit=0")
     assert listed.payload().get("listed_from") != "comparison"

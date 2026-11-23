@@ -44,9 +44,10 @@ reader’s other tools.
 - Background work yields to visible work and stops before the account’s budget runs low,
   as `BACKGROUND_FLOOR` already does.
   A change found on the page on screen is still read below the floor.
-- A repository’s first visit fills its catalog as fast as GitHub answers its pages,
-  inside speculative work’s share, since Quick Search across every state and the ref
-  chooser’s pull requests by branch are complete only once it has (review D1 of #737).
+- A repository’s first visit fills its catalog before the cores walk spends any of
+  speculative work’s share, as fast as GitHub answers its pages until that share is
+  spent, since Quick Search across every state and the ref chooser’s pull requests by
+  branch are complete only once it has (review D1 of #737, review A2 of #761).
 
 ## Non-Goals
 
@@ -217,9 +218,8 @@ Every automatic read of GitHub is one of three kinds, and each has its own caden
 3. **Background preparation** is the prefetch of what the reader may open next.
    It runs only while the account is above `BACKGROUND_FLOOR` and yields to the other
    two, as it did before this plan, and now also only inside speculative work’s share of
-   the self-ceiling, where, while it has work, it goes before the cores walk (see
-   [Budget](#budget)). A files list the store gives costs GitHub nothing, so no budget
-   holds it.
+   the self-ceiling, where it goes before the cores walk (see [Budget](#budget)). A
+   files list the store gives costs GitHub nothing, so no budget holds it.
 
 ### Cadence by What Is Visible
 
@@ -371,28 +371,41 @@ guards and adds one:
   The prefetch’s `RECORDS_PER_HOUR` and `FILES_PER_HOUR` are priced to fit the share,
   with the arithmetic beside them in `pull_prefetch.py`. Neither number has been
   measured against a real session: `GET pulls-prefetch` reports both and what the hour
-  has used of each under `governor.ceiling`. Inside the share the prefetch goes first
-  while it has work. The cores walk runs inside `gh_budget.speculative(walk=True)` and
-  asks with what the prefetch’s caps can still spend this hour reserved, at the prices
-  they are set at, while a lane has work queued or running, and with nothing reserved
-  while every lane is idle (`pull_prefetch.reserved`). With one first-come share, a cold
-  catalog’s walk of 800 rows spent all of it and the prefetch was refused (review B1 of
-  #737); with the caps’ whole price reserved in every hour, the walk and the backfill
-  had 8 points an hour between them, so a cold catalog of 800 rows took about 13.5
-  hours, and Quick Search and the chooser’s pull requests by branch were incomplete as
-  long (review D1). The catalog’s backfill reserves nothing for the prefetch: it costs a
-  point a page, once per catalog epoch, and those two wait on it.
-  A cold catalog of 800 rows is then 8 points of backfill, read as fast as its pages
-  come, and 100 walk batches, of which an idle prefetch leaves the walk about 90 at once
-  and the rest as the hour rolls.
+  has used of each under `governor.ceiling`. Inside the share the catalog’s backfill and
+  the prefetch go before the cores walk.
+  The walk runs inside `gh_budget.speculative(walk=True)` and asks with part of the
+  share reserved for the prefetch (`pull_prefetch.reserved`): what a lane’s caps can
+  still spend this hour, at the prices they are set at, while it has work queued or
+  running; one scan’s records (`RECORDS_PER_SCAN`) while a page has asked for it within
+  `ASKED_WITHIN_S`, the longest gap between a live panel’s asks; and nothing for a lane
+  no page asks for. It also waits while the catalog’s backfill has pages the budget
+  admits (`pull_cores._backfill_first`). The catalog’s backfill reserves nothing for the
+  prefetch: it costs a point a page, once per catalog epoch, and Quick Search and the
+  chooser wait on it. Each earlier order failed in turn.
+  With one first-come share, a cold catalog’s walk of 800 rows spent all of it and the
+  prefetch was refused (review B1 of #737). With the caps’ whole price reserved in every
+  hour, the walk and the backfill had 8 points an hour between them, so a cold catalog
+  of 800 rows took about 13.5 hours, and Quick Search and the chooser’s pull requests by
+  branch were incomplete as long (review D1). With the caps reserved only while a lane
+  had work, a walk longer than one hour’s share took the share between the page’s asks,
+  hour after hour, and the backfill shared its points first come with the walk (reviews
+  A1 and A2 of #761). Review A’s scratch model of #761 compares the orders, with a page
+  asking for one changed record every 120 s scan; it is a model, not a measurement.
+  With this order, beside a walk of 5,000 rows, the prefetch reads 9, 11, 12 and 12
+  records in the first four hours, where it had read 7, 2, 2 and 2, and that catalog’s
+  backfill is read in 73 s, where it had taken an hour; a cold walk of 800 rows takes
+  about 3 hours, where it had taken one.
   A cold first visit to this repository measured on 2026-11-23, at 712 pull requests,
   read the backfill’s 8 pages in 10 seconds and walked all 89 batches in 4.5 minutes
   without a hold, ending at 97 of the share’s 100: 8 for the backfill, 89 for the walk.
   The driver asked for the open list and walked every row in the background lane, a
-  batch a second, so it asked no prefetch, cores of rows on screen or labels, and the
-  machine was heavily loaded.
-  The cost of the order is that a walk which ran while the prefetch was idle can leave a
-  prefetch asked later that hour less than its caps, until the hour rolls.
+  batch a second once the backfill was done, so it asked no prefetch, cores of rows on
+  screen or labels, and the machine was heavily loaded.
+  With no prefetch asked and the walk after the backfill, this order is the one it ran.
+  The cost of the order is the walk’s: while a page keeps asking, a scan’s records are
+  held from it whether or not a scan finds a record changed, so beside a quiet
+  repository the walk spends the share less those records.
+  That was chosen on review A1 of #761 over a walk budget of its own beside the share.
   The label set’s read is refused only at the whole share, as the prefetch is, since a
   page’s chips wait on it.
   A files list the store gives is not refused at all, since it costs GitHub nothing; a
@@ -626,8 +639,10 @@ account check and the bounds on probes.
   is: nothing for a `304`, one for a `200`.
 - [x] `SPECULATIVE_CORE_PER_HOUR`, speculative work’s share of that ceiling, with the
   prefetch’s caps priced to fit it (see [Budget](#budget)), and the cores walk leaving
-  the prefetch what its caps can still spend while it has work
-  (`pull_prefetch.reserved`), so the prefetch goes first (reviews B1 and D1 of #737).
+  the prefetch what its caps can still spend while it has work and a scan’s records
+  while a page asks for it (`pull_prefetch.reserved`), and waiting for the catalog’s
+  backfill, so the backfill and the prefetch go first (reviews B1 and D1 of #737, A1 and
+  A2 of #761).
 
 ### Phase 3: Metabrowser’s Own Stores
 
@@ -680,11 +695,12 @@ account check and the bounds on probes.
   probes would overlap their own latency.
 - Is 300 `core` an hour per server the right self-ceiling for automatic work, given how
   much of the account’s hour other tools use, and is a third of it the right share for
-  speculative work, with the cores walk leaving the prefetch its caps while it has work,
-  and the backfill reserving nothing?
-  Only a scripted first visit has been measured (see [Budget](#budget)), and it asked no
-  prefetch: `governor.ceiling` in `GET pulls-prefetch` reports what an hour used, and a
-  few real sessions’ readings should be recorded beside the constants.
+  speculative work, with the cores walk leaving the prefetch its caps while it has work
+  and a scan’s records while a page asks for it, and waiting for the backfill, which
+  reserves nothing? Only a scripted first visit has been measured (see
+  [Budget](#budget)), and it asked no prefetch: `governor.ceiling` in
+  `GET pulls-prefetch` reports what an hour used, and a few real sessions’ readings
+  should be recorded beside the constants.
   Should the servers of one home share a ceiling instead, through a file beside their
   event logs?
 - Below the floor nothing automatic observes the GraphQL budget again: the catalog’s

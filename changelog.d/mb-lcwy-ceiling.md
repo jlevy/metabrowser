@@ -8,11 +8,12 @@
   catalog’s backfill, descriptions for rows not on screen, and the label set, may spend
   only a third of those calls, so what is on screen keeps the rest: the prefetch now
   reads at most 12 records and 20 files lists from GitHub an hour, where it read 40 and
-  100\. Inside that third the prefetch goes first while it has something to read: the
-  descriptions for rows not on screen leave it what its caps can still spend, and take
-  the rest while it has nothing; the catalog’s backfill, which Quick Search and the ref
-  chooser’s pull requests by branch wait on, waits for neither; and a changed-files list
-  the local store gives, which costs GitHub nothing, is never held.
+  100\. Inside that third the catalog’s backfill, which Quick Search and the ref
+  chooser’s pull requests by branch wait on, and the prefetch go first: the descriptions
+  for rows not on screen wait for the backfill, leave the prefetch what its caps can
+  still spend while it has something to read and a scan’s records while a page keeps
+  asking, and take the rest; and a changed-files list the local store gives, which costs
+  GitHub nothing, is never held.
   `GET /api/plugin/github/pulls-prefetch` reports the ceiling, that share, what the
   descriptions leave the prefetch, and the hour’s use of each under `governor.ceiling`.
   See

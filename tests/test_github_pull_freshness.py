@@ -1586,6 +1586,31 @@ def test_the_pull_requests_the_cap_remembers_refusing_are_bounded(
     assert f"demo:pull/{served_pull.MAX_KEPT_PULLS}" not in refused
 
 
+def test_a_remembered_asker_that_keeps_asking_keeps_its_place_while_the_cap_is_full(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A4 of review A on #761: a refusal remembered is renewed by each ask, though the queue
+    is full, so its asker keeps its place past ``PROBE_TURN_S`` while it keeps asking.
+    Renewed only while there was room, it lapsed a turn after its first refusal and came
+    back at the end, behind refusals that never asked again."""
+
+    monkeypatch.setattr(served_pull, "MAX_PROBES_IN_FLIGHT", 0)
+    refused = served_pull._REFUSED  # pyright: ignore[reportPrivateUsage]
+    keeper = "demo:pull/1"
+    assert not served_pull._may_probe(keeper, NOW)  # pyright: ignore[reportPrivateUsage]
+    # Refusals that never ask again fill the queue, half an interval later.
+    filled = NOW + timedelta(seconds=ATTENDED_PROBE_S / 2)
+    for asker in range(2, served_pull.MAX_KEPT_PULLS + 1):
+        assert not served_pull._may_probe(f"demo:pull/{asker}", filled)  # pyright: ignore[reportPrivateUsage]
+    assert len(refused) == served_pull.MAX_KEPT_PULLS
+    asks = 3
+    for turn in range(1, asks + 1):
+        now = NOW + timedelta(seconds=ATTENDED_PROBE_S * turn)
+        assert not served_pull._may_probe(keeper, now)  # pyright: ignore[reportPrivateUsage]
+        assert (next(iter(refused)), refused[keeper][0]) == (keeper, now)
+    assert ATTENDED_PROBE_S * asks > served_pull.PROBE_TURN_S
+
+
 def test_a_settle_wait_that_lapsed_unanswered_is_renewed_for_a_record_read_long_after(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

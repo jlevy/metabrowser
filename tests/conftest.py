@@ -406,6 +406,26 @@ def _reset_probe_turns() -> Generator[None, None, None]:  # pyright: ignore[repo
     forget()
 
 
+@pytest.fixture(autouse=True)
+def _reset_prefetch_lanes() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start every test with no prefetch lane, as a new process.
+
+    ``pull_prefetch`` keeps one lane per repository a process serves, and an idle lane a
+    page asked for lately keeps a scan's records from the cores walk (``reserved``), so a
+    lane one test left, asked for at the shared clock, would hold back the next test's
+    walk. A process that never imported it holds none.
+    """
+
+    def forget() -> None:
+        loaded = sys.modules.get("metabrowser.builtin_plugins.github.pull_prefetch")
+        if loaded is not None:
+            loaded.forget_lanes()
+
+    forget()
+    yield
+    forget()
+
+
 @pytest.fixture(scope="session")
 def _no_server_command(tmp_path_factory: pytest.TempPathFactory) -> str:  # pyright: ignore[reportUnusedFunction]
     refuser = tmp_path_factory.mktemp("no-detached-server") / "metab"

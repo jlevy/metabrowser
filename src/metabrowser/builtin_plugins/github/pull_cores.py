@@ -48,6 +48,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
     rate_limit_holds,
     read_list_refresh,
 )
+from metabrowser.builtin_plugins.github.pull_list_route import catalog_job_key
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     PullRefreshStamp,
@@ -319,6 +320,36 @@ def _failure_held(pulls_set: ServedPulls) -> bool:
     if failure.outcome == "rate_limited" and failure.reset_at is not None:
         return now < parse_stamp(failure.reset_at)
     return now < parse_stamp(failure.at) + timedelta(seconds=FRESHNESS_WINDOW_S)
+
+
+def _backfill_first(
+    catalog: CatalogState | None,
+    listed: PullRefreshStamp | None,
+    coordinator: RefreshCoordinator,
+    source: str,
+) -> bool:
+    """Whether the cores walk waits for the catalog's backfill, which is running or due.
+
+    The backfill reads :data:`~.pull_catalog.PAGE_SIZE` rows a point and the walk
+    :data:`~.pull_catalog.MAX_CATALOG_MEMBERS`, and Quick Search across every state and the
+    ref chooser's pull requests by branch are complete only once the backfill is
+    (``done["all"]``). With the two first come in speculative work's share, a cold catalog
+    of 5,000 rows read its backfill in about an hour in review A2's model of #761, and in
+    73 s with the walk held. So while the backfill has pages, the walk waits. A budget
+    that refuses the backfill (:func:`.pull_list_refresh.backfill_admitted`) refuses the
+    walk too, which asks the same with part of the share reserved, so it is not asked
+    here. A backfill whose last refresh failed is due again only after its retry window,
+    so unless its job is running it does not hold the walk: one that keeps failing holds
+    it no longer than the failure itself does (:func:`_failure_held`).
+    """
+
+    if catalog is None or catalog.done["all"]:
+        return False
+    return (
+        listed is None
+        or listed.outcome == "succeeded"
+        or coordinator.running(catalog_job_key(source))
+    )
 
 
 def _attemptable(
@@ -606,11 +637,14 @@ async def request_preparation(
         held = gh_budget.held_until(now) is not None or gh_budget.over_ceiling(now)
     else:
         # The walk past them prepares rows a reader may open: speculative work, held by the
-        # floor and by speculative work's share of the ceiling less what a prefetch that
-        # has work can still spend, so the prefetch goes first (:mod:`.gh_budget`).
-        held = not gh_budget.admission(
-            ("graphql",), now=now, speculative=True, reserved=pull_prefetch.reserved(now)
-        ).admitted
+        # floor and by speculative work's share of the ceiling less what the prefetch keeps
+        # (:func:`.pull_prefetch.reserved`), so the prefetch goes first (:mod:`.gh_budget`),
+        # and behind the catalog's backfill, which Quick Search waits for.
+        held = _backfill_first(catalog, listed, coordinator, pulls_set.source) or (
+            not gh_budget.admission(
+                ("graphql",), now=now, speculative=True, reserved=pull_prefetch.reserved(now)
+            ).admitted
+        )
     if held:
         # What is cached was answered above, with no request.
         return "held"

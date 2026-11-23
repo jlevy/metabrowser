@@ -301,12 +301,13 @@ def backfill_admitted() -> bool:
 
     That backfill is background work, which :mod:`.gh_budget` admits only above its floor
     and outside a rate hold, and speculative work, which it admits only within its share of
-    the process's ceiling. It reserves nothing of that share for the prefetch, as the cores
-    walk does: it reads 100 rows a point, once per catalog epoch, and Quick Search across
-    every state and the ref chooser's pull requests by branch are complete only once it has,
-    where reserving the prefetch's caps held a cold catalog of 800 rows to 8 points an hour
-    with the walk (review D1 of #737). A reader's own pages, its filter's prefix and the
-    scan that keeps the list current, are never asked.
+    the process's ceiling. Unlike the cores walk, it reserves nothing of that share for the
+    prefetch, and the walk waits for it (``pull_cores``): it reads one
+    :data:`~.pull_catalog.PAGE_SIZE` of rows a point, once per catalog epoch, and Quick
+    Search across every state and the ref chooser's pull requests by branch are complete
+    only once it has, where reserving the prefetch's caps held a cold catalog of 800 rows
+    to 8 points an hour with the walk (review D1 of #737). A reader's own pages, its
+    filter's prefix and the scan that keeps the list current, are never asked.
     """
 
     return gh_budget.admission(("graphql",), now=pull_list.utc_now(), speculative=True).admitted
