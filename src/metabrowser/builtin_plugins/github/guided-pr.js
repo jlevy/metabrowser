@@ -3,11 +3,17 @@
 /**
  * @typedef {{old: number | null, new: number | null, op: "add" | "del" | "context", text: string}} Row
  * @typedef {{path: string, state: string, href: string | null, rows: Row[]}} Reference
- * @typedef {{state: "ready", record_revision: string, step: number, step_count: number,
- *   title: string, note: string, references: Reference[], assets?: unknown}} Step
+ * @typedef {{merge_base: string | null, head: string}} Pins
+ * @typedef {{guide: Pins, current: Pins, github_newer: boolean,
+ *   history: "ahead" | "rewritten" | "unavailable", commit_count: number | null,
+ *   commits: {sha: string, subject: string}[], changed_paths: string[] | null,
+ *   changed_steps: number[] | null}} Staleness
+ * @typedef {{state: "ready" | "stale", record_revision: string, step: number,
+ *   step_count: number, title: string, note: string, references: Reference[],
+ *   stale?: Staleness, assets?: unknown}} Step
  * @typedef {{state: "absent" | "invalid" | "stale" | "comparison_unavailable" |
  *   "description_truncated" | "step_not_found" | "not_cached", record_revision: string | null,
- *   message?: string}} Refusal
+ *   message?: string, stale?: Staleness | null}} Refusal
  * @typedef {Step | Refusal | {state: "loading" | "preview" | "error" | "updated"}} GuideState
  */
 
@@ -55,7 +61,7 @@ export function createGuideNavigation(deps) {
         deps.render({ state: "updated" });
         return;
       }
-      ready = result.state === "ready" ? result : null;
+      ready = "step" in result ? result : null;
       deps.render(result);
     } catch {
       if (!request.signal.aborted) {
@@ -76,14 +82,14 @@ export function createGuideNavigation(deps) {
       }
       revision = nextRevision;
       headMoved = moved;
-      if (nextRevision === null || moved) {
+      if (nextRevision === null) {
         pending?.abort();
         ready = null;
-        deps.render(
-          moved ? { state: "stale", record_revision: nextRevision } : { state: "preview" },
-        );
+        deps.render({ state: "preview" });
         return;
       }
+      // A head GitHub reports past the record's is the server's to read: it answers the
+      // guide's steps with what is out of date.
       void load(nextRevision);
     },
     /** @param {-1 | 1} by */
@@ -107,7 +113,8 @@ export function createGuideNavigation(deps) {
 
 const MESSAGES = Object.freeze({
   absent: "This pull request has no guide.",
-  stale: "This guide is out of date. Its author needs to update it for the current comparison.",
+  stale:
+    "This guide was written for an earlier version of this pull request, which the local copy does not have, so its steps cannot be shown.",
   comparison_unavailable:
     "The comparison is unavailable. Fetch it from Changes, then reopen the guide.",
   description_truncated: "The cached description is incomplete and contains no complete guide.",
@@ -165,8 +172,9 @@ function proseHost(prose) {
  * snippet; the excerpt shows the author's selection, not the plugin's syntax tokens.
  *
  * @param {Reference} reference @param {(path: string) => void} open
+ * @param {boolean} changed Whether the file changed after the guide was written.
  */
-function renderReference(reference, open) {
+function renderReference(reference, open, changed) {
   const section = element("section", "", "diff-file github-pull-guide-reference");
   const bar = element("div", "", "diff-file-bar github-pull-guide-reference-header");
   const name = element("span", "", "diff-file-toggle");
@@ -193,6 +201,15 @@ function renderReference(reference, open) {
     bar.append(full);
   }
   section.append(bar);
+  if (changed) {
+    section.append(
+      element(
+        "p",
+        "This file changed after the guide was written. The excerpt is from the guide's revision.",
+        "github-pull-quiet github-pull-guide-changed",
+      ),
+    );
+  }
   if (reference.state === "ready") {
     const body = element("div", "", "diff-file-body github-pull-guide-excerpt");
     body.setAttribute("role", "group");
@@ -215,6 +232,106 @@ function renderReference(reference, open) {
     section.append(element("p", message ?? "This excerpt is unavailable.", "github-pull-quiet"));
   }
   return section;
+}
+
+/** @param {string} sha */
+const short = (sha) => element("code", sha.slice(0, 7));
+
+/** @param {number} count @param {string} one */
+const plural = (count, one) => `${count} ${one}${count === 1 ? "" : "s"}`;
+
+/** @param {number[]} steps */
+function stepList(steps) {
+  const named = steps.map(String);
+  const last = named.pop();
+  return `${steps.length === 1 ? "Step" : "Steps"} ${named.length > 0 ? `${named.join(", ")} and ${last}` : last}`;
+}
+
+/**
+ * What a stale guide was written for, what the pull request is now, and what changed
+ * between them, as the route answers it (`_staleness` in guided_pr.py).
+ *
+ * @param {Staleness} stale
+ * @param {number | null} stepCount
+ */
+export function staleNotice(stale, stepCount) {
+  const box = element("div", "", "notice github-pull-notice github-pull-guide-stale");
+  box.dataset.severity = "warning";
+  box.setAttribute("role", "status");
+  /** @param {Array<Node | string>} parts */
+  const say = (parts) => {
+    const paragraph = element("p");
+    paragraph.append(...parts);
+    box.append(paragraph);
+  };
+  box.append(element("p", "This guide is out of date.", "github-pull-guide-stale-title"));
+  const baseMoved =
+    stale.current.merge_base !== null && stale.current.merge_base !== stale.guide.merge_base;
+  const headMoved = stale.current.head !== stale.guide.head;
+  /** @param {Pins} pins */
+  const pinned = (pins) =>
+    baseMoved && pins.merge_base !== null
+      ? ["head ", short(pins.head), " on merge base ", short(pins.merge_base)]
+      : ["head ", short(pins.head)];
+  if (headMoved || baseMoved) {
+    say([
+      "It was written for ",
+      ...pinned(stale.guide),
+      ". The pull request is now at ",
+      ...pinned(stale.current),
+      ".",
+    ]);
+  }
+  if (stale.github_newer) {
+    say([
+      "GitHub reports a newer head than this copy of the pull request. Reload it to compare the guide with the newest commits.",
+    ]);
+  }
+  if (headMoved && stale.history === "unavailable") {
+    say(["The local copy does not have the guide's head, so the commits since are unknown."]);
+  } else if (headMoved) {
+    const count = stale.commit_count ?? 0;
+    say([
+      stale.history === "rewritten"
+        ? `The guide's head is no longer in the branch's history, as after a rebase or force push. The branch has ${plural(count, "commit")} the guide's head does not:`
+        : `${plural(count, "commit")} since the guide:`,
+    ]);
+    const list = element("ul", "", "github-pull-guide-commits");
+    for (const commit of stale.commits) {
+      const item = element("li");
+      item.append(short(commit.sha), " ", commit.subject);
+      list.append(item);
+    }
+    if (count > stale.commits.length) {
+      list.append(element("li", `and ${plural(count - stale.commits.length, "earlier commit")}`));
+    }
+    box.append(list);
+  }
+  if (baseMoved) {
+    say(["Its merge base moved, as when the base branch is merged in or the branch is rebased."]);
+  }
+  /** @type {Array<Node | string>} */
+  const verdict = [];
+  if (stale.changed_steps === null || stale.changed_paths === null) {
+    verdict.push("Whether its steps still match the pull request is unknown.");
+  } else if (stale.changed_steps.length === 0) {
+    verdict.push("None of the files its steps cite changed, so every step still matches.");
+  } else {
+    const all = stepCount !== null && stale.changed_steps.length === stepCount;
+    verdict.push(
+      `${stepList(stale.changed_steps)} ${stale.changed_steps.length === 1 ? "cites" : "cite"} ${plural(stale.changed_paths.length, "file")} changed since: `,
+    );
+    stale.changed_paths.forEach((path, at) => {
+      verdict.push(...(at > 0 ? [", "] : []), element("code", path));
+    });
+    verdict.push(
+      all
+        ? ". Their excerpts are from the guide's revision."
+        : ". The other steps still match; the changed ones are marked.",
+    );
+  }
+  say([...verdict, " Its author can update the guide's pins and ranges in the description."]);
+  return box;
 }
 
 /**
@@ -242,6 +359,15 @@ export function mountGuidedPR(host, number, open, loadStyles) {
   const notice = element("p", "", "github-pull-quiet");
   notice.setAttribute("role", "status");
   host.append(controls, detail, notice);
+  // What a stale guide is out of date with leads the page, above its introduction.
+  const outdated = element("div", "", "github-pull-guide-outdated");
+  outdated.hidden = true;
+  host.prepend(outdated);
+  /** @param {Staleness | null | undefined} stale @param {number | null} count */
+  const showStale = (stale, count) => {
+    outdated.hidden = !stale;
+    outdated.replaceChildren(...(stale ? [staleNotice(stale, count)] : []));
+  };
 
   const navigation = createGuideNavigation({
     async read(step, signal) {
@@ -253,7 +379,7 @@ export function mountGuidedPR(host, number, open, loadStyles) {
         throw new Error("Could not read the guide");
       }
       const result = await response.json();
-      if (result.state === "ready" && result.assets !== undefined) {
+      if ("step" in result && result.assets !== undefined) {
         // A failed stylesheet leaves the text readable in the page's own type.
         styles ??= loadStyles(result.assets).catch((error) => {
           console.warn("metabrowser github: the guide's text styles did not load", error);
@@ -275,7 +401,11 @@ export function mountGuidedPR(host, number, open, loadStyles) {
         detail.replaceChildren(wait);
         return;
       }
-      const available = state.state === "ready";
+      const available = "step" in state;
+      showStale(
+        "stale" in state ? state.stale : null,
+        available ? /** @type {Step} */ (state).step_count : null,
+      );
       controls.hidden = !available;
       if (!available) {
         previous.disabled = next.disabled = true;
@@ -296,9 +426,37 @@ export function mountGuidedPR(host, number, open, loadStyles) {
         element("h2", state.title, "github-pull-guide-title"),
         element("p", state.note, "github-pull-guide-commentary"),
       );
+      const changed = new Set(state.stale?.changed_paths ?? []);
       const references = element("div", "", "metabrowser-diff-host github-pull-guide-references");
-      references.append(...state.references.map((reference) => renderReference(reference, open)));
-      detail.replaceChildren(proseHost(step), references);
+      references.append(
+        ...state.references.map((reference) =>
+          renderReference(reference, open, changed.has(reference.path)),
+        ),
+      );
+      // A step is a card, as Conversation draws a comment, headed as the author's guided
+      // review so it reads apart from the discussion.
+      const head = element("div", "", "github-pull-card-head github-pull-guide-card-head");
+      head.append(
+        element(
+          "span",
+          "Guided review",
+          "file-header-badge github-pull-badge github-pull-guide-badge",
+        ),
+        ` Step ${state.step} of ${state.step_count}`,
+      );
+      if (state.stale?.changed_steps?.includes(state.step)) {
+        head.append(
+          " · ",
+          element("span", "cites files changed since the guide", "github-pull-guide-step-changed"),
+        );
+      }
+      const card = element(
+        "section",
+        "",
+        "page-card github-pull-card github-pull-event github-pull-guide-card",
+      );
+      card.append(head, proseHost(step), references);
+      detail.replaceChildren(card);
     },
   });
   controls.hidden = true;

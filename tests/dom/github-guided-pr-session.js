@@ -16,7 +16,9 @@ async function main() {
     },
     render(answer) {
       states.push(
-        answer.state === "ready" ? `step ${answer.step} of ${answer.step_count}` : answer.state,
+        "step" in answer
+          ? `${answer.state === "ready" ? "" : `${answer.state} `}step ${answer.step} of ${answer.step_count}`
+          : answer.state,
       );
     },
   });
@@ -40,10 +42,18 @@ async function main() {
 
   guide.move(-1);
   assert.equal(pending[0].signal.aborted, false);
+  // GitHub reports a newer head: the read on its way is dropped and the step is asked for
+  // again, which the server answers as stale with the step still in it. A stale guide's steps
+  // still move.
   guide.show("first", true);
   assert.equal(pending[0].signal.aborted, true);
   await respond({ state: "ready", record_revision: "first", step: 1, step_count: 2 });
-  assert.equal(states.at(-1), "stale");
+  const stale = { state: "stale", record_revision: "first", step_count: 2, stale: {} };
+  await respond({ ...stale, step: 1 });
+  assert.equal(states.at(-1), "stale step 1 of 2");
+  guide.move(1);
+  await respond({ ...stale, step: 2 });
+  assert.equal(states.at(-1), "stale step 2 of 2");
 
   guide.show("second", false);
   await respond({ state: "ready", record_revision: "second", step: 1, step_count: 2 });

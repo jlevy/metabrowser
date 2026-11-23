@@ -239,12 +239,31 @@ try {
   same("its guided address says so", await said(), "This pull request has no guide.");
   check("and keeps the tab it was asked for", (await evaluate(TABS)).includes("Guided PR"));
 
-  // 4. A guide that cannot be read says why: stale (its head is not the record's), and two blocks.
+  // 4. A stale guide (its head is not the record's) still shows its steps, under a notice at
+  // the top of the page that says what is out of date; a guide that cannot be read says why.
   await go("/pull/8/guided");
+  await settled("Start with the count");
+  await waitFor(`document.querySelector(".github-pull-guide-stale") !== null`);
   same(
-    "a stale guide",
-    await said(),
-    "This guide is out of date. Its author needs to update it for the current comparison.",
+    "a stale guide's notice leads the page",
+    await evaluate(
+      `document.querySelector(".github-pull-guided-pr").firstElementChild.contains(document.querySelector(".github-pull-guide-stale"))`,
+    ),
+    true,
+  );
+  check(
+    "and names the revisions and the commits since",
+    await evaluate(`(() => {
+      const text = document.querySelector(".github-pull-guide-stale").textContent;
+      return text.includes("It was written for head 85fcb2f") && text.includes("more guide");
+    })()`),
+  );
+  same(
+    "its step is a guided-review card",
+    await evaluate(
+      `document.querySelector(".github-pull-guide-card .github-pull-card-head").textContent.replace(/\\s+/g, " ").trim()`,
+    ),
+    "Guided review Step 1 of 2 · cites files changed since the guide",
   );
   await go("/pull/9/guided");
   same("two blocks", await said(), "Use one guided-pr block in the pull request description.");

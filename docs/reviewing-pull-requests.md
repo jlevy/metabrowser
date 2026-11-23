@@ -202,10 +202,14 @@ diff. The
 describes the payload, and `MAX_ITEMS` and `MAX_REFERENCES` in `guided_pr.py` bound its
 steps and each step’s references.
 
-The guide is read from the cached description and its excerpts come from the cached
-comparison. If the merge base or head changes, update the guide’s references and commit
-IDs in the PR description.
-A stale guide cannot show excerpts against the new comparison.
+The guide is read from the cached description, and its excerpts come from the comparison
+it is pinned to. When the pull request’s head or merge base moves past the guide’s pins,
+the guide is out of date: a notice at the top of Guided PR names the revision the guide
+was written for, the pull request’s current one, and the commits since (or says the
+branch was rebased), and it marks the steps that cite a file changed since.
+Every step still shows, with excerpts from the guide’s own revision; a step that cites
+no changed file still matches the pull request.
+To bring the guide current, update its pins and ranges in the PR description.
 
 A guide the page cannot read says why in place of the steps: invalid YAML, a second
 block, another contract, or a field that fails the schema.

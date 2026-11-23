@@ -6189,13 +6189,7 @@ export function mountPullPage(container, ctx, mb) {
         pull.truncated,
       ],
       () =>
-        h("section", { class: "page-card github-pull-card github-pull-event" }, [
-          h("div", { class: "github-pull-card-head" }, [
-            authorLabel(mb, pull.author, pull.avatar),
-            " opened ",
-            age(pull.created),
-          ]),
-          textBlock("body", pull.text, pull.truncated),
+        descriptionCard(pull, textBlock("body", pull.text, pull.truncated), [
           ...(GUIDED_FENCE.test(pull.text) ? [guideCard()] : []),
         ]),
     );
@@ -7380,6 +7374,26 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
+   * The description's card: who opened the pull request and when, then its text.
+   * Conversation and Guided PR draw it alike.
+   *
+   * @param {NonNullable<PullModel["pull"]>} pull
+   * @param {HTMLElement} text The description's text block.
+   * @param {HTMLElement[]} after
+   */
+  function descriptionCard(pull, text, after) {
+    return h("section", { class: "page-card github-pull-card github-pull-event" }, [
+      h("div", { class: "github-pull-card-head" }, [
+        authorLabel(mb, pull.author, pull.avatar),
+        " opened ",
+        age(pull.created),
+      ]),
+      text,
+      ...after,
+    ]);
+  }
+
+  /**
    * Where Conversation's description had its guided-pr block: the server renders the
    * description without it (`part_text`), and this says where the guide is read.
    */
@@ -7391,21 +7405,29 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * The guide's introduction: the description, rendered as Conversation renders it and
-   * without its guided-pr block. It is drawn again only when its text or its render changes.
+   * The guide's introduction: the description's card, as Conversation draws it, without
+   * its guided-pr block. It is drawn again only when its text or its render changes.
    *
    * @param {PullModel} model
    * @param {GuidedMount} mount
    */
   function paintGuideIntroduction(model, mount) {
     const pull = /** @type {NonNullable<PullModel["pull"]>} */ (model.pull);
-    const key = JSON.stringify([pull.text, pull.truncated, pull.state, model.textRevision]);
+    const key = JSON.stringify([
+      pull.text,
+      pull.truncated,
+      pull.state,
+      pull.author,
+      pull.avatar,
+      pull.created,
+      model.textRevision,
+    ]);
     const shown = mount.introduction;
     if (shown.key !== key || shown.block === null) {
       shown.key = key;
       shown.block = textBlock("body", pull.text, pull.truncated);
       shown.block.classList.add("github-pull-guide-introduction");
-      shown.node.replaceChildren(shown.block);
+      shown.node.replaceChildren(descriptionCard(pull, shown.block, []));
     }
     // Each paint of the tab clears the page's texts: the description's is registered again
     // so its Markdown lands here.

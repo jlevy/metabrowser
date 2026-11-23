@@ -771,9 +771,16 @@ The plugin registers two views: `pull-request`, which the shell mounts at `/pull
 validates its artifact against the installed `Collection/v1` SoftSchema
 (`metabrowser.collection:Collection/v1`), whose ordered `items` are the guide’s steps.
 The request names a PR and an optional one-based step.
-The handler checks both comparison endpoints, rejects a known newer head, and hydrates
-just the paths that the chosen step needs through the same manifest and diff adapter as
-Changes. It reports unresolved references in place.
+The handler checks both comparison endpoints and a newer head GitHub’s list knows, and
+hydrates just the paths that the chosen step needs through the same manifest and diff
+adapter as Changes, always at the guide’s own pins.
+It reports unresolved references in place.
+A guide whose pins are not the pull request’s current comparison is answered `stale`
+with its step, when the store still has the pinned revision, and a `stale` object
+(`_staleness` in `guided_pr.py`): both comparisons, the first-parent commits after the
+guide’s head or that its head left the branch’s history, and the cited paths and steps
+that changed between the two comparisons, each with its bound beside its constant.
+The page draws that as a notice above the guide and marks the changed steps.
 The limits in `guided_pr.py` (`MAX_ITEMS`, `MAX_REFERENCES`, and `MAX_EXCERPT_BYTES`)
 cap the guide’s steps, the per-step hydration, and the excerpt text, each with the
 measurement that set it beside the constant.
@@ -782,9 +789,10 @@ guide the first request parsed and an edited description is parsed once.
 An excerpt shows a replacement whole: `_hunk_rows` includes a line that exists only on
 the other side when it lies inside the range or touches either end of it.
 Guide text and diff lines are inserted as text, in the design system’s existing parts:
-each step’s title and note are prose in a KPress article, as a description is, and each
-excerpt is the diff plugin’s file card and unified rows (`renderReference` in
-`guided-pr.js`), so its type, row height, gutter, and change fills are Changes’.
+each step is a page card headed as a guided review, as Conversation draws a comment, its
+title and note prose in a KPress article, as a description is, and each excerpt is the
+diff plugin’s file card and unified rows (`renderReference` in `guided-pr.js`), so its
+type, row height, gutter, and change fills are Changes’.
 A ready step carries KPress’s stylesheet manifest, as the description’s Markdown route
 does, and the page loads it and the diff plugin’s styles before drawing the step, so the
 tab reads the same when it is the first thing opened.

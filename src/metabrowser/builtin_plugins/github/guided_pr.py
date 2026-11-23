@@ -19,13 +19,25 @@ from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.pull_catalog import catalog_member
 from metabrowser.builtin_plugins.github.pull_freshness import record_freshness
 from metabrowser.builtin_plugins.github.pull_manifest import shared_pull_manifest
-from metabrowser.builtin_plugins.github.pull_record import MAX_BODY_BYTES, PullRecord, Sha
+from metabrowser.builtin_plugins.github.pull_record import (
+    MAX_BODY_BYTES,
+    PullRecord,
+    Sha,
+    cut_text,
+)
 from metabrowser.builtin_plugins.github.pull_route import cached_pull_record
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource, display_path
 from metabrowser.diff.format import Availability, LineOp
-from metabrowser.git.process import GitError, GitLocation, RepositoryStoreTarget
+from metabrowser.git.process import (
+    GIT_NO_DRIVER_ARGS,
+    GitCommandError,
+    GitError,
+    GitLocation,
+    RepositoryStoreTarget,
+    run_git_at,
+)
 from metabrowser.view_routes import format_pull_href
 
 if TYPE_CHECKING:
@@ -62,6 +74,18 @@ MAX_ITEMS = 40
 # the per-row charge, mounted and laid out in 11–14 ms in five headless Chrome 157 runs
 # at 1280×900 on the Guided PR page (2026-11-18). A single long row must fit too.
 MAX_EXCERPT_BYTES = MAX_BODY_BYTES
+
+# A stale guide's notice names the commits after the guide's head, newest first, and counts
+# the rest: it is read at a glance above the guide, and one bounded `git log` writes it.
+MAX_STALE_COMMITS: Final = 10
+# A commit's subject as the notice shows it, as the Conversation timeline cuts one.
+MAX_STALE_SUBJECT_BYTES: Final = 240
+# The paths changed since the guide decide which of its steps still match the pull request.
+# A change past this many paths is answered as unknown rather than read whole: every step
+# is then shown with no claim either way.
+MAX_STALE_PATHS: Final = 4000
+# A path as `git diff --name-only -z` writes it is at most a filesystem path, 4096 bytes.
+_MAX_STALE_PATH_BYTES: Final = 4096
 
 type Prose = Annotated[str, Field(min_length=1)]
 type LineNumber = Annotated[int, Field(ge=1)]
@@ -347,6 +371,110 @@ async def _step_references(
     )
 
 
+async def _commits_since(location: GitLocation, old: str, new: str) -> dict[str, object]:
+    """The first-parent commits *new* has and *old* does not, or why there is no answer.
+
+    ``history`` is ``ahead`` when *old* is in *new*'s history, ``rewritten`` when it is not,
+    as after a rebase or a force push, and ``unavailable`` when the store lacks *old*.
+    """
+    try:
+        await run_git_at(["cat-file", "-e", f"{old}^{{commit}}"], location)
+    except GitCommandError:
+        return {"history": "unavailable", "commit_count": None, "commits": []}
+    try:
+        await run_git_at(["merge-base", "--is-ancestor", old, new], location)
+        history = "ahead"
+    except GitCommandError as exc:
+        if exc.returncode != 1:
+            raise
+        history = "rewritten"
+    span = f"{old}..{new}"
+    count = await run_git_at(["rev-list", "--first-parent", "--count", span, "--"], location)
+    out = await run_git_at(
+        [
+            "log",
+            *GIT_NO_DRIVER_ARGS,
+            "--first-parent",
+            f"--max-count={MAX_STALE_COMMITS}",
+            "--format=%H%x00%s%x00",
+            span,
+            "--",
+        ],
+        location,
+        max_bytes=MAX_STALE_COMMITS * (200 + 4 * MAX_STALE_SUBJECT_BYTES),
+    )
+    fields = out.decode("utf-8", errors="replace").split("\0")
+    commits = [
+        {"sha": sha.strip(), "subject": cut_text(subject, MAX_STALE_SUBJECT_BYTES)[0]}
+        for sha, subject in zip(fields[0:-1:2], fields[1::2], strict=False)
+    ]
+    return {"history": history, "commit_count": int(count), "commits": commits}
+
+
+async def _paths_between(location: GitLocation, old: str, new: str) -> set[str] | None:
+    """The paths that differ between commits *old* and *new*, or ``None`` past the bound."""
+    try:
+        out = await run_git_at(
+            ["diff", *GIT_NO_DRIVER_ARGS, "--no-renames", "--name-only", "-z", old, new, "--"],
+            location,
+            max_bytes=MAX_STALE_PATHS * _MAX_STALE_PATH_BYTES,
+        )
+    except GitError:
+        return None
+    paths = {path for path in out.decode("utf-8", errors="replace").split("\0") if path}
+    return paths if len(paths) <= MAX_STALE_PATHS else None
+
+
+async def _staleness(
+    store: PublishedSource | None, record: PullRecord, guide: Collection, *, newer: bool
+) -> dict[str, object]:
+    """What a stale guide was written for, what the pull request is now, and what changed.
+
+    ``changed_paths`` are the guide's referenced paths that differ between the guide's
+    comparison and the current one, at either end, and ``changed_steps`` the one-based
+    steps that cite one; each is ``None`` when that cannot be read. A step that cites no
+    changed path still matches the pull request.
+    """
+    comparison = record.comparison
+    pinned = guide.comparison
+    head = record.pull.head.sha
+    answer: dict[str, object] = {
+        "guide": pinned.model_dump(),
+        "current": {"merge_base": comparison.base if comparison else None, "head": head},
+        "github_newer": newer,
+        "history": "unavailable",
+        "commit_count": None,
+        "commits": [],
+        "changed_paths": None,
+        "changed_steps": None,
+    }
+    if store is None:
+        return answer
+    location = GitLocation.revision(RepositoryStoreTarget(store.git_dir, store.object_format), head)
+    try:
+        if pinned.head == head:
+            answer.update(history="ahead", commit_count=0)
+        else:
+            answer.update(await _commits_since(location, pinned.head, head))
+        changed = (
+            await _paths_between(location, pinned.head, head) if pinned.head != head else set()
+        )
+        if changed is not None and comparison is not None and pinned.merge_base != comparison.base:
+            base = await _paths_between(location, pinned.merge_base, comparison.base)
+            changed = None if base is None else changed | base
+    except GitError:
+        return answer
+    if changed is not None:
+        referenced = {ref.path for item in guide.items for ref in item.references}
+        answer["changed_paths"] = sorted(referenced & changed)
+        answer["changed_steps"] = [
+            at
+            for at, item in enumerate(guide.items, start=1)
+            if any(ref.path in changed for ref in item.references)
+        ]
+    return answer
+
+
 def _head_moved(store: PublishedSource, record: PullRecord) -> bool:
     return record_freshness(
         record, *catalog_member(store.home, store.slug, record.number), now=pulls.utc_now()
@@ -374,25 +502,38 @@ async def guided_pr(host: PullHost, number: int, step_number: int) -> dict[str, 
             "state": "description_truncated" if record.pull.body_truncated else "absent",
         }
     store = served.published
+    published = store if isinstance(store, PublishedSource) else None
     comparison = record.comparison
-    if guide.comparison.head != record.pull.head.sha or (
-        comparison is not None and guide.comparison.merge_base != comparison.base
-    ):
-        return {**identity, "state": "stale"}
-    if not isinstance(store, PublishedSource) or comparison is None:
-        return {**identity, "state": "comparison_unavailable"}
-    if await asyncio.to_thread(_head_moved, store, record):
-        return {**identity, "state": "stale"}
+    newer = published is not None and await asyncio.to_thread(_head_moved, published, record)
+    stale = (
+        newer
+        or guide.comparison.head != record.pull.head.sha
+        or (comparison is not None and guide.comparison.merge_base != comparison.base)
+    )
+    staleness = await _staleness(published, record, guide, newer=newer) if stale else None
+    # A stale guide's steps are still read from its own comparison, which the store keeps:
+    # the notice above them says what changed since.
+    if published is None or (comparison is None and not stale):
+        return (
+            {**identity, "state": "stale", "stale": staleness}
+            if staleness is not None
+            else {**identity, "state": "comparison_unavailable"}
+        )
     if step_number > len(guide.items):
         return {**identity, "state": "step_not_found"}
     step = guide.items[step_number - 1]
     try:
-        references = await _step_references(store, number, guide, step)
+        references = await _step_references(published, number, guide, step)
     except (DiffSourceError, GitError):
-        return {**identity, "state": "comparison_unavailable"}
+        return (
+            {**identity, "state": "stale", "stale": staleness}
+            if staleness is not None
+            else {**identity, "state": "comparison_unavailable"}
+        )
     return {
         **identity,
-        "state": "ready",
+        "state": "ready" if staleness is None else "stale",
+        **({} if staleness is None else {"stale": staleness}),
         "comparison": guide.comparison.model_dump(),
         "step_count": len(guide.items),
         "step": step_number,

@@ -223,6 +223,44 @@ async function run() {
     view.handle.dispose();
   }
 
+  // A stale guide still shows its steps, from its own revision, under a notice at the top of
+  // the page that says what it was written for, what is new, and which steps still match.
+  {
+    const late = host();
+    const view = late.mount(page, "guided", envelope(1));
+    await settle();
+    late.pending()[0].answer({
+      ...step(1, 1, 3),
+      state: "stale",
+      stale: {
+        guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+        current: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+        github_newer: false,
+        history: "ahead",
+        commit_count: 12,
+        commits: [{ sha: "c".repeat(40), subject: "Count to <b>three</b>" }],
+        changed_paths: ["src/app.txt"],
+        changed_steps: [1, 3],
+      },
+    });
+    await settle();
+    const top = view.guided().children[0];
+    const notice = view.container.querySelector(".github-pull-guide-stale");
+    assert.ok(top.children.includes(notice), "the notice is the page's first thing");
+    steps.push(
+      `a stale guide's notice: ${notice.children.map((child) => child.textContent).join(" / ")}`,
+    );
+    const card = view.container.querySelector(".github-pull-guide-card");
+    steps.push(
+      `and its step, in a card: ${card.querySelector(".github-pull-card-head").textContent}; ${view.shown()}; ` +
+        `${view.container
+          .querySelectorAll(".github-pull-guide-changed")
+          .map((node) => node.textContent)
+          .join("")}`,
+    );
+    view.handle.dispose();
+  }
+
   // Lazy mount: Conversation never reads the guide, and its tab mounts it at first paint.
   {
     const first = host();

@@ -383,7 +383,11 @@ status: 200
 ```
 
 The cached PR description may have a guide for a different comparison, an invalid guide,
-or no guide. All three reads deliberately return without excerpts.
+or no guide.
+A guide for a different comparison is stale, and still answers its step from
+its own pins, with what changed since: pull request 8’s branch was rebased past the
+guide’s head, so its history is `rewritten`, and both cited files changed, so both steps
+are marked. An invalid guide and an absent one return without excerpts.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/8 --api '/api/plugin/github/guided-pr?number=8'
@@ -394,7 +398,191 @@ api: /api/plugin/github/guided-pr?number=8
 status: 200
 {
   "record_revision": "ce4077098a6b84f3ed1b2ca6b74719b42e30725a1f0591e60eebd91a56cfaf7c",
-  "state": "stale"
+  "state": "stale",
+  "stale": {
+    "guide": {
+      "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+    },
+    "current": {
+      "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "8ae27617c9c475851b67ee69433d008836d112ba"
+    },
+    "github_newer": false,
+    "history": "rewritten",
+    "commit_count": 1,
+    "commits": [
+      {
+        "sha": "8ae27617c9c475851b67ee69433d008836d112ba",
+        "subject": "more guide"
+      }
+    ],
+    "changed_paths": [
+      "docs/new.md",
+      "src/app.txt"
+    ],
+    "changed_steps": [
+      1,
+      2
+    ]
+  },
+  "comparison": {
+    "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+  },
+  "step_count": 2,
+  "step": 1,
+  "title": "Start with the count",
+  "note": "Check that the original value is preserved.",
+  "references": [
+    {
+      "path": "src/app.txt",
+      "side": "new",
+      "start_line": 1,
+      "end_line": 2,
+      "state": "ready",
+      "href": "/pull/8/files/src/app.txt",
+      "rows": [
+        {
+          "old": 1,
+          "new": 1,
+          "op": "context",
+          "text": "one"
+        },
+        {
+          "old": null,
+          "new": 2,
+          "op": "add",
+          "text": "two"
+        }
+      ]
+    }
+  ],
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "455ce6a0f538267b",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
 }
 ? 0
 ```
