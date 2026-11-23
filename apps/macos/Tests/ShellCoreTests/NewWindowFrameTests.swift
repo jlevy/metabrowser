@@ -17,16 +17,16 @@ import Testing
     /// A 1080 by 1920 display turned on its side, to the left.
     private let portrait = CGRect(x: -1080, y: 0, width: 1080, height: 1895)
 
-    @Test func theHeightIsFourFifthsOfTheScreenAndTheWidthALittleMoreThanBefore() {
-        #expect(NewWindowFrame.size(visible: laptop, minimum: minimum) == CGSize(width: 1323, height: 675))
-        #expect(NewWindowFrame.size(visible: largeLaptop, minimum: minimum) == CGSize(width: 1440, height: 1032))
-        #expect(NewWindowFrame.size(visible: external, minimum: minimum) == CGSize(width: 1440, height: 1132))
+    @Test func theHeightIsNinetyTwoPercentOfTheVisibleScreenAndTheWidthIsCapped() {
+        #expect(NewWindowFrame.size(visible: laptop, minimum: minimum) == CGSize(width: 1323, height: 776))
+        #expect(NewWindowFrame.size(visible: largeLaptop, minimum: minimum) == CGSize(width: 1440, height: 1186))
+        #expect(NewWindowFrame.size(visible: external, minimum: minimum) == CGSize(width: 1440, height: 1301))
         // Taller than wide, as the screen is.
-        #expect(NewWindowFrame.size(visible: portrait, minimum: minimum) == CGSize(width: 972, height: 1516))
+        #expect(NewWindowFrame.size(visible: portrait, minimum: minimum) == CGSize(width: 972, height: 1743))
     }
 
     @Test func aWindowFitsOnEveryScreenLargeEnoughForItsMinimum() {
-        for visible in [laptop, largeLaptop, external, portrait, CGRect(x: 0, y: 0, width: 500, height: 400)] {
+        for visible in [laptop, largeLaptop, external, portrait, CGRect(x: 0, y: 0, width: 500, height: 330)] {
             let size = NewWindowFrame.size(visible: visible, minimum: minimum)
             #expect(size.width <= visible.width && size.height <= visible.height)
             #expect(size.width >= minimum.width && size.height >= minimum.height)
@@ -51,11 +51,12 @@ import Testing
     @Test func theFirstWindowIsCenteredAcrossWithAQuarterOfTheFreeHeightAbove() {
         let size = NewWindowFrame.size(visible: largeLaptop, minimum: minimum)
         let frame = NewWindowFrame.first(size: size, visible: largeLaptop)
-        #expect(frame == CGRect(x: 308, y: 193, width: 1440, height: 1032))
+        #expect(frame == CGRect(x: 308, y: 78, width: 1440, height: 1186))
         // On a screen whose origin is not zero, measured from that screen's edges.
-        let onExternal = NewWindowFrame.first(size: CGSize(width: 1440, height: 1132), visible: external)
-        #expect(onExternal == CGRect(x: 1470 + 560, y: -200 + 212, width: 1440, height: 1132))
-        #expect(external.maxY - onExternal.maxY == 71)
+        let externalSize = NewWindowFrame.size(visible: external, minimum: minimum)
+        let onExternal = NewWindowFrame.first(size: externalSize, visible: external)
+        #expect(onExternal == CGRect(x: 1470 + 560, y: -200 + 85, width: 1440, height: 1301))
+        #expect(external.maxY - onExternal.maxY == 29)
     }
 
     @Test func eachNextWindowStepsDownAndRightAndStartsOverBeforeLeavingTheScreen() {
@@ -64,14 +65,10 @@ import Testing
         for _ in 0..<7 {
             frames.append(NewWindowFrame.next(size: size, visible: laptop, after: frames.last))
         }
-        // 147 points of free width allow two steps right before a third would leave the
-        // screen; the free height would allow four.
-        let first = CGRect(x: 73, y: 201, width: 1323, height: 675)
-        #expect(frames[0] == first)
-        #expect(frames[1] == first.offsetBy(dx: 29, dy: -29))
-        #expect(frames[2] == first.offsetBy(dx: 58, dy: -58))
-        #expect(frames[3] == first)
-        #expect(frames[6] == first)
+        // There are 51 points below the first window. A second step would cross the bottom.
+        let first = CGRect(x: 73, y: 126, width: 1323, height: 776)
+        let second = first.offsetBy(dx: 29, dy: -29)
+        #expect(frames == [first, second, first, second, first, second, first])
         #expect(frames.allSatisfy { laptop.contains($0) })
     }
 
