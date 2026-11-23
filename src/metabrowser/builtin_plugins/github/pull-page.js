@@ -4535,7 +4535,7 @@ export function mountPullPage(container, ctx, mb) {
   let bodyShows = "none";
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
-   *   settled: boolean, cacheMiss: boolean, retryPending: boolean, heldMs: number | null,
+   *   settled: boolean, cacheMiss: boolean, retryPending: boolean, heldUntil: number | null,
    *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
   let commitTimeline = null;
   // The allowlist a text's Markdown passes through before it is inserted; a text stays
@@ -7724,9 +7724,9 @@ export function mountPullPage(container, ctx, mb) {
               settled: false,
               cacheMiss: false,
               retryPending: false,
-              // How long the server said to wait before asking again for a read its
-              // budget refused; null for a transient failure's one retry.
-              heldMs: null,
+              // When the wait the server named for a read its budget refused ends, in
+              // `Date.now()` time; null for a transient failure's one retry.
+              heldUntil: null,
               read: null,
             }
           : null;
@@ -7751,7 +7751,7 @@ export function mountPullPage(container, ctx, mb) {
     cancelTimeline();
     const retrying = held.retryPending;
     // A wait the server's budget asked for is not the transient failure's one retry.
-    const afterHold = retrying && held.heldMs !== null;
+    const afterHold = retrying && held.heldUntil !== null;
     if (held.settled || (retrying && !providerAllowed)) {
       return;
     }
@@ -7779,8 +7779,8 @@ export function mountPullPage(container, ctx, mb) {
         // The retry budget is spent when the provider request starts, even if it is aborted.
         // A read the server's budget held spent none: it is asked for until it is read.
         held.retryPending = false;
-        held.settled = held.heldMs === null;
-        held.heldMs = null;
+        held.settled = held.heldUntil === null;
+        held.heldUntil = null;
       }
       // Commits join a conversation that is already shown, so the age line breathes for
       // them as for a refresh; nothing spins in the description card.
@@ -7848,7 +7848,7 @@ export function mountPullPage(container, ctx, mb) {
         // says, for as long as it refuses and this record's page stays.
         held.settled = false;
         held.retryPending = true;
-        held.heldMs = projection.heldMs;
+        held.heldUntil = Date.now() + projection.heldMs;
         followTimeline();
       } else if (!cachedOnly && (!retrying || afterHold) && projection?.retryable) {
         held.retryPending = true;
@@ -7862,7 +7862,12 @@ export function mountPullPage(container, ctx, mb) {
       }
     };
     if (retrying) {
-      const timer = window.setTimeout(() => void load(), held.heldMs ?? TIMELINE_RETRY_MS);
+      // A paint during a refresh ask cancels the wait (`timelineAllowed`), and the next one
+      // waits only what is left of it, so the server's minute is a period, not a minimum
+      // that each refresh ask starts again (review B3 of #737).
+      const delay =
+        held.heldUntil === null ? TIMELINE_RETRY_MS : Math.max(0, held.heldUntil - Date.now());
+      const timer = window.setTimeout(() => void load(), delay);
       read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
     } else if (typeof window.requestAnimationFrame === "function") {
       let frame = window.requestAnimationFrame(() => {
