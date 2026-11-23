@@ -351,7 +351,10 @@ record refresh and one per catalog scan, each about once a minute.
   (`probe_due`, no closer than `PROBE_FLOOR_S` to the last), and nothing otherwise.
   A probe that finds a change makes the record stale until an attempt starts after it,
   so the refresh starts at once and does not loop.
-  The `POST` waits for the probe up to `PROBE_WAIT_S`.
+  The `POST` waits for the probe up to `PROBE_WAIT_S`. Built since: the probe reads the
+  pull request’s issue (`probe_path` in `pulls.py`) and `ServedPull` keeps what it saw
+  across records; `below_floor` holds the reads the clock alone asks for; and a probe is
+  a coordinator job, at most `MAX_PROBES_IN_FLIGHT` of them in a server.
 - **`pull_list_route.py`:** the catalog job probes first, and runs its GraphQL scan only
   when the probe answered `200`, when the last scan is older than `FULL_REFRESH_S`, or
   when a reader asked.
