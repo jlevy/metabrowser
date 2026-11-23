@@ -3,14 +3,18 @@ type: is
 id: is-01m7v8cv4e6sjryervx72qmn90
 title: "Folder mode: a revision of a checkout's branch follows that branch when the checkout's refs move; the working tree stays the working tree"
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
+hold: null
+hold_until: null
 created_at: 2026-11-20T01:16:07.181Z
-updated_at: 2026-11-22T21:17:57.850Z
+updated_at: 2026-11-23T06:55:05.401Z
+started_at: 2026-11-23T06:55:05.398Z
 ---
 In a repository folder, the working tree is live through the watcher. A branch chosen in the Files chooser (a local branch, or a remote-tracking branch such as origin/main) shows that branch's last commit and should follow it when it moves: the reader commits, or a fetch moves origin/main. Today arch-source-sessions-and-pins.md, Revisions of a Checkout, lists this under Not yet ("a branch that moves while it is shown is not followed").
 
