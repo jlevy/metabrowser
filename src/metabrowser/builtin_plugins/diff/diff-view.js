@@ -3222,7 +3222,7 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   toolbarControl?: HTMLElement | null,
  *   emptyText?: string,
  *   unfold?: boolean,
- *   layout?: "unified" | "split"
+ *   layout?: "unified"
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
@@ -3240,16 +3240,15 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   File type control as *toolbarControl*, which leads the layout control; and *emptyText*,
  *   what it says when it keeps no file. *unfold* draws every fold open, the rendered
  *   view's unchanged runs and the text diff's long changed runs alike, for a page that
- *   shows its files whole: a pull request's Docs tab. *layout* is a layout the host fixes:
- *   the diff draws it, apart from the fallback where Split does not fit, with no layout
- *   control and no `L`, and neither reads nor writes the reader's stored choice. A pull
- *   request's Docs tab draws Unified, the form its rendered documents take.
+ *   shows its files whole: a pull request's Docs tab. *layout* fixes the layout at
+ *   Unified, which the diff then draws with no layout control and no `L`, neither reading
+ *   nor writing the reader's stored choice: a pull request's Docs tab, whose rendered
+ *   documents take that form. Split is the reader's to choose, so no host fixes it.
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, sectionForPath: (path: string) => HTMLElement | null, pathForSection: (section: Element) => string | null, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
-  const fixedLayout =
-    options.layout === "unified" || options.layout === "split" ? options.layout : null;
+  const fixedLayout = options.layout === "unified" ? options.layout : null;
   const chosenLayout = fixedLayout ?? readLayoutPreference(api);
   // Measured before the first draw, so a narrow pane never draws Split to throw it away. A
   // container that is not laid out yet has no width, as a commit's stage has none until it
