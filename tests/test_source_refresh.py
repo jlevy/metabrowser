@@ -11,6 +11,7 @@ alone in the admitted-Git CI job.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import shutil
@@ -1148,6 +1149,98 @@ def test_the_coordinator_bounds_concurrent_jobs_across_keys() -> None:
     peak, answers = asyncio.run(scenario())
     assert peak == 2
     assert answers == ["started", "started", "started", "joined", "started"]
+
+
+def test_a_job_joined_as_it_stops_is_started_again_once_and_never_once_the_coordinator_closes() -> (
+    None
+):
+    """``start_again_when_stopped`` and ``restarting``, which a mirror and a folder's
+    checkout share (review A5 of #762). A job told to stop and joined twice is started
+    again once, after it has unwound. One still unwinding when the coordinator closes is
+    not, and is no longer said to be restarting once the close has begun."""
+
+    async def scenario() -> dict[str, object]:
+        coordinator = RefreshCoordinator()
+        errors: list[dict[str, Any]] = []
+        asyncio.get_running_loop().set_exception_handler(
+            lambda _loop, context: errors.append(context)
+        )
+        restarted: list[str] = []
+        seen: dict[str, object] = {}
+
+        def unwinding(entered: asyncio.Event, release: asyncio.Event) -> Any:
+            async def job() -> None:
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    # Unwinding takes until the test lets it end, however often it is told.
+                    while not release.is_set():
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await release.wait()
+                    raise
+
+            return job
+
+        async def again() -> None:
+            return None
+
+        def restart(key: str) -> Any:
+            def start() -> None:
+                restarted.append(key)
+                coordinator.start(key, again, network=False)
+
+            return start
+
+        # Every job unwinds, and the coordinator closes, however the scenario ends.
+        releases: list[asyncio.Event] = []
+        try:
+            entered, release = asyncio.Event(), asyncio.Event()
+            releases.append(release)
+            assert coordinator.start("a", unwinding(entered, release), network=False) == "started"
+            await asyncio.wait_for(entered.wait(), 5)
+            seen["not stopping"] = coordinator.start_again_when_stopped("a", restart("a"))
+            stopped = coordinator.cancel("a")
+            assert stopped is not None
+            seen["joined"] = [coordinator.start_again_when_stopped("a", restart("a")) for _ in "12"]
+            seen["restarting"] = coordinator.restarting("a")
+            release.set()
+            await asyncio.wait({stopped}, timeout=5)
+            seen["after it unwound"] = (list(restarted), coordinator.restarting("a"))
+            await coordinator.drain(timeout_s=5)
+
+            entered, release = asyncio.Event(), asyncio.Event()
+            releases.append(release)
+            assert coordinator.start("b", unwinding(entered, release), network=False) == "started"
+            await asyncio.wait_for(entered.wait(), 5)
+            stopping = coordinator.cancel("b")
+            assert stopping is not None
+            assert coordinator.start_again_when_stopped("b", restart("b"))
+            closing = asyncio.create_task(coordinator.aclose())
+            # The close's first step, which closes the coordinator and tells every job to stop,
+            # runs before this resumes.
+            await asyncio.sleep(0)
+            assert coordinator.closed
+            seen["closing"] = (stopping.done(), coordinator.restarting("b"))
+            release.set()
+            await closing
+            seen["after the close"] = list(restarted)
+            seen["errors"] = [context.get("message") for context in errors]
+        finally:
+            for each in releases:
+                each.set()
+            await coordinator.aclose()
+        return seen
+
+    assert asyncio.run(scenario()) == {
+        "not stopping": False,
+        "joined": [True, True],
+        "restarting": True,
+        "after it unwound": (["a"], False),
+        "closing": (False, False),
+        "after the close": ["a"],
+        "errors": [],
+    }
 
 
 class _BusyMirror:

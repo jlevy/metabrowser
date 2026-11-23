@@ -55,6 +55,9 @@ VIEW = "/view/m"
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only"),
     needs_git,
+    # The recording is a served checkout's with a store, which the suite's environment
+    # keeps from every application (``tests/conftest.py``).
+    pytest.mark.usefixtures("keeps_origin_store"),
 ]
 
 

@@ -414,12 +414,14 @@ def start_pull_refresh(
     same pull request, which fetches and compares, is promoted and joined instead. Every
     other start is a reader's, and ends the optional job: one for the same pull request
     promotes it, and cancels its idle phase when it asks for metadata; one for another
-    cancels it.
+    cancels it while it is still optional, and otherwise leaves the promoted job to run
+    on as the reader's it now is.
 
     A *background* start, a prefetch's, is a metadata refresh that counts toward no bound,
     takes no network slot, and gives way at the checkout's turn (:class:`StoreTurn`); it
     is ``not_due`` while the optional comparison job runs. A reader's start that joins it
-    promotes it to the reader's, and from then on it counts.
+    promotes it to the reader's, and from then on it counts, and a background job holding
+    the turn it waits for is stopped, as on a mirror.
 
     A reader's start that joins a job already told to stop, a prefetch's that gave way at
     the turn or the optional job another reader's start ended, has the reader's job
@@ -434,8 +436,10 @@ def start_pull_refresh(
         _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
         if key in state.background and coordinator.running(key):
             # The open pull request's own prefetch. With a store its read fetches and
-            # compares, so it is promoted to the reader's, which nothing preempts.
+            # compares, so it is promoted to the reader's, which nothing preempts, and
+            # which stops a background job holding the turn it waits for.
             state.background.discard(key)
+            state.turn.promoted()
             _PULL_JOBS.add(key)
             _start_again_when_stopped(coordinator, repository, number, key)
             return "joined"
@@ -499,13 +503,19 @@ def _readers_start(
                 # phase would only delay it.
                 eager.work.cancel()
         else:
-            coordinator.cancel(checkout_job_key(repository, eager.number))
+            # Ended only while it is still optional: once a reader's start promoted it, it
+            # is that reader's job, which was answered ``joined``, and it runs on as any
+            # reader's does. Either way it is no longer the checkout's optional job.
+            if eager.mode == "idle":
+                coordinator.cancel(checkout_job_key(repository, eager.number))
             state.eager = None
     if coordinator.running(key):
-        # A prefetch's job counts from here. The optional one, the other a reader can find
-        # stopping, has counted since it started.
+        # A prefetch's job counts from here, and stops a background job holding the turn
+        # it waits for (:meth:`StoreTurn.promoted`). The optional one, the other a reader
+        # can find stopping, has counted since it started.
         if key in state.background:
             state.background.discard(key)
+            state.turn.promoted()
             _PULL_JOBS.add(key)
         if comparison:
             _COMPARISON_WANTED.add(key)

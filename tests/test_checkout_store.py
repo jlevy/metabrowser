@@ -42,7 +42,9 @@ from tests.required_tools import needs_git
 from tests.source_checkout_fixture import read_refs_at_every_ask
 from tests.test_serve_pin import posix_only
 
-pytestmark = [posix_only, needs_git]
+# Every test here keeps a store, which the suite's environment keeps from any application
+# (``tests/conftest.py``); those of the environment itself set it as they need.
+pytestmark = [posix_only, needs_git, pytest.mark.usefixtures("keeps_origin_store")]
 
 _JSON = {"content-type": "application/json"}
 _ORIGIN_TRUNK = "refs/remotes/origin/trunk"
@@ -738,6 +740,59 @@ def test_the_serve_command_keeps_no_store_where_the_environment_says_to_keep_non
                 assert refused.json()["code"] == "unsupported_for_subject"
             time.sleep(0.3)
     assert attempts == ([] if environment == "0" else ["acquire"])
+
+
+def test_a_one_shot_command_keeps_no_store_where_a_serve_keeps_none(
+    folder: _Folder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review A3 of #762: ``METABROWSER_ORIGIN_STORE=0`` reached the serve command only, so
+    ``metab FOLDER --api`` still read a store, and a one-shot ``POST /api/source/refresh``
+    made one, where the served page had none. Every open mode now reads it as the
+    application starts, so a transcript answers what a browser sees."""
+
+    import json
+
+    from typer.testing import CliRunner
+
+    from metabrowser.checkout_store import ORIGIN_STORE_ENV
+    from metabrowser.cli.main import _app
+
+    attempts: list[str] = []
+
+    async def acquired(*_args: Any, **_kwargs: Any) -> Any:
+        attempts.append("acquire")
+        raise CheckoutStoreError("network_error", "never reached")
+
+    monkeypatch.setattr(checkout_store, "acquire_checkout_store", acquired)
+
+    def one_shot_refs() -> Any:
+        result = CliRunner().invoke(
+            _app,
+            [str(folder.checkout), "--api", "/api/source/refs?kind=remote", "--format", "json"],
+        )
+        assert result.exit_code == 0, result.output
+        return json.loads(result.output)["origin"]
+
+    def answers(serving: bool) -> dict[str, Any]:
+        server._set_root_dir(folder.checkout)  # pyright: ignore[reportPrivateUsage]
+        if serving:
+            serve_checkout_store()
+        with TestClient(server.app) as client:
+            refused = _post(client, "/api/source/refresh")
+            return {
+                "origin": _refs(client, "remote")["origin"],
+                "refresh": (refused.status_code, refused.json().get("code")),
+            }
+
+    # Unset, as outside the suite, a one-shot command reads the store the cache has.
+    monkeypatch.delenv(ORIGIN_STORE_ENV, raising=False)
+    assert one_shot_refs()["reason"] == "not_fetched"
+    monkeypatch.setenv(ORIGIN_STORE_ENV, "0")
+    assert one_shot_refs() is None
+    one_shot = answers(serving=False)
+    assert one_shot == answers(serving=True)
+    assert one_shot == {"origin": None, "refresh": (409, "unsupported_for_subject")}
+    assert attempts == []
 
 
 @pytest.mark.parametrize(

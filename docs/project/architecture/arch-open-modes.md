@@ -294,8 +294,10 @@ cost alone
   An origin reached another way, SSH on a host no provider reduces to HTTPS, or an
   `http://` or `git://` address, is one Metabrowser cannot fetch, and the chooser says
   so (`transport_unsupported`); a server never tries it.
-  A server started with `METABROWSER_ORIGIN_STORE=0` (`ORIGIN_STORE_ENV` in
-  `checkout_store.py`) keeps no store for any checkout, as the test suite’s servers do.
+  With `METABROWSER_ORIGIN_STORE=0` (`ORIGIN_STORE_ENV` in `checkout_store.py`) no
+  application keeps a store for any checkout, a server’s or a one-shot command’s alike:
+  `lifespan_checkout_store` reads it, so a transcript answers what a served page does.
+  The test suite sets it, and a test of the store unsets it.
 - **When it is fetched:** from the moment the folder is served, by the rules of every
   store Metabrowser keeps
   ([Refresh Cadence](arch-mirror-acquisition-and-refresh.md#refresh-cadence)). A server

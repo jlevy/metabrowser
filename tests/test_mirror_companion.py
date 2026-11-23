@@ -1003,6 +1003,51 @@ def test_a_background_job_waits_behind_every_other_and_holds_no_slot() -> None:
     assert asyncio.run(scenario()) == (["pull 7", "pull 9", "pull 8"], 2)
 
 
+def test_the_restart_of_a_pull_job_a_reader_joined_runs_however_many_reader_jobs_run_then() -> None:
+    """Review A5 of #762: the reader's job for 50 took its place among the reader's jobs
+    when the reader joined it as it stopped. By the time it has unwound,
+    :data:`MAX_PULL_JOBS` other reader jobs run, one of them a prefetch a reader promoted,
+    which no bound refuses. The restart is no new start, so it is not refused either."""
+
+    async def scenario() -> tuple[list[str], int, bool, list[str]]:
+        stand = _Stand()
+        session = stand.session
+        coordinator = stand.coordinator
+        key = stand.pulls.key(50)
+        assert session.request_pull_refresh(50, background=True) == "started"
+        await _spin()
+        assert stand.events == ["pull 50"]
+        # A reader's job for another pull request arrives: 50's is told to stop.
+        assert session.request_pull_refresh(1) == "started"
+        await asyncio.sleep(0)
+        stopped = coordinator.job(key)
+        assert stopped is not None and stopped.cancelling()
+        assert session.request_pull_refresh(50) == "joined"
+        # The reader's other jobs fill the bound with 50's...
+        starts = [session.request_pull_refresh(number) for number in range(2, MAX_PULL_JOBS)]
+        assert session.request_pull_refresh(99) == "too_many"
+        # ...and one more joins it, a prefetch a reader opened.
+        assert session.request_pull_refresh(100, background=True) == "started"
+        assert session.request_pull_refresh(100) == "joined"
+        others = len(session._pull_jobs - {key})
+        # Its done callbacks, the restart among them, run before this wait's.
+        await asyncio.wait({stopped}, timeout=5)
+        assert stopped.done()
+        restarted = coordinator.job(key)
+        for _ in range(MAX_PULL_JOBS + 3):
+            for pull in stand.pulls.by_number.values():
+                pull.gate.set()
+            await _spin()
+        await stand.finish()
+        return starts, others, restarted is not None and restarted is not stopped, stand.events
+
+    starts, others, restarted, events = asyncio.run(scenario())
+    assert starts == ["started"] * (MAX_PULL_JOBS - 2)
+    assert others == MAX_PULL_JOBS
+    assert restarted is True
+    assert events.count("pull 50") == 2, events
+
+
 def test_background_jobs_count_toward_no_bound() -> None:
     async def scenario() -> tuple[str, str]:
         stand = _Stand()
