@@ -23,8 +23,10 @@ included, before and after.
 
 **Where a revision is read from.** The checkout's own Git directory, in place. A linked
 worktree's objects and refs are its main repository's, so the directory read is the
-common one. The plan says when Metabrowser's cache would be read instead; nothing here
-does that yet.
+common one. One exception: the origin's branches and tags are listed and served from the
+store Metabrowser keeps beside the checkout, once it exists (``checkout_store.py``,
+:attr:`CheckoutRevisions.origin`), as Metabrowser last fetched them. That store borrows
+the checkout's objects and is read with no Git process in the checkout.
 
 **Which checkouts.** The chooser follows the open root: it is offered when the served
 root is a repository's root and Git itself accepts it, by the discovery the Commits tab
@@ -64,13 +66,14 @@ imported where a revision is first asked for, as a pin's other modules are.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from metabrowser.content_errors import ContentReadError
 from metabrowser.git.process import (
@@ -88,7 +91,9 @@ from metabrowser.git.process import (
 )
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
+    PROBED_REF_PREFIX,
     MirrorRef,
+    MirrorSession,
     RefKind,
     SelectionError,
     SelectionRefMovedError,
@@ -110,6 +115,7 @@ if TYPE_CHECKING:
     from metabrowser.git.process import RepositoryStoreTarget
     from metabrowser.git.tree_source import GitRevisionSubject
     from metabrowser.git.wire import GitHead
+    from metabrowser.source import RepositorySubject
 
 log = logging.getLogger(__name__)
 
@@ -306,9 +312,54 @@ class CheckoutRevisions:
         self._git_version: tuple[int, int, int] | None = None
 
     def serves(self, subject: object) -> bool:
-        """Whether *subject* is the revision this checkout attached."""
+        """Whether *subject* is a revision this checkout's server shows of its repository.
 
-        return subject is not None and subject is self._served
+        One it attached from the checkout's own Git directory, or one read from the store
+        Metabrowser keeps of the checkout's origin (:attr:`origin`).
+        """
+
+        if subject is None:
+            return False
+        if subject is self._served:
+            return True
+        origin = self.origin
+        if origin is None:
+            return False
+        pin = as_git_revision_subject(cast("RepositorySubject", subject))
+        return pin is not None and origin.owns(pin)
+
+    @property
+    def origin(self) -> MirrorSession | None:
+        """The session of Metabrowser's store of this checkout's origin, once it exists.
+
+        ``metabrowser/checkout_store.py`` makes it. With it, the origin's branches and
+        tags are listed and served from that store, as Metabrowser last fetched them, and
+        the checkout's own remote-tracking branches of the origin are not read.
+        """
+
+        held = _origin
+        return held[1] if held is not None and held[0] == self.root else None
+
+    async def _of_origin(
+        self, origin: MirrorSession, *, ref: str | None, oid: str | None, under: str | None
+    ) -> bool:
+        """Whether a selection is read from the origin's store and not from the checkout.
+
+        A full ref of one of the origin's branches is, and a tag the store holds, which
+        is the origin's; a tag only the checkout has is the checkout's. A commit named by
+        its ID is read where the page asking is: from the store while one of its
+        revisions is served, so the way to a commit's file and back stays in it. A short
+        name is the checkout's, resolved as ``--ref`` resolves it.
+        """
+
+        named = under if oid is not None else ref
+        if named is None:
+            return oid is not None and origin.served() is not None
+        if named.startswith(PROBED_REF_PREFIX):
+            return True
+        if named.startswith("refs/tags/"):
+            return await origin.mirror.ref_tip(named) is not None
+        return False
 
     async def _repository(self) -> tuple[RepositoryStoreTarget, GitHead]:
         """The checkout's Git directory as a read-only store target, and its ``HEAD``.
@@ -348,6 +399,9 @@ class CheckoutRevisions:
         Its branches, tags, or remote-tracking branches. Branches list the checked-out one
         first, marked as ``default`` is on a mirror. ``HEAD``'s ref is ``None`` when it is
         detached.
+
+        Once Metabrowser keeps a store of the checkout's origin (:attr:`origin`), the
+        origin's refs are read from it and not from the checkout (:func:`_with_origin`).
         """
 
         from metabrowser.cache.resolve import CHECKOUT_REFS, list_mirror_refs
@@ -359,6 +413,14 @@ class CheckoutRevisions:
             default_ref=head["ref"] if kind == "branch" else None,
             namespaces=CHECKOUT_REFS,
         )
+        origin = self.origin
+        if origin is not None and kind != "branch":
+            # The origin's own, as Metabrowser last fetched them into its store: its
+            # branches where the checkout lists remote-tracking ones, and its tags.
+            theirs = await origin.mirror.list_refs(
+                "branch" if kind == "remote" else "tag", default_ref=None
+            )
+            listed = _with_origin(listed, theirs, kind)
         return head["ref"], listed
 
     async def switch_pin(
@@ -375,7 +437,15 @@ class CheckoutRevisions:
         from metabrowser.cache.resolve import CHECKOUT_REFS, resolve_pin
         from metabrowser.git.tree_source import GitObjectUnavailableError, git_revision_subject
 
-        async with self._switching:
+        origin = self.origin
+        if origin is not None and await self._of_origin(origin, ref=ref, oid=oid, under=under):
+            async with self._switching:
+                # The store's session resolves, opens, and attaches it, as a mirror's does;
+                # the revision is the store's, so none of the checkout's is served now.
+                changed, session = await origin.switch_pin(ref=ref, oid=oid, under=under)
+                self._served = None
+                return changed, session
+        async with self._switching, self._origin_pin():
             target, head = await self._repository()
             current = self._current()
             if current is not None and current.ref is not None:
@@ -413,11 +483,22 @@ class CheckoutRevisions:
     async def serve_working_tree(self) -> tuple[bool, SourceSession]:
         """Serve the folder again; ``False`` when the working tree is already served."""
 
-        async with self._switching:
+        async with self._switching, self._origin_pin():
             if self._current() is None:
                 return False, get_source_session()
             self._served = None
             return True, await restore_filesystem_subject(self.root)
+
+    def _origin_pin(self) -> contextlib.AbstractAsyncContextManager[object]:
+        """The origin store's own pin lock, held while this checkout switches what is served.
+
+        The store's session follows a served origin branch when a fetch moves it, under
+        that lock, and reads what is served there. Taken after this checkout's own
+        lock, as the switch to an origin branch takes them, so the two never cross.
+        """
+
+        origin = self.origin
+        return origin.pin_switch() if origin is not None else contextlib.nullcontext()
 
     def _current(self) -> GitRevisionSubject | None:
         """The revision of this checkout the session serves now, or ``None`` on the folder."""
@@ -434,6 +515,40 @@ class CheckoutRevisions:
         await self.serve_working_tree()
 
 
+def _with_origin(
+    mine: tuple[MirrorRef, ...], theirs: tuple[MirrorRef, ...], kind: RefKind
+) -> tuple[MirrorRef, ...]:
+    """A checkout's list of *kind* with its origin's refs taken from the origin's store.
+
+    *theirs* are the store's: the origin's branches for the list of remote-tracking
+    branches, each named ``origin/<branch>`` as the checkout names it, in place of the
+    checkout's own ``refs/remotes/origin/*``, which say only where the origin was when
+    the reader last fetched; and the origin's tags for the list of tags. The refs only
+    the checkout has stay: another remote's branches, and a tag the origin lacks. The
+    checkout's ``origin/*`` is not a second list. In one listing order
+    (``in_listing_order`` in ``cache/resolve.py``).
+    """
+
+    from metabrowser.cache.resolve import in_listing_order
+
+    if kind == "remote":
+        origin = tuple(
+            MirrorRef(
+                name=f"origin/{entry.name}",
+                ref=entry.ref,
+                commit=entry.commit,
+                committed_at=entry.committed_at,
+            )
+            for entry in theirs
+        )
+        own = tuple(entry for entry in mine if not entry.ref.startswith(PROBED_REF_PREFIX))
+    else:
+        origin = theirs
+        held = {entry.ref for entry in theirs}
+        own = tuple(entry for entry in mine if entry.ref not in held)
+    return in_listing_order((*origin, *own))
+
+
 def _has_boundary(git_dir: Path) -> bool:
     try:
         return (git_dir / "shallow").stat().st_size > 0
@@ -447,6 +562,21 @@ class _Held:
 
     root: Path
     revisions: CheckoutRevisions | None
+
+
+# The session of Metabrowser's store of a served checkout's origin, and the root it is of.
+# Set by ``checkout_store.py`` once the store exists, and dropped when a root is chosen.
+_origin: tuple[Path, MirrorSession] | None = None
+
+
+def set_origin_session(root: Path, session: MirrorSession | None) -> None:
+    """Say which session keeps the store of the origin of the checkout at *root*, or none."""
+
+    global _origin
+    if session is not None:
+        _origin = (root, session)
+    elif _origin is not None and _origin[0] == root:
+        _origin = None
 
 
 # What this process decided for its served root. One per process, as the source session
@@ -465,6 +595,8 @@ def _forget() -> _Held | None:
 
 def _forget_for_a_new_root() -> None:
     # Choosing a filesystem root is choosing to serve it, and its files.
+    global _origin
+    _origin = None
     _forget()
 
 
@@ -579,4 +711,5 @@ __all__ = [
     "lifespan_checkout",
     "open_on_ref",
     "partial_clone_version_label",
+    "set_origin_session",
 ]

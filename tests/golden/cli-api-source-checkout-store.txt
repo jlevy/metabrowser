@@ -1,0 +1,587 @@
+== Before Metabrowser has a store of the origin, a one-shot command says so and makes none: origin is absent with the reason not_fetched, and the lists are the checkout's own, as they were before this feature. origin/trunk is where the reader's last fetch left it, at M5.
+
+# metab checkout --api '/api/source/refs?kind=remote'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=remote
+status: 200
+{
+  "kind": "remote",
+  "query": "",
+  "pin": null,
+  "ref": null,
+  "kinds": [
+    "branch",
+    "tag",
+    "remote"
+  ],
+  "working_tree": {
+    "current": true,
+    "head": "refs/heads/trunk",
+    "head_name": "trunk",
+    "name": "checkout",
+    "location": "<ROOT>"
+  },
+  "origin": {
+    "state": "absent",
+    "reason": "not_fetched",
+    "detail": "Metabrowser has not fetched this repository's origin yet.",
+    "address": "https://github.com/octo/demo",
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false
+  },
+  "pull_requests": {
+    "state": "absent",
+    "complete": false,
+    "refreshing": false
+  },
+  "refs": [
+    {
+      "name": "origin/trunk",
+      "ref": "refs/remotes/origin/trunk",
+      "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+      "committed_at": 1577836800.0,
+      "default": false,
+      "checked_out": false,
+      "current": false
+    }
+  ]
+}
+--- stderr ---
+
+# metab checkout --api '/api/source/refs?kind=tag'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=tag
+status: 200
+{
+  "kind": "tag",
+  "query": "",
+  "pin": null,
+  "ref": null,
+  "kinds": [
+    "branch",
+    "tag",
+    "remote"
+  ],
+  "working_tree": {
+    "current": true,
+    "head": "refs/heads/trunk",
+    "head_name": "trunk",
+    "name": "checkout",
+    "location": "<ROOT>"
+  },
+  "origin": {
+    "state": "absent",
+    "reason": "not_fetched",
+    "detail": "Metabrowser has not fetched this repository's origin yet.",
+    "address": "https://github.com/octo/demo",
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false
+  },
+  "pull_requests": null,
+  "refs": [
+    {
+      "name": "local-only",
+      "ref": "refs/tags/local-only",
+      "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+      "committed_at": 1577836800.0,
+      "default": false,
+      "checked_out": false,
+      "current": false
+    }
+  ]
+}
+--- stderr ---
+
+== A refresh asked of a folder makes the store: it borrows the checkout's objects and fetches what the checkout lacks. The answer is 202 and names the store's state; the status after it is the folder's, whose working tree is still served.
+
+# metab checkout --api /api/source/refresh --data refresh.json
+exit: 0
+--- stdout ---
+api: /api/source/refresh
+status: 202
+{
+  "refresh": "started",
+  "origin": {
+    "state": "acquiring",
+    "reason": null,
+    "detail": null,
+    "address": "https://github.com/octo/demo",
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": true
+  },
+  "status": {
+    "subject": "attached_filesystem",
+    "generation": 1,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "borrows": null,
+    "shallow": false,
+    "refreshable": false,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+after: /api/source/status
+status: 200
+{
+  "subject": "attached_filesystem",
+  "generation": 1,
+  "pin": null,
+  "ref": null,
+  "ref_name": null,
+  "name": null,
+  "origin": null,
+  "location": null,
+  "borrows": null,
+  "shallow": false,
+  "refreshable": false,
+  "follows": false,
+  "latest": null,
+  "ref_on_origin": null,
+  "last_fetch_at": null,
+  "last_outcome": null,
+  "refreshing": false,
+  "refresh_quiet": false,
+  "stale": false,
+  "probe_every_s": null,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+--- stderr ---
+
+== With the store, the list of remote-tracking branches has the origin's branches as Metabrowser fetched them: origin/trunk at M6 and origin/feature, which the checkout never fetched. The checkout's own origin/* is not a second list. origin says when the store was last fetched.
+
+# metab checkout --api '/api/source/refs?kind=remote'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=remote
+status: 200
+{
+  "kind": "remote",
+  "query": "",
+  "pin": null,
+  "ref": null,
+  "kinds": [
+    "branch",
+    "tag",
+    "remote"
+  ],
+  "working_tree": {
+    "current": true,
+    "head": "refs/heads/trunk",
+    "head_name": "trunk",
+    "name": "checkout",
+    "location": "<ROOT>"
+  },
+  "origin": {
+    "state": "ready",
+    "reason": null,
+    "detail": null,
+    "address": "https://github.com/octo/demo",
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false
+  },
+  "pull_requests": {
+    "state": "absent",
+    "complete": false,
+    "refreshing": false
+  },
+  "refs": [
+    {
+      "name": "origin/feature",
+      "ref": "refs/remotes/origin/feature",
+      "commit": "f747860f814e044db2a4b88988b59b9e47a93ef4",
+      "committed_at": 1577836800.0,
+      "default": false,
+      "checked_out": false,
+      "current": false
+    },
+    {
+      "name": "origin/trunk",
+      "ref": "refs/remotes/origin/trunk",
+      "commit": "92e9b451b02f7c11307e9e61ec47425fde5b4b6f",
+      "committed_at": 1577836800.0,
+      "default": false,
+      "checked_out": false,
+      "current": false
+    }
+  ]
+}
+--- stderr ---
+
+== Tags are the origin's from the store, v2, and the tag only the checkout has. The checkout's own branches are still read from the checkout: trunk at M5, checked out.
+
+# metab checkout --api '/api/source/refs?kind=tag'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=tag
+status: 200
+{
+  "kind": "tag",
+  "query": "",
+  "pin": null,
+  "ref": null,
+  "kinds": [
+    "branch",
+    "tag",
+    "remote"
+  ],
+  "working_tree": {
+    "current": true,
+    "head": "refs/heads/trunk",
+    "head_name": "trunk",
+    "name": "checkout",
+    "location": "<ROOT>"
+  },
+  "origin": {
+    "state": "ready",
+    "reason": null,
+    "detail": null,
+    "address": "https://github.com/octo/demo",
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false
+  },
+  "pull_requests": null,
+  "refs": [
+    {
+      "name": "local-only",
+      "ref": "refs/tags/local-only",
+      "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+      "committed_at": 1577836800.0,
+      "default": false,
+      "checked_out": false,
+      "current": false
+    },
+    {
+      "name": "v2",
+      "ref": "refs/tags/v2",
+      "commit": "fbc8399ff0140350e67bec06078d3bbf78200119",
+      "committed_at": 1577836800.0,
+      "default": false,
+      "checked_out": false,
+      "current": false
+    }
+  ]
+}
+--- stderr ---
+
+# metab checkout --api /api/source/refs
+exit: 0
+--- stdout ---
+api: /api/source/refs
+status: 200
+{
+  "kind": "branch",
+  "query": "",
+  "pin": null,
+  "ref": null,
+  "kinds": [
+    "branch",
+    "tag",
+    "remote"
+  ],
+  "working_tree": {
+    "current": true,
+    "head": "refs/heads/trunk",
+    "head_name": "trunk",
+    "name": "checkout",
+    "location": "<ROOT>"
+  },
+  "origin": {
+    "state": "ready",
+    "reason": null,
+    "detail": null,
+    "address": "https://github.com/octo/demo",
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false
+  },
+  "pull_requests": {
+    "state": "absent",
+    "complete": false,
+    "refreshing": false
+  },
+  "refs": [
+    {
+      "name": "trunk",
+      "ref": "refs/heads/trunk",
+      "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+      "committed_at": 1577836800.0,
+      "default": false,
+      "checked_out": true,
+      "current": false
+    }
+  ]
+}
+--- stderr ---
+
+== An origin branch is served from the store, at a commit the checkout does not have. It is a folder's page still, named and placed as the folder is, and its freshness is the store's: refreshable, following its branch, and probed while a page is visible, as a mirror's pin is.
+
+# metab checkout --api /api/source/pin --data pin-origin-trunk.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "92e9b451b02f7c11307e9e61ec47425fde5b4b6f",
+    "ref": "refs/remotes/origin/trunk",
+    "ref_name": "origin/trunk",
+    "name": "checkout",
+    "origin": null,
+    "location": "<ROOT>",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "92e9b451b02f7c11307e9e61ec47425fde5b4b6f",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": 5.0,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+
+== The checkout's own branch is read from the checkout, at M5, and nothing fetches into it: not refreshable. A tag the origin has is the store's.
+
+# metab checkout --api /api/source/pin --data pin-local-trunk.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+    "ref": "refs/heads/trunk",
+    "ref_name": "trunk",
+    "name": "checkout",
+    "origin": null,
+    "location": "<ROOT>",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": false,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+
+# metab checkout --api /api/source/pin --data pin-origin-tag.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "fbc8399ff0140350e67bec06078d3bbf78200119",
+    "ref": "refs/tags/v2",
+    "ref_name": "v2",
+    "name": "checkout",
+    "origin": null,
+    "location": "<ROOT>",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "fbc8399ff0140350e67bec06078d3bbf78200119",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+
+== A visible page's own ask on the working tree fetches the store only when it is older than the freshness window. It was just fetched, so nothing is due.
+
+# metab checkout --api /api/source/refresh --data page-ask.json
+exit: 0
+--- stdout ---
+api: /api/source/refresh
+status: 200
+{
+  "refresh": "not_due",
+  "origin": {
+    "state": "ready",
+    "reason": null,
+    "detail": null,
+    "address": "https://github.com/octo/demo",
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false
+  },
+  "status": {
+    "subject": "attached_filesystem",
+    "generation": 1,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "borrows": null,
+    "shallow": false,
+    "refreshable": false,
+    "follows": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false,
+    "refresh_quiet": false,
+    "stale": false,
+    "probe_every_s": null,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+
+== A checkout whose origin is on this machine keeps no store: origin is null, the lists are the checkout's own, and a refresh is refused as a folder's always was.
+
+# metab local --api '/api/source/refs?kind=remote'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=remote
+status: 200
+{
+  "kind": "remote",
+  "query": "",
+  "pin": null,
+  "ref": null,
+  "kinds": [
+    "branch",
+    "tag",
+    "remote"
+  ],
+  "working_tree": {
+    "current": true,
+    "head": "refs/heads/trunk",
+    "head_name": "trunk",
+    "name": "local",
+    "location": "<ROOT>"
+  },
+  "origin": null,
+  "pull_requests": null,
+  "refs": [
+    {
+      "name": "origin/trunk",
+      "ref": "refs/remotes/origin/trunk",
+      "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+      "committed_at": 1577836800.0,
+      "default": false,
+      "checked_out": false,
+      "current": false
+    }
+  ]
+}
+--- stderr ---
+
+# metab local --api /api/source/refresh --data refresh.json
+exit: 1
+--- stdout ---
+api: /api/source/refresh
+status: 409
+{
+  "error": "source does not support refresh",
+  "code": "unsupported_for_subject",
+  "capability": "refresh"
+}
+--- stderr ---
+Error: /api/source/refresh returned HTTP 409
+
+== None of it wrote the checkout: after every command above its branch, its tags, and its own remote-tracking branch are what the clone left, with origin/trunk at M5.
+
+# git -C checkout status --porcelain=v1 --branch
+exit: 0
+--- stdout ---
+## trunk...origin/trunk
+--- stderr ---
+
+# git -C checkout for-each-ref --format=%(refname) %(objectname)
+exit: 0
+--- stdout ---
+refs/heads/trunk 0b51e0167804d26271bf05e7c4304bfd87d67e01
+refs/remotes/origin/HEAD 0b51e0167804d26271bf05e7c4304bfd87d67e01
+refs/remotes/origin/trunk 0b51e0167804d26271bf05e7c4304bfd87d67e01
+refs/tags/local-only 0b51e0167804d26271bf05e7c4304bfd87d67e01
+--- stderr ---

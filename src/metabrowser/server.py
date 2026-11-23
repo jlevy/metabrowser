@@ -89,6 +89,7 @@ from metabrowser.capabilities import (
     untrusted_shell_csp,
 )
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
+from metabrowser.checkout_store import lifespan_checkout_store
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.commit_ids import short_commit
 from metabrowser.content_sniff import (
@@ -5736,6 +5737,8 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
     # refresh jobs start once the pin is attached and are cancelled before it closes.
     # What a folder's server keeps for its checkout comes last, so it is left first: a
     # revision of the checkout still served at shutdown is closed while the rest is up.
+    # The store a folder keeps of its checkout's origin is last of all: it needs the
+    # refresh jobs and the checkout's revisions, and a revision read from it is closed first.
     # A served process's event log pings this loop, so a turn that blocks it is on record.
     event_log.watch_loop(asyncio.get_running_loop())
     async with (
@@ -5743,6 +5746,7 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
         build_lifespan(app=app, root_provider=_inventory_root_provider),
         lifespan_refresh(app),
         lifespan_checkout(),
+        lifespan_checkout_store(app),
     ):
         try:
             if not get_capabilities().active_content:

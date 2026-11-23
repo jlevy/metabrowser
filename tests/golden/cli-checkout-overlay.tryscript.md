@@ -89,6 +89,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "origin": null,
   "pull_requests": {
     "state": "absent",
     "complete": false,

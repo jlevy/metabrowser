@@ -1573,6 +1573,17 @@ class MirrorSession(StoreSession):
         # The keys of background pull-request jobs not yet promoted; each removes its own.
         self._background_pulls: set[str] = set()
 
+    def pin_switch(self) -> asyncio.Lock:
+        """The lock every change of the served pin is made under, this session's own
+        switch and its follow of a moved branch alike.
+
+        A folder's server also switches between its checkout's revisions and its
+        working tree. It holds this while it does, so a follow that was opening a
+        branch's new tip cannot attach it over what the reader just chose.
+        """
+
+        return self._pin_lock
+
     def owns(self, subject: GitRevisionSubject) -> bool:
         """Whether *subject* is a revision read from this session's store."""
 
