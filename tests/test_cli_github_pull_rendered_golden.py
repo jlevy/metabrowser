@@ -12,8 +12,9 @@ Pull request 7's head moves to a commit that edits a heading beside an HTML comm
 word mark, and a block the render cannot fully show), adds a task list (``ready``,
 without the boxes the allowlist drops, so ``source_only``), edits the Markdown body of
 a ``<details>`` beside a centered
-image (``ready``, the word marked inside it), adds a file with a footnote (``unsupported``,
-``footnotes``) and one holding the private-use character the projection once parted its
+image (``ready``, the word marked inside it), adds a file with a footnote (``ready``, its
+note where its definition is) and one holding the private-use character the projection
+once parted its
 blocks with (``unsupported``), a file past what a thread projects, which the
 Markdown child answers (``ready``, kept out of the transcript for its size), a file past
 the route's own read bound (``too_large``), a note with front matter, a Markdown file
@@ -239,7 +240,12 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
     ]
     assert "<summary>Install</summary>" in layout["blocks"][2]["html"]  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportGeneralTypeIssues]
     assert "<ins>new</ins>" in layout["blocks"][2]["html"]  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportGeneralTypeIssues]
-    assert rendered(f"&file={ids['wiki/footnotes.md']}")["reason"] == "footnotes"
+    notes = rendered(f"&file={ids['wiki/footnotes.md']}")
+    assert (notes["status"], notes["source_only"]) == ("ready", False)
+    assert [block["html"] for block in notes["blocks"]][1:] == [  # pyright: ignore[reportIndexIssue, reportUnknownVariableType, reportGeneralTypeIssues]
+        "<p>A claim.<sup><a>1</a></sup></p>",
+        "<ol>\n<li><p>Its source. <a>\xa0\u2191\xa0</a></p>\n</li>\n</ol>",
+    ]
     assert rendered(f"&file={ids['wiki/separator.md']}")["status"] == "unsupported"
     # Past the 48 KiB a thread projects and inside the route's read bound: the Markdown
     # child answers it, started for this one request. Kept out of the transcript for its

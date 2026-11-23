@@ -46,7 +46,6 @@ const LOADING_DELAY_MS = 50;
 /** @type {Readonly<Record<string, string>>} */
 const REFUSALS = {
   no_changes: "This file's content did not change.",
-  footnotes: "Rendered cannot show a file with footnotes.",
   nesting: "This file is nested too deeply to show rendered.",
   deadline: "Rendering this file took too long, so it was stopped. Reload to try again.",
   too_large: "This file is too large to show rendered.",

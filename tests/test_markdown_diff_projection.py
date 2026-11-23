@@ -180,23 +180,6 @@ def test_ambiguous_inline_runs_keep_whole_changed_blocks() -> None:
     ]
 
 
-@pytest.mark.parametrize(
-    ("text", "reason"),
-    [
-        (b"note[^n]\n\n[^n]: Note text\n", "footnotes"),
-    ],
-)
-def test_unverified_render_shapes_fall_back_without_partial_html(text: bytes, reason: str) -> None:
-    result = _project(None, text)
-    assert result == {
-        "version": "markdown-diff-v1",
-        "status": "unsupported",
-        "blocks": [],
-        "source_only": False,
-        "reason": reason,
-    }
-
-
 def test_mismatched_patch_never_labels_a_different_snapshot() -> None:
     old = b"Original.\n"
     new = b"Updated.\n"
@@ -1003,6 +986,177 @@ def test_fenced_code_is_one_text_node_without_highlighting() -> None:
     ]
 
 
+# ── Footnotes ───────────────────────────────────────────────────
+
+_NOTES = (
+    b"# Notes\n\nA claim.[^a] Another.[^b] The first again.[^a]\n\n"
+    b"[^a]: The first note.\n\n[^b]: The second note.\n"
+)
+# A note's links back to its references, live and on a removed side.
+_BACK, _GONE = "<a>\xa0\u2191\xa0</a>", "<span>\xa0\u2191\xa0</span>"
+_FIRST = f"<ol>\n<li><p>The first note. {_BACK} {_BACK}</p>\n</li>\n</ol>"
+_SECOND = f'<ol start="2">\n<li><p>The second note. {_BACK}</p>\n</li>\n</ol>'
+_THIRD = b"\nMore.[^c]\n\n[^c]: A third note.\n"
+
+
+def test_notes_render_where_they_are_written() -> None:
+    """A reference renders in place as the Document view numbers it, and a note is a block
+    of its definition's lines: a list of its own that starts at its number, with a link
+    back for each reference."""
+
+    result = _project(_NOTES, _NOTES + b"\nDone.\n")
+    assert result["status"] == "ready"
+    assert [(block["kind"], block["html"]) for block in result["blocks"]][1:] == [
+        (
+            "context",
+            "<p>A claim.<sup><a>1</a></sup> Another.<sup><a>2</a></sup> "
+            "The first again.<sup><a>1</a></sup></p>",
+        ),
+        ("context", _FIRST),
+        ("context", _SECOND),
+        ("added", "<p>Done.</p>"),
+    ]
+    assert result["source_only"] is False
+
+
+def test_an_edited_note_marks_its_words() -> None:
+    new = _NOTES.replace(b"The second note.", b"The second, longer note.")
+    assert _changed(_project(_NOTES, new)) == [
+        {
+            "kind": "removed",
+            "side": "old",
+            "html": f'<ol start="2">\n<li><p>The second note. {_GONE}</p>\n</li>\n</ol>',
+            "source_only": False,
+        },
+        {
+            "kind": "added",
+            "side": "new",
+            "html": f'<ol start="2">\n<li><p>The second<ins>, longer</ins> note. {_BACK}</p>'
+            "\n</li>\n</ol>",
+            "source_only": False,
+        },
+    ]
+
+
+@pytest.mark.parametrize("added", [True, False])
+def test_an_added_or_removed_note_shows_with_its_reference(added: bool) -> None:
+    longer = _NOTES + _THIRD
+    old, new = (_NOTES, longer) if added else (longer, _NOTES)
+    back = _BACK if added else _GONE
+    reference = "<a>3</a>" if added else "<span>3</span>"
+    result = _project(old, new)
+    assert _changed(result) == [
+        {
+            "kind": "added" if added else "removed",
+            "side": "new" if added else "old",
+            "html": html,
+            "source_only": False,
+        }
+        for html in (
+            f"<p>More.<sup>{reference}</sup></p>",
+            f'<ol start="3">\n<li><p>A third note. {back}</p>\n</li>\n</ol>',
+        )
+    ]
+    assert result["source_only"] is False
+
+
+def test_a_reference_added_ahead_renumbers_what_follows() -> None:
+    old = b"One.[^a] Two.[^b]\n\n[^a]: A.\n\n[^b]: B.\n"
+    new = b"Zero.[^z] One.[^a] Two.[^b]\n\n[^z]: Z.\n\n[^a]: A.\n\n[^b]: B.\n"
+    shown = [(block["kind"], block["html"]) for block in _project(old, new)["blocks"]]
+    assert ("added", f'<ol start="2">\n<li><p>A. {_BACK}</p>\n</li>\n</ol>') in shown
+    assert ("removed", f"<ol>\n<li><p>A. {_GONE}</p>\n</li>\n</ol>") in shown
+    assert ("added", f'<ol start="3">\n<li><p>B. {_BACK}</p>\n</li>\n</ol>') in shown
+
+
+def test_an_inline_note_is_part_of_the_block_that_holds_it() -> None:
+    """An inline note has no lines of its own, so it follows the top-level block whose
+    lines hold it, and an edit to it marks the words in the note."""
+
+    old = b"Text with^[an old aside] in it.\n\nAfter.\n"
+    result = _project(old, old.replace(b"an old", b"a new"))
+    assert [(block["kind"], block["html"]) for block in result["blocks"]] == [
+        (
+            "removed",
+            "<p>Text with<sup><span>1</span></sup> in it.</p>\n\n"
+            f"<ol>\n<li><p><del>an old</del> aside {_GONE}</p>\n</li>\n</ol>",
+        ),
+        (
+            "added",
+            "<p>Text with<sup><a>1</a></sup> in it.</p>\n\n"
+            f"<ol>\n<li><p><ins>a new</ins> aside {_BACK}</p>\n</li>\n</ol>",
+        ),
+        ("context", "<p>After.</p>"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        pytest.param(
+            b"A claim.[^a]\n\n[^a]: Used.\n\n[^z]: Unused old.\n",
+            b"A claim.[^a]\n\n[^a]: Used.\n\n[^z]: Unused new.\n",
+            id="a definition no reference names",
+        ),
+        pytest.param(
+            b"A claim.[^a]\n\n[^a]: Used.\n",
+            b"A claim.[^note]\n\n[^note]: Used.\n",
+            id="a renamed label",
+        ),
+        pytest.param(
+            b"A claim.[^a]\n\n[^a]: First old.\n\n[^a]: Second.\n",
+            b"A claim.[^a]\n\n[^a]: First new.\n\n[^a]: Second.\n",
+            id="a definition a later one of its label replaces",
+        ),
+    ],
+)
+def test_a_note_edit_the_render_does_not_show_is_left_to_source(old: bytes, new: bytes) -> None:
+    """A definition that renders nothing, as KPress's footnote_tail leaves one no reference
+    names and every one but the last of a label, and a label, which renders as its number,
+    show only in Source."""
+
+    result = _project(old, new)
+    assert result["status"] == "ready"
+    assert {block["kind"] for block in result["blocks"]} == {"context"}
+    assert result["source_only"] is True
+
+
+def test_a_link_in_a_note_is_flagged_where_it_points_elsewhere() -> None:
+    old = b"A claim.[^a]\n\n[^a]: See [the source](https://example.com/old).\n"
+    result = _project(old, old.replace(b"/old", b"/new"))
+    assert [(block["kind"], block["source_only"]) for block in result["blocks"]] == [
+        ("context", False),
+        ("removed", True),
+        ("added", True),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("source", "word"),
+    [
+        pytest.param(
+            b"Ref[^a] and[^b].\n\n[^a]: Outer one.\n\n    [^b]: Inner.\n\n    Outer old.\n\nAfter.\n",
+            b"Outer old",
+            id="a definition inside another",
+        ),
+        pytest.param(
+            b"A claim.[^a] More.\n\n[^a]: Used.\n\n[^u]: Unused ^[an old orphan].\n",
+            b"More",
+            id="an inline note only a definition that renders nothing holds",
+        ),
+    ],
+)
+def test_notes_no_source_line_places_leave_the_side_one_block(source: bytes, word: bytes) -> None:
+    """footnote_tail sorts a definition written inside another's by no rule a block can
+    follow, and renders an inline note that no rendered block holds: the notes are then
+    KPress's own, at the end, and the side is one block of all its lines, its edits marked
+    in it."""
+
+    result = _project(source, source.replace(word, word + b" edited"))
+    assert [block["kind"] for block in result["blocks"]] == ["removed", "added"]
+    assert "<ins>edited</ins>" in result["blocks"][1]["html"]
+
+
 # ── Budgets ─────────────────────────────────────────────────────
 
 
@@ -1134,6 +1288,41 @@ def _solid(nodes: Sequence[object]) -> list[object]:
     return solid
 
 
+def _notes_apart(nodes: Sequence[object], notes: dict[int, list[object]]) -> list[object]:
+    """*nodes* without the lists that hold footnotes, each note in *notes* by the number
+    its list gives it: a list whose every item links back to a reference."""
+
+    from metabrowser.diff.markdown_projection import (
+        _Element,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    def backlinks(node: _Element) -> bool:
+        return any(
+            (
+                child.tag == "a"
+                and dict(child.attrs).get("href", "").startswith("#user-content-fnref-")
+            )
+            or backlinks(child)
+            for child in node.children
+            if isinstance(child, _Element)
+        )
+
+    kept: list[object] = []
+    for node in nodes:
+        if not isinstance(node, _Element):
+            kept.append(node)
+            continue
+        items = [child for child in node.children if isinstance(child, _Element)]
+        if node.tag == "ol" and items and all(backlinks(item) for item in items):
+            start = int(dict(node.attrs).get("start") or "1")
+            for number, item in enumerate(items, start):
+                assert number not in notes, number
+                notes[number] = _solid([item])
+            continue
+        kept.append(_Element(node.tag, node.attrs, _notes_apart(node.children, notes)))  # pyright: ignore[reportArgumentType]
+    return kept
+
+
 def _joins_to_kpress(source: str) -> list[tuple[int, int]]:
     """Assert that *source*'s projected blocks join to KPress's own render of it, and
     answer each block's source lines.
@@ -1141,6 +1330,8 @@ def _joins_to_kpress(source: str) -> list[tuple[int, int]]:
     Blocks that raw HTML holds together are rendered with the markers that part the rest
     between them, which a table's parser moves out ahead of it with the whitespace beside
     them; whitespace between two block elements shows nothing, so it is not compared.
+    KPress lists every note at the end and the projection each where it is written, so
+    the notes are compared by their numbers, and the rest in its order.
     """
 
     import re
@@ -1166,7 +1357,10 @@ def _joins_to_kpress(source: str) -> list[tuple[int, int]]:
         for block in blocks
         for child in (block.node.children if not block.node.tag else [block.node])
     ]
-    assert _solid(flattened) == _solid(expected)
+    notes: dict[int, list[object]] = {}
+    expected_notes: dict[int, list[object]] = {}
+    assert _solid(_notes_apart(flattened, notes)) == _solid(_notes_apart(expected, expected_notes))
+    assert notes == expected_notes
     return [(block.start, block.end) for block in blocks]
 
 
@@ -1201,6 +1395,59 @@ def test_projected_blocks_join_to_kpress_parse_markdown(
     # None of these wraps Markdown in raw HTML, so every top-level block is its own.
     side = markdown_projection._parse(source)  # pyright: ignore[reportPrivateUsage]
     assert len(spans) == len(side.blocks)
+
+
+_FOOTNOTED = (
+    "# Notes[^h]\n\n"
+    "A claim.[^a] Another^[an *inline* aside with [a link](https://example.com)].[^b]\n\n"
+    "> Quoted.[^q]\n>\n> [^q]: A note in a quote.\n\n"
+    "- An item.^[an aside in a list]\n- Again.[^a]\n\n"
+    "| A | B |\n| - | - |\n| cell[^b] | two |\n\n"
+    "[^a]: The first note.\n\n"
+    "[^b]: A note of two paragraphs,\n    wrapped.\n\n    The second.\n\n"
+    "[^h]: In a heading.\n\n"
+    "[^unused]: Named by nothing.\n\n"
+    "[^a]: The first note, again: the last of a label renders.\n\n"
+    "[^empty]:\n\nAfter[^empty].\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("source", "spans"),
+    [
+        pytest.param(
+            _FOOTNOTED,
+            # The first `[^a]` (lines 15-16) and `[^unused]` (24-25) render nothing, so
+            # they have no block; each inline note is part of its paragraph's or list's.
+            [
+                (0, 1),
+                (2, 3),
+                (4, 7),
+                (8, 11),
+                (11, 14),
+                (17, 22),
+                (22, 24),
+                (26, 28),
+                (28, 30),
+                (30, 31),
+            ],
+            id="references, notes, inline notes, a note in a quote, a table, labels",
+        ),
+        pytest.param(
+            "Ref[^a] and[^b].\n\n[^a]: Outer.\n\n    [^b]: Inner.\n\n    Outer two.\n\nAfter.\n",
+            [(0, 9)],
+            id="a definition inside another",
+        ),
+    ],
+)
+def test_notes_join_to_kpress_where_they_are_written(
+    source: str, spans: list[tuple[int, int]]
+) -> None:
+    """Each note renders as the Document view renders it, numbered alike, on its
+    definition's lines, or with the block that holds it when it is inline; a side whose
+    notes follow no source line is one block, KPress's own render."""
+
+    assert _joins_to_kpress(source) == spans
 
 
 @pytest.mark.parametrize(

@@ -8,9 +8,11 @@ source may not contain, so a rendered block is known to come from its range and 
 anchors are numbered across the document exactly as the Document view numbers them.
 Raw HTML renders as the Document view renders it: blocks that an element it opens holds
 together, whose markers land inside that element, are one block of all their lines
-(:func:`_units`). ``tests/test_markdown_diff_projection.py`` checks that the joined
-blocks equal KPress's own ``parse_markdown`` render, so a KPress release that changes
-this pipeline fails there rather than here.
+(:func:`_units`). A footnote's note, which the Document view lists at the end, renders
+where its definition is written, numbered as the Document view numbers it
+(:func:`_footnotes_in_place`). ``tests/test_markdown_diff_projection.py`` checks that
+the joined blocks equal KPress's own ``parse_markdown`` render, notes compared by their
+numbers, so a KPress release that changes this pipeline fails there rather than here.
 
 Whatever a block's source says that its render does not show -- a link or image
 destination, a title, alt text under a shown image, an HTML comment, an attribute,
@@ -45,6 +47,7 @@ from kpress.format.markdown import (
     _postprocess_html,
 )
 from kpress.format.sanitize import sanitize_raw_html
+from markdown_it.rules_core import StateCore
 from markdown_it.token import Token
 from pygments.lexers import get_all_lexers
 
@@ -160,6 +163,169 @@ _MAX_NESTING = 32
 _KPRESS.options["maxNesting"] = _MAX_NESTING
 _RewriteLocal = Callable[[str, bool], str | None]
 
+# ── Footnotes, each where its source is ─────────────────────────
+
+# The number a note's own list starts at (_note).
+_NOTE = "metabrowser_note"
+# Marks an inline note's list, which is part of the block before it (_slices).
+_ATTACHED = "metabrowser_attached"
+# A parse's env holds the lines of the source here when its notes are KPress's own, at
+# the end (_footnotes_in_place).
+_NOTES_AT_END = "metabrowser_notes_at_end"
+# The elements each footnote token renders once hardened: a reference's `sup` and
+# link, a note's list (KPress's `section` around it goes) and item, and a link back.
+_NOTE_ELEMENTS = {
+    "footnote_ref": 2,
+    "footnote_block_open": 1,
+    "footnote_open": 1,
+    "footnote_anchor": 1,
+}
+_FOOTNOTE_TAIL = next(
+    rule.fn for rule in _KPRESS.core.ruler.__rules__ if rule.name == "footnote_tail"
+)
+_KPRESS_NOTES_OPEN = cast(Any, _KPRESS.renderer).rules["footnote_block_open"]
+
+
+def _render_notes_open(tokens: list[Token], idx: int, options: Any, env: Any) -> str:
+    """KPress's list of notes, starting at its note's number when it holds one note."""
+
+    html = str(_KPRESS_NOTES_OPEN(tokens, idx, options, env))
+    number = tokens[idx].meta.get(_NOTE, 1)
+    return html if number == 1 else html.replace("<ol>", f'<ol start="{number}">', 1)
+
+
+def _note(identity: int, note: dict[str, Any], content: Sequence[Token], level: int) -> list[Token]:
+    """Note *identity* as KPress's footnote_tail writes it, in a list of its own that
+    starts at its number, at *level*."""
+
+    def token(kind: str, tag: str, nesting: Literal[-1, 0, 1], depth: int) -> Token:
+        made = Token(kind, tag, nesting)
+        made.level = depth
+        made.block = kind.startswith("paragraph")
+        return made
+
+    label = note.get("label")
+    body = list(content)
+    if "tokens" in note:
+        # An inline note (`^[...]`), whose text is a paragraph.
+        text = token("inline", "", 0, level + 2)
+        text.children = note["tokens"]
+        text.content = note["content"]
+        body = [token("paragraph_open", "p", 1, level + 1), text]
+        body.append(token("paragraph_close", "p", -1, level + 1))
+    last = body.pop() if body and body[-1].type == "paragraph_close" else None
+    # One link back for each reference, or one when nothing counts them.
+    anchors = [token("footnote_anchor", "", 0, level + 2) for _ in range(note.get("count") or 1)]
+    for sub, anchor in enumerate(anchors):
+        anchor.meta = {"id": identity, "subId": sub, "label": label}
+    opened, item = (
+        token("footnote_block_open", "", 1, level),
+        token("footnote_open", "", 1, level + 1),
+    )
+    opened.meta = {_NOTE: identity + 1}
+    item.meta = {"id": identity, "label": label}
+    closing = [
+        token("footnote_close", "", -1, level + 1),
+        token("footnote_block_close", "", -1, level),
+    ]
+    return [opened, item, *body, *anchors, *([last] if last else []), *closing]
+
+
+def _inline_notes(
+    tokens: Sequence[Token], notes: dict[int, dict[str, Any]], seen: set[int]
+) -> list[int]:
+    """The inline notes *tokens* refer to that are not in *seen*, which gains them."""
+
+    found: list[int] = []
+    for member in tokens:
+        identity = int(member.meta.get("id", -1)) if member.type == "footnote_ref" else -1
+        if "tokens" in notes.get(identity, {}) and identity not in seen:
+            seen.add(identity)
+            found.append(identity)
+    return found
+
+
+def _notes_at_end(state: StateCore) -> None:
+    """KPress's own notes, at the end, with the lines they and the rest are written on."""
+
+    maps = [token.map for token in state.tokens if token.map is not None]
+    state.env[_NOTES_AT_END] = (min(span[0] for span in maps), max(span[1] for span in maps))
+    _FOOTNOTE_TAIL(state)
+
+
+def _footnotes_in_place(state: StateCore) -> None:
+    """KPress's footnote_tail, with each note where its source is.
+
+    footnote_tail moves every note to one list at the end, numbered by its first
+    reference, and the Document view shows them there. Here each is a list of its own
+    that starts at that number, so a note is a block of its definition's lines, and an
+    inline note (`^[...]`), which has no lines of its own, is part of the top-level
+    block that holds it. As footnote_tail does, the last definition of a label is the
+    one that renders, and one that no reference names renders nothing. A definition
+    written inside another's, which footnote_tail sorts by no rule a block can follow,
+    and an inline note held only by a definition that renders nothing leave the notes
+    KPress's own, at the end, and the side renders as one block (_render).
+    """
+
+    data = cast(dict[str, Any] | None, state.env.get("footnotes"))
+    if not data:
+        return
+    notes = cast(dict[int, dict[str, Any]], data["list"])
+    refs = cast(dict[str, int], data["refs"])
+    tokens = state.tokens
+    last: dict[str, int] = {}
+    inside = False
+    for index, token in enumerate(tokens):
+        if token.type == "footnote_reference_open":
+            if inside:
+                _notes_at_end(state)
+                return
+            inside = True
+            last[token.meta["label"]] = index
+        elif token.type == "footnote_reference_close":
+            inside = False
+    flow: list[Token] = []
+    placed: set[int] = set()
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token.type != "footnote_reference_open":
+            flow.append(token)
+            index += 1
+            continue
+        close = index + 1
+        while tokens[close].type != "footnote_reference_close":
+            close += 1
+        identity = refs.get(":" + token.meta["label"], -1)
+        if last[token.meta["label"]] == index and identity >= 0:
+            written = _note(identity, notes[identity], tokens[index + 1 : close], token.level)
+            written[0].map = token.map
+            flow.extend(written)
+            placed.add(identity)
+        index = close + 1
+    result: list[Token] = []
+    waiting: list[int] = []
+    for token in flow:
+        result.append(token)
+        if token.type == "inline":
+            waiting.extend(_inline_notes(token.children or (), notes, placed))
+        if token.level == 0 and token.nesting <= 0:
+            # The end of a top-level block, which the inline notes it holds follow.
+            while waiting:
+                identity = waiting.pop(0)
+                written = _note(identity, notes[identity], (), 0)
+                written[0].meta[_ATTACHED] = True
+                result.extend(written)
+                waiting.extend(_inline_notes(notes[identity]["tokens"], notes, placed))
+    if waiting or placed != notes.keys():
+        _notes_at_end(state)
+        return
+    state.tokens = result
+
+
+_KPRESS.core.ruler.at("footnote_tail", _footnotes_in_place)
+cast(Any, _KPRESS.renderer).rules["footnote_block_open"] = _render_notes_open
+
 
 class MarkdownDiffBlock(TypedDict):
     kind: Literal["context", "removed", "added"]
@@ -189,7 +355,7 @@ class FrontmatterDiff(TypedDict):
 # reader in each one's own sentence (`REFUSALS` in builtin_plugins/diff/diff-markdown.js).
 # ``no_changes`` is the route's, for a file whose content did not change, and ``deadline``
 # the worker's, for a projection it stopped.
-type MarkdownRefusal = Literal["footnotes", "nesting", "deadline", "no_changes"]
+type MarkdownRefusal = Literal["nesting", "deadline", "no_changes"]
 
 
 class MarkdownDiffProjection(TypedDict):
@@ -574,9 +740,12 @@ def _slices(tokens: Sequence[Token], start: int, stop: int, level: int) -> list[
             index += 1
             continue
         end = _close(tokens, index)
-        # KPress removes comments in inert output. They have no rendered range, so a
-        # changed one reaches the projection's notice as an unmapped source line.
-        if not _is_comment(token):
+        # An inline note's list is part of the block that holds the note. KPress removes
+        # comments in inert output: they have no rendered range, so a changed one reaches
+        # the projection's notice as an unmapped source line.
+        if token.meta.get(_ATTACHED) and slices:
+            slices[-1] = (slices[-1][0], end)
+        elif not _is_comment(token):
             slices.append((index, end))
         index = end
     return slices
@@ -784,16 +953,21 @@ def _block(
     after: int,
     *,
     descend: bool,
+    bounds: tuple[int, int] | None = None,
 ) -> _Block:
-    """A block of one top-level slice of tokens, or of several that render as one."""
+    """A block of one top-level slice of tokens, or of several that render as one, or
+    of all of them on the lines *bounds* names."""
 
     first, stop = spans[0][0], spans[-1][1]
-    start, end = _map(tokens[first], offset, after)
+    if bounds is not None:
+        start, end = bounds
+    else:
+        start, end = _map(tokens[first], offset, after)
     if len(spans) > 1:
         end = _map(tokens[spans[-1][0]], offset, start)[1]
     signature = _hidden(tokens[first:stop])
     hidden, concealed = signature.entries, signature.concealed
-    merged = len(spans) > 1
+    merged = len(spans) > 1 or bounds is not None
     if merged or tokens[first].type in _HOLDERS:
         # A link reference definition inside a quote or a list renders nothing where it
         # is written, and one that repeats a label renders nothing at all, title
@@ -812,7 +986,7 @@ def _block(
         if definitions:
             hidden, concealed = (*hidden, *definitions), True
     children: tuple[_Block, ...] | None = None
-    if descend and not merged and tokens[first].type in _CONTAINERS:
+    if descend and not merged and node.tag and tokens[first].type in _CONTAINERS:
         inner = _slices(tokens, first + 1, stop - 1, tokens[first].level + 1)
         elements = _elements(node)
         if elements is not None and len(elements) == len(inner):
@@ -857,6 +1031,9 @@ class _Side:
     frontmatter: str | None = None
     # Whether a top-level slice holds raw HTML that renders (_is_raw), by slice.
     raw: tuple[bool, ...] = ()
+    # The lines of a source whose notes are KPress's own, at the end, which then
+    # renders as one block (_footnotes_in_place).
+    whole: tuple[int, int] | None = None
 
 
 def _parse(text: str, token_budget: float = inf) -> _Side:
@@ -884,8 +1061,9 @@ def _parse(text: str, token_budget: float = inf) -> _Side:
     elements = 0
     for token in tokens:
         for member in (token, *(token.children or ())):
-            if member.type.startswith("footnote"):
-                raise _Unsupported("footnotes render away from their source", "footnotes")
+            if member.type in _NOTE_ELEMENTS:
+                elements += _NOTE_ELEMENTS[member.type]
+                continue
             # Raw HTML renders what the sanitizer and the allowlist keep of it, which may
             # be nothing, so it adds no element the render must hold; the render tree's
             # own budget bounds what it does add (_Html).
@@ -908,7 +1086,8 @@ def _parse(text: str, token_budget: float = inf) -> _Side:
         )
         for start, stop in blocks
     )
-    return _Side(source, offset, tokens, blocks, elements, frontmatter, raw)
+    whole = cast(tuple[int, int] | None, env.get(_NOTES_AT_END))
+    return _Side(source, offset, tokens, blocks, elements, frontmatter, raw, whole)
 
 
 def _render(side: _Side, budget: float) -> tuple[list[_Block], int]:
@@ -921,6 +1100,24 @@ def _render(side: _Side, budget: float) -> tuple[list[_Block], int]:
             # the info string stays in the block's hidden signature.
             token.meta[_INFO] = token.info
             token.info = ""
+    lines = side.source.split("\n")
+    if side.whole is not None:
+        # Notes KPress places by no rule a block can follow: the side is one block, the
+        # document's own render.
+        tree = _hardened(_KPRESS.renderer.render(tokens, _KPRESS.options, {}), budget)
+        nodes = _trimmed(tree.root.children)
+        start, end = side.whole
+        whole = _block(
+            tokens,
+            [(0, len(tokens))],
+            _Element("", (), nodes),
+            lines,
+            side.offset,
+            0,
+            descend=False,
+            bounds=(start + side.offset, end + side.offset),
+        )
+        return ([whole] if nodes else []), tree.nodes
     pieces = [
         _KPRESS.renderer.render(tokens[start:stop], _KPRESS.options, {})
         for start, stop in side.blocks
@@ -943,7 +1140,6 @@ def _render(side: _Side, budget: float) -> tuple[list[_Block], int]:
         units = [_Unit(0, len(pieces) - 1, _trimmed(tree.root.children))] if pieces else []
         nodes = tree.nodes
     blocks: list[_Block] = []
-    lines = side.source.split("\n")
     for unit in units:
         if not unit.nodes:
             # Raw HTML the render drops whole, such as a script: like a comment, it has no

@@ -199,10 +199,11 @@ such as a class or a style, is a change that only **Source** shows.
 A task list renders as the Document view renders an untrusted document, without its
 boxes, so ticking or unticking one is a change that only **Source** shows.
 
-These files open in **Source**:
+A footnote’s reference shows its number where it is written, numbered as the Document
+view numbers it, and its note shows where its definition is written rather than at the
+end; an inline note shows after the paragraph that holds it.
 
-- files with footnotes
-- files too large for the rendered view
+Files too large for the rendered view open in **Source**.
 
 Rendered also shows math and Mermaid diagrams as their source text, and does not
 highlight code blocks.

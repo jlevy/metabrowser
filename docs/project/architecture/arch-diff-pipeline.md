@@ -252,12 +252,12 @@ hardening. `tests/test_markdown_diff_projection.py` checks the joined blocks aga
 KPress’s own render.
 Changed words are marked by a bounded word diff.
 
-- **Fallback:** a side with footnotes, or nesting past what MarkdownIt keeps, is refused
-  with that `reason`, and the file shows Source with its Rendered chip unavailable and
-  saying why. The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement,
-  bound only a projection in a thread, which nothing can stop; past them the pair goes
-  to the Markdown child, whose deadline bounds it (`markdown_projection_worker.py`), and
-  the pull request route reads a pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
+- **Fallback:** a side nested past what MarkdownIt keeps is refused with that `reason`,
+  and the file shows Source with its Rendered chip unavailable and saying why.
+  The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement, bound only a
+  projection in a thread, which nothing can stop; past them the pair goes to the
+  Markdown child, whose deadline bounds it (`markdown_projection_worker.py`), and the
+  pull request route reads a pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
   `builtin_plugins/github/pull_rendered_diff.py` (mb-rm40). The projection renders with
   math and diagrams off and without code highlighting.
 - **Raw HTML:** renders as the Document view renders it, through the same sanitizer and
@@ -271,6 +271,15 @@ Changed words are marked by a bounded word diff.
   A task list’s box is raw HTML that KPress’s task list plugin writes and the allowlist
   drops, so a task list renders without its boxes and a tick is in the hidden signature
   only, until KPress draws the box from a token of its own (mb-rm6u).
+- **Footnotes:** a reference renders in place, numbered as the Document view numbers it,
+  and each note is a block of its definition’s lines, a list of its own that starts at
+  its number: `_footnotes_in_place` takes the place of KPress’s `footnote_tail`, which
+  moves every note to one list at the end, in the projection’s parser.
+  An inline note follows the top-level block that holds it, as part of that block.
+  A definition that renders nothing, one no reference names or one a later definition of
+  its label replaces, has no block.
+  When notes follow no source line, as a definition written inside another’s does, the
+  side is one block of KPress’s own render.
 - **Hidden signature:** whatever a block’s source says that its render does not show,
   such as a link destination, a title, alt text, a fence’s info string, or raw HTML the
   allowlist drops (an attribute, an element with its content, a comment).
