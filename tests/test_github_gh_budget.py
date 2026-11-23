@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -341,3 +342,35 @@ def test_the_account_check_is_counted_as_any_other_answer_is(
         assert gh_budget.automatic_spent(datetime.now(UTC)) == before + 1
     finally:
         gh.forget_account()
+
+
+def test_the_hours_spending_is_read_from_a_copy_while_the_loop_counts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A6 of review A on #737: a worker thread summed the buckets the loop was adding to.
+
+    The stand-in dictionary lets another thread count a new minute's spending in the
+    middle of a read's iteration, which is the switch the lock rules out.
+    """
+
+    import threading
+
+    counting = threading.Thread(
+        target=gh_budget.spent, args=(1,), kwargs={"now": NOW + timedelta(minutes=5)}
+    )
+
+    class Interrupted(dict[int, int]):
+        def items(self) -> Any:
+            for pair in tuple(super().items()):
+                if not counting.is_alive() and len(self) == 1:
+                    counting.start()
+                    # Under the lock the count waits for this read; without it, it lands.
+                    counting.join(0.2)
+                    if len(self) != 1:
+                        raise RuntimeError("dictionary changed size during iteration")
+                yield pair
+
+    monkeypatch.setattr(gh_budget, "_SPENT", Interrupted({gh_budget._minute(NOW): 2}))  # pyright: ignore[reportPrivateUsage]
+    assert gh_budget.automatic_spent(NOW + timedelta(minutes=5)) == 2
+    counting.join(5)
+    assert gh_budget.automatic_spent(NOW + timedelta(minutes=5)) == 3

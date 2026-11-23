@@ -54,6 +54,7 @@ background work is not admitted, probes slow to the full-read interval, and full
 from __future__ import annotations
 
 import re
+import threading
 from collections.abc import Generator, Iterable, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -134,6 +135,11 @@ _held_until: str | None = None
 _account: str | None = None
 # What automatic work spent in each minute of the last hour, by minute since the epoch.
 _SPENT: dict[int, int] = {}
+# The event loop counts and worker threads read (``refresh_wanted`` of the list, stacks,
+# labels, and files asks :func:`admission` in one), so both hold this, and a reader sums a
+# copy: a bucket added during an iteration would raise ``RuntimeError`` (review A6 of
+# #737).
+_SPENT_LOCK: Final = threading.Lock()
 # Whether the work running in this context is a reader's own action. A task started
 # inside :func:`readers_own` inherits it, as the refresh job a reader's click starts does.
 _READERS_OWN: ContextVar[bool] = ContextVar("metabrowser_gh_readers_own", default=False)
@@ -234,16 +240,19 @@ def spent(cost: int, *, now: datetime) -> None:
     if cost <= 0 or _READERS_OWN.get():
         return
     minute = _minute(now)
-    for old in [each for each in _SPENT if each <= minute - _SPEND_BUCKETS]:
-        del _SPENT[old]
-    _SPENT[minute] = _SPENT.get(minute, 0) + cost
+    with _SPENT_LOCK:
+        for old in [each for each in _SPENT if each <= minute - _SPEND_BUCKETS]:
+            del _SPENT[old]
+        _SPENT[minute] = _SPENT.get(minute, 0) + cost
 
 
 def automatic_spent(now: datetime) -> int:
     """What this process's automatic work spent in the hour before *now*."""
 
     minute = _minute(now)
-    return sum(cost for each, cost in _SPENT.items() if minute - _SPEND_BUCKETS < each <= minute)
+    with _SPENT_LOCK:
+        buckets = tuple(_SPENT.items())
+    return sum(cost for each, cost in buckets if minute - _SPEND_BUCKETS < each <= minute)
 
 
 def over_ceiling(now: datetime) -> bool:
