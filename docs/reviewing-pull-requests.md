@@ -145,6 +145,8 @@ The page has up to four tabs:
   An address on Docs still opens it, and says so, with a link to Changes.
 - **Changes** (`G`): the diff from the merge base to the head, **Split** or **Unified**
   (`L` switches). Markdown files open as rendered changes, as the next section describes.
+  Each file’s **Diff** | **Current** chooser (`N` switches) shows what changed or the
+  new version alone, as [Diff or Current](#diff-or-current) describes.
   The changed-file list on the Pulls tab moves through this diff, and the selected file
   follows the diff as you scroll.
   The **File type** menu beside the layout control (`Y`) shows only the changed files of
@@ -178,6 +180,27 @@ A deleted file, a symbolic link, and a submodule have no View on branch, and no 
 does while Changes shows an earlier head than the pull request’s, which no branch holds
 any more. If the pull request moves on in the moment before the page has followed it,
 View on branch and Browse code switch nothing and say that the head has moved.
+
+### Diff or Current
+
+Every changed file with a text diff, in **Changes** and **Docs** and on a commit’s page,
+has a **Diff** | **Current** chooser at the end of its bar, before a rendered file’s
+**Rendered** | **Source**. **Diff** shows what changed, removals included.
+**Current** shows the new version alone, with its changes marked and nothing removed:
+
+- In **Source**, the new file’s lines in one column, its added lines marked, whatever
+  the layout. Each hunk’s header names the lines of the new file it shows.
+- In **Rendered**, a Markdown file’s added blocks and front matter keys marked and its
+  removed ones left out, and a YAML or JSON tree without its removed entries.
+- A deleted file, and a file the change left empty, say that they have no lines to show.
+
+The choice is one for the whole diff: choosing it on any file switches every file, and
+that file stays where it was on the screen.
+`N` switches too, and keeps the file at the top of the pane where it was.
+Metabrowser remembers the choice, so every diff opens in it, while a file’s choice of
+**Rendered** or **Source** is its own.
+While **Current** is shown the layout control stays, its choices unavailable, since
+Current is one column; choosing **Diff** brings back the layout you had.
 
 ### Rendered Markdown in Changes
 

@@ -1256,7 +1256,7 @@ state looks like.
 
 | Offers | Primitive | ARIA and keyboard | Used by |
 | --- | --- | --- | --- |
-| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags, and for a checkout Branches / Tags / Remotes |
+| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Diff / Current, Rendered / Source, Files / Bytes, Branches / Tags, and for a checkout Branches / Tags / Remotes |
 | Any of a set of labelled values | `.chip-group[data-select="many"]` | `group` of buttons with `aria-pressed`; each a tab stop | An agent log’s event types |
 | One of a few values in a menu, where the glyph is the label | `.menu-chooser` of `.menu-seg` | `group` of `menuitemradio` with `aria-checked`; each a tab stop | Theme and reading font |
 | One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector of a mirror and of a checkout |
@@ -1281,8 +1281,9 @@ Build a chip group with `metabrowser.filterControls.groupHtml` and `bind`, inclu
 outside a filter bar: an exclusive choice is the same control whatever it chooses.
 A consumer may repaint the group from its state on every change, and `bind` puts focus
 back on the chosen chip, so the arrow keys keep working.
-Every changed file of a rendered format has a Rendered | Source chooser, whatever its
-size and whatever the server answers.
+Every file bar with a text diff has a Diff | Current chooser, one choice for the whole
+diff ([Diff File Bar](#diff-file-bar)). Every changed file of a rendered format has a
+Rendered | Source chooser, whatever its size and whatever the server answers.
 Where only Source can be shown, Rendered keeps its place, dimmed and `aria-disabled`,
 and its tooltip and accessible name say why: a disabled button takes no pointer and no
 focus, so nothing could say it.
@@ -2442,21 +2443,36 @@ The stat pair and notes are not in the disclosure trigger but describe it
 (`aria-describedby`), so the copy control can sit between them and the name.
 The bar reveals the copy control while the pointer is on it or the keyboard’s focus is
 in it; unseen, the control keeps its place, so nothing moves when it shows.
-The bar ends with a file’s **Rendered** | **Source** chooser alone, so the chooser is at
-the far end of every bar that has one, on Docs and Changes alike.
-A long path is cut short on one line with its copy control, stats, and View file still
-after it.
+The bar ends with its choosers, the end group, right-aligned:
+`[Diff | Current] [Rendered | Source]`. A file with a text diff has **Diff** |
+**Current**, and a file of a rendered format then has **Rendered** | **Source**, which
+ends the bar, so that chooser is at the far end of every bar that has one, on Docs and
+Changes alike. A long path is cut short on one line with its copy control, stats, and
+View file still after it.
+
+Each chooser chooses one thing, and its scope is what it chooses:
+
+| Chooser | Chooses | Where, and for what | Remembered as | Key |
+| --- | --- | --- | --- | --- |
+| **Split** \| **Unified** | How the code rows are laid out | The diff’s toolbar, for the whole diff | `diff.layout` | `L` |
+| **Diff** \| **Current** | What changed, or the new version alone | Every bar with a text diff, for the whole diff | `diff.show` | `N` |
+| **Rendered** \| **Source** | How one file is drawn | A rendered-format file’s bar, for that file | Not remembered | None |
+
+A choice for the whole diff shows on each of its choosers, so choosing on one bar
+redraws every bar’s, and that file keeps its place on the screen.
 
 The whole bar is one activation surface, the folder-row rule applied to a section
 header: clicking anywhere toggles, with only the copy control, the View file or View on
-branch control, and the Rendered | Source chooser opting out.
-On a pull request’s Changes, a changed Markdown file’s bar carries that chooser, a
-joined chip pair, and before it a small spinner that keeps its place in the bar and
-appears only after the loading-state delay while the rendered view is on its way.
-Such a bar wraps where its two groups do not fit one line: the name’s group keeps the
-first line, and the group at the bar’s end takes the next, still at the bar’s end.
-A file that falls back permanently to Source loses the chooser and the spinner, and its
-bar lays out as any other file’s, with a long path truncated on one line.
+branch control, and the choosers opting out.
+On a pull request’s Changes, a changed Markdown file’s bar starts its end group with a
+small spinner that keeps its place in the bar and appears only after the loading-state
+delay while the rendered view is on its way; the choosers follow it, joined chip pairs.
+A bar with a chooser wraps where its two groups do not fit one line: the name’s group
+keeps the first line, and the end group takes the next, still at the bar’s end, its
+choosers together on one line; an end group wider than the bar wraps too, each of its
+lines at the bar’s end, so no control is cut off.
+A bar with no chooser, a file with no text diff such as a binary file, lays out as any
+other file’s, with a long path truncated on one line.
 Where the main UI can show the file the change makes, the name’s group ends with one
 quiet text action that opens it there, with the tree, the tabs, and the ref selector
 around it: **View file** on a commit’s diff, at the commit, and **View on branch** on a
@@ -2510,7 +2526,8 @@ green or red literals.
 The gutter is an inset decoration on the first line-number cell, not a grid column or
 added element, so context and changed rows retain identical line number and text
 alignment. Unified and split layouts consume the same `.diff-line-add`/`.diff-line-del`
-and `.diff-intraline-change` vocabulary.
+and `.diff-intraline-change` vocabulary, and **Current** draws the new file’s lines in
+it too: an added line keeps its fills and gutter, and no deleted line is drawn.
 
 The line marker and line numbers continue to state change direction without color.
 The gutter is a persistent structural cue, not the only cue.
@@ -2530,7 +2547,12 @@ there is room, and choosing **Split** there draws it with a sideways scroll.
 A pull request’s Docs tab has no layout control and no `L`: a rendered document has no
 layout, so the tab draws a document’s text diff in **Unified**, one column as its
 rendered view is, whatever the stored choice, and with nothing else in its toolbar it
-draws none.
+draws none. While the diff shows **Current**, which is one column whatever the layout,
+the control keeps its place and shows the layout **Diff** draws, so nothing in the
+toolbar moves. Its chips are `aria-disabled`, not `disabled`, and their tooltip and
+accessible name say that Current shows the new version in one column and that **Diff**
+has Split and Unified; neither they nor `L` change the layout then, and **Diff** returns
+in it.
 
 The diff’s toolbar, which holds the control, draws no rule under itself.
 The first file card’s own border, at the cards’ 12 px gap below the toolbar’s padding,

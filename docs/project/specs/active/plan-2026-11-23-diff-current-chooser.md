@@ -228,7 +228,7 @@ One stack on #759, one commit per bead:
   Current is chosen.
 - [x] `mb-yt73`: `diff.show`, `N` and its row in the keyboard reference, the browserless
   session and its golden, and the parity row.
-- [ ] `mb-o8gd`: the design system’s file bar and chooser vocabulary, the pull request
+- [x] `mb-o8gd`: the design system’s file bar and chooser vocabulary, the pull request
   review guide, and the Chrome check of the end group.
 
 <!-- This document follows common-doc-guidelines.md.
