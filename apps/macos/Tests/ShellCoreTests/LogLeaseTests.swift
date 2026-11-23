@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 import Testing
 @testable import ShellCore
 
@@ -49,6 +50,53 @@ import Testing
         let next = try ServerLogLease.claim(for: root, in: folder, owner: 100)
         #expect(next.url.lastPathComponent == "\(stem).app-100.log")
         withExtendedLifetime(claims) {}
+    }
+
+    /// mb-kaps: a lease that only closed its lock file left the lock held while any child
+    /// was between `posix_spawn` copying this process's descriptors and its exec closing
+    /// them, since a `flock` lasts until the last descriptor on its open file closes. A
+    /// claim made in that window found the log of a session that had gone still held. In
+    /// CI the children were other suites', running in parallel; here they are this test's
+    /// own, and enough of them that a lease closing without unlocking fails it: in three
+    /// runs without the unlock, 9, 32, and 38 claims found the log held.
+    @Test func spawningAChildDoesNotKeepAReleasedClaimHeld() throws {
+        let folder = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let shared = ServerLog.url(for: root, in: folder)
+        let spawned = OSAllocatedUnfairLock(initialState: 0)
+        let stop = OSAllocatedUnfairLock(initialState: false)
+        let spawners = (0..<4).map { _ in
+            let thread = Thread {
+                while !stop.withLock({ $0 }) {
+                    var attr: posix_spawnattr_t?
+                    posix_spawnattr_init(&attr)
+                    posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT))
+                    let argv = [strdup("/usr/bin/true"), nil]
+                    var pid: pid_t = 0
+                    if posix_spawn(&pid, "/usr/bin/true", nil, &attr, argv, nil) == 0 {
+                        var status: Int32 = 0
+                        waitpid(pid, &status, 0)
+                    }
+                    free(argv[0])
+                    posix_spawnattr_destroy(&attr)
+                    spawned.withLock { $0 += 1 }
+                }
+            }
+            thread.start()
+            return thread
+        }
+        defer {
+            stop.withLock { $0 = true }
+            while spawners.contains(where: { !$0.isFinished }) { usleep(1000) }
+        }
+        var heldAfterRelease = 0
+        while spawned.withLock({ $0 }) < 600 {
+            var lease: ServerLogLease? = try ServerLogLease.claim(for: root, in: folder, owner: 100)
+            #expect(lease?.url == shared)
+            lease = nil  // that session stopped serving the folder
+            if try ServerLogLease.claim(for: root, in: folder, owner: 200).url != shared { heldAfterRelease += 1 }
+        }
+        #expect(heldAfterRelease == 0)
     }
 
     /// The names one copy tries are bounded: with every one held, the claim fails, and the
