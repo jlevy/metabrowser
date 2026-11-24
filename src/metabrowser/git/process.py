@@ -140,10 +140,27 @@ GIT_NO_HOOK_ARGS: Final[tuple[str, ...]] = (
 # :attr:`GitLocation.diff_driver_args`.
 GIT_NO_DRIVER_ARGS: Final[tuple[str, ...]] = ("--no-textconv", "--no-ext-diff")
 
-# Acquisition has no measured low-speed stall bound yet.
-# This wall-clock cap is only so a forgotten child cannot live forever; user
-# cancellation is the product guard. The 900s value is the measurement-harness
-# timeout in explorations/repository-cache/measure.py.
+# The wall-clock deadline of every Git process under ACQUISITION_POLICY: a first clone,
+# and the fetches that update a store. A transfer that stalls once its connection is up
+# is ended sooner, by the measured low-speed bound in cache/origin.py
+# (HTTP_LOW_SPEED_TIME_S). This deadline ends what that bound cannot: an origin that
+# holds a connection open by sending a little every half minute, and a child that would
+# otherwise live forever. It also stops a first clone that is still making progress,
+# and nothing refuses a clone for being too large to finish inside it: the free-space
+# check (cache/free_space.py) refuses only what would not fit on the cache's volume.
+# The 900 s value is the measurement-harness timeout in
+# explorations/repository-cache/measure.py.
+#
+# First-clone throughput, full fetches of every branch and tag, in GitHub-reported
+# kilobytes per second of wall clock. Measured 2026-09-23 on one macOS machine (Git
+# 2.50.1, load average 36 to 103): flask 4,010, requests 5,160, mypy 3,500, and django
+# 4,120 and 14,200 on two runs; the first 290 MB of torvalds/linux arrived at 1,820 KB/s
+# of pack data. Measured 2026-11-02 on a home network (Git 2.50.1, load average 3 to 4):
+# a 1.2 GB private repository, 1,222,854 KB reported, cloned in 185 s, which is
+# 6,610 KB/s. With a pack 1.1 times its reported size (PACK_PER_REPORTED, beside those
+# packs' measurements in cache/free_space.py), a first clone at the slowest rate reaches
+# this deadline at about 1,489,000 KB reported; at the rate of 2026-11-02, whose pack
+# was 1.0 times its size, at about 5,950,000 KB.
 GIT_ACQUISITION_TIMEOUT_S: Final[float] = 900.0
 
 # Acquisition security floor, frozen in git-version-gates.json. A version on a

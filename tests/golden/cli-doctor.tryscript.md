@@ -14,7 +14,7 @@ env:
   METABROWSER_CACHE_DIR: "/tmp/metabrowser-doctor-golden-never-created/cache"
   METABROWSER_STATE_DIR: "/tmp/metabrowser-doctor-golden-never-created/state"
   METABROWSER_EVENT_LOG: "1"
-  METABROWSER_MAX_FIRST_CLONE_KB: "1"
+  METABROWSER_CACHE_RESERVE_MB: "0"
 patterns:
   FAKE_GH: '[^\s"]+/fixtures/github-status/gh'
   FAKE_GIT: '[^\s"]+/fixtures/doctor/git'
@@ -23,7 +23,7 @@ patterns:
   PYTHON: '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+]* at [^\s"]+'
   INSTALL_LOCATION: '(?:from the source checkout|in the Python environment) [^\s"]+'
   SANDBOX: '[^\s"]+/tryscript-[A-Za-z0-9]+'
-  FREE: '[0-9]+\.[0-9] GB'
+  FREE: '(?:[0-9]+\.[0-9] GB|[0-9]+ MB|under 1 MB)'
 before: >-
   mkdir -m 700 config cache badconfig &&
   mkdir -m 755 shared &&
@@ -52,8 +52,8 @@ minimum to compare; `tests/test_doctor.py` covers that comparison.
 The patterns elide what the host decides: the `metab` version and executable, the
 Python, the install location, and the free space.
 A source checkout may keep its Python virtual environment on an external scratch volume.
-`METABROWSER_MAX_FIRST_CLONE_KB` admits a first clone of 1 KB, so the cache check warns
-of low free space only on a full volume; `tests/test_doctor.py` covers that warning.
+`METABROWSER_CACHE_RESERVE_MB` is 0, so the cache check never warns of low free space;
+`tests/test_doctor.py` covers that warning.
 
 ## Test: a clean setup, as text
 

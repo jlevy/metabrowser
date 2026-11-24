@@ -55,6 +55,10 @@ for _capability_env in ("METAB_UNTRUSTED", "METAB_ACTIVE_CONTENT", "METAB_ALLOW_
 # Where `--present` opens a target is the operator's preference; a test that reads one
 # sets it.
 os.environ.pop("METABROWSER_OPEN_IN", None)
+# Nor does the reserve a first clone leaves free (metabrowser.cache.free_space) come from
+# whoever runs the suite: with a large one exported, every `file://` first clone a test
+# makes was refused (review C2 on #768). A test of the reserve sets it.
+os.environ.pop("METABROWSER_CACHE_RESERVE_MB", None)
 
 # The pre-push gate runs this suite inside a githook, and from a linked worktree git
 # exports GIT_DIR there. It outranks the working directory and `git -C`, so a fixture

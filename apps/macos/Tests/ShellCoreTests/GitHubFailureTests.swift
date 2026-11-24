@@ -67,7 +67,7 @@ private let repository = URL(string: "https://github.com/octo/absent")!
 
     @Test func otherFailuresAreNotGitHubs() {
         for line in [
-            "Error: https://github.com/octo/demo is over the size limit for a first clone (too_large); GitHub reports 2,000,000 KB; nothing was published",
+            "Error: https://github.com/octo/demo does not fit on the cache's volume for a first clone (too_large); GitHub reports 2,000,000 KB; nothing was published",
             "Error: the source could not be read as a Git repository; nothing was published",
             "Error: ROOT does not exist",
             "Traceback (most recent call last):",

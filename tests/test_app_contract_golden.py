@@ -56,8 +56,8 @@ What differs from the app's own runs, and why:
   state is the one the block chose and not the host's. The app it is told it runs for is
   a bundle holding only an ``Info.plist`` whose minimum ``metab`` no release meets, so
   the ``metab`` check's warning does not move with this checkout's version. Its
-  free-space floor follows ``METABROWSER_MAX_FIRST_CLONE_KB``, set to 1 here, so the
-  disk the tests run on never makes the cache a problem.
+  free-space floor is the reserve ``METABROWSER_CACHE_RESERVE_MB`` sets, 0 here, so the
+  disk the tests run on never makes the cache a warning.
 """
 
 from __future__ import annotations
@@ -573,7 +573,7 @@ def _doctor(sandbox: _Sandbox) -> list[str]:
     )
     with sandbox.monkeypatch.context() as patched:
         patched.setenv("PATH", f"{GIT_STAND_IN}{os.pathsep}{os.environ['PATH']}")
-        patched.setenv("METABROWSER_MAX_FIRST_CLONE_KB", "1")
+        patched.setenv("METABROWSER_CACHE_RESERVE_MB", "0")
         # The suite starts every test on a pretend Git 2.50.1 for file ages
         # (tests/file_ages_git.py); the doctor's Git check reads the stand-in as a whole.
         patched.setattr(file_ages, "git_executable", git_process.git_executable)
