@@ -339,6 +339,53 @@ and the body size (mb-26zj): the summary sits 6 px under the age line and 16 px 
 description, and its header is one 24 px row from a 373 px pane, where it was from 354
 px at 13 px, and wraps to two lines at 320 px.
 
+## Rendered Diff Block Spacing
+
+For [Rendered Diff Spacing](../../docs/design-system.md#rendered-diff-spacing), recorded
+on 2026-11-23 (mb-6d1s), when a rendered Markdown diff’s rows stopped padding their
+blocks and let their margins collapse.
+Measured in headless Chrome 152 by `tests/dom/diff-markdown-spacing-chrome.mjs`, in 900
+px frames, the production `appendBlocks` building the projection of the change in
+`tests/test_diff_markdown_spacing_chrome.py` beside KPress’s render of each version as a
+Document view renders it.
+A gap is from one block’s box to the next’s, a list read item by item.
+Before is `main` at 06781e41b; the live pull request page at the same commit gave the
+same values for the pairs it held.
+The serif and the sans reading font gave the same values.
+
+| From, to | Document view | Diff before | Diff after |
+| --- | --- | --- | --- |
+| h1, p | 16 | 36 | 16 |
+| p, p | 12 | 32 | 12 |
+| p, h1 or h2 | 32 | 52 | 32 |
+| h2, p | 16 | 36 | 16 |
+| p, h3 | 22.39 | 42.39 | 22.39 |
+| h3, p | 12 | 31.19 | 12 |
+| p, h4 | 16 | 36 | 16 |
+| h4, p | 11.19 | 31.19 | 11.19 |
+| p, h5 or h6 | 12 | 31.19 | 12 |
+| h5 or h6, p | 8 | 28 | 8 |
+| p, first list item | 12 | 31.19 | 12 |
+| list item, list item, in two rows | 11.19 | 19.19 | 11.19 |
+| last list item, p | 12 | 20 | 12 |
+| p, quote; quote, code | 24 | 32 | 24 |
+| code, p | 12 | 32 | 12 |
+| h2, h3 straight after it | 17.59 | 46.39 | 22.39 |
+
+Before, each row padded its block by 4 px above and below and kept the block’s margins
+inside it, so a gap was the two margins added plus 8 px; between two rows of one list,
+whose list’s margins were zeroed, the two paddings alone put its items 8 px further
+apart than the document’s. After, every gap is the document’s except an h3 straight
+after an h2, which keeps the h3’s own space after a paragraph, because joining KPress’s
+`h2 + h3` across rows would restate its margin.
+With the rows’ padding gone, the fold of unchanged blocks, opened, still kept its last
+block’s margin inside the fold, giving 24 px to the paragraph after it where the
+document has 12: KPress’s `::details-content` clips with `overflow: hidden`, which
+starts a formatting context; a plain page in Chrome 152 with the same markup and no
+`overflow` collapsed the margins.
+Changed blocks used to touch, their 4 px paddings forming one band; with the document’s
+spacing, two changed blocks’ bands part by the gap less 8 px.
+
 ## Diff Summary
 
 For [Diff Summary](../../docs/design-system.md#diff-summary).

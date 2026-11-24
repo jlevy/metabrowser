@@ -12,6 +12,13 @@
   --diff-add-gutter: var(--status-success);
   --diff-del-gutter: var(--status-error);
   --diff-change-gutter-width: 3px;
+  /* How far a changed Markdown block's band reaches past its text, above and below: the
+     4 px a row padded its block by before the band was drawn rather than laid out
+     (mb-6d1s). Half the least space KPress puts between two blocks (8 px, from an h5 or
+     h6 to its paragraph), so two changed blocks' bands meet there and never overlap,
+     which would draw a darker seam where their translucent grounds cross;
+     tests/test_diff_markdown_spacing_chrome.py holds that no two bands overlap. */
+  --diff-markdown-band-extent: 4px;
   /* Held bodies and their eventual chrome use the same token-based dimensions. */
   --diff-code-row-height: calc(1.5 * var(--mono-block-font-size));
   --diff-header-padding-y: 4px;
@@ -735,13 +742,24 @@
 
 /* The comparison's article is a KPress fragment outside the document host; the shell's
    bridge (static/styles.css) gives every `.kpress` the app's colors and corners, so its
-   quotes and code draw as a document's do. */
+   quotes and code draw as a document's do. It isolates its paint, so a changed block's
+   band (below) is drawn behind every block's text and in front of the article's ground. */
 .metabrowser-diff-host .diff-markdown {
   overflow-wrap: anywhere;
+  isolation: isolate;
 }
 
+/* Each block is a row of its own, and a row sets no block padding or border, so its
+   block's margins pass through it and collapse with the next row's as two blocks of a
+   document do: the space from one block's text to the next is the Document view's
+   (docs/design-system.md, "Rendered Diff Spacing"). The zero padding also undoes the
+   padding KPress gives a `<details>`'s content (`.kpress details > :not(summary)`),
+   which a fold's rows are. With 4 px of padding each, a row kept its block's margins and
+   added them to the next row's: 52 px from a paragraph to an h2 where the document has
+   32 (explorations/performance-loop/design-rule-measurements.md, "Rendered Diff Block
+   Spacing"; tests/test_diff_markdown_spacing_chrome.py). */
 .metabrowser-diff-host .diff-markdown-block {
-  padding-block: 4px;
+  padding-block: 0;
   padding-inline: calc(var(--diff-rendered-inset) - var(--diff-change-gutter-width))
     var(--diff-rendered-inset);
   border-inline-start: var(--diff-change-gutter-width) solid transparent;
@@ -751,9 +769,59 @@
   margin: 0;
 }
 
-/* One list item or quoted paragraph per row reads as one list or quote. */
-.metabrowser-diff-host .diff-markdown-block .kpress-prose > :is(ul, ol, blockquote) {
-  margin-block: 0;
+/* One list item or quoted paragraph per row reads as one list or quote: between two rows
+   of one list or one quote, the list's or quote's own margins give way, so its items are
+   spaced as KPress spaces them inside it, and its first and last rows keep the margins
+   that set the list or quote apart in the document. */
+.metabrowser-diff-host .diff-markdown-block:has(> .kpress-prose > ul)
+  + .diff-markdown-block
+  > .kpress-prose
+  > ul,
+.metabrowser-diff-host
+  .diff-markdown-block:has(> .kpress-prose > ol)
+  + .diff-markdown-block
+  > .kpress-prose
+  > ol,
+.metabrowser-diff-host
+  .diff-markdown-block:has(> .kpress-prose > blockquote)
+  + .diff-markdown-block
+  > .kpress-prose
+  > blockquote {
+  margin-block-start: 0;
+}
+
+.metabrowser-diff-host
+  .diff-markdown-block:has(+ .diff-markdown-block > .kpress-prose > ul)
+  > .kpress-prose
+  > ul,
+.metabrowser-diff-host
+  .diff-markdown-block:has(+ .diff-markdown-block > .kpress-prose > ol)
+  > .kpress-prose
+  > ol,
+.metabrowser-diff-host
+  .diff-markdown-block:has(+ .diff-markdown-block > .kpress-prose > blockquote)
+  > .kpress-prose
+  > blockquote {
+  margin-block-end: 0;
+}
+
+/* KPress sets a paragraph right after an h4, h5, or h6 close under it (`h4 + p` to
+   `h6 + p`, no space above the paragraph), and a row's paragraph has no heading beside
+   it in its row, so the rule is carried across rows here, and across the one hidden row
+   an edited paragraph leaves when its removed version is not shown. KPress's `h2 + h3` is
+   not carried: its value is KPress's to set, so an h3 straight after an h2 keeps its own
+   space above it, 4.8 px more than the document's. */
+.metabrowser-diff-host .diff-markdown-block:has(> .kpress-prose > :is(h4, h5, h6))
+  + .diff-markdown-block
+  > .kpress-prose
+  > p,
+.metabrowser-diff-host
+  .diff-markdown-block:has(> .kpress-prose > :is(h4, h5, h6))
+  + .diff-markdown-block[hidden]
+  + .diff-markdown-block
+  > .kpress-prose
+  > p {
+  margin-block-start: 0;
 }
 
 .metabrowser-diff-host .diff-markdown-block img {
@@ -761,14 +829,32 @@
   block-size: auto;
 }
 
+/* A changed block's band: its change gutter at the diff box's edge and its ground across
+   the box, `--diff-markdown-band-extent` past the block's text above and below. It is
+   drawn, not laid out, so it moves no text: the space between two blocks stays the
+   document's whether or not either changed. */
+.metabrowser-diff-host :is(.diff-markdown-added, .diff-markdown-removed) {
+  position: relative;
+}
+
+.metabrowser-diff-host :is(.diff-markdown-added, .diff-markdown-removed)::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-block: calc(-1 * var(--diff-markdown-band-extent));
+  inset-inline: calc(-1 * var(--diff-change-gutter-width)) 0;
+  border-inline-start: var(--diff-change-gutter-width) solid var(--diff-markdown-band-gutter);
+  background: var(--diff-markdown-band-bg);
+}
+
 .metabrowser-diff-host .diff-markdown-added {
-  border-inline-start-color: var(--diff-add-gutter);
-  background: var(--diff-add-row-bg);
+  --diff-markdown-band-gutter: var(--diff-add-gutter);
+  --diff-markdown-band-bg: var(--diff-add-row-bg);
 }
 
 .metabrowser-diff-host .diff-markdown-removed {
-  border-inline-start-color: var(--diff-del-gutter);
-  background: var(--diff-del-row-bg);
+  --diff-markdown-band-gutter: var(--diff-del-gutter);
+  --diff-markdown-band-bg: var(--diff-del-row-bg);
 }
 
 .metabrowser-diff-host .diff-markdown-added ins {
@@ -869,7 +955,7 @@
 
 @media (forced-colors: active) {
   .metabrowser-diff-host :is(.diff-markdown-added, .diff-markdown-removed) {
-    border-inline-start-color: CanvasText;
+    --diff-markdown-band-gutter: CanvasText;
   }
   .metabrowser-diff-host
     :is(
@@ -906,6 +992,15 @@
   color: inherit;
   font-family: inherit;
   font-feature-settings: inherit;
+}
+
+/* KPress clips a disclosure's content while it opens and closes, with `overflow: hidden`,
+   which also starts a formatting context there and so kept the last block's margin
+   inside an open fold, adding it to the next block's: 24 px from the last block the fold
+   holds to the paragraph after it, where the document has 12. `clip` clips the same and
+   starts none, so that margin collapses with the next block's as the document's does. */
+.metabrowser-diff-host .diff-markdown details.diff-markdown-context::details-content {
+  overflow: clip;
 }
 
 .metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary {
