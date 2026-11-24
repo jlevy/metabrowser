@@ -258,7 +258,7 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert (tag["kind"], tag["button"], tag["tree"]) == ("git_revision", "v1", ["README.md"])
     assert result["tagMenu"] == {
         "context": "Tag v1",
-        "items": ["Copy Tag Name", "View This Tag"],
+        "items": ["Copy Tag Name"],
         "copied": "v1",
         "widthChanged": False,
         "caret": "none",
@@ -290,6 +290,13 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert (after_back["kind"], after_back["path"]) == ("filesystem", "/view/README.md")
     assert after_back["tree"] == WORKING_TREE
     assert (result["served"]["subject"], result["served"]["pin"]) == ("attached_filesystem", None)
+
+    # The checked-out branch snapshot is still available through the chooser.
+    checked_out = result["checkedOutBranch"]
+    assert checked_out["pin"]["ref"] == "refs/heads/topic"
+    assert checked_out["pin"]["pin"].startswith(TOPIC)
+    assert checked_out["kind"] == "git_revision"
+    assert "UNTRACKED.md" not in checked_out["tree"]
 
     # Each document came under its subject's policy: a revision's has one, the folder's none.
     documents = [entry for entry in result["documents"] if entry["status"] == 200]

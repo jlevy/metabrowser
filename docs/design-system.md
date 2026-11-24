@@ -2170,8 +2170,11 @@ The menu names the ref and its kind.
 **Copy Branch Name** and **Copy Tag Name** copy the underlying name.
 **View This Branch** or **View This Tag** uses the in-app right arrow and selects the
 full ref, including its Git namespace, through the same source-switch route as the
-chooser. **View PR Head in Metabrowser** uses the same arrow and opens the PR snapshot
-when it is available in the mirror.
+chooser. The current Files chip offers copying and an applicable GitHub destination.
+Choose the checked-out branch from the adjacent chooser to open its committed snapshot
+from a live working tree.
+**View PR Head in Metabrowser** uses the same arrow and opens the PR snapshot when it is
+available in the mirror.
 **Open on GitHub** shows the destination and uses the same external arrow as the
 repository menu. The remote action appears when the app can identify the matching GitHub
 repository and ref.

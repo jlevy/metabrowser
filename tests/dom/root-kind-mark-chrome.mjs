@@ -265,9 +265,7 @@ async function checkCheckoutDetails() {
   await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) !== null`, STEP_MS);
   const menuState = await browser.evaluate(`(() => {
     const menu = document.querySelector(${JSON.stringify(menu)});
-    const view = [...menu.querySelectorAll("button")].find(item => item.textContent === "View This Branch");
     return {
-      arrow: [...view.querySelectorAll(".menu-item-icon svg path")].map(path => path.getAttribute("d")),
       open: menu.contains(document.activeElement),
       label: menu.getAttribute("aria-label"),
       labels: [...menu.querySelectorAll(".menu-item")].map(item => item.textContent),
@@ -275,11 +273,10 @@ async function checkCheckoutDetails() {
     };
   })()`);
   check(
-    "the selected branch menu has its context, focus, and shared actions",
+    "the working tree's current branch menu offers copy and GitHub",
     menuState.open &&
       menuState.label === `Local branch ${state.branch}` &&
-      menuState.labels.join("|") === "Copy Branch Name|View This Branch|Open on GitHub" &&
-      menuState.arrow.join("|") === "M5 12h14|m12 5 7 7-7 7" &&
+      menuState.labels.join("|") === "Copy Branch Name|Open on GitHub" &&
       menuState.url === `https://github.com/Octo/Demo/tree/refs/heads/${state.branch}`,
     JSON.stringify(menuState),
   );

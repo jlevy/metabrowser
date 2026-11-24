@@ -1068,6 +1068,7 @@
           label: model.selectedRef.label,
           kind: model.selectedRef.kind,
           ref: model.selectedRef.ref,
+          current: true,
         });
         if (model.workingTree?.current) {
           const context = model.selectedRef.label + " · Working tree";
