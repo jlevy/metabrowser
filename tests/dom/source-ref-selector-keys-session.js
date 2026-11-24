@@ -93,6 +93,9 @@ function describe(node) {
   if (node.classList.contains("source-ref-selector-filter")) {
     return "the filter";
   }
+  if (node.classList.contains("source-ref-selector-toggle")) {
+    return node.getAttribute("aria-label");
+  }
   if (node.classList.contains("source-ref-selector-row")) {
     return `the row ${node.querySelector(".ref-chip")?.textContent ?? "?"}`;
   }
@@ -180,7 +183,10 @@ async function main() {
   plainKey(rows()[0], "Escape");
   check("↓ from the filter moves to a row", plain[0].taken && plain[0].focus.startsWith("the row"));
   check("Tab and Option-Tab wrap from the last stop", plain[1].taken && plain[2].taken);
-  check("Escape closes the list", plain[3].taken && !plain[3].listOpen);
+  check(
+    "Escape closes the list and restores focus to the chooser button",
+    plain[3].taken && !plain[3].listOpen && focused() === selector.button,
+  );
   selector.dispose();
 
   process.stdout.write(

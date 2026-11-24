@@ -448,6 +448,10 @@
         const slot = /** @type {HTMLElement} */ (toolbar);
         slot.hidden = slot.dataset.navToolbar !== panelId;
       }
+      const filesRefRow = document.getElementById("nav-files-ref");
+      if (filesRefRow) {
+        filesRefRow.hidden = panelId !== "files";
+      }
       if (leaving !== panelId && scroller) {
         scroller.scrollTop = navPanelScroll.get(panelId) ?? 0;
         navPanels.find((candidate) => candidate.id === leaving)?.onHide?.();
