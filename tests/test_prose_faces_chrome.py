@@ -42,11 +42,21 @@ from tests.required_tools import require_chrome, require_git, require_node
 SESSION = Path(__file__).resolve().parent / "dom" / "prose-faces-chrome.mjs"
 DIFF_SESSION = Path(__file__).resolve().parent / "dom" / "prose-faces-diff-chrome.mjs"
 FIXTURE = Path(__file__).resolve().parent / "github_pull_fixture.py"
-# The test runs against one deadline, which the server's start and the session share, the
-# start at most SERVER_START_TIMEOUT_S of it. The whole test took 5.4 s on a Mac at a load
-# average of 7, the session 2.5 s of it. What is left after the session is reserved for
-# stopping its process group, the server, and the profile (tests/process_group.py).
-RUN_BUDGET_S = 30
+# The documents test bounds the server's start, up to its "Serving" line, by
+# SERVER_START_TIMEOUT_S, and then the session, from that line, by RUN_BUDGET_S. One
+# deadline shared by both, set to 30 s from a 5.4 s run at a load average of 7, let a slow
+# start take the session's time, and a loaded machine take all of it (mb-w8al). Measured
+# on a 10-core Mac on 2026-11-23: alone at a load average near 95 the server started in
+# 2.0 to 4.8 s and the session took 8.1 to 9.9 s; six at once, the load rising from 105 to
+# 180, the session took 27.6 to 28.6 s (Chrome's start 4.3 to 4.8 s, its 12 pages 0.3 to
+# 4.6 s each and 16.4 to 17.8 s together), and five of the six whole runs passed 30 s. A
+# run at a load average near 400 beside two other Chrome sessions reached 6 of its 12
+# pages, at 1.1 to 4.2 s each, inside the old 30 s; at that pace all 12 take about 60 s,
+# which 90 s holds. The figures that bound each part, Chrome's start (START_BOUND_MS) and
+# each page's waits (PROBE_WAIT_MS), are in the session (tests/dom/prose-faces-chrome.mjs).
+# What is left after the session is reserved for stopping its process group, the server,
+# and the profile (tests/process_group.py).
+RUN_BUDGET_S = 90
 SERVER_START_TIMEOUT_S = 20
 # The server stops on SIGTERM well inside this, and is killed after it.
 SERVER_TERM_S = 5
@@ -61,7 +71,7 @@ DIFF_SERVER_START_TIMEOUT_S = 40
 # The longest either test can take; tests/test_process_group.py holds it under the
 # module's timeout, which ends the whole run when it fires.
 LIFECYCLE_S = (
-    max(RUN_BUDGET_S, DIFF_RUN_BUDGET_S)
+    max(SERVER_START_TIMEOUT_S + RUN_BUDGET_S, DIFF_RUN_BUDGET_S)
     + GROUP_STOP_S
     + SERVER_TERM_S
     + SERVER_KILL_S
@@ -174,7 +184,6 @@ def test_documents_read_in_the_reading_font_and_chrome_prose_in_sans(
     served = tmp_path / "served"
     served.mkdir()
     commit = _repository(served)
-    deadline = time.monotonic() + RUN_BUDGET_S
     command = [
         str(_METAB),
         str(served),
@@ -187,18 +196,17 @@ def test_documents_read_in_the_reading_font_and_chrome_prose_in_sans(
         str(tmp_path / "config"),
     ]
     env = {**os.environ, "METABROWSER_LOG_LEVEL": "WARNING"}
-    start_deadline = min(deadline, time.monotonic() + SERVER_START_TIMEOUT_S)
-    with _serving(command, env, start_deadline) as base:
+    with _serving(command, env, time.monotonic() + SERVER_START_TIMEOUT_S) as base:
         # The session leads a process group of its own, which Chrome joins, and the whole
         # group is stopped however it ends; its profile is the fixture's to remove
         # (tests/process_group.py).
         result = run_in_own_group(
             [require_node(), str(SESSION), base, commit],
-            timeout_s=max(0.0, deadline - time.monotonic()),
+            timeout_s=RUN_BUDGET_S,
             env={**os.environ, "CHROME_BIN": chrome, "CHROME_PROFILES": str(chrome_profile)},
         )
     assert not result.timed_out, (
-        f"the session ran past the test's {RUN_BUDGET_S} s: {result.stderr or result.stdout}"
+        f"the session ran past its {RUN_BUDGET_S} s: {result.stderr or result.stdout}"
     )
     assert result.returncode == 0, result.stderr or result.stdout
     assert result.stdout == f"prose faces in Chrome: {CHECKS} checks passed\n", result.stdout
