@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -40,7 +41,8 @@ from tests.test_nav_metadata_chrome import (
 )
 from tests.test_overview_readme_toc_chrome import README
 
-SESSION = Path(__file__).resolve().parent / "dom" / "reading-column-chrome.mjs"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SESSION = REPO_ROOT / "tests" / "dom" / "reading-column-chrome.mjs"
 _METAB = Path(sys.executable).with_name("metab")
 # A cold Chrome start, which tests/dom/chrome-session.mjs bounds at 30 s, then the
 # page loads and navigation toggles, each glide sampled for under a second.
@@ -71,7 +73,14 @@ def test_hiding_the_navigation_pane_centers_a_reading_column_in_chrome(
     folder.mkdir()
     (folder / "README.md").write_text("# A folder\n\nIts pane is hidden.\n", encoding="utf-8")
     (folder / "guide.md").write_text(_GUIDE, encoding="utf-8")
-    (folder / "short.md").write_text("# Short\n\nOne paragraph.\n", encoding="utf-8")
+    (folder / "short.md").write_text(
+        "# Short\n\nOne paragraph.\n\n| Name | Status |\n| --- | --- |\n| One | Ready |\n",
+        encoding="utf-8",
+    )
+    shutil.copyfile(
+        REPO_ROOT / "docs/project/architecture/arch-diff-pipeline.md",
+        folder / "arch-diff-pipeline.md",
+    )
     (folder / "tool.py").write_text('print("a source file")\n', encoding="utf-8")
     with_readme_toc = folder / "with-readme-toc"
     with_readme_toc.mkdir()
