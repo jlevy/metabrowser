@@ -42,9 +42,9 @@ from metabrowser.builtin_plugins.github.urls import (
     GithubUrlReducer,
     parse_repository_url,
 )
-from metabrowser.cache.acquire import AcquisitionError, RepositoryTooLargeError
+from metabrowser.cache.acquire import AcquisitionError
+from metabrowser.cache.free_space import refuse_unless_it_fits
 from metabrowser.cache.providers import PullRequestUnavailableError
-from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
 from metabrowser.git.wire import is_full_revision
 from metabrowser.repository_context import RepositoryContext
 
@@ -64,24 +64,6 @@ log = logging.getLogger(__name__)
 
 _GITHUB_HTTPS: Final = f"https://{CANONICAL_HOST}/"
 
-# A first clone whose ``repos/<o>/<r>`` size (kilobytes, as GitHub reports it) exceeds
-# this is refused before it starts rather than killed at GIT_ACQUISITION_TIMEOUT_S.
-# Measured 2026-09-23 on one macOS machine (Git 2.50.1, load average 36 to 103), full
-# fetches of every branch and tag, in GitHub-reported kilobytes per second of wall
-# clock: flask 4,010, requests 5,160, mypy 3,500, and django 4,120 and 14,200 on two
-# runs; the first 290 MB of torvalds/linux arrived at 1,820 KB/s of pack data. A pack
-# ran 1.1 times its reported size for django (313 MB stored for 283 MB reported).
-# Measured 2026-11-02 on a home network (Git 2.50.1, load average 3 to 4): a 1.2 GB
-# private repository, 1,222,854 KB reported, cloned in 185 s, which is 6,610 KB/s of
-# wall clock, with a pack of 1.16 GiB, about 1.0 times its reported size.
-#
-# The limit holds at the slowest rate seen: at 1,820 KB/s and 1.1 times, the 900 s
-# deadline is reached at 1,489,000 KB, so the limit below takes 816 s there and leaves
-# 84 s to spare. At the rate of 2026-11-02 it takes 204 s. A faster network can go past
-# it with METABROWSER_MAX_FIRST_CLONE_KB: a first clone reports its progress, one that
-# stalls is cut off within 30 s, and the deadline still applies.
-MAX_FIRST_CLONE_KB: Final[int] = 1_350_000
-MAX_FIRST_CLONE_ENV: Final = "METABROWSER_MAX_FIRST_CLONE_KB"
 _SIZE_OUTPUT_MAX_BYTES: Final[int] = 64
 
 
@@ -136,22 +118,6 @@ def credential_helper_args(gh_path: str, *, home: str | None = None) -> tuple[st
 
 def _is_github_remote(url: str) -> bool:
     return url.startswith(_GITHUB_HTTPS)
-
-
-def first_clone_limit_kb() -> int:
-    """The environment's whole number of kilobytes above zero, or else the default."""
-
-    raw = os.environ.get(MAX_FIRST_CLONE_ENV, "").strip()
-    if not raw:
-        return MAX_FIRST_CLONE_KB
-    try:
-        limit_kb = int(raw)
-    except ValueError:
-        limit_kb = 0
-    if limit_kb > 0:
-        return limit_kb
-    log.warning("ignored %s: it is not a whole number of kilobytes", MAX_FIRST_CLONE_ENV)
-    return MAX_FIRST_CLONE_KB
 
 
 # The status states in which the size read cannot succeed: no gh, no account, or no
@@ -245,7 +211,7 @@ class GithubProvider:
             return "if it is private, install GitHub CLI (gh) and sign in with gh auth login"
         return "if it is private, sign in with gh auth login to an account that can read it"
 
-    async def check_first_clone(self, source: GitSource) -> None:
+    async def check_first_clone(self, source: GitSource, *, free_bytes: int | None) -> None:
         parsed = parse_repository_url(source.normalized)
         if parsed is None:
             return
@@ -261,6 +227,10 @@ class GithubProvider:
             # No gh, signed out, or offline: the size read would fail too, and the clone
             # itself reports what is wrong.
             log.debug("skipped the size check for %s: %s", source.normalized, status.state)
+            return
+        if free_bytes is None:
+            # The cache's volume could not be read, so no size would refuse the clone.
+            log.debug("skipped the size check for %s: free space unknown", source.normalized)
             return
         owner, repository = parsed
         try:
@@ -286,17 +256,7 @@ class GithubProvider:
         if not text.isdigit():
             log.debug("skipped the size check for %s: unexpected answer", source.normalized)
             return
-        size_kb = int(text)
-        limit_kb = first_clone_limit_kb()
-        if size_kb > limit_kb:
-            raise RepositoryTooLargeError(
-                source.normalized,
-                detail=(
-                    f"GitHub reports {size_kb:,} KB and a first clone is limited to "
-                    f"{limit_kb:,} KB; on a fast network, set {MAX_FIRST_CLONE_ENV}={size_kb} "
-                    f"to try it, and it still stops at {GIT_ACQUISITION_TIMEOUT_S:g} s"
-                ),
-            )
+        refuse_unless_it_fits(source.normalized, free_bytes, host="GitHub", reported_kb=int(text))
 
     async def pull_request(
         self, published: PublishedSource, number: int, *, fetch: PullRequestFetch
@@ -353,10 +313,7 @@ class GithubProvider:
 
 
 __all__ = [
-    "MAX_FIRST_CLONE_ENV",
-    "MAX_FIRST_CLONE_KB",
     "GithubProvider",
     "GithubSignInRequiredError",
     "credential_helper_args",
-    "first_clone_limit_kb",
 ]

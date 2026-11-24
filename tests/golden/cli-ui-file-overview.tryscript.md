@@ -14,6 +14,10 @@ Each step prints what is on screen.
 Only a running scan may show a skeleton: every other answer finishes both bodies, and a
 control changed after a failure keeps the failure’s message.
 A later answer that the scan is running brings both skeletons back, whatever ended them.
+The compact treemap under the breakdown follows the same answer: it keeps its box with a
+skeleton while the scan runs, without asking for its own tree; it is left out wherever
+the breakdown has no totals to show or offers Retry; and it asks for its tree once, when
+the index has settled with the folder in it.
 A hidden folder or a symbolic link to a folder, which the inventory leaves out, asks for
 no rollup and says why it has no totals, and the folder header shows no tally for it.
 The file list’s note on a capped index names the limit once.
@@ -49,136 +53,182 @@ $ node tests/dom/file-overview-session.js
     "refused": {
       "totals": "nothing",
       "distribution": "Could not load file types.",
-      "retry": false
+      "retry": false,
+      "map": "left out",
+      "mapAsked": false
     },
     "afterControls": {
       "totals": "nothing",
       "distribution": "Could not load file types.",
-      "retry": false
+      "retry": false,
+      "map": "left out",
+      "mapAsked": false
     }
   },
   "a failed request retries into the complete page": {
     "failed": {
       "totals": "nothing",
       "distribution": "Could not load file types. Retry",
-      "retry": true
+      "retry": true,
+      "map": "left out",
+      "mapAsked": false
     },
     "retried": {
       "totals": "Files 2 files Ignored 1 files Total 3 files",
       "distribution": "Python 100% Details",
       "caption": "Share of Total (3 files)",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": true
     }
   },
   "an index that finished without the folder says so": {
     "totals": "nothing",
     "distribution": "This folder is not in the current file index.",
-    "retry": false
+    "retry": false,
+    "map": "left out",
+    "mapAsked": false
   },
   "an index stopped at its cap says so": {
     "totals": "nothing",
     "distribution": "This folder is not in the current file index.",
-    "retry": false
+    "retry": false,
+    "map": "left out",
+    "mapAsked": false
   },
   "a failed index says so": {
     "totals": "nothing",
     "distribution": "Could not scan this folder; no file summary is available.",
-    "retry": false
+    "retry": false,
+    "map": "left out",
+    "mapAsked": false
   },
   "a capped index says its summary is partial": {
     "totals": "Files 2 files Ignored 1 files Total 3 files",
     "distribution": "Python 100% Details Only the first 3 files were scanned; percentages cover those files.",
     "caption": "Share of Total (3 files)",
-    "retry": false
+    "retry": false,
+    "map": "skeleton",
+    "mapAsked": true
   },
   "a running scan keeps its skeletons until a refresh fails": {
     "scanning": {
       "totals": "skeleton",
       "distribution": "skeleton",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": false
     },
     "failedRefresh": {
       "totals": "nothing",
       "distribution": "Could not load file types. Retry",
-      "retry": true
+      "retry": true,
+      "map": "left out",
+      "mapAsked": false
     }
   },
   "a refresh failing during a scan, then Retry brings both skeletons back": {
     "stopped": {
       "totals": "nothing",
       "distribution": "Could not load file types. Retry",
-      "retry": true
+      "retry": true,
+      "map": "left out",
+      "mapAsked": false
     },
     "resumed": {
       "totals": "skeleton",
       "distribution": "skeleton",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": false
     }
   },
   "a refresh failing during a scan, then a change brings both skeletons back": {
     "stopped": {
       "totals": "nothing",
       "distribution": "Could not load file types. Retry",
-      "retry": true
+      "retry": true,
+      "map": "left out",
+      "mapAsked": false
     },
     "resumed": {
       "totals": "skeleton",
       "distribution": "skeleton",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": false
     }
   },
   "an index that finished without the folder, then a rescan brings both skeletons back": {
     "stopped": {
       "totals": "nothing",
       "distribution": "This folder is not in the current file index.",
-      "retry": false
+      "retry": false,
+      "map": "left out",
+      "mapAsked": false
     },
     "resumed": {
       "totals": "skeleton",
       "distribution": "skeleton",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": false
     }
   },
   "a failed first request, then a change brings both skeletons back": {
     "stopped": {
       "totals": "nothing",
       "distribution": "Could not load file types. Retry",
-      "retry": true
+      "retry": true,
+      "map": "left out",
+      "mapAsked": false
     },
     "resumed": {
       "totals": "skeleton",
       "distribution": "skeleton",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": false
     }
   },
   "a failed first request, then Retry brings both skeletons back": {
     "stopped": {
       "totals": "nothing",
       "distribution": "Could not load file types. Retry",
-      "retry": true
+      "retry": true,
+      "map": "left out",
+      "mapAsked": false
     },
     "resumed": {
       "totals": "skeleton",
       "distribution": "skeleton",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": false
     }
   },
   "a resumed scan still finishes": {
     "resumed": {
       "totals": "skeleton",
       "distribution": "skeleton",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": false
     },
     "finished": {
       "totals": "nothing",
       "distribution": "This folder is not in the current file index.",
-      "retry": false
+      "retry": false,
+      "map": "left out",
+      "mapAsked": false
     }
   },
   "a rescan leaves the totals the envelope carries": {
     "totals": "Files 2 files Ignored 1 files Total 3 files",
     "distribution": "skeleton",
-    "retry": false
+    "retry": false,
+    "map": "skeleton",
+    "mapAsked": false
   },
   "a hidden folder says why it has no totals": {
     "totals": "nothing",
@@ -193,32 +243,42 @@ $ node tests/dom/file-overview-session.js
   "totals the envelope carries stay beside a failure": {
     "totals": "Files 2 files Ignored 1 files Total 3 files",
     "distribution": "Could not load file types.",
-    "retry": false
+    "retry": false,
+    "map": "left out",
+    "mapAsked": false
   },
   "an ordinary folder": {
     "complete": {
       "totals": "Files 2 files Ignored 1 files Total 3 files",
       "distribution": "Python 100% Details",
       "caption": "Share of Total (3 files)",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": true
     },
     "filesOnly": {
       "totals": "Files 2 files Ignored 1 files Total 3 files",
       "distribution": "Python 100% Details",
       "caption": "Share of Files (2 files)",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": true
     },
     "bytes": {
       "totals": "Files 2,000 B Ignored 1,000 B Total 3,000 B",
       "distribution": "Python 100% Details",
       "caption": "Share of Files (2,000 B)",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": true
     },
     "allBytes": {
       "totals": "Files 2,000 B Ignored 1,000 B Total 3,000 B",
       "distribution": "Python 100% Details",
       "caption": "Share of Total (3,000 B)",
-      "retry": false
+      "retry": false,
+      "map": "skeleton",
+      "mapAsked": true
     }
   },
   "the compact summary and its Details": {
@@ -301,7 +361,7 @@ $ node tests/dom/file-overview-session.js
         "Total family:json",
         "legend family:json"
       ],
-      "tooltip": "JSON 240 files · 100 B",
+      "tooltip": "Data JSON 240 files · 100 B",
       "anchoredOn": "Total family:json"
     },
     "pointer on Other": {
@@ -325,7 +385,7 @@ $ node tests/dom/file-overview-session.js
         "Total family:json",
         "legend family:json"
       ],
-      "tooltip": "JSON 240 files · 100 B",
+      "tooltip": "Data JSON 240 files · 100 B",
       "anchoredOn": "Total family:json"
     },
     "Details closed under the pointer on the JSON entry": {

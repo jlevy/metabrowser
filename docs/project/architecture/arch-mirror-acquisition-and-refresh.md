@@ -64,8 +64,12 @@ Credentials belong to the provider:
   `$HOME/.netrc` and Git cannot turn that off; only the `gh` helper command is given the
   real home, with the `GH_*` variables that would redirect or log it cleared.
 - Acquisition never inherits a checkout’s remote or credential helper.
-- With `gh` installed, `check_first_clone` refuses a first clone that GitHub reports
-  over `MAX_FIRST_CLONE_KB`, which `METABROWSER_MAX_FIRST_CLONE_KB` raises.
+- `check_first_clone` (`cache/providers.py`) refuses every first clone, whatever its
+  source, when the cache’s volume has less than the reserve free (`cache/free_space.py`,
+  which `METABROWSER_CACHE_RESERVE_MB` sets).
+  A first clone that borrows a checkout’s objects is not checked.
+- With `gh` installed, the GitHub provider then refuses a first clone whose
+  GitHub-reported size, packed, would leave less than the reserve free.
   It first runs
   [the GitHub status check](arch-github-pull-requests.md#the-github-status-check), and
   refuses a pull-request URL that `gh` is missing, too old, or not signed in to read.
@@ -509,9 +513,10 @@ in sight:
 - **Title:** `/api/identity` gives the tab and window title, and a `full_name` of the
   origin without its scheme and the pin, which never names the cache.
 - **Commit:** the navigation heading shows the name.
-  The ref selector in the Files toolbar names the ref and shows short commit IDs in its
-  rows.
-- **Location:** the root menu shows the local path to the bare repository with a short
+  The revision row below Files names the ref.
+  Its chip opens the ref’s actions, and the separate chevron opens the chooser, whose
+  list shows short commit IDs.
+- **Location:** the Info menu shows the local path to the bare repository with a short
   source note. A separate note after the address shows the store directory.
   Both abbreviate the home directory as `~` (`display_directory`).
   `static/mirror-heading.js` draws the address note from data in the mirror’s page.

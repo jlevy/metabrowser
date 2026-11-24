@@ -1532,6 +1532,8 @@ type MetabrowserPlugins = Readonly<{
 type MetabrowserRollupEnvelope = {
   root: string;
   path: string;
+  /** Present only when the body is in the compact encoding. */
+  encoding?: "compact";
   node: Record<string, unknown> | null;
   ext_tallies: Array<Array<unknown>>;
   file_type_breakdown: MetabrowserFileTypeBreakdown | null;
@@ -1599,14 +1601,21 @@ type MetabrowserFileTypeLegend = {
 type MetabrowserRollupOptions = {
   active?: () => boolean;
   debounceMs?: number;
-  depth?: number;
+  depth?: number | "max";
+  /** `compact` writes each expanded folder's files as positional `files` entries
+   * (`RollupCompactFile` in wire_models.py); the SDK returns the body undecoded. */
+  encoding?: "json" | "compact";
   ext_rank?: "bytes" | "dual";
   ext_top?: number;
   filename_top?: number;
+  /** `exclude` leaves gitignored entries out of children and the node budget. */
+  ignored?: "include" | "exclude";
+  /** The node budget: a positive integer, or `max` for `ROLLUP_MAX_NODES`. */
+  nodes?: number | "max";
   onError?: (error: unknown) => void;
   remaining_top?: number;
   signal?: AbortSignal;
-  top?: number;
+  top?: number | "max";
 };
 
 type MetabrowserRollupWatch = {
@@ -4009,6 +4018,8 @@ declare global {
     error: string | null;
     /** Whether the page is a checkout's; absent on a mirror's. */
     checkout?: boolean;
+    /** The branch whose live checkout is shown, when HEAD names a branch. */
+    workingBranch?: string;
     /** What the server came to serve instead of this page: a commit, "" for the working
      * tree, or null while the page is current. A checkout's page only. */
     stale?: string | null;
@@ -4092,12 +4103,9 @@ declare global {
 
   /** The elements the ref selector paints into. */
   type MetabrowserSourceRefSelectorParts = {
-    releaseCopies?: () => void;
     /** Set when the selector is disposed, so a late load draws nothing. */
     disposed?: boolean;
     root: HTMLElement;
-    /** The button's own box, which a ref chip's menu trigger is placed against. */
-    buttonHost: HTMLElement;
     toggle: HTMLButtonElement;
     label: HTMLElement;
     stale: HTMLElement;
@@ -4135,8 +4143,6 @@ declare global {
     iconsAsked: boolean;
     /** Set when every row is to be drawn again, though its refs are the same. */
     rebuild: boolean;
-    /** The list's scroll position the drawn rows were drawn for, which a toolbar refill takes. */
-    drawnAt: number;
     /** The list and filter the rows are of, so a new one starts at its top. */
     listing: string;
     /** Whether this listing has been scrolled to the served ref's row, which it is once. */
@@ -4165,9 +4171,6 @@ declare global {
     Readonly<{
       activate(): Promise<void>;
       button: HTMLButtonElement;
-      /** The list's scroll position now, and a function that sets it again, for a rebuild
-       * of the toolbar around it. */
-      holdScroll(): () => void;
     }>;
 
   type MetabrowserSourceRefSelectorRuntime = Readonly<{

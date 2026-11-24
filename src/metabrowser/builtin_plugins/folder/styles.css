@@ -63,6 +63,80 @@
   background: var(--viz-surface-sunken);
 }
 
+/* The map's layers (treemap-map.js, createTreemapMap): the paint canvas holds
+   every cell's fill and edge; the two marks canvases copies of the marked
+   cells' pixels, lifted by the filter a marked cell always had, one fading in as
+   the other fades out; the icons canvas the icons of the cells too small for
+   their names; the hover anchor is a
+   transparent cell over the one under the pointer, which carries the shimmer
+   under the labels, which are text alone; the focus proxy is the map's one
+   focusable control.
+   The viewport takes every pointer event and hit-tests the layout, so no layer
+   does. */
+.tm-paint,
+.tm-marks,
+.tm-icons,
+.tm-labels {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+.tm-labels {
+  right: 0;
+  bottom: 0;
+}
+/* A marks canvas fades in and out as a bar segment's lift does
+   (file_type_summary.css): two canvases cross-fade as the hover moves from one
+   cell to the next (treemap-map.js, drawCellHover). */
+.tm-marks {
+  filter: var(--viz-data-mark-hover-filter);
+  opacity: 0;
+  transition: opacity var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);
+}
+.tm-marks.tm-marks-shown {
+  opacity: 1;
+}
+/* Doubled class: these are cells for type and position, without a cell's fill
+   or edge, which the canvas paints. */
+.tm-cell.tm-label-cell,
+.tm-cell.tm-hover-anchor {
+  background: none;
+  box-shadow: none;
+  pointer-events: none;
+}
+.tm-focus {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  outline: none;
+}
+.tm-focus:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: inset 0 0 0 2px var(--viz-surface);
+  z-index: 3;
+}
+/* Probe cells the map reads its paint colors from, styled as a cell is. */
+.tm-probes {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+.tm-probe-edge {
+  background-color: var(--tm-edge);
+}
+/* A scanning cell as the canvas paints it, and as reduced motion draws one:
+   still, at this opacity. */
+.tm-viewport {
+  --tm-pending-still-opacity: 0.75;
+}
+.tm-pending-still {
+  opacity: var(--tm-pending-still-opacity);
+}
+
 .tm-loading {
   display: flex;
   align-items: center;
@@ -81,17 +155,22 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 0;
-  padding: 1px 4px;
-  border: 1px solid var(--viz-border-subtle);
+  /* A cell draws at exactly the size the layout gave it, however small, so
+     it stays inside its parent and the map's border: its edge is an inset
+     shadow, which takes no room, rather than a border, and a cell with no
+     label has no padding (.tm-bare). A border-box cell is never smaller than
+     its padding and border, and those once drew a 2 px cell 10 px wide,
+     over its neighbours and past its folder's edge. The padding is the old
+     1px 4px plus the 1 px the border took, so labels sit where they did. */
+  padding: 2px 5px;
+  border: 0;
+  --tm-edge: var(--viz-border-subtle);
+  box-shadow: inset 0 0 0 1px var(--tm-edge);
   background: var(--viz-surface);
   overflow: hidden;
   cursor: default;
   /* The lift eases in and out as a bar segment's does (file_type_summary.css). */
   transition: filter var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);
-}
-
-.tm-actionable {
-  cursor: pointer;
 }
 
 /* The lift, and only the lift — the documented exception to the growth every
@@ -101,14 +180,15 @@
    Two reasons, and either is enough. A cell's area IS its value here, so
    growing one states a size it does not have, where a bar segment's growth
    leaves the width it earned as it is. And growth needs the mark to lift above
-   its neighbours, which this map cannot give it: a nested folder and its
-   descendants are flattened into siblings, so raising a hovered container
-   paints it over every rectangle inside it.
+   its neighbours, which this map cannot give it: a folder is painted under its
+   children, so raising a hovered folder would cover every rectangle inside it.
 
-   An attribute rather than :hover, because the pointer may be on a legend
-   entry naming the cell's family rather than on the cell: the map, its bars,
-   and its legend share one hover, which marks the cell under the pointer, or
-   every cell of the family an entry names (treemap.js, drawCellHover). */
+   The marked cells' pixels are lifted on the marks canvas (.tm-marks above),
+   since a legend entry marks every cell of the family it names: the map, its
+   bars, and its legend share one hover (treemap-map.js, drawCellHover). The
+   hover anchor over the cell under the pointer takes the same filter, which
+   lifts its sheen with the cell and makes it a stacking context, so the
+   sheen's z-index keeps it inside the anchor. */
 .tm-cell[data-hovered] {
   filter: var(--viz-data-mark-hover-filter);
 }
@@ -118,7 +198,7 @@
    hovered cell paints, which its filter makes a stacking context, so a label
    keeps its contrast.
 
-   Only that cell. A legend entry marks every cell of its family (treemap.js,
+   Only that cell. A legend entry marks every cell of its family (treemap-map.js,
    drawCellHover), and a family can hold every cell the map draws, up to
    maxCells in treemap-layout.js; each shimmering cell is a layer of its own
    and its own animation, so the cost grew with the family. Those cells take
@@ -147,17 +227,40 @@
     var(--viz-hover-grow-duration) infinite;
 }
 
-/* Two-tone focus ring: the accent ring is backed by a neutral halo so
-   it stays distinct from every categorical cell wash. */
-.tm-cell:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
-  box-shadow: inset 0 0 0 4px var(--viz-surface);
-  z-index: 3;
+.tm-dir {
+  --tm-edge: var(--viz-border);
 }
 
-.tm-dir {
-  border-color: var(--viz-border);
+/* A cell drawing no label: a small file, or a folder too small for a label
+   that nests inside a frame of its own padding (treemap-layout.js,
+   frameNestMinPx). It has nothing to inset, and padding would set a floor on
+   its size; the tooltip names it. */
+.tm-bare {
+  padding: 0;
+}
+
+/* The compact map under File Overview's type breakdown (treemap-compact.js):
+   the same cells at a fixed height, a figure below the bars rather than a
+   view filling the pane. */
+.tm-compact {
+  margin: 14px 0 0;
+}
+
+/* Measured on this repository (19,700 files) in a 607 px wide pane, 768 px
+   window, 2026-11-22: the map's top sits 381 px down, so at 220 px it ends
+   inside the window with room for the section below. Taller buys little:
+   160 / 220 / 280 / 340 px drew 100 / 118 / 133 / 119 cells, 21 / 24 / 25 /
+   29 of them labelled, since the rollup's node budget (ROLLUP_MAX_NODES,
+   settings.py) binds before the height does. */
+.tm-viewport-compact {
+  height: 220px;
+  min-height: 0;
+}
+
+/* Tighter than the full map's, and only on a cell with a label: a bare cell
+   keeps no padding, so it draws at exactly its rectangle (.tm-bare). */
+.tm-compact .tm-cell:not(.tm-bare) {
+  padding: 1px 4px;
 }
 
 .tm-cell-title {
@@ -168,24 +271,34 @@
   min-width: 0;
 }
 
-/* A nested directory's label strip is the cell's button because the
-   body is covered by child cells. The whole cell remains the only
-   hover surface. */
-.tm-cell-title[role="button"] {
-  cursor: pointer;
-  padding: 0 3px;
-  margin-left: -3px;
-  border-radius: var(--radius-chrome);
-}
-
-.tm-cell-title[role="button"]:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
-  box-shadow: 0 0 0 2px var(--viz-surface);
+/* A file's name sits under its icon, whose glyph and box are sized to the name
+   (labelIconPx, treemap-layout.js, set as --icon-glyph and --icon-box), the gap
+   between them too (labelIconGapPx); the name ellipsizes in the cell's width. A
+   folder's title keeps 6px before its inline value. */
+.tm-file > .tm-cell-title {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--tm-title-gap);
 }
 
 .tm-cell-file-icon {
-  align-self: center;
+  align-self: flex-start;
+}
+
+/* The tooltip's first line: the cell's icon, then its path, which wraps
+   (.tip-name) with the icon beside its first line. */
+.tm-tip-name {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.tm-tip-name > .tm-tip-icon {
+  margin-top: 2px;
+}
+
+.tm-tip-name > span:last-child {
+  min-width: 0;
 }
 
 .tm-cell-label {
@@ -201,8 +314,10 @@
   user-select: text;
 }
 
+/* A size shows whole or not at all (VALUE_CHAR_EM, treemap-map.js), on one line. */
 .tm-cell-sub {
   margin-top: 1px;
+  white-space: nowrap;
   font-size: var(--tm-value-size);
   line-height: 1.2;
   /* Keep the value subordinate without switching hue families on the
@@ -220,8 +335,10 @@
 }
 
 /* Every folder/file fill shares the mounted extension palette with
-   the Files Overview. Directory cells use their dominant type;
-   the remainder uses the neutral Other slot. The base hue is mixed
+   the Files Overview. A folder drawn as one solid cell uses its dominant
+   type; a nested folder's header and frame use the neutral border tone
+   (.tm-nested-folder), since they hold many types; the remainder uses the
+   neutral Other slot. The base hue is mixed
    into the current surface so chrome text stays readable in both
    themes while the Overview bars retain the full-strength swatch. */
 .tm-type-fill {
@@ -230,11 +347,21 @@
     var(--mb-distribution-color, var(--viz-border)) 34%,
     var(--viz-surface)
   );
-  border-color: color-mix(
+  --tm-edge: color-mix(
     in srgb,
     var(--mb-distribution-color, var(--viz-border)) 74%,
     var(--viz-border)
   );
+}
+
+/* A nested folder's header and frame: no family, so the fills above take
+   their neutral fallback even under an element that sets one. Its edge tone is
+   the separator its children are drawn apart by (treemap-paint.js, paintList):
+   the border tone deepened toward the muted ink, so every cell stays distinct
+   from its neighbours on any fill, and no hover changes it (markOps). */
+.tm-nested-folder {
+  --mb-distribution-color: initial;
+  --tm-edge: color-mix(in oklch, var(--viz-border-strong) 55%, var(--muted));
 }
 
 .tm-ignored {
@@ -265,10 +392,11 @@
   .tm-loading,
   .tm-pending {
     animation: none;
-    opacity: 0.75;
+    opacity: var(--tm-pending-still-opacity);
   }
   /* The motion goes, the easing and the shimmer; the lift stays, drawn at once. */
-  .tm-cell {
+  .tm-cell,
+  .tm-marks {
     transition: none;
   }
   .tm-cell[data-hovered="self"]::after {

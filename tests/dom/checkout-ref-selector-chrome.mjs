@@ -273,9 +273,10 @@ const PAGE = `(() => {
     kind: window.METABROWSER_SOURCE_KIND,
     checkout: window.METABROWSER_SOURCE_CHECKOUT ?? null,
     pin: window.METABROWSER_SOURCE_PIN ?? null,
-    button: toggle ? toggle.textContent.trim() : null,
-    // The button leads the Files tab's toolbar, since it chooses only what that tab shows.
-    inFilesToolbar: toggle?.closest('#nav-filter-bar[data-nav-toolbar="files"]') != null,
+    button: toggle?.parentElement.querySelector(".source-ref-selector-label")?.textContent.trim() ?? null,
+    inFilesRow:
+      toggle?.closest("#nav-files-ref")?.previousElementSibling.matches(".nav-tab-bar") === true &&
+      toggle.closest("#nav-files-ref").nextElementSibling.id === "nav-filter-bar",
     heading: heading ? heading.textContent.replace(/\\s+/g, " ").trim() : null,
     commitIds: ${COMMIT_IDS},
     guard: typeof window.MetabrowserSourcePinGuard?.guardFetch === "function",
@@ -383,10 +384,9 @@ const PANEL = `(() => {
     error: root.querySelector(".source-ref-selector-error").textContent,
     // The panel is inside the navigation pane, and no row is wider than it.
     inside: box.left >= pane.left - 0.5 && box.right <= pane.right + 0.5 && box.width > 0,
-    // It spans the toolbar it opens under, on a ref's page, whose chip has a copy
-    // control, as on the working tree's.
+    // The chooser aligns to the same horizontal pane insets as the Files filters.
     spansToolbar: (() => {
-      const bar = root.closest("[data-nav-toolbar]");
+      const bar = document.getElementById("nav-filter-bar");
       const inset = parseFloat(getComputedStyle(bar).paddingLeft);
       const across = bar.getBoundingClientRect();
       return Math.abs(box.left - (across.left + inset)) < 1 && Math.abs(box.right - (across.right - inset)) < 1;
@@ -537,8 +537,7 @@ async function clickRefChip(selector) {
   return sourceHit;
 }
 
-const TAG_CHIP = ".source-ref-selector-label [data-ref-menu]";
-const TAG_MENU_TRIGGER = ".source-ref-selector-button button[data-ref-menu]";
+const TAG_CHIP = ".source-ref-selector-label button[data-ref-menu]";
 const REF_MENU = "[data-ref-action-menu]";
 const result = {};
 try {
@@ -613,11 +612,10 @@ try {
     const chip = document.querySelector(".source-ref-selector-label [data-ref-menu]");
     const before = chip.getBoundingClientRect().width;
     chip.closest("button").focus();
-    const trigger = document.querySelector(".source-ref-selector-button button[data-ref-menu]");
     const modifiedArrow = new KeyboardEvent("keydown", {
       key: "ArrowDown", bubbles: true, cancelable: true, metaKey: true,
     });
-    const arrowLeftAlone = trigger.dispatchEvent(modifiedArrow) &&
+    const arrowLeftAlone = chip.dispatchEvent(modifiedArrow) &&
       document.querySelector("[data-ref-action-menu]") === null;
     chip.click();
     const menu = document.querySelector("[data-ref-action-menu]");
@@ -634,7 +632,8 @@ try {
       items: [...menu.querySelectorAll(".menu-item")].map(item => item.textContent),
       copied,
       widthChanged: chip.getBoundingClientRect().width !== before,
-      caret: getComputedStyle(trigger.querySelector("svg")).transform,
+      caret: getComputedStyle(chip.querySelector(".git-ref-menu-caret")).display,
+      chooserClosed: document.querySelector(".source-ref-selector-panel").hidden,
     };
     const modifiedEscape = new KeyboardEvent("keydown", {
       key: "Escape", bubbles: true, cancelable: true, metaKey: true,
@@ -667,27 +666,13 @@ try {
     document.activeElement.id === "test-inline-ref"`);
   await chrome.evaluate('document.getElementById("test-inline-ref").remove()');
 
-  const overlayHit = !(await clickRefChip(TAG_CHIP));
-  const overlayOpened = await chrome.evaluate(`
+  const direct = await clickRefChip(TAG_CHIP);
+  const opened = await chrome.evaluate(`
     document.querySelector(${JSON.stringify(REF_MENU)})?.contains(document.activeElement) === true`);
   await clickRefChip(TAG_CHIP);
-  const menuClosed = `!document.querySelector(${JSON.stringify(REF_MENU)}) &&
-    document.activeElement.matches(${JSON.stringify(TAG_MENU_TRIGGER)})`;
-  const overlayClosed = await chrome.evaluate(menuClosed);
-  await clickRefChip(TAG_CHIP);
-  // Expose the source chip at the same coordinates to exercise the row's forwarded click.
-  const overlay = `document.querySelector(${JSON.stringify(TAG_MENU_TRIGGER)})`;
-  await chrome.evaluate(`${overlay}.style.pointerEvents = "none"`);
-  const sourceHit = await clickRefChip(TAG_CHIP);
-  const sourceClosed = await chrome.evaluate(menuClosed);
-  await chrome.evaluate(`${overlay}.style.removeProperty("pointer-events")`);
-  result.tagMenu.repeatClick = {
-    overlayHit,
-    overlayOpened,
-    overlayClosed,
-    sourceHit,
-    sourceClosed,
-  };
+  const closed = await chrome.evaluate(`!document.querySelector(${JSON.stringify(REF_MENU)}) &&
+    document.activeElement.matches(${JSON.stringify(TAG_CHIP)})`);
+  result.tagMenu.repeatClick = { direct, opened, closed };
   await openPanel();
   result.toWorkingTree = await switchBy(
     `document.querySelector(".source-ref-selector-working-tree")`,

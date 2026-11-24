@@ -253,7 +253,8 @@ class RemoteAccessError(AcquisitionError):
 
 
 class RepositoryTooLargeError(RemoteAccessError):
-    """A provider refused a first clone over its size limit, which *detail* states."""
+    """A first clone refused before it starts because it would not leave the reserve free
+    on the cache's volume (``cache/free_space.py``), which *detail* states."""
 
     def __init__(self, source_url: str, *, detail: str) -> None:
         super().__init__("too_large", source_url, detail=detail)
@@ -292,20 +293,25 @@ class RefCaseCollisionError(ValidationFailedError):
     state: Final = "ref_case_collision"
 
 
-async def _refuse_case_collisions(git_dir: Path, names: tuple[str, ...]) -> None:
-    """Refuse a store whose refs a case-insensitive filesystem folded together.
+async def _refuse_case_collisions(
+    git_dir: Path, names: tuple[str, ...], *, cause: GitCommandError | None = None
+) -> None:
+    """Refuse a store whose refs a case-insensitive filesystem cannot hold apart.
 
     On such a filesystem ``refs/remotes/origin/Feature`` and ``…/feature`` are one loose
-    file: a non-atomic fetch keeps whichever it wrote last under the first name, and the
-    other name resolves to it too, so a URL could pin the wrong commit. Nothing is
-    published; a refresh reports the same state for its own fetch.
+    file, and Git's non-atomic fetch meets that in one of two ways. Git 2.50.1 keeps
+    whichever it wrote last under the first name and exits 0, so the other name resolves
+    to it too and a URL could pin the wrong commit. Git 2.56.1 writes the first, refuses
+    the other with a ``!`` line in its porcelain listing, and exits 1; *cause* is that
+    failure, whose listing still names both (measured 2026-11-23 on macOS). Either way
+    nothing is published; a refresh reports the same state for its own fetch.
     """
 
     colliding = case_colliding_refs(names)
     if colliding and await store_ignores_case(repository_store_target(git_dir=git_dir)):
         raise RefCaseCollisionError(
             f"the source {describe_case_collision(colliding)}; nothing was published"
-        )
+        ) from cause
 
 
 def _report(on_phase: PhaseReporter | None, phase: str) -> None:
@@ -590,6 +596,7 @@ async def acquire_into_staging(
                 raise PartialCloneSourceError(
                     "the source is a partial clone missing objects; clone it fully first"
                 ) from exc
+            await _refuse_case_collisions(git_dir, fetched_ref_names(exc.stdout), cause=exc)
             raise _classified(source, exc) or FetchFailedError(
                 "the fetch into staging failed"
             ) from exc
@@ -1163,9 +1170,10 @@ async def acquire_source(
     A hit inspects an existing home without fetching or opening the cache, so it
     does not require the acquisition Git floor or owner-write on the home, and it
     makes no network request. It may try to record ``last_opened_at``; a failed write
-    is dropped and the hit still returns. A miss checks the Git floor and then lets
-    each provider refuse the first clone (the GitHub provider's size check) before
-    ``open_cache``, so neither refusal creates the application home or completes an
+    is dropped and the hit still returns. A miss checks the Git floor and then
+    refuses a first clone that does not borrow from a checkout when the cache's volume has
+    less than the free-space reserve, and lets each provider refuse it (the GitHub
+    provider's size check), before ``open_cache``, so no refusal creates the application home or completes an
     empty directory into an ``f03`` skeleton. A miss that is allowed to fetch then
     opens the cache (and sweeps staging) and fetches, telling *on_phase* each phase
     as it starts and *on_progress* how far the fetch has got. A future layout is refused
@@ -1198,7 +1206,7 @@ async def acquire_source(
         source, checkout, on_note, allow_clone_fallback=allow_clone_fallback
     )
     if lender is None:
-        await check_first_clone(source)
+        await check_first_clone(source, home=home)
     home = (await run_lock_section(functools.partial(open_cache, home))).home
     with await _reserve_acquisition(source, home, on_note):
         found = await run_lock_section(functools.partial(_find_for_acquisition, source, home))
@@ -1219,7 +1227,7 @@ async def acquire_source(
                 raise CheckoutRefusedError(str(exc)) from exc
             # The origin's format is known only after the phase line was printed.
             _note(on_note, f"{exc}; cloning instead")
-            await check_first_clone(source)
+            await check_first_clone(source, home=home)
             staged = await acquire_into_staging(
                 source,
                 home=home,

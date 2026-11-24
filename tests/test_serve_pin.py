@@ -533,9 +533,10 @@ def test_the_shell_names_the_repository_and_its_pinned_revision(
     )
     tip = attributes[attributes.index('data-mirror-tip="') :].split('"', 2)[1]
     assert tip == "Bare Git mirror with no checked-out files."
-    assert '<span class="source-ref-selector-label">topic</span>' in shell.text, (
-        "the ref selector names the ref the heading no longer does"
-    )
+    assert (
+        '<span class="source-ref-selector-label"><span class="git-ref git-ref-remote">'
+        '<span class="git-ref-label">topic</span></span></span>'
+    ) in shell.text, "the Files source row names the branch as a remote ref chip"
     # The tab is called by the repository's name, as a folder's is by its own: the
     # title is /api/identity's.
     assert "<title>origin \u2022 Metabrowser</title>" in shell.text

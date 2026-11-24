@@ -982,9 +982,52 @@ Folder aggregate views can use these bounded inventory helpers:
   `depth`, `top`, `ext_top`, `filename_top`, `remaining_top`, and `ext_rank` map to
   `/api/rollup`; `depth: 0`, `top: 0`, and `ext_rank: "dual"` give a tally-only
   count-and-byte summary.
+  `depth: "max"` and `top: "max"` ask for the deepest and widest tree the route serves
+  (`ROLLUP_MAX_DEPTH` and `ROLLUP_MAX_TOP` in `src/metabrowser/settings.py`), which the
+  route resolves and its node budget bounds, as the Treemap does.
   `filename_top` and `remaining_top` default to, and cannot exceed,
   `ROLLUP_FILE_TYPE_FILENAME_LIMIT` and `ROLLUP_FILE_TYPE_REMAINING_LIMIT` in
-  `src/metabrowser/settings.py`.
+  `src/metabrowser/settings.py`. None of `nodes`, `ignored`, and `encoding` is sent
+  unless named; the route clamps `nodes` as it does `depth` and `top`, and answers 400
+  for an unknown `ignored` or `encoding`:
+  - `nodes` is the node budget, a positive integer or `"max"`: `ROLLUP_DEFAULT_NODES`
+    unless named, and at most `ROLLUP_MAX_NODES`. The route expands the heaviest folders
+    first, and each may spend a share of the budget left in proportion to the files and
+    folders beneath it (`_emit_limit` in `src/metabrowser/inventory_rollup.py`), so a
+    budget that covers the tree emits all of it.
+    A folder the budget did not reach has `children: null`; one whose children ran past
+    `top` or its share keeps those it emitted and a `rest` bucket for the others.
+
+  - `ignored: "exclude"` leaves gitignored entries out of `children` and `rest`, and
+    they spend none of the budget; a folder that is ignored is not a child at all.
+    Everything else is as with `"include"`, the default: every total, tally, breakdown,
+    and `dominant_ext` still counts the ignored files.
+
+  - `encoding: "compact"` keeps only folders in an expanded folder’s `children` and
+    writes its files as `files` entries, `[name, size, mtime, ext, gitignored]`, with
+    `mtime` null where it is omitted and `gitignored` 0 or 1; the envelope says
+    `"encoding": "compact"`. A folder with `children: null` has no `files`. A file’s
+    path is `dir.path ? dir.path + "/" + name : name`. A pinned Git revision’s paths are
+    not, so a pin answers the default encoding, with no `encoding` key: read the key,
+    not the request. The SDK returns the body as served, and the folder plugin decodes
+    it. `cli-api-rollup-dense.tryscript.md` pins each of these on a real folder:
+
+    ```json
+    {
+      "path": "src",
+      "encoding": "compact",
+      "node": {
+        "name": "src", "path": "src", "type": "dir", "total_files": 10,
+        "children": [
+          {"name": "lib", "path": "src/lib", "type": "dir", "children": null}
+        ],
+        "files": [
+          ["main.py", 200, 1700000000.0, ".py", 0],
+          ["run.log", 60, 1700000000.0, ".log", 1]
+        ]
+      }
+    }
+    ```
 - `watchRollup(path, options, onUpdate)` fetches and then refreshes after relevant
   inventory changes. Supply `active` to gate hidden views and `onError` for a local
   failure state; always call the handle’s `dispose()`, and call `refresh()` when

@@ -152,7 +152,7 @@ _STATE_TEXT: Final[dict[RemoteFailureState, str]] = {
     "server_error": "answered with a server error; try again later",
     "rate_limited": "is limiting the rate of requests; try again later",
     "proxy_auth_required": "is behind a proxy that requires authentication",
-    "too_large": "is over the size limit for a first clone",
+    "too_large": "does not fit on the cache's volume for a first clone",
 }
 
 
@@ -251,7 +251,9 @@ def fetched_refs(porcelain: bytes) -> dict[str, str]:
     """The refs a ``fetch --porcelain`` wrote, each with the object it wrote, in order.
 
     Each line is ``<flag> <old-oid> <new-oid> <local-ref>``, and the flag may itself be
-    a space. A pruned ref, whose new object ID is all zeros, is gone and not listed.
+    a space. A pruned ref, whose new object ID is all zeros, is gone and not listed. A
+    ref Git refused, flagged ``!``, is listed with the object it would have written; a
+    fetch that refuses one exits non-zero, so only a failed fetch's listing has one.
     """
 
     written: dict[str, str] = {}

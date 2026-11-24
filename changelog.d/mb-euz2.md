@@ -1,0 +1,1 @@
+- Open the sidebar folder details from the Info button beside the folder name.

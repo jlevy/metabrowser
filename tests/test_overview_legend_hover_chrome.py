@@ -14,6 +14,9 @@ motion. This holds that:
 - the entry's name and its dot each lift and grow its family's segment in every tally row,
   Files, Ignored, and Total, and its Details row while Details is open, and nothing else,
   grown twice over on the axis that carries no data;
+- the entry marks its family's cells in the compact treemap under the breakdown, and only
+  those, their pixels copied onto the marks canvas, which lifts and does not grow, every
+  cell inside the map and none moved;
 - the entry is marked: its dot lifted, its name in its family's ink at 4.5:1 or better on
   both pages, and every other entry at rest;
 - each marked bar and the entry's dot shimmer, by opacity alone, entered together in step;
@@ -21,7 +24,7 @@ motion. This holds that:
   left out, centered on the entry and clear of it; moving from the name to the dot changes
   nothing;
 - pointing at a segment lifts and grows it alone, marks its family's entry, and shows the
-  same counts under the family's name, centered on the segment and clear of it;
+  same counts under the family's category and name, centered on the segment and clear of it;
 - every grown bar clears the tracks beside it and the legend, no layout box moves under
   the hover, and every entry keeps its size;
 - under ``prefers-reduced-motion: reduce`` the marks still lift and grow, at once, with no
@@ -108,7 +111,8 @@ def _free_port() -> int:
 # The Python family's tooltip on its legend entry, which shows the name, and on its segment,
 # which does not: its Total segment, the row the legend's shares are of with Show ignored on
 # (docs/design-system.md, "Aggregate Distributions").
-_PYTHON_TOOLTIP = {"legend": "6 files · 18 B", "segment": "Python 6 files · 18 B"}
+# On a segment, its category in the label type, which draws it in capitals, over the name.
+_PYTHON_TOOLTIP = {"legend": "6 files · 18 B", "segment": "CODE Python 6 files · 18 B"}
 _PYTHON_BARS = ["Files family:python", "Ignored family:python", "Total family:python"]
 _PYTHON_ENTRY = "legend family:python"
 # --viz-hover-grow in static/styles.css.
@@ -138,6 +142,13 @@ def _entry_marked(reading: dict[str, Any], label: str) -> None:
 
 def _tooltip_on(reading: dict[str, Any], label: str, anchor: str) -> None:
     assert reading["tooltip"] == _PYTHON_TOOLTIP[anchor], (label, reading)
+    # On the segment the family's icon leads its name, drawn at a glyph size; the entry,
+    # which shows the family, gives the counts alone.
+    icon = reading["tooltipIcon"]
+    if anchor == "segment":
+        assert icon is not None and icon["w"] >= 8 and icon["h"] >= 8, (label, reading)
+    else:
+        assert icon is None, (label, reading)
     placed = reading["tooltipOnAnchor"]
     # Centred on what the pointer is on, the legend entry or the segment, unless the
     # viewport's margin clamps it, and clear of it above or below.
@@ -164,8 +175,21 @@ def _shimmering(reading: dict[str, Any], label: str, together: bool = True) -> N
     assert reading["shimmer"]["oneStart"] == together, (label, reading)
 
 
+def _map_marked(reading: dict[str, Any], rest: dict[str, Any], label: str) -> None:
+    """The compact treemap's cells of the family marked, and only those: lifted, not grown,
+    inside the map, and not moved."""
+
+    shown = reading["map"]
+    assert shown["cells"] > 0 and shown["sampled"] > 0, (label, reading)
+    assert shown["marked"] and shown["marked"] == shown["family"], (label, reading)
+    assert shown["liftedNotGrown"] and shown["othersAtRest"], (label, reading)
+    assert shown["inside"], (label, reading)
+    assert shown["layout"] == rest["map"]["layout"], (label, "the map moved")
+
+
 def _nothing(reading: dict[str, Any], label: str) -> None:
     assert reading["marked"] == [], (label, reading)
+    assert reading["map"]["marked"] == [] and reading["map"]["inside"], (label, reading)
     assert reading["othersAtRest"], (label, reading)
     assert reading["otherEntriesAtRest"], (label, reading)
     assert reading["shimmer"]["on"] == [], (label, reading)
@@ -218,6 +242,7 @@ def test_a_legend_entry_hovers_its_familys_marks_in_chrome(
         _entry_marked(reading, step)
         _shimmering(reading, step)
         _tooltip_on(reading, step, "legend")
+        _map_marked(reading, rest, step)
         # Nothing moves under the hover, and the entry keeps its size.
         assert reading["layout"] == rest["layout"], step
         assert reading["entrySize"] == rest["entrySize"], step

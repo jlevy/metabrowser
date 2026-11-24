@@ -237,9 +237,17 @@ own sans style, not the serif’s accent.
 An h6 follows the reading face like an h2, and keeps its italic because the request this
 rule answers named only h2s. The `md-body` fallback sets no italic in either face.
 
+A document’s face rule is in KPress’s `document.css`, so a page that shows one must load
+it. A rendered diff loads the stylesheets its projection names, each same-origin one
+under `/kpress-static/` whatever KPress’s version (`kpressStylesheets` in
+`builtin_plugins/diff/diff-markdown.js`), and warns in the console of one it leaves out
+or one that does not load.
+Without them, its document reads in sans.
+
 `test_serif_is_only_for_documents` holds which rules may set a face and which builders
 mark chrome prose. `tests/test_prose_faces_chrome.py` reads the faces they draw in, and
-each Markdown text’s h2 style, in Chrome, under both reading fonts and both font sets.
+each Markdown text’s h2 style, in Chrome, under both reading fonts and both font sets,
+and a pull request’s rendered Markdown under a development KPress’s addresses.
 
 ### Type Scale
 
@@ -911,6 +919,60 @@ kind of box is added to the table.
 it, and `tests/test_github_pull_text_chrome.py` measures the padding the boxes lay out,
 in a wide and a narrow pane, with nothing padded twice and no overflow.
 
+### Rendered Diff Spacing
+
+A rendered Markdown diff, in a pull request’s Changes and Docs, is the document it
+compares, so it spaces its blocks as the Document view of the same text does: the
+distance from one block’s text to the next block’s is the Document view’s, between two
+unchanged blocks, beside a changed one, and with its removed blocks hidden, which leaves
+the new version. A reader who opens a file’s Document view and then its diff reads one
+rhythm.
+
+Each block of the diff is a row of its own, `.diff-markdown-block` in the diff plugin’s
+`styles.css`, and a row sets no block padding or border.
+So a block’s KPress margins pass through its row and collapse with the next row’s, as
+two blocks of the document collapse.
+A row used to pad its block and keep the block’s margins inside it, so two blocks’
+margins added up, and an h2 sat well below where the document puts it
+([Rendered Diff Block Spacing](../explorations/performance-loop/design-rule-measurements.md#rendered-diff-block-spacing)
+has the before and after).
+
+- **A changed block’s band** (its fill and its change gutter) is drawn by its row’s
+  `::before`, not laid out, so it moves no text.
+  It reaches `--diff-markdown-band-extent` past the block’s text above and below, behind
+  the text of every block, since the article isolates its paint.
+  Two changed blocks in a row draw two bands with the document’s space between them,
+  less the two extents.
+  The extent is half the least space KPress puts between two blocks, so two bands meet
+  there and never overlap into a darker seam.
+  One band across a run of changed blocks and the document’s spacing cannot both hold
+  while a band is drawn per row and no row can read the margin its neighbor collapses
+  into.
+- **A list or a quote split into rows**, as a changed list is, one row per item, reads
+  as one: between two rows of one list or quote, its own margins give way, so its items
+  are spaced as KPress spaces them inside it, and its first and last rows keep the
+  margins that set it apart in the document.
+- **KPress’s rules that key on a previous sibling** see none, since the previous block
+  is in another row. A paragraph straight after an h4, h5, or h6, which KPress sets close
+  under it, is joined across rows, and across the one hidden row an edited paragraph’s
+  removed version leaves when the removed blocks are hidden.
+  `h2 + h3` is not: joining it would restate KPress’s margin, so an h3 straight after an
+  h2 keeps the space it has after a paragraph, a little more than the document’s.
+- **The fold of unchanged blocks** is a `<details>` whose rows are its content.
+  They undo the padding KPress gives a disclosure’s content, and the fold clips its
+  content with `overflow: clip` where KPress uses `hidden`, which would start a
+  formatting context and keep the last block’s margin inside the open fold.
+- **A table** is the one block the rule does not reach yet.
+  `withoutRenderWrappers` in `static/inert-html.js` unwraps the `<div>` KPress keeps
+  around a table when it is the block’s only element, so the diff’s table has no
+  `.kpress-table-wrap` and none of the wrapper’s margins.
+
+`tests/test_diff_markdown_spacing_chrome.py` measures the diff, the diff with its
+removed blocks hidden, and both versions’ Document views in Chrome, in the serif and the
+sans reading font, and holds every gap to the document’s, the h2-to-h3 case to the h3’s
+own space, and each band to its extent with no two overlapping.
+`tests/test_diff_markdown_fold_chrome.py` measures the fold closed and open.
+
 ### Embedded Document Themes
 
 Metabrowser owns one theme input for the embedded document:
@@ -1035,18 +1097,21 @@ header says what KPress lacks.
 
 The root icon and name in the navigation column link to Home.
 The folder glyph identifies a local folder, a Git checkout, or a cloud mirror.
-The adjacent chevron opens the root’s details.
+The adjacent Info button opens the root’s details, with a kind-specific accessible name
+such as “Local folder details”.
+The circled Info glyph uses the shared icon-only button, with muted ink at rest and the
+same highlight on hover, focus, or while the menu is open.
 Click it again, click outside the menu, or press Escape to close it.
-The menu shows the local path, file count, and size when available.
+
+The menu shows information about the folder, including its local path, file count, size,
+and commit when available.
 Mirrors and pinned checkouts include a short note about where the files come from.
-A menu chevron points down at rest and while its menu is open.
-The trigger keeps its hover highlight while the menu is open.
-The macOS title-bar folder chooser follows the same convention with the platform’s
-chevron and fill.
+The branch or tag and its actions are in the [Files revision row](#the-ref-selector).
 
 If the root has a recognized GitHub repository, its URL appears above **Copy Link** and
-**Open in Browser**. A page’s **View on GitHub** menu uses the same action rows and
-icons with the current page’s URL.
+**Open in Browser**. The copy glyph and external arrow are the same as those in the
+[ref action menu](#action-menu) and the [View on GitHub menu](#view-on-github), which
+operate on their own destinations.
 
 ## View on GitHub
 
@@ -1259,7 +1324,7 @@ state looks like.
 | One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags, and for a checkout Branches / Tags / Remotes |
 | Any of a set of labelled values | `.chip-group[data-select="many"]` | `group` of buttons with `aria-pressed`; each a tab stop | An agent log’s event types |
 | One of a few values in a menu, where the glyph is the label | `.menu-chooser` of `.menu-seg` | `group` of `menuitemradio` with `aria-checked`; each a tab stop | Theme and reading font |
-| One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector of a mirror and of a checkout |
+| One of a long list | A named trigger over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns and the Files revision chooser for mirrors and checkouts |
 | A boolean whose polarity has to be legible | `.filter-check` | A real checkbox | Show ignored |
 | A boolean with no room for a word | `.icon-btn[aria-pressed]` | A button with an accessible action name | The filter drawer |
 | A boolean in the Metabrowser menu | `.menu-row` holding a real checkbox, `.menu-check` | A real checkbox, its label the row’s | Block remote images |
@@ -2029,8 +2094,7 @@ so a definition cannot differ between two places.
 | A commit’s summary | Its detail’s refs, the same parser as the row | As its row | As its row | As its row | In the chip |
 | A commit’s tooltip | The same | As its row | As its row | As its row | None: a tooltip owns no action |
 | A pull request’s header | `mb.mergeRefs`, head → base | Remote: GitHub’s branches, a fork’s as `owner:branch` | Never | Never | In the chip |
-| A checkout’s folder details | Its current branch, drawn by `mb.refChip` | Local | By `is_trunk_ref` | Its checked-out branch | In the chip |
-| The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Tag for a tag. A mirror’s branch is remote. A checkout’s own branch is local and its remote-tracking branch remote | Never; the list says “default” beside a mirror’s default branch | Never; the list says “checked out” beside the branch a checkout’s `HEAD` is on | Selected chip; chooser rows select their ref |
+| The Files revision row and chooser list | `mb.refChip` in `static/source-ref-selector.js` | Tag for a tag. A mirror’s branch is remote. A checkout’s own branch is local and its remote-tracking branch remote | Never. The list says “default” beside a mirror’s default branch | Never. The list says “checked out” beside the branch a checkout’s `HEAD` is on | Click the chip in the revision row for ref actions. Click the adjacent chevron to choose a revision |
 
 The reasons:
 
@@ -2079,9 +2143,11 @@ A down chevron fades in over a translucent backdrop at the trailing edge on hove
 keyboard focus, and while the menu is open.
 The transition uses `--transition-fast` and is skipped under reduced motion.
 Long names use the entire chip at rest.
-The chevron uses neutral ink like the folder details and **View on GitHub** chevrons.
+The chevron uses the same neutral ink as other menu triggers.
 In a clickable history row or ref chooser, the chip’s menu trigger is a separate control
 above its visible chip.
+In the [Files revision row](#the-ref-selector), the chip opens its own action menu.
+The row uses one chevron, the standalone button for the revision chooser.
 
 The menu names the ref and its kind.
 **Copy Branch Name** and **Copy Tag Name** copy the underlying name.
@@ -3721,6 +3787,7 @@ glyph itself.
 | --- | --- | --- | --- |
 | `?` | `?` | Question mark | Omitted when matched as a produced character |
 | `/` | `/` | Slash | Omitted when matched as a produced character |
+| `#` | `#` | Hash | Omitted when matched as a produced character |
 | Letter key | Uppercase letter, such as `T` | The letter | Uppercase letter, such as `T` |
 | Digit key | The digit | The digit | The digit |
 | `ArrowUp` | `↑` | Up arrow | `ArrowUp` |
@@ -4733,10 +4800,21 @@ A caption naming the population labels the legend and the table for assistive te
 only.
 Legend items wrap whole: in a pane too narrow for a line of them a dot never ends a
 line with its name on the next, no entry is cut or clipped, and they read in order down
-the lines (`tests/test_overview_label_column_chrome.py`). The table sits behind a
-**Details** toggle, the same trigger and bold label as an **N more** row, which starts
-closed on each mount and keeps its state through repaints.
-Each group of rows is headed by its category, led by the category’s icon
+the lines (`tests/test_overview_label_column_chrome.py`). In the Overview’s wide band,
+where an expanded README’s table of contents becomes a rail, the legend leaves its place
+under the bars for that rail’s track beside File Overview, KPress’s 3rem gap past the
+card and its 15rem width, from the section’s top, one entry to a line with its share at
+the line’s end (`.file-overview-body`, `overview.css`). Inside the track it takes the
+table of contents’ own inset, so the two read as one column: each dot sits on the line
+of the contents’ entry marks, each name starts where a level-1 entry’s text does at any
+root font size, and each share ends where the entries do
+(`tests/test_overview_readme_toc_chrome.py`; `tests/test_kpress_dependency_contract.py`
+pins the KPress values the rail copies).
+The switch follows the pane’s width alone, by the same container query, so in narrower
+bands File Overview is as it was, and the bars and the map keep the card’s measure in
+every band. The table sits behind a **Details** toggle, the same trigger and bold label
+as an **N more** row, which starts closed on each mount and keeps its state through
+repaints. Each group of rows is headed by its category, led by the category’s icon
 ([File-Type Category Icons](#file-type-category-icons)). Every row names its category
 and reports absolute values and percentages; fills are not tab stops, carry no duplicate
 tooltips, and are hidden from the accessibility tree, and no label relies on color or
@@ -4764,10 +4842,11 @@ The **File Overview** section begins expanded: one control row with the Files / 
 measure and the `.filter-check` **Show ignored** checkbox, the same as navigation’s,
 then three tally rows, **Files**, **Ignored**, and **Total** set off by a hairline, then
 the legend and the Details table, under no heading of their own, since they ask the same
-question at a finer resolution.
-Each tally shows one absolute value and a track segmented by the top-level families in
-their colors, in one order across the three rows; `buildFolderTotalsComposition` in
-`folder-totals.js` explains the three rows, the order, and the pending fill.
+question at a finer resolution, and last a compact treemap of where those files sit
+([Folder Treemap](#folder-treemap)). Each tally shows one absolute value and a track
+segmented by the top-level families in their colors, in one order across the three rows;
+`buildFolderTotalsComposition` in `folder-totals.js` explains the three rows, the order,
+and the pending fill.
 The bars of the tallies and of Details start at one place, in every row, with Details
 closed or open and with Files or Bytes.
 What they stand to the right of is a label column of one width,
@@ -4784,10 +4863,12 @@ one where the column becomes one width, in both font sets.
 Show ignored begins checked without a saved preference and changes only the population
 the distribution counts.
 There is one chooser and one checkbox, because both act on the same numbers.
-A segment’s hover tooltip, the shared body-portaled one, gives the family name in bold
-and its file count and byte size, and a tooltip-bearing mark deepens or lifts by
-`--viz-data-mark-hover-filter`, as a Treemap cell does, grows by `--viz-hover-grow`, and
-shimmers
+A segment’s hover tooltip, the shared body-portaled one, names the family as Details
+does: its category in the table’s label type (`.data-label`), over the family’s name led
+by its icon, the glyph a Treemap cell of its files shows (the generic page for files
+with no extension, none for Other types), then its file count and byte size.
+A tooltip-bearing mark deepens or lifts by `--viz-data-mark-hover-filter`, as a Treemap
+cell does, grows by `--viz-hover-grow`, and shimmers
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
 The hover marks what its handle names.
 A segment names one value, its family’s share of its row, so pointing at it marks that
@@ -4846,6 +4927,98 @@ Folders/Types grouping choice.
 File types already answers which extensions make up the population, while Treemap
 answers where space or file count sits and keeps folder and file cells navigable.
 
+The map is one component (`treemap-map.js`) drawn at two sizes: the Treemap view, which
+fills the pane, and a compact map at a fixed height under File Overview’s type breakdown
+(`treemap-compact.js`). The compact map draws the same tree with the same cells, colors,
+and tooltip, follows the section’s measure and Show ignored, and joins the section’s
+hover, so a legend entry marks its family’s cells there too.
+At both sizes the tree sits inside an outer box for the folder itself, labelled with the
+folder’s name (`withOuterBox`), so the two maps of one folder match.
+On the compact map, activating a cell opens the Treemap view: the outer box at the
+folder, a folder’s cell at that folder, and a file’s or a remainder’s at the folder that
+holds it. In the Treemap view the outer box opens nothing, since the view is already at
+that folder.
+It leaves out value lines and remainder glyphs, which its small cells cannot
+hold. Its box follows the breakdown’s answer, so it is there or not from the section’s
+first paint: it shows a skeleton while the index scans, and asks for its own tree only
+once the index has settled; it is left out when the breakdown’s request failed, the
+index stopped at its cap before finishing the folder, or the folder holds no files in
+the population shown, since the breakdown above already says why.
+A map whose own request fails keeps its box, says the treemap is unavailable, and tries
+again with the breakdown’s Retry.
+
+The map goes as deep as it has room for.
+Both sizes ask the rollup for its deepest and widest tree, and the server spends its
+node budget on the heaviest folders first (`inventory_rollup.py`), so the nodes go where
+the map can draw them.
+The compact map asks at the route’s default budget, which a map a few hundred pixels
+tall does not outgrow.
+The Treemap view asks at its largest, in the compact encoding, which sends a file as one
+positional entry and which the view decodes to the ordinary tree before it lays it out
+(`treemapFullRollupQuery` in `treemap-map.js`, `treemap-rollup-decode.js`). While Show
+ignored is off it asks without the gitignored nodes, so the budget goes to the nodes it
+draws. The layout fills the largest pending folder next, from a share of the remaining
+cell budget proportional to its area, so the cells reach every large region of the map
+rather than draining into the first folder drawn (`treemap-layout.js`). A folder with
+room for its label is labelled, and nests under its label strip when it is tall enough
+for a row of children too; only a folder too small for a label nests inside a thin
+frame, with no label, and its files are still drawn.
+Frames thin with depth, and a folder too small for one draws its children edge to edge,
+so deep levels keep their area for cells (`frameDecay` in `treemap-layout.js`). A folder
+whose children all fold into its remainder stays one solid cell.
+A folder is sized for its header and frame as well as its contents, so a file’s area is
+its share of the map’s value at every depth rather than shrinking by each folder’s
+chrome around it: the layout weights each folder by its value plus an estimate of the
+chrome its subtree draws, and corrects that estimate with one more layout on a map small
+enough for it to be cheap (`chromeRounds`, `chromePasses`, and `chromePassMaxCells` in
+`treemap-layout.js`, with their measurements).
+A folder’s own rectangle is therefore larger than its value alone: its area is its
+files’ and its chrome’s. Every cell lies inside its parent’s cell and inside the map’s
+border. A folder’s children are laid out largest first, which sets every cell’s size;
+children of equal value, as every file is by Files, sit by the color family their
+extension belongs to, then by extension and name, so cells of one color sit together
+(`compareChildren` in `treemap-layout.js`, given the palette’s families by the map).
+
+The map paints its cells on a canvas rather than drawing an element for each, so it
+draws cells down to a device pixel, up to `PAINT_MAX_CELLS` (`treemap-map.js`, with its
+measurement), where an element per cell cost too much to build and tear down.
+Its layers, bottom to top:
+
+- **The paint canvas** holds every cell, snapped to device pixels so neighbours share an
+  edge. A nesting folder paints its interior in its edge tone, and each child large
+  enough draws one device pixel short, so the edge shows between neighbours
+  (`treemap-paint.js`). A nested folder’s edge tone is the border tone deepened toward
+  the muted ink (`.tm-nested-folder`), so every cell stands apart from its neighbours on
+  any fill. Its colors come from probe cells styled as a cell is, so the palette, the
+  ignored dimming, and the theme stay in the stylesheet.
+- **The marks canvases**, two, hold copies of the marked cells’ pixels under the lift
+  filter. A hover that marks other cells draws them on the canvas not shown, which fades
+  in on the hover’s timing as the shown one fades out, so the lift eases in and out as a
+  bar segment’s does; under reduced motion it is drawn at once.
+- **The icons canvas** holds the icons of the cells too small for their names, each
+  rasterized once for each size and color it is drawn at, since a map can hold as many
+  such icons as cells.
+- **The hover anchor** is a transparent cell over the cell under the pointer.
+  It carries that cell’s shimmer and anchors its tooltip.
+- **The labels** are one element per labelled cell, positioned in the map’s padding box.
+- **The focus proxy** is the map’s one focusable control.
+
+The map lays out to its padding box, and a label lies inside its cell and the map’s
+border; `tests/test_treemap_containment_chrome.py` measures it, with the canvas’s fill
+at each cell. A file’s name sits under its icon, and a file without room for both its
+name’s smallest width and both lines shows its icon alone, so cells of one size draw
+alike. The name ellipsizes in the width it has; a size shows only when the whole of it
+fits, by the bound beside `VALUE_CHAR_EM` (`treemap-map.js`), and is otherwise left out.
+Each icon is sized to its cell, as its label is, by `ICON_DEFAULTS`
+(`builtin_plugins/folder/treemap-layout.js`): over a name it is a share of the name’s
+size, and alone it is centered, a share of the cell’s short side, so a smaller cell
+shows a smaller icon.
+A cell too small for the smallest glyph shows nothing and names itself in its tooltip.
+The icons are painted, not elements: a folder of a few thousand small files would
+otherwise hold an element per file.
+A folder has no icon, as its row in the navigation has none
+([design-system-icons.md](design-system-icons.md)).
+
 The Files context above the map mounts the same reusable folder-rollup controls used by
 Overview. The metric control appears before Files and Ignored; the scope control appears
 after them:
@@ -4860,23 +5033,33 @@ Both views observe one state object and preference key, so changing either contr
 Overview or Treemap updates the other surface without a second interpretation of scope
 or metric. The metric switches all three totals rows and the map.
 Show ignored changes map membership but leaves the explicit Files and Ignored rows
-intact.
+intact. In the Treemap view it asks again for the tree, with or without the gitignored
+nodes, and keeps the map it has, laid out as Show ignored off, until that tree arrives,
+so no folder is sized by totals whose nodes are missing; a view out of sight asks when
+it shows. If the tree with the ignored files fails, the status line says the map shows
+the others.
 
 There is no separate color selector.
-Every file maps its exact extension through the taxonomy’s distribution key, every
-folder maps its dominant extension through the same helper, and remainder cells take the
-neutral Other color.
+Every file maps its exact extension through the taxonomy’s distribution key, a folder
+drawn as one solid cell maps its dominant extension through the same helper, and
+remainder cells take the neutral Other color.
+A nested folder, whose children are drawn inside it, paints its header and frame in the
+neutral border tone (`.tm-nested-folder`): it usually holds many types, and its dominant
+one would claim them all.
 The File types panel and Treemap read the same declared palette, so a semantic family
 keeps the same color across both views and across folders.
 Modification age remains available in the tooltip; it does not compete with file type as
 a second cell-color vocabulary.
 Treemap derives a theme-aware surface wash and stronger border from that shared base
 color so labels retain contrast; the Overview’s data bars keep the full-strength swatch.
-Hover brightens the composed cell, including its type-derived surface and border, so
-their contrast and hue relationship remain intact.
-There is no separate label hover surface.
-It never changes stacking or display: nested folder containers and their descendant
-rectangles are flattened siblings, so raising a container would cover its children.
+Hover brightens the composed cell’s fill, so its contrast and hue relationship remain
+intact: the marks canvas copies the marked cells’ painted pixels, and the lift filter
+applies to the copy.
+The edges between cells never change under a hover: they stay at their deeper tone, and
+a hovered folder lifts its header and frame and leaves the edges between its children as
+they are. There is no separate label hover surface.
+It never raises or grows a cell: a folder is painted under its children, so raising it
+would cover them.
 
 Under the tally bars the Treemap shows File Overview’s legend, from the same builder
 (`distribution-legend.js` and `buildFileTypeLegendModel`), on a row one line tall that
@@ -4887,37 +5070,50 @@ the map below moves down by those lines once and is measured again for the space
 under it. The map’s cells, its bars, and its legend share one hover
 (`distribution-hover.js`), as File Overview’s do
 ([Aggregate Distributions](#aggregate-distributions)). Pointing at an entry marks every
-cell painted its family’s color, the files of its types and the folders it is the
-dominant type of, its segment in every tally row, and the entry, with the entry’s counts
-tooltip. Pointing at a cell or a segment marks it and its family’s entry, and a cell
-keeps its own tooltip.
-Every marked cell lifts, and none grows
+cell painted its family’s color, the files of its types and the solid folders it is the
+dominant type of but no nested folder, its segment in every tally row, and the entry,
+with the entry’s counts tooltip.
+Pointing at a cell or a segment marks it and its family’s entry, and a cell keeps its
+own tooltip. Every marked cell lifts, and none grows
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
-Only the cell under the pointer also shimmers, its sheen under its label: a family can
-hold every cell the map draws, and each shimmering cell is a layer and an animation of
-its own, so a family’s cells take the lift alone while the bars and the entry’s dot
-shimmer. The cost at the map’s cell limit is measured beside the rule in the folder
-plugin’s stylesheet.
+Only the file or remainder under the pointer also shimmers, on the hover anchor, which
+lies under the labels, so its sheen does too.
+A family’s cells take the lift alone while the bars and the entry’s dot shimmer: a
+family can hold every cell the map draws, and a shimmer per cell is an animation each.
+The cost is measured beside the rule in the folder plugin’s stylesheet.
+A nesting folder lifts without the shimmer, which would cover its children.
 A layout replaces the cells: it lets go of a cell’s hover, which the browser enters
 again on the new cell, and draws an entry’s hover again on the new cells.
 `tests/test_treemap_legend_hover_chrome.py` measures it.
 
 The complete visible rectangle of every folder or file is its pointer target, including
-the uncovered header, gutter, and background of a nested folder.
-When rectangles are nested, the deepest rectangle under the pointer wins; an inert
-remainder cell does not fall through to its parent.
-The nested parent remains an ARIA group and its label remains the keyboard control, so
-full-cell pointer handling never creates an invalid button containing descendant
-buttons.
+the uncovered header, gutter, and frame of a nested folder.
+A canvas says nothing about what is painted on it, so the map answers the pointer from
+the layout: a grid of buckets over the map lists the cells over each, and the pointer
+names the cell painted at the device pixel under it, the deepest whose fill covers it
+(`treemap-hit.js`), so a cell a pixel wide is the cell it names, and the edge between
+two cells is their folder’s. An inert remainder cell does not fall through to its
+parent. A hover lifts the same pixels: a marked cell’s own fill, and a marked folder’s
+header and frame, never an edge between cells (`markOps`, `treemap-paint.js`). The
+keyboard reaches every folder and file cell through the focus proxy, which the arrow
+keys move in layout order and which stays on its cell when the map is laid out again and
+which takes the cell’s accessible name, with the folder’s remainder named when it has
+one; Enter or Space opens it.
+One control rather than one per cell keeps the page’s focus order short and never makes
+a button inside another.
 
 Cell typography grows continuously with usable rectangle geometry.
 The scale combines the short side with the square root of area, which lets a genuinely
 large box grow while preventing a long, thin sliver from claiming display type.
 Folder and file labels, and value labels, stay between the bounds in
-`TYPOGRAPHY_DEFAULTS` (`builtin_plugins/folder/treemap-layout.js`). Geometry-derived
-inline custom properties are allowed here because they encode layout data, just as
-inline bar widths encode percentages; theme colors still come only from tokens and
-shared utility classes.
+`TYPOGRAPHY_DEFAULTS` (`builtin_plugins/folder/treemap-layout.js`). A folder’s label and
+value stop at the navigation’s own sizes there, `folderLabelMaxPx` and
+`folderValueMaxPx`: a folder’s name heads the files drawn inside it, and display type
+over them competed with the files for attention.
+A file’s label keeps growing with its cell.
+Geometry-derived inline custom properties are allowed here because they encode layout
+data, just as inline bar widths encode percentages; theme colors still come only from
+tokens and shared utility classes.
 
 Large nested folders place their formatted aggregate value in the reserved header row.
 Non-nested cells place the value below the name when both lines fit.
@@ -4926,11 +5122,15 @@ information; aggregate folders and remainder cells report the selected metric.
 Values use the shared byte and file-count formatters.
 A label or value that cannot fit is omitted rather than shrunk below its lower bound or
 allowed to overlap child cells.
-Visible folder labels end in `/`, while file labels carry the same file-identity icon as
-the navigation tree.
+Visible folder labels end in `/`, while file labels always carry the same file-identity
+icon as the navigation tree, as tall as the name’s line.
 The slash is a visual kind cue and is not added to the folder’s accessible name or path.
-The accessible name preserves the cell name, kind, and visible value; the tooltip
-retains the complete name, counts, bytes, and modification time.
+The accessible name preserves the cell name, kind, and visible value.
+The tooltip names the cell as the navigation does: a file’s icon, its complete path,
+which wraps inside the tooltip however long, then a folder’s file count and size or a
+file’s size, and its age, through the navigation columns’ own formatters, hues, and
+freshness classes (`mb.formatFileCount` and `mb.countClass`, `mb.sizeHtml`, and
+`mb.formatAge`).
 
 Treemap navigation preserves the user’s spatial context.
 Activating a folder cell opens that folder with Treemap selected, and Backspace opens
@@ -5087,8 +5287,9 @@ the Backslash key.** The page slides left over the pane to fill the window, and 
 chevron turns to point right; a second press slides the page back and shows the pane as
 it was. Shift-Backslash, which types `|` on a US keyboard, does the same, as Shift
 changes no key ([Keyboard Shortcuts](#keyboard-shortcuts)); the key is read by the
-character it types, so the key in its place on a UK or German keyboard, which types `#`,
-is not it.
+character it types.
+On UK and German keyboards, the key in that position types `#`, which
+opens Quick Search for pull requests in a GitHub repository.
 
 The chevron is the shared disclosure chevron in an icon button
 ([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)),
@@ -5293,8 +5494,9 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   controls do not fit, and never adds space when they do.
 - **Where it breaks.** Between controls, in their order, each line as full as it can be,
   so a control moves down only when it must.
-  The leading controls stay first: on a served mirror or checkout, the
-  [ref selector](#the-ref-selector) leads the Files row, before Group by.
+  The Files filters start with Group by.
+  A mirror or checkout shows the [revision row](#the-ref-selector) above the filters,
+  directly below the tabs.
   The trailing group, which takes the line’s end with an auto margin, moves down whole
   and stays right-aligned: Clear and the chevron on Files, Reload on Pulls.
   The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
@@ -5624,6 +5826,11 @@ text moves every tooltip with it.
 A tooltip is prose the reader has stopped to read.
 `devtools/check_tooltips.py` holds this alongside the rule above.
 
+**A tooltip’s text stays inside it.** A long path or file name has no space to break at,
+so every line of the tooltip may break anywhere (`.custom-tooltip` in `styles.css`), and
+a name breaks anywhere already (`.tip-name`). `tests/test_treemap_containment_chrome.py`
+holds it on a name with no break in it.
+
 KPress’s own tooltip inside an embedded document is not this tooltip and keeps its own
 ramp; see the note beside the radius bridge in `styles.css` for why the app flattens
 KPress’s radii but not its type scale.
@@ -5810,18 +6017,23 @@ children. Visually similar surfaces do not borrow the wrong role merely to share
 
 ### The Ref Selector
 
-The ref selector is one control for a served mirror and a served checkout: a
-`.chip-menu-trigger` that names what the Files tab shows, over a `.menu` panel with a
-list chooser, a filter box, and one row for each ref (`static/source-ref-selector.js`).
+A served mirror or a served checkout has a revision row directly below the Files tab and
+above the filters, including Group by (`static/source-ref-selector.js`). The row has two
+distinct targets:
 
-- **It leads the Files tab’s toolbar,** before Group by, because it chooses what that
-  tab shows and nothing else, and it wraps with the row as any control there does
-  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). The Pulls tab does not depend
-  on it, and a checkout’s Commits tab shows the checkout’s history whichever revision
-  Files shows, so neither tab carries it
-  ([Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md)).
-  Its list opens under the toolbar and across the pane, not under the button, because a
-  ref’s name, its commit, and the commit’s age need the room.
+- **The branch or tag chip** names the current ref.
+  Click its name to open that ref’s [action menu](#action-menu).
+- **The standalone down chevron** opens the revision chooser.
+  Its tooltip and accessible name say “Switch branch or tag”.
+  The `W` shortcut opens the same list.
+  It remains visible beside the chip and keeps its open highlight while the chooser is
+  open. The list spans the pane to give ref names, commit IDs, and ages room.
+
+The chooser has a filter box and one row per ref.
+The revision row belongs to Files.
+Pulls has its own scope, and a checkout’s Commits shows its history across Files
+revisions
+([Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md)).
 
 - **A ref’s row is its name, its commit, and its age.** The name is its
   [chip](#branch-chips), the commit is its [short ID](#short-commit-ids), and the age is
@@ -5829,17 +6041,16 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   time as its tooltip ([Age](#age)). A tag’s age is its commit’s. The ID is the size of
   the row’s text, as an ID is everywhere.
   The ages end the rows in one column, so the IDs line up.
-  A pin that names no ref puts “Commit:” and the same face on the button.
+  A pin that names no ref puts “Commit:” and the same face beside the chevron.
 
-- **A commit reads the same wherever a line names it.** The button, the rows, and a
-  mirror’s line about the commit its branch moved to all show it by the one rule in
+- **A commit reads the same wherever a line names it.** The revision row, the chooser
+  rows, and a mirror’s line about the commit its branch moved to show it by the rule in
   [Short Commit IDs](#short-commit-ids).
 
-- **The button names the ref and the heading does not.** A served mirror’s navigation
-  heading is the repository’s name alone, and a checkout’s revision’s is the folder’s
-  (`_pin_label_html` in `server.py`). The selector names the ref and its rows show the
-  short commit IDs. A pin with no mirror has no selector, so its heading is its ref and
-  its short commit.
+- **The revision row names the ref.** The navigation heading remains a Home link named
+  for the repository or checkout folder.
+  The chooser’s rows show the short commit IDs.
+  A pin with no mirror shows its ref and short commit in the heading.
 
 - **A branch that is a pull request’s head shows the pull request, on a second line.**
   The row’s own line, the chip, its badge, its commit, and its age, is every row’s;
@@ -5855,7 +6066,7 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   of the same name is another branch.
   A tag, which no pull request has for its head, never has the line, and a pull
   request’s `refs/pull/<n>/head` is not listed as a ref of its own: it is the branch’s
-  pull request, and a page served on one says “Pull request: #7” on the button.
+  pull request, and a page served on one says “Pull request: #7” in the revision row.
   The pull requests are what the repository’s provider has cached, so the list never
   waits for GitHub: a list opened before they are cached shows none, asks again every
   `PULLS_POLL_MS` while the server fills them, and its rows gain the line as the pages
@@ -5896,7 +6107,8 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   branches that are pull requests’ heads, with the two heights, each row where the rows
   before it put it, the pull request’s icon, number, and title, and the filter’s finds.
 
-A checkout adds three things, and each uses a primitive the control already had:
+A checkout also has the live working tree and can switch between it and pinned
+revisions.
 
 - **The working tree is a row, above the lists, and not in them.** It is a `.menu-item`
   like a ref’s (`.source-ref-selector-working-tree`), ruled off from the list chooser
@@ -5915,36 +6127,31 @@ A checkout adds three things, and each uses a primitive the control already had:
   The checked-out branch is not that row unless it was chosen: it says “checked out” in
   the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
 
-- **The button says “Working tree” in words,** with no chip, since a chip is a ref.
-  On a revision it is the ref’s chip, as on a mirror, so the button is what tells a
-  revision’s page from the working tree’s before the list is opened: both are headed by
-  the folder’s name. The main heading’s note says “committed revision of” the folder, and
-  the root menu describes the pinned source beside its local path.
+- **The revision row identifies the checkout’s source.** With live files, the chip names
+  the checked-out branch and opens its actions.
+  A checkout without a branch shows **Working tree** in the row.
+  The chooser’s **Working tree** entry is current in both cases.
+  On a pinned revision the row names the selected ref or commit.
+  The main heading’s note says “committed revision of” the folder.
+  The Info button’s menu describes the pinned source beside its local path.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
   freshness row a mirror offers its reload in, with one `.btn`, “Reload”
-  (`.source-ref-selector-stale`). Every tab shows it, not only Files: the Pulls tab’s
-  requests and a comparison’s are refused as the Files tab’s are, and the button is in
-  the Files toolbar, which the other tabs hide.
+  (`.source-ref-selector-stale`). Every tab shows it because the Pulls tab and
+  comparison requests can also be refused.
+  The chooser belongs to Files.
   A checkout’s Commits tab is answered whichever revision is served (`SourcePinGuard` in
   `source_routes.py`). It appears only after another tab has switched the server.
 
-- **The selector keeps its box from first paint.** The module arrives after the tree’s
-  first rows, so the server draws the selector in the Files toolbar with the button it
-  will have, and the module adopts that button and never swaps it, so focus put on it
-  early stays ([Regions Keep Their Boxes](#regions-keep-their-boxes)). The toolbar is
-  drawn again whenever a filter or a tally changes, and it carries the selector over
-  rather than drawing it, so an open list keeps what was typed and where it was scrolled
-  to, and the control that had focus keeps it.
-  A box taken out of the page loses its scroll position, and a scroll made a moment
-  before has sent no event to say where, so the page reads each scrolled box’s position
-  before it rebuilds the bar and sets it again after: no scroll the page or the browser
-  makes is put back at the position the last event named (`renderNavFilterBar` in
-  `static/app.js`; `tests/test_ref_selector_long_list_chrome.py` scrolls and redraws in
-  one task). `tests/test_checkout_ref_selector_chrome.py` records the selector’s height
-  and the first tree row’s place in every frame of the working tree’s page and of a
-  revision’s, and each has one value; `tests/test_files_totals_stable_chrome.py` holds
-  the same for every box of the Files navigation on a folder that holds a `.git`.
+- **The revision row keeps its box from first paint.** The server draws the row before
+  the chooser module loads.
+  The module adopts the chevron button, preserving focus that reaches it early
+  ([Regions Keep Their Boxes](#regions-keep-their-boxes)). Changes to filters or tallies
+  leave the open chooser’s query, scroll position, and focus in place.
+  `tests/test_checkout_ref_selector_chrome.py` records the selector’s height and the
+  first tree row’s place in every frame of the working tree’s page and of a revision’s,
+  and each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
+  every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and

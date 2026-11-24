@@ -487,6 +487,9 @@ Strict mode is off on a developer machine, which can add these:
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
   fold of unchanged blocks closed, open, and under the pointer, and its quote and code
   against a document’s in the light and the dark theme;
+  `tests/test_diff_markdown_spacing_chrome.py`, which measures the space between a
+  rendered Markdown diff’s blocks against the Document view of the same text, in the
+  serif and the sans reading font, and where a changed block’s band is drawn;
   `tests/test_checkout_ref_selector_chrome.py`, which serves a checkout with `metab` and
   switches it between its working tree and its branches and tags from the page, reading
   each document’s policy and the selector’s panel, and then compares every file under
@@ -511,6 +514,9 @@ Strict mode is off on a developer machine, which can add these:
   `tests/test_treemap_legend_hover_chrome.py`, which moves Chrome’s pointer onto the
   Treemap’s legend entry and one of its cells and reads which cells, bars, and entry are
   marked, what they compute to, and that the view does not move;
+  `tests/test_treemap_containment_chrome.py`, which serves a wide, deep folder and reads
+  that every cell the Treemap draws lies inside its parent folder’s cell and the map’s
+  border, at a wide and a narrow window;
   `tests/test_github_pull_core_markdown_chrome.py`, which reads every frame of a pull
   request’s description as it opens on its prepared core and as its record follows, and
   holds that its Markdown source is never on screen; and

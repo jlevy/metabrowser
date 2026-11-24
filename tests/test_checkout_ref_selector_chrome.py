@@ -123,7 +123,7 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     tree = result["workingTree"]
     assert (tree["kind"], tree["button"], tree["heading"]) == (
         "filesystem",
-        "Working tree",
+        "topic",
         "checkout",
     )
     assert tree["checkout"] == {"working_tree": True} and tree["pin"] is None
@@ -131,9 +131,7 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert tree["capabilities"] == TRUSTED
     # The pin guard came with the selector's bundle, so the page says what it shows.
     assert tree["guard"] is True
-    # The button chooses what the Files tab shows and nothing else, so it is in that tab's
-    # toolbar, not above the tabs.
-    assert tree["inFilesToolbar"] is True
+    assert tree["inFilesRow"] is True
 
     panel = result["workingTreePanel"]
     assert panel["open"] and panel["focused"]
@@ -251,7 +249,7 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert (reloaded["kind"], reloaded["path"], reloaded["button"]) == (
         "filesystem",
         "/view/README.md",
-        "Working tree",
+        "topic",
     )
     assert reloaded["stale"] is None and reloaded["tree"] == WORKING_TREE
 
@@ -263,7 +261,8 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
         "items": ["Copy Tag Name", "View This Tag"],
         "copied": "v1",
         "widthChanged": False,
-        "caret": "matrix(0, 1, -1, 0, 0, 0)",
+        "caret": "none",
+        "chooserClosed": True,
         "dismissed": True,
         "chordsLeftAlone": True,
         "fork": {
@@ -273,13 +272,7 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
             "focused": True,
             "repeatClosed": True,
         },
-        "repeatClick": {
-            "overlayHit": True,
-            "overlayOpened": True,
-            "overlayClosed": True,
-            "sourceHit": True,
-            "sourceClosed": True,
-        },
+        "repeatClick": {"direct": True, "opened": True, "closed": True},
     }
     from_menu = result["tagFromHistory"]
     assert (from_menu["kind"], from_menu["button"]) == ("git_revision", "v1")
@@ -288,7 +281,7 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert (back["kind"], back["path"], back["button"]) == (
         "filesystem",
         "/view/README.md",
-        "Working tree",
+        "topic",
     )
     assert back["tree"] == WORKING_TREE and back["capabilities"] == TRUSTED
 

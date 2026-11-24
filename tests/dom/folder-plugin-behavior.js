@@ -20,13 +20,72 @@ function check(name, cond, detail) {
 }
 
 // ── Minimal DOM stub ────────────────────────────────────────────
-function makeElement() {
+// The treemap map builds its layers with createElement and appendChild, paints on a
+// canvas, and puts a hover anchor in the viewport, so an element keeps its children; markup
+// written to innerHTML replaces them, as a placeholder replaces the map's layers.
+/** Every canvas context the map asked for, which records what it filled and in what. */
+const canvasContexts = [];
+function makeCanvasContext() {
+  const ctx = {
+    fillStyle: "",
+    globalAlpha: 1,
+    fills: [],
+    setTransform() {},
+    clearRect() {},
+    drawImage() {},
+    fillRect(x, y, w, h) {
+      ctx.fills.push({ fillStyle: ctx.fillStyle, x, y, w, h });
+    },
+  };
+  canvasContexts.push(ctx);
+  return ctx;
+}
+function makeElement(tag = "div") {
+  let markup = "";
   const el = {
-    innerHTML: "",
+    tagName: String(tag).toUpperCase(),
+    get innerHTML() {
+      return markup;
+    },
+    set innerHTML(value) {
+      markup = String(value);
+      for (const child of el.children) {
+        child.parentNode = null;
+      }
+      el.children = [];
+    },
+    parentNode: null,
+    className: "",
+    hidden: false,
     listeners: {},
     attributes: {},
     dataset: {},
     style: {},
+    appendChild(child) {
+      child.remove?.();
+      child.parentNode = el;
+      el.children.push(child);
+      return child;
+    },
+    insertBefore(child, reference) {
+      child.remove?.();
+      child.parentNode = el;
+      const at = el.children.indexOf(reference);
+      el.children.splice(at === -1 ? el.children.length : at, 0, child);
+      return child;
+    },
+    remove() {
+      if (el.parentNode) {
+        el.parentNode.children = el.parentNode.children.filter((child) => child !== el);
+        el.parentNode = null;
+      }
+    },
+    getAttribute(k) {
+      return k in el.attributes ? el.attributes[k] : null;
+    },
+    removeAttribute(k) {
+      delete el.attributes[k];
+    },
     addEventListener(type, fn) {
       el.listeners[type] = el.listeners[type] || [];
       el.listeners[type].push(fn);
@@ -70,12 +129,19 @@ function makeElement() {
     querySelectorAll() {
       return [];
     },
-    getBoundingClientRect: () => ({ width: 800, height: 600, top: 120 }),
+    getBoundingClientRect: () => ({ width: 800, height: 600, top: 120, left: 0 }),
     setAttribute(k, v) {
       el.attributes[k] = v;
     },
     classList: { add() {}, remove() {}, contains: () => false },
   };
+  if (el.tagName === "CANVAS") {
+    // One context a canvas, as a browser keeps.
+    el.getContext = () => {
+      el.context ??= makeCanvasContext();
+      return el.context;
+    };
+  }
   return el;
 }
 
@@ -134,13 +200,26 @@ const sandbox = {
   location: { origin: "http://127.0.0.1:8411" },
   document: {
     addEventListener() {},
-    createElement: () => ({ appendChild() {} }),
+    createElement: (tag) => makeElement(tag),
     querySelector: () => null,
     querySelectorAll: () => [],
   },
 };
 let pendingTimers = [];
 sandbox.window = sandbox;
+// One device pixel per CSS pixel, so the map paints the same on every host.
+sandbox.devicePixelRatio = 1;
+// The map reads each paint style from a probe element styled as a cell of that style.
+// This cascade resolves an element's background to its inline style, so what a canvas
+// fills names the palette style its probe was given.
+const probedClasses = [];
+// Each probe's classes and inline style, as the map styled it.
+const probedStyles = [];
+sandbox.getComputedStyle = (element) => {
+  probedClasses.push(element.className);
+  probedStyles.push({ className: element.className, style: element.getAttribute?.("style") ?? "" });
+  return { backgroundColor: element.getAttribute?.("style") ?? "", opacity: "1" };
+};
 // The shell's tooltip, recording what each hide is given: the map's disposal puts away only
 // its own tooltip, never another surface's (mb-alff).
 const tooltipHides = [];
@@ -239,9 +318,23 @@ const envelope = {
 };
 /** What the next rollups answer instead of `envelope`, when a step sets it. */
 let rollupOverride = null;
+/** The tree without its gitignored nodes, as the route emits it for ignored=exclude. */
+function withoutIgnored(node) {
+  return {
+    ...node,
+    children: Array.isArray(node.children)
+      ? node.children.filter((child) => !child.gitignored).map(withoutIgnored)
+      : node.children,
+  };
+}
 sandbox.fetch = async (url) => {
   fetchCalls.push(String(url));
-  return rollupOverride ?? { ok: true, json: async () => JSON.parse(JSON.stringify(envelope)) };
+  const exclude = new URL(String(url)).searchParams.get("ignored") === "exclude";
+  const body = JSON.parse(JSON.stringify(envelope));
+  if (exclude) {
+    body.node = withoutIgnored(body.node);
+  }
+  return rollupOverride ?? { ok: true, json: async () => body };
 };
 
 vm.createContext(sandbox);
@@ -260,13 +353,20 @@ for (const relative of [
   vm.runInContext(source, sandbox, { filename: relative });
 }
 // In dependency order, since each runs in the one sandbox with its imports taken out:
-// folder-totals.js and the treemap import the hover they share, and the treemap the legend.
+// folder-totals.js and the treemap import the hover they share, the treemap the legend, and
+// folder-totals.js the summary model's icon paths, which this harness leaves out since it
+// stubs buildFolderTotalsComposition below;
+// the map component the layout, the hit grid, and the paint list; the treemap its decoder.
 const moduleSources = [
   "src/metabrowser/builtin_plugins/folder/distribution-hover.js",
   "src/metabrowser/builtin_plugins/folder/distribution-legend.js",
   "src/metabrowser/builtin_plugins/folder/folder-totals.js",
   "src/metabrowser/builtin_plugins/folder/treemap-layout.js",
+  "src/metabrowser/builtin_plugins/folder/treemap-hit.js",
+  "src/metabrowser/builtin_plugins/folder/treemap-paint.js",
+  "src/metabrowser/builtin_plugins/folder/treemap-map.js",
   "src/metabrowser/builtin_plugins/folder/treemap-model.js",
+  "src/metabrowser/builtin_plugins/folder/treemap-rollup-decode.js",
   "src/metabrowser/builtin_plugins/folder/rollup-controls.js",
 ];
 for (const relative of moduleSources) {
@@ -511,24 +611,117 @@ sandbox.MetabrowserNavigationRoute.attachController({
       palette: !!container.totals.compositionPalette,
     }),
   );
+  // The map paints its cells on a canvas and keeps labels, a focus proxy, and a hover
+  // anchor in the DOM; what it drew is read through its inspection (treemap-map.js).
+  const drawnMap = (pane = container) => sandbox.inspectTreemap(pane.viewport);
+  const layerOf = (pane, className) =>
+    pane.viewport.children.find((child) => child.className === className) ?? null;
+  /** The index of the drawn folder or file cell at `cellPath`, or -1. */
+  const cellIndexOf = (pane, cellPath) =>
+    (drawnMap(pane)?.cells ?? []).findIndex(
+      (cell) => cell.path === cellPath && cell.kind !== "rest",
+    );
+  /** The label element over the drawn cell at `cellPath`, or null. */
+  const labelFor = (pane, cellPath) => {
+    const index = cellIndexOf(pane, cellPath);
+    return (
+      layerOf(pane, "tm-labels")?.children.find(
+        (element) => Number(element.dataset.tmCell) === index,
+      ) ?? null
+    );
+  };
+  const labelsMarkup = (pane) =>
+    (layerOf(pane, "tm-labels")?.children ?? [])
+      .map(
+        (element) => `${element.className} ${element.getAttribute("style")} ${element.innerHTML}`,
+      )
+      .join("\n");
+  /** The client coordinates of a point in cell `index`, its center unless `at` names one. */
+  const clientAt = (pane, index, at) => {
+    const cell = drawnMap(pane).cells[index];
+    const point = at ?? { x: cell.x + cell.w / 2, y: cell.y + cell.h / 2 };
+    const rect = pane.viewport.getBoundingClientRect();
+    return { clientX: rect.left + point.x, clientY: rect.top + point.y };
+  };
+  /** What the browser sends the viewport, which takes every pointer and key event itself. */
+  const dispatch = (pane, type, init = {}) => {
+    const event = {
+      type,
+      target: pane.viewport,
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+      ...init,
+    };
+    for (const fn of [...(pane.viewport.listeners[type] || [])]) {
+      fn(event);
+    }
+    return event;
+  };
+  const geometry = (pane) =>
+    JSON.stringify(
+      (drawnMap(pane)?.cells ?? []).map((cell) => [cell.path, cell.x, cell.y, cell.w, cell.h]),
+    );
+
   check(
     "cells rendered",
-    container.viewport.innerHTML.includes("tm-cell") &&
-      container.viewport.innerHTML.includes("a.py"),
-    container.viewport.innerHTML.slice(0, 200),
+    drawnMap()?.cells.some((cell) => cell.path === "a.py") === true &&
+      drawnMap().paint.length > 0 &&
+      ["tm-paint", "tm-marks", "tm-labels", "tm-focus"].every((name) => layerOf(container, name)),
+    JSON.stringify(container.viewport.children.map((child) => child.className)),
   );
-  check(
-    "folder labels carry a trailing slash without changing the accessible name",
-    container.viewport.innerHTML.includes('<span class="tm-cell-label">docs/</span>') &&
-      container.viewport.innerHTML.includes('aria-label="docs (folder,'),
-    container.viewport.innerHTML,
-  );
+  {
+    // The map lays out to the viewport's padding box (clientWidth and
+    // clientHeight, inside its border), not to its bounding box, which is
+    // larger by the border: laying out to that pushed the right- and
+    // bottom-edge cells under the border. What is painted is the paint list,
+    // in device pixels, one a CSS pixel here.
+    container.viewport.clientWidth = 798;
+    container.viewport.clientHeight = 598;
+    sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
+    const rects = drawnMap().paint;
+    const reach = rects.reduce(
+      (most, rect) => [Math.max(most[0], rect.x + rect.w), Math.max(most[1], rect.y + rect.h)],
+      [0, 0],
+    );
+    check(
+      "cells lay out inside the viewport's client box, not its bounding box",
+      rects.length > 0 && reach[0] <= 798 && reach[1] <= 598 && reach[0] > 790,
+      JSON.stringify({ rects: rects.length, reach }),
+    );
+    delete container.viewport.clientWidth;
+    delete container.viewport.clientHeight;
+    sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
+  }
+  {
+    // A folder's accessible name is the focus proxy's while it is on the folder.
+    const docsIndex = cellIndexOf(container, "docs");
+    for (let step = 0; step < drawnMap().focusOrder.length; step += 1) {
+      if (drawnMap().focused === docsIndex) {
+        break;
+      }
+      dispatch(container, "keydown", { key: "ArrowRight" });
+    }
+    const proxy = layerOf(container, "tm-focus");
+    check(
+      "folder labels carry a trailing slash without changing the accessible name",
+      (labelFor(container, "docs")?.innerHTML ?? "").includes(
+        '<span class="tm-cell-label">docs/</span>',
+      ) &&
+        drawnMap().focused === docsIndex &&
+        String(proxy?.getAttribute("aria-label")).startsWith("docs (folder,"),
+      `${labelsMarkup(container)}\n${proxy?.getAttribute("aria-label")}`,
+    );
+  }
   check(
     "file cells use the shared file identity icon",
-    container.viewport.innerHTML.includes("file-identity-icon tm-cell-file-icon ft-code") &&
-      container.viewport.innerHTML.includes('data-file-icon="a.py"') &&
+    (labelFor(container, "a.py")?.innerHTML ?? "").includes(
+      "file-identity-icon tm-cell-file-icon ft-code",
+    ) &&
+      labelFor(container, "a.py").innerHTML.includes('data-file-icon="a.py"') &&
       fileIconCalls.includes("a.py"),
-    container.viewport.innerHTML,
+    labelsMarkup(container),
   );
   check(
     "Treemap hover is one whole-cell treatment",
@@ -537,37 +730,161 @@ sandbox.MetabrowserNavigationRoute.attachController({
       treemapStyles.includes("filter: var(--viz-data-mark-hover-filter)"),
     treemapStyles,
   );
-  check(
-    "actionable cells expose a whole-rectangle pointer target",
-    container.viewport.innerHTML.includes("tm-cell tm-dir tm-type-fill") &&
-      container.viewport.innerHTML.includes("tm-actionable") &&
-      treemapStyles.includes(".tm-actionable {") &&
-      !treemapStyles.includes(".tm-nested {\n  cursor: default;"),
-    container.viewport.innerHTML,
-  );
-  check(
-    "type fill always uses the shared palette",
-    container.viewport.innerHTML.includes("tm-type-fill") &&
-      container.viewport.innerHTML.includes("--mb-distribution-color-light:python;") &&
-      container.viewport.innerHTML.includes("--mb-distribution-color-light:markdown;"),
-    container.viewport.innerHTML,
-  );
+  {
+    // The whole painted rectangle of a folder or file cell is its pointer target, from
+    // corner to corner, and the viewport shows the pointer cursor over it; the edge past
+    // it is its parent's. A remainder cell, which opens nothing, shows no cursor. The
+    // paint is in device pixels, one a CSS pixel here.
+    const pointerOver = [];
+    for (const cellPath of ["docs", "a.py"]) {
+      const index = cellIndexOf(container, cellPath);
+      const fill = drawnMap().paint.find((rect) => rect.cell === index && rect.tone === "fill");
+      for (const at of [
+        { x: fill.x + 0.5, y: fill.y + 0.5 },
+        { x: fill.x + fill.w / 2, y: fill.y + fill.h / 2 },
+        { x: fill.x + fill.w - 0.5, y: fill.y + fill.h - 0.5 },
+        { x: fill.x + fill.w + 0.5, y: fill.y + fill.h / 2 },
+      ]) {
+        dispatch(container, "mousemove", clientAt(container, index, at));
+        pointerOver.push(
+          `${cellPath} ${drawnMap().hovered === index ? "hovered" : "missed"} ${container.viewport.style.cursor || "no cursor"}`,
+        );
+      }
+    }
+    dispatch(container, "mouseleave");
+    pointerOver.push(`left ${container.viewport.style.cursor || "no cursor"}`);
+
+    rollupOverride = {
+      ok: true,
+      json: async () => {
+        const body = JSON.parse(JSON.stringify(envelope));
+        body.node.rest = { files: 2, size: 200, unignored_files: 2, unignored_size: 200 };
+        return body;
+      },
+    };
+    const restPane = makeElement();
+    restPane.viewport = makeElement();
+    restPane.status = makeElement();
+    restPane.totals = makeElement();
+    restPane.rollupControls = makeElement();
+    sandbox.MetabrowserViewState.setActive(restPane, true);
+    const restShown = view.render(restPane, { path: "", kind: "folder", raw: {} });
+    await new Promise((resolve) => setImmediate(resolve));
+    rollupOverride = null;
+    const restIndex = (drawnMap(restPane)?.cells ?? []).findIndex((cell) => cell.kind === "rest");
+    const navigationsBeforeRest = navigationCalls.length;
+    if (restIndex >= 0) {
+      dispatch(restPane, "mousemove", clientAt(restPane, restIndex));
+      pointerOver.push(
+        `the remainder ${drawnMap(restPane).hovered === restIndex ? "hovered" : "missed"} ${restPane.viewport.style.cursor || "no cursor"}`,
+      );
+      dispatch(restPane, "click", clientAt(restPane, restIndex));
+    }
+    restShown.dispose();
+
+    // An extension keeps any character but a slash, a `|` among them: the cell still
+    // paints in its own family, dimmed as ignored, and not as a family its key's first
+    // part names.
+    rollupOverride = {
+      ok: true,
+      json: async () => {
+        const body = JSON.parse(JSON.stringify(envelope));
+        body.node.children.push({
+          name: "x.b|c",
+          path: "x.b|c",
+          type: "file",
+          size: 400,
+          mtime: 1700000000,
+          ext: ".b|c",
+          gitignored: true,
+        });
+        return body;
+      },
+    };
+    const pipePane = makeElement();
+    pipePane.viewport = makeElement();
+    pipePane.status = makeElement();
+    pipePane.totals = makeElement();
+    pipePane.rollupControls = makeElement();
+    sandbox.MetabrowserViewState.setActive(pipePane, true);
+    const probesBefore = probedStyles.length;
+    const pipeShown = view.render(pipePane, { path: "", kind: "folder", raw: {} });
+    await new Promise((resolve) => setImmediate(resolve));
+    rollupOverride = null;
+    // The palette files a family it does not know as other-type, so x.b|c is the one
+    // ignored cell of that style; misread, its key's later parts said not ignored and
+    // still scanning.
+    const pipeProbes = probedStyles
+      .slice(probesBefore)
+      .filter((probe) => probe.className.includes("tm-type-fill"));
+    check(
+      "a cell whose extension holds a | paints in its own family, dimmed as ignored",
+      cellIndexOf(pipePane, "x.b|c") >= 0 &&
+        pipeProbes.some(
+          (probe) => probe.style.includes("other-type") && probe.className.includes("tm-ignored"),
+        ) &&
+        pipeProbes.every((probe) => !probe.className.includes("tm-pending-still")),
+      JSON.stringify(pipeProbes),
+    );
+    pipeShown.dispose();
+    check(
+      "actionable cells expose a whole-rectangle pointer target",
+      JSON.stringify(pointerOver) ===
+        JSON.stringify([
+          "docs hovered pointer",
+          "docs hovered pointer",
+          "docs hovered pointer",
+          "docs missed no cursor",
+          "a.py hovered pointer",
+          "a.py hovered pointer",
+          "a.py hovered pointer",
+          "a.py missed no cursor",
+          "left no cursor",
+          "the remainder hovered no cursor",
+        ]) && navigationCalls.length === navigationsBeforeRest,
+      JSON.stringify({ pointerOver, opened: navigationCalls.slice(navigationsBeforeRest) }),
+    );
+  }
+  {
+    // Each cell is painted in the style its probe resolves to, a probe styled with the
+    // shared palette's class and style for the cell's family.
+    const paintContext = layerOf(container, "tm-paint")?.context;
+    const filledAs = (cellPath) => {
+      const index = cellIndexOf(container, cellPath);
+      const rect = drawnMap().paint.find((each) => each.cell === index && each.tone === "fill");
+      const fill = (paintContext?.fills ?? []).findLast(
+        (each) =>
+          rect && each.x === rect.x && each.y === rect.y && each.w === rect.w && each.h === rect.h,
+      );
+      return fill?.fillStyle ?? null;
+    };
+    const fills = { "a.py": filledAs("a.py"), "c.md": filledAs("c.md") };
+    check(
+      "type fill always uses the shared palette",
+      fills["a.py"] === "--mb-distribution-color-light:python;" &&
+        fills["c.md"] === "--mb-distribution-color-light:markdown;" &&
+        probedClasses.some(
+          (name) => name.includes("tm-type-fill") && name.includes("mb-distribution-mark"),
+        ),
+      JSON.stringify({ fills, probedClasses: [...new Set(probedClasses)] }),
+    );
+  }
   check(
     "cell values use the common byte formatter",
-    container.viewport.innerHTML.includes("600 B"),
-    container.viewport.innerHTML,
+    (labelFor(container, "a.py")?.innerHTML ?? "").includes("600 B"),
+    labelsMarkup(container),
   );
   check(
     "cell typography is data-driven",
-    container.viewport.innerHTML.includes("--tm-label-size:") &&
-      container.viewport.innerHTML.includes("--tm-value-size:"),
-    container.viewport.innerHTML.slice(0, 300),
+    String(labelFor(container, "a.py")?.getAttribute("style")).includes("--tm-label-size:") &&
+      labelFor(container, "a.py").getAttribute("style").includes("--tm-value-size:"),
+    labelsMarkup(container),
   );
   check(
     "obsolete age coloring is absent",
-    !container.viewport.innerHTML.includes("tm-cell-age") &&
-      !container.viewport.innerHTML.includes("tm-age-"),
-    container.viewport.innerHTML,
+    !labelsMarkup(container).includes("tm-cell-age") &&
+      !labelsMarkup(container).includes("tm-age-"),
+    labelsMarkup(container),
   );
   check(
     "steady-state footer is empty",
@@ -594,7 +911,8 @@ sandbox.MetabrowserNavigationRoute.attachController({
   check(
     "in-progress snapshots render one quiet loading block without partial cells",
     container.viewport.innerHTML.includes("tm-loading mb-delayed-loading") &&
-      !container.viewport.innerHTML.includes("data-tm-cell"),
+      drawnMap().cells.length === 0 &&
+      layerOf(container, "tm-labels") === null,
     container.viewport.innerHTML,
   );
   envelope.index_status = "done";
@@ -602,32 +920,33 @@ sandbox.MetabrowserNavigationRoute.attachController({
   check(
     "completed snapshots replace loading atomically",
     !container.viewport.innerHTML.includes("tm-loading") &&
-      container.viewport.innerHTML.includes("data-tm-cell"),
+      drawnMap().cells.length > 0 &&
+      layerOf(container, "tm-labels") !== null,
     container.viewport.innerHTML,
   );
 
-  const folderCellMatch = container.viewport.innerHTML.match(
-    /data-tm-cell="(\d+)" data-tm-kind="dir" data-tm-path="docs"/,
+  const folderIndex = cellIndexOf(container, "docs");
+  const fileIndex = cellIndexOf(container, "a.py");
+  check(
+    "folder cell is actionable",
+    folderIndex >= 0 &&
+      drawnMap().cells[folderIndex].kind === "dir" &&
+      drawnMap().focusOrder.includes(folderIndex),
+    geometry(container),
   );
-  const fileCellMatch = container.viewport.innerHTML.match(
-    /data-tm-cell="(\d+)" data-tm-kind="file" data-tm-path="a.py"/,
+  check(
+    "file cell is actionable",
+    fileIndex >= 0 &&
+      drawnMap().cells[fileIndex].kind === "file" &&
+      drawnMap().focusOrder.includes(fileIndex),
+    geometry(container),
   );
-  check("folder cell is actionable", !!folderCellMatch, container.viewport.innerHTML);
-  check("file cell is actionable", !!fileCellMatch, container.viewport.innerHTML);
   const cellClick = container.viewport.listeners.click?.[0];
   check("cell click handler bound", typeof cellClick === "function");
-  const cellTarget = (index) => {
-    const target = {
-      dataset: { tmCell: index },
-      closest(selector) {
-        return selector === "[data-tm-cell]" ? target : null;
-      },
-    };
-    return target;
-  };
-  if (cellClick && folderCellMatch && fileCellMatch) {
-    const folderTarget = cellTarget(folderCellMatch[1]);
-    cellClick({ target: folderTarget });
+  if (cellClick && folderIndex >= 0 && fileIndex >= 0) {
+    // A click is hit-tested against the layout at its coordinates: anywhere in a cell,
+    // over its label or not, takes the same route.
+    dispatch(container, "click", clientAt(container, folderIndex));
     check(
       "folder background keeps Treemap active",
       navigationCalls.length === 1 &&
@@ -636,27 +955,21 @@ sandbox.MetabrowserNavigationRoute.attachController({
       JSON.stringify(navigationCalls),
     );
 
-    const folderLabel = {
-      closest(selector) {
-        return selector === "[data-tm-cell]" ? folderTarget : null;
-      },
-    };
-    cellClick({ target: folderLabel });
+    const folder = drawnMap().cells[folderIndex];
+    dispatch(
+      container,
+      "click",
+      clientAt(container, folderIndex, { x: folder.x + 4, y: folder.y + 4 }),
+    );
     check(
       "folder label uses the same whole-cell route",
       navigationCalls.length === 2 && navigationCalls[1].target.path === "docs",
       JSON.stringify(navigationCalls),
     );
 
-    const childTarget = cellTarget(fileCellMatch[1]);
-    const childLabel = {
-      closest(selector) {
-        return selector === "[data-tm-cell]" ? childTarget : null;
-      },
-    };
-    cellClick({ target: childLabel });
+    dispatch(container, "click", clientAt(container, fileIndex));
     check(
-      "the deepest clicked cell wins without ancestor activation",
+      "a file cell opens the file outside the Treemap",
       navigationCalls.length === 3 &&
         navigationCalls[2].target.path === "a.py" &&
         navigationCalls[2].options?.viewId === undefined,
@@ -707,6 +1020,10 @@ sandbox.MetabrowserNavigationRoute.attachController({
       navigationCalls.length === navigationsBefore,
       JSON.stringify(navigationCalls.slice(navigationsBefore)),
     );
+    // Unmodified, the keys work the focus proxy, the map's one control: an arrow moves it
+    // to the next folder or file cell in layout order, and Enter opens the cell it is on.
+    const order = drawnMap().focusOrder;
+    const focusedBefore = drawnMap().focused;
     const plain = {
       key: "ArrowRight",
       defaultPrevented: false,
@@ -715,7 +1032,66 @@ sandbox.MetabrowserNavigationRoute.attachController({
       },
     };
     cellKeydown(plain);
-    check("a plain arrow still moves within the map", plain.defaultPrevented);
+    const proxy = layerOf(container, "tm-focus");
+    const focusedCell = drawnMap().cells[drawnMap().focused];
+    check(
+      "a plain arrow still moves within the map",
+      plain.defaultPrevented &&
+        drawnMap().focused === order[order.indexOf(focusedBefore) + 1] &&
+        proxy?.getAttribute("role") === "button" &&
+        proxy.getAttribute("tabindex") === "0" &&
+        !proxy.hidden &&
+        String(proxy.getAttribute("aria-label")).startsWith(`${focusedCell?.name} (`),
+      JSON.stringify({
+        order,
+        focusedBefore,
+        focused: drawnMap().focused,
+        label: proxy?.getAttribute("aria-label"),
+      }),
+    );
+    const enter = dispatch(container, "keydown", { key: "Enter" });
+    const opened = navigationCalls.at(-1);
+    check(
+      "Enter opens the cell the focus proxy is on",
+      enter.defaultPrevented &&
+        navigationCalls.length === navigationsBefore + 1 &&
+        opened.target.path === focusedCell?.path &&
+        (focusedCell?.kind === "dir"
+          ? opened.options?.viewId === "treemap"
+          : !opened.options?.viewId),
+      JSON.stringify({ focused: focusedCell?.path, opened }),
+    );
+
+    // A relayout keeps the focus proxy on the cell it was on, so a key pressed after a
+    // refresh acts on the cell the user chose, not on the first one.
+    const keptPath = drawnMap().cells[drawnMap().focused]?.path;
+    sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
+    check(
+      "a relayout keeps the focus proxy on its cell",
+      drawnMap().focused !== drawnMap().focusOrder[0] &&
+        drawnMap().cells[drawnMap().focused]?.path === keptPath,
+      JSON.stringify({ keptPath, now: drawnMap().cells[drawnMap().focused]?.path }),
+    );
+
+    // A still pointer is looked up where the viewport is now: the viewport moving under
+    // it, as when the legend's row wraps above the map, puts it over another cell.
+    const pointed = cellIndexOf(container, "a.py");
+    const client = clientAt(container, pointed);
+    dispatch(container, "mousemove", client);
+    const box = container.viewport.getBoundingClientRect;
+    const shift = drawnMap().cells[pointed].h + 1;
+    container.viewport.getBoundingClientRect = () => ({ ...box(), top: box().top + shift });
+    sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
+    const afterMove = drawnMap().hovered;
+    dispatch(container, "mousemove", client);
+    check(
+      "a relayout looks a still pointer up where the viewport is now",
+      afterMove === drawnMap().hovered && afterMove !== pointed,
+      JSON.stringify({ pointed, afterMove, fresh: drawnMap().hovered }),
+    );
+    dispatch(container, "mouseleave");
+    container.viewport.getBoundingClientRect = box;
+    sandbox.dispatchEvent(new sandbox.CustomEvent("resize"));
   }
 
   // Viewport height is measured, not the CSS calc: innerHeight 1000
@@ -755,9 +1131,9 @@ sandbox.MetabrowserNavigationRoute.attachController({
     `${fetchCalls.length} fetches`,
   );
 
-  // Metric and ignored-scope changes relayout without refetching.
+  // A metric change relayouts without refetching; Show ignored asks again.
   const before = fetchCalls.length;
-  const filesMetricHtml = container.viewport.innerHTML;
+  const filesMetricGeometry = geometry(container);
   const toolbarClick = container.rollupControls.listeners.click?.[0];
   check("toolbar click handler bound", typeof toolbarClick === "function");
   const clickMetric = (value) => {
@@ -806,8 +1182,8 @@ sandbox.MetabrowserNavigationRoute.attachController({
     );
     check(
       "metric toggle changes cell geometry",
-      container.viewport.innerHTML !== filesMetricHtml,
-      "Bytes and Files produced identical markup",
+      geometry(container) !== filesMetricGeometry,
+      "Bytes and Files produced identical cells",
     );
     check(
       "metric chooser reflects the active metric",
@@ -822,16 +1198,23 @@ sandbox.MetabrowserNavigationRoute.attachController({
       container.rollupControls.innerHTML.includes(
         'data-chip-value="files" role="radio" aria-checked="true" tabindex="0"',
       ) &&
-        container.viewport.innerHTML.includes("600 B") &&
+        (labelFor(container, "a.py")?.innerHTML ?? "").includes("600 B") &&
         container.status.textContent === "",
-      container.viewport.innerHTML,
+      labelsMarkup(container),
     );
   }
 
   const toolbarChange = container.rollupControls.listeners.change?.[0];
   check("ignored checkbox handler bound", typeof toolbarChange === "function");
   if (toolbarChange) {
-    const totalsBeforeIgnored = JSON.stringify(container.totals.value);
+    // The folder's sums, which a tree without its ignored nodes leaves as they were.
+    const sums = (value) =>
+      JSON.stringify(
+        ["total_files", "total_size", "unignored_files", "unignored_size"].map(
+          (key) => value?.[key],
+        ),
+      );
+    const totalsBeforeIgnored = sums(container.totals.value);
     const totalsMetricBeforeIgnored = container.totals.metric;
     toolbarChange({
       target: {
@@ -843,13 +1226,29 @@ sandbox.MetabrowserNavigationRoute.attachController({
     });
     check(
       "unchecked ignored scope hides ignored cells without a footer summary",
-      !container.viewport.innerHTML.includes("c.md") && container.status.textContent === "",
-      container.viewport.innerHTML,
+      cellIndexOf(container, "c.md") === -1 &&
+        !labelsMarkup(container).includes("c.md") &&
+        container.status.textContent === "",
+      geometry(container),
     );
-    check("ignored scope change no refetch", fetchCalls.length === before, `${fetchCalls.length}`);
+    const excludeUrl = new URL(fetchCalls.at(-1));
+    check(
+      "Show ignored off asks again for the tree without its ignored nodes",
+      fetchCalls.length === before + 1 &&
+        excludeUrl.searchParams.get("ignored") === "exclude" &&
+        excludeUrl.searchParams.get("encoding") === "compact" &&
+        excludeUrl.searchParams.get("nodes") === "max",
+      `${fetchCalls.length - before} ${excludeUrl.search}`,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "the tree without ignored nodes draws no ignored cell",
+      cellIndexOf(container, "c.md") === -1 && drawnMap().cells.length > 0,
+      geometry(container),
+    );
     check(
       "ignored scope leaves explicit Files and Ignored context unchanged",
-      JSON.stringify(container.totals.value) === totalsBeforeIgnored &&
+      sums(container.totals.value) === totalsBeforeIgnored &&
         container.totals.metric === totalsMetricBeforeIgnored,
       JSON.stringify({ value: container.totals.value, metric: container.totals.metric }),
     );
@@ -861,18 +1260,92 @@ sandbox.MetabrowserNavigationRoute.attachController({
         },
       },
     });
+    // Until the tree with ignored nodes arrives, the map keeps the one it has, laid out
+    // as Show ignored off: no folder is sized by totals whose nodes are missing.
+    check(
+      "rechecking Show ignored keeps the map until its tree arrives",
+      cellIndexOf(container, "c.md") === -1 &&
+        new URL(fetchCalls.at(-1)).searchParams.get("ignored") === "include",
+      `${geometry(container)} ${fetchCalls.at(-1)}`,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
     check(
       "rechecking ignored scope restores ignored cells",
-      container.viewport.innerHTML.includes("c.md") && container.status.textContent === "",
-      container.viewport.innerHTML,
+      cellIndexOf(container, "c.md") >= 0 &&
+        labelsMarkup(container).includes("c.md") &&
+        container.status.textContent === "",
+      geometry(container),
+    );
+
+    // Out of sight, as when File Overview's own Show ignored turns it off, the view asks
+    // nothing; it asks once it shows.
+    const setIgnored = (checked) =>
+      toolbarChange({
+        target: {
+          checked,
+          getAttribute(name) {
+            return name === "data-chip-check" ? "folder-rollup-ignored" : null;
+          },
+        },
+      });
+    sandbox.MetabrowserViewState.setActive(container, false);
+    const hiddenStart = fetchCalls.length;
+    setIgnored(false);
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "a hidden view asks nothing when Show ignored changes",
+      fetchCalls.length === hiddenStart,
+      `${fetchCalls.length - hiddenStart}`,
+    );
+    sandbox.MetabrowserViewState.setActive(container, true);
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "the view asks for the tree Show ignored names once it shows",
+      fetchCalls.length === hiddenStart + 1 &&
+        new URL(fetchCalls.at(-1)).searchParams.get("ignored") === "exclude" &&
+        cellIndexOf(container, "c.md") === -1,
+      `${fetchCalls.length - hiddenStart} ${fetchCalls.at(-1)}`,
+    );
+
+    // Show ignored on, and the tree with ignored files fails to arrive: the map keeps the
+    // others and says so, until a tree with them does arrive.
+    rollupOverride = { ok: false, status: 500 };
+    setIgnored(true);
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "a failed tree with ignored files says the map shows the others",
+      cellIndexOf(container, "c.md") === -1 &&
+        container.status.textContent ===
+          "Could not load the ignored files; the treemap shows the others.",
+      container.status.textContent,
+    );
+    rollupOverride = null;
+    setIgnored(false);
+    setIgnored(true);
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "the tree with ignored files puts the statement away",
+      cellIndexOf(container, "c.md") >= 0 && container.status.textContent === "",
+      container.status.textContent,
     );
   }
 
   // Dispose detaches the inventory-change and window-resize listeners.
   const listenerCount = (windowListeners["metabrowser:inventory-change"] || []).length;
   const resizeCount = (windowListeners.resize || []).length;
+  // On a cell when the map goes, so its anchor is in the viewport to take back.
+  const disposeLeaf = drawnMap().cells.findIndex((cell) => cell.kind === "file");
+  dispatch(container, "mousemove", clientAt(container, disposeLeaf));
   const hidesBeforeDispose = tooltipHides.length;
+  const anchoredBeforeDispose = container.viewport.children.some((child) =>
+    String(child.className).includes("tm-hover-anchor"),
+  );
   mounted.dispose();
+  check(
+    "dispose takes back every element the map put in the viewport",
+    anchoredBeforeDispose && container.viewport.children.length === 0,
+    JSON.stringify(container.viewport.children.map((child) => child.className)),
+  );
   const afterDispose = (windowListeners["metabrowser:inventory-change"] || []).length;
   check("dispose detaches listener", afterDispose === listenerCount - 1, `${afterDispose}`);
   const resizeAfter = (windowListeners.resize || []).length;
@@ -881,6 +1354,12 @@ sandbox.MetabrowserNavigationRoute.attachController({
     "dispose hides only the map's own tooltip",
     tooltipHides.length === hidesBeforeDispose + 1 && tooltipHides.at(-1) === container,
     `${tooltipHides.length - hidesBeforeDispose}`,
+  );
+  check(
+    "dispose releases the map's pointer and key listeners",
+    Object.values(container.viewport.listeners).every((listeners) => listeners.length === 0) &&
+      drawnMap() === null,
+    JSON.stringify(Object.keys(container.viewport.listeners)),
   );
 
   // A nested Treemap identifies its enclosing folder and navigates to
@@ -927,6 +1406,17 @@ sandbox.MetabrowserNavigationRoute.attachController({
       JSON.stringify(call),
     );
   }
+  // Backspace on the map asks for the same enclosing folder.
+  const navigationsBeforeBackspace = navigationCalls.length;
+  const backspace = dispatch(nestedContainer, "keydown", { key: "Backspace" });
+  check(
+    "Backspace on the map opens the enclosing folder's Treemap",
+    backspace.defaultPrevented &&
+      navigationCalls.length === navigationsBeforeBackspace + 1 &&
+      navigationCalls.at(-1).target.path === "src" &&
+      navigationCalls.at(-1).options?.viewId === "treemap",
+    JSON.stringify(navigationCalls.slice(navigationsBeforeBackspace)),
+  );
   const parentClickListeners = nestedContainer.parentNav.listeners.click?.length || 0;
   const hidesBeforeNestedDispose = tooltipHides.length;
   nestedMounted.dispose();
@@ -1147,7 +1637,7 @@ sandbox.MetabrowserNavigationRoute.attachController({
             ? markup.includes("tm-loading")
             : viewport === "unavailable"
               ? markup.includes("Treemap unavailable.")
-              : markup.includes("data-tm-cell"),
+              : (drawnMap(steppedPane)?.cells.length ?? 0) > 0 && !markup.includes("tm-loading"),
           markup,
         );
         check(
@@ -1168,6 +1658,35 @@ sandbox.MetabrowserNavigationRoute.attachController({
     overrideUrl.searchParams.get("type_top") === null &&
       overrideUrl.searchParams.get("remaining_top") === "9",
     overrideUrl.search,
+  );
+
+  // "max" asks for the route's deepest and widest tree; the route resolves it
+  // (tests/test_rollup_route.py), so neither the SDK nor a plugin knows the bounds.
+  await mb.fetchRollup("deep", { depth: "max", top: "max" });
+  const maxUrl = new URL(fetchCalls.at(-1));
+  check(
+    '"max" depth and top reach the route as asked',
+    maxUrl.searchParams.get("depth") === "max" && maxUrl.searchParams.get("top") === "max",
+    maxUrl.search,
+  );
+  // The node budget, ignored scope, and encoding reach the route as asked, and the SDK
+  // returns a compact body undecoded. The route clamps a node budget as it does depth and
+  // top, and refuses an unknown scope or encoding (tests/test_rollup_route.py).
+  await mb.fetchRollup("dense", { nodes: "max", ignored: "exclude", encoding: "compact" });
+  const denseUrl = new URL(fetchCalls.at(-1));
+  check(
+    "nodes, ignored, and encoding reach the route as asked",
+    denseUrl.searchParams.get("nodes") === "max" &&
+      denseUrl.searchParams.get("ignored") === "exclude" &&
+      denseUrl.searchParams.get("encoding") === "compact",
+    denseUrl.search,
+  );
+  await mb.fetchRollup("plain");
+  const plainUrl = new URL(fetchCalls.at(-1));
+  check(
+    "an unasked node budget, scope, and encoding stay off the query",
+    !["nodes", "ignored", "encoding"].some((key) => plainUrl.searchParams.has(key)),
+    plainUrl.search,
   );
 
   if (failures.length > 0) {

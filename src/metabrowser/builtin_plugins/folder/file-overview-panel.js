@@ -14,19 +14,26 @@
 // belong side by side, and every number under them answers to both.
 //
 // The bodies stay in their own modules. They have genuinely different data
-// lifecycles — the breakdown owns the rollup fetch and projects its result to
-// the totals (see rollup-projection.js) — and merging their code would have
-// entangled that for the sake of a heading.
+// lifecycles — the breakdown owns the tallies' rollup fetch and projects its
+// result to the totals (see rollup-projection.js), and the compact treemap
+// fetches its own deep tree once the breakdown's answers say the index has
+// settled — and merging their code would have entangled that for the sake of
+// a heading.
 //
 // They share one hover. The breakdown's legend names the families of one of
 // the totals' bars, so pointing at an entry lifts that bar's segment: the
 // section holds the hover, the totals draw it, and both say where the pointer
 // is (distribution-hover.js).
+//
+// Under the breakdown, a compact treemap (treemap-compact.js) shows where in
+// the folder those files sit. It follows the same controls and joins the same
+// hover, so pointing at a legend entry marks that family's cells as well.
 
 import { createDistributionHover } from "./distribution-hover.js";
 import { mountFileTotalsPanel } from "./file-totals-panel.js";
 import { mountFileTypeSummary } from "./file-type-summary.js";
 import { notIndexedStatement } from "./folder-totals.js";
+import { mountCompactTreemap } from "./treemap-compact.js";
 
 /** @typedef {{mount: (container: HTMLElement) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} FolderRollupControls */
 
@@ -65,14 +72,25 @@ export function mountFileOverviewPanel(
     container.append(note);
     return Object.freeze({ dispose() {} });
   }
+  // The body File Overview fills, which in the Overview's wide band holds the type legend
+  // in a rail beside it (overview.css, .file-overview-body).
+  container.classList.add("file-overview-body");
   const controls = document.createElement("div");
   const totalsContainer = document.createElement("div");
   const breakdownContainer = document.createElement("div");
-  container.append(controls, totalsContainer, breakdownContainer);
+  const treemapContainer = document.createElement("div");
+  container.append(controls, totalsContainer, breakdownContainer, treemapContainer);
   // This row is both halves of the rollup controls, which is the whole point
   // of the section.
   const unmountControls = rollupControls.mount(controls);
   const hover = createDistributionHover();
+
+  // Last on the page: where the files sit, below what they are. It mounts
+  // first, so the breakdown's first answer can decide its box.
+  const treemap = mountCompactTreemap(treemapContainer, context, mb, palette, rollupControls, {
+    ...options,
+    hover,
+  });
 
   // Totals first, then the breakdown that refines them — the same order a
   // reader asks the two questions in. The breakdown mounts second but drives
@@ -98,6 +116,10 @@ export function mountFileOverviewPanel(
       hover,
       onNoTotals: () => totals.stopLoading(),
       onTotalsPending: () => totals.resumeLoading(),
+      // The map's box is decided by the breakdown's answer, the one the first paint
+      // waits for below, so it is there or not from that paint on.
+      onSnapshot: (snapshot) => treemap.follow(snapshot),
+      onRetry: () => treemap.refresh(),
     },
   );
 
@@ -121,6 +143,7 @@ export function mountFileOverviewPanel(
     clearTimeout(waiting);
     // Bodies first, then the controls they subscribe to. Each body lets go of the hover
     // it shares as it goes, so nothing is left holding or hearing it.
+    treemap.dispose();
     breakdown.dispose();
     totals.dispose();
     unmountControls();

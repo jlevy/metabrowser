@@ -197,7 +197,7 @@ route may say only where `tests/test_serve_pin.py` allows.
 
 | Surface | Draws |
 | --- | --- |
-| The navigation column’s heading, before the root’s name | The root’s kind mark, `.header-root-kind`, at `--icon-glyph` in `--muted`, inside the Home link and next to the root details disclosure. The server writes the kind, its glyph, and its sentence into the first paint (`source_kind_marks.py`) |
+| The navigation column’s heading, before the root’s name | The root’s kind mark, `.header-root-kind`, at `--icon-glyph` in `--muted`, inside the Home link and next to the Info button for folder details. The server writes the kind, its glyph, and its sentence into the first paint (`source_kind_marks.py`) |
 | The main pane’s header for the root, at the title’s size | The same mark: the glyph is copied from the navigation’s (`view-header.js`, `folderGlyphHtml`), so a root’s name has one icon wherever it stands. A pinned revision of a checkout, whose root is still the root, keeps it. A folder inside the root leads with the ordinary folder |
 | The macOS title’s folder chooser and the Switch Folder panel, each row | The row’s kind mark, from its window’s `/api/identity` or its recent entry |
 | File > Open Recent and the Dock menu, each row | The row’s kind mark, from the entry’s `mode` and `git` in `metab --recent --json`, never from a look at the folder, which can raise a privacy prompt |
@@ -240,7 +240,7 @@ in `/`, so neither draws a folder icon.
 | `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `github`, Octicons `mark-github-16` | View bundle | GitHub: the View on GitHub button’s mark, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
-| `arrowUpRight`, Lucide `arrow-up-right` | View bundle | Open in Browser menu action | `static/plugin-sdk-views.js` | `--muted` | `--icon-glyph` in `.menu-item-icon` |
+| `arrowUpRight`, Lucide `arrow-up-right` | View bundle | Open in Browser and Open on GitHub menu actions | `static/plugin-sdk-views.js` | `--muted` | `--icon-glyph` in `.menu-item-icon` |
 | `layers`, Lucide `layers` | Registry | A stack of pull requests: a stack’s row, the page’s stack button, and another stack a member is in | `static/icons.js` | `--muted` on a row, the button’s text ink on the stack button | `--icon-glyph`; the text’s `1em` in a member’s place |
 | `PERSON_GLYPH`, Lucide `circle-user-round` | View bundle | A person with no avatar, in an actor identity’s box | `static/plugin-sdk-views.js` | `--muted` | `--actor-avatar-size`, the avatar it stands in for |
 
@@ -290,7 +290,8 @@ The state’s word beside the row’s title carries the meaning without the colo
 
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
-| `toggle`, Lucide `chevron-right` | Registry | Show or hide what a row holds: tree folders and containers, the tally tree, diff file bars, the Diff summary, Pulls rows, agent log events, fold expanders, the filter drawer, and menu triggers. In menus it points down and stays fixed while open | `static/icons.js` | Muted gray at rest, stronger neutral ink on interaction | Centered in its target. A branch or tag menu overlays the chip’s trailing edge |
+| `toggle`, Lucide `chevron-right` | Registry | Show or hide what a row holds: tree folders and containers, the tally tree, diff file bars, the Diff summary, Pulls rows, agent log events, fold expanders, the filter drawer, and menu triggers. In menus it points down and stays fixed while open | `static/icons.js` | Muted gray at rest, stronger neutral ink on interaction | Centered in its target. A ref chip’s action cue overlays its trailing edge. The Files revision row uses one standalone chevron for the chooser |
+| `info`, Lucide `info` | Registry | Open folder details from the navigation heading | `static/icons.js` | `--muted` at rest, `--text` on interaction | `--icon-glyph` in the shared icon-button target |
 | `chevron.down` | SF Symbol | A window’s title opens its folder chooser | `apps/macos/Sources/Metabrowser/TitleAccessory.swift` | Secondary label color at rest, primary on hover or open, tertiary in an inactive window | Seven tenths of the title font’s point size, centered vertically |
 | `checkmark` | SF Symbol | The folder this window shows, in the Switch Folder panel’s list | `apps/macos/Sources/Metabrowser/SwitchFolderWindow.swift` | Secondary label color, or the selection’s ink on the selected row | The row’s default symbol size |
 | `checkmark` | SF Symbol | The folder this window shows, in the title’s folder chooser: AppKit’s own check mark for a menu item’s state, redrawn into a taller image so that it stands on the name’s line of a two-line row, beside the row’s mark | `apps/macos/Sources/ShellViews/TitleLineMenuItem.swift` | The menu’s ink and highlight, as a template image | The menu font’s 13 points, bold, small: AppKit’s own check, drawn at its size |
@@ -362,8 +363,6 @@ Each of these breaks a rule above, and is listed so that nobody copies it.
   toggle types `☰` where a trusted render draws KPress’s Lucide `list`.
 - **The Metabrowser menu’s GitHub link ends in `→`**, where a link to GitHub elsewhere
   carries the GitHub mark.
-- **A branch chip’s copy glyph is smaller than `--icon-glyph`**, by its own rule, which
-  the size rule does not list as an exception.
 - **Two glyphs one plugin draws are in the registry.** Only the GitHub plugin draws
   `layers`, and only the Markdown plugin’s print button draws `print`, yet both are
   registry glyphs that every folder’s startup pays for.

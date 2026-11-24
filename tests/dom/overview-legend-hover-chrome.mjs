@@ -143,6 +143,9 @@ const DETAILS_HEADINGS = `(() => {
   };
 })()`;
 
+// The module the view loaded, whose inspectTreemap reads the map it mounted.
+const MAP_MODULE = `performance.getEntriesByType("resource").map((e) => e.name).find((n) => n.endsWith("/treemap-map.js"))`;
+
 const READ = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const tip = document.querySelector(".custom-tooltip");
@@ -170,7 +173,53 @@ const READ = `(async () => {
     if (element.closest(".folder-totals")) return row.querySelector("th").textContent + " " + element.dataset.segmentKey;
     return "Details " + row.dataset.typeKey;
   };
-  const marked = [...document.querySelectorAll("[data-hovered]")];
+  // The compact treemap under the breakdown joins the section's hover; its cells are read
+  // apart from the bars and the legend, as the map's own marks.
+  // The map paints its cells on a canvas, so its own reading, inspectTreemap
+  // (treemap-map.js), names them, and the canvases' pixels say what is drawn.
+  const marked = [...document.querySelectorAll("[data-hovered]")].filter((element) => !element.classList.contains("tm-hover-anchor"));
+  const mapViewport = document.querySelector(".tm-viewport-compact");
+  const { inspectTreemap } = await import(${MAP_MODULE});
+  const map = mapViewport ? inspectTreemap(mapViewport) : null;
+  const mapCells = map?.cells ?? [];
+  const mapMarked = map?.marked ?? [];
+  // A cell's family is the first element of its paint style's key (treemap-map.js, cellStyleKey).
+  const familyOf = new Map((map?.paint ?? []).filter((r) => r.tone === "fill").map((r) => [r.cell, JSON.parse(r.style)[0]]));
+  // Each painted cell's own pixel on the marks canvas: a leaf's fill centre, a nesting
+  // folder's frame's left column where one is drawn. A marked cell's is a copy of the
+  // paint canvas's; any other cell's is clear.
+  const lift = (() => {
+    if (!map) return { lifted: true, clear: true, sampled: 0 };
+    const pixels = (selector) => {
+      const c = mapViewport.querySelector(selector);
+      return c.getContext("2d").getImageData(0, 0, c.width, c.height);
+    };
+    const paint = pixels(".tm-paint");
+    // The marks canvas shown, or, with none shown, what shows: nothing lifted. The two
+    // canvases cross-fade (styles.css, .tm-marks), and one not shown is fading out.
+    const marks = mapViewport.querySelector(".tm-marks.tm-marks-shown")
+      ? pixels(".tm-marks.tm-marks-shown")
+      : new ImageData(paint.width, paint.height);
+    const at = (image, x, y) => [...image.data.slice((y * image.width + x) * 4, (y * image.width + x) * 4 + 4)];
+    const markedSet = new Set(mapMarked);
+    const out = { lifted: true, clear: true, sampled: 0 };
+    for (const rect of map.paint.filter((r) => r.tone === "fill")) {
+      let own = [rect.x + (rect.w >> 1), rect.y + (rect.h >> 1)];
+      if (mapCells[rect.cell].nested) {
+        const inner = map.paint.find((r) => r.cell === rect.cell && r.tone === "edge");
+        if (!inner || inner.x <= rect.x) continue;
+        own = [rect.x, rect.y + (rect.h >> 1)];
+      }
+      out.sampled += 1;
+      const on = at(marks, ...own);
+      if (markedSet.has(rect.cell)) {
+        out.lifted &&= on[3] > 0 && JSON.stringify(on) === JSON.stringify(at(paint, ...own));
+      } else {
+        out.clear &&= on[3] === 0;
+      }
+    }
+    return out;
+  })();
   const bars = marked.filter((element) => element.classList.contains("file-type-summary-fill"));
   const style = (element) => {
     const computed = getComputedStyle(element);
@@ -260,8 +309,34 @@ const READ = `(async () => {
   const hoveredEntry = document.querySelector(".file-type-summary-legend-item:hover");
   const pointedSegment = bars.find((bar) => bar.matches(":hover"));
   const handle = hoveredEntry ?? pointedSegment;
+  const marksLayer =
+    mapViewport?.querySelector(".tm-marks.tm-marks-shown") ?? mapViewport?.querySelector(".tm-marks");
   return {
     marked: marked.map(nameOf),
+    map: {
+      cells: mapCells.length,
+      sampled: lift.sampled,
+      marked: mapMarked.map((i) => mapCells[i].path + " (family)"),
+      // Every cell of the first marked cell's family.
+      family: mapMarked.length
+        ? mapCells.flatMap((cell, i) => (familyOf.get(i) === familyOf.get(mapMarked[0]) ? [cell.path + " (family)"] : []))
+        : [],
+      // The marked cells' pixels copied to the marks canvas, which lifts and does not grow.
+      liftedNotGrown:
+        lift.lifted &&
+        (() => {
+          const { scaleY, scaleX, filter } = style(marksLayer);
+          return scaleY === 1 && scaleX === 1 && filter !== "none";
+        })(),
+      othersAtRest: lift.clear,
+      inside: mapCells.every(
+        (cell) => cell.x >= -0.05 && cell.y >= -0.05 && cell.x + cell.w <= mapViewport.clientWidth + 0.05 && cell.y + cell.h <= mapViewport.clientHeight + 0.05,
+      ),
+      layout: [
+        ...mapCells.map((cell) => [cell.x, cell.y, cell.w, cell.h].map(round).join(",")),
+        ...[...mapViewport.querySelectorAll(".tm-paint, .tm-marks, .tm-label-cell")].map(box),
+      ],
+    },
     barStyle: bars.map(style),
     // Every other bar, and every bar outside the tally rows and an open Details, at rest.
     othersAtRest: fills
@@ -282,6 +357,13 @@ const READ = `(async () => {
     entrySize: entries.map((item) => { const r = item.getBoundingClientRect(); return round(r.width) + "x" + round(r.height); }),
     clearance,
     tooltip: shown() ? tip.innerText.replace(/\\s+/g, " ").trim() : null,
+    // The glyph before the family's name, drawn at the icon size, or null for none.
+    tooltipIcon: (() => {
+      const svg = shown() ? tip.querySelector(".tm-tip-icon svg") : null;
+      if (!svg) return null;
+      const r = svg.getBoundingClientRect();
+      return { w: round(r.width), h: round(r.height) };
+    })(),
     // Where the tooltip sits: its centre against the centre of what the pointer is on, and
     // whether it is above or below that rather than over it.
     tooltipOnAnchor:
@@ -315,7 +397,7 @@ try {
   await chrome.send("Page.enable");
   await chrome.send("Page.navigate", { url: `${base}/view/` });
   await chrome.waitFor(
-    `document.querySelectorAll(".file-type-summary-legend-item").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-ignored-row [data-segment-key]").length > 0`,
+    `document.querySelectorAll(".file-type-summary-legend-item").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-ignored-row [data-segment-key]").length > 0 && document.querySelectorAll(".tm-viewport-compact .tm-paint").length > 0 && ${MAP_MODULE} !== undefined`,
     30000,
   );
   phase("loaded");
