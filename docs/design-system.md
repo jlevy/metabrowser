@@ -866,12 +866,19 @@ outer gutter. KPress’s card and `--doc-measure` cap the reading column.
 In KPress’s wide document band, a document with a table of contents puts the sticky
 KPress rail to the right of the prose.
 A thumbnail sits above the prose.
-A wide table scrolls inside the column beside a rail.
-In a single column it can use available space to the right of the text.
+In KPress’s wide document band, a standalone table can grow past the prose column to its
+natural width, up to the room in the reading pane.
+The prose keeps its reading measure.
+A sticky table of contents sits at the pane’s trailing edge on a page with a top-level
+table, leaving the area before the rail available for the table.
+A table that needs more room scrolls in its own container.
+`tests/test_reading_column_chrome.py` measures the layout using the pipeline
+architecture document’s three-column table.
 
-Below that band, KPress’s icon opens the overlay from the trailing gutter to keep the
-beginning of each line clear.
-The Folder Overview README shares the same prose edge and maximum measure.
+In medium and narrow panes, tables follow KPress’s own layout, and the table of contents
+opens from the trailing gutter to keep the beginning of each line clear.
+The Folder Overview README shares the same prose edge and maximum measure, and its
+tables stay within its panel.
 Its panel headings and bodies follow the document card’s outer edge.
 Their text starts on the active tab’s label rather than at the README’s responsive inner
 inset; see [Folder Overview Is a Panel Stack](#folder-overview-is-a-panel-stack).
@@ -1097,11 +1104,14 @@ header says what KPress lacks.
 
 The root icon and name in the navigation column link to Home.
 The folder glyph identifies a local folder, a Git checkout, or a cloud mirror.
-The adjacent Info button opens the root’s details, with a kind-specific accessible name
-such as “Local folder details”.
-The circled Info glyph uses the shared icon-only button, with muted ink at rest and the
-same highlight on hover, focus, or while the menu is open.
-Click it again, click outside the menu, or press Escape to close it.
+The adjacent Info button opens the root’s details.
+Its accessible name and tooltip identify the kind, for example “Local folder details”.
+The tooltip clears while the menu is open.
+The circled i has a distinct dot and foot at sidebar size.
+It uses the shared icon-only button with muted ink at rest and the same highlight on
+hover, focus, or while the menu is open.
+Its button owns the open state and shares the
+[menu dismissal rule](#shared-overlay-lifecycle).
 
 The menu shows information about the folder, including its local path, file count, size,
 and commit when available.
@@ -1321,7 +1331,7 @@ state looks like.
 
 | Offers | Primitive | ARIA and keyboard | Used by |
 | --- | --- | --- | --- |
-| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags, and for a checkout Branches / Tags / Remotes |
+| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags, and for a checkout Branches / Remotes / Tags |
 | Any of a set of labelled values | `.chip-group[data-select="many"]` | `group` of buttons with `aria-pressed`; each a tab stop | An agent log’s event types |
 | One of a few values in a menu, where the glyph is the label | `.menu-chooser` of `.menu-seg` | `group` of `menuitemradio` with `aria-checked`; each a tab stop | Theme and reading font |
 | One of a long list | A named trigger over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns and the Files revision chooser for mirrors and checkouts |
@@ -1403,15 +1413,26 @@ The source ref selector’s filter, the font-set picker, and the line-length num
 it in markup. `test_text_fields_carry_the_field_primitive` fails a field that restates
 what `.field` owns.
 
+### Chip Sizes
+
+| Use | Height | Components |
+| --- | --- | --- |
+| Compact labels and references | `--compact-chip-height`, including any border | Branches, tags, GitHub labels, ref chooser tags such as “checked out”, and links to referenced table rows |
+| Filters and other chip controls | `--chip-height` | Navigation filters, segmented chips, and removable table filters |
+| Status and file-type badges | The badge’s line plus its padding or border | Pull request states such as Merged, checks, and file headers |
+
+Compact chips share `--compact-chip-padding-inline` and `--radius-tag`. A bordered chip
+fits its line inside the shared height.
+The tag notch has extra leading room.
+A ref chip shows its full name in a tooltip when its label is cut off horizontally.
+
 ### Badges
 
 A status or file-type badge takes its fill and ink from a `--badge-<tone>-bg` and
 `--badge-<tone>-text` pair, themed for both themes and held to 4.5:1 by
 `test_status_and_badge_inks_read_in_both_themes`; a failure and a front-matter error are
-one tone, `--badge-failed-*`. `.source-ref-selector-badge` is not a status badge but an
-outlined tag in the row’s muted ink: it shares `.file-header-badge`’s radius and no-wrap
-rule and not its filled, bold, taller box, since every ref row is placed at one row’s
-height.
+one tone, `--badge-failed-*`. Ref chooser tags use the outlined form in the row’s muted
+ink, at the shared [compact chip size](#chip-sizes).
 
 ### Status Text Inks
 
@@ -2041,23 +2062,19 @@ ref it is, whether it is trunk, and whether `HEAD` is on it.
 
 #### One Ratio
 
-A chip is slightly smaller than the text around it, wherever it appears: one ratio, not
-one size. Its size is `--git-ref-font-size`, `--git-ref-font-scale` of the size it
-inherits, so a chip in a header line is larger than one in the ref selector, and both
-read as part of their line.
-One rule on `.git-ref` in `static/styles.css` sets its type and box, and its comment
-holds the figures.
-No context overrides them, and the box a chip sits in, a merge’s grid,
-a history row’s ref group, a summary’s identity group, or the ref selector’s label, sets
-no size of its own, so the chip scales from the text beside it.
+A chip’s type is slightly smaller than the surrounding text.
+Its font size is `--git-ref-font-size`, or `--git-ref-font-scale` times the inherited
+size. The merge, history, summary, and chooser containers inherit their surrounding font
+so the ratio follows the text.
+The box has the shared [compact chip height](#chip-sizes).
 
 | Property | Rule | Why |
 | --- | --- | --- |
 | Size | `--git-ref-font-size` | Slightly smaller than its text, so a branch name reads as a tag on that text rather than the text itself. The smallest context stays above `--micro-font-size`, so the ratio needs no floor |
 | Weight | `--weight-bold` | The name carries the meaning |
-| Line height | A ratio of the chip’s size | The box scales with its text and keeps a `HEAD` ring inside a history row |
+| Line height | `--compact-chip-height` | Aligns with the label chips and fits a `HEAD` ring inside a history row |
 | Corner | `--radius-tag` | Square-ish, so a ref and a filter never read as the same control |
-| Padding | In px | Room around the name, not text. A tag adds room on the left for its notch. The menu chevron overlays the chip ([Action Menu](#action-menu)) |
+| Padding | `--compact-chip-padding-inline` | A tag adds room on the left for its notch. The menu chevron overlays the chip ([Action Menu](#action-menu)) |
 | Width | A maximum in em, ellipsized, with the full name in its tooltip | In em so the bound keeps its meaning at any chip size; the measurement is beside it |
 
 `test_branch_chips_scale_with_their_text` in `tests/test_design_vocabulary.py` holds the
@@ -2151,9 +2168,13 @@ The row uses one chevron, the standalone button for the revision chooser.
 
 The menu names the ref and its kind.
 **Copy Branch Name** and **Copy Tag Name** copy the underlying name.
-**View This Branch** or **View This Tag** selects the full ref, including its Git
-namespace, through the same source-switch route as the chooser.
-A fork’s PR head can open the PR snapshot when it is available in the mirror.
+**View This Branch** or **View This Tag** uses the in-app right arrow and selects the
+full ref, including its Git namespace, through the same source-switch route as the
+chooser. The current Files chip offers copying and an applicable GitHub destination.
+Choose the checked-out branch from the adjacent chooser to open its committed snapshot
+from a live working tree.
+**View PR Head in Metabrowser** uses the same arrow and opens the PR snapshot when it is
+available in the mirror.
 **Open on GitHub** shows the destination and uses the same external arrow as the
 repository menu. The remote action appears when the app can identify the matching GitHub
 repository and ref.
@@ -3009,9 +3030,8 @@ Document image sanitization remains independent; see [Content Trust](../SECURITY
 **A label is colored exactly as github.com colors it, in our chip’s box.** GitHub gives
 each label a color, six hex digits, and a description, and a reader who knows a
 repository’s labels by their colors on github.com should find the same colors here.
-The chip keeps the size every label chip has: `--ui-small-font-size`, the `0 5px`
-padding, the hairline border, `--radius-tag`, and its height, so a colored label is as
-tall as a neutral one and the header’s rows keep their heights.
+Colored and neutral chips share the same [compact box](#chip-sizes) and
+`--ui-small-font-size`. The header reserves that box’s height while waiting for labels.
 
 The colors are github.com’s own formula, read from its stylesheets (its global
 `.hx_IssueLabel` and Primer React’s `.prc-Token-IssueLabel`, which agree, on
@@ -4158,7 +4178,16 @@ mark on a tree or palette row, or a menu row’s leading mark.
 Never inline a pixel size at a use site.
 Where an icon reserves a column in a palette or menu row, or a file identity’s, the
 alignment box around it is `--icon-box`, one step wider than the glyph, so the mark sits
-optically centered.
+optically centered. In a text heading, lay out adjacent icons on one flex centerline and
+align their ink with the visual center of the text.
+Apply any optical adjustment to the SVG inside its slot so the click target stays
+centered in the row.
+In the sidebar heading, `--heading-icon-offset-y` places the source mark on the name’s
+capital-height band.
+Info uses the source mark’s ink center as its reference.
+The folder variants have slightly different ink bounds inside their shared 24-unit SVG
+box, so `--source-mark-ink-offset-y` carries that difference to Info at the current icon
+size.
 
 A tree row’s leading slot is the glyph’s own width, `--tree-icon-slot`, which is
 `--icon-glyph`: a folder’s or a container’s chevron, a file’s type icon, a change
@@ -5320,8 +5349,11 @@ The state belongs to the page and is not kept across a reload.
 **With the pane hidden, a reading column is centered in the frame.** A column left at
 the gutter put all the room the pane gave up at its end, beside the text, and the point
 of hiding the pane is a calmer page to read.
-A rendered document, with its table of contents when it has one, and a folder’s Overview
-sit in the middle of the pane, the same room before them as after.
+A rendered document and a folder’s Overview sit in the middle of the pane, the same room
+before them as after.
+The document’s table of contents is part of that group.
+A page with a top-level table in the Document view places the rail at the trailing edge
+to make room for tables beside the reading column.
 The header’s Up, icon, and title and the first tab move with the column, so the page
 keeps one reading edge, and what is flush right, the header’s corner and the eyebrow’s
 copy button, stays there.
@@ -5976,12 +6008,17 @@ but neither installs another document-level shortcut dispatcher.
 
 Opening and closing meet these requirements:
 
+- activating an open menu’s trigger closes it once, with the same result for pointer,
+  keyboard, and accessibility actions;
+- a press or activation outside both the trigger and panel closes the menu and leaves
+  focus on the reader’s destination;
 - pointer and keyboard triggers reach the same controller and state;
 - triggers expose the appropriate accessible name, `aria-expanded`, `aria-controls`, and
   `aria-haspopup` value;
 - the interaction that opens a surface cannot dismiss it in the same event sequence;
 - scrolling inside a bounded overlay does not dismiss it;
-- closing restores focus to the connected trigger or a documented connected fallback;
+- closing from within the surface restores focus to the connected trigger or a
+  documented connected fallback;
 - modal background content cannot receive pointer, keyboard, or assistive-technology
   interaction while the dialog is open; and
 - `dispose()` removes portals, scrims, registrations, observers, and listeners and
@@ -6085,10 +6122,10 @@ revisions
   `ROWS_OVERSCAN` and `drawWindow` in `static/source-ref-selector.js`), and a row has
   one of two heights, with a pull request or without, each measured by a row drawn out
   of sight, so nothing else in a row may make it taller than the rest of its kind: the
-  badge’s border reaches into the row’s padding, and the pull request’s line is one line
-  of `--nav-metadata-line-height`, however tall the glyphs of its title are: an emoji or
-  a Japanese title falls back to a font whose `normal` line is taller, which made the
-  row 2 to 3 px taller than the list places it.
+  badge fits the row’s line, and the pull request’s line is one line of
+  `--nav-metadata-line-height`, however tall the glyphs of its title are: an emoji or a
+  Japanese title falls back to a font whose `normal` line is taller, which made the row
+  2 to 3 px taller than the list places it.
   A row with no pull request is as tall as every row was before the line existed.
   The row that takes Tab stays drawn however far the list scrolls from it, so focus on
   it is never lost, and a list that holds the served ref opens scrolled to its row.

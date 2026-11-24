@@ -402,7 +402,7 @@ def test_labels_have_a_row_while_unknown_or_present() -> None:
 
     css = _github_css()
     rule = _rule(css, ".github-pull-labels")
-    assert "min-height: calc(1lh + 2px);" in rule
+    assert "min-height: var(--compact-chip-height);" in rule
     assert "flex-wrap: nowrap;" in rule
     assert "overflow" not in rule
     labels = _rule(css, ".github-pull-label-list")

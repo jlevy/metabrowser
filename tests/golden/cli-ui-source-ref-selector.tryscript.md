@@ -739,8 +739,8 @@ $ node tests/dom/source-ref-selector-session.js
           "workingTree": "Working tree [current]",
           "lists": [
             "branch",
-            "tag",
-            "remote"
+            "remote",
+            "tag"
           ],
           "kind": "branch",
           "query": "",

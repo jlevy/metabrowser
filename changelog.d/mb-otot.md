@@ -1,0 +1,1 @@
+- Keep the current Files branch or tag menu focused on copying and its GitHub link.

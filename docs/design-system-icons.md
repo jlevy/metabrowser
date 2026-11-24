@@ -64,6 +64,9 @@ break this rule ([Known Departures](#known-departures)).
 - **A character is typography, not an icon.** An arrow between two names, a key cap’s
   arrow, and a menu’s check mark are characters; a control’s or an object’s mark is a
   drawn glyph.
+- **Menu action arrows describe the destination.** A right arrow navigates within
+  Metabrowser. An up-right arrow opens a destination externally.
+  A chevron opens a menu or disclosure.
 - **A pull request’s icon follows what the page knows.** Its state’s glyph where the
   state is known, the neutral `pull` mark where only its address is, and the GitHub mark
   for a View on GitHub action
@@ -238,6 +241,7 @@ in `/`, so neither draws a folder icon.
 | `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `github`, Octicons `mark-github-16` | View bundle | GitHub: the View on GitHub button’s mark, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
+| `arrowRight`, Lucide `arrow-right` | View bundle | Navigate within Metabrowser from a menu, including View This Branch, View This Tag, and View PR Head in Metabrowser | `static/plugin-sdk-views.js` | `--muted` | `--icon-glyph` in `.menu-item-icon` |
 | `arrowUpRight`, Lucide `arrow-up-right` | View bundle | Open in Browser and Open on GitHub menu actions | `static/plugin-sdk-views.js` | `--muted` | `--icon-glyph` in `.menu-item-icon` |
 | `layers`, Lucide `layers` | Registry | A stack of pull requests: a stack’s row, the page’s stack button, and another stack a member is in | `static/icons.js` | `--muted` on a row, the button’s text ink on the stack button | `--icon-glyph`; the text’s `1em` in a member’s place |
 | `PERSON_GLYPH`, Lucide `circle-user-round` | View bundle | A person with no avatar, in an actor identity’s box | `static/plugin-sdk-views.js` | `--muted` | `--actor-avatar-size`, the avatar it stands in for |
@@ -289,7 +293,7 @@ The state’s word beside the row’s title carries the meaning without the colo
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
 | `toggle`, Lucide `chevron-right` | Registry | Show or hide what a row holds: tree folders and containers, the tally tree, diff file bars, the Diff summary, Pulls rows, agent log events, fold expanders, the filter drawer, and menu triggers. In menus it points down and stays fixed while open | `static/icons.js` | Muted gray at rest, stronger neutral ink on interaction | Centered in its target. A ref chip’s action cue overlays its trailing edge. The Files revision row uses one standalone chevron for the chooser |
-| `info`, Lucide `info` | Registry | Open folder details from the navigation heading | `static/icons.js` | `--muted` at rest, `--text` on interaction | `--icon-glyph` in the shared icon-button target |
+| `info`, custom circled i | Registry | Open folder details from the navigation heading | `static/icons.js` | `--muted` at rest, `--text` on interaction | `--icon-glyph` in the shared icon-button target |
 | `chevron.down` | SF Symbol | A window’s title opens its folder chooser | `apps/macos/Sources/Metabrowser/TitleAccessory.swift` | Secondary label color at rest, primary on hover or open, tertiary in an inactive window | Seven tenths of the title font’s point size, centered vertically |
 | `checkmark` | SF Symbol | The folder this window shows, in the Switch Folder panel’s list | `apps/macos/Sources/Metabrowser/SwitchFolderWindow.swift` | Secondary label color, or the selection’s ink on the selected row | The row’s default symbol size |
 | `checkmark` | SF Symbol | The folder this window shows, in the title’s folder chooser: AppKit’s own check mark for a menu item’s state, redrawn into a taller image so that it stands on the name’s line of a two-line row, beside the row’s mark | `apps/macos/Sources/ShellViews/TitleLineMenuItem.swift` | The menu’s ink and highlight, as a template image | The menu font’s 13 points, bold, small: AppKit’s own check, drawn at its size |
