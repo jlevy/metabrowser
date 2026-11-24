@@ -236,8 +236,8 @@ const DWINDLING = dir("src", "src", [
   ),
 ]);
 // Files of one size in a mixed order, with one larger: the larger leads, and the rest,
-// tied, group by the family that colors them (Markdown, the other types, Python), then
-// by extension, then by name whatever its case.
+// tied, group by the family that colors them (JSON, Markdown, Python), the one with no
+// extension last, then by name whatever its case.
 const TIED = dir("src", "src", [
   file("zeta.py", "src/zeta.py", 1000, ".py"),
   file("Makefile", "src/Makefile", 1000, ""),
@@ -350,7 +350,12 @@ async function main() {
         svg: `<svg class="${name.split(".").pop()}"></svg>`,
         className: "",
       }),
-      fileTypes: { distributionKeyForExtension: (ext) => EXTENSION_FAMILIES[ext] ?? "other" },
+      // As the taxonomy (file-type-taxonomy.js): no extension is the remaining types'
+      // key, "", and an extension of no family is its own key.
+      fileTypes: {
+        distributionKeyForExtension: (ext) =>
+          ext === "(none)" ? "" : (EXTENSION_FAMILIES[ext] ?? ext),
+      },
       formatFileCount: (count) => `${count} files`,
       formatSize: (bytes) => `${bytes} B`,
       formatTimestamp: () => "then",

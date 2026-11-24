@@ -538,12 +538,12 @@ $ node tests/dom/treemap-compact-session.js
       "step": "files of one size group by family, then by extension and name",
       "cells": [
         "file src/big.py 238x196",
+        "file src/data.json 119x98",
         "file src/alpha.md 119x98",
         "file src/beta.md 119x98",
-        "file src/Makefile 119x98",
-        "file src/data.json 119x98",
         "file src/Alpha.py 119x98",
-        "file src/zeta.py 119x98"
+        "file src/zeta.py 119x98",
+        "file src/Makefile 119x98"
       ]
     },
     {
