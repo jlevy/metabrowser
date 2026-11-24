@@ -215,6 +215,9 @@ it replaced. A step’s excerpts share one size budget (`MAX_EXCERPT_BYTES` in
 `guided_pr.py`); an excerpt past it says it is too large to show.
 A `path` alone shows the file’s whole diff, as Changes draws it: its hunk bars, and its
 long runs folded behind bars you expand.
+A step’s whole files share a budget of their own (`MAX_STEP_PATCH_BYTES` in
+`guided_pr.py`); a file past it says its diff is too large to show in the step, and
+**Open full diff** shows it in Changes.
 A binary change or a rename without a text diff says it has no text changes to show.
 The
 [compiled SoftSchema](../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
@@ -228,10 +231,14 @@ guide was written for, the pull request’s current one, and the commits since (
 the branch was rebased), and it marks the steps that cite a file changed since.
 Every step still shows, with excerpts from the guide’s own revision; a step that cites
 no changed file still matches the pull request.
-To bring the guide current, update its pins and ranges in the PR description.
+When GitHub reports a newer head than the cached copy has, the notice says the guide may
+be out of date: what the newer commits changed is unknown until the pull request is
+fetched again. To bring the guide current, update its pins and ranges in the PR
+description.
 
 A guide the page cannot read says why in place of the steps: invalid YAML, a second
-block, another contract, or a field that fails the schema.
+block, another contract, a field that fails the schema, or pins that do not name a
+comparison. Its block then stays in the description, so its author sees what they wrote.
 The same answer is the `guided-pr` route’s, which this prints from the cached pull
 request:
 

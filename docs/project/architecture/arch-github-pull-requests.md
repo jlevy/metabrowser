@@ -969,18 +969,25 @@ The request names a PR and an optional one-based step.
 The handler checks both comparison endpoints and a newer head GitHub’s list knows, and
 hydrates just the paths that the chosen step needs through the same manifest and diff
 adapter as Changes, always at the guide’s own pins.
+Pins that do not name a comparison, a `merge_base` that is not where Git leaves the
+guide’s head or a head that is no commit, are answered `invalid`. Only the record’s own
+comparison is the pull request’s kept manifest (`pull_manifest.py`): a stale guide’s
+pins are listed beside it, never over it.
 It reports unresolved references in place.
 A guide whose pins are not the pull request’s current comparison is answered `stale`
 with its step, when the store still has the pinned revision, and a `stale` object
 (`_staleness` in `guided_pr.py`): both comparisons, the first-parent commits after the
 guide’s head or that its head left the branch’s history, and the cited paths and steps
 that changed between the two comparisons, each with its bound beside its constant.
-The page draws that as a notice above the guide and marks the changed steps.
-The limits in `guided_pr.py` (`MAX_ITEMS`, `MAX_REFERENCES`, and `MAX_EXCERPT_BYTES`)
-cap the guide’s steps, the per-step hydration, and the excerpt text, each with the
-measurement that set it beside the constant.
-The parse is kept for each pull request by record revision, so a step click reads the
-guide the first request parsed and an edited description is parsed once.
+When GitHub reports a head this copy lacks, the guide is stale too, and what the newer
+commits changed is unknown, so neither list is answered and the notice says the guide
+may be out of date.
+The page draws that as a notice above the guide and marks the changed
+steps. The limits in `guided_pr.py` (`MAX_ITEMS`, `MAX_REFERENCES`, `MAX_EXCERPT_BYTES`,
+and `MAX_STEP_PATCH_BYTES`) cap the guide’s steps, the per-step hydration, the excerpt
+text, and a step’s whole files, each with the measurement that set it beside the
+constant. The parse is kept for each pull request by record revision, so a step click
+reads the guide the first request parsed and an edited description is parsed once.
 An excerpt shows a replacement whole: `_hunk_rows` includes a line that exists only on
 the other side when it lies inside the range or touches either end of it.
 Guide text and diff lines are inserted as text, in the design system’s existing parts:
@@ -990,32 +997,42 @@ description is, and each excerpt is drawn by the diff plugin’s own renderer
 (`mountFilePatch`, which the page loads with `plugins.load("diff")`; `renderReference`
 in `guided-pr.js`), so its hunk bars, folds, type, row height, gutter, and change fills
 are Changes’. A range is one hunk in the diff model’s shape (`_rows_hunk` in
-`guided_pr.py`), and a path alone is its file’s whole patch, bounded by the diff source
-as Changes is. A ready step carries KPress’s stylesheet manifest, as the description’s
-Markdown route does, and the page loads it and the diff plugin’s styles before drawing
-the step, so the tab reads the same when it is the first thing opened.
+`guided_pr.py`), and a path alone is its file’s whole patch, within the step’s budget
+for whole files; a file past it, or past what the diff source reads in one run, is
+answered `patch_too_large`. A ready step carries KPress’s stylesheet manifest, as the
+description’s Markdown route does, and the page loads it and the diff plugin’s styles
+before drawing the step, so the tab reads the same when it is the first thing opened.
 Guided Review is the first tab when the description has a guide: it is the author’s
 reading order. `/pull/<n>` is then the guide, and Conversation is
 `/pull/<n>/conversation` (`shownTabFor` in `pull-page.js`); without a guide `/pull/<n>`
 is Conversation, and its `/conversation` address shows Conversation either way.
+The controller and the page resolve the front page from one text, the record’s
+description or before it the core preview’s (`textSource`), so a preview of a guided
+pull request opens on its guide.
+A tab’s link and key go to the front page when it shows that tab (`routeForTab`), so
+they never open a second history entry of the page on screen.
 The description introduces the guide, and a collection has no prose of its own:
-`part_text` in `pull_markdown.py` renders the description without its readable guided-pr
-block (`without_guide` in `guided_pr.py`), the Guided Review tab opens with that render,
-and Conversation puts a card that opens the guide in the block’s place.
+`render_part` in `pull_markdown.py` renders the description, a core preview’s too,
+without a guided-pr block that reads as a guide (`guide_introduction` in `guided_pr.py`,
+from the route’s kept parse, off the event loop), the Guided Review tab opens with that
+render, and Conversation puts a card that opens the guide in the block’s place.
 A block that cannot be read stays in the description, so its author sees it.
 The description is the guide’s step 0, its overview (`createGuideNavigation` in
 `guided-pr.js`): the page draws it from the description it already has, under a list of
 the steps that a step answer’s `titles` fill, and it keeps the answer for step 1 that it
 read for those titles, so the first move reads nothing.
-Each answer is kept for its record revision, and a new revision or a moved head drops
-them. `guided-pr.js` loads on demand when the tab opens, aborts reads on disposal, and
-matches results to the page’s record revision.
+Each answer with a step is kept for its record revision, and a new revision or a moved
+head drops them. A step whose read is refused or fails keeps the guide’s steps, so the
+reader can move on, and is read again when chosen again.
+`guided-pr.js` loads on demand when the tab opens, aborts reads on disposal, and matches
+results to the page’s record revision.
 
 The tab is shown from a hint, not from the parse: `GUIDED_FENCE` in `pull-page.js`
 matches a line that opens a `guided-pr` fence in the description, and the server’s
 reading, which counts only a top-level fence, decides what the tab shows.
 A description that documents the format inside another fence therefore shows a tab that
-says the pull request has no guide.
+says the pull request has no guide, and since the hint also picks the front page, that
+page is `/pull/<n>`, with Conversation one click away.
 Letting the server answer for the tab, with a `has_guide` on the `pull` envelope, would
 change an envelope the browser and every `--api` golden of the route share, so it is not
 done here; mb-y0en tracks it, with a way to check a guide before it is published.
