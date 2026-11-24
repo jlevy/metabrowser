@@ -1423,6 +1423,12 @@ what `.field` owns.
 
 Compact chips share `--compact-chip-padding-inline` and `--radius-tag`. A bordered chip
 fits its line inside the shared height.
+For GitHub labels, set the outer box with `block-size: var(--compact-chip-height)`.
+Center the capital-height band with `text-box: trim-both cap alphabetic` and
+`align-content: center`, the same approach as file-header badges.
+Keep the line height equal to the space inside the border for engines without text-box
+support.
+
 The tag notch has extra leading room.
 A ref chip shows its full name in a tooltip when its label is cut off horizontally.
 
