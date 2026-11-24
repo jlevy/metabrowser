@@ -934,9 +934,9 @@ export function createTreemapMap(mb, palette, viewport, options) {
         const ready = (/** @type {CanvasImageSource} */ bitmap) => {
           // A sprite let go while it loaded (dropIconSprites) keeps nothing.
           if (iconSprites.get(key) !== made || disposed) {
-            const made = /** @type {any} */ (bitmap);
-            if (made !== image && typeof made.close === "function") {
-              made.close();
+            const loaded = /** @type {any} */ (bitmap);
+            if (loaded !== image && typeof loaded.close === "function") {
+              loaded.close();
             }
             return;
           }
@@ -1105,8 +1105,8 @@ export function createTreemapMap(mb, palette, viewport, options) {
 
   /**
    * Clear a marks canvas once it has faded out, so a hidden canvas holds no lift: at
-   * once where it does not fade (reduced motion), or when its fade ends or is cut off,
-   * unless it was shown again first.
+   * once where it does not fade (reduced motion), or when its fade ends, unless it was
+   * shown again first.
    * @param {HTMLCanvasElement} canvas
    */
   function fadeOut(canvas) {
@@ -1122,8 +1122,10 @@ export function createTreemapMap(mb, palette, viewport, options) {
       clear();
       return;
     }
+    // Not transitioncancel: a fade reversed, as a pointer back within the fade shows the
+    // canvas again, cancels the fade, and the canvas must keep its lift. The next fade
+    // out ends, or the next draw replaces what the canvas holds.
     canvas.addEventListener("transitionend", clear, { once: true });
-    canvas.addEventListener("transitioncancel", clear, { once: true });
   }
   const unsubscribeCellHover = hover ? hover.subscribe(drawCellHover) : () => {};
 
