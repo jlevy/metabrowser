@@ -3,9 +3,9 @@
 // asks again for the step on screen and drops the read still on its way, leaving the tab or
 // ending the page disposes the view and aborts its read, and a step is inserted as text, each
 // row's code marked for the shell's highlighter to skip. The navigation state machine itself is
-// pinned in github-guided-pr-session.js; this is the page's ownership of it. Layout is not
+// pinned in github-guided-review-session.js; this is the page's ownership of it. Layout is not
 // measured: the shell's highlighting and the rows' paint are Chrome's
-// (tests/test_github_guided_pr_chrome.py).
+// (tests/test_github_guided_review_chrome.py).
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -13,8 +13,8 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
 const { refHelpers } = require("./sdk-ref-fixture.js");
 
 const pagePath = path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js");
-const GUIDE_ROUTE = "/api/plugin/github/guided-pr";
-const FENCE = "Counts to two.\n\n```guided-pr\nsoftschema: {}\n```\n";
+const GUIDE_ROUTE = "/api/plugin/github/guided-review";
+const FENCE = "Counts to two.\n\n```guided-review\nsoftschema: {}\n```\n";
 
 /** The record's revision for a generation: a revision is 64 hexadecimal characters. */
 const revisionOf = (generation) => String(generation).padStart(64, "0");
@@ -247,7 +247,7 @@ function host() {
           },
         },
       );
-      const view = () => container.querySelector(".github-pull-guided-pr");
+      const view = () => container.querySelector(".github-pull-guided-review");
       return {
         handle,
         container,
@@ -387,7 +387,7 @@ async function run() {
     steps.push(
       `Conversation: guide ${view.guided() === null ? "not mounted" : "mounted"}; asked ${asked(first.reads)}`,
     );
-    // The description's guided-pr block is a card there, which opens the guide.
+    // The description's guided-review block is a card there, which opens the guide.
     const card = view.container
       .querySelectorAll(".notice")
       .find((node) => node.textContent.includes("guided review"));
@@ -578,7 +578,7 @@ async function run() {
   {
     host();
     const { staleNotice } = await import(
-      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guided-pr.js")).href
+      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guided-review.js")).href
     );
     const notice = staleNotice(
       {

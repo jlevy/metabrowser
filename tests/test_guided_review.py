@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from softschema.compile import compile_model
 
-from metabrowser.builtin_plugins.github import guided_pr
-from metabrowser.builtin_plugins.github.guided_pr import (
+from metabrowser.builtin_plugins.github import guided_review
+from metabrowser.builtin_plugins.github.guided_review import (
     CONTRACT_ID,
     MAX_EXCERPT_BYTES,
     MAX_ITEMS,
@@ -40,7 +40,7 @@ from metabrowser.diff.format import (
     LineRecord,
 )
 
-_GUIDE = """```guided-pr
+_GUIDE = """```guided-review
 softschema:
   contract: metabrowser.collection:Collection/v1
   envelope: collection
@@ -82,7 +82,7 @@ def test_the_description_without_its_guide_is_the_guides_introduction() -> None:
         _GUIDE.replace("start_line: 2", "start_line: 2, extra: 3"),
         "No guide here.",
     ):
-        with pytest.raises(GuideError) if "guided-pr" in kept else contextlib.nullcontext():
+        with pytest.raises(GuideError) if "guided-review" in kept else contextlib.nullcontext():
             parse_guide(kept)
         assert without_guide(f"Explain it.\n\n{kept}") == f"Explain it.\n\n{kept}"
     # An example of a block, inside another fence, is the description's own text.
@@ -95,7 +95,7 @@ def test_the_user_guides_example_block_is_a_guide() -> None:
     its two placeholders are filled (B17 of review B on #677)."""
     guide = Path(__file__).parents[1] / "docs" / "reviewing-pull-requests.md"
     found = re.search(
-        r"\n````markdown\n(```guided-pr\n.*?\n```)\n````\n", guide.read_text("utf-8"), re.S
+        r"\n````markdown\n(```guided-review\n.*?\n```)\n````\n", guide.read_text("utf-8"), re.S
     )
     assert found is not None
     example = found[1]
@@ -155,16 +155,16 @@ def test_a_guide_may_have_at_most_max_items_items() -> None:
 def parses(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
     """Each body the guide cache reads, with the cache empty."""
     asked: list[str] = []
-    real = guided_pr._read_description  # pyright: ignore[reportPrivateUsage]
+    real = guided_review._read_description  # pyright: ignore[reportPrivateUsage]
 
     def counting(body: str) -> tuple[Collection | None, str]:
         asked.append(body)
         return real(body)
 
-    guided_pr._READS.clear()  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(guided_pr, "_read_description", counting)
+    guided_review._READS.clear()  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(guided_review, "_read_description", counting)
     yield asked
-    guided_pr._READS.clear()  # pyright: ignore[reportPrivateUsage]
+    guided_review._READS.clear()  # pyright: ignore[reportPrivateUsage]
 
 
 def test_a_guide_is_parsed_once_for_each_record_revision(parses: list[str]) -> None:
@@ -201,11 +201,11 @@ def test_a_refused_guide_is_refused_from_the_cache_too(parses: list[str]) -> Non
 def test_the_guide_cache_keeps_its_most_recent_pull_requests(
     parses: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(guided_pr, "_MAX_READS", 2)
+    monkeypatch.setattr(guided_review, "_MAX_READS", 2)
     for number in (1, 2, 3):
         read_guide(("home", "octo-demo", number), "one", _GUIDE)
-    assert len(guided_pr._READS) == 2  # pyright: ignore[reportPrivateUsage]
-    assert ("home", "octo-demo", 1) not in guided_pr._READS  # pyright: ignore[reportPrivateUsage]
+    assert len(guided_review._READS) == 2  # pyright: ignore[reportPrivateUsage]
+    assert ("home", "octo-demo", 1) not in guided_review._READS  # pyright: ignore[reportPrivateUsage]
 
 
 # old: a b d    new: a B c d    (b replaced by B, c added after it)

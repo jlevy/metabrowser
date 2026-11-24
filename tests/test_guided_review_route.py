@@ -1,4 +1,4 @@
-"""The guided-pr route on a cached pull request: its staleness, its refusals, and the
+"""The guided-review route on a cached pull request: its staleness, its refusals, and the
 description rendered beside the guide.
 
 Each route test caches pull request 7 of the GitHub stand-in (``tests/github_pull_fixture.py``)
@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import guided_pr, pull_manifest, pull_markdown
+from metabrowser.builtin_plugins.github import guided_review, pull_manifest, pull_markdown
 from metabrowser.builtin_plugins.github.pull_record import MAX_BODY_BYTES, PullRecord
 from metabrowser.builtin_plugins.github.pull_route import PullHost, PullView
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
@@ -59,7 +59,7 @@ def _pinned(stand: _Stand, *, merge_base: str | None = None, head: str | None = 
 
 def _ask(stand: _Stand, step: int = 1, number: int = 7) -> dict[str, Any]:
     host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
-    return asyncio.run(guided_pr.guided_pr(host, number, step))
+    return asyncio.run(guided_review.guided_review(host, number, step))
 
 
 def _rows(answer: dict[str, Any], at: int = 0) -> list[str]:
@@ -152,7 +152,7 @@ def test_a_newer_head_on_github_leaves_what_changed_unknown(
     origin = stand.origin
     _cache(stand, guide_body(origin))
     assert _ask(stand)["state"] == "ready"
-    monkeypatch.setattr(guided_pr, "_head_moved", lambda _store, _record: True)
+    monkeypatch.setattr(guided_review, "_head_moved", lambda _store, _record: True)
     answer = _ask(stand)
     assert answer["state"] == "stale"
     assert answer["stale"] == {
@@ -177,7 +177,7 @@ def test_pins_that_name_no_comparison_are_refused(stand: _Stand) -> None:
     answer = _ask(stand)
     assert (answer["state"], answer["message"]) == (
         "invalid",
-        "The guided-pr block's merge_base is not the merge base of its head.",
+        "The guided-review block's merge_base is not the merge base of its head.",
     )
     assert "step" not in answer
 
@@ -192,15 +192,15 @@ def test_a_file_too_large_for_a_step_is_not_read(
     assert old in body
     _cache(stand, body.replace(old, ""))
     # src/app.txt adds one line here, which charges at least 80 bytes.
-    monkeypatch.setattr(guided_pr, "MAX_STEP_PATCH_BYTES", 79)
+    monkeypatch.setattr(guided_review, "MAX_STEP_PATCH_BYTES", 79)
     asked: list[tuple[str, ...]] = []
-    real = guided_pr.GitDiffSource.hydrate
+    real = guided_review.GitDiffSource.hydrate
 
     async def hydrate(self: Any, resolved: Any, ids: tuple[str, ...], **kwargs: Any) -> Any:
         asked.append(ids)
         return await real(self, resolved, ids, **kwargs)
 
-    monkeypatch.setattr(guided_pr.GitDiffSource, "hydrate", hydrate)
+    monkeypatch.setattr(guided_review.GitDiffSource, "hydrate", hydrate)
     answer = _ask(stand, step=2)
     assert [(ref["path"], ref["state"]) for ref in answer["references"]] == [
         ("docs/new.md", "ready"),
@@ -224,7 +224,7 @@ def test_a_comparison_the_store_cannot_read_is_unavailable(
     async def unreadable(*_args: object, **_kwargs: object) -> object:
         raise DiffSourceError("the store cannot list it")
 
-    monkeypatch.setattr(guided_pr, "shared_pull_manifest", unreadable)
+    monkeypatch.setattr(guided_review, "shared_pull_manifest", unreadable)
     answer = _ask(stand)
     assert answer["state"] == "comparison_unavailable"
     assert "stale" not in answer
@@ -249,7 +249,7 @@ async def _commits_since(root: Path, subject: str) -> dict[str, object]:
     git(root, "commit", "-q", "-am", subject)
     new = git(root, "rev-parse", "HEAD").decode().strip()
     target = RepositoryStoreTarget(root / ".git", "sha1")
-    return await guided_pr._commits_since(GitLocation.revision(target, new), old, new)
+    return await guided_review._commits_since(GitLocation.revision(target, new), old, new)
 
 
 @needs_git
@@ -286,9 +286,9 @@ def rendered(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
 
     monkeypatch.setattr(pull_markdown, "shared_worker", Child)
     monkeypatch.setattr(pull_markdown.kpress_adapter, "document_stylesheets", dict)
-    guided_pr._READS.clear()
+    guided_review._READS.clear()
     yield texts
-    guided_pr._READS.clear()
+    guided_review._READS.clear()
 
 
 def _record(body: str) -> PullRecord:
@@ -302,7 +302,7 @@ def _record(body: str) -> PullRecord:
 
 _GUIDE = """Explain the change.
 
-```guided-pr
+```guided-review
 softschema:
   contract: metabrowser.collection:Collection/v1
   envelope: collection
@@ -364,15 +364,15 @@ def test_the_guide_and_its_introduction_share_one_parse(
     event loop (B11 of review B on #677)."""
     record = _record(_GUIDE)
     parses: list[str] = []
-    real = guided_pr._read_description
+    real = guided_review._read_description
 
     def counting(body: str) -> Any:
         parses.append(body)
         return real(body)
 
-    monkeypatch.setattr(guided_pr, "_read_description", counting)
+    monkeypatch.setattr(guided_review, "_read_description", counting)
     monkeypatch.setattr(pull_markdown, "cached_pull_record", lambda *_: (record, None, "f" * 64))
-    assert guided_pr.read_guide(_KEY, "f" * 64, _GUIDE) is not None
+    assert guided_review.read_guide(_KEY, "f" * 64, _GUIDE) is not None
     for _ in range(2):
         asyncio.run(pull_markdown.render_part(_VIEW, "body"))
     assert rendered == ["Explain the change."] * 2

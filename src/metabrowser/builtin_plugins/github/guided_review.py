@@ -1,4 +1,10 @@
-"""An author-provided guide to the exact comparison of a cached GitHub pull request."""
+"""Guided reviews of GitHub pull requests, and the collection format they carry.
+
+A guided review is an author's guide to the exact comparison of a cached pull request: a
+collection (`Collection`, contract `metabrowser.collection:Collection/v1`) in a
+`guided-review` fence of the description. The format is general and lives here only while
+guided reviews are its one carrier (docs/project/architecture/arch-collection-format.md).
+"""
 
 from __future__ import annotations
 
@@ -125,6 +131,13 @@ class _Model(BaseModel):
 
 
 class CollectionComparison(_Model):
+    """The change a collection's references resolve against: a merge base and a head.
+
+    A guided review needs it, since its description is not versioned with the code it
+    describes. v1 requires it of every collection; a carrier without a change, such as a
+    repository file, makes it optional, which is not a break.
+    """
+
     merge_base: Sha
     head: Sha
 
@@ -157,10 +170,12 @@ class CollectionItem(_Model):
 
 
 class Collection(_Model):
-    """Ordered annotated items over one comparison.
+    """Ordered annotated items, each a title, a note, and the references it is about.
 
-    A collection has no prose of its own: the document that holds it introduces it, as a
-    pull request's description introduces its guide.
+    The format is general: a guided review is one use, a collection carried in a
+    `guided-review` fence and pinned to a comparison. A collection has no prose of its own:
+    the document that carries it introduces it, as a pull request's description introduces
+    its guide.
     """
 
     comparison: CollectionComparison
@@ -168,21 +183,21 @@ class Collection(_Model):
 
 
 def _guide_fence(body: str) -> tuple[Token, list[str]] | None:
-    """The description's one top-level guided-pr fence and the body's lines, or ``None``.
+    """The description's one top-level guided-review fence and the body's lines, or ``None``.
 
     Raises :class:`GuideError` for two such fences or one that is not closed.
     """
-    if "guided-pr" not in body:
+    if "guided-review" not in body:
         return None
     fences = [
         token
         for token in _MARKDOWN.parse(body)
-        if token.type == "fence" and token.level == 0 and token.info.strip() == "guided-pr"
+        if token.type == "fence" and token.level == 0 and token.info.strip() == "guided-review"
     ]
     if not fences:
         return None
     if len(fences) != 1:
-        raise GuideError("Use one guided-pr block in the pull request description.")
+        raise GuideError("Use one guided-review block in the pull request description.")
     fence = fences[0]
     mapped = fence.map
     assert mapped is not None
@@ -191,7 +206,7 @@ def _guide_fence(body: str) -> tuple[Token, list[str]] | None:
     if mapped[1] <= mapped[0] + 1 or not re.fullmatch(
         rf" {{0,3}}{marker}{{{len(fence.markup)},}}[ \t]*", lines[mapped[1] - 1]
     ):
-        raise GuideError("Close the guided-pr block with a matching code fence.")
+        raise GuideError("Close the guided-review block with a matching code fence.")
     return fence, lines
 
 
@@ -212,7 +227,7 @@ def _read_description(body: str) -> tuple[Collection | None, str]:
 
 
 def without_guide(body: str) -> str:
-    """*body* without its guided-pr block: the description as the guide's introduction.
+    """*body* without its guided-review block: the description as the guide's introduction.
 
     Only a block :func:`parse_guide` reads is taken out. A description whose block cannot
     be read keeps it, so its author sees what they wrote.
@@ -229,30 +244,30 @@ def parse_guide(body: str) -> Collection | None:
 
 
 def _collection(fence: Token) -> Collection:
-    """The guide one guided-pr fence holds, or :class:`GuideError` for why it is none."""
+    """The guide one guided-review fence holds, or :class:`GuideError` for why it is none."""
     try:
         document: object = parse_yaml_text(fence.content)
     except ValueError as exc:
-        raise GuideError("The guided-pr block contains invalid YAML.") from exc
+        raise GuideError("The guided-review block contains invalid YAML.") from exc
     if not isinstance(document, dict) or set(document) != {"softschema", "collection"}:
-        raise GuideError("The guided-pr block needs softschema metadata and a collection.")
+        raise GuideError("The guided-review block needs softschema metadata and a collection.")
     if document["softschema"] != {
         "contract": CONTRACT_ID,
         "envelope": _CONTRACT.envelope_key,
         "status": _CONTRACT.status,
     }:
-        raise GuideError("The guided-pr block needs the enforced Collection/v1 contract.")
-    result = validate_artifact(Path("guided-pr"), contract=_CONTRACT, document=document)
+        raise GuideError("The guided-review block needs the enforced Collection/v1 contract.")
+    result = validate_artifact(Path("guided-review"), contract=_CONTRACT, document=document)
     if not result.ok:
         error = result.structural.errors[0]
         path = error.get("path")
         where = f" at {path}" if isinstance(path, str) and path else ""
-        raise GuideError(f"The guided-pr block does not satisfy the v1 SoftSchema{where}.")
+        raise GuideError(f"The guided-review block does not satisfy the v1 SoftSchema{where}.")
     try:
         return Collection.model_validate(result.values)
     except ValidationError as exc:
         location = ".".join(str(part) for part in exc.errors()[0]["loc"])
-        raise GuideError(f"Invalid guided-pr reference at {location}.") from exc
+        raise GuideError(f"Invalid guided-review reference at {location}.") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -300,7 +315,7 @@ def read_guide(key: tuple[str, str, int], revision: str, body: str) -> Collectio
 
 def guide_introduction(key: tuple[str, str, int], revision: str, body: str) -> str:
     """:func:`without_guide` of *body*, from the parse :func:`read_guide` keeps. Blocking."""
-    return body if "guided-pr" not in body else _reading(key, revision, body).introduction
+    return body if "guided-review" not in body else _reading(key, revision, body).introduction
 
 
 def _excerpt(
@@ -471,9 +486,9 @@ async def _step_references(
         bank=current is not None and (current.base, current.head) == (base, head),
     )
     if compared.resolved.left.id != base:
-        raise GuideError("The guided-pr block's merge_base is not the merge base of its head.")
+        raise GuideError("The guided-review block's merge_base is not the merge base of its head.")
     if compared.resolved.right.id != head:
-        raise GuideError("The guided-pr block's head does not name a commit.")
+        raise GuideError("The guided-review block's head does not name a commit.")
     manifest = compared.manifest
     changes = {
         display_path(change): change
@@ -635,7 +650,7 @@ def _head_moved(store: PublishedSource, record: PullRecord) -> bool:
     ).head_moved
 
 
-async def guided_pr(host: PullHost, number: int, step_number: int) -> dict[str, object]:
+async def guided_review(host: PullHost, number: int, step_number: int) -> dict[str, object]:
     """Return the first or selected step of this PR's guide and only its excerpts."""
     served = host.pulls
     record, _, revision = await asyncio.to_thread(

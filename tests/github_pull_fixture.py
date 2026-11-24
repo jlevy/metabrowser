@@ -1357,7 +1357,7 @@ def guide_body(origin: Origin) -> str:
     return f"""The app learns to count to two. Its count and its explanation live in separate
 files.
 
-```guided-pr
+```guided-review
 softschema:
   contract: metabrowser.collection:Collection/v1
   envelope: collection

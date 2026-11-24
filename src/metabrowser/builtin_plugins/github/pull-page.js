@@ -268,7 +268,7 @@ const PULL_TABS = Object.freeze([
 // A cheap tab visibility hint, which does not parse: the server's Markdown parser decides if a
 // guide exists, and counts only a top-level fence, so a description that shows the format inside
 // another fence gets a tab that says there is no guide (arch-github-pull-requests.md, "Guided Review").
-const GUIDED_FENCE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*guided-pr[ \t]*$/m;
+const GUIDED_FENCE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*guided-review[ \t]*$/m;
 
 /**
  * The tab a route shows, by its id in `PULL_TABS`. `/pull/<n>` is the pull request's front
@@ -4875,7 +4875,7 @@ export function mountPullPage(container, ctx, mb) {
    * The Guided Review tab while it shows: the guide's view once its module loads, and the
    * description that introduces it.
    *
-   * @typedef {{view: ReturnType<typeof import("./guided-pr.js").mountGuidedPR> | null,
+   * @typedef {{view: ReturnType<typeof import("./guided-review.js").mountGuidedReview> | null,
    *   introduction: {node: HTMLElement, key: string | null, block: HTMLElement | null}}} GuidedMount
    */
   /** @type {GuidedMount | null} */
@@ -8055,7 +8055,7 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * Where Conversation's description had its guided-pr block: the server renders the
+   * Where Conversation's description had its guided-review block: the server renders the
    * description without it (`render_part`), and this says where the guide is read: the
    * front page, which shows it (`routeForTab`).
    *
@@ -8070,7 +8070,7 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * The guide's introduction: the description's card, as Conversation draws it, without
-   * its guided-pr block. It is drawn again only when its text or its render changes.
+   * its guided-review block. It is drawn again only when its text or its render changes.
    *
    * @param {PullModel} model
    * @param {GuidedMount} mount
@@ -8107,24 +8107,30 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     const introduction = h("div", {}, []);
-    const host = h("section", { class: "github-pull-guided-pr", "aria-label": "Guided Review" }, [
-      introduction,
-      h("div", { class: "mb-delayed-loading", role: "status", "aria-label": "Loading the guide" }, [
-        h("div", { class: "recent-loading github-pull-loading", "aria-hidden": "true" }),
-      ]),
-    ]);
+    const host = h(
+      "section",
+      { class: "github-pull-guided-review", "aria-label": "Guided Review" },
+      [
+        introduction,
+        h(
+          "div",
+          { class: "mb-delayed-loading", role: "status", "aria-label": "Loading the guide" },
+          [h("div", { class: "recent-loading github-pull-loading", "aria-hidden": "true" })],
+        ),
+      ],
+    );
     /** @type {GuidedMount} */
     const mount = { view: null, introduction: { node: introduction, key: null, block: null } };
     guided = mount;
     body.replaceChildren(host);
     paintGuideIntroduction(model, mount);
-    void import("./guided-pr.js").then(
-      ({ mountGuidedPR }) => {
+    void import("./guided-review.js").then(
+      ({ mountGuidedReview }) => {
         if (guided !== mount || shown === null) {
           return;
         }
         // The guide's text is KPress prose and its excerpts are the diff plugin's rows.
-        mount.view = mountGuidedPR(host, introduction, number, {
+        mount.view = mountGuidedReview(host, introduction, number, {
           open: openChangedFile,
           loadStyles: (assets) =>
             Promise.all([

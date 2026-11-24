@@ -844,7 +844,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "live: conversation docs files checks",
             "G: showed Changes",
             # Guided Review's tab and its key R (Docs holds D) exist only where the description
-            # opens a `guided-pr` fence: the link leads the bar when a record brings one, stays while its tab is shown, and leaves the bar, and the
+            # opens a `guided-review` fence: the link leads the bar when a record brings one, stays while its tab is shown, and leaves the bar, and the
             # key, otherwise. The page cannot tell a block from an example of one inside
             # another fence, which the server's parse can (mb-y0en), so the example shows
             # the tab too. On the front page, which a block makes the guide, R shows the

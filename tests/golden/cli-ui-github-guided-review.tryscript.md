@@ -16,7 +16,7 @@ A step whose read is refused or fails keeps the guide’s steps, so the reader c
 move, and it is read again when chosen again, the one on screen too.
 
 ```console
-$ node tests/dom/github-guided-pr-session.js
+$ node tests/dom/github-guided-review-session.js
 {
   "calls": [
     1,
@@ -82,7 +82,7 @@ $ node tests/dom/github-guided-pr-session.js
 The production page imports and mounts the guide only when its tab first paints, so
 Conversation never reads it.
 A pull request whose description has a guide opens on it, and Conversation, at its own
-address, shows a card where the description had its guided-pr block.
+address, shows a card where the description had its guided-review block.
 The guide opens on its overview, the description’s card as Conversation draws it, under
 a list of its steps, and Next step goes to a step with no read, since the overview
 already has its answer; each step is a card headed as a guided review.
@@ -107,7 +107,7 @@ On a guided front page, Guided Review’s link and key go to the page already sh
 the description’s card on Conversation links the front page.
 
 ```console
-$ node tests/dom/github-guided-pr-mount-behavior.js
+$ node tests/dom/github-guided-review-mount-behavior.js
 [
   "the front page: guide mounted; asked step 1",
   "a stale guide opens on: Overview; > Overview | 1 Step 1 changed since the guide | 2 Step 2 | 3 Step 3 changed since the guide",

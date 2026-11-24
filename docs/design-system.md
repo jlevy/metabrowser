@@ -2986,7 +2986,7 @@ Document image sanitization remains independent; see [Content Trust](../SECURITY
 ### Guided Review
 
 **A guide names every place the same way, in one vocabulary, from one module.** The
-names, the badge, and the place labels are constants at the top of `guided-pr.js`
+names, the badge, and the place labels are constants at the top of `guided-review.js`
 (`GUIDE`, `OVERVIEW`, `placeName`, `stepName`, `guideBadge`), and every part below takes
 its words from them, so the step list, the arrows’ tips, the way on and back, and a
 step’s card never disagree.

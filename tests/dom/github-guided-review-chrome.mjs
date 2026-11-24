@@ -1,13 +1,13 @@
 // Guided Review in headless Chrome against a live `metab` server that serves the GitHub stand-in
 // with guides in the descriptions of pull requests 7 to 9 and none in 10's.
 //
-//   CHROME_BIN=... CHROME_PROFILES=<dir> node tests/dom/github-guided-pr-chrome.mjs <base URL>
+//   CHROME_BIN=... CHROME_PROFILES=<dir> node tests/dom/github-guided-review-chrome.mjs <base URL>
 //
-// tests/test_github_guided_pr_chrome.py builds that server, owns the profile directory, and stops
+// tests/test_github_guided_review_chrome.py builds that server, owns the profile directory, and stops
 // this process's whole group, Chrome included, however the run ends (tests/process_group.py).
 //
-// What only a browser holds, and the browserless sessions cannot (github-guided-pr-session.js,
-// github-guided-pr-mount-behavior.js, and the tab and key in github-pull-page-mount-behavior.js):
+// What only a browser holds, and the browserless sessions cannot (github-guided-review-session.js,
+// github-guided-review-mount-behavior.js, and the tab and key in github-pull-page-mount-behavior.js):
 //
 // 1. The tab and its key on the real shell: Guided Review leads the bar on a pull request whose
 //    description has a guide and is its front page, opened by the description; Conversation
@@ -29,7 +29,7 @@ import { launchChrome } from "./chrome-session.mjs";
 
 const [base] = process.argv.slice(2);
 if (!base || !process.env.CHROME_BIN || !process.env.CHROME_PROFILES) {
-  throw new Error("usage: CHROME_BIN CHROME_PROFILES github-guided-pr-chrome.mjs <base>");
+  throw new Error("usage: CHROME_BIN CHROME_PROFILES github-guided-review-chrome.mjs <base>");
 }
 // One page load or fake gh fetch; a loaded machine has needed several seconds for one.
 const STEP_MS = 30000;
@@ -96,14 +96,14 @@ try {
   /** Click the guide's button named *label*. */
   const click = (label) =>
     evaluate(
-      `document.querySelector(${JSON.stringify(`.github-pull-guided-pr button[aria-label="${label}"]`)}).click()`,
+      `document.querySelector(${JSON.stringify(`.github-pull-guided-review button[aria-label="${label}"]`)}).click()`,
     );
   const said = async () => {
     await waitFor(
-      `document.querySelector(".github-pull-guided-pr > p.github-pull-quiet:not([hidden])")?.textContent`,
+      `document.querySelector(".github-pull-guided-review > p.github-pull-quiet:not([hidden])")?.textContent`,
     );
     return evaluate(
-      `document.querySelector(".github-pull-guided-pr > p.github-pull-quiet:not([hidden])").textContent`,
+      `document.querySelector(".github-pull-guided-review > p.github-pull-quiet:not([hidden])").textContent`,
     );
   };
   await chrome.send("Page.enable");
@@ -154,7 +154,7 @@ try {
     `[...document.querySelectorAll(".github-pull-text + .notice")].some((node) => node.textContent.includes("guided review"))`,
   );
   check(
-    "Conversation's description has no guided-pr block",
+    "Conversation's description has no guided-review block",
     await evaluate(
       `!document.querySelector(".github-pull-text").textContent.includes("softschema")`,
     ),
@@ -194,7 +194,7 @@ try {
     await evaluate(`(() => {
       const text = document.createElement("div");
       text.className = "github-pull-text";
-      document.querySelector(".github-pull-guided-pr").append(text);
+      document.querySelector(".github-pull-guided-review").append(text);
       const padding = getComputedStyle(text).padding;
       text.remove();
       return padding;
@@ -311,7 +311,7 @@ try {
   same(
     "a stale guide's notice leads the page",
     await evaluate(
-      `document.querySelector(".github-pull-guided-pr").firstElementChild.contains(document.querySelector(".github-pull-guide-stale"))`,
+      `document.querySelector(".github-pull-guided-review").firstElementChild.contains(document.querySelector(".github-pull-guide-stale"))`,
     ),
     true,
   );
@@ -339,7 +339,7 @@ try {
     8,
   );
   await go("/pull/9/guided");
-  same("two blocks", await said(), "Use one guided-pr block in the pull request description.");
+  same("two blocks", await said(), "Use one guided-review block in the pull request description.");
 } finally {
   await chrome.close();
 }
@@ -347,5 +347,5 @@ if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exitCode = 1;
 } else {
-  process.stdout.write(`guided PR in Chrome: ${checks} checks passed\n`);
+  process.stdout.write(`guided review in Chrome: ${checks} checks passed\n`);
 }

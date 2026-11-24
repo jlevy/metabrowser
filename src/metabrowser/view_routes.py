@@ -22,7 +22,7 @@ PULL_ROUTE_PREFIX = "/pull/"
 PULLS_ROUTE = "/pulls"
 # `/pull/<n>` is the PR's front page: Guided Review when its description carries a guide,
 # Conversation otherwise. Every tab also has its own address, Conversation's among them,
-# so a link to a guided PR's Conversation names it (pull-page.js, `shownTab`).
+# so a link to a guided review's Conversation names it (pull-page.js, `shownTab`).
 PULL_ROUTE_TABS = ("", "conversation", "docs", "files", "guided", "checks")
 # A pull-request number as the GitHub URL reducer admits one.
 _PULL_NUMBER = re.compile(r"^[1-9][0-9]{0,9}$")

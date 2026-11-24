@@ -46,7 +46,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Final
 
 from metabrowser import kpress_adapter
-from metabrowser.builtin_plugins.github.guided_pr import guide_introduction
+from metabrowser.builtin_plugins.github.guided_review import guide_introduction
 from metabrowser.builtin_plugins.github.pull_record import PullRecord
 from metabrowser.builtin_plugins.github.pull_route import PullView, cached_pull_record
 from metabrowser.diff.markdown_projection_worker import (
@@ -86,9 +86,9 @@ async def _description(key: tuple[str, str, int], revision: str, body: str) -> s
     The guide's block is the Guided Review tab's, so the description renders as its
     introduction, without the block, once the block reads as a guide; a block that does
     not stays, so its author sees what they wrote. The parse is the guide route's, kept
-    for the revision (`read_guide` in guided_pr.py), off the event loop.
+    for the revision (`read_guide` in guided_review.py), off the event loop.
     """
-    if "guided-pr" not in body:
+    if "guided-review" not in body:
         return body
     return await asyncio.to_thread(guide_introduction, key, revision, body)
 

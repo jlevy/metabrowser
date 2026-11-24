@@ -4,7 +4,7 @@ const { setImmediate: settle } = require("node:timers/promises");
 
 async function main() {
   const { createGuideNavigation } = await import(
-    "../../src/metabrowser/builtin_plugins/github/guided-pr.js"
+    "../../src/metabrowser/builtin_plugins/github/guided-review.js"
   );
   const calls = [];
   const states = [];

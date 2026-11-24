@@ -21,14 +21,14 @@ mirror. The second demonstrates a reference with no range, which shows its file�
 patch, and missing-path and unresolved-line references.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-pr?number=7'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/guided-pr?number=7
+api: /api/plugin/github/guided-review?number=7
 status: 200
 {
-  "record_revision": "6b9e97e5934ebf840e7d3fdcd16a1a8cc20054aaf9056324f57ecb8b5e3c88ff",
+  "record_revision": "5b3e8db1e0012e725ad0118cfe608208412c91db24ee5af40cbe2c93f2642060",
   "state": "ready",
   "comparison": {
     "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
@@ -206,14 +206,14 @@ status: 200
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-pr?number=7&step=2'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=2'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/guided-pr?number=7&step=2
+api: /api/plugin/github/guided-review?number=7&step=2
 status: 200
 {
-  "record_revision": "6b9e97e5934ebf840e7d3fdcd16a1a8cc20054aaf9056324f57ecb8b5e3c88ff",
+  "record_revision": "5b3e8db1e0012e725ad0118cfe608208412c91db24ee5af40cbe2c93f2642060",
   "state": "ready",
   "comparison": {
     "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
@@ -444,14 +444,14 @@ guide’s head, so its history is `rewritten`, and both cited files changed, so 
 are marked. An invalid guide and an absent one return without excerpts.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/8 --api '/api/plugin/github/guided-pr?number=8'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/8 --api '/api/plugin/github/guided-review?number=8'
 selection: pull_request
 pin: 8ae27617c9c475851b67ee69433d008836d112ba (pull request 8 head)
 pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/guided-pr?number=8
+api: /api/plugin/github/guided-review?number=8
 status: 200
 {
-  "record_revision": "ce4077098a6b84f3ed1b2ca6b74719b42e30725a1f0591e60eebd91a56cfaf7c",
+  "record_revision": "68097bda4fea21c13b15976bab4fcc580a1667136df5ec513e270cb28b07eb0b",
   "state": "stale",
   "stale": {
     "guide": {
@@ -656,26 +656,26 @@ status: 200
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/9 --api '/api/plugin/github/guided-pr?number=9'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/9 --api '/api/plugin/github/guided-review?number=9'
 selection: pull_request
 pin: 0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd (pull request 9 head)
 pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/guided-pr?number=9
+api: /api/plugin/github/guided-review?number=9
 status: 200
 {
-  "record_revision": "16abc83200fb357d12ee0318f3437b56c3c9450d7f10921f04a89cc4a5b27eed",
+  "record_revision": "2de61d7e403b24595ab0a6ca6e1ce70c621358175d1b6e255e32830e538cec00",
   "state": "invalid",
-  "message": "Use one guided-pr block in the pull request description."
+  "message": "Use one guided-review block in the pull request description."
 }
 ? 0
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/10 --api '/api/plugin/github/guided-pr?number=10'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/10 --api '/api/plugin/github/guided-review?number=10'
 selection: pull_request
 pin: 7a7d6596e515735d244dc1d942463c95851e139c (pull request 10 head)
 pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/guided-pr?number=10
+api: /api/plugin/github/guided-review?number=10
 status: 200
 {
   "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
@@ -688,40 +688,40 @@ A step past the guide’s last, a step that is not a positive integer, and a pul
 with no cached record are each answered as that.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-pr?number=7&step=3'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=3'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/guided-pr?number=7&step=3
+api: /api/plugin/github/guided-review?number=7&step=3
 status: 200
 {
-  "record_revision": "6b9e97e5934ebf840e7d3fdcd16a1a8cc20054aaf9056324f57ecb8b5e3c88ff",
+  "record_revision": "5b3e8db1e0012e725ad0118cfe608208412c91db24ee5af40cbe2c93f2642060",
   "state": "step_not_found"
 }
 ? 0
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-pr?number=7&step=0'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=0'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/guided-pr?number=7&step=0
+api: /api/plugin/github/guided-review?number=7&step=0
 status: 400
 {
   "error": "step must be a positive integer",
   "code": "invalid_request"
 }
-Error: /api/plugin/github/guided-pr?number=7&step=0 returned HTTP 400
+Error: /api/plugin/github/guided-review?number=7&step=0 returned HTTP 400
 ? 1
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-pr?number=11'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=11'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/guided-pr?number=11
+api: /api/plugin/github/guided-review?number=11
 status: 200
 {
   "record_revision": null,
@@ -731,7 +731,7 @@ status: 200
 ```
 
 The description introduces the guide: its Markdown, which Conversation and Guided Review
-both render, leaves out the guided-pr block.
+both render, leaves out the guided-review block.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?number=7&part=body' > markdown.json
@@ -742,7 +742,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 ```
 
 ```console
-$ grep -c 'softschema\|guided-pr' markdown.json
+$ grep -c 'softschema\|guided-review' markdown.json
 0
 ? 1
 ```

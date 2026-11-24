@@ -170,7 +170,7 @@ const REFERENCE_MESSAGES = Object.freeze({
   diff_unavailable: "This file's diff is unavailable.",
   range_unavailable: "This range is not within a single available diff hunk.",
   excerpt_too_large: "This excerpt is too large to show here.",
-  // Past a step's budget for whole files (MAX_STEP_PATCH_BYTES in guided_pr.py), or past
+  // Past a step's budget for whole files (MAX_STEP_PATCH_BYTES in guided_review.py), or past
   // what the diff source reads in one run beside the step's other files.
   patch_too_large: "This file's diff is too large to show in this step.",
 });
@@ -293,7 +293,7 @@ function stepList(steps) {
 
 /**
  * What a stale guide was written for, what the pull request is now, and what changed
- * between them, as the route answers it (`_staleness` in guided_pr.py).
+ * between them, as the route answers it (`_staleness` in guided_review.py).
  *
  * @param {Staleness} stale
  * @param {number | null} stepCount
@@ -352,7 +352,7 @@ export function staleNotice(stale, stepCount, shortCommit) {
   } else if (headMoved) {
     const count = stale.commit_count ?? 0;
     // The server counts the commits and lists none when their subjects were too long to
-    // read within its bound (`_commits_since` in guided_pr.py).
+    // read within its bound (`_commits_since` in guided_review.py).
     const listed = stale.commits.length > 0;
     const end = listed ? ":" : ".";
     say([
@@ -492,7 +492,7 @@ const guideBadge = () =>
  *   plugin's; the guide waits for them, as a description does. *loadDrawPatch* loads the
  *   diff plugin's file renderer, which draws the excerpts. *shortCommit* is the SDK's.
  */
-export function mountGuidedPR(host, introduction, number, deps) {
+export function mountGuidedReview(host, introduction, number, deps) {
   const { open, loadStyles, loadDrawPatch, shortCommit } = deps;
   /** @type {Promise<unknown> | null} */
   let styles = null;
@@ -617,10 +617,13 @@ export function mountGuidedPR(host, introduction, number, deps) {
 
   const navigation = createGuideNavigation({
     async read(step, signal) {
-      const response = await fetch(`/api/plugin/github/guided-pr?number=${number}&step=${step}`, {
-        signal,
-        cache: "no-store",
-      });
+      const response = await fetch(
+        `/api/plugin/github/guided-review?number=${number}&step=${step}`,
+        {
+          signal,
+          cache: "no-store",
+        },
+      );
       if (!response.ok) {
         throw new Error("Could not read the guide");
       }

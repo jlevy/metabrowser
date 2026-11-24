@@ -117,7 +117,7 @@ CHROME_TESTS = (
     "tests.test_folder_home_chrome",
     "tests.test_folder_overview_alignment",
     "tests.test_git_commit_summary_chrome",
-    "tests.test_github_guided_pr_chrome",
+    "tests.test_github_guided_review_chrome",
     "tests.test_github_pull_core_markdown_chrome",
     "tests.test_github_pull_header_chrome",
     "tests.test_github_pull_text_chrome",

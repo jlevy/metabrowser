@@ -911,8 +911,8 @@ store answers for both commits and their merge base and to print the first files
 `pull-image` reads an image from the head’s tree; `pull-rendered-diff` renders both
 sides off the event loop; and `pull-markdown` renders the record’s text through KPress,
 which keeps the render for the process.
-`guided-pr` reads the description and comparison manifest, then hydrates only the files
-whose excerpts the selected step needs.
+`guided-review` reads the description and comparison manifest, then hydrates only the
+files whose excerpts the selected step needs.
 
 What a surface draws that does not answer from disk is in `GAPS`, a strict expected
 failure:
@@ -951,7 +951,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-size` | `GET` | The size the comparison pushes, against its merge base, and its patch’s |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
 | `pull-markdown` | `GET` | One text of the record, or a core preview’s description, rendered inert |
-| `guided-pr` | `GET` | One ordered step and its excerpts from the cached PR description and pinned comparison |
+| `guided-review` | `GET` | One ordered step and its excerpts from the cached PR description and pinned comparison |
 | `pulls` | `GET` | A catalog window, or a search with `q` |
 | `pulls-refresh` | `POST` | The catalog job |
 | `pull-files` | `GET` | A pull request’s changed files |
@@ -974,7 +974,10 @@ The plugin registers two views: `pull-request`, which the shell mounts at `/pull
 
 ### Guided Review
 
-`guided_pr.py` extracts a top-level fence from the raw, bounded PR description and
+A guided review is the pull-request carrier of the
+[collection format](arch-collection-format.md): the format is general, and this section
+describes what the carrier adds.
+`guided_review.py` extracts a top-level fence from the raw, bounded PR description and
 validates its artifact against the installed `Collection/v1` SoftSchema
 (`metabrowser.collection:Collection/v1`), whose ordered `items` are the guide’s steps.
 The request names a PR and an optional one-based step.
@@ -988,18 +991,18 @@ pins are listed beside it, never over it.
 It reports unresolved references in place.
 A guide whose pins are not the pull request’s current comparison is answered `stale`
 with its step, when the store still has the pinned revision, and a `stale` object
-(`_staleness` in `guided_pr.py`): both comparisons, the first-parent commits after the
-guide’s head or that its head left the branch’s history, and the cited paths and steps
-that changed between the two comparisons, each with its bound beside its constant.
+(`_staleness` in `guided_review.py`): both comparisons, the first-parent commits after
+the guide’s head or that its head left the branch’s history, and the cited paths and
+steps that changed between the two comparisons, each with its bound beside its constant.
 When GitHub reports a head this copy lacks, the guide is stale too, and what the newer
 commits changed is unknown, so neither list is answered and the notice says only that
 GitHub reports a newer head than the guide’s. The page draws that as a notice above the
 guide and marks the changed steps.
-The limits in `guided_pr.py` (`MAX_ITEMS`, `MAX_REFERENCES`, `MAX_EXCERPT_BYTES`, and
-`MAX_STEP_PATCH_BYTES`) cap the guide’s steps, the per-step hydration, the excerpt text,
-and a step’s whole files, each with the measurement that set it beside the constant.
-The parse is kept for each pull request by record revision, so a step click reads the
-guide the first request parsed and an edited description is parsed once.
+The limits in `guided_review.py` (`MAX_ITEMS`, `MAX_REFERENCES`, `MAX_EXCERPT_BYTES`,
+and `MAX_STEP_PATCH_BYTES`) cap the guide’s steps, the per-step hydration, the excerpt
+text, and a step’s whole files, each with the measurement that set it beside the
+constant. The parse is kept for each pull request by record revision, so a step click
+reads the guide the first request parsed and an edited description is parsed once.
 An excerpt shows a replacement whole: `_hunk_rows` includes a line that exists only on
 the other side when it lies inside the range or touches either end of it.
 Guide text and diff lines are inserted as text, in the design system’s existing parts:
@@ -1007,11 +1010,11 @@ each step is a page card headed by the Guided Review badge and its place, as
 Conversation draws a comment, its title and note prose in a KPress article, as a
 description is, and each excerpt is drawn by the diff plugin’s own renderer
 (`mountFilePatch`, which the page loads with `plugins.load("diff")`; `renderReference`
-in `guided-pr.js`), so its hunk bars, folds, type, row height, gutter, and change fills
-are Changes’. A range is one hunk in the diff model’s shape (`_rows_hunk` in
-`guided_pr.py`), and a path alone is its file’s whole patch, within the step’s budget
-for whole files; a file past it, or past what the diff source reads in one run, is
-answered `patch_too_large`. A ready step carries KPress’s stylesheet manifest, as the
+in `guided-review.js`), so its hunk bars, folds, type, row height, gutter, and change
+fills are Changes’. A range is one hunk in the diff model’s shape (`_rows_hunk` in
+`guided_review.py`), and a path alone is its file’s whole patch, within the step’s
+budget for whole files; a file past it, or past what the diff source reads in one run,
+is answered `patch_too_large`. A ready step carries KPress’s stylesheet manifest, as the
 description’s Markdown route does, and the page loads it and the diff plugin’s styles
 before drawing the step, so the tab reads the same when it is the first thing opened.
 Guided Review is the first tab when the description has a guide: it is the author’s
@@ -1025,22 +1028,22 @@ A tab’s link and key go to the front page when it shows that tab (`routeForTab
 they never open a second history entry of the page on screen.
 The description introduces the guide, and a collection has no prose of its own:
 `render_part` in `pull_markdown.py` renders the description, a core preview’s too,
-without a guided-pr block that reads as a guide (`guide_introduction` in `guided_pr.py`,
-from the route’s kept parse, off the event loop), the Guided Review tab opens with that
-render, and Conversation puts a card that opens the guide in the block’s place.
-A block that cannot be read stays in the description, so its author sees it.
-The description is the guide’s step 0, its overview (`createGuideNavigation` in
-`guided-pr.js`): the page draws it from the description it already has, under a list of
-the steps that a step answer’s `titles` fill, and it keeps the answer for step 1 that it
-read for those titles, so the first move reads nothing.
+without a guided-review block that reads as a guide (`guide_introduction` in
+`guided_review.py`, from the route’s kept parse, off the event loop), the Guided Review
+tab opens with that render, and Conversation puts a card that opens the guide in the
+block’s place. A block that cannot be read stays in the description, so its author sees
+it. The description is the guide’s step 0, its overview (`createGuideNavigation` in
+`guided-review.js`): the page draws it from the description it already has, under a list
+of the steps that a step answer’s `titles` fill, and it keeps the answer for step 1 that
+it read for those titles, so the first move reads nothing.
 Each answer with a step is kept for its record revision, and a new revision or a moved
 head drops them. A step whose read is refused or fails keeps the guide’s steps, so the
 reader can move on, and is read again when chosen again.
-`guided-pr.js` loads on demand when the tab opens, aborts reads on disposal, and matches
-results to the page’s record revision.
+`guided-review.js` loads on demand when the tab opens, aborts reads on disposal, and
+matches results to the page’s record revision.
 
 The tab is shown from a hint, not from the parse: `GUIDED_FENCE` in `pull-page.js`
-matches a line that opens a `guided-pr` fence in the description, and the server’s
+matches a line that opens a `guided-review` fence in the description, and the server’s
 reading, which counts only a top-level fence, decides what the tab shows.
 A description that documents the format inside another fence therefore shows a tab that
 says the pull request has no guide, and since the hint also picks the front page, that

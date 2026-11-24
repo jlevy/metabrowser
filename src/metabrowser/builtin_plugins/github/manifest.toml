@@ -70,8 +70,8 @@ methods = ["GET"]
 
 # A cached PR description's Guided Review artifact and one step of its pinned comparison.
 [[data_hook]]
-route = "guided-pr"
-sidekick = "metabrowser.builtin_plugins.github.sidekick:guided_pr_handler"
+route = "guided-review"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:guided_review_handler"
 methods = ["GET"]
 
 # A filtered window of the repository's shared PR catalog (open, closed, or all), with

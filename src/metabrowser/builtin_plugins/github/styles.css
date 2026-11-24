@@ -1945,7 +1945,7 @@
   text-overflow: ellipsis;
 }
 
-.github-pull-guided-pr [hidden] {
+.github-pull-guided-review [hidden] {
   display: none;
 }
 
@@ -2060,12 +2060,12 @@
   margin-inline-start: auto;
 }
 
-/* Each excerpt is the diff plugin's file card and rows (guided-pr.js, `renderReference`),
+/* Each excerpt is the diff plugin's file card and rows (guided-review.js, `renderReference`),
    which set its type and fills. An excerpt's bar names its file and does not fold it, so it
    takes no pointer. Three classes outrank the plugin's two-class bar rules, which load after
    this sheet, and every selector here stays the page's own. */
-.github-pull-guided-pr .github-pull-guide-references .github-pull-guide-reference-header,
-.github-pull-guided-pr .github-pull-guide-reference-header .diff-file-toggle {
+.github-pull-guided-review .github-pull-guide-references .github-pull-guide-reference-header,
+.github-pull-guided-review .github-pull-guide-reference-header .diff-file-toggle {
   cursor: auto;
 }
 

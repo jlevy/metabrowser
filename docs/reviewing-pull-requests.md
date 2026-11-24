@@ -134,8 +134,8 @@ The page has up to five tabs:
 - **Guided Review** (`R`), the first tab when the description includes a guide: the
   description as the guide’s overview, then ordered review steps with commentary above
   selected diff excerpts.
-  The tab appears when the description has a line that opens a `guided-pr` fence; the
-  server’s reading of the block decides what the tab then shows.
+  The tab appears when the description has a line that opens a `guided-review` fence;
+  the server’s reading of the block decides what the tab then shows.
   A pull request with a guide opens on it at `/pull/<n>`, and Conversation moves to
   `/pull/<n>/conversation`; without one, `/pull/<n>` is Conversation.
 - **Conversation** (`C`): the description, then comments, reviews, and commits in
@@ -171,8 +171,8 @@ page through them; below each step, the way on names the next step and the way b
 one before. A step can bring changes from several files together, each drawn as Changes
 draws it. **Open full diff** goes to the file in Changes.
 
-To publish a guide, have the author or their agent add one top-level `guided-pr` fenced
-YAML block to the GitHub PR description.
+To publish a guide, have the author or their agent add one top-level `guided-review`
+fenced YAML block to the GitHub PR description.
 Give the agent the PR description and the diff from its merge base to its head.
 Ask it to choose the code to review in dependency or execution order.
 Each step should explain why the reviewer is looking there and what to verify.
@@ -182,14 +182,16 @@ Guided Review opens with it, rendered as Conversation renders it and without the
 so write it to be read first: what the change does and why, then how its parts fit
 together. The block itself has no prose of its own.
 
-The block is a collection (`metabrowser.collection:Collection/v1`): the comparison it
-was written against and ordered `items`, each a step with a `title`, a `note` saying
-what to verify, and its `references`. Write each step’s fields as plain text: the page
-shows them as typed and keeps their line breaks, so Markdown such as backticks, lists,
-and links prints literally.
+The block is a collection (`metabrowser.collection:Collection/v1`), a general format for
+ordered annotated items that guided reviews are the first use of
+([Collection Format](project/architecture/arch-collection-format.md)). In a guided
+review it holds the comparison it was written against and ordered `items`, each a step
+with a `title`, a `note` saying what to verify, and its `references`. Write each step’s
+fields as plain text: the page shows them as typed and keeps their line breaks, so
+Markdown such as backticks, lists, and links prints literally.
 
 ````markdown
-```guided-pr
+```guided-review
 softschema:
   contract: metabrowser.collection:Collection/v1
   envelope: collection
@@ -212,17 +214,17 @@ An excerpt shows a replacement whole: a line that exists only on the other side,
 deleted line for a `new` range or an added line for an `old` range, is shown when it
 lies inside the range or touches either end of it, so a changed line appears with what
 it replaced. A step’s excerpts share one size budget (`MAX_EXCERPT_BYTES` in
-`guided_pr.py`); an excerpt past it says it is too large to show.
+`guided_review.py`); an excerpt past it says it is too large to show.
 A `path` alone shows the file’s whole diff, as Changes draws it: its hunk bars, and its
 long runs folded behind bars you expand.
 A step’s whole files share a budget of their own (`MAX_STEP_PATCH_BYTES` in
-`guided_pr.py`); a file past it says its diff is too large to show in the step, and
+`guided_review.py`); a file past it says its diff is too large to show in the step, and
 **Open full diff** shows it in Changes.
 A binary change or a rename without a text diff says it has no text changes to show.
 The
 [compiled SoftSchema](../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
-describes the payload, and `MAX_ITEMS` and `MAX_REFERENCES` in `guided_pr.py` bound its
-steps and each step’s references.
+describes the payload, and `MAX_ITEMS` and `MAX_REFERENCES` in `guided_review.py` bound
+its steps and each step’s references.
 
 The guide is read from the cached description, and its excerpts come from the comparison
 it is pinned to. When the pull request’s head or merge base moves past the guide’s pins,
@@ -238,11 +240,11 @@ To bring the guide current, update its pins and ranges in the PR description.
 A guide the page cannot read says why in place of the steps: invalid YAML, a second
 block, another contract, a field that fails the schema, or pins that do not name a
 comparison. Its block then stays in the description, so its author sees what they wrote.
-The same answer is the `guided-pr` route’s, which this prints from the cached pull
+The same answer is the `guided-review` route’s, which this prints from the cached pull
 request:
 
 ```shell
-metab <pull request URL> --api '/api/plugin/github/guided-pr?number=<n>'
+metab <pull request URL> --api '/api/plugin/github/guided-review?number=<n>'
 ```
 
 There is no check for a guide before the description carries it, and a block inside

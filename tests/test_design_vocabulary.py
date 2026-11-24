@@ -3514,7 +3514,7 @@ _DOCUMENT_FACES = {
 _CHROME_PROSE_BUILDERS = {
     "static/git-panel.js": 1,  # a commit's body
     "builtin_plugins/github/pull-page.js": 1,  # textBlock: a pull request's every text
-    "builtin_plugins/github/guided-pr.js": 1,  # proseHost: a guide step's title and note
+    "builtin_plugins/github/guided-review.js": 1,  # proseHost: a guide step's title and note
 }
 
 

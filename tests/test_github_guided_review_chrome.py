@@ -7,11 +7,11 @@ snippet in some language: a word became SQL, and each row got the padding, block
 background of ``pre code.hljs`` inside the tint of its own row (review A of #599, A3). Which
 rows the highlighter touched, and what a row paints, are the browser's; so this serves the
 GitHub stand-in, whose pull requests 7 to 9 have guides in their descriptions and whose 10 has
-none, and ``tests/dom/github-guided-pr-chrome.mjs`` drives it: the tab and its key on a pull
+none, and ``tests/dom/github-guided-review-chrome.mjs`` drives it: the tab and its key on a pull
 request with a guide and with none, the shell's own pass over the excerpt, a row's layout, the
 steps and Open full diff, and a guide that cannot be read. Browserless, the tab's key and its
 lazy mount are pinned in ``tests/dom/github-pull-page-mount-behavior.js`` and
-``tests/dom/github-guided-pr-mount-behavior.js``.
+``tests/dom/github-guided-review-mount-behavior.js``.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node process
@@ -41,7 +41,7 @@ from tests.test_nav_metadata_chrome import (
 )
 
 FIXTURE = Path(__file__).resolve().parent / "github_pull_fixture.py"
-SESSION = Path(__file__).resolve().parent / "dom" / "github-guided-pr-chrome.mjs"
+SESSION = Path(__file__).resolve().parent / "dom" / "github-guided-review-chrome.mjs"
 # Building the stand-in's home runs the production CLI four times through a fake gh; it took
 # about 5 s at a load average near 20 (2026-11-20).
 _BUILD_BUDGET_S = 60.0
@@ -59,7 +59,7 @@ LIFECYCLE_S = (
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 
-def test_guided_pr_tab_and_excerpts_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
+def test_guided_review_tab_and_excerpts_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     chrome = require_chrome()
     node = require_node()
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
@@ -109,5 +109,5 @@ def test_guided_pr_tab_and_excerpts_in_chrome(tmp_path: Path, chrome_profile: Pa
     if run.timed_out:
         pytest.fail(f"ran past {_MEASUREMENT_BUDGET_S:g} s:\n{run.stderr}")
     assert run.returncode == 0, f"{run.stderr[-6000:]}\nserver: {_log_tail(log)}"
-    passed = re.fullmatch(r"guided PR in Chrome: (\d+) checks passed\n", run.stdout)
+    passed = re.fullmatch(r"guided review in Chrome: (\d+) checks passed\n", run.stdout)
     assert passed is not None and int(passed.group(1)) > 0, run.stdout

@@ -285,9 +285,9 @@ async def pull_markdown_handler(request: Request) -> Response:
     return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
 
 
-async def guided_pr_handler(request: Request) -> Response:
+async def guided_review_handler(request: Request) -> Response:
     """Read one step of an author-provided PR guide and its pinned diff excerpts."""
-    from metabrowser.builtin_plugins.github.guided_pr import guided_pr
+    from metabrowser.builtin_plugins.github.guided_review import guided_review
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
         pull_host,
@@ -306,7 +306,7 @@ async def guided_pr_handler(request: Request) -> Response:
     host = pull_host(request.app)
     if host is None:
         return JSONResponse({"state": "not_github"}, status_code=409, headers=_NO_STORE)
-    answer = await unless_disconnected(request, guided_pr(host, number, step))
+    answer = await unless_disconnected(request, guided_review(host, number, step))
     if answer is None:
         return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
     return JSONResponse(answer, headers=_NO_STORE)
@@ -1211,7 +1211,7 @@ async def pull_files_refresh_handler(request: Request) -> JSONResponse:
 
 __all__ = [
     "MAX_REFRESH_REQUEST_BYTES",
-    "guided_pr_handler",
+    "guided_review_handler",
     "pull_files_handler",
     "pull_files_summary_handler",
     "pull_files_refresh_handler",

@@ -28,7 +28,7 @@ The setup checks that end the report depend on the host, so they are elided here
 ```console
 $ metab --plugins
 NAME           SOURCE   KINDS                   REQUIRES       VIEWS  HOOKS
--------------  -------  ----------------------  -------------  -----  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------  -------  ----------------------  -------------  -----  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 agents         builtin  agent-log,agent-thread  structured     8      charts,catalog,sessions,session,records,live
 binary         builtin  -                       -              1      chunk
 delimited      builtin  delimited               table          2      -
@@ -36,7 +36,7 @@ diff           builtin  diff                    structured     1      document,c
 event-log      builtin  event-log               agents         5      timeline,slowest,kinds,errors
 folder         builtin  -                       markdown       2      -
 fsqlite        builtin  sqlite-store            sqlite,table   3      info,schema,children
-github         builtin  -                       markdown,diff  2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,guided-pr,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
+github         builtin  -                       markdown,diff  2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,guided-review,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
 html           builtin  html                    -              2      -
 image          builtin  -                       -              1      -
 markdown       builtin  markdown,mermaid        -              4      -
@@ -246,7 +246,7 @@ $ metab --plugins --json
         "pull-size",
         "pull-timeline",
         "pull-markdown",
-        "guided-pr",
+        "guided-review",
         "pulls",
         "pulls-refresh",
         "stacks",

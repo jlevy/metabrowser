@@ -248,10 +248,10 @@ container children
 ([Navigation Containers](arch-plugin-system.md#navigation-containers)); and
 `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
 `github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
-`github/pull-size`, `github/pull-timeline`, `github/pull-markdown`, `github/guided-pr`,
-`github/pulls`, `github/pulls-refresh`, `github/pulls-prefetch`, `github/pull-files`,
-`github/pull-files-refresh`, `github/pull-files-summary`, `github/stacks`,
-`github/stacks-refresh`, `github/stack-change`, `github/labels`,
+`github/pull-size`, `github/pull-timeline`, `github/pull-markdown`,
+`github/guided-review`, `github/pulls`, `github/pulls-refresh`, `github/pulls-prefetch`,
+`github/pull-files`, `github/pull-files-refresh`, `github/pull-files-summary`,
+`github/stacks`, `github/stacks-refresh`, `github/stack-change`, `github/labels`,
 `github/labels-refresh`, `github/cache-clear`, and `github/status`
 ([GitHub Pull Requests](arch-github-pull-requests.md)).
 

@@ -769,7 +769,7 @@ status: 200
       "kind": "api"
     },
     {
-      "path": "/api/plugin/github/guided-pr",
+      "path": "/api/plugin/github/guided-review",
       "methods": [
         "GET",
         "HEAD"
