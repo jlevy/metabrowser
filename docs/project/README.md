@@ -70,6 +70,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Guided reviews in the agent skill](specs/active/plan-2026-11-24-guided-reviews-skill.md):
+  a draft for a `metab` check of a draft guide and a skill section that writes, checks,
+  publishes, and refreshes a pull request’s guided review
 - [Pull request update cadence and GitHub budget](specs/active/plan-2026-11-22-pull-request-update-cadence.md):
   a draft for free conditional probes every few seconds for what is on screen, full
   reads once every minute or two, and a budget that leaves room for the account’s other
