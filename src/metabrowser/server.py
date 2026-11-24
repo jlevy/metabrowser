@@ -211,7 +211,11 @@ from metabrowser.recent import (
     WindowKey,
     recent_result_from_projection,
 )
-from metabrowser.repository_context import discover_repository_context, is_checkout_root
+from metabrowser.repository_context import (
+    checked_out_branch,
+    discover_repository_context,
+    is_checkout_root,
+)
 from metabrowser.root_identity import (
     IDENTITY_ROUTES,
     canonical_repository_url,
@@ -1429,7 +1433,7 @@ def _pin_label_html(status: SourceStatus) -> str:
     A pin with a name is headed by the name alone, where a folder's name stands and with
     the same `.path-base` emphasis: a served mirror by the repository's name, as a
     checkout of it would be called, and a revision a folder's server shows of its own
-    checkout by the folder's name. The ref selector in the Files toolbar names the ref,
+    checkout by the folder's name. The ref selector beneath the Files tab names the ref,
     so the heading can stay focused on the name (mb-qq4e).
 
     A pin with no mirror has no origin to take a name from, and no ref selector, so its
@@ -1625,17 +1629,21 @@ def _startup_script_tags(names: tuple[str, ...]) -> str:
 _PULL_HEAD_REF: Final = re.compile(r"refs/pull/([1-9][0-9]{0,9})/head")
 
 
-def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) -> str:
-    """What the branch and tag selector's button says before its module mounts, as markup.
+def _source_ref_chip_html(name: str, kind: str) -> str:
+    return (
+        f'<span class="git-ref git-ref-{kind}">'
+        f'<span class="git-ref-label">{html_escape(name)}</span></span>'
+    )
 
-    The words ``shownLabel`` in static/source-ref-selector.js gives the button, in the faces
-    its ``paint`` sets them in: a pull request's number in its own weight and a commit's ID
-    in the commit-ID face. The module then draws a branch or tag as its chip, from the same
-    name, so the button keeps about its width. A checkout's page with no pin shows its
-    working tree.
-    """
+
+def _source_ref_label_html(
+    pin: GitRevisionSubject | None, *, checkout: bool, working_branch: str | None
+) -> str:
+    """The selected source before the chooser mounts, in the same faces and dimensions."""
 
     if pin is None:
+        if working_branch is not None:
+            return _source_ref_chip_html(working_branch, "local")
         return "Working tree" if checkout else "Revision"
     if checkout:
         from metabrowser.checkout_revisions import checkout_ref_name
@@ -1649,8 +1657,15 @@ def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) ->
             return f'Pull request: <span class="source-ref-selector-pull-number">#{pull[1]}</span>'
         name = ref_short_name(pin.ref)
     if name:
-        return html_escape(name)
-    # Use the same short ID as the other commit labels (docs/design-system.md).
+        ref = pin.ref or ""
+        kind = (
+            "tag"
+            if ref.startswith("refs/tags/")
+            else "local"
+            if checkout and ref.startswith("refs/heads/")
+            else "remote"
+        )
+        return _source_ref_chip_html(name, kind)
     return (
         f'Commit: <span class="git-commit-sha">{html_escape(short_commit(pin.commit_oid))}</span>'
     )
@@ -1774,15 +1789,6 @@ async def index(
             </div>"""
     root_checkout_meta = ""
     if root_kind == "git" and pin is None and tip_context is not None:
-        branch = tip_context["branch"]
-        if branch is not None:
-            from metabrowser.git.log import is_trunk_ref
-
-            trunk = " data-trunk" if is_trunk_ref(branch, "local") else ""
-            root_checkout_meta += (
-                '<div class="root-details-ref-row"><span>Branch:</span>'
-                f'<span class="root-details-branch"{trunk}>{html_escape(branch)}</span></div>'
-            )
         revision = tip_context["revision"]
         root_checkout_meta += (
             '<div>Commit: <span class="git-commit-revision"'
@@ -1884,32 +1890,33 @@ async def index(
         if git_pin or (origin_store is not None and origin_store.fetchable)
         else ""
     )
-    # The branch and tag selector, filled by static/source-ref-selector.js: on a pin
-    # served from a mirror, and on a checkout, whose working tree and revisions it
-    # switches between. A plain folder and a pin with no mirror have nothing to switch to.
-    # It chooses what the Files tab shows and nothing else, so it leads the Files
-    # toolbar's row, beside Group by, and Pulls and Commits do without it.
-    #
-    # It is drawn here with the button it will have, so that nothing beside or below it
-    # moves when its module mounts, a moment after the tree's first rows: drawn later, it
-    # widened the row, which in a pane too narrow for both wraps a line. The module
-    # adopts this button, so focus a reader put on it stays
-    # (static/source-ref-selector.js#build), and app.js refills the row around it rather
-    # than over it (renderNavFilterBar). It removes the button when Git says a checkout's
-    # root is no repository. The button has a span of its own, which a ref chip's menu
-    # control is placed against (`mountRefMenus`), so the list still has the toolbar for
-    # its containing block and spans the pane, on a ref's page as on the working tree's.
+    # The selector is its own Files row, above the filter bar. Reserve both the label
+    # and its chooser button at first paint. Working tree files are still live on disk,
+    # even when the chip names the branch that the checkout is on.
     source_ref_selector = ""
     if checkout is not None or (git_pin and mirror is not None):
+        working_branch = None
+        if checkout is not None and pin is None:
+            working_branch = (
+                tip_context["branch"]
+                if tip_context is not None
+                else await asyncio.to_thread(checked_out_branch, checkout.root)
+            )
+        branch_attr = (
+            f' data-working-branch="{html_escape(working_branch, quote=True)}"'
+            if working_branch is not None
+            else ""
+        )
+        label = _source_ref_label_html(
+            pin, checkout=checkout is not None, working_branch=working_branch
+        )
         source_ref_selector = (
-            '<div class="source-ref-selector" id="source-ref-selector">'
+            f'<div class="source-ref-selector" id="source-ref-selector"{branch_attr}>'
             '<span class="source-ref-selector-button">'
-            '<button type="button" class="chip chip-menu-trigger source-ref-selector-toggle'
-            ' disclosure-toggle" aria-haspopup="dialog" aria-expanded="false"'
-            ' data-tip-text="Switch branch or tag">'
-            '<span class="source-ref-selector-label">'
-            f"{_source_ref_label_html(pin, checkout=checkout is not None)}</span>"
-            '<span class="chip-menu-caret" aria-hidden="true"></span></button></span></div>'
+            f'<span class="source-ref-selector-label">{label}</span>'
+            '<button type="button" class="icon-btn source-ref-selector-toggle disclosure-toggle"'
+            ' aria-label="Switch branch or tag" aria-haspopup="dialog" aria-expanded="false"'
+            ' data-tip-text="Switch branch or tag"></button></span></div>'
         )
     # The Pulls tab follows a hosted mirror or a GitHub checkout, including a
     # checkout's revisions and subdirectories. It costs a plain folder nothing,
@@ -1937,13 +1944,11 @@ async def index(
     # toolbar its script fills later ships the shared pending tally, never an empty slot.
     filter_bar_behind = "" if files_in_front else " hidden"
     pending_tally = '<span class="count tally-pending"></span>'
-    # The Files toolbar's row begins with the branch and tag selector where there is one,
-    # and the pending tally stands where the rest of the row will be.
-    filter_bar_content = (
-        f'<div class="nav-filter-bar-main nav-toolbar-row">{source_ref_selector}'
-        f"{pending_tally}</div>"
+    source_ref_row = (
+        f'<div class="nav-files-ref" id="nav-files-ref"{filter_bar_behind}>'
+        f"{source_ref_selector}</div>"
         if source_ref_selector
-        else pending_tally
+        else ""
     )
     commits_button = (
         f'\n        <button class="tab-btn{" active" if commits_in_front else ""}" type="button"'
@@ -2527,7 +2532,7 @@ async def index(
           <span class="header-home-name" id="header-home-name">{initial_path}</span>
         </a>
         <span id="header-home-label" hidden>Home:</span>
-        <details id="root-details" class="root-details" data-ref-menu-container{root_repository_attr}>
+        <details id="root-details" class="root-details"{root_repository_attr}>
           <summary class="icon-btn root-details-trigger disclosure-toggle" aria-label="{root_kind_label} details"></summary>
           <div class="menu root-details-panel">
             <div class="root-details-info">
@@ -2602,6 +2607,7 @@ async def index(
       <div class="tab-bar nav-tab-bar" role="tablist">
         <button class="tab-btn{files_active}" type="button" role="tab" data-tab="files" aria-selected="{files_selected}">Files</button>{pulls_button}{commits_button}
       </div>
+      {source_ref_row}
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also
            stay put while .tree-content scrolls. app.js fills it.
@@ -2612,7 +2618,7 @@ async def index(
            and clips what it holds short of it, so a line inside it drew its
            rule short of the pane's edge. The band shows with its toolbar
            (`.nav-metadata-band` in styles.css). -->
-      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{filter_bar_content}</div>
+      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>
       <div class="nav-metadata-band" id="nav-metadata-files"></div>{toolbars}
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files"{files_behind}>

@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from metabrowser import server
-from metabrowser.repository_context import discover_repository_context
+from metabrowser.repository_context import checked_out_branch, discover_repository_context
 from tests.shell_request import shell_request
 
 _OVERSIZED_GIT_CONFIG_BYTES = 1024 * 1024 + 1
@@ -55,6 +55,23 @@ def test_rejects_non_github_remote_and_invalid_revision(tmp_path: Path) -> None:
     )
 
     assert discover_repository_context(tmp_path) is None
+
+
+def test_checked_out_branch_requires_a_valid_committed_ref(tmp_path: Path) -> None:
+    _write_repository(
+        tmp_path,
+        remote="https://example.com/example/docs.git",
+        head="feature/navigation",
+        revision="a" * 40,
+    )
+    assert checked_out_branch(tmp_path) == "feature/navigation"
+    head = tmp_path / ".git" / "HEAD"
+    head.write_text("b" * 40 + "\n")
+    assert checked_out_branch(tmp_path) is None
+    head.write_text("ref: refs/heads/unborn\n")
+    assert checked_out_branch(tmp_path) is None
+    head.write_text("ref: refs/heads/feature//navigation\n")
+    assert checked_out_branch(tmp_path) is None
 
 
 def test_rejects_oversized_git_configuration(tmp_path: Path) -> None:

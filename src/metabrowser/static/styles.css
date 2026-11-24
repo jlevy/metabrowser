@@ -1886,10 +1886,7 @@ body {
   display: none;
 }
 .root-details-trigger svg {
-  width: var(--icon-glyph);
-  height: var(--icon-glyph);
   display: block;
-  rotate: 90deg;
 }
 .root-details-panel {
   position: absolute;
@@ -1897,16 +1894,6 @@ body {
   inset-inline: 8px;
   max-height: min(60vh, 28rem);
   overflow: auto;
-}
-.root-details-ref-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.root-details-branch {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
 }
 .root-details:not([open]) > .root-details-panel,
 .root-details-panel [hidden],
@@ -2839,7 +2826,7 @@ html.theme-anim .menu {
 /* The navigation frame and Files list keep their first font for this page.
    A late Source Sans response cannot reposition the tabs, folder menu, or filter bar. */
 html:not([data-app-font="system"]) .tree-pane
-  > :where(.app-header, .nav-tab-bar, [data-nav-toolbar], .nav-metadata-band),
+  > :where(.app-header, .nav-tab-bar, .nav-files-ref, [data-nav-toolbar], .nav-metadata-band),
 html:not([data-app-font="system"]) .tree-pane #tab-files {
   --font-sans: "Metabrowser Sidebar Sans", var(--app-sans-system);
   font-family: var(--font-sans);
@@ -3014,43 +3001,44 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   white-space: nowrap;
 }
 
-/* The branch and tag chooser of a served mirror or checkout. It chooses what the Files
-   tab shows and nothing else, so it leads that tab's toolbar row, beside Group by
-   (server.py), as a `.chip-menu-trigger` like Group by's, and wraps with the row
-   (`.nav-toolbar-row`). Its list, a .menu, opens under the toolbar and across the pane
-   rather than under the button, since a ref's name, its commit, and the commit's age
-   need the room. A pin with a mirror has one, and so does a folder that is a
-   repository's root, whose list begins with its working tree. */
+/* The Files source sits above its filters. The adjacent chooser opens a menu as
+   wide as the row so branch names, commit IDs, and ages have room. */
+.nav-files-ref {
+  position: relative;
+  z-index: 3;
+  flex-shrink: 0;
+}
+.nav-files-ref[hidden],
+.nav-files-ref:has(> .source-ref-selector[hidden]),
 .source-ref-selector[hidden] {
   display: none;
 }
-/* Not positioned, so the list is placed on the toolbar (`.nav-filter-bar`). */
 .source-ref-selector {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  max-width: 100%;
+  display: flex;
+  padding: var(--nav-toolbar-gap) var(--pane-header-padding-x) 0;
 }
-/* Only what a long name needs is local. The button keeps its width, and Group by moves
-   to the next line instead; a name longer than the row shortens. Its span anchors the
-   ref chip's menu trigger (.git-ref-menu-host), so the list's containing
-   block stays the toolbar. */
 .source-ref-selector-button {
   display: inline-flex;
-  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
   max-width: 100%;
 }
-.source-ref-selector-toggle {
-  flex: 0 0 auto;
-  min-width: 0;
-  max-width: 100%;
+.source-ref-selector-toggle > svg {
+  rotate: 90deg;
 }
 .source-ref-selector-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+.source-ref-selector-label > .git-ref {
+  flex-shrink: 1;
+  min-width: 0;
+}
+.source-ref-selector-label .git-ref-menu-caret {
+  display: none;
 }
 .source-ref-selector-pull-number {
   font-weight: var(--pull-number-weight);

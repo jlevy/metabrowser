@@ -1085,7 +1085,7 @@ def test_each_context_assigns_its_chip_kind() -> None:
         "A commit’s summary",
         "A commit’s tooltip",
         "A pull request’s header",
-        "The ref selector’s button and list",
+        "The Files revision row and chooser list",
     ):
         assert f"| {context} |" in section, f"the table lost {context!r}"
     # One mapping from a Git kind to a chip's: a tag, a remote branch, else a local branch.
@@ -1114,16 +1114,16 @@ def test_each_context_assigns_its_chip_kind() -> None:
         assert 'kind: "remote"' in options, f"{name}'s branches are remote"
         assert not re.search(r"\b(?:trunk|head):", calls[0]), f"{name} marks trunk or HEAD"
     # The ref selector: a tag is a tag, and a branch is remote but for a checkout's own,
-    # which is local, on the button and in the list. Neither is trunk or HEAD; the list
+    # which is local, in the source row and the list. Neither is trunk or HEAD; the list
     # says "default", and "checked out" for a checkout's HEAD, in words.
     selector = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
     chips = re.findall(r"metabrowser\.refChip\((.*?)\}\)", selector, re.S)
-    assert len(chips) == 2, "the selector draws a chip on its button and on each row"
+    assert len(chips) == 2, "the selector draws a chip for the source and for each list row"
     for chip in chips:
         assert re.search(r"kind: (?:model\.selectedRef\.kind|row\.chip),", chip)
         assert not re.search(r"\b(?:trunk|head):", chip), "the selector marks trunk or HEAD"
     squeezed = re.sub(r"\s+", " ", selector)
-    # A list's rows, by the list shown, and the button, by what the page shows.
+    # The chooser's rows by list kind and the source row by the currently viewed ref.
     assert (
         'state.kind === "tag" ? "tag" : state.kind === "branch" && checkout ? "local" : "remote";'
         in squeezed
@@ -2044,9 +2044,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "server.py": ('class="icon-btn root-details-trigger disclosure-toggle"',),
     "charts.js": ("'<div class=\"tally-node disclosure-toggle'",),
     "filter-controls.js": ('class="chip chip-menu-trigger disclosure-toggle"',),
-    "source-ref-selector.js": (
-        '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
-    ),
+    "source-ref-selector.js": ('"icon-btn source-ref-selector-toggle disclosure-toggle"',),
     # The View on GitHub button's chevron, which opens its menu.
     "plugin-sdk-views.js": (
         '"git-ref-action", "disclosure-toggle"',
@@ -2113,7 +2111,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "source-ref-selector.js": (
         (
             "MetabrowserIcons?.toggle ??",
-            '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
+            '"icon-btn source-ref-selector-toggle disclosure-toggle"',
         ),
     ),
     "plugin-sdk-views.js": (
