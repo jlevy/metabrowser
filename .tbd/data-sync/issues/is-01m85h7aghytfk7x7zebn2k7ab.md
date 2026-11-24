@@ -5,14 +5,16 @@ title: Align File Overview's legend rail with the README table of contents
 kind: bug
 status: in_progress
 priority: 2
-version: 2
+version: 3
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+child_order_hints:
+  - is-01m85j15gxgp9najr7tq33jtxw
 hold: null
 hold_until: null
 created_at: 2026-11-24T01:02:47.824Z
-updated_at: 2026-11-24T01:02:51.938Z
+updated_at: 2026-11-24T01:20:10.120Z
 started_at: 2026-11-24T01:02:51.937Z
 ---
 On a wide pane the file-type legend rail and the README TOC share a track but the TOC's content is inset by KPress's .kpress-toc padding (1.2rem/0.7rem), so the legend's dots and names sat 19px left of the TOC's entries. Give the rail the same inset.
