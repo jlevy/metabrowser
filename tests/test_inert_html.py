@@ -662,6 +662,37 @@ def test_a_task_lists_box_keeps_its_state_and_no_other_input_survives() -> None:
     ]
 
 
+def test_both_sides_read_a_repeated_attribute_as_its_first() -> None:
+    """A browser keeps an attribute's first copy and drops the rest, and so do KPress's
+    sanitizer and the page's sanitizer (`getAttribute`); the server's hardener reads raw
+    HTML the same way, so what it keeps never rests on KPress having dropped the copies."""
+
+    written = (
+        '<input type="text" type="checkbox"><input type="checkbox" type="text" checked>'
+        '<p align="center" align="right">a</p><p align="middle" align="center">b</p>'
+        '<a href="https://example.org/a" href="javascript:alert(1)">c</a>'
+        '<a href="javascript:alert(1)" href="https://example.org/b">d</a>'
+        '<ol start="2" start="9"><li>e</li></ol>'
+        '<table><tr><td colspan="2" colspan="x">f</td><td colspan="x" colspan="3">g</td></tr>'
+        "</table>"
+        '<img src="https://example.com/a.png" src="javascript:alert(1)" alt="first"'
+        ' alt="second">'
+    )
+    server = harden(written)
+    assert server == (
+        '<input type="checkbox" disabled checked><p align="center">a</p><p>b</p>'
+        '<a href="https://example.org/a" target="_blank" rel="noopener noreferrer">c</a>'
+        '<a>d</a><ol start="2"><li>e</li></ol>'
+        '<table><tr><td colspan="2">f</td><td>g</td></tr></table>'
+        '<img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/a.png"'
+        ' alt="first">'
+    )
+    for base in (None, PR_PAGE):
+        assert _tokens(_node({"tree": html_tree(written), "base": base})) == _tokens(
+            harden(written, base)
+        )
+
+
 def test_a_document_keeps_the_fallbacks_shape_and_nothing_else_on_a_span() -> None:
     """The hardener's own span hardens to itself; no other attribute of a span survives."""
 

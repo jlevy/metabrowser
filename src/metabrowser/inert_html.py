@@ -707,7 +707,9 @@ class _Hardener(HTMLParser):
             if tag not in _VOID:
                 self.dropped += 1
             return
-        values = dict(attrs)
+        # An attribute written twice is its first, as a browser, KPress's sanitizer, and
+        # static/inert-html.js read it: `<input type="text" type="checkbox">` is no box.
+        values = dict(reversed(attrs))
         if tag == "img":
             self._image(values)
             return
