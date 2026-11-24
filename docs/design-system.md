@@ -395,7 +395,7 @@ a pull request, and a commit.
 | 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
 | 2. Heading row | The navigation row’s icon for its type, and its name and the metadata after it | The folder icon, or at the root its [kind mark](#source-kind-marks), and its name and the metadata after it | Its state icon, its title, and its number | The commit icon, its subject (planned) |
 | 3. Metadata | Its badges, size, and age, after its name | Its size, file count, and age, after its name | Its author line, branches, and ages, lines under the title ([Page Headers](#page-headers)) | Its author, revision, and age, lines under the title ([Page Headers](#page-headers)) |
-| 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Docs, Changes, and Checks | None |
+| 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Guided Review when present, then Conversation, Docs, Changes, and Checks | None |
 | The corner | [View on GitHub](#view-on-github) | The same | The same | The same |
 
 Files and folders draw these parts today (`viewHeaderHtml` in `static/view-header.js`,
@@ -1219,7 +1219,7 @@ Every page also has none when the served folder has no repository on github.com
 | `/view/<path>` | `blob/<ref>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
 | `/view/<path>/` | `tree/<ref>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
 | `/view/` | `tree/<ref>/<served prefix>`, or repository URL or `tree/<name>` at the repository root | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
-| `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | `pull/<n>`, `pull/<n>/files`, `pull/<n>/checks` | None |
+| `/pull/<n>`, `/pull/<n>/conversation`, `/pull/<n>/files`, `/pull/<n>/guided`, `/pull/<n>/checks` | `pull/<n>`, `pull/<n>`, `pull/<n>/files`, `pull/<n>`, `pull/<n>/checks` | None |
 | `/pull/<n>/files/<path>` | `pull/<n>/files#diff-<hash>` | None |
 | `/commit/<sha>` | `commit/<sha>` | `not_on_origin` |
 | `/commit/<sha>/<path>` | `commit/<sha>#diff-<hash>` | `not_on_origin` |
@@ -3024,6 +3024,34 @@ accepted, checked again before assigning the browser image source.
 Anonymous CORS and a no-referrer policy omit credentials and the local page URL. The
 browser’s HTTP cache owns image bytes; PR metadata caches retain only URLs.
 Document image sanitization remains independent; see [Content Trust](../SECURITY.md).
+
+### Guided Review
+
+**A guide names every place the same way, in one vocabulary, from one module.** The
+names, the badge, and the place labels are constants at the top of `guided-review.js`
+(`GUIDE`, `OVERVIEW`, `placeName`, `stepName`, `guideBadge`), and every part below takes
+its words from them, so the step list, the arrows’ tips, the way on and back, and a
+step’s card never disagree.
+The user guide’s [Guided Review](reviewing-pull-requests.md#guided-review) says what a
+reader does with it.
+
+| Part | What it shows | Drawn as |
+| --- | --- | --- |
+| Name | “Guided Review”: the tab, the badge, and the list’s label | `GUIDE` |
+| Step 0 | “Overview”: the description, as Conversation renders it | `OVERVIEW` |
+| Place | “Overview”, or “Step 3 of 9”: where the reader is, never the count alone | `placeName` |
+| A step by name | “Step 3: Inspect the request path”: the list, the tips, the way on and back | `stepName` |
+| Badge | A state badge’s outlined box leading a head, 8px from its label, as a page header’s state badge leads its line | `guideBadge`, `.github-pull-guide-card-head` |
+| Step list | A card above the step: the badge, the arrows around the place, then each step, numbered, the one shown marked as a table of contents marks its section | `.github-pull-guide-outline`, `--highlight-bg`, `--highlight-bar` |
+| Arrows | Icon buttons, `arrowLeft` and `arrowRight`, centered in an icon button’s box, with no label of their own | `.github-pull-guide-arrow` |
+| Way on and back | Worded buttons below a step that name the step they go to | `.github-pull-guide-pager` |
+| Step | A page card, as Conversation draws a comment: the badge and the place, the title and note at the description’s inset, then its excerpts | `.github-pull-guide-card`, `.github-pull-text` |
+| Excerpt | The diff plugin’s own drawing, as in Changes: hunk bars, rows, and fold bars that expand | `mountFilePatch` in the diff plugin |
+| Out of date | A notice above the guide naming the revision it was written for, the commits since, and the steps that cite changed files, each marked in the list | `.github-pull-guide-stale` |
+
+A new part of the guide takes its words from these constants and its look from an
+existing part of the design system.
+It does not get a new name or a new look of its own.
 
 ### Label Colors
 

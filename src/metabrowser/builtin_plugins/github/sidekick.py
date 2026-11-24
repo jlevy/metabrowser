@@ -1,5 +1,5 @@
 """The plugin's data routes, every one the manifest names, all under ``/api/plugin/github/``:
-one pull request's (``pull``, ``pull-refresh``, and the routes of its texts, timeline,
+one pull request's (``pull``, ``pull-refresh``, and the routes of its guide, texts, timeline,
 comparison, rendered diffs, and their images), the catalog's (``pulls``, ``pulls-refresh``,
 ``pull-cores-prepare``), changed files (``pull-files``, ``pull-files-refresh``), stacks
 (``stacks``, ``stacks-refresh``), background prefetch (``pulls-prefetch``),
@@ -283,6 +283,33 @@ async def pull_markdown_handler(request: Request) -> Response:
         return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
     status_code, body = answer
     return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
+
+
+async def guided_review_handler(request: Request) -> Response:
+    """Read one step of an author-provided PR guide and its pinned diff excerpts."""
+    from metabrowser.builtin_plugins.github.guided_review import guided_review
+    from metabrowser.builtin_plugins.github.pull_route import (
+        PullRequestError,
+        pull_host,
+        requested_number,
+    )
+    from metabrowser.view_routes import parse_pull_number
+
+    try:
+        number = requested_number(request.query_params)
+    except PullRequestError as exc:
+        return _invalid_request(str(exc))
+    step = parse_pull_number(request.query_params.get("step", "1"))
+    if step is None:
+        return _invalid_request("step must be a positive integer")
+    await _resolve(request)
+    host = pull_host(request.app)
+    if host is None:
+        return JSONResponse({"state": "not_github"}, status_code=409, headers=_NO_STORE)
+    answer = await unless_disconnected(request, guided_review(host, number, step))
+    if answer is None:
+        return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
+    return JSONResponse(answer, headers=_NO_STORE)
 
 
 async def pull_image_handler(request: Request) -> Response:
@@ -1184,6 +1211,7 @@ async def pull_files_refresh_handler(request: Request) -> JSONResponse:
 
 __all__ = [
     "MAX_REFRESH_REQUEST_BYTES",
+    "guided_review_handler",
     "pull_files_handler",
     "pull_files_summary_handler",
     "pull_files_refresh_handler",
