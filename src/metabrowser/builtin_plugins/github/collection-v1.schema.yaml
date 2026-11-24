@@ -1,0 +1,103 @@
+$defs:
+  CollectionComparison:
+    additionalProperties: false
+    description: |-
+      The change a collection's references resolve against: a merge base and a head.
+
+      A guided review needs it, since its description is not versioned with the code it
+      describes. v1 requires it of every collection; a carrier without a change, such as a
+      repository file, makes it optional, which is not a break.
+    properties:
+      head:
+        $ref: '#/$defs/Sha'
+      merge_base:
+        $ref: '#/$defs/Sha'
+    required:
+    - head
+    - merge_base
+    title: CollectionComparison
+    type: object
+  CollectionItem:
+    additionalProperties: false
+    properties:
+      note:
+        $ref: '#/$defs/Prose'
+      references:
+        items:
+          $ref: '#/$defs/CollectionReference'
+        maxItems: 8
+        minItems: 1
+        title: References
+        type: array
+      title:
+        $ref: '#/$defs/Prose'
+    required:
+    - note
+    - references
+    - title
+    title: CollectionItem
+    type: object
+  CollectionReference:
+    additionalProperties: false
+    properties:
+      end_line:
+        anyOf:
+        - $ref: '#/$defs/LineNumber'
+        - type: 'null'
+        default: null
+      path:
+        $ref: '#/$defs/Prose'
+      side:
+        anyOf:
+        - enum:
+          - old
+          - new
+          type: string
+        - type: 'null'
+        default: null
+        title: Side
+      start_line:
+        anyOf:
+        - $ref: '#/$defs/LineNumber'
+        - type: 'null'
+        default: null
+    required:
+    - path
+    title: CollectionReference
+    type: object
+  LineNumber:
+    minimum: 1
+    type: integer
+  Prose:
+    minLength: 1
+    type: string
+  Sha:
+    pattern: ^[0-9a-f]{40}(?:[0-9a-f]{24})?$
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+description: |-
+  Ordered annotated items, each a title, a note, and the references it is about.
+
+  The format is general: a guided review is one use, a collection carried in a
+  `guided-review` fence and pinned to a comparison. A collection has no prose of its own:
+  the document that carries it introduces it, as a pull request's description introduces
+  its guide.
+properties:
+  comparison:
+    $ref: '#/$defs/CollectionComparison'
+  items:
+    items:
+      $ref: '#/$defs/CollectionItem'
+    maxItems: 40
+    minItems: 1
+    title: Items
+    type: array
+required:
+- comparison
+- items
+title: Collection
+type: object
+x-softschema:
+  contract: metabrowser.collection:Collection/v1
+  schema_sha256: 0ae06ce8d8f4a510270685d334b0baead719193b602d4ec8ac09a62b65f63f83

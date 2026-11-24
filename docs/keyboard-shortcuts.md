@@ -41,6 +41,7 @@ work.
 | `C` | Conversation | A pull request page is shown |
 | `D` | Docs: the pull request’s changed documents, rendered and unfolded | A pull request page that changes a document is shown |
 | `G` | Changes, from chan-*g*es | A pull request page is shown |
+| `R` | Guided Review, from guided P-*R*, a review | The Guided Review tab is shown |
 | `E` | Checks, from ch-*e*-cks | A pull request page is shown |
 | `L` | Diff layout: Split or Unified | A diff with a layout control is shown |
 | `N` | Diff or Current: what changed, or the new version alone, from curre*n*t | A diff is shown |

@@ -49,10 +49,11 @@ MONO_ALLOWED_SELECTORS = frozenset(
         ".md-body:not(.metabrowser-kpress-host) code",
         ".log-event-raw pre",
         ".log-event-raw code",
-        # A diff's lines and a comment's hunk of one: the user's code.
+        # A diff's lines and its excerpts in review comments and Guided Review.
         ".metabrowser-diff-host .diff-line",
         ".metabrowser-diff-host .diff-split-side",
         ".github-pull-hunk",
+        ".github-pull-guide-excerpt",
         # A JSON or YAML document's own structure, whose indent carries meaning.
         ".structured-tree",
         # A table's literal values: keys, timestamps, hex, JSON, and null, the reader's own

@@ -1,0 +1,696 @@
+// Guided Review on the production pull page: its guide is imported and mounted only when its tab
+// first paints, a tab left while the import is on its way mounts nothing, a new record revision
+// asks again for the step on screen and drops the read still on its way, leaving the tab or
+// ending the page disposes the view and aborts its read, and a step is inserted as text, each
+// row's code marked for the shell's highlighter to skip. The navigation state machine itself is
+// pinned in github-guided-review-session.js; this is the page's ownership of it. Layout is not
+// measured: the shell's highlighting and the rows' paint are Chrome's
+// (tests/test_github_guided_review_chrome.py).
+const assert = require("node:assert/strict");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
+const { refHelpers } = require("./sdk-ref-fixture.js");
+
+const pagePath = path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js");
+const GUIDE_ROUTE = "/api/plugin/github/guided-review";
+const FENCE = "Counts to two.\n\n```guided-review\nsoftschema: {}\n```\n";
+
+/** The record's revision for a generation: a revision is 64 hexadecimal characters. */
+const revisionOf = (generation) => String(generation).padStart(64, "0");
+
+function envelope(generation) {
+  const body = structuredClone(recorded.current.body);
+  body.record_revision = revisionOf(generation);
+  body.record.pull.body = FENCE;
+  body.record.issue_comments = [];
+  body.record.reviews = [];
+  body.record.review_comments = [];
+  body.record.comparison = null;
+  body.record.unavailable.comparison = "no_store";
+  return body;
+}
+
+/** A core preview of page 7: its description, and no record yet. */
+function previewEnvelope() {
+  const full = envelope(1);
+  return {
+    ...full,
+    state: "pending",
+    reason: "not_cached",
+    record: null,
+    record_revision: null,
+    fetched_at: null,
+    refreshing: true,
+    core_preview: {
+      source: full.source,
+      number: 7,
+      reader: full.record.reader,
+      observed_at: full.record.fetched_at,
+      revision: "a".repeat(64),
+      pull: full.record.pull,
+      comparison_state: "no_store",
+    },
+  };
+}
+
+/** One step as the route answers it: one hunk of a context, a deleted and an added line, and
+ * a path the comparison does not have. Its text is markup, which a page that inserted it as
+ * HTML would draw as elements. */
+function step(generation, number, count = 2) {
+  const hunks = [
+    {
+      old_start: 1,
+      old_count: 2,
+      new_start: 1,
+      new_count: 2,
+      heading: null,
+      lines: [
+        { op: "context", text: "one" },
+        { op: "del", text: "<i>two</i>" },
+        { op: "add", text: "three" },
+      ],
+    },
+  ];
+  return {
+    state: "ready",
+    record_revision: revisionOf(generation),
+    comparison: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+    step_count: count,
+    titles: Array.from({ length: count }, (_, index) => `Step ${index + 1}`),
+    step: number,
+    title: `Step ${number}`,
+    note: "Check <b>this</b> first.\nThen that.",
+    references: [
+      {
+        path: "src/app.txt",
+        side: "new",
+        start_line: 1,
+        end_line: 2,
+        state: "ready",
+        href: "/pull/7/files/src/app.txt",
+        hunks,
+        truncated: false,
+      },
+      {
+        path: "gone.txt",
+        side: null,
+        start_line: null,
+        end_line: null,
+        state: "path_not_changed",
+        href: null,
+        hunks: [],
+        truncated: false,
+      },
+    ],
+  };
+}
+
+function host() {
+  const timers = new Map();
+  /** Each read of the guide: its step, its signal, and the answer or failure that ends it. */
+  const reads = [];
+  /** The routes the page asked the page to open. */
+  const opened = [];
+  /** Each patch the page handed the diff plugin to draw, and whether it was disposed. */
+  const patches = [];
+  /** The diff plugin's export, as `plugins.load("diff")` answers it: it draws each line as
+   * the diff draws a row, its text a span. The diff plugin's own drawing (hunk bars, folds,
+   * syntax) is its own, pinned by its tests and painted in the Chrome check. */
+  const diff = {
+    mountFilePatch(body, change, patch, api) {
+      assert.equal(typeof api.ensureKindAssets, "function", "the diff draws with the SDK");
+      const drawn = { path: change.new.path, patch, disposed: false };
+      patches.push(drawn);
+      for (const hunk of patch.hunks) {
+        for (const line of hunk.lines) {
+          const row = new Element("div");
+          row.className = `diff-line diff-line-${line.op}`;
+          const code = new Element("span");
+          code.className = "diff-line-text hljs";
+          code.textContent = line.text;
+          row.append(code);
+          body.append(row);
+        }
+      }
+      return {
+        dispose() {
+          drawn.disposed = true;
+        },
+      };
+    },
+  };
+  let current = null;
+  globalThis.document = {
+    visibilityState: "visible",
+    addEventListener() {},
+    removeEventListener() {},
+    createElement: (tag) => new Element(tag),
+    importNode: () => new Element("svg"),
+  };
+  globalThis.window = {
+    location: { pathname: "/pull/7" },
+    setTimeout(callback, delay) {
+      const id = Symbol();
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+    MetabrowserInertHtml: {
+      sanitizeHtml: (html) => html,
+      kpressProse(html) {
+        const node = document.createElement("p");
+        node.textContent = html;
+        return node;
+      },
+    },
+  };
+  globalThis.DOMParser = class {
+    parseFromString() {
+      return { body: { firstElementChild: null } };
+    }
+  };
+  const response = (body, status = 200) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => null },
+    json: async () => body,
+  });
+  globalThis.fetch = async (route, init = {}) => {
+    if (route.startsWith(`${GUIDE_ROUTE}?`)) {
+      const asked = new URL(route, "http://localhost").searchParams;
+      assert.equal(asked.get("number"), "7");
+      return new Promise((resolve, reject) => {
+        const read = { step: Number(asked.get("step")), signal: init.signal, settled: false };
+        read.answer = (body) => {
+          read.settled = true;
+          resolve(response(body));
+        };
+        init.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        reads.push(read);
+      });
+    }
+    if (route.startsWith("/api/plugin/github/pull-markdown?")) {
+      return response({
+        record_revision: current.record_revision,
+        fetched_at: current.fetched_at,
+        html: "rendered",
+        assets: {},
+      });
+    }
+    if (route.startsWith("/api/plugin/github/pull?")) {
+      return response(current);
+    }
+    return response({}, 404);
+  };
+  return {
+    reads,
+    opened,
+    patches,
+    set current(value) {
+      current = value;
+    },
+    /** Mount page 7 on *tab*, as the shell does at its address. */
+    mount(page, tab, initial) {
+      current = initial;
+      window.location.pathname = tab === "" ? "/pull/7" : `/pull/7/${tab}`;
+      const container = new Element("main");
+      const handle = page.mountPullPage(
+        container,
+        {
+          number: 7,
+          tab,
+          // The shell's route: it moves the address, and calls back into the page.
+          open(route) {
+            opened.push(route);
+            return Promise.resolve();
+          },
+          reader: { initial: { etag: null, body: initial }, fetchAfterMs: 0 },
+        },
+        {
+          perf,
+          ensureAsset: async () => {},
+          loadKpressAssets: async () => {},
+          ...refHelpers(document),
+          formatAge: () => ({ label: "now", className: "age" }),
+          formatTimestamp: () => "now",
+          navigation: { href: () => "/view/" },
+          sourceKind: () => "git_revision",
+          shortCommit: (commit) => commit.slice(0, 7),
+          icons: { toggle: "" },
+          ensureKindAssets: async () => {},
+          plugins: {
+            async load(name) {
+              assert.equal(name, "diff", "the guide loads only the diff plugin");
+              return diff;
+            },
+          },
+        },
+      );
+      const view = () => container.querySelector(".github-pull-guided-review");
+      return {
+        handle,
+        container,
+        /** The route arrives at *next*, as the shell's does: the address, then the page. */
+        arrive(next) {
+          window.location.pathname = next === "" ? "/pull/7" : `/pull/7/${next}`;
+          handle.setTab(next);
+        },
+        guided: view,
+        /** Click the guide's button named *label*, as a reader does. */
+        press(label) {
+          [...container.descendants()]
+            .find((node) => node.tag === "button" && node.getAttribute("aria-label") === label)
+            .events.get("click")();
+        },
+        /** The step list's head: the overview or a step, and how many. */
+        position: () => container.querySelector(".github-pull-guide-position")?.textContent ?? null,
+        /** The step list as it reads: each step, the one shown marked. */
+        outline: () =>
+          container
+            .querySelectorAll(".github-pull-guide-steps-link")
+            .map(
+              (link) =>
+                `${link.getAttribute("aria-current") === "step" ? "> " : ""}${link.children
+                  .map((part) => part.textContent)
+                  .filter(Boolean)
+                  .join(" ")}`,
+            )
+            .join(" | "),
+        /** The step list's buttons, in order. */
+        links: () => container.querySelectorAll(".github-pull-guide-steps-link"),
+        /** What the guide says in place of a step, or "nothing". */
+        said() {
+          const notice = view()?.children.find((node) => node.classes?.has("github-pull-quiet"));
+          return notice && !notice.hidden ? notice.textContent : "nothing";
+        },
+        /** The stale notice's lines, or null while there is none. */
+        stale() {
+          const notice = container.querySelector(".github-pull-guide-stale");
+          return notice ? lines(notice) : null;
+        },
+        /** The step on screen, as the reader sees it, or null while there is none. */
+        shown() {
+          const title = container
+            .querySelector(".github-pull-guide-step")
+            ?.querySelector(".github-pull-guide-title");
+          return title?.textContent ?? null;
+        },
+      };
+    },
+    /** The reads still waiting for an answer. */
+    pending: () => reads.filter((read) => !read.settled && !read.signal?.aborted),
+    async poll() {
+      const due = [...timers].filter(([, timer]) => timer.delay === 1000 || timer.delay === 30000);
+      for (const [id, timer] of due) {
+        timers.delete(id);
+        timer.callback();
+      }
+      await settle();
+    },
+  };
+}
+
+/** A notice's lines, as a reader reads them. */
+const lines = (notice) =>
+  notice.children
+    .map((child) => child.textContent)
+    .filter(Boolean)
+    .join(" / ");
+
+const asked = (reads) => reads.map((read) => `step ${read.step}`).join(", ") || "nothing";
+
+async function run() {
+  const page = await import(pathToFileURL(pagePath).href);
+  const steps = [];
+
+  // The front page of a pull request with a guide is Guided Review.
+  {
+    const front = host();
+    const view = front.mount(page, "", envelope(1));
+    await settle();
+    steps.push(
+      `the front page: guide ${view.guided() === null ? "not mounted" : "mounted"}; asked ${asked(front.reads)}`,
+    );
+    view.handle.dispose();
+  }
+
+  // A stale guide still shows its steps, from its own revision, under a notice at the top of
+  // the page that says what it was written for, what is new, and which steps still match.
+  {
+    const late = host();
+    const view = late.mount(page, "guided", envelope(1));
+    await settle();
+    late.pending()[0].answer({
+      ...step(1, 1, 3),
+      state: "stale",
+      stale: {
+        guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+        current: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+        github_newer: false,
+        history: "ahead",
+        commit_count: 12,
+        commits: [{ sha: "c".repeat(40), subject: "Count to <b>three</b>" }],
+        changed_paths: ["src/app.txt"],
+        changed_steps: [1, 3],
+      },
+    });
+    await settle();
+    // The guide opens on its overview, under the step list, with the changed steps marked.
+    steps.push(`a stale guide opens on: ${view.position()}; ${view.outline()}`);
+    const top = view.guided().children[0];
+    const notice = view.container.querySelector(".github-pull-guide-stale");
+    assert.ok(top.children.includes(notice), "the notice is the page's first thing");
+    steps.push(
+      `a stale guide's notice: ${notice.children.map((child) => child.textContent).join(" / ")}`,
+    );
+    const kept = late.reads.length;
+    view.press("Next step");
+    await settle();
+    assert.equal(late.reads.length, kept, "step 1 is the overview's own answer");
+    const card = view.container.querySelector(".github-pull-guide-card");
+    steps.push(
+      `and its step, in a card: ${card.querySelector(".github-pull-card-head").textContent}; ${view.shown()}; ` +
+        `${view.container
+          .querySelectorAll(".github-pull-guide-changed")
+          .map((node) => node.textContent)
+          .join("")}`,
+    );
+    view.handle.dispose();
+  }
+
+  // Lazy mount: Conversation never reads the guide, and its tab mounts it at first paint.
+  {
+    const first = host();
+    const view = first.mount(page, "conversation", envelope(1));
+    await settle();
+    steps.push(
+      `Conversation: guide ${view.guided() === null ? "not mounted" : "mounted"}; asked ${asked(first.reads)}`,
+    );
+    // The description's guided-review block is a card there, which opens the guide.
+    const card = view.container
+      .querySelectorAll(".notice")
+      .find((node) => node.textContent.includes("guided review"));
+    steps.push(`its description's block: ${card?.textContent ?? "no card"}`);
+    view.arrive("guided");
+    await settle();
+    assert.equal(first.pending().length, 1);
+    steps.push(`its tab opens: guide mounted; asked ${asked(first.reads)}`);
+    // The guide opens with the description, as Conversation renders it.
+    const introduction = view.container.querySelector(".github-pull-guide-introduction");
+    steps.push(`the guide's overview: ${introduction?.textContent ?? "none"}`);
+
+    // A step is text, not markup, and each row is the diff plugin's: its text a span, which
+    // the shell's highlighter, which takes `pre code`, cannot select.
+    first.pending()[0].answer(step(1, 1));
+    await settle();
+    // The overview is step 0: the description shows, under the step list, and Next goes
+    // to step 1 with the answer the overview already has.
+    // The page's wrapper of the description card, third after the notice and the step list.
+    const wrapper = view.guided().children[2];
+    assert.ok([...wrapper.descendants()].includes(introduction));
+    assert.equal(wrapper.hidden, false);
+    steps.push(
+      `the guide opens on: ${view.position()}; ${view.outline()}; step shown ${view.shown()}`,
+    );
+    view.press("Next step");
+    await settle();
+    assert.equal(wrapper.hidden, true, "a step replaces the overview");
+    assert.equal(first.reads.length, 1);
+    const commentary = view.container.querySelector(".github-pull-guide-commentary");
+    assert.equal(commentary.textContent, "Check <b>this</b> first.\nThen that.");
+    assert.ok(
+      commentary.children.every((child) => typeof child === "string"),
+      "the commentary holds text and no element",
+    );
+    // The diff plugin draws the excerpt from the step's hunks, as it draws Changes.
+    assert.deepEqual(
+      first.patches.map(({ path, patch }) => [path, patch.hunks.length, patch.truncated]),
+      [["src/app.txt", 1, false]],
+    );
+    const lines = view.container
+      .querySelector(".github-pull-guide-excerpt")
+      .querySelectorAll(".diff-line");
+    steps.push(
+      `step 1: ${view.shown()}; rows ${lines
+        .map((line) => {
+          const code = line.children.find((child) => child.classes?.has("diff-line-text"));
+          assert.equal(code.tag, "span", "a row's text is a span, as the diff draws it");
+          assert.ok(line.classes.has("diff-line"), "a row is the diff plugin's row");
+          assert.ok(
+            code.children.every((child) => typeof child === "string"),
+            "a row's text holds text and no element",
+          );
+          const op = ["context", "del", "add"].find((name) =>
+            line.classes.has(`diff-line-${name}`),
+          );
+          return `${op} ${code.textContent}`;
+        })
+        .join(", ")}`,
+    );
+    const quiet = view.container
+      .querySelectorAll(".github-pull-quiet")
+      .map((node) => node.textContent);
+    steps.push(
+      `a path outside the comparison says: ${quiet.filter((text) => text.startsWith("This path")).join("")}`,
+    );
+
+    // Open full diff goes to the file's route, the page's own openChangedFile.
+    const link = view.container
+      .querySelector(".github-pull-guide-reference-header")
+      .children.find((child) => child.tag === "a");
+    first.opened.length = 0;
+    link.events.get("click")({
+      button: 0,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      preventDefault() {},
+    });
+    await settle();
+    steps.push(
+      `Open full diff: ${first.opened.map((route) => `${route.tab} ${route.file}`).join("; ")}`,
+    );
+
+    // Next asks for step 2 alone; leaving the tab with that read on its way disposes the
+    // view and aborts the read, and its late answer paints nothing.
+    view.press("Next step");
+    await settle();
+    const second = first.pending()[0];
+    assert.equal(second.step, 2);
+    assert.equal(first.patches[0].disposed, true, "the next step's read disposes this diff");
+    view.arrive("conversation");
+    await settle();
+    steps.push(
+      `left for Conversation with step 2 on its way: read aborted ${second.signal.aborted}; guide ${view.guided() === null ? "gone" : "still there"}`,
+    );
+    second.answer?.(step(1, 2));
+    await settle();
+    assert.equal(view.guided(), null);
+
+    // Back on the tab, a view of its own is mounted again, on its overview, which reads
+    // step 1.
+    view.arrive("guided");
+    await settle();
+    steps.push(`its tab again: asked ${asked(first.reads.slice(2))}`);
+
+    // The page ends with a read on its way: the read is aborted.
+    const waiting = first.pending()[0];
+    view.handle.dispose();
+    steps.push(`the page ends: read aborted ${waiting.signal.aborted}`);
+  }
+
+  // Replacement: a new record revision asks for the step on screen again, and drops the read
+  // on its way; the late answer to the dropped read paints nothing.
+  {
+    const second = host();
+    const view = second.mount(page, "guided", envelope(1));
+    await settle();
+    const old = second.pending()[0];
+    steps.push(`opened on its tab: asked ${asked(second.reads)}`);
+    second.current = envelope(2);
+    await second.poll();
+    steps.push(
+      `a newer record arrives with the read on its way: old read aborted ${old.signal.aborted}; ` +
+        `asked ${asked(second.reads)}`,
+    );
+    old.answer?.(step(1, 1));
+    await settle();
+    assert.equal(view.shown(), null, "the dropped read's answer paints nothing");
+    second.pending()[0].answer(step(2, 1));
+    await settle();
+    steps.push(`the new read's answer: ${view.position()}`);
+    // A poll that finds the same record asks for nothing.
+    await second.poll();
+    steps.push(`a poll of the same record: asked ${asked(second.reads)}`);
+    view.handle.dispose();
+  }
+
+  // A tab left while the import is on its way mounts nothing, and neither does a page that
+  // ends there: each is a view that nothing disposes if it were mounted late.
+  {
+    const third = host();
+    const view = third.mount(page, "conversation", envelope(1));
+    await settle();
+    view.arrive("guided");
+    view.arrive("conversation");
+    await settle();
+    steps.push(
+      `Guided Review opened and left before its import settled: guide ${view.guided() === null ? "not mounted" : "mounted"}; asked ${asked(third.reads)}`,
+    );
+    view.arrive("guided");
+    view.handle.dispose();
+    await settle();
+    steps.push(`the page ended before the import settled: asked ${asked(third.reads)}`);
+  }
+
+  // A guide this copy matches, stale only because GitHub reports a newer head: what the
+  // newer commits changed is unknown, so the notice never says that every step still
+  // matches (B1 of review B on #677).
+  {
+    const newer = host();
+    const view = newer.mount(page, "guided", envelope(1));
+    await settle();
+    const pins = { merge_base: "a".repeat(40), head: "b".repeat(40) };
+    newer.pending()[0].answer({
+      ...step(1, 1, 3),
+      state: "stale",
+      stale: {
+        guide: pins,
+        current: pins,
+        github_newer: true,
+        history: "ahead",
+        commit_count: 0,
+        commits: [],
+        changed_paths: null,
+        changed_steps: null,
+      },
+    });
+    await settle();
+    assert.ok(!view.stale().includes("still matches"), "what the newer head changed is unknown");
+    steps.push(`a guide behind a newer head on GitHub: ${view.stale()}; ${view.outline()}`);
+    view.handle.dispose();
+  }
+
+  // Commits the server counted and could not list, their subjects past its bound, are
+  // counted and not listed (B10 of review B on #677).
+  {
+    host();
+    const { staleNotice } = await import(
+      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guided-review.js")).href
+    );
+    const notice = staleNotice(
+      {
+        guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+        current: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+        github_newer: false,
+        history: "ahead",
+        commit_count: 3,
+        commits: [],
+        changed_paths: [],
+        changed_steps: [],
+      },
+      2,
+      (commit) => commit.slice(0, 7),
+    );
+    assert.equal(notice.querySelector(".github-pull-guide-commits"), null);
+    steps.push(`commits counted and not listed: ${lines(notice)}`);
+  }
+
+  // One step's read refused, or failed, keeps the guide: its steps, the place, and the way
+  // on, with the reason in the step's place; the step is read again when chosen again (B7
+  // of review B on #677). A step chosen from the list keeps its button, which a reader's
+  // focus is on (B14).
+  {
+    const refused = host();
+    const view = refused.mount(page, "guided", envelope(1));
+    await settle();
+    refused.pending()[0].answer(step(1, 1, 3));
+    await settle();
+    const buttons = view.links();
+    buttons[2].events.get("click")();
+    await settle();
+    refused
+      .pending()[0]
+      .answer({ state: "comparison_unavailable", record_revision: revisionOf(1) });
+    await settle();
+    steps.push(`a refused step: ${view.position()}; ${view.outline()}; says ${view.said()}`);
+    assert.ok(
+      view.links().every((button, index) => button === buttons[index]),
+      "the step list keeps its buttons across a step chosen from it",
+    );
+    buttons[2].events.get("click")();
+    await settle();
+    steps.push(`chosen again: asked ${asked(refused.reads)}`);
+    refused.pending()[0].answer(step(1, 2, 3));
+    await settle();
+    steps.push(`and answered: ${view.position()}; ${view.shown()}; says ${view.said()}`);
+    view.press("Previous step");
+    await settle();
+    steps.push(`back: ${view.position()}; asked ${asked(refused.reads)}`);
+    view.handle.dispose();
+  }
+
+  // A core preview resolves the front page from its description, as the record will: a
+  // guided pull request opens on Guided Review, which waits for the record, and the record's
+  // arrival reads the guide without changing tab (B3 of review B on #677).
+  {
+    const early = host();
+    const view = early.mount(page, "", previewEnvelope());
+    await settle();
+    steps.push(
+      `a preview's front page: guide ${view.guided() === null ? "not mounted" : "mounted"}; says ${view.said()}; asked ${asked(early.reads)}`,
+    );
+    assert.notEqual(view.guided(), null, "a preview's front page is its guide");
+    early.current = envelope(1);
+    await early.poll();
+    steps.push(
+      `its record arrives: guide ${view.guided() === null ? "not mounted" : "mounted"}; asked ${asked(early.reads)}`,
+    );
+    view.handle.dispose();
+  }
+
+  // On a guided front page, Guided Review's link and key go to the page on screen, never to
+  // a second history entry of it at /pull/<n>/guided (B20 of review B on #677); from
+  // Conversation they go to the front page.
+  {
+    const front = host();
+    const view = front.mount(page, "", envelope(1));
+    await settle();
+    const tab = (label) =>
+      view.container
+        .querySelectorAll(".tab-btn")
+        .find((link) => link.tag === "a" && link.textContent === label);
+    view.handle.setTab("guided");
+    await settle();
+    assert.equal(front.opened.length, 0, "the page on screen is not opened again");
+    assert.equal(tab("Guided Review").getAttribute("href"), "/pull/7");
+    steps.push(
+      `the guided front page: Guided Review links ${tab("Guided Review").getAttribute("href")}, Conversation ${tab("Conversation").getAttribute("href")}; its key opens ${front.opened.length === 0 ? "nothing" : front.opened.map((route) => route.tab).join(", ")}`,
+    );
+    view.handle.dispose();
+    const away = host();
+    const there = away.mount(page, "conversation", envelope(1));
+    await settle();
+    const card = there.container
+      .querySelectorAll(".notice")
+      .find((node) => node.textContent.includes("guided review"));
+    const link = [card, ...card.descendants()].find((node) => node.tag === "a");
+    assert.equal(link.getAttribute("href"), "/pull/7");
+    steps.push(`from Conversation, the description's card links ${link.getAttribute("href")}`);
+    there.handle.dispose();
+  }
+
+  return steps;
+}
+
+module.exports = { run };
+if (require.main === module) {
+  run()
+    .then((steps) => process.stdout.write(`${JSON.stringify(steps, null, 2)}\n`))
+    .catch((error) => {
+      process.stderr.write(`${error.stack}\n`);
+      process.exitCode = 1;
+    });
+}

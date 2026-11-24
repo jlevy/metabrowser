@@ -58,6 +58,8 @@ It links each document below and the contributor standards in `docs/`.
 
 ### Formats
 
+- [Collection format](architecture/arch-collection-format.md): ordered annotated items,
+  what the format owns and what a carrier adds, with guided reviews as the first carrier
 - [File Diff Format v1](architecture/file-diff-format/file-diff-format.md): the JSON
   change-set document, its schema, and its apply oracle
 - [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md):

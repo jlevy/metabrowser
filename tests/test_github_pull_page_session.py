@@ -781,7 +781,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             'an SDK with no button: the corner after the title "Count to two in the app"; '
             "asked for none",
         ],
-        # C, G, and E run the page's setTab through the shortcut facade, with or without
+        # C, G, D, and E run the page's setTab through the shortcut facade, with or without
         # Shift. H is the Commits tab's, so Checks is E. The header keeps the tab column
         # unless its first read fails, so they are live from first paint, as the links
         # are; they wait while the column is out after a failed first read, and while the
@@ -845,6 +845,28 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "Conversation C, Docs D, Changes G, Checks E",
             "live: conversation docs files checks",
             "G: showed Changes",
+            # Guided Review's tab and its key R (Docs holds D) exist only where the description
+            # opens a `guided-review` fence: the link leads the bar when a record brings one, stays while its tab is shown, and leaves the bar, and the
+            # key, otherwise. The page cannot tell a block from an example of one inside
+            # another fence, which the server's parse can (mb-y0en), so the example shows
+            # the tab too. On the front page, which a block makes the guide, R shows the
+            # page on screen and opens no second entry of it (B20 of review B on #677).
+            "no block in the description: Conversation C, Docs D, Changes G, Checks E; "
+            "live conversation docs files checks",
+            "R: not handled",
+            "a block in the description: "
+            "Guided Review R, Conversation C, Docs D, Changes G, Checks E; "
+            "live conversation docs files guided checks",
+            "R: showed Guided Review",
+            "the route arrives: Guided Review",
+            "the block leaves while its tab is shown: "
+            "Guided Review R, Conversation C, Docs D, Changes G, Checks E; Guided Review",
+            "back on Conversation: Conversation C, Docs D, Changes G, Checks E; R: not handled",
+            "the block returns while Shift is held: "
+            "badges Guided Review R, Conversation C, Docs D, Changes G, Checks E",
+            "R: showed Guided Review",
+            "an example of the block inside another fence: "
+            "Guided Review R, Conversation C, Docs D, Changes G, Checks E",
             "disposed: keys none",
         ],
         # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):

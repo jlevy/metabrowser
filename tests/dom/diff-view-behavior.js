@@ -1168,6 +1168,7 @@ async function main() {
     currentAbsence,
     mountDiffSummary,
     mountDiffView: mountDiffViewImpl,
+    mountFilePatch,
     patchRowCounts,
     projectCurrentHunk,
     reservedRows,
@@ -2673,6 +2674,117 @@ async function main() {
   const unwarned = new FakeElement("div");
   mountDiffView(unwarned, byName.get("modified-with-heading"));
   check("no warning, no notice", unwarned.find("diff-warning").length === 0);
+
+  // mountFilePatch, the export Guided Review draws a step's files with, is Changes' body of
+  // one file: its rows and fold bars at once, changed-run pairs and syntax after first
+  // paint, and a disposal that stops what is still to come (B6 of review B on #677).
+  const filePatch = (() => {
+    const lines = [
+      { op: "context", text: "keep" },
+      { op: "del", text: "value = 1" },
+      { op: "add", text: "value = 2" },
+      { op: "context", text: "sep" },
+      ...Array.from({ length: 60 }, (_, index) => ({ op: "add", text: `line ${index}` })),
+    ];
+    const hunk = { old_start: 1, old_count: 3, new_start: 1, new_count: 63, heading: null, lines };
+    return { file_id: "f1", hunks: [hunk], truncated: false };
+  })();
+  const fileChange = byName.get("modified-with-heading").manifest.files[0];
+  let patchLexes = 0;
+  const patchApi = {
+    ...defaultTestApi,
+    highlightSyntax: async (source) => {
+      patchLexes += 1;
+      return source.split("\n").map((line) => [{ classes: ["hljs-string"], text: line }]);
+    },
+    isLargeTextPreview: () => false,
+    langForPath: () => "python",
+  };
+  const intraline = (body) => body.find("diff-intraline-change").length;
+  const tokens = (body) => body.find("hljs-string").length;
+  const patchBody = new FakeElement("div");
+  const patchHandle = mountFilePatch(patchBody, fileChange, filePatch, patchApi);
+  check(
+    "a file patch draws its rows at once, its long run behind a fold bar",
+    patchBody.find("diff-line").length === 24 &&
+      patchBody.find("diff-fold-control").length === 1 &&
+      patchBody.find("diff-fold-control")[0].text().includes("40 more changed lines"),
+    `${patchBody.find("diff-line").length} rows`,
+  );
+  check(
+    "a file patch's first paint is plain text",
+    intraline(patchBody) === 0 && tokens(patchBody) === 0 && patchLexes === 0,
+  );
+  const patchFold = patchBody.find("diff-fold-control")[0];
+  const patchGroup = patchBody.find("diff-fold-group")[0];
+  patchFold.click();
+  await nextTask();
+  check(
+    "a file patch's fold bar expands its run",
+    !patchGroup.classList.contains("diff-fold-collapsed") &&
+      patchGroup.find("diff-line").length === 40,
+  );
+  for (let turn = 0; turn < 4; turn += 1) {
+    await nextSyntaxUnit();
+  }
+  check(
+    "a file patch pairs its changed run and highlights its rows after first paint",
+    intraline(patchBody) > 0 && tokens(patchBody) > 0 && patchLexes > 0,
+    `${intraline(patchBody)} intraline, ${tokens(patchBody)} tokens, ${patchLexes} lexes`,
+  );
+  patchHandle.dispose();
+
+  // Disposed before its enhancement runs, a file patch stays as first painted, and a fold
+  // still materializing stops.
+  const lexedBefore = patchLexes;
+  const earlyBody = new FakeElement("div");
+  const earlyHandle = mountFilePatch(earlyBody, fileChange, filePatch, patchApi);
+  const earlyGroup = earlyBody.find("diff-fold-group")[0];
+  earlyBody.find("diff-fold-control")[0].click();
+  earlyHandle.dispose();
+  for (let turn = 0; turn < 4; turn += 1) {
+    await nextSyntaxUnit();
+  }
+  check(
+    "a file patch disposed before its enhancement writes nothing later",
+    intraline(earlyBody) === 0 &&
+      tokens(earlyBody) === 0 &&
+      patchLexes === lexedBefore &&
+      earlyGroup.find("diff-line").length === 0,
+    `${intraline(earlyBody)} intraline, ${tokens(earlyBody)} tokens, ${earlyGroup.find("diff-line").length} folded rows`,
+  );
+
+  // Disposed while its syntax is on its way, a file patch keeps the rows it has.
+  const heldLexes = [];
+  const heldApi = {
+    ...patchApi,
+    highlightSyntax: (source) =>
+      new Promise((resolve) => {
+        heldLexes.push(() =>
+          resolve(source.split("\n").map((line) => [{ classes: ["hljs-string"], text: line }])),
+        );
+      }),
+  };
+  const lateBody = new FakeElement("div");
+  const lateHandle = mountFilePatch(lateBody, fileChange, filePatch, heldApi);
+  for (let turn = 0; turn < 4; turn += 1) {
+    await nextSyntaxUnit();
+  }
+  const pairedBefore = intraline(lateBody);
+  const heldAtDisposal = heldLexes.length;
+  lateHandle.dispose();
+  // Each side's lexer call follows the one before it, so each is answered as it comes.
+  for (let turn = 0; turn < 4; turn += 1) {
+    for (const release of heldLexes.splice(0)) {
+      release();
+    }
+    await nextSyntaxUnit();
+  }
+  check(
+    "a file patch disposed while its syntax is on its way paints none of it",
+    pairedBefore > 0 && heldAtDisposal > 0 && tokens(lateBody) === 0,
+    `${pairedBefore} intraline, ${heldAtDisposal} lexes held, ${tokens(lateBody)} tokens`,
+  );
 
   // Routine hydration is quiet, including when a file has a documented size limit.
   const partialDoc = JSON.parse(JSON.stringify(byName.get("deferred-manifest-only")));
