@@ -284,8 +284,8 @@ wheels = [
 
 [[package]]
 name = "kpress"
-version = "0.3.9"
-source = { registry = "https://pypi.org/simple" }
+version = "0.3.10.dev19+0c0f857"
+source = { git = "https://github.com/jlevy/kpress?rev=0c0f8576f9d39312300ed6eaf1a2bed09bd05aac#0c0f8576f9d39312300ed6eaf1a2bed09bd05aac" }
 dependencies = [
     { name = "frontmatter-format" },
     { name = "jinja2" },
@@ -295,10 +295,6 @@ dependencies = [
     { name = "nh3" },
     { name = "pygments" },
     { name = "strif" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f3/c2/cc65e1fe1884566faca04e1fa24b4e1dfb850ad386a589e52f656b803b9d/kpress-0.3.9.tar.gz", hash = "sha256:b15c3e42233859d563ee045075c224376ea53ddf4fbd1e38bde5becea30d09f1", size = 1788212, upload-time = "2026-11-23T00:48:12.638Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/88/240e2268645676fc63bfab37a3fb253870e0be884ac10db0e30528035e9c/kpress-0.3.9-py3-none-any.whl", hash = "sha256:d3d4cc33743ad5a18dabbdbeb1d20ed09697157cd4b6745c5dc4c244e7ef23f2", size = 1163100, upload-time = "2026-11-23T00:48:11.195Z" },
 ]
 
 [[package]]
@@ -457,7 +453,7 @@ requires-dist = [
     { name = "funlog", specifier = ">=0.2.1" },
     { name = "json5", specifier = ">=0.15.0" },
     { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "kpress", specifier = "==0.3.9" },
+    { name = "kpress", git = "https://github.com/jlevy/kpress?rev=0c0f8576f9d39312300ed6eaf1a2bed09bd05aac" },
     { name = "markdown-it-py", specifier = "==4.2.0" },
     { name = "pathspec", specifier = ">=1.1.1" },
     { name = "prettyfmt", specifier = ">=0.4.1" },

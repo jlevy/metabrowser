@@ -30,6 +30,20 @@ const hostileLinks = JSON.parse(
 const linkTree = Object.entries({ ...hostileLinks.refused, ...hostileLinks.kept }).map(
   ([name, href]) => ({ tag: "a", attrs: [["href", href]], children: [name] }),
 );
+// KPress (from jlevy/kpress#82) removes a raw `<link>` and any `<input>` that is not a
+// checkbox before the allowlist sees them, so the README no longer shows what the allowlist
+// itself does with one. The ones it carried are handed to it directly.
+const kpressRemoved = [
+  {
+    tag: "link",
+    attrs: [
+      ["rel", "stylesheet"],
+      ["href", "http://127.0.0.1:9/evil.css"],
+    ],
+    children: [],
+  },
+  { tag: "input", attrs: [["src", "https://e.x/i.png"]], children: [] },
+];
 // The fallback's span as the server's hardener writes it, and every other shape of one: the
 // page keeps the class exactly and an address for the tooltip, and nothing else of a span.
 const span = (attrs, text) => ({ tag: "span", attrs, children: [text] });
@@ -352,6 +366,7 @@ async function main() {
           ),
         ),
         links: { document: rebuilt(linkTree, null), comment: rebuilt(linkTree, pullRequest) },
+        kpressRemoved: rebuilt(kpressRemoved, null),
       },
       null,
       2,

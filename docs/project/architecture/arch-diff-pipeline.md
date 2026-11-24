@@ -290,7 +290,8 @@ Changed words are marked by a bounded word diff.
   the hidden signature.
   KPress writes the item’s and the list’s classes as token attributes, where attribute
   syntax writes its own, and the allowlist drops both, so a task list a change adds, or
-  an item that gains its box, is `source_only` until KPress marks the classes it writes.
+  an item that gains its box, is `source_only`. KPress now lists the classes it writes
+  in `meta["kpress_classes"]`, and reading them so those changes render is mb-y5uc.
 - **Footnotes:** a reference renders in place, numbered as the Document view numbers it,
   and each note is a block of its definition’s lines, a list of its own that starts at
   its number: `_footnotes_in_place` takes the place of KPress’s `footnote_tail`, which

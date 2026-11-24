@@ -849,9 +849,8 @@ def test_a_box_is_its_tokens_state_and_one_element_of_the_tally() -> None:
     ``meta["checked"]``, which the render shows; the tally that bounds the render tree
     before it is built counts the box's `input` among the elements it renders."""
 
-    # KPress 0.3.9, the pin until 0.3.10 is released, has no such token.
     from kpress.format.markdown import (  # pyright: ignore[reportPrivateUsage]
-        _TASK_CHECKBOX_TOKEN,  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
+        _TASK_CHECKBOX_TOKEN,  # pyright: ignore[reportPrivateUsage]
     )
 
     assert markdown_projection._TASK_BOX == _TASK_CHECKBOX_TOKEN  # pyright: ignore[reportPrivateUsage]
@@ -1078,9 +1077,13 @@ def test_what_kpress_drops_first_is_what_the_projection_says_it_drops() -> None:
         "open": "",
         "id": "x",
         "alt": "a",
+        "type": "checkbox",
     }
 
     def placed(tag: str, attributes: str = "") -> str:
+        # Both allowlists keep an `input` only as a checkbox, and KPress removes any other.
+        if tag == "input" and " type=" not in attributes:
+            attributes = f' type="checkbox"{attributes}'
         element = f"<{tag}{attributes}>x</{tag}>"
         if tag in {"td", "th"}:
             return f"<table><tbody><tr>{element}</tr></tbody></table>"
