@@ -288,6 +288,10 @@ Changed words are marked by a bounded word diff.
   `inert_html.py`). So a tick is a change in what the block renders, the box is one
   element of the tally that bounds the render tree, and its attributes are no part of
   the hidden signature.
+  A checkbox the document writes in raw HTML, as a README writes one in a table cell, is
+  kept in the same shape, so the raw-HTML reader (`_RawMarkup`) counts only its other
+  attributes as hidden; any other `input` it reads as an element the render drops, with
+  every attribute hidden.
   KPress writes the item’s and the list’s classes as token attributes, where attribute
   syntax writes its own, and the allowlist drops both, so a task list a change adds, or
   an item that gains its box, is `source_only`. KPress now lists the classes it writes

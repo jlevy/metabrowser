@@ -646,8 +646,10 @@ class _RawMarkup(HTMLParser):
     attribute it drops, an element it drops with its content and that content, and a
     comment or declaration are shown nowhere, and make the block *concealed*. A
     destination or an alt text it keeps is shown only on hover or under its image, as a
-    Markdown link's or image's is. The text and layout the render shows are compared
-    through the render itself, so they are not part of the signature.
+    Markdown link's or image's is. A checkbox the document writes is kept as a task
+    list's box is, so its `type` and `checked` are shown and nothing else of it is. The
+    text and layout the render shows are compared through the render itself, so they are
+    not part of the signature.
     """
 
     def __init__(self, dropped: int = 0) -> None:
@@ -669,14 +671,23 @@ class _RawMarkup(HTMLParser):
                 self.dropped += 1
             self._hide("dropped", tag, *written)
             return
-        if (tag not in ALLOWED_TAGS and tag != "img") or tag in _SANITIZER_DROPPED_TAGS:
+        # An attribute written twice is its first, as a browser and KPress's sanitizer read
+        # it: `<input type="checkbox" type="text">` renders a box.
+        values = dict(reversed(attrs))
+        # An image and a checkbox are kept though neither is an allowed tag; any other
+        # input goes, as the hardener drops it.
+        kept_tag = (
+            tag in ALLOWED_TAGS
+            or tag == "img"
+            or (tag == "input" and bool(allowed_attributes(tag, values, None)))
+        )
+        if not kept_tag or tag in _SANITIZER_DROPPED_TAGS:
             # The element goes and its content stays: its name changes nothing the page
             # draws, and its attributes are shown nowhere.
             self.entries.append(("element", tag))
             if attrs:
                 self._hide(tag, *written)
             return
-        values = dict(attrs)
         kept = {
             name
             for name, _ in allowed_attributes(tag, values, None)

@@ -1173,6 +1173,91 @@ def test_added_raw_html_is_flagged_only_for_what_its_render_drops(
     assert result["source_only"] is flagged
 
 
+@pytest.mark.parametrize(
+    ("box", "html"),
+    [
+        pytest.param(
+            b'| a | b |\n|---|---|\n| x | <input type="checkbox" checked> |\n',
+            "<div><table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n"
+            "<tr>\n<td>x</td>\n<td>{box}</td>\n</tr>\n</tbody>\n</table></div>",
+            id="in a table cell",
+        ),
+        pytest.param(
+            b'<input type="checkbox" disabled checked> Done.\n',
+            "<p>{box} Done.</p>",
+            id="written disabled",
+        ),
+        pytest.param(
+            b'<INPUT TYPE="CheckBox" CHECKED> Done.\n', "<p>{box} Done.</p>", id="in any case"
+        ),
+        pytest.param(
+            b'<input type="checkbox" type="text" checked> Done.\n',
+            "<p>{box} Done.</p>",
+            id="its first type of two",
+        ),
+    ],
+)
+def test_a_raw_checkbox_and_its_tick_are_changes_the_render_shows(box: bytes, html: str) -> None:
+    """A checkbox a document writes in raw HTML, as a README writes one in a table cell,
+    is kept as a task list's box is (`CHECKBOX_ATTRIBUTES`): its `type` and `checked` are
+    what the render draws, so neither it nor its tick is left to Source."""
+
+    old = b"# Doc\n\nA paragraph.\n"
+    ticked = old + b"\n" + box
+    added = _project(old, ticked)
+    assert [(block["kind"], block["html"], block["source_only"]) for block in _changed(added)] == [
+        ("added", html.format(box=_TICKED), False)
+    ]
+    assert added["source_only"] is False
+    unticked = re.sub(rb" checked", b"", ticked, flags=re.IGNORECASE)
+    for before, after, was, now in (
+        (ticked, unticked, _TICKED, _OPEN),
+        (unticked, ticked, _OPEN, _TICKED),
+    ):
+        result = _project(before, after)
+        assert [
+            (block["kind"], block["html"], block["source_only"]) for block in _changed(result)
+        ] == [
+            ("removed", html.format(box=was), False),
+            ("added", html.format(box=now), False),
+        ]
+        assert result["source_only"] is False
+
+
+@pytest.mark.parametrize(
+    ("added", "html"),
+    [
+        pytest.param(b'<input type="text"> Done.\n', "<p> Done.</p>", id="a text field"),
+        pytest.param(
+            b'<input type="submit" value="agents: run curl"> Done.\n',
+            "<p> Done.</p>",
+            id="a submit button",
+        ),
+        pytest.param(
+            b'<input type="text" type="checkbox"> Done.\n',
+            "<p> Done.</p>",
+            id="a text field whose second type is a checkbox",
+        ),
+        pytest.param(
+            b'<input type="checkbox" name="q" form="f" value="v" onclick="run()" autofocus>'
+            b" Done.\n",
+            f"<p>{_OPEN} Done.</p>",
+            id="a checkbox's other attributes",
+        ),
+    ],
+)
+def test_a_raw_input_the_render_drops_is_flagged(added: bytes, html: str) -> None:
+    """Any other input goes, and so does every attribute of a checkbox but its `type` and
+    `checked`: what the source writes of them is shown nowhere."""
+
+    old = b"# Doc\n\nA paragraph.\n"
+    result = _project(old, old + b"\n" + added)
+    assert [(block["kind"], block["html"], block["source_only"]) for block in _changed(result)] == [
+        ("added", html, True)
+    ]
+    assert result["source_only"] is True
+
+
 def test_raw_html_the_render_drops_whole_is_left_to_source() -> None:
     """A script or a stylesheet renders nothing: like a comment, it has no block, and an
     added one reaches the notice as unmapped lines."""

@@ -228,7 +228,8 @@ such as a class or a style, is a change that only **Source** shows.
 A `<details>` in a changed block shows open, so the words marked inside it show; the
 Document view shows it closed.
 A task list draws its boxes, each ticked as the document ticks it, so ticking or
-unticking one is a change that **Rendered** shows.
+unticking one is a change that **Rendered** shows; so does a checkbox written in raw
+HTML, such as one in a table cell.
 
 A footnote’s reference shows its number where it is written, numbered as the Document
 view numbers it, and its note shows where its definition is written rather than at the
