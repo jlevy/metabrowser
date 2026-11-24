@@ -362,8 +362,14 @@ Ready now:
   `<object>`, or `<iframe>`
 - [ ] The app (`mb-0fwu`): a pin’s copy named with the extension of its served type, and
   Open saving to Downloads where no app is assigned
+- [x] The threat model and security policy (`mb-31vb`, `mb-cvpn`):
+  [arch-threat-model.md](../../architecture/arch-threat-model.md), with each threat’s
+  policy, evidence, and accepted risk, its known gaps as beads, and SECURITY.md’s
+  summary for users. It decides the preview’s rendering rule: an untrusted source’s PDF
+  is rendered only in a sandboxed child (no network, no writes, a deadline; on macOS a
+  `sandbox-exec` profile), and where none is available its card has no image
 
-After the threat model (`mb-31vb`, `mb-cvpn`):
+After the threat model:
 
 - [ ] The embed on every file page (`mb-g427`): `object-src <origin>/raw` in the
   untrusted page policy, pinned by a policy test, the surfaces golden showing `viewer`

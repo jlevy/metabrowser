@@ -160,6 +160,9 @@ the answer is changing.
 
 ## Content Trust Model
 
+The [threat model](arch-threat-model.md) says which threat each policy below answers and
+the risk it accepts; a change to a policy names its threat there.
+
 Metabrowser serves two classes of response with different privilege.
 **Application surfaces** (the shell, static assets, every `/api` route, and plugin
 assets under `/plugin-static`) are first-party code from the installed wheel and
@@ -440,14 +443,13 @@ never offered there.
 Its Markdown renders with fenced code as plain text (`plain_code`, which the Markdown
 child sets on every inert render in `diff/markdown_projection_worker.py`): the inert
 render drops the classes highlighting writes anyway, and a lexer can cost far more than
-its input’s size (`kpress_adapter._PLAIN_CODE`). The profile here is the process’s one
-capability block, which holds while a process serves one kind of view.
-[Open Modes](arch-open-modes.md#a-revision-is-never-trusted) requires a revision’s
-profile to come from the subject a request resolved, once one server can show a trusted
-working tree and untrusted revisions.
-Plain fences do not bound the render itself; the child’s deadline does
-([Inert Markdown](#inert-markdown)), so whoever wrote a pinned Markdown file, such as a
-pull request’s author, cannot decide how long the server spends rendering it.
+its input’s size (`kpress_adapter._PLAIN_CODE`). A revision’s profile comes from the
+subject a request resolved (`capabilities.capabilities_for`), so a trusted folder’s own
+revisions are served untrusted too
+([Open Modes](arch-open-modes.md#a-revision-is-never-trusted)). Plain fences do not
+bound the render itself; the child’s deadline does ([Inert Markdown](#inert-markdown)),
+so whoever wrote a pinned Markdown file, such as a pull request’s author, cannot decide
+how long the server spends rendering it.
 
 ### Borrowed Objects
 
