@@ -383,11 +383,27 @@ After the threat model:
   pinned by the policy tests, the surfaces golden showing `viewer` on every surface, and
   the Chrome test loading it untrusted with no violation while an object at another
   address is refused
-- [ ] The preview (`mb-7tcl`): a plugin route that renders the first page with
-  `pypdfium2` in a subprocess bounded in time and memory, a `previews` area of the cache
-  root keyed by content hash, renderer version, and size, written atomically and bounded
-  by a measured size, the card in diffs and overviews and on the file page, and a golden
-  for render, reuse, a changed file, and a failed render
+- [x] The preview (`mb-7tcl`): `/api/plugin/pdf/preview` (by `path`, or a blob by `oid`)
+  and `/api/plugin/pdf/preview-image`, which render the first page with `pypdfium2` in a
+  child process bounded in time, CPU, input, and output (and address space on Linux),
+  and keep the PNG in the cache keyed by content, renderer version, and size, written
+  atomically and evicted least recently used past a measured bound.
+  Where it differs from the plan:
+  - The child runs `python -I -B render_child.py` by its path, not `-m`: importing the
+    package cost about 200 ms of every render.
+  - The area is `plugins/pdf/previews/`, inside the plugin cache directory
+    `plugin_api.plugin_cache_directory` keeps owner-only, not a new top-level area.
+  - Where the probe finds a sandbox, a trusted folder’s PDFs are rendered in it too; the
+    T7 rule decides only what happens without one (`preview_isolation.isolation_for`).
+  - The card is drawn in a diff’s binary `.pdf` change (its new side, or the old one for
+    a deletion, by blob) and as the first page behind the file page’s viewer.
+    Folder overviews have no thumbnail mechanism to draw it in, so they have none; a PDF
+    named without `.pdf` gets no diff card, since the comparison does not sniff a side;
+    and a diff’s card has no Open or Download of its own, since `/raw` serves only the
+    served tree, so the file bar’s View file reaches them.
+  - The evidence is `cli-api-pdf-preview.tryscript.md` (render, reuse, the same bytes
+    under another name, a changed file, no PDF, an unreadable one, the refusals), the
+    surfaces golden’s first-page and card lines, and `tests/test_pdf_preview*.py`.
 - [ ] Links (`mb-x0a6`): Markdown links and embeds to a PDF open its view and draw the
   card
 

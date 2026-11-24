@@ -642,8 +642,17 @@ A plugin offers helpers to others by exporting them from its `index.js`, which i
 module, as Markdown exports `mountRendered`, `renderSource`, and `drawDiagrams`,
 structured data exports `renderInlineTree` and the tree’s helpers, diff exports
 `mountFilePatch`, which draws one file’s hunks as Changes does and which GitHub’s Guided
-Review draws its excerpts with, and GitHub exports `pullStateIcon`, which the shell’s
-ref selector draws a branch’s pull request with.
+Review draws its excerpts with, GitHub exports `pullStateIcon`, which the shell’s ref
+selector draws a branch’s pull request with, and PDF exports `mountPdfCard`, which draws
+a PDF’s first page, name, and page count where a viewer does not belong, as a diff’s
+binary `.pdf` change does.
+`mountPdfCard(host, {path | oid, name, links?})` asks the PDF plugin’s
+`/api/plugin/pdf/preview` route when the card nears the viewport and shows the image it
+names, or the route’s reason when there is none; it never starts a viewer, and its
+`dispose()` stops the request and removes the card.
+The server draws the image with PDFium in a bounded child process, and for an untrusted
+source only inside an operating-system sandbox
+([T7](project/architecture/arch-threat-model.md#t7-parsing-browsed-bytes-exhausts-or-takes-over-the-server)).
 A plugin that uses them names the provider in its manifest and asks for its exports:
 
 ```toml
