@@ -209,6 +209,9 @@ large for the rendered view open in **Source**.
 
 Rendered also shows math and Mermaid diagrams as their source text, and does not
 highlight code blocks.
+So a footnote reference written inside math, which the Document view renders as math, is
+a footnote in Rendered, and the notes after it can number differently from the Document
+view’s.
 
 A Markdown file’s front matter shows as the Frontmatter disclosure the file’s Document
 view shows above it.

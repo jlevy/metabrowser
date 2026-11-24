@@ -1201,6 +1201,22 @@ def test_the_projection_replaces_kpress_own_footnote_tail() -> None:
     assert "kpress-footnotes" in parse_markdown("A[^a].\n\n[^a]: Note.\n", title="").html
 
 
+def test_a_reference_inside_math_is_a_footnote_in_rendered() -> None:
+    """Rendered shows math as its source text, so a reference written inside it is a
+    footnote there and not in the Document view, which renders math, and the notes after
+    it number differently (docs/reviewing-pull-requests.md says so)."""
+
+    from kpress.format import parse_markdown
+
+    from metabrowser.inert_html import harden
+
+    source = "Cost $x[^b] y$ then a claim[^a].\n\n[^a]: Note a.\n\n[^b]: Note b.\n"
+    blocks = [block["html"] for block in _project(None, source.encode())["blocks"]]
+    assert blocks[0] == "<p>Cost $x<sup><a>1</a></sup> y$ then a claim<sup><a>2</a></sup>.</p>"
+    document = harden(parse_markdown(source, title="", trust_mode="sanitized").html)
+    assert 'a claim<sup><a href="#user-content-fn-1">1</a></sup>' in document
+
+
 def test_notes_render_where_they_are_written() -> None:
     """A reference renders in place as the Document view numbers it, and a note is a block
     of its definition's lines: a list of its own that starts at its number, with a link
