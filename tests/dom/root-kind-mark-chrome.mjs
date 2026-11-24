@@ -286,7 +286,19 @@ async function checkCheckoutDetails() {
     await browser.evaluate(`document.querySelector(${JSON.stringify(chooser)})
       .getAttribute("aria-expanded") === "true"`),
   );
-  await click(chooser);
+  const closedWithoutFocus = await browser.evaluate(`(() => {
+    const chip = document.querySelector(${JSON.stringify(chip)});
+    const chooser = document.querySelector(${JSON.stringify(chooser)});
+    chip.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    return chooser.getAttribute("aria-expanded") === "false";
+  })()`);
+  check(
+    "pressing the chip dismisses the chooser without relying on focus transfer",
+    closedWithoutFocus,
+  );
+  await click(chip);
+  await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) !== null`, STEP_MS);
+  await click(chip);
   await browser.evaluate("delete navigator.clipboard");
   await click(TRIGGER);
 }
