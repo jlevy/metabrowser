@@ -43,7 +43,7 @@ dependencies = [
     "funlog>=0.2.1",
     "json5>=0.15.0",
     "jsonschema>=4.26.0",
-    "kpress>=0.3.10.dev0",
+    "kpress==0.3.10",
     "markdown-it-py==4.2.0",
     "pathspec>=1.1.1",
     "prettyfmt>=0.4.1",
@@ -123,16 +123,6 @@ commit-length = 7
 # took 0.05 to 0.09 s, and the rebuild it does once after each commit or tag 2.4 to
 # 3.6 s; a tag added or deleted in a worktree, where .git is a file, rebuilt it.
 cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
-
-[tool.uv.sources]
-# KPress's task-list boxes (jlevy/kpress#82) come from a commit on its branch,
-# `claude/task-list-checkboxes`, until that pull request merges and KPress releases
-# 0.3.10; then this goes and the pin returns to `==`. The owner chose this on 2026-11-24
-# for jlevy/metabrowser#771. It names the commit, not the branch: KPress deletes a branch
-# when it merges, and a branch source would also move with `uv lock --upgrade`. A release
-# of this package cannot ship while it is here: the published metadata would name a
-# KPress release without the task-list API.
-kpress = { git = "https://github.com/jlevy/kpress", rev = "0c0f8576f9d39312300ed6eaf1a2bed09bd05aac" }
 
 [tool.hatch.build]
 exclude = [
