@@ -60,6 +60,15 @@ $ node tests/dom/treemap-legend-session.js
       "docs/c.py 469x193 300 B",
       "docs/e.json 327x276 50 B"
     ],
+    "middle": [
+      "docs 120x600 5 files",
+      "docs/a.md 116x111 100 B",
+      "docs/b.md 116x111 100 B",
+      "docs/build 116x136 1 file",
+      "docs/build/d.py 112x115 300 B",
+      "docs/c.py 116x111 300 B",
+      "docs/e.json 116x111 50 B"
+    ],
     "narrow": [
       "docs 56x600 (no size)",
       "docs/a.md 52x110 100 B",

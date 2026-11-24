@@ -74,12 +74,13 @@ const MAX_BACKING_PIXELS = 4096 * 4096;
 
 /**
  * The widest a value's character draws, in ems: a cell shows its size only when the
- * whole of it fits, never cut off. Measured in headless Chrome at 1400 by 900 on
- * 2026-11-23, Source Sans 3 with tabular numerals (.tm-cell-sub, styles.css) at 8 to
- * 24 px drew sizes and counts such as "888.8 GB" and "22,222 files" at most 0.465 em a
- * character; the bound leaves room for a system fallback face, which draws wider.
+ * whole of it fits, never cut off or wrapped. Measured in headless Chrome at 1400 by
+ * 900 on 2026-11-23 with tabular numerals (.tm-cell-sub, styles.css) at 8 to 24 px,
+ * sizes and counts such as "1023.9 MB" and "22,222 files" drew at most 0.472 em a
+ * character in Source Sans 3, the app's face, and 0.61 em in system-ui, which the
+ * System Fonts setting uses on macOS, at 8 px; the bound covers both.
  */
-const VALUE_CHAR_EM = 0.55;
+const VALUE_CHAR_EM = 0.62;
 
 /** The gap before a nested folder's inline value (.tm-cell-title, styles.css). */
 const FOLDER_TITLE_GAP_PX = 6;
@@ -615,8 +616,8 @@ export function createTreemapMap(mb, palette, viewport, options) {
   }
 
   /**
-   * Whether a cell draws its label, and which lines: the thresholds the DOM
-   * cells used, unchanged.
+   * Whether a cell draws its label, and which lines: its name, a file's icon over it,
+   * and its size where the whole of it fits.
    * @param {Record<string, any>} cell
    */
   function labelPlan(cell) {

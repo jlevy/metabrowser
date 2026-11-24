@@ -314,8 +314,10 @@
   user-select: text;
 }
 
+/* A size shows whole or not at all (VALUE_CHAR_EM, treemap-map.js), on one line. */
 .tm-cell-sub {
   margin-top: 1px;
+  white-space: nowrap;
   font-size: var(--tm-value-size);
   line-height: 1.2;
   /* Keep the value subordinate without switching hue families on the

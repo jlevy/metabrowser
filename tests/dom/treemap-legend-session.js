@@ -735,7 +735,7 @@ function ownPointOf(cells, index) {
   transcript["the legend under the tally bars, at rest"] = atRest;
 
   // Each label shows a size only when the whole of it fits,
-  // at most 0.55 em a character (VALUE_CHAR_EM) inside the cell's 5 px padding. In a pane
+  // at most 0.62 em a character (VALUE_CHAR_EM) inside the cell's 5 px padding. In a pane
   // too narrow for a size, the label keeps its name and leaves the size out.
   const labelsNow = () =>
     viewport()
@@ -745,7 +745,7 @@ function ownPointOf(cells, index) {
         const sub = element.querySelector(".tm-cell-sub");
         const size = sub ? sub.textContent : null;
         assert(
-          size === null || size.length * cell.valuePx * 0.55 <= cell.w - 1 - 10,
+          size === null || size.length * cell.valuePx * 0.62 <= cell.w - 1 - 10,
           `${cell.path}'s size fits whole: ${size} in ${cell.w}`,
         );
         return `${cell.path} ${Math.round(cell.w)}x${Math.round(cell.h)} ${size ?? "(no size)"}`;
@@ -760,10 +760,26 @@ function ownPointOf(cells, index) {
       narrowLabels.some((each) => !each.endsWith("(no size)")),
     `a narrow pane leaves out the sizes that do not fit: ${JSON.stringify(narrowLabels)}`,
   );
+  // A nested folder narrower than 140 px keeps its size beside its name where the size
+  // and the smallest name fit (FOLDER_TITLE_GAP_PX), not by a fixed width.
+  viewportBox.width = 120;
+  windowListeners.get("resize")();
+  const midLabels = labelsNow();
+  const midBuild = midLabels.find((each) => each.startsWith("docs/build "));
+  assert(
+    midBuild !== undefined &&
+      /^docs\/build (\d+)x\d+ 1 file$/.test(midBuild) &&
+      Number(/ (\d+)x/.exec(midBuild)[1]) < 140,
+    `a nested folder under 140 px keeps its size: ${JSON.stringify(midLabels)}`,
+  );
   viewportBox.width = 800;
   windowListeners.get("resize")();
   assert(same(labelsNow(), wideLabels), "the pane widened again draws its labels again");
-  transcript["each label at 800 px and at 56 px wide"] = { wide: wideLabels, narrow: narrowLabels };
+  transcript["each label at 800 px and at 56 px wide"] = {
+    wide: wideLabels,
+    middle: midLabels,
+    narrow: narrowLabels,
+  };
 
   // A legend entry marks every cell of its family: the files of its type, and no nested
   // folder, whose header and frame are neutral since it holds many types (the outer box
