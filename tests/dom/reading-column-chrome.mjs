@@ -82,9 +82,14 @@ const READ = `(() => {
   const paneBox = pane.getBoundingClientRect();
   const card = live(".kpress-long-text") ?? live(".folder-overview-panel-heading");
   const toc = live(".kpress-toc");
+  // File Overview's type legend, which in the wide band is a rail beside the card as a
+  // README's table of contents is (overview.css), and inside the card below it.
+  const legend = live(".file-overview-body .file-type-summary-share");
   const code = live(".code-block");
   const column = box(card);
-  const end = toc ? box(toc).right : column?.right ?? null;
+  const end = column
+    ? Math.max(column.right, ...[toc, legend].filter(Boolean).map((each) => box(each).right))
+    : null;
   return {
     paneLeft: paneBox.left,
     contentRight: paneBox.left + pane.clientWidth,

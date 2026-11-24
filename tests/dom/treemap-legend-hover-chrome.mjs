@@ -11,9 +11,11 @@
 // Which marks an entry, a cell, or a segment names, the tooltip it shows, and when the
 // hover is put away run browserlessly in tests/dom/treemap-legend-session.js. What only a
 // browser can say is that Chrome's pointer reaches them and what they then compute to and
-// where they sit: the legend under the tally bars on its held line, the marked cells' lift
-// without growth and their shimmer under their labels, the marked bars and entry, the
-// tooltip's words, and that no layout box in the view moves.
+// where they sit: the legend under the tally bars on its held line, the marked cells'
+// pixels on the marks canvas, lifted without growth, the pointer's cell's shimmer under the
+// labels, the marked bars and entry, the tooltip's words, and that no layout box in the view
+// moves. The map paints its cells on a canvas, so its own reading, inspectTreemap
+// (treemap-map.js), names them, and the canvases' pixels say what is drawn.
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
@@ -81,8 +83,18 @@ const CENTER = (selector) => `(() => {
 })()`;
 const ENTRY = (label) =>
   `[...document.querySelectorAll(".tm-legend .file-type-summary-legend-item")].find((item) => item.querySelector(".file-type-summary-legend-label")?.textContent === ${JSON.stringify(label)})?.querySelector(".file-type-summary-legend-label")`;
-const CELL = (cellPath) =>
-  `document.querySelector(${JSON.stringify(`.tm-cell[data-tm-path="${cellPath}"]`)})`;
+// The module the view loaded, whose inspectTreemap reads the map it mounted.
+const MAP_MODULE = `performance.getEntriesByType("resource").map((e) => e.name).find((n) => n.endsWith("/treemap-map.js"))`;
+const VIEWPORT = `document.querySelector(".folder-treemap-host .tm-viewport")`;
+// The centre of a cell's rectangle, from the map's reading.
+const CELL = (cellPath) => `(async () => {
+  const { inspectTreemap } = await import(${MAP_MODULE});
+  const viewport = ${VIEWPORT};
+  const cell = inspectTreemap(viewport)?.cells.find((c) => c.path === ${JSON.stringify(cellPath)});
+  if (!cell) return null;
+  const box = viewport.getBoundingClientRect();
+  return { x: box.left + viewport.clientLeft + cell.x + cell.w / 2, y: box.top + viewport.clientTop + cell.y + cell.h / 2 };
+})()`;
 
 // What the hover draws once it has settled, after the shell's tooltip appear delay or fade
 // (TOOLTIP_APPEAR_DELAY and TOOLTIP_FADE_OUT in static/app.js, read from the page) and the
@@ -107,15 +119,54 @@ const READ = `(async () => {
   );
   const round = (value) => Math.round(value * 100) / 100;
   const host = document.querySelector(".folder-treemap-host") ?? document.body;
+  const { inspectTreemap } = await import(${MAP_MODULE});
+  const viewport = ${VIEWPORT};
+  const map = inspectTreemap(viewport);
+  const anchor = viewport.querySelector(".tm-hover-anchor");
+  const labels = viewport.querySelector(".tm-labels");
   const nameOf = (element) => {
     if (element.dataset.legendKey !== undefined) return "legend " + element.dataset.legendKey;
     if (element.dataset.segmentKey !== undefined) return element.closest("tr").querySelector("th").textContent + " " + element.dataset.segmentKey;
-    if (element.dataset.tmPath !== undefined) return "cell " + element.dataset.tmPath + " (" + element.dataset.hovered + ")";
+    if (element.dataset.tmCell !== undefined) return "cell " + map.cells[Number(element.dataset.tmCell)].path + " (" + element.dataset.hovered + ")";
     return "not a mark: " + element.className;
   };
-  const marked = [...host.querySelectorAll("[data-hovered]")];
-  const cells = [...host.querySelectorAll(".tm-cell")];
-  const colorOf = (cell) => cell.style.getPropertyValue("--mb-distribution-color-light");
+  // The bars' and the legend's marks are elements; the map's are its reading's, a cell
+  // the pointer is on marked as itself.
+  const marks = [...host.querySelectorAll("[data-hovered]")].filter((element) => element !== anchor);
+  const cellName = (i) => "cell " + map.cells[i].path + " (" + (i === map.hovered && anchor?.dataset.hovered === "self" ? "self" : "family") + ")";
+  // A cell's family is the first element of its paint style's key (treemap-map.js, cellStyleKey).
+  const familyOf = new Map(map.paint.filter((r) => r.tone === "fill").map((r) => [r.cell, JSON.parse(r.style)[0]]));
+  // What the canvases hold: the paint canvas every cell, the marks canvas the marked cells'
+  // copies. A leaf's fill centre is its own pixel; a nesting folder's is its frame's left
+  // column, where one is drawn.
+  const pixels = (canvas) => canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+  const paint = pixels(viewport.querySelector(".tm-paint"));
+  // The marks canvas shown, or, with none shown, what shows: nothing lifted. The two
+  // canvases cross-fade (styles.css, .tm-marks), and one not shown is fading out.
+  const shownMarks = viewport.querySelector(".tm-marks.tm-marks-shown");
+  const lifted = shownMarks ? pixels(shownMarks) : new ImageData(paint.width, paint.height);
+  const at = (image, x, y) => [...image.data.slice((y * image.width + x) * 4, (y * image.width + x) * 4 + 4)];
+  const ownPixel = (rect) => {
+    const cell = map.cells[rect.cell];
+    if (!cell.nested) return [rect.x + (rect.w >> 1), rect.y + (rect.h >> 1)];
+    const inner = map.paint.find((r) => r.cell === rect.cell && r.tone === "edge");
+    return inner && inner.x > rect.x ? [rect.x, rect.y + (rect.h >> 1)] : null;
+  };
+  const markedSet = new Set(map.marked);
+  const canvasReading = { liftedPixels: 0, markedLifted: true, copied: true, unmarkedClear: true, sampled: 0 };
+  for (let p = 3; p < lifted.data.length; p += 4) if (lifted.data[p] > 0) canvasReading.liftedPixels += 1;
+  for (const rect of map.paint.filter((r) => r.tone === "fill")) {
+    const own = ownPixel(rect);
+    if (!own) continue;
+    canvasReading.sampled += 1;
+    const on = at(lifted, ...own);
+    if (markedSet.has(rect.cell)) {
+      canvasReading.markedLifted &&= on[3] > 0;
+      canvasReading.copied &&= JSON.stringify(on) === JSON.stringify(at(paint, ...own));
+    } else {
+      canvasReading.unmarkedClear &&= on[3] === 0;
+    }
+  }
   const style = (element) => {
     const computed = getComputedStyle(element);
     const matrix = new DOMMatrixReadOnly(computed.transform === "none" ? undefined : computed.transform);
@@ -163,25 +214,27 @@ const READ = `(async () => {
     // while it has no entries.
     legendUnderBars: host.querySelector(".tm-totals").getBoundingClientRect().bottom <= legendRow.getBoundingClientRect().top,
     legendRowHeld: round(legendRow.getBoundingClientRect().height) === round(parseFloat(getComputedStyle(legendRow).minHeight)),
-    marked: marked.map(nameOf),
-    // Every cell painted the color of the first marked cell, the cells of one family.
-    familyCells: (() => {
-      const first = marked.find((element) => element.classList.contains("tm-cell"));
-      return first
-        ? cells
-            .filter((cell) => colorOf(cell) === colorOf(first))
-            .map((cell) => "cell " + cell.dataset.tmPath + " (family)")
-        : [];
-    })(),
-    cellStyle: marked.filter((element) => element.classList.contains("tm-cell")).map((cell) => ({
-      ...style(cell),
-      marks: cell.dataset.hovered,
-      sheenUnderLabel: getComputedStyle(cell, "::after").zIndex === "-1",
-    })),
-    cellsAtRest: cells.filter((cell) => !marked.includes(cell)).every((cell) => getComputedStyle(cell).filter === "none"),
-    barStyle: marked.filter((element) => element.classList.contains("file-type-summary-fill")).map(style),
-    barsAtRest: fills.filter((fill) => !marked.includes(fill)).every((fill) => { const s = style(fill); return s.scaleY === 1 && s.filter === "none"; }),
-    entries: marked.filter((element) => element.dataset.legendKey !== undefined).map((item) => {
+    marked: [...marks.map(nameOf), ...map.marked.map(cellName)],
+    // Every cell of the first marked cell's family, the cells of one family.
+    familyCells: map.marked.length
+      ? map.cells.flatMap((_, i) => (familyOf.get(i) === familyOf.get(map.marked[0]) ? ["cell " + map.cells[i].path + " (family)"] : []))
+      : [],
+    canvas: canvasReading,
+    // The marks canvas lifts, and does not grow.
+    lift: style(shownMarks ?? viewport.querySelector(".tm-marks")),
+    anchor: anchor
+      ? {
+          name: nameOf(anchor),
+          ...style(anchor),
+          // The sheen is the anchor's lowest layer, and the anchor lies under the labels.
+          sheenUnderLabel:
+            getComputedStyle(anchor, "::after").zIndex === "-1" &&
+            Boolean(anchor.compareDocumentPosition(labels) & Node.DOCUMENT_POSITION_FOLLOWING),
+        }
+      : null,
+    barStyle: marks.filter((element) => element.classList.contains("file-type-summary-fill")).map(style),
+    barsAtRest: fills.filter((fill) => !marks.includes(fill)).every((fill) => { const s = style(fill); return s.scaleY === 1 && s.filter === "none"; }),
+    entries: marks.filter((element) => element.dataset.legendKey !== undefined).map((item) => {
       const label = item.querySelector(".file-type-summary-legend-label");
       return {
         dotFilter: getComputedStyle(item.querySelector(".file-type-summary-legend-swatch")).filter,
@@ -195,7 +248,7 @@ const READ = `(async () => {
       }),
       animates: [...new Set(shimmers.flatMap((animation) => animation.effect.getKeyframes().flatMap((frame) => Object.keys(frame).filter((key) => !["offset", "easing", "composite", "computedOffset"].includes(key)))))],
     },
-    layout: [...host.querySelectorAll(".tm-cell, .tm-viewport, .tm-legend-row, .file-type-summary-legend-item, .folder-totals tr, .file-type-summary-track")].map(box),
+    layout: [...host.querySelectorAll(".tm-label-cell, .tm-paint, .tm-marks, .tm-viewport, .tm-legend-row, .file-type-summary-legend-item, .folder-totals tr, .file-type-summary-track")].map(box),
     tooltip: shown() ? tip.innerText.replace(/\\s+/g, " ").trim() : null,
     tooltipBelowEntry: tipBox && document.querySelector(".tm-legend .file-type-summary-legend-item:hover") ? tipBox.top >= document.querySelector(".tm-legend .file-type-summary-legend-item:hover").getBoundingClientRect().bottom : null,
   };
@@ -256,14 +309,15 @@ try {
     throw new Error(`the tab chosen during the hold was lost: ${JSON.stringify(result)}`);
   }
   await chrome.waitFor(
-    `document.querySelectorAll(".tm-legend .file-type-summary-legend-item").length > 0 && document.querySelectorAll(".tm-cell").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-ignored-row [data-segment-key]").length > 0`,
+    `document.querySelectorAll(".tm-legend .file-type-summary-legend-item").length > 0 && document.querySelectorAll(".folder-treemap-host .tm-label-cell").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-ignored-row [data-segment-key]").length > 0`,
     30000,
   );
   phase("loaded");
-  const move = async (expression) => {
-    const at = await chrome.evaluate(CENTER(expression));
+  // `where` evaluates to a point, or null.
+  const move = async (where) => {
+    const at = await chrome.evaluate(where);
     if (!at) {
-      throw new Error(`nothing to point at: ${expression}`);
+      throw new Error(`nothing to point at: ${where}`);
     }
     await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y });
   };
@@ -272,7 +326,7 @@ try {
   };
   await away();
   result.atRest = await chrome.evaluate(READ);
-  await move(ENTRY("Python"));
+  await move(CENTER(ENTRY("Python")));
   result.entry = await chrome.evaluate(READ);
   await away();
   result.left = await chrome.evaluate(READ);

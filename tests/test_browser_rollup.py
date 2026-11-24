@@ -266,7 +266,7 @@ def test_rollup_global_node_budget_on_adversarial_branching() -> None:
 
     import json
 
-    from metabrowser.settings import ROLLUP_MAX_NODES
+    from metabrowser.settings import ROLLUP_DEFAULT_NODES
 
     index = PythonInventoryStore()
     entries = SyntheticIndexWriter(index)  # synthetic index setup, test-only
@@ -304,10 +304,16 @@ def test_rollup_global_node_budget_on_adversarial_branching() -> None:
     payload_bytes = len(json.dumps(result))
     print(
         f"adversarial rollup: {total_files} files -> {emitted} nodes, "
-        f"{payload_bytes:,} bytes (cap {ROLLUP_MAX_NODES} nodes)"
+        f"{payload_bytes:,} bytes (cap {ROLLUP_DEFAULT_NODES} nodes)"
     )
-    assert emitted <= ROLLUP_MAX_NODES
-    assert payload_bytes < 400_000, f"payload {payload_bytes:,} bytes exceeds the budget"
+    assert emitted <= ROLLUP_DEFAULT_NODES
+    # A node encodes to about 215 bytes (859,061 at 4,000 here), so the body is bounded by
+    # the node cap, not by the tree: without it this tree would encode to ~8 MB. It was 180
+    # (713,316) when the first folders expanded took the budget; shared by demand
+    # (``_emit_limit``), it expands more folders, each a larger node with a ``rest``.
+    assert payload_bytes < 250 * ROLLUP_DEFAULT_NODES, (
+        f"payload {payload_bytes:,} bytes exceeds the budget"
+    )
     # Totals stay full-subtree even where emission was cut.
     assert node["total_files"] == total_files
 

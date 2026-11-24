@@ -125,13 +125,16 @@ the validator authoritative rather than advisory.
   their bodies summarize many files.
 
 `/api/rollup` tags its body with the served root, the engine version (session, sequence,
-scope fingerprint, semantic fingerprint), and the request’s shape: path, depth, and
-every ranking bound, so two clients asking for different shapes at one version never
-share a body. Three layers sit behind the tag:
+scope fingerprint, semantic fingerprint), and the request’s shape: path, depth, every
+ranking bound, the node budget, the ignored scope, and the encoding, so two clients
+asking for different shapes at one version never share a body.
+Three layers sit behind the tag:
 
 1. **`304`:** a client that already holds the answer gets `304 Not Modified`.
-2. **Retained body:** `_ROLLUP_BODY_CACHE`, bounded by `ROLLUP_BODY_CACHE_ENTRIES`,
-   serves a client that arrives without the tag, such as a second tab.
+2. **Retained body:** `_ROLLUP_BODY_CACHE`, bounded by `ROLLUP_BODY_CACHE_ENTRIES` and
+   `ROLLUP_BODY_CACHE_BYTES`, serves a client that arrives without the tag, such as a
+   second tab. The oldest bodies go first, and a body over the byte bound is not kept
+   (`tests/test_rollup_route.py::test_rollup_body_cache_evicts_by_bytes`).
 3. **Single flight:** clients that arrive together await one build in
    `_ROLLUP_IN_FLIGHT`. The build is its own task, awaited through `asyncio.shield`, so
    a client that disconnects cancels only its own wait; the build finishes for everyone
