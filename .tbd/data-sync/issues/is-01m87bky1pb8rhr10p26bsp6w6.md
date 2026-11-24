@@ -5,11 +5,11 @@ title: "A minimal built-in PDF plugin: native viewer, click-to-load in embedded 
 kind: feature
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-11-24T18:03:18.453Z
-updated_at: 2026-11-24T18:03:18.453Z
+updated_at: 2026-11-24T18:08:16.495Z
 ---
 Findings (2026-11-24 survey of origin/main d95398297):
 
@@ -30,3 +30,29 @@ Proposed design:
 3. macOS: the app has no web-to-native bridge today; it only calls NSWorkspace.open for external URLs. Add a narrow host message, "open this served path locally". The app resolves the path to a file URL under its open folder (containment checked, or the server reports the resolved path) and calls NSWorkspace to open it in the default PDF app (Preview unless the user changed it). Pinned revisions and GitHub mirrors have no working-tree file: write /raw's bytes to an app cache file first. In a plain browser, offer "Open in new tab" (top-level /raw, which works with the sandbox) and Download instead.
 4. Alternative, not recommended now: PDF.js, as GitHub does. It gives first-N-pages and thumbnails, but adds roughly 1 MB or more of on-demand assets, a supply-chain dependency, and parsing of untrusted PDFs in our origin (for example CVE-2024-4367).
 5. Parity: the kind and its metadata via metab --api with a golden. The native viewer's paint needs a named browser-only exemption. Decide a CLI equivalent for the open-locally action.
+
+## Notes
+
+Open-with-default-handler design (2026-11-24, follow-up discussion):
+
+Principle: the page asks for a web-standard action, and each host carries it out its own best way, as PagePrintRequests already does for window.print and WebViewRequests for marked GitHub links (an isolated-world click listener plus a message handler, main frame of the server origin only). No user-agent sniffing, and no "isApp" checks in plugins.
+
+Options for "Open" in a browser:
+1. A new tab to /raw: the browser's own viewer (PDF, images, media, text). It is not the OS handler.
+2. A download (same-origin <a download> or Content-Disposition: attachment). The browser's per-type policy decides what happens: Safari opens "safe" files (PDF, images) in their default app after downloading, on by default. Chrome lets the user open it from the download, or set "always open files of this type". Firefox has a per-type action setting (its own viewer, the system default, or save). Cost: a copy lands in Downloads.
+3. A file:// link: browsers block navigation from an http page to file://. Not viable.
+4. A custom URL scheme handled by the app (metabrowser://open…): works from any browser when the app is installed. Any website could fire it, so the app must confirm. Wrong machine under `metab --remote`. Not now.
+5. A server endpoint that runs `open`: it acts on the server's machine, which is the wrong machine under `metab --remote`. It also lets any page that can reach the port launch apps. Rejected.
+
+Recommended: one "Open" action, marked up once: <a href="/raw/<path>" download data-metabrowser-open-file>.
+- Browser: a download, so the browser's per-type rule decides (Safari opens PDFs in Preview by default).
+- App: an isolated-world click listener intercepts the marked link. NSWorkspace then opens the real working-tree file with its default app, with root containment and realpath checked. Pins and mirrors get a cache copy marked with com.apple.quarantine.
+- Keep "Open in new tab" as a separate view action in the browser.
+- App safety: never default-open executable or launchable types (public.executable, application bundles, scripts, .command/.terminal, installer packages, disk images, configuration profiles). Offer Reveal in Finder for those instead.
+
+When a page must know what its host can do (labels like "Open in Preview", or actions only the app has, like Reveal in Finder): the app injects a frozen host descriptor at document start, in the main frame only, listing action names. The SDK exposes it as mb.host.supports(name), and absent means a browser.
+Gating combines three independent axes:
+- Host (app or browser): client-side. Any browser can reach the app's port, so the server cannot know.
+- Subject (working tree on disk, pin, or mirror): the server's SourceCapabilities. It needs a field such as local_files.
+- Trust profile: Capabilities.
+The combining rule is a browser-owned state machine, so it needs a browserless golden.
