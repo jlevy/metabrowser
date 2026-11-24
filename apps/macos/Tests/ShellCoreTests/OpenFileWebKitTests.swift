@@ -323,6 +323,33 @@ private final class LinkWatcher: NSObject, WKNavigationDelegate {
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
     }
 
+    /// A file whose name gives no type, as a PDF named `untitled`, which `/raw` serves as
+    /// `application/pdf` by its leading bytes, is kept under the served type's extension,
+    /// and passes the type check by that name.
+    @Test func anExtensionlessCopyIsNamedByItsServedType() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let server = try LocalHTTPServer(body: pdf, contentType: "application/pdf")
+        defer { server.stop() }
+        let copy = try await copy(from: server, named: "untitled", into: directory).get()
+        #expect(copy.lastPathComponent == "untitled.pdf")
+        #expect(OpenFileTypes.type(of: copy) == .pdf)
+        #expect(FileManager.default.contents(atPath: copy.path) == pdf)
+        #expect(!FileManager.default.isWritableFile(atPath: copy.path))
+    }
+
+    /// A served type the app does not open names no copy: the copy keeps the link's name,
+    /// which gives no type, and is removed.
+    @Test func aCopyServedAsAPageKeepsItsNameAndIsRemoved() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let server = try LocalHTTPServer(body: Data("<p>hi</p>".utf8), contentType: "text/html; charset=utf-8")
+        defer { server.stop() }
+        let result = try await copy(from: server, named: "untitled", into: directory)
+        #expect(result == .failure(OpenFileFailure(name: "untitled", reason: OpenFileTypes.refusal)))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
+
     /// A copy whose type the app does not open is removed, not opened.
     @Test func aCopyOfATypeTheAppDoesNotOpenIsRemoved() async throws {
         let directory = try temporaryDirectory()

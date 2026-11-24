@@ -802,25 +802,50 @@ and never asks which host it is in.
   `Caches/<bundle identifier>/Opened/<unique>/<name>`, and the copy is quarantined as a
   web download and made read-only.
   The app sets no `LSFileQuarantineEnabled`, so it marks each copy itself.
-  Launch Services opens the file (`NSWorkspace.open`), and each launch removes copies
-  older than `OpenFileDownloads.kept`.
+  Each launch removes copies older than `OpenFileDownloads.kept`.
+- **A copy’s name.** The copy is named by the link, and by the `Content-Type` `/raw`
+  answers where the link’s name gives no type or another one (`OpenFileTypes.copyName`):
+  the name keeps its own extension when it agrees with the served type and otherwise
+  takes the served type’s after it, so a PDF named `untitled`, which `/raw` types by its
+  leading bytes, is kept as `untitled.pdf`. A served type the app does not open, or one
+  the system does not know, never renames a copy.
+  The [contract](arch-app-contract.md) declares this reading of `/raw` as the behavior
+  `raw-media-type`.
 - **Which types.** A file opens only if its type conforms to PDF, image, or audiovisual
   content and is not SVG (`OpenFileTypes`): the default handler of a script, an
   application, an installer package, a disk image, or an internet location runs or
   mounts something, and an SVG’s is often a browser, which runs its scripts.
-  A copy is checked by its name before it downloads and by the type Launch Services
-  gives it after. Any other type is refused with an alert, which offers Reveal in Finder
-  for a file on disk, and every other failure shows an alert that names the file and
-  why.
+  A copy is checked before it downloads by the link’s name, when that name gives a type
+  the system knows, and after by the type Launch Services gives the name it is kept
+  under. Any other type is refused with an alert, which offers Reveal in Finder for a
+  file on disk, and every other failure shows an alert that names the file and why.
+- **Opening, or saving to Downloads.** Launch Services opens the file
+  (`NSWorkspace.open`) when an app is assigned to its type
+  (`NSWorkspace.urlForApplication(toOpen:)`, decided in `OpenFileHandoff`). Where none
+  is, opening it would only fail, so the app saves a copy in the user’s Downloads folder
+  instead (`OpenFileSaves`), as a browser downloads what it cannot show.
+  The copy takes the file’s name, or the first free one of `name 2`, `name 3`, and so
+  on, up to `OpenFileSaves.attempts`; each is created exclusively, so no file is
+  replaced. It keeps the file’s quarantine, and its owner may write it.
+  A short alert names the copy and offers Show in Finder.
+  The copy is made off the main thread, and the first write to Downloads raises macOS’s
+  privacy prompt in the app’s name, which `NSDownloadsFolderUsageDescription` explains;
+  a refusal’s alert says where to allow it.
 - **Tests.** `OpenFileTests` cover the message’s shape, the origin check, the plan
   against a real folder (`..`, a link out of the folder, a folder, a missing file, an
-  absolute path, a repository, a pinned revision), the type policy, sealing a copy, and
-  the sweep; `OpenFileWebKitTests` cover, in a real `WKWebView`, a user’s click reaching
-  the handler with no download, a Command-click, the Download link, and a scripted click
-  left to the link, a sandboxed `/raw` document’s marked link and a message posted from
-  it refused, the handler out of the page’s reach, the descriptor frozen in the page and
-  absent from a frame, a sandboxed document, and a configuration without the handler,
-  and a copy quarantined and read-only, a server’s error, and a refused type.
+  absolute path, a repository, a pinned revision, a name that gives no type), the type
+  policy, a copy’s name from its served type (an extensionless PDF, an agreeing name, a
+  disagreeing one, an unknown type, a refused type, a name too long), sealing a copy,
+  the sweep, the handoff with and without a default app, and a save to a folder standing
+  in for Downloads (a taken name, every name taken, quarantine kept, the copy by bytes,
+  a folder it cannot write, and the privacy refusal’s wording); `OpenFileWebKitTests`
+  cover, in a real `WKWebView`, a user’s click reaching the handler with no download, a
+  Command-click, the Download link, and a scripted click left to the link, a sandboxed
+  `/raw` document’s marked link and a message posted from it refused, the handler out of
+  the page’s reach, the descriptor frozen in the page and absent from a frame, a
+  sandboxed document, and a configuration without the handler, and a copy quarantined
+  and read-only, a server’s error, a refused type, an extensionless copy named by its
+  served type, and a copy served as a page left its name and removed.
   `tests/test_macos_app_pins.py` holds the attribute, the action, and the link’s shape
   to the plugin’s.
 

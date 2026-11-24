@@ -41,12 +41,14 @@ public nonisolated enum OpenFilePlan: Equatable, Sendable {
     ///   with every symbolic link resolved, must be a regular file inside the folder's real
     ///   path, so no link in the folder opens a file outside it.
     /// - A `git_revision` path, or any path in a repository's window, which has no folder
-    ///   on disk, is downloaded from the link.
+    ///   on disk, is downloaded from the link. A name that gives no type the system knows,
+    ///   such as one with no extension, is downloaded too, and its copy is named by the
+    ///   type it is served as (`OpenFileTypes.copyName`).
     /// - A file whose type `OpenFileTypes` does not allow is refused; one on disk is
     ///   offered to Finder instead.
     public static func resolve(_ request: OpenFileRequests.Request, in root: SessionRoot) -> OpenFilePlan {
         guard case .folder(let folder) = root, request.subject == .filesystem else {
-            guard OpenFileTypes.allows(OpenFileTypes.type(named: request.name)) else {
+            guard !OpenFileTypes.refusesBeforeDownload(request.name) else {
                 return .refuse(OpenFileFailure(name: request.name, reason: OpenFileTypes.refusal))
             }
             return .downloadThenOpen(request.href, name: request.name)
@@ -106,5 +108,62 @@ public nonisolated enum OpenFileTypes {
     public static func type(named name: String) -> UTType? {
         let pathExtension = (name as NSString).pathExtension
         return pathExtension.isEmpty ? nil : UTType(filenameExtension: pathExtension)
+    }
+
+    /// `type`, or nil when the system knows nothing of it: a dynamic type is what an
+    /// extension or a media type that no app declares gives, and it conforms to nothing.
+    static func known(_ type: UTType?) -> UTType? {
+        guard let type, !type.isDynamic else { return nil }
+        return type
+    }
+
+    /// Whether a copy named `name` is refused before anything downloads: its name gives a
+    /// type the system knows, and the app does not open it. A name that gives none, with
+    /// no extension or one no app declares, is downloaded, and its copy is judged by the
+    /// name it is kept under, which the type it is served as can give (`copyName`).
+    static func refusesBeforeDownload(_ name: String) -> Bool {
+        guard let type = known(type(named: name)) else { return false }
+        return !allows(type)
+    }
+
+    /// The name a downloaded copy of `name` is kept under, given the media type the server
+    /// answered with (`Content-Type`, as `URLResponse.mimeType` reads it):
+    ///
+    /// - `name`, when the media type gives no type the system knows, such as
+    ///   `application/octet-stream` or none; when its type is one `allows` refuses, so a
+    ///   served type never names a copy a script, a page, or an application; or when the
+    ///   name agrees with it: its type conforms to the served one or the served one to
+    ///   it, as a `.m4a` does to `audio/mp4`, or its extension is one of the served
+    ///   type's, as `.mp4` is of `audio/mp4`, a type `.mp4` itself does not conform to.
+    /// - Otherwise `name` and the media type's preferred extension, so a PDF with no
+    ///   extension, which `/raw` serves as `application/pdf`, is kept as `name.pdf` and
+    ///   opens in the PDF app, and a `photo.png` served as JPEG as `photo.png.jpeg`. The
+    ///   name is cut to fit a file name (`NAME_MAX` bytes).
+    ///
+    /// The copy is checked by the name it is kept under, as every copy is
+    /// (`OpenFileDownloads`), so a served type renames a copy only to a type `allows`,
+    /// and only that check decides whether it opens.
+    public static func copyName(_ name: String, servedAs mediaType: String?) -> String {
+        guard let served = known(mediaType.flatMap { UTType(mimeType: $0) }), allows(served),
+              let pathExtension = served.preferredFilenameExtension
+        else { return name }
+        if let own = known(type(named: name)), own.conforms(to: served) || served.conforms(to: own) {
+            return name
+        }
+        let ownExtension = (name as NSString).pathExtension.lowercased()
+        if !ownExtension.isEmpty, served.tags[.filenameExtension]?.contains(ownExtension) == true {
+            return name
+        }
+        return fitted(name, "." + pathExtension)
+    }
+
+    /// `stem` and then `suffix`, with as many characters cut from the end of `stem` as a
+    /// file name of at most `NAME_MAX` bytes needs.
+    static func fitted(_ stem: String, _ suffix: String) -> String {
+        var stem = stem
+        while !stem.isEmpty, stem.utf8.count + suffix.utf8.count > Int(NAME_MAX) {
+            stem.removeLast()
+        }
+        return stem + suffix
     }
 }

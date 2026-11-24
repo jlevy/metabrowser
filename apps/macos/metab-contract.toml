@@ -356,6 +356,13 @@ pinned_by = "tests/golden/cli-ui-pdf-preview.tryscript.md"
 holds = '"data-metabrowser-open-file": "filesystem"'
 
 [[behavior]]
+id = "raw-media-type"
+source = "Sources/ShellCore/Web/OpenFileDownloads.swift"
+what = "`/raw?path=<identity>` answers with a `Content-Type` that names the file's media type: the one its name's extension gives, or, for a name that gives none, the one its leading bytes give where they name one (`content_sniff.media_type_from_prefix`: a PDF's `%PDF-`), else `application/octet-stream`. The app names an Open link's downloaded copy by it (`OpenFileTypes.copyName`), so a pinned revision's PDF named `untitled` is kept as `untitled.pdf` and opens in the Mac's PDF app. A `metab` that answers `application/octet-stream` leaves the copy its name, which the app refuses, as before."
+pinned_by = "tests/golden/cli-ui-pdf-surfaces.tryscript.md"
+holds = "pin · app · scans/untitled: note. Open → 200 application/pdf"
+
+[[behavior]]
 id = "json-framing"
 source = "Sources/ShellCore/Folders/PresentPlan.swift"
 what = "A JSON answer on stdout is one block from a line that is exactly `{` to a line that is exactly `}`, and no other line of either stream is `{`, `}`, or a whole object: the app finds the answer by those lines in the one pipe that carries both streams."
@@ -560,7 +567,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Supervision/ReadinessProbe.swift" = ["entry-page-answers"]
 "Sources/Metabrowser/FolderPage.swift" = ["own: the page a window loads, which the web view requests"]
 "Sources/Metabrowser/WebPane.swift" = ["own: a known site's pages, such as github.com's, in the web pane"]
-"Sources/ShellCore/Web/OpenFileDownloads.swift" = ["open-file-link"]
+"Sources/ShellCore/Web/OpenFileDownloads.swift" = ["open-file-link", "raw-media-type"]
 
 [files.script]
 "Sources/ShellCore/Web/PagePrint.swift" = ["own: window.print, which WebKit gives the app no public way to receive"]

@@ -8,10 +8,13 @@ import WebKit
 /// The page's own web view downloads the link (`WKWebView.startDownload`), so the request
 /// carries the page's cookies, as the server's authorization requires. Each copy goes to a
 /// folder of its own under `directory`, `<unique>/<name>`, so two copies of one name never
-/// meet and none replaces a file. A finished copy is marked as downloaded from the web
-/// (`seal`), is made read-only, since editing it would change nothing the page shows, and
-/// is checked against `OpenFileTypes` by the type Launch Services gives it, before the
-/// caller opens it. A failed copy leaves nothing behind.
+/// meet and none replaces a file. The name is the link's, with the extension of the type
+/// the server answered with where the link's name gives none or another
+/// (`OpenFileTypes.copyName`), so a PDF named `untitled` is kept as `untitled.pdf`. A
+/// finished copy is marked as downloaded from the web (`seal`), is made read-only, since
+/// editing it would change nothing the page shows, and is checked against `OpenFileTypes`
+/// by the type Launch Services gives it, by that name, before the caller opens it. A
+/// failed copy leaves nothing behind.
 ///
 /// It is the delegate only of the downloads it starts, so a link with a plain `download`
 /// attribute, which `DownloadCoordinator` answers with a save panel, never reaches it. One
@@ -52,7 +55,8 @@ public final class OpenFileDownloads: NSObject, WKDownloadDelegate {
         self.directory = directory
     }
 
-    /// Downloads `href` in `webView` to a copy named `name`, and calls `finished` once.
+    /// Downloads `href` in `webView` to a copy of `name`, named by the type it is served
+    /// as (`OpenFileTypes.copyName`), and calls `finished` once.
     public func start(_ href: URL, named name: String, in webView: WKWebView, finished: @escaping Finished) {
         let folder = directory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         do {
@@ -82,7 +86,8 @@ public final class OpenFileDownloads: NSObject, WKDownloadDelegate {
             pending[key] = entry
             return completionHandler(nil)
         }
-        let destination = entry.folder.appending(path: entry.name, directoryHint: .notDirectory)
+        let name = OpenFileTypes.copyName(entry.name, servedAs: response.mimeType)
+        let destination = entry.folder.appending(path: name, directoryHint: .notDirectory)
         entry.destination = destination
         pending[key] = entry
         completionHandler(destination)

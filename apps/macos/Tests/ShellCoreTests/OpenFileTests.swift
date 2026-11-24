@@ -215,11 +215,264 @@ import UniformTypeIdentifiers
 
     /// Its type is the name's, checked before anything downloads, with no file to reveal.
     @Test func aDownloadOfATypeTheAppDoesNotOpenIsRefusedFirst() throws {
-        for name in ["run.command", "notes", "page.html", "mark.svg"] {
+        for name in ["run.command", "page.html", "mark.svg", "notes.txt", "tool.app", "setup.pkg"] {
             let failure = refusal(OpenFilePlan.resolve(
                 try request("g1-abc", subject: .gitRevision, name: name), in: .folder(URL(filePath: "/nonexistent"))))
             #expect(failure == OpenFileFailure(name: name, reason: OpenFileTypes.refusal), "\(name)")
         }
+    }
+
+    /// A name that gives no type the system knows, with no extension or one no app
+    /// declares, cannot be judged before its bytes are served: it downloads, and its copy
+    /// is named by the type it is served as (`OpenFileTypes.copyName`).
+    @Test func aNameThatGivesNoTypeIsDownloaded() throws {
+        for name in ["untitled", "notes", "scan.v2", "a."] {
+            let pinned = try request("g1-abc", subject: .gitRevision, name: name)
+            #expect(OpenFilePlan.resolve(pinned, in: .folder(URL(filePath: "/nonexistent")))
+                == .downloadThenOpen(pinned.href, name: name), "\(name)")
+        }
+    }
+}
+
+/// The name a downloaded copy is kept under, from the link's name and the type the server
+/// answered with (`OpenFileTypes.copyName`).
+@Suite struct OpenFileCopyNameTests {
+    /// What `/raw` answers for a PDF with no extension: the type its leading bytes give.
+    @Test func anExtensionlessPDFTakesTheExtensionOfItsServedType() {
+        #expect(OpenFileTypes.copyName("untitled", servedAs: "application/pdf") == "untitled.pdf")
+        #expect(OpenFileTypes.copyName("scan", servedAs: "image/png") == "scan.png")
+        #expect(OpenFileTypes.allows(OpenFileTypes.type(named: OpenFileTypes.copyName("untitled", servedAs: "application/pdf"))))
+    }
+
+    /// A name whose type is the served one, or one conforming to it either way, as `/raw`
+    /// serves a file by its name's extension, is kept as it is.
+    @Test func aNameThatAgreesWithItsServedTypeIsKept() {
+        for (name, served) in [
+            ("a b.pdf", "application/pdf"), ("photo.JPG", "image/jpeg"), ("photo.jpeg", "image/jpeg"),
+            ("scan.tif", "image/tiff"), ("song.m4a", "audio/mp4"), ("song.wav", "audio/x-wav"),
+            ("clip.mov", "video/quicktime"), ("clip.mp4", "video/mp4"), ("clip.mp4", "audio/mp4"),
+        ] {
+            #expect(OpenFileTypes.copyName(name, servedAs: served) == name, "\(name) as \(served)")
+        }
+    }
+
+    /// A name of another type, or of one no app declares, takes the served type's extension
+    /// after its own, so Launch Services opens the copy as what it is.
+    @Test func aNameThatDisagreesTakesTheServedExtensionAfterItsOwn() {
+        #expect(OpenFileTypes.copyName("photo.png", servedAs: "image/jpeg") == "photo.png.jpeg")
+        #expect(OpenFileTypes.copyName("scan.v2", servedAs: "application/pdf") == "scan.v2.pdf")
+        #expect(OpenFileTypes.copyName("report.pdf", servedAs: "image/png") == "report.pdf.png")
+    }
+
+    /// A served type the system does not know, or that names nothing in particular,
+    /// leaves the name as it is.
+    @Test func anUnknownServedTypeKeepsTheName() {
+        for served: String? in [
+            nil, "", "application/octet-stream", "application/x-no-such-type", "audio/opus", "not a media type",
+        ] {
+            #expect(OpenFileTypes.copyName("untitled", servedAs: served) == "untitled", "\(String(describing: served))")
+            #expect(OpenFileTypes.copyName("a b.pdf", servedAs: served) == "a b.pdf", "\(String(describing: served))")
+        }
+    }
+
+    /// A served type the app does not open never names a copy: the name stays as it is,
+    /// and the copy is then refused by it, as `OpenFileDownloads` checks every copy.
+    @Test func aServedTypeTheAppDoesNotOpenNeverRenamesACopy() {
+        for served in [
+            "text/html", "image/svg+xml", "application/x-sh", "text/x-shellscript", "application/x-apple-diskimage",
+            "application/vnd.apple.installer+xml", "application/java-archive", "application/zip", "text/plain",
+            "application/x-mpegurl",
+        ] {
+            let kept = OpenFileTypes.copyName("untitled", servedAs: served)
+            #expect(kept == "untitled", "\(served)")
+            #expect(!OpenFileTypes.allows(OpenFileTypes.type(named: kept)), "\(served)")
+            // A name the app opens stays the name it opens by.
+            #expect(OpenFileTypes.copyName("photo.png", servedAs: served) == "photo.png", "\(served)")
+        }
+    }
+
+    /// The extension is never cut: the name is, to keep within a file name's bytes.
+    @Test func aLongNameIsCutToFitTheExtension() {
+        let long = String(repeating: "a", count: Int(NAME_MAX))
+        let named = OpenFileTypes.copyName(long, servedAs: "application/pdf")
+        #expect(named == String(repeating: "a", count: Int(NAME_MAX) - 4) + ".pdf")
+        // Cut by whole characters, never inside one.
+        let snow = String(repeating: "雪", count: 85)  // 255 bytes
+        let cut = OpenFileTypes.copyName(snow, servedAs: "application/pdf")
+        #expect(cut == String(repeating: "雪", count: 83) + ".pdf")
+        #expect(cut.utf8.count <= Int(NAME_MAX))
+    }
+}
+
+/// Whether a file on disk opens in its default app or is saved to Downloads, apart from
+/// Launch Services.
+@Suite struct OpenFileHandoffTests {
+    private let file = URL(filePath: "/tmp/sandbox/clip.mkv")
+
+    @Test func aFileNoAppOpensIsSavedToDownloads() {
+        #expect(OpenFileHandoff.decide(file, defaultApp: { _ in nil }) == .saveToDownloads(file))
+    }
+
+    @Test func aFileWithADefaultAppOpens() {
+        let preview = URL(filePath: "/System/Applications/Preview.app", directoryHint: .isDirectory)
+        var asked: [URL] = []
+        #expect(OpenFileHandoff.decide(file, defaultApp: { asked.append($0); return preview }) == .open(file))
+        #expect(asked == [file])
+    }
+}
+
+/// A copy saved to Downloads, against a real folder standing in for it.
+@Suite struct OpenFileSaveTests {
+    private let pdf = Data("%PDF-1.4\n%\u{E2}\u{E3}\n".utf8)
+
+    @Test func theNamesTriedAreNumberedBeforeTheExtension() {
+        #expect(OpenFileSaves.name("report.pdf", attempt: 1) == "report.pdf")
+        #expect(OpenFileSaves.name("report.pdf", attempt: 2) == "report 2.pdf")
+        #expect(OpenFileSaves.name("report.pdf", attempt: 10) == "report 10.pdf")
+        #expect(OpenFileSaves.name("scan.v2.pdf", attempt: 2) == "scan.v2 2.pdf")
+        #expect(OpenFileSaves.name("untitled", attempt: 3) == "untitled 3")
+        let long = String(repeating: "a", count: Int(NAME_MAX) - 4) + ".pdf"
+        #expect(OpenFileSaves.name(long, attempt: 12) == String(repeating: "a", count: Int(NAME_MAX) - 7) + " 12.pdf")
+    }
+
+    @Test func aSaveCopiesTheFileAndLeavesItWhereItWas() throws {
+        let folder = try temporaryDirectory()
+        let downloads = try temporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+            try? FileManager.default.removeItem(at: downloads)
+        }
+        let file = folder.appending(path: "a b.pdf")
+        try pdf.write(to: file)
+        let copy = try OpenFileSaves.save(file, into: downloads)
+        #expect(copy == downloads.appending(path: "a b.pdf"))
+        #expect(FileManager.default.contents(atPath: copy.path) == pdf)
+        #expect(FileManager.default.contents(atPath: file.path) == pdf)
+    }
+
+    /// A name already taken in Downloads is passed over, and what holds it is untouched.
+    @Test func aSaveNeverReplacesAFile() throws {
+        let folder = try temporaryDirectory()
+        let downloads = try temporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+            try? FileManager.default.removeItem(at: downloads)
+        }
+        let file = folder.appending(path: "untitled.pdf")
+        try pdf.write(to: file)
+        for taken in ["untitled.pdf", "untitled 2.pdf"] {
+            try Data(taken.utf8).write(to: downloads.appending(path: taken))
+        }
+        let copy = try OpenFileSaves.save(file, into: downloads)
+        #expect(copy.lastPathComponent == "untitled 3.pdf")
+        #expect(FileManager.default.contents(atPath: copy.path) == pdf)
+        for taken in ["untitled.pdf", "untitled 2.pdf"] {
+            #expect(FileManager.default.contents(atPath: downloads.appending(path: taken).path) == Data(taken.utf8))
+        }
+        let next = try OpenFileSaves.save(file, into: downloads)
+        #expect(next.lastPathComponent == "untitled 4.pdf")
+    }
+
+    /// Once every name it may try is taken, a save fails and writes nothing.
+    @Test func aSaveWithEveryNameTakenFails() throws {
+        let folder = try temporaryDirectory()
+        let downloads = try temporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+            try? FileManager.default.removeItem(at: downloads)
+        }
+        let file = folder.appending(path: "untitled.pdf")
+        try pdf.write(to: file)
+        for taken in ["untitled.pdf", "untitled 2.pdf"] {
+            try Data(taken.utf8).write(to: downloads.appending(path: taken))
+        }
+        #expect(throws: OpenFileFailure(
+            name: "untitled.pdf",
+            reason: "no app on this Mac opens it, and Downloads already holds a file of every name it could be saved under"
+        )) { try OpenFileSaves.save(file, into: downloads, attempts: 2) }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: downloads.path).sorted()
+            == ["untitled 2.pdf", "untitled.pdf"])
+    }
+
+    /// A pinned revision's copy stays quarantined in Downloads, and its owner may write it.
+    @Test func aSavedCopyKeepsItsQuarantineAndIsWritable() throws {
+        let folder = try temporaryDirectory()
+        let downloads = try temporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+            try? FileManager.default.removeItem(at: downloads)
+        }
+        let sealed = folder.appending(path: "untitled.pdf")
+        try pdf.write(to: sealed)
+        try OpenFileDownloads.seal(sealed)
+        let copy = try OpenFileSaves.save(sealed, into: downloads)
+        try expectQuarantinedAndWritable(copy)
+        #expect(!FileManager.default.isWritableFile(atPath: sealed.path))  // the cached copy is as it was
+    }
+
+    /// The byte-by-byte copy, for another volume, keeps the same: it creates its file
+    /// exclusively, with the source's bytes, quarantine, and mode.
+    @Test func aCopyByBytesIsExclusiveAndKeepsAttributes() throws {
+        let folder = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let sealed = folder.appending(path: "untitled.pdf")
+        try pdf.write(to: sealed)
+        try OpenFileDownloads.seal(sealed)
+        let target = folder.appending(path: "copy.pdf")
+        #expect(OpenFileSaves.copyBytes(sealed.path, to: target.path) == .placed)
+        #expect(FileManager.default.contents(atPath: target.path) == pdf)
+        let mode = try FileManager.default.attributesOfItem(atPath: target.path)[.posixPermissions] as? NSNumber
+        #expect(mode?.intValue == 0o444)
+        OpenFileSaves.ownerMayWrite(target.path)
+        try expectQuarantinedAndWritable(target)
+        // A name that is taken is left as it is.
+        #expect(OpenFileSaves.copyBytes(sealed.path, to: target.path) == .taken)
+        #expect(FileManager.default.contents(atPath: target.path) == pdf)
+        #expect(OpenFileSaves.copyBytes(folder.appending(path: "gone.pdf").path, to: folder.appending(path: "x.pdf").path)
+            == .failed(ENOENT))
+        #expect(!FileManager.default.fileExists(atPath: folder.appending(path: "x.pdf").path))
+    }
+
+    /// A Downloads folder that cannot be written fails the save with the reason.
+    @Test func aSaveThatCannotWriteSaysWhy() throws {
+        let folder = try temporaryDirectory()
+        let downloads = try temporaryDirectory()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: downloads.path)
+            try? FileManager.default.removeItem(at: folder)
+            try? FileManager.default.removeItem(at: downloads)
+        }
+        let file = folder.appending(path: "clip.mkv")
+        try pdf.write(to: file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: downloads.path)
+        #expect(throws: OpenFileFailure(
+            name: "clip.mkv", reason: "no app on this Mac opens it, and it could not be saved to Downloads (Permission denied)"
+        )) { try OpenFileSaves.save(file, into: downloads) }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: downloads.path).isEmpty)
+    }
+
+    /// macOS's privacy system refuses a write to Downloads as `EPERM`: the alert says where
+    /// to allow it, and nothing more.
+    @Test func aPrivacyRefusalSaysWhereToAllowIt() {
+        let failure = OpenFileSaves.failure("clip.mkv", EPERM)
+        #expect(failure.message == "Could not open “clip.mkv”: no app on this Mac opens it, and Metabrowser is not "
+            + "allowed to save to Downloads. Allow it in System Settings > Privacy & Security > Files & Folders.")
+        #expect(failure.reveal == nil)
+    }
+
+    @Test func theNoticeSaysWhereTheFileWentAndWhy() {
+        let saved = OpenFileSaved(copy: URL(filePath: "/tmp/sandbox/Downloads/clip 2.mkv"))
+        #expect(saved.title == "Saved “clip 2.mkv” to Downloads")
+        #expect(saved.message == "No app on this Mac opens this kind of file.")
+    }
+
+    private func expectQuarantinedAndWritable(_ file: URL) throws {
+        let quarantine = try #require(try file.resourceValues(forKeys: [.quarantinePropertiesKey]).quarantineProperties)
+        #expect(quarantine[kLSQuarantineAgentNameKey as String] as? String == "Metabrowser")
+        #expect(quarantine[kLSQuarantineTypeKey as String] as? String == kLSQuarantineTypeWebDownload as String)
+        let mode = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber
+        #expect(mode?.intValue == 0o644)
+        #expect(FileManager.default.isWritableFile(atPath: file.path))
     }
 }
 

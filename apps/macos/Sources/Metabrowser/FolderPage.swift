@@ -515,14 +515,57 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         }
     }
 
-    /// Hands `file` to Launch Services, which opens it in the app macOS assigns to its type.
+    /// Hands `file` to Launch Services, which opens it in the app macOS assigns to its type,
+    /// or, when no app is assigned to it, saves a copy in Downloads (`OpenFileHandoff`).
     private static func open(_ file: URL, named name: String, reportingIn window: NSWindow?) {
-        Task { [weak window] in
-            do {
-                _ = try await NSWorkspace.shared.open(file, configuration: NSWorkspace.OpenConfiguration())
-            } catch {
-                report(OpenFileFailure(name: name, reason: "no app opened it (\(error.localizedDescription))"), in: window)
+        switch OpenFileHandoff.decide(file, defaultApp: { NSWorkspace.shared.urlForApplication(toOpen: $0) }) {
+        case .open(let file):
+            Task { [weak window] in
+                do {
+                    _ = try await NSWorkspace.shared.open(file, configuration: NSWorkspace.OpenConfiguration())
+                } catch {
+                    report(OpenFileFailure(name: name, reason: "no app opened it (\(error.localizedDescription))"), in: window)
+                }
             }
+        case .saveToDownloads(let file):
+            saveToDownloads(file, reportingIn: window)
+        }
+    }
+
+    /// Saves a copy of `file` in Downloads (`OpenFileSaves`) and says where it went. The
+    /// copy is made off the main thread: a file on another volume is copied byte by byte,
+    /// and the first write to Downloads waits for the user to answer macOS's privacy prompt.
+    private static func saveToDownloads(_ file: URL, reportingIn window: NSWindow?) {
+        let downloads = OpenFileSaves.downloads
+        Task { [weak window] in
+            let saved = await Task.detached(priority: .userInitiated) {
+                Result { () throws(OpenFileFailure) -> URL in try OpenFileSaves.save(file, into: downloads) }
+            }.value
+            switch saved {
+            case .success(let copy): tell(OpenFileSaved(copy: copy), in: window)
+            case .failure(let failure): report(failure, in: window)
+            }
+        }
+    }
+
+    /// An alert that names the copy saved in Downloads and why the file did not open, as a
+    /// sheet on `window`, or an alert of its own once the page has no window, with Show in
+    /// Finder.
+    private static func tell(_ saved: OpenFileSaved, in window: NSWindow?) {
+        AppLog.app.info("open saved to Downloads: \(saved.copy.lastPathComponent, privacy: .public)")
+        let alert = NSAlert()
+        alert.messageText = saved.title
+        alert.informativeText = saved.message
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Show in Finder")
+        let answer: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .alertSecondButtonReturn else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([saved.copy])
+        }
+        if let window {
+            alert.beginSheetModal(for: window, completionHandler: answer)
+        } else {
+            answer(alert.runModal())
         }
     }
 

@@ -228,8 +228,12 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   In a folder, Open opens the file itself.
   For a pinned revision or a GitHub repository, which have no file on your Mac, it opens
   a read-only copy that Metabrowser downloads to its caches folder and removes at a
-  later launch. Open opens only PDFs, images, audio, and video, never a script, an app,
-  or an installer.
+  later launch; a copy of a file without an extension takes the one its type has, so a
+  PDF named `untitled` opens as `untitled.pdf`. Open opens only PDFs, images, audio, and
+  video, never a script, an app, or an installer.
+  When no app on your Mac opens that kind of file, Open saves a copy in Downloads
+  instead, under a new name if the name is taken, and offers Show in Finder; the first
+  time, macOS asks whether Metabrowser may use Downloads.
 - **Background tabs:** the tab each window shows keeps its page, and so do the three
   background tabs shown most recently, a folder open in the background counting as one.
   Any other background tab gives up its page to save memory and reloads it when shown,

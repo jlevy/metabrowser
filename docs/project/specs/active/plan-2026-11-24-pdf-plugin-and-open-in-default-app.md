@@ -360,8 +360,14 @@ Ready now:
 - [x] Claim by bytes and no viewer in a diff (`mb-d00o`): the `.pdf` rule requires
   `%PDF-`, and the surfaces session asserts a mounted diff holds no `<embed>`,
   `<object>`, or `<iframe>`
-- [ ] The app (`mb-0fwu`): a pin’s copy named with the extension of its served type, and
-  Open saving to Downloads where no app is assigned
+- [x] The app (`mb-0fwu`): a pin’s copy named with the extension of its served type, and
+  Open saving to Downloads where no app is assigned.
+  `OpenFileTypes.copyName` names the copy from `/raw`’s `Content-Type`, renaming only to
+  a type the app opens, and the copy is checked by that name; a name that gives no type
+  now downloads rather than being refused first.
+  `OpenFileHandoff` and `OpenFileSaves` save a copy in Downloads, never replacing a
+  file, where `NSWorkspace.urlForApplication(toOpen:)` names no app.
+  The contract declares the reading as `raw-media-type`.
 - [x] The threat model and security policy (`mb-31vb`, `mb-cvpn`):
   [arch-threat-model.md](../../architecture/arch-threat-model.md), with each threat’s
   policy, evidence, and accepted risk, its known gaps as beads, and SECURITY.md’s
