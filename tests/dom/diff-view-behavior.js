@@ -222,6 +222,20 @@ function check(label, condition, detail = "") {
   }
 }
 
+/**
+ * What a toolbar holds, in order: each part's class, and the choosers' end group as the list of
+ * what it holds.
+ */
+function toolbarHolds(toolbar) {
+  return (
+    toolbar?.children.map((child) =>
+      child.classList.contains("diff-toolbar-end")
+        ? child.children.map((part) => part.className)
+        : child.className,
+    ) ?? null
+  );
+}
+
 function tokenLines(source, className) {
   return source.split("\n").map((text) => [{ classes: [`hljs-${className}`], text }]);
 }
@@ -1149,6 +1163,7 @@ async function main() {
   };
   const viewPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js");
   const {
+    anchorRow,
     composeTextRuns,
     currentAbsence,
     mountDiffSummary,
@@ -1258,6 +1273,72 @@ async function main() {
       currentAbsence({ kind: "modified" }, [{ newStart: 0, newCount: 0 }]) ===
         "This file is empty now." &&
       currentAbsence({ kind: "modified" }, [{ newStart: 4, newCount: 0 }]) === null,
+  );
+  // A held patch of a file with no current version is counted as the one sentence Current
+  // draws for it, as its drawing is, and not as its hunks.
+  const emptiedPatch = {
+    hunks: [{ ...opsHunk("del", "del"), new_start: 0, new_count: 0 }],
+  };
+  check(
+    "a held deleted or emptied file counts in Current as the sentence that says why",
+    JSON.stringify(patchRowCounts(emptiedPatch, "current", { kind: "deleted" })) ===
+      JSON.stringify({ lines: 0, headers: 0, folds: 0, notices: 1 }) &&
+      JSON.stringify(patchRowCounts(emptiedPatch, "current", { kind: "modified" })) ===
+        JSON.stringify({ lines: 0, headers: 0, folds: 0, notices: 1 }) &&
+      JSON.stringify(patchRowCounts(emptiedPatch, "unified", { kind: "modified" })) ===
+        JSON.stringify({ lines: 2, headers: 1, folds: 0, notices: 0 }),
+    JSON.stringify([
+      patchRowCounts(emptiedPatch, "current", { kind: "deleted" }),
+      patchRowCounts(emptiedPatch, "current", { kind: "modified" }),
+      patchRowCounts(emptiedPatch, "unified", { kind: "modified" }),
+    ]),
+  );
+
+  // The row a Diff | Current choice keeps: rows 20 px tall from 5 px, in a pane from 100 to
+  // 700 px, so row 4 (85 to 105 px) is at its top.
+  const rowsOf = (count, kept = () => true) => {
+    const asked = [];
+    const rowAt = (index) => {
+      asked.push(index);
+      return { top: 5 + index * 20, bottom: 25 + index * 20, kept: kept(index) };
+    };
+    return { count, rowAt, asked };
+  };
+  const keep = ({ count, rowAt }) => anchorRow(count, rowAt, 100, 700);
+  check(
+    "the row at the pane's top keeps its offset, a part of it above the top",
+    JSON.stringify(keep(rowsOf(50))) === JSON.stringify({ index: 4, offset: -15 }),
+    JSON.stringify(keep(rowsOf(50))),
+  );
+  check(
+    "a row the choice leaves out gives its place to the next row it draws, on the screen",
+    JSON.stringify(keep(rowsOf(50, (index) => index !== 4 && index !== 5))) ===
+      JSON.stringify({ index: 6, offset: 25 }),
+    JSON.stringify(keep(rowsOf(50, (index) => index !== 4 && index !== 5))),
+  );
+  check(
+    "where it leaves out the rest of the screen, the last row above goes just above the top",
+    JSON.stringify(keep(rowsOf(50, (index) => index < 4 || index > 40))) ===
+      JSON.stringify({ index: 3, offset: -20 }),
+    JSON.stringify(keep(rowsOf(50, (index) => index < 4 || index > 40))),
+  );
+  check(
+    "with none above, the first row below goes to the top",
+    JSON.stringify(keep(rowsOf(50, (index) => index === 45))) ===
+      JSON.stringify({ index: 45, offset: 0 }),
+    JSON.stringify(keep(rowsOf(50, (index) => index === 45))),
+  );
+  check(
+    "a file with no row the choice draws, or no row at all, keeps its own top",
+    keep(rowsOf(50, () => false)) === null && keep(rowsOf(0)) === null,
+  );
+  const long = rowsOf(100000);
+  const longKept = keep(long);
+  check(
+    "a long file's row at the top is found by bisection, measuring few rows",
+    JSON.stringify(longKept) === JSON.stringify({ index: 4, offset: -15 }) &&
+      new Set(long.asked).size <= 20,
+    JSON.stringify({ longKept, measured: new Set(long.asked).size }),
   );
 
   // Unified syntax is progressive: complete plain text mounts before
@@ -1659,10 +1740,10 @@ async function main() {
   const showSpec = showSpecs.find((spec) => spec.key === "diff-show");
   const currentToolbar = currentHost.find("diff-toolbar")[0];
   check(
-    "the toolbar ends with Diff | Current, then Split | Unified",
-    JSON.stringify(currentToolbar.children.map((child) => child.className)) ===
-      JSON.stringify(["diff-show-control", "diff-layout-control"]),
-    JSON.stringify(currentToolbar.children.map((child) => child.className)),
+    "the toolbar ends with one group, Diff | Current, then Split | Unified",
+    JSON.stringify(toolbarHolds(currentToolbar)) ===
+      JSON.stringify([["diff-show-control", "diff-layout-control"]]),
+    JSON.stringify(toolbarHolds(currentToolbar)),
   );
   check(
     "a code file's bar holds no chooser and does not wrap",
@@ -1811,9 +1892,9 @@ async function main() {
   const docsToolbar = docsHost.find("diff-toolbar")[0];
   check(
     "a fixed layout's toolbar is drawn for Diff | Current alone",
-    JSON.stringify(docsToolbar?.children.map((child) => child.className)) ===
-      JSON.stringify(["diff-show-control"]) && docsSpecs.every((spec) => spec.key === "diff-show"),
-    JSON.stringify(docsToolbar?.children.map((child) => child.className)),
+    JSON.stringify(toolbarHolds(docsToolbar)) === JSON.stringify([["diff-show-control"]]) &&
+      docsSpecs.every((spec) => spec.key === "diff-show"),
+    JSON.stringify(toolbarHolds(docsToolbar)),
   );
   check(
     "a surface that opens on Current does so with nothing stored, reading its own preference",
@@ -2134,9 +2215,8 @@ async function main() {
   const fixedToolbar = fixedBare.find("diff-toolbar")[0];
   check(
     "a fixed layout with nothing else for the toolbar draws it for Diff | Current alone",
-    JSON.stringify(fixedToolbar?.children.map((child) => child.className) ?? null) ===
-      JSON.stringify(["diff-show-control"]),
-    JSON.stringify(fixedToolbar?.children.map((child) => child.className) ?? null),
+    JSON.stringify(toolbarHolds(fixedToolbar)) === JSON.stringify([["diff-show-control"]]),
+    JSON.stringify(toolbarHolds(fixedToolbar)),
   );
   const fixedBare2 = new FakeElement("div");
   mountDiffView(

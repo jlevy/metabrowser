@@ -20,8 +20,8 @@
 // measure its indentation.
 //
 // It also reads the chrome around the diff (`CHROME` below), on the patch and on COMMIT's
-// page, where the toolbar holds the diff's choosers after the Diff summary or the File type
-// control: that the toolbar draws no rule
+// page, where the toolbar ends with the diff's choosers' group after the Diff summary or
+// the File type control: that the toolbar draws no rule
 // and the first file card starts the cards' gap below it ("Diff Layout Control"; mb-a073),
 // and the computed weight of every run of text in the count summaries the page shows, the
 // Diff summary's header, the Files totals, and the Commits tally, so a number reads bold
@@ -171,6 +171,9 @@ const CHROME = `(() => {
   return {
     toolbar: {
       holds: [...toolbar.children].map((child) => child.classList[0]),
+      ends: [...(toolbar.querySelector(".diff-toolbar-end")?.children ?? [])].map(
+        (child) => child.classList[0],
+      ),
       rule: [style.borderBottomStyle, style.borderBottomWidth].join(" "),
       position: style.position,
       paddingBottom: style.paddingBottom,

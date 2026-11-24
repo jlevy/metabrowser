@@ -2534,13 +2534,18 @@ stronger overlay.
 
 ### Diff Toolbar
 
-The diff’s toolbar ends with its choosers for the whole diff, on one line at its right:
-`[Diff | Current] [Split | Unified]`. A pull request’s Docs tab fixes the layout, so its
-toolbar holds **Diff** | **Current** alone, at the same end.
+The diff’s toolbar ends with its choosers for the whole diff, one group on one line at
+its right: `[Diff | Current] [Split | Unified]`. A pull request’s Docs tab fixes the
+layout, so its toolbar holds **Diff** | **Current** alone, at the same end.
 Where the diff has a [File type](#diff-file-type-control) control, it leads them.
 On a commit’s page and a pull request’s Changes and Docs the toolbar holds nothing else,
 since the page draws the [Diff summary](#diff-summary) at its top; a patch’s toolbar
 leads with the summary.
+The toolbar wraps: where the choosers do not fit beside what leads them, their group
+takes the next line together, still at the right, and a File type control too wide for
+its line wraps its own parts, so nothing runs past the toolbar or scrolls sideways
+(`.diff-toolbar` in `builtin_plugins/diff/styles.css`, measured in Chrome from 1,063 to
+320 px by `tests/test_diff_current_chrome.py`).
 
 Each chooser chooses one thing, and its scope is what it chooses:
 
@@ -2555,8 +2560,10 @@ a commit’s page, and a patch open on **Diff** and share `diff.show`; Docs open
 **Current** and keeps `github.docs.show`, so a choice on one never moves the other.
 The page that mounts the diff passes its default and its preference; a stored value that
 is not a choice reads as that default.
-Choosing redraws every file, and the file at the pane’s top keeps its place on the
-screen.
+Choosing redraws every file, and the reader’s place stays on the screen: the line or
+rendered block at the pane’s top keeps where it is, or, where the choice leaves that row
+out, the next row it draws (`anchorRow` in `diff-view.js`). A file with no such row
+keeps its own top.
 
 ### Diff Layout Control
 

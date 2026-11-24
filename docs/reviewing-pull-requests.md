@@ -198,8 +198,9 @@ The diff in **Changes** and **Docs**, and on a commit’s page, has a **Diff** |
   removed ones left out, and a YAML or JSON tree without its removed entries.
 - A deleted file, and a file the change left empty, say that they have no lines to show.
 
-The choice is one for the whole diff: it switches every file, and the file at the top of
-the pane stays where it was on the screen.
+The choice is one for the whole diff: it switches every file, and what you are reading
+stays where it was on the screen, the line or block at the top of the pane, or, where
+**Current** leaves that one out, the next one it shows.
 `N` switches too. **Changes** and a commit’s page open on **Diff**, and **Docs** on
 **Current**. Metabrowser remembers your choice for **Docs** apart from the one for
 **Changes** and commits, so choosing on one tab does not change what the other opens on.

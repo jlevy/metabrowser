@@ -562,7 +562,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "tips": [],
       "preference": [],
       "toolbar": [
-        "diff-show-control"
+        "diff-toolbar-end (diff-show-control)"
       ],
       "layoutControls": 0,
       "layoutKeys": 0,
@@ -578,7 +578,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "tips": [],
       "preference": [],
       "toolbar": [
-        "diff-show-control"
+        "diff-toolbar-end (diff-show-control)"
       ],
       "layoutControls": 0,
       "layoutKeys": 0,
@@ -594,7 +594,7 @@ $ node tests/dom/diff-layout-fit-session.js
       "tips": [],
       "preference": [],
       "toolbar": [
-        "diff-show-control"
+        "diff-toolbar-end (diff-show-control)"
       ],
       "layoutControls": 0,
       "layoutKeys": 0,

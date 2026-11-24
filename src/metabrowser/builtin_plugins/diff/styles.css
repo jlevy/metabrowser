@@ -45,14 +45,27 @@
    pull request's page, where the toolbar holds the diff's choosers alone, a rule there would
    draw a second line 12 px above it. Where the toolbar leads with the Diff summary, its
    header is the tree's root, and the tree opens under it as it does at a page's top, with
-   no line between them. The toolbar is not sticky, so nothing scrolls under it. */
+   no line between them. The toolbar is not sticky, so nothing scrolls under it.
+
+   It wraps rather than run past its pane: its controls end each line, and what leads it, the
+   Diff summary, keeps the first line's start. The choosers are one group
+   (`.diff-toolbar-end`), so where they do not fit beside the File type control they take the
+   next line together, at its end. Measured in Chrome 152 at 1,063, 900, 600, 380 and 320 px
+   with each state the File type control paints (tests/dom/diff-current-chrome.mjs): nothing
+   scrolls sideways. Without the wrap, Split | Unified ran up to 200 px past the toolbar at
+   380 px (mb-dcc2). */
 .metabrowser-diff-host .diff-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
   min-height: var(--ui-row-height);
+}
+
+.metabrowser-diff-host .diff-toolbar > :not(.diff-type-control, .diff-toolbar-end) {
+  margin-inline-end: auto;
 }
 
 /* The Diff summary (diff-summary.js): a multi-file diff's header, which says what the change
@@ -192,27 +205,34 @@
 
 /* The diff's choosers end the toolbar, on one line at its right: Diff | Current
    (`renderShowControl` in diff-view.js), then Split | Unified, or Diff | Current alone
-   where the host fixes the layout, as a pull request's Docs tab does. The first of them
-   takes the toolbar's free space. */
+   where the host fixes the layout, as a pull request's Docs tab does. Where the group alone
+   is wider than the toolbar, it wraps too, each of its lines at the end, as a file bar's end
+   group does. */
+.metabrowser-diff-host .diff-toolbar-end {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
 .metabrowser-diff-host :is(.diff-show-control, .diff-layout-control) {
   flex: none;
-  margin-left: auto;
 }
 
 /* The File type filter (diff-type-filter.js) leads the choosers at the toolbar's end:
-   the menu, how many files it keeps, and Clear. */
+   the menu, how many files it keeps, and Clear. Wider than the toolbar, as its failed load's
+   notice is at 320 px, it wraps, each of its lines at the end. */
 .metabrowser-diff-host .diff-type-control {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  margin-left: auto;
-}
-
-.metabrowser-diff-host
-  :is(.diff-type-control, .diff-show-control)
-  + :is(.diff-show-control, .diff-layout-control) {
-  margin-left: 0;
+  min-width: 0;
 }
 
 .metabrowser-diff-host .diff-type-note {
