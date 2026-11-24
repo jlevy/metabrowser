@@ -44,6 +44,7 @@ work.
 | `R` | Guided Review, from guided P-*R*, a review | The Guided Review tab is shown |
 | `E` | Checks, from ch-*e*-cks | A pull request page is shown |
 | `L` | Diff layout: Split or Unified | A diff with a layout control is shown |
+| `N` | Diff or Current: what changed, or the new version alone, from curre*n*t | A diff is shown |
 | `Y` | Diff File type: which types of changed files a diff shows | A diff of more than one file is shown |
 | `1`–`9` | The numbered links and actions on this screen, in reading order | A numbered control is shown |
 

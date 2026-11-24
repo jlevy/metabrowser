@@ -1239,22 +1239,7 @@
          "."
         ]
        },
-       "\n",
-       {
-        "tag": "link",
-        "attrs": [
-         [
-          "rel",
-          "stylesheet"
-         ],
-         [
-          "href",
-          "http://127.0.0.1:9/evil.css"
-         ]
-        ],
-        "children": []
-       },
-       "\n",
+       "\n\n",
        {
         "tag": "img",
         "attrs": [
@@ -1437,18 +1422,7 @@
          "styled"
         ]
        },
-       "\n",
-       {
-        "tag": "input",
-        "attrs": [
-         [
-          "src",
-          "https://e.x/i.png"
-         ]
-        ],
-        "children": []
-       },
-       "\n",
+       "\n\n",
        {
         "tag": "p",
         "attrs": [],

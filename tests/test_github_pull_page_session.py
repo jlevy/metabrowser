@@ -515,7 +515,9 @@ def test_recording_is_what_a_served_pull_request_answers(
     # inside the review budget.
     kpress_tree = html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))
     kept = json.dumps(kpress_tree)
-    for hazard in ('"link"', '"img"', '"svg"', '"data-kpress-video-id"', '"modal-overlay"'):
+    # KPress (from jlevy/kpress#82) removes a raw `<link>` itself; tests/dom/inert-html-session.js
+    # hands one to the page's allowlist directly.
+    for hazard in ('"img"', '"svg"', '"data-kpress-video-id"', '"modal-overlay"'):
         assert hazard in kept, f"KPress alone no longer keeps {hazard}"
     assert allowlist_violations(recorded["markdown added"]["body"]["html"]) == []
     merged = recorded["merged"]["body"]["record"]["pull"]

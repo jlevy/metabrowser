@@ -8,11 +8,13 @@
 // attributes, new text, images kept only inside the served tree and otherwise turned
 // into a fallback, other tags unwrapped, and the dropped ones gone with their content. No
 // class, name, data, style, or event attribute survives, nor any SVG, MathML, media,
-// stylesheet, frame, or form, and no id the document wrote: in a document inside the
-// served tree each heading gets the anchor github.com would give it, `user-content-`
-// and the slug of its text, and a `#name` link becomes `#user-content-name`. The server
-// makes the anchors; a heading keeps the one it arrives with, which can only name that
-// namespace, so the page and the server agree whatever Unicode version each slugs by.
+// stylesheet, frame, form, or input but a disabled checkbox in the shape of a task
+// list's box, wherever the document writes one, and no id the document wrote: in a
+// document inside the served tree each heading gets the anchor github.com would give it,
+// `user-content-` and the slug of its text, and a `#name` link becomes
+// `#user-content-name`. The server makes the anchors; a heading keeps the one it
+// arrives with, which can only name that namespace, so the page and the server agree
+// whatever Unicode version each slugs by.
 //
 // `kpressProse` then sets those nodes in KPress's prose element, with the classes KPress's
 // stylesheets hang a table and a code block on. The classes are this module's, chosen by
@@ -123,10 +125,13 @@
   // The attributes each tag may keep; every value is checked by allowedAttributes,
   // except a heading's id, which is always sanitizeNodes' own anchor, an image's loading,
   // which is always lazy, its referrerpolicy, which is always no-referrer, and a span's,
-  // which only the image fallback's own shape keeps.
+  // which only the image fallback's own shape keeps. An input is kept only in the shape
+  // of a task list's box, which CHECKBOX_ATTRIBUTES writes, wherever the document writes
+  // a checkbox.
   const ALLOWED_ATTRIBUTES = Object.freeze({
     a: Object.freeze(["href", "target", "rel"]),
     img: Object.freeze(["loading", "referrerpolicy", "src", "alt", "align", "width", "height"]),
+    input: Object.freeze(["type", "disabled", "checked"]),
     span: Object.freeze(["class", "data-tip-text"]),
     ol: Object.freeze(["start"]),
     p: Object.freeze(["align"]),
@@ -142,6 +147,13 @@
     pre: Object.freeze(["lang"]),
     ...Object.fromEntries(HEADINGS.map((tag) => [tag, Object.freeze(["id", "align"])])),
   });
+  // The one shape an input keeps, a task list's box, ahead of `checked` when the
+  // document's was ticked, as inert_html.py writes it.
+  /** @type {ReadonlyArray<readonly [string, string]>} */
+  const CHECKBOX_ATTRIBUTES = Object.freeze([
+    Object.freeze(/** @type {const} */ (["type", "checkbox"])),
+    Object.freeze(/** @type {const} */ (["disabled", ""])),
+  ]);
   // The one language a block keeps, a Mermaid diagram's, as inert_html.py keeps it.
   const DIAGRAM_LANGUAGE = "mermaid";
 
@@ -345,6 +357,19 @@
   }
 
   /**
+   * Whether an input's `type` makes it a checkbox, as a browser reads one: ASCII letters
+   * in any case, and nothing around them. `toLowerCase` also folds U+212A KELVIN SIGN to
+   * `k`, which no browser's match does, as inert_html.py's `_checkbox_type` has it.
+   *
+   * @param {string | null} kind
+   * @returns {boolean}
+   */
+  function isCheckboxType(kind) {
+    const written = kind ?? "";
+    return /^[A-Za-z]+$/.test(written) && written.toLowerCase() === "checkbox";
+  }
+
+  /**
    * The attributes an allowed tag keeps, in a fixed order, each value checked.
    *
    * @param {string} tag
@@ -404,6 +429,13 @@
       }
     } else if (tag === "details" && read("open") !== null) {
       kept.push(["open", ""]);
+    } else if (tag === "input" && isCheckboxType(read("type"))) {
+      for (const [name, value] of CHECKBOX_ATTRIBUTES) {
+        kept.push([name, value]);
+      }
+      if (read("checked") !== null) {
+        kept.push(["checked", ""]);
+      }
     } else if (
       tag === "pre" &&
       ((read("lang") ?? "").toLowerCase() === DIAGRAM_LANGUAGE ||
@@ -605,6 +637,15 @@
         out.push(fallback.node);
         continue;
       }
+      if (tag === "input") {
+        // Kept only in the shape of a task list's box, wherever a checkbox is written;
+        // any other input is void, so nothing of it is left.
+        const kept = allowedAttributes("input", read, base);
+        if (kept.length > 0) {
+          out.push(element(doc, "input", kept));
+        }
+        continue;
+      }
       if (!ALLOWED_TAGS.includes(tag)) {
         out.push(...rebuild(source.childNodes, doc, base, headings, open, inLink));
         continue;
@@ -699,6 +740,7 @@
     ALLOWED_ATTRIBUTES,
     ANCHOR_PREFIX,
     ALLOWED_TAGS,
+    CHECKBOX_ATTRIBUTES,
     DIMENSIONS,
     DROPPED_WITH_CONTENT,
     IMAGE_FALLBACK_CLASS,

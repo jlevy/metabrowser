@@ -29,10 +29,13 @@
     {
       "id": "f2",
       "availability": "ready",
-      "old": null,
+      "old": {
+        "entry_type": "file",
+        "path": "docs/renamed.md"
+      },
       "new": {
         "entry_type": "file",
-        "path": "docs/tasks.md"
+        "path": "docs/renamed.md"
       }
     },
     {
@@ -219,7 +222,7 @@
       "status": "unsupported",
       "blocks": [],
       "source_only": false,
-      "reason": "task_list"
+      "reason": "no_changes"
     },
     "f3": {
       "version": "markdown-diff-v1",
@@ -235,13 +238,25 @@
         {
           "kind": "added",
           "side": "new",
+          "html": "<p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"64\"></p>",
+          "source_only": false
+        },
+        {
+          "kind": "added",
+          "side": "new",
           "html": "<h1 id=\"user-content-16979ee89c3406b5dab20e21-new-demo\">Demo</h1>",
           "source_only": false
         },
         {
           "kind": "added",
           "side": "new",
-          "html": "<p>Welcome.</p>",
+          "html": "<p>Welcome.<br>Press <kbd>Ctrl</kbd> to begin.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "added",
+          "side": "new",
+          "html": "<details open>\n<summary>More</summary>\n<p>The <strong>details</strong>.</p>\n</details>",
           "source_only": false
         }
       ],
@@ -503,6 +518,41 @@
         ]
       }
     ],
+    "<p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"64\"></p>": [
+      {
+        "tag": "p",
+        "attrs": [
+          [
+            "align",
+            "center"
+          ]
+        ],
+        "children": [
+          {
+            "tag": "img",
+            "attrs": [
+              [
+                "loading",
+                "lazy"
+              ],
+              [
+                "referrerpolicy",
+                "no-referrer"
+              ],
+              [
+                "src",
+                "https://example.com/logo.png"
+              ],
+              [
+                "width",
+                "64"
+              ]
+            ],
+            "children": []
+          }
+        ]
+      }
+    ],
     "<h1 id=\"user-content-16979ee89c3406b5dab20e21-new-demo\">Demo</h1>": [
       {
         "tag": "h1",
@@ -517,12 +567,64 @@
         ]
       }
     ],
-    "<p>Welcome.</p>": [
+    "<p>Welcome.<br>Press <kbd>Ctrl</kbd> to begin.</p>": [
       {
         "tag": "p",
         "attrs": [],
         "children": [
-          "Welcome."
+          "Welcome.",
+          {
+            "tag": "br",
+            "attrs": [],
+            "children": []
+          },
+          "Press ",
+          {
+            "tag": "kbd",
+            "attrs": [],
+            "children": [
+              "Ctrl"
+            ]
+          },
+          " to begin."
+        ]
+      }
+    ],
+    "<details open>\n<summary>More</summary>\n<p>The <strong>details</strong>.</p>\n</details>": [
+      {
+        "tag": "details",
+        "attrs": [
+          [
+            "open",
+            ""
+          ]
+        ],
+        "children": [
+          "\n",
+          {
+            "tag": "summary",
+            "attrs": [],
+            "children": [
+              "More"
+            ]
+          },
+          "\n",
+          {
+            "tag": "p",
+            "attrs": [],
+            "children": [
+              "The ",
+              {
+                "tag": "strong",
+                "attrs": [],
+                "children": [
+                  "details"
+                ]
+              },
+              "."
+            ]
+          },
+          "\n"
         ]
       }
     ],

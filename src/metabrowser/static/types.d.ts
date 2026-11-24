@@ -54,6 +54,15 @@ type MetabrowserRenderContext = {
   group?: string | null;
   unfold?: boolean;
   emptyText?: string;
+  /** Fixes the diff's layout at Unified whatever the reader's stored choice, with no layout
+   *  control and no `L`, as a pull request's Docs tab does. */
+  layout?: "unified";
+  /** What the diff's Diff | Current chooser opens on before the reader chooses on this
+   *  surface (Diff unless the host says Current), and the preference that choice is
+   *  remembered as (`diff.show` unless the host keeps its own): a pull request's Docs tab
+   *  opens on `"current"` and remembers it as `github.docs.show`. */
+  show?: "diff" | "current";
+  showPreference?: string;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
@@ -1181,6 +1190,8 @@ type MetabrowserFilterOption = {
   /** In a dropdown, the letter that chooses this row while the menu is open and has focus. */
   key?: string;
   label: string;
+  /** The chip's tooltip, its `data-tip-text` (`ChipOption` in filter-controls.js). */
+  tip?: string;
   title?: string;
   value: string;
 };
@@ -3762,6 +3773,7 @@ declare global {
     ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>>;
     ALLOWED_TAGS: readonly string[];
     ANCHOR_PREFIX: string;
+    CHECKBOX_ATTRIBUTES: ReadonlyArray<readonly [string, string]>;
     DIMENSIONS: Readonly<Record<string, readonly string[]>>;
     DROPPED_WITH_CONTENT: readonly string[];
     IMAGE_FALLBACK_CLASS: string;

@@ -129,6 +129,13 @@ For
   pull request’s Changes and a commit’s page, on every bar drawn on one line, the
   control’s baseline was the path’s, 0 px apart, at ratios of 1 and 2: the link form as
   the pages drew it, and a button of the control’s class put in its place.
+  Later on 2026-11-23 the stats and notes left the toggle for a box of their own after
+  the copy control, set at the path’s size and line height, and the control followed
+  them in the name’s group.
+  In headless Chrome, on a pull request’s Docs and Changes, the path’s, the stats’, and
+  View on branch’s text had one top and one bottom in bars 920 px wide at ratios of 1
+  and 2 and 400 px wide at 1, and the chooser ended at the bar’s end pad, on the bar’s
+  line at 920 px and on a second line at 400.
 - A mirror’s location note at the far end of the file header, centered rather than
   baseline-aligned, sits 0.25px above the path at a device pixel ratio of 1. On
   2026-11-16 and 2026-11-17, at the header’s one size, 13 px and then 14 px
@@ -489,6 +496,55 @@ checkout’s store took 2.3 to 2.5 s once, 11 merge bases 0.42 s, and each list 
 ms. A batch of heads the store lacks is one Git fetch: 39 of this repository’s pull
 request heads, fetched from GitHub into a store that borrows the checkout’s objects,
 took 0.76 s.
+
+## Diff File Bar Widths
+
+For [Diff File Bar](../../docs/design-system.md#diff-file-bar), and the tokens
+`--diff-file-actions-gap` and `--diff-file-lead-basis` in the diff plugin’s
+`styles.css`.
+
+Recorded on 2026-11-23 in headless Chrome 152 at a device pixel ratio of 1, on pull
+request 7 of `tests/github_pull_fixture.py`’s stand-in, Docs and Changes alike, after
+View on branch moved out of the end group to follow the stats (#759). With it inside the
+name’s group, which does not wrap, a bar with a Rendered | Source chooser gave the
+name’s width to View on branch, and at 159 px View on branch ran 16 px past the bar’s
+edge (review A of #759, A1). It is now a part of the bar of its own after that group,
+and every bar wraps.
+The name’s visible width in px, at the merge base, with View on branch inside the name’s
+group, and as it is now; the long path is
+`docs/project/architecture/arch-views-models-routes.md` (348 px) put into the bars’
+text, and the short ones are `docs/new.md` (82 px, with a chooser) and `src/app.txt` (66
+px, without):
+
+| Bar | Long, chooser | Short, chooser | Long, none | Short, none |
+| --- | --- | --- | --- | --- |
+| 1,063 px | 348 / 348 / 348 | 82 / 82 / 82 | 348 / 348 / 348 | 66 / 66 / 66 |
+| 499 px | 348 / 282 / 348 | 82 / 82 / 82 | 275 / 275 / 275 | 66 / 66 / 66 |
+| 399 px | 279 / 182 / 279 | 82 / 82 / 82 | 175 / 175 / 175 | 66 / 66 / 66 |
+| 299 px | 179 / 82 / 179 | 82 / 82 / 82 | 75 / 75 / 75 | 66 / 66 / 66 |
+| 199 px | 79 / 0 / 79 | 79 / 0 / 79 | 0 / 0 / 77 | 0 / 0 / 66 |
+| 159 px | 39 / 0 / 39 | 39 / 0 / 39 | 0 / 0 / 37 | 0 / 0 / 37 |
+
+With View on branch in the name’s group, it ended 16 px past a 159 px bar on every bar.
+At the merge base nothing ended past the bar, but at 159 px a bar without a chooser drew
+its stats under View on branch, and on a commit’s page under Copy path.
+Now nothing ends past the bar or covers another part at any of these widths, on Docs,
+Changes, and a commit’s page; a bar without a chooser cut its name on one line beside
+View on branch down to 299 px and moved View on branch to a second line below that.
+`--diff-file-lead-basis` is where that move happens: beside the name, the rest of the
+name’s group took 106 px with stats of `+1 −0` and 174 px with `+12,345 −12,345`, so a
+basis of 176 px keeps such stats clear of View file down to 199 px.
+A mode-change note beside `+12,345 −12,345` made it 277 px, more than the basis, and a
+bar without a chooser covered part of the group from 379 to 299 px; at 199 px and below,
+that group alone was wider than the bar, with or without a chooser.
+
+At rest the name’s text ended 28 px before the stats, a 20 px slot for Copy path with
+the group’s 4 px gap on each side, and before the space before View file the stats ended
+8 px before View on branch’s text, its 4 px pad and the bar’s gap, so the stats read
+with the action. With `--diff-file-actions-gap` at 32 px the stats end 44 px before it.
+Where the bar is short, that space gives way first: on a bar without a chooser, with the
+name cut beside View on branch, the stats ended 12 px before it, and the name was as
+wide as at the merge base.
 
 ## The Pull Request Header
 
