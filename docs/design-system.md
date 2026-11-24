@@ -4154,10 +4154,16 @@ mark on a tree or palette row, or a menu row’s leading mark.
 Never inline a pixel size at a use site.
 Where an icon reserves a column in a palette or menu row, or a file identity’s, the
 alignment box around it is `--icon-box`, one step wider than the glyph, so the mark sits
-optically centered. In a text heading, align adjacent glyphs with the visual center of
-the text. The sidebar’s folder mark and Info button share `--heading-icon-offset-y` to
-center their SVGs on the name’s capital-height band.
-Their hit targets and the heading’s line box keep their original geometry.
+optically centered. In a text heading, lay out adjacent icons on one flex centerline and
+align their ink with the visual center of the text.
+Apply any optical adjustment to the SVG inside its slot so the click target stays
+centered in the row.
+In the sidebar heading, `--heading-icon-offset-y` places the source mark on the name’s
+capital-height band.
+Info uses the source mark’s ink center as its reference.
+The folder variants have slightly different ink bounds inside their shared 24-unit SVG
+box, so `--source-mark-ink-offset-y` carries that difference to Info at the current icon
+size.
 
 A tree row’s leading slot is the glyph’s own width, `--tree-icon-slot`, which is
 `--icon-glyph`: a folder’s or a container’s chevron, a file’s type icon, a change

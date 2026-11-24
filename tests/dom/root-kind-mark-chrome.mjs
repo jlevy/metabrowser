@@ -80,6 +80,13 @@ const READ = `(() => {
     holder.innerHTML = markup.startsWith("<svg") ? markup : "<svg>" + markup + "</svg>";
     return [...holder.content.querySelectorAll("path, circle, rect")].map((each) => each.outerHTML).join("");
   };
+  const inkMiddle = (svg) => {
+    const ink = svg.getBBox();
+    const view = svg.viewBox.baseVal;
+    const box = svg.getBoundingClientRect();
+    // Map the shape into the laid-out square. Symmetric strokes keep its midpoint.
+    return box.top + ((ink.y + ink.height / 2 - view.y) * box.height) / view.height;
+  };
   const svg = mark.querySelector("svg");
   const registry = window.MetabrowserIcons;
   const given = ${JSON.stringify(glyphElements)};
@@ -101,7 +108,8 @@ const READ = `(() => {
   return {
     capMid,
     capHeight: capBox.height,
-    info: rect(document.querySelector("#root-details > button svg")),
+    infoInkMiddle: inkMiddle(document.querySelector("#root-details > button svg")),
+    markInkMiddle: inkMiddle(svg),
     kind: mark.dataset.rootKind,
     role: mark.getAttribute("role"),
     label: mark.getAttribute("aria-label"),
@@ -140,6 +148,7 @@ async function open(url) {
   await browser.waitFor(
     "window.__root_kind_page !== 'old' && document.readyState === 'complete' && " +
       "document.querySelector('#header-root-kind svg') !== null && " +
+      "document.querySelector('#root-details > button svg') !== null && " +
       "document.querySelector('#preview-pane .view-header-icon svg') !== null && " +
       "document.querySelector('.header-path') !== null",
     STEP_MS,
@@ -367,14 +376,15 @@ for (const theme of ["light", "dark"]) {
       JSON.stringify({ glyphPx: at.glyphPx, box: at.box, svg: at.svgBox }),
     );
     const markMiddle = (at.svgBox.top + at.svgBox.bottom) / 2;
-    const infoMiddle = (at.info.top + at.info.bottom) / 2;
     check(
-      `${where}: the folder and Info glyphs center on the name’s capital-height band`,
-      at.capHeight > 0 &&
-        Math.abs(markMiddle - at.capMid) <= 1 &&
-        Math.abs(infoMiddle - at.capMid) <= 1 &&
-        Math.abs(markMiddle - infoMiddle) <= 1,
-      JSON.stringify({ markMiddle, infoMiddle, capMid: at.capMid }),
+      `${where}: the source glyph centers on the name’s capital-height band`,
+      at.capHeight > 0 && Math.abs(markMiddle - at.capMid) <= 1,
+      JSON.stringify({ markMiddle, capMid: at.capMid }),
+    );
+    check(
+      `${where}: the source and Info ink share a centerline`,
+      Math.abs(at.markInkMiddle - at.infoInkMiddle) <= TOLERANCE_PX / 2,
+      JSON.stringify({ source: at.markInkMiddle, info: at.infoInkMiddle }),
     );
     check(
       `${where}: the glyph is the one the server wrote for the kind, in the muted ink`,

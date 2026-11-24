@@ -1,1 +1,2 @@
-- Align the sidebar folder and Info glyphs with the heading text.
+- Give the sidebar’s source mark and Info glyph a shared visual centerline beside the
+  heading.
