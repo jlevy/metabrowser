@@ -2210,12 +2210,11 @@ function updateRootDetailsStats() {
 }
 
 function initRootDetails() {
-  const details = /** @type {HTMLDetailsElement | null} */ (
-    document.getElementById("root-details")
-  );
-  const trigger = details?.querySelector("summary");
+  const details = document.getElementById("root-details");
+  const panel = queryHtml("#root-details-panel");
+  const trigger = details?.querySelector("button");
   const status = details?.querySelector(".root-details-status");
-  if (!details || !trigger || !status) {
+  if (!details || !panel || !trigger || !status) {
     return;
   }
   trigger.innerHTML = `<span aria-hidden="true">${ICONS.info ?? ""}</span>`;
@@ -2226,48 +2225,29 @@ function initRootDetails() {
   }
   const actions = details.querySelector(".root-details-actions");
   const revision = details.querySelector(".git-commit-revision[data-revision]");
-  document.addEventListener(
-    "pointerdown",
-    (event) => {
-      if (details.open && !event.composedPath().includes(details)) {
-        details.open = false;
-      }
-    },
-    true,
-  );
-  // Clicking the HTML preview frame blurs the window.
-  window.addEventListener("blur", () => {
-    details.open = false;
-  });
-  details.addEventListener("keydown", (event) => {
-    if (event.altKey || event.ctrlKey || event.metaKey) {
+  const tips = [document.getElementById("header-root-kind"), trigger].map((element) => ({
+    element,
+    text: element?.dataset.tipText,
+  }));
+  /** @param {boolean} open */
+  const setOpen = async (open) => {
+    if (open === !panel.hidden) {
       return;
     }
-    if (details.open && event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      details.open = false;
-      trigger.focus();
-    }
-  });
-  details.addEventListener("focusout", (event) => {
-    if (event.relatedTarget instanceof Node && !details.contains(event.relatedTarget)) {
-      details.open = false;
-    }
-  });
-  const mark = document.getElementById("header-root-kind");
-  const markTip = mark?.dataset.tipText;
-  details.addEventListener("toggle", async () => {
-    if (mark && markTip) {
-      if (details.open) {
-        mark.removeAttribute("data-tip-text");
-        hideTooltipWithin(mark);
-      } else {
-        mark.dataset.tipText = markTip;
+    panel.hidden = !open;
+    trigger.ariaExpanded = String(open);
+    for (const { element, text } of tips) {
+      if (element && text) {
+        if (open) {
+          delete element.dataset.tipText;
+          hideTooltipWithin(element);
+        } else {
+          element.dataset.tipText = text;
+        }
       }
     }
     const url = details.dataset.repositoryUrl;
-    if (!details.open) {
+    if (!open) {
       status.textContent = "";
       return;
     }
@@ -2279,7 +2259,7 @@ function initRootDetails() {
     }
     try {
       await window.MetabrowserAssets?.ensureAsset("sdk-views");
-      if (!details.open) {
+      if (panel.hidden) {
         return;
       }
       const commit = revision?.getAttribute("data-revision");
@@ -2315,7 +2295,33 @@ function initRootDetails() {
       console.warn("Could not load repository link actions", error);
       status.textContent = "Repository link actions are unavailable.";
     }
+  };
+  /** @param {Event} event */
+  const outside = (event) => {
+    if (!event.composedPath().includes(details)) {
+      void setOpen(false);
+    }
+  };
+  document.addEventListener("pointerdown", outside, true);
+  document.addEventListener("click", outside, true);
+  window.addEventListener("blur", () => void setOpen(false));
+  details.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    if (!panel.hidden && event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      void setOpen(false);
+      trigger.focus();
+    }
   });
+  details.addEventListener("focusout", (event) => {
+    if (event.relatedTarget instanceof Node && !details.contains(event.relatedTarget)) {
+      void setOpen(false);
+    }
+  });
+  trigger.addEventListener("click", () => void setOpen(Boolean(panel.hidden)));
 }
 
 // Lookup table from "page-more" sentinel id to the deferred slice.
@@ -3462,6 +3468,11 @@ function tipComparable(text) {
  * @param {HTMLElement} anchor
  */
 function tipAnchorIsCut(anchor) {
+  // Ref names ellipsize horizontally. Font ink can extend below the compact line.
+  const label = anchor.querySelector(":scope.git-ref > .git-ref-label");
+  if (label) {
+    return label.scrollWidth > label.clientWidth;
+  }
   var boxes = [anchor, ...anchor.querySelectorAll("*")];
   return boxes.some(
     (box) =>
@@ -10110,10 +10121,10 @@ function startNavCollapse() {
     container: container,
     focusFallback: () => document.getElementById("preview-pane"),
     frame: frame,
-    // A filter's menu and the branch chooser close, as hiding the Files panel closes them.
+    // Close the hidden pane’s menus.
     onHide: () => {
       closeFilterMenu();
-      document.getElementById("root-details")?.removeAttribute("open");
+      queryHtml(".root-details-trigger[aria-expanded=true]")?.click();
       window.MetabrowserSourceRefSelector?.mounted()?.close();
     },
     pane: pane,

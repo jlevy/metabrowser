@@ -148,12 +148,13 @@ def test_markdown_uses_the_kpress_toc_only_when_the_document_has_one(
     )
     assert rules[f"{layout} > .thumbnail"]["grid-area"] == "thumbnail"
     table = rules[f'{document} .kpress-table-wrap[data-kpress-table-scale="wide"]']
+    assert rules[f".preview-pane > {layout} > .kpress-long-text > .kpress-table-wrap"] == table
     assert table["width"] == "max-content"
     assert table["min-width"] == "100%"
     assert (
         " ".join(table["max-width"].split())
         == "calc( 100cqw - 2 * (var(--content-padding-x) + var(--kpress-column-inset)) -"
-        " var(--reading-inset, 0px) )"
+        " var(--reading-inset, 0px) - var(--markdown-table-toc-space, 0px) )"
     )
 
 
@@ -173,7 +174,8 @@ def test_embedded_readme_keeps_wide_tables_inside_the_panel() -> None:
     assert rules[embedded]["max-width"] == "100%"
     with_toc = (
         ".metabrowser-markdown-document > .kpress-doc "
-        '> .kpress-doc-layout:has(> .kpress-toc) .kpress-table-wrap[data-kpress-table-scale="wide"]'
+        "> .kpress-doc-layout:where(:has(> .kpress-toc)) "
+        '.kpress-table-wrap[data-kpress-table-scale="wide"]'
     )
     assert rules[with_toc]["max-width"] == "100%"
 

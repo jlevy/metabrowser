@@ -695,6 +695,10 @@ const MEASURE = `async (name, change, tab, width) => {
     paneScrolls: pane.scrollWidth > pane.clientWidth,
     // Each label chip's computed colors and box, and the neutral chip's tokens in this
     // theme: --muted and --border, read from a probe that is painted with them.
+    branchChipHeights: [...header.querySelectorAll(".merge-refs .git-ref")].map(
+      (chip) => box(chip).height,
+    ),
+    statusBadgeHeight: badge ? box(badge).height : null,
     labels: [...header.querySelectorAll(".github-pull-label")].map((chip) => {
       const style = getComputedStyle(chip);
       return {
@@ -709,6 +713,7 @@ const MEASURE = `async (name, change, tab, width) => {
           style.fontSize, style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft,
           style.borderTopWidth, style.borderTopLeftRadius, Math.round(box(chip).height * 100) / 100,
         ].join(" "),
+        height: box(chip).height,
         left: Math.round(box(chip).left * 100) / 100,
         width: Math.round(box(chip).width * 100) / 100,
       };
@@ -2650,6 +2655,19 @@ async function main() {
             JSON.stringify(shape.labels.map((chip) => chip.name)) ===
               JSON.stringify(LABEL_CASES.map((label) => label.name)),
             JSON.stringify(shape.labels),
+          );
+          const chipHeight = shape.branchChipHeights[0];
+          check(
+            theme + ": branch chips and labels have the same outer height, below the state badge",
+            shape.branchChipHeights.length === 2 &&
+              shape.branchChipHeights.every((height) => height === chipHeight) &&
+              shape.labels.every((chip) => chip.height === chipHeight) &&
+              shape.statusBadgeHeight > chipHeight,
+            JSON.stringify({
+              branches: shape.branchChipHeights,
+              labels: shape.labels.map((chip) => chip.height),
+              badge: shape.statusBadgeHeight,
+            }),
           );
           const neutralBox = shape.labels.find((chip) => chip.name === "no color")?.box;
           for (const chip of shape.labels) {
