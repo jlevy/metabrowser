@@ -137,7 +137,13 @@ _NATIVE_ATTRIBUTES = {
     "th_open": frozenset({"style"}),
     "td_open": frozenset({"style"}),
 }
-_COMMENT = re.compile(r"<!--(?:(?!-->).)*-->", re.DOTALL)
+# A comment as HTML5, and so the sanitizer's parser, reads one: `<!-->` and `<!--->` are
+# whole empty comments, and any other ends at its first `-->` or `--!>`. MarkdownIt reads
+# `--!>`, and a block's opening `<!-->`, as comment text, so a token it calls a comment can
+# end early in the sanitizer and render the rest as raw HTML, which a thread must refuse
+# (_is_raw). `test_a_comment_is_one_only_where_the_sanitizer_ends_it` checks the pattern
+# against the sanitizer.
+_COMMENT = re.compile(r"<!---?>|<!--(?!-?>)(?:(?!--!?>).)*-->", re.DOTALL)
 # A fence info string that is exactly one of these names says nothing the page hides:
 # an alias of a lexer Pygments ships, which the Document view highlights by that name, a
 # language KPress draws as a diagram, or a common single word too short to carry an
@@ -454,8 +460,10 @@ class _Limits:
     nh3 alone took 1,281 MB and 40 s on 47,988 bytes (5 million rebuilt), and a side of
     48 KiB of ``<``, the slowest input inside every budget without raw HTML, took 3.1 to
     7.2 s with 75 MB in the same runs. Markdown with no raw HTML renders balanced
-    elements, which the parser rebuilds none of, so for it the budgets above are the
-    bound. A side that holds raw HTML is refused on a thread with a budget's refusal,
+    elements, which the parser rebuilds none of, and a comment renders nothing, so for
+    them the budgets above are the bound. A comment that the parser ends before
+    MarkdownIt's token does renders the rest, so it is raw HTML here (``_COMMENT``).
+    A side that holds raw HTML is refused on a thread with a budget's refusal,
     which names no cause, so the server asks the child for the pair (``past_a_thread``
     in ``markdown_projection_worker.py``). The child, as when it renders the same file
     for the Document view, is bounded by its deadline in time only: stopped 10 s after
@@ -856,7 +864,8 @@ def _is_comment(token: Token) -> bool:
 
 
 def _is_raw(token: Token) -> bool:
-    """Raw HTML that renders, as opposed to a comment."""
+    """Raw HTML that renders, as opposed to a comment the sanitizer ends where its token
+    ends (_COMMENT)."""
 
     if token.type == "html_inline":
         return not _COMMENT.fullmatch(token.content.strip())
