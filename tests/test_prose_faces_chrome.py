@@ -52,9 +52,10 @@ SERVER_START_TIMEOUT_S = 20
 SERVER_TERM_S = 5
 SERVER_KILL_S = 2
 # The rendered diff's test: the stand-in's server, which fetches its mirror from the
-# origin's file before it serves, and a session of 8 pull request pages. On a Mac at a load
-# average near 300 on 10 cores the session took 37 s, a cold Chrome start among it, and
-# each page from 0.9 to 4.2 s (its stderr names each page's time).
+# origin's file before it serves, and a session of 8 pull request pages. On a Mac with 10
+# cores the whole test took 15.0 s at a load average near 210; at one near 300, with two
+# other Chrome sessions running, the session alone took 37 s, a cold Chrome start among
+# it, and each page from 0.9 to 4.2 s (its stderr names each page's time).
 DIFF_RUN_BUDGET_S = 120
 DIFF_SERVER_START_TIMEOUT_S = 40
 # The longest either test can take; tests/test_process_group.py holds it under the
