@@ -584,19 +584,19 @@ def test_a_switch_without_a_view_answers_no_href(served: TestClient) -> None:
 
 def test_a_mirror_pin_shell_has_the_selector_loaded_on_demand(served: TestClient) -> None:
     shell = served.get("/view/").text
-    # Its button is drawn in the Files toolbar's row, naming the served ref, so nothing
-    # moves when the module mounts; the module fills the rest.
+    # First paint reserves a branch chip and a separate chooser above the usual filters.
     assert (
-        '<div class="nav-filter-bar-main nav-toolbar-row">'
+        '<div class="nav-files-ref" id="nav-files-ref">'
         '<div class="source-ref-selector" id="source-ref-selector">'
         '<span class="source-ref-selector-button">'
-        '<button type="button" class="chip chip-menu-trigger source-ref-selector-toggle'
-        ' disclosure-toggle" aria-haspopup="dialog" aria-expanded="false"'
-        ' data-tip-text="Switch branch or tag">'
-        '<span class="source-ref-selector-label">topic</span>'
-        '<span class="chip-menu-caret" aria-hidden="true"></span></button></span></div>'
-        '<span class="count tally-pending"></span></div>'
+        '<span class="source-ref-selector-label"><span class="git-ref git-ref-remote">'
+        '<span class="git-ref-label">topic</span></span></span>'
+        '<button type="button" class="icon-btn source-ref-selector-toggle disclosure-toggle"'
+        ' aria-label="Switch branch or tag" aria-haspopup="dialog" aria-expanded="false"'
+        ' data-tip-text="Switch branch or tag"></button></span></div></div>'
     ) in shell
+    assert shell.index('class="tab-bar nav-tab-bar"') < shell.index('id="nav-files-ref"')
+    assert shell.index('id="nav-files-ref"') < shell.index('id="nav-filter-bar"')
     bundles = shell[shell.index("window.METABROWSER_ASSET_BUNDLES=") :]
     bundles = bundles[: bundles.index("</script>")]
     assert '"source-ref-selector": [{"src": "/static/source-ref-selector.js' in bundles

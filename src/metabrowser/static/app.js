@@ -2225,7 +2225,6 @@ function initRootDetails() {
     location.textContent = mirrorLocation;
   }
   const actions = details.querySelector(".root-details-actions");
-  const branch = details.querySelector(".root-details-branch");
   const revision = details.querySelector(".git-commit-revision[data-revision]");
   document.addEventListener(
     "pointerdown",
@@ -2282,16 +2281,6 @@ function initRootDetails() {
       await window.MetabrowserAssets?.ensureAsset("sdk-views");
       if (!details.open) {
         return;
-      }
-      if (branch?.textContent && !branch.firstElementChild) {
-        const name = branch.textContent;
-        branch.replaceChildren(
-          window.metabrowser.refChip(name, {
-            ref: `refs/heads/${name}`,
-            head: true,
-            trunk: branch.hasAttribute("data-trunk"),
-          }),
-        );
       }
       const commit = revision?.getAttribute("data-revision");
       if (revision && commit) {
@@ -4882,7 +4871,10 @@ function attachMainTabs() {
     window.MetabrowserMainTabs?.create({
       cancelPreview: cancelMainTabPreview,
       filesShown: resumeRootSummaryRefresh,
-      filesHidden: closeFilterMenu,
+      filesHidden: () => {
+        closeFilterMenu();
+        window.MetabrowserSourceRefSelector?.mounted()?.close();
+      },
       flushPull: () => pullPageHost?.page()?.flush?.(),
       // Read when called: the tree controller is created after the main tabs.
       focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,
@@ -5936,16 +5928,7 @@ function renderNavFilterBar() {
   // so a key, a pick, or a tally refresh never drops it on the page (docs/design-system.md,
   // "Keys in a Menu").
   var restoreFocus = fc.keepFocus(bar);
-  // A page with the branch and tag chooser ships it leading the row, and its module owns
-  // it: it is carried over, not drawn (static/source-ref-selector.js#keepAcrossRefills).
-  var chooser = document.getElementById("source-ref-selector");
-  // The module puts back the scroll a moment's rebuild took (`keepScroll` there).
-  var keepScroll = chooser && window.MetabrowserSourceRefSelector?.mounted()?.holdScroll();
   bar.innerHTML = main + drawer;
-  if (chooser) {
-    bar.firstElementChild?.prepend(chooser);
-    keepScroll?.();
-  }
   // An open menu is sized to its rows and the window now that it has geometry, before
   // the frame paints it.
   fc.fitOpenMenus(bar);

@@ -179,16 +179,20 @@ const INFO_ICON = `(() => {
 })()`;
 
 async function checkCheckoutDetails() {
-  const chip = "#root-details .root-details-branch button";
+  const chip = "#nav-files-ref .git-ref-action";
+  const chooser = "#nav-files-ref .source-ref-selector-toggle";
   const revisionCopy = "#root-details .git-commit-revision-copy";
-  const menu = "#root-details > [data-ref-action-menu]";
+  const menu = "[data-ref-action-menu]";
+  await browser.waitFor(`document.querySelector(${JSON.stringify(chip)}) !== null`, STEP_MS);
   const state = await browser.evaluate(`(() => {
     const chip = document.querySelector(${JSON.stringify(chip)});
     const id = document.querySelector("#root-details .git-commit-sha");
     const copy = document.querySelector(${JSON.stringify(revisionCopy)});
     const { branch, revision } = window.METABROWSER_REPOSITORY_CONTEXT;
     return {
-      chip: chip.matches(".git-ref-local.git-ref-head"),
+      chip: chip.matches(".git-ref-local") && chip.textContent === branch,
+      working: chip.getAttribute("aria-label")?.endsWith(" · Working tree"),
+      hasDuplicate: document.querySelector("#root-details [data-ref-menu]") !== null,
       branch, revision,
       text: id.textContent,
       shortRevision: window.metabrowser.shortCommit(revision),
@@ -198,8 +202,10 @@ async function checkCheckoutDetails() {
     };
   })()`);
   check(
-    "checkout details show the shared local branch chip and short monospace commit",
+    "folder details retain the short monospace commit, and the branch names the Files source",
     state.chip &&
+      state.working &&
+      !state.hasDuplicate &&
       state.text === state.shortRevision &&
       state.font.includes("monospace") &&
       state.ariaLabel === "Copy revision" &&
@@ -212,13 +218,15 @@ async function checkCheckoutDetails() {
     pane.style.width = "180px";
     const chip = document.querySelector(${JSON.stringify(chip)});
     const label = chip.querySelector(".git-ref-label");
-    const panel = chip.closest(".root-details-panel");
-    const fits = chip.getBoundingClientRect().right <= panel.getBoundingClientRect().right;
+    const toggle = document.querySelector(${JSON.stringify(chooser)});
+    const toggleRect = toggle.getBoundingClientRect();
+    const fits = chip.getBoundingClientRect().right < toggleRect.left &&
+      toggleRect.right <= chip.closest("#nav-files-ref").getBoundingClientRect().right;
     const clipped = label.scrollWidth > label.clientWidth;
     pane.style.width = width;
     return fits && clipped;
   })()`);
-  check("a long branch stays inside the narrow folder details", narrow);
+  check("the branch truncates before the chooser in a narrow sidebar", narrow);
   await hover("#root-details .git-commit-sha");
   await browser.waitFor(
     `getComputedStyle(document.querySelector(${JSON.stringify(revisionCopy)})).opacity === "1"`,
@@ -234,20 +242,20 @@ async function checkCheckoutDetails() {
     (await browser.evaluate("window.rootDetailsClipboard")) === state.revision &&
       (await browser.evaluate(MENU_OPEN)),
   );
+  await click(TRIGGER);
   await click(chip);
   await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) !== null`, STEP_MS);
   const menuState = await browser.evaluate(`(() => {
-    const root = document.getElementById("root-details");
     const menu = document.querySelector(${JSON.stringify(menu)});
     return {
-      open: root.open && menu.contains(document.activeElement),
+      open: menu.contains(document.activeElement),
       label: menu.getAttribute("aria-label"),
       labels: [...menu.querySelectorAll(".menu-item")].map(item => item.textContent),
       url: menu.querySelector("a")?.href,
     };
   })()`);
   check(
-    "the nested branch menu has its context, focus, and shared actions",
+    "the selected branch menu has its context, focus, and shared actions",
     menuState.open &&
       menuState.label === `Local branch ${state.branch}` &&
       menuState.labels.join("|") === "Copy Branch Name|View This Branch|Open on GitHub" &&
@@ -256,34 +264,29 @@ async function checkCheckoutDetails() {
   );
   await click(`${menu} button`);
   check(
-    "copying the branch from the nested menu keeps the root details open",
+    "the branch menu copies its full name and stays open",
     (await browser.evaluate("window.rootDetailsClipboard")) === state.branch &&
-      (await browser.evaluate(MENU_OPEN)),
+      (await browser.evaluate(
+        `document.querySelector(${JSON.stringify(menu)})?.contains(document.activeElement)`,
+      )),
   );
   const escaped = await browser.evaluate(`(() => {
     document.activeElement.dispatchEvent(new KeyboardEvent("keydown", {
       key: "Escape", bubbles: true, cancelable: true,
     }));
-    return ${MENU_OPEN} && document.activeElement.matches(${JSON.stringify(chip)}) &&
+    return document.activeElement.matches(${JSON.stringify(chip)}) &&
       document.querySelector(${JSON.stringify(menu)}) === null;
   })()`);
-  check("the first Escape closes only the branch menu and restores chip focus", escaped);
+  check("Escape closes the branch menu and restores chip focus", escaped);
   await click(chip);
-  await click(chip);
-  check(
-    "clicking the same branch chip closes only its menu",
-    await browser.evaluate(
-      `${MENU_OPEN} && document.querySelector(${JSON.stringify(menu)}) === null`,
-    ),
-  );
-  await click(chip);
-  await click(TRIGGER);
+  await click(chooser);
   await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) === null`, STEP_MS);
   check(
-    "closing folder details clears the nested menu and its expanded state",
-    await browser.evaluate(`!(${MENU_OPEN}) &&
-      document.querySelector(${JSON.stringify(chip)}).getAttribute("aria-expanded") === "false"`),
+    "the adjacent chevron opens the chooser separately from the branch menu",
+    await browser.evaluate(`document.querySelector(${JSON.stringify(chooser)})
+      .getAttribute("aria-expanded") === "true"`),
   );
+  await click(chooser);
   await browser.evaluate("delete navigator.clipboard");
   await click(TRIGGER);
 }

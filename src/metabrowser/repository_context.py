@@ -80,6 +80,15 @@ def discover_repository_context(served_root: Path) -> RepositoryContext | None:
     )
 
 
+def checked_out_branch(root: Path) -> str | None:
+    """Read the checkout's current committed branch without running Git."""
+    git_dir = resolve_git_dir(root)
+    if git_dir is None:
+        return None
+    head = _read_head(git_dir, resolve_common_dir(git_dir))
+    return head[0] if head else None
+
+
 def is_checkout_root(root: Path) -> bool:
     """Whether *root* holds a ``.git`` entry: the cheap test that it is a checkout's root.
 
@@ -165,7 +174,11 @@ def _read_head(git_dir: Path, common_dir: Path) -> tuple[str | None, str] | None
         return None, value
     if not value.startswith("ref: refs/heads/"):
         return None
+    from metabrowser.cache.resolve import is_valid_ref_name
+
     reference = value.removeprefix("ref: ")
+    if not is_valid_ref_name(reference):
+        return None
     branch = reference.removeprefix("refs/heads/")
     revision = _read_reference(git_dir, common_dir, reference)
     if revision is None:
