@@ -1414,6 +1414,7 @@ what `.field` owns.
 Compact chips share `--compact-chip-padding-inline` and `--radius-tag`. A bordered chip
 fits its line inside the shared height.
 The tag notch has extra leading room.
+A ref chip shows its full name in a tooltip when its label is cut off horizontally.
 
 ### Badges
 

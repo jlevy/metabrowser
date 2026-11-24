@@ -3462,6 +3462,11 @@ function tipComparable(text) {
  * @param {HTMLElement} anchor
  */
 function tipAnchorIsCut(anchor) {
+  // Ref names ellipsize horizontally. Font ink can extend below the compact line.
+  const label = anchor.querySelector(":scope.git-ref > .git-ref-label");
+  if (label) {
+    return label.scrollWidth > label.clientWidth;
+  }
   var boxes = [anchor, ...anchor.querySelectorAll("*")];
   return boxes.some(
     (box) =>
