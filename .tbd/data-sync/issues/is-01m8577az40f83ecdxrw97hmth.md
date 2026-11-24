@@ -3,9 +3,9 @@ type: is
 id: is-01m8577az40f83ecdxrw97hmth
 title: "Review PR #766 (Rendered shows every diff the Document view renders) with review-github-pr and address its findings"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 21
+version: 23
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 refs:
   - kind: pr
@@ -35,8 +35,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-23T22:08:02.530Z
-updated_at: 2026-11-24T00:48:33.077Z
+updated_at: 2026-11-24T01:10:25.351Z
 started_at: 2026-11-23T22:10:11.293Z
+closed_at: 2026-11-24T01:10:25.349Z
+close_reason: "Review A of PR #766 addressed: every finding has a disposition in https://github.com/jlevy/metabrowser/pull/766#issuecomment-7118822652 at head 4bc0c18b2, CI green (run 45299956083). Deferred and still open: mb-p39s (A3), mb-5b1w (A12), mb-zrng (child memory follow-up)."
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes
@@ -57,3 +61,5 @@ Addressed by the fix sub-agent, pushed at 4bc0c18b262735cb8034cfaf92e6599301d27e
 - A1 (mb-mvzo): thread path fixed in 1398903ac (a thread refuses raw HTML with a no-reason budget refusal; the child projects it). Left open: the coordinator's further ask, capping the child's memory, is escalated (mb-zrng P1; KPress kpr-mgc0).
 - deferred: A3 mb-p39s (the coordinator links the native stack); A12 mb-5b1w (KPress kpr-gtv7; CommonMark and GitHub keep the text, KPress drops it).
 - Disposition reply drafted (attic/review-a-reply.txt in the fix worktree), not posted: it waits on the A1 escalation.
+
+Escalation decided by the coordinator: the A1 child memory cap is option 1, an RSS watchdog with a cost refusal, in a stacked follow-up under mb-zrng (P1); kpr-mgc0 is the long-term fix. mb-mvzo closed as fixed. The CI attempt-1 setup-uv timeout is mb-0sl8. Disposition reply posted at head 4bc0c18b2 (CI run 45299956083 green, attempt 2): https://github.com/jlevy/metabrowser/pull/766#issuecomment-7118822652
