@@ -73,13 +73,15 @@ const UNREADABLE = {
  *   holding: boolean, tree: {dispose: () => void, setCurrent: (next: boolean) => void} | null,
  *   retryAt: number, retries: number,
  *   folds: Map<string, () => void>,
- *   removed: HTMLElement[], gone: boolean,
+ *   removed: HTMLElement[], gone: boolean, emptied: boolean,
  *   state: "idle" | "ready" | "unavailable", reason: string
  * }} FileView
  *   *reason* is why Rendered is unavailable, a sentence, while *state* says it is.
  *   *removed* is what a Markdown file's Rendered draws that Current leaves out: its removed
  *   blocks and front matter keys (`removedParts`). *gone* is a deleted file, which has no
- *   current version: in Current it shows its Source body, which says so. */
+ *   current version: in Current it shows its Source body, which says so. *emptied* is a file
+ *   whose Rendered is all removed, a file left empty: Current has nothing of it to draw, so it
+ *   shows its Source body too, which says it is empty now (`currentAbsence` in diff-view.js). */
 
 /**
  * The format a changed file renders as, when both its sides are files of one rendered
@@ -602,11 +604,11 @@ export function createMarkdownViews(deps) {
     }
   }
 
-  // Whether a file is to show its Rendered: chosen, unless it was deleted and the diff
-  // shows its current version, which a deleted file's Source body says it has none of.
+  // Whether a file is to show its Rendered: chosen, unless it was deleted or left empty and
+  // the diff shows its current version, which such a file's Source body says it has none of.
   /** @param {FileView} file */
   function wantsRendered(file) {
-    return file.mode === "rendered" && !(current && file.gone);
+    return file.mode === "rendered" && !(current && (file.gone || file.emptied));
   }
 
   /** @param {FileView} file */
@@ -790,6 +792,9 @@ export function createMarkdownViews(deps) {
             sourceOnly: projection.source_only,
             current,
           });
+          file.emptied =
+            projection.root.length > 0 &&
+            projection.root.every((entry) => entry.change === "removed");
           file.state = "ready";
           file.pending = false;
           file.retries = 0;
@@ -835,11 +840,15 @@ export function createMarkdownViews(deps) {
         deps.unfold === true,
       );
       const removed = removedParts(content);
+      const emptied =
+        content.children.length > 0 &&
+        [...content.children].every((row) => row.classList.contains("diff-markdown-removed"));
       settled = true;
       deps.mutate(() => {
         file.rendered.replaceChildren(content);
         file.folds = folds;
         file.removed = removed;
+        file.emptied = emptied;
         applyShow(file);
         file.state = "ready";
         file.pending = false;
@@ -954,6 +963,7 @@ export function createMarkdownViews(deps) {
         folds: new Map(),
         removed: [],
         gone: gone === true,
+        emptied: false,
         state: unavailable === undefined ? "idle" : "unavailable",
         reason: unavailable ?? "",
       };
