@@ -1,0 +1,1 @@
+- Center text vertically inside GitHub label chips.

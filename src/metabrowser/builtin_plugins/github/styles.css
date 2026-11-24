@@ -481,15 +481,20 @@
   overflow: hidden;
 }
 /* A name the pull request carries, not a filter: the tag corner, not a chip's pill. A label
-   without a color GitHub gave is this neutral chip. */
+   without a color GitHub gave is this neutral chip. Center its capital band as for a file
+   header badge. The line height fills the inner box on engines without text-box. */
 .github-pull-label {
+  display: inline-block;
   flex: none;
+  block-size: var(--compact-chip-height);
   padding: 0 var(--compact-chip-padding-inline);
   border: var(--chip-border) solid var(--border);
   border-radius: var(--radius-tag);
   color: var(--muted);
   font-size: var(--ui-small-font-size);
   line-height: calc(var(--compact-chip-height) - 2 * var(--chip-border));
+  align-content: center;
+  text-box: trim-both cap alphabetic;
 }
 /* A label GitHub gave a color is painted as github.com paints it, in our chip's box: the
    formula of github.com's own label stylesheets (its global .hx_IssueLabel and Primer
