@@ -224,6 +224,13 @@ async function run() {
   const { mountPullPage, FAST_POLL_MS, SLOW_POLL_MS, TIMELINE_RETRY_MS } = await import(
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
   );
+  // The session's timers fire only when it says, so its clock moves only when it says too.
+  // A held timeline read sets its wait's end by the clock and then arms what is left of it,
+  // so on the wall clock a millisecond that turned between those two reads armed 59,999 ms
+  // for the server's 60 s, and an exact wait failed to match (mb-eaia).
+  const realNow = Date.now;
+  let now = realNow();
+  Date.now = () => now;
   const commit = {
     kind: "commit",
     oid: firstCommit,
@@ -613,83 +620,69 @@ async function run() {
   // wait, not for the whole of it again (review B3 of #737: the minute started again, so
   // a page whose own asks kept coming waited longer each time).
   {
-    const wallClock = Date.now;
-    let now = wallClock();
-    Date.now = () => now;
-    try {
-      const paints = mount(mountPullPage, fixture());
-      await paints.handle.ready;
-      await settle();
-      paints.handle.activate();
-      paints.frame();
-      paints.frame();
-      const refused = paints.timelines[0];
-      refused.answer("unavailable", [], firstRevision, true, 60);
-      await settle();
-      assert.ok(paints.hasTimer(60_000), "the page waits as long as the server said");
-      now += 20_000;
-      // The page's automatic refresh ask, left on its way.
-      paints.timer(0);
-      await settle();
-      // Its poll answers while that ask is on its way, and the page paints.
-      paints.timer(SLOW_POLL_MS);
-      await settle();
-      paints.frame();
-      await settle();
-      assert.equal(paints.hasTimer(60_000), false, "a refresh ask on its way holds the read");
-      now += 5_000;
-      paints.acknowledgeRefresh();
-      await settle();
-      paints.frame();
-      await settle();
-      assert.equal(paints.hasTimer(60_000), false, "the wait does not start again");
-      assert.ok(paints.hasTimer(35_000), "the page waits what is left of it");
-      assert.equal(paints.timelines.length, 1);
-      paints.timer(35_000);
-      assert.equal(paints.timelines.length, 2);
-      assert.deepEqual(paints.timelines[1].request, refused.request);
-      paints.timelines[1].answer("complete", [commit]);
-      await settle();
-      assert.ok(paints.body().querySelector(".github-pull-commit"));
-      paints.handle.dispose();
-    } finally {
-      Date.now = wallClock;
-    }
+    const paints = mount(mountPullPage, fixture());
+    await paints.handle.ready;
+    await settle();
+    paints.handle.activate();
+    paints.frame();
+    paints.frame();
+    const refused = paints.timelines[0];
+    refused.answer("unavailable", [], firstRevision, true, 60);
+    await settle();
+    assert.ok(paints.hasTimer(60_000), "the page waits as long as the server said");
+    now += 20_000;
+    // The page's automatic refresh ask, left on its way.
+    paints.timer(0);
+    await settle();
+    // Its poll answers while that ask is on its way, and the page paints.
+    paints.timer(SLOW_POLL_MS);
+    await settle();
+    paints.frame();
+    await settle();
+    assert.equal(paints.hasTimer(60_000), false, "a refresh ask on its way holds the read");
+    now += 5_000;
+    paints.acknowledgeRefresh();
+    await settle();
+    paints.frame();
+    await settle();
+    assert.equal(paints.hasTimer(60_000), false, "the wait does not start again");
+    assert.ok(paints.hasTimer(35_000), "the page waits what is left of it");
+    assert.equal(paints.timelines.length, 1);
+    paints.timer(35_000);
+    assert.equal(paints.timelines.length, 2);
+    assert.deepEqual(paints.timelines[1].request, refused.request);
+    paints.timelines[1].answer("complete", [commit]);
+    await settle();
+    assert.ok(paints.body().querySelector(".github-pull-commit"));
+    paints.handle.dispose();
   }
   // The end is wall-clock time, so a clock that steps back while the page waits would
   // lengthen what is left by the step: the page waits no more than the server asked
   // (review D4 of #737).
   {
-    const wallClock = Date.now;
-    let now = wallClock();
-    Date.now = () => now;
-    try {
-      const stepped = mount(mountPullPage, fixture());
-      await stepped.handle.ready;
-      await settle();
-      stepped.handle.activate();
-      stepped.frame();
-      stepped.frame();
-      stepped.timelines[0].answer("unavailable", [], firstRevision, true, 60);
-      await settle();
-      assert.ok(stepped.hasTimer(60_000));
-      now -= 30_000;
-      stepped.timer(0);
-      await settle();
-      stepped.timer(SLOW_POLL_MS);
-      await settle();
-      stepped.frame();
-      await settle();
-      stepped.acknowledgeRefresh();
-      await settle();
-      stepped.frame();
-      await settle();
-      assert.equal(stepped.hasTimer(90_000), false, "the step does not lengthen the wait");
-      assert.ok(stepped.hasTimer(60_000), "the page waits what the server asked, no more");
-      stepped.handle.dispose();
-    } finally {
-      Date.now = wallClock;
-    }
+    const stepped = mount(mountPullPage, fixture());
+    await stepped.handle.ready;
+    await settle();
+    stepped.handle.activate();
+    stepped.frame();
+    stepped.frame();
+    stepped.timelines[0].answer("unavailable", [], firstRevision, true, 60);
+    await settle();
+    assert.ok(stepped.hasTimer(60_000));
+    now -= 30_000;
+    stepped.timer(0);
+    await settle();
+    stepped.timer(SLOW_POLL_MS);
+    await settle();
+    stepped.frame();
+    await settle();
+    stepped.acknowledgeRefresh();
+    await settle();
+    stepped.frame();
+    await settle();
+    assert.equal(stepped.hasTimer(90_000), false, "the step does not lengthen the wait");
+    assert.ok(stepped.hasTimer(60_000), "the page waits what the server asked, no more");
+    stepped.handle.dispose();
   }
 
   // Every review's heading is its author, "reviewed", and its age, and a chip after the age
@@ -754,6 +747,7 @@ async function run() {
     "review/15": "maintainer reviewed (pending)",
   });
   states.handle.dispose();
+  Date.now = realNow;
   return {
     interleaved: interleaved.slice(0, 8),
     appended: appended.slice(original.length),
