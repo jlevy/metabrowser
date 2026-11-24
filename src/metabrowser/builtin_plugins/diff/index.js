@@ -8,7 +8,7 @@
 //                      conformance corpus vouches for.
 
 import { validateDocument, validateManifest } from "./diff-model.js";
-import { mountDiffSummary, mountDiffView, setChangeLoader } from "./diff-view.js";
+import { mountDiffSummary, mountDiffView, mountFilePatch, setChangeLoader } from "./diff-view.js";
 
 const mb = window.metabrowser;
 if (!mb) {
@@ -866,3 +866,7 @@ mb.registerView("diff", "diff", {
     return pinSwitch.switchTo(selection, wanted);
   },
 });
+
+// What a plugin that requires this one gets from `mb.plugins.load("diff")`: one file's hunks
+// drawn as Changes draws them, for a page that shows part of a change in its own place.
+export { mountFilePatch };
