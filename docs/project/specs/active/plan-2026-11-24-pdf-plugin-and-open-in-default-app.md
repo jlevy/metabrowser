@@ -6,7 +6,9 @@
 
 **Status:** Phase 1 implemented (bead `mb-df0r`, with `mb-ns7s` for the plugin and SDK,
 `mb-hwyo` for the app’s bridge, and `mb-klkl` for verification).
-[Open Questions](#open-questions) lists the owner’s decisions.
+Phase 2 planned: the owner’s decisions of 2026-11-24 are in
+[Decisions for Phase 2](#decisions-for-phase-2), and its two policy changes wait for the
+threat model (`mb-31vb`).
 
 ## Overview
 
@@ -26,8 +28,8 @@ The page never asks which host it is in.
 
 - A `pdf` kind and a Preview view, entirely inside `builtin_plugins/pdf/`, that render a
   PDF with the host’s native viewer and leave `/raw`’s sandbox as it is.
-- A PDF never loads inside another view unasked: the file’s own view mounts the viewer
-  directly, and any embedded context gets a card with a Show preview button.
+- A PDF never loads inside another view: the file’s own view mounts the viewer, and any
+  other context gets a card, with a preview image from Phase 2.
 - One Open action per PDF that opens it in its default app in the macOS app and follows
   the browser’s download rule in a browser.
 - A host bridge in the macOS app that opens a marked link’s file with its default
@@ -44,15 +46,18 @@ The page never asks which host it is in.
   application’s origin, where PDF.js has had script execution (CVE-2024-4367). The
   native viewer needs none of that.
   Revisit only if a page-bounded preview inside other views is wanted.
-- **Page counts and thumbnails.** Both need a PDF parser or a platform tool (`sips`,
-  `qlmanage`, `pdftoppm`); the card shows the name and size.
+- **Page counts and thumbnails in Phase 1.** Both need a PDF parser or a platform tool
+  (`sips`, `qlmanage`, `pdftoppm`); Phase 1’s card shows the name and size, and Phase 2
+  adds a server-rendered preview.
 - **A generic action registry.** Per-file actions belong to the action menu of the
   [menu primitives plan](plan-2026-08-06-menu-primitives-and-file-actions.md) (Phase 1,
   `mb-ojvf`), which is not built.
   The plugin draws its own controls inside its view until then.
 - **Opening a file from a browser in a native app.** No web API launches a native
   handler; see [Options Considered](#options-considered).
-- **Changing `/raw`.** Its sandbox, cache rules, and content types stay as they are.
+- **Changing `/raw`’s sandbox or cache rules.** Its content type changed once: a file
+  whose name gives no type takes one from its leading bytes, so an extensionless PDF is
+  not downloaded.
 
 ## Background
 
@@ -283,10 +288,46 @@ Each is an action name the app adds to `actions` and a handler it installs; the 
 asks `mb.host.supports(name)`. A feature that needs the subject or the profile reads
 them as above, so no feature needs to know which host it is in.
 
+## Decisions for Phase 2
+
+The owner decided these on 2026-11-24, after Phase 1 was served on a GitHub repository
+and its pull request showed a PDF as a binary file’s line and a note.
+
+- **Embed only on the file page, on every source.** The file’s own page shows the
+  browser’s viewer for a trusted folder, an `--untrusted` folder, and a pin alike, which
+  needs the untrusted page policy to admit `object-src <origin>/raw` (Open Question 1).
+  Seeing more is worth it there.
+  No other surface embeds a viewer: a diff, a Markdown page, or an overview that holds a
+  PDF must not grow heavy because of it.
+- **A preview everywhere else.** A small image of the first page, rendered on the server
+  and kept in the cache keyed by a hash of the PDF’s bytes, so it is idempotent, shared
+  by every source holding the same bytes, and refreshed by a new key when the bytes
+  change. Clicking it opens the PDF in its default app, or downloads it where no app is
+  assigned or the host cannot open files.
+  Download is always offered.
+  On the file page it stands in while the viewer starts.
+- **No PDF JavaScript.** No PDF.js or other JavaScript PDF library: the browser’s viewer
+  draws the file page, and the preview is a static image.
+  The preview is rendered by `pypdfium2` (PDFium) in a bounded subprocess.
+- **Plugins declare their Python packages.** Each plugin’s manifest lists the
+  third-party packages it imports, and a check keeps the lists true, so the packages
+  only plugins need are known if the plugins are moved out of the package.
+  `pypdfium2` arrives declared by `pdf` as plugin-only.
+- **Links keep the reader in Metabrowser.** A Markdown link or embed to a PDF opens its
+  view in Metabrowser, not `/raw` (Open Question 2); the general rule is `mb-8nnc`.
+- **A `.pdf` is claimed by its bytes.** A file named `.pdf` that does not start with
+  `%PDF-` gets the text or bytes view, not a viewer that shows an error.
+- **The viewer’s title stays.** Chrome titling its toolbar `raw` is accepted (Open
+  Question 3).
+- **A threat model first.** Admitting `/raw` objects on untrusted pages and parsing
+  untrusted PDFs on the server are justified against a written threat model (`mb-31vb`),
+  and each policy and its accepted risk is documented (`mb-cvpn`).
+
 ## Implementation Plan
 
-One phase, as one pull request: the plugin, the SDK accessors, and the app’s bridge land
+Phase 1 landed as one pull request: the plugin, the SDK accessors, and the app’s bridge
 together, since the app’s contract pins the marker the plugin draws.
+Phase 2 is stacked on it, one pull request for each group below that is ready.
 
 ### Phase 1: PDF Plugin and the Open-File Bridge
 
@@ -303,6 +344,33 @@ together, since the app’s contract pins the marker the plugin draws.
   changelog fragment
 - [ ] Verification: the inline viewer and each action in Safari, Chrome, and the app, on
   a folder, a pinned revision, and an `--untrusted` folder
+
+### Phase 2: Previews, the Embed Everywhere, and Plugin Dependencies
+
+Ready now:
+
+- [ ] Plugin Python dependencies (`mb-vdh3`): a `python_requires` manifest field, a
+  check that every plugin import is declared and every declared package ships, core
+  importing no plugin-only package, no runtime dependency unimported (`psutil` moves to
+  a dev group), and `metab --plugins` listing them
+- [ ] Claim by bytes and no viewer in a diff (`mb-d00o`): the `.pdf` rule requires
+  `%PDF-`, and the surfaces session asserts a mounted diff holds no `<embed>`,
+  `<object>`, or `<iframe>`
+- [ ] The app (`mb-0fwu`): a pin’s copy named with the extension of its served type, and
+  Open saving to Downloads where no app is assigned
+
+After the threat model (`mb-31vb`, `mb-cvpn`):
+
+- [ ] The embed on every file page (`mb-g427`): `object-src <origin>/raw` in the
+  untrusted page policy, pinned by a policy test, the surfaces golden showing `viewer`
+  on every surface, and the Chrome test loading it untrusted
+- [ ] The preview (`mb-7tcl`): a plugin route that renders the first page with
+  `pypdfium2` in a subprocess bounded in time and memory, a `previews` area of the cache
+  root keyed by content hash, renderer version, and size, written atomically and bounded
+  by a measured size, the card in diffs and overviews and on the file page, and a golden
+  for render, reuse, a changed file, and a failed render
+- [ ] Links (`mb-x0a6`): Markdown links and embeds to a PDF open its view and draw the
+  card
 
 ## Testing Strategy
 
@@ -354,14 +422,16 @@ descriptor.
    viewer, an image, or a scriptless opaque document.
    That would give GitHub URLs and pull requests the inline viewer.
    Recommendation: make that change in its own pull request, reviewed as a policy
-   change.
+   change. **Decided:** admit it, after the threat model (`mb-g427`).
 2. **Markdown embeds.** `![[report.pdf]]` stays a link to `/raw`, which replaces the
    page. Should it instead link to the file’s view in Metabrowser, or draw the plugin’s
    card? Either is a change to the Markdown plugin.
+   **Decided:** the view, with the card for an embed (`mb-x0a6`).
 3. **The viewer’s title.** Chrome’s viewer titles its toolbar with the address’s last
    segment, `raw`, since the plugin uses `/raw`’s query form, the one a pin answers.
    The path form would show the file’s name for a folder.
    Is that worth a second address for folders only?
+   **Decided:** no.
 4. **A size bound.** The viewer runs out of the page’s process and loads the file
    progressively, so the plan sets no bound on the file’s own view.
    The verification task measures a large PDF; a bound comes only from that measurement.
@@ -369,7 +439,8 @@ descriptor.
    a file’s type from its name (`OpenFileTypes.type(of:)`) and so refuses one with no
    extension, which Launch Services would not open in Preview either.
    A pin’s copy could take an extension from the served type; a folder’s file is opened
-   as it is.
+   as it is. **Decided:** name a pin’s copy by its type, and download where no app is
+   assigned (`mb-0fwu`).
 
 ## References
 
