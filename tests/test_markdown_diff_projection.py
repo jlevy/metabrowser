@@ -1103,6 +1103,33 @@ def test_raw_html_the_render_drops_whole_is_left_to_source() -> None:
     assert [block["kind"] for block in result["blocks"]] == ["context", "context"]
 
 
+def test_a_disclosure_in_a_changed_block_is_open() -> None:
+    """The marks inside a `<details>` show without a reader opening each side's; one in an
+    unchanged block stays as the Document view shows it, closed."""
+
+    disclosure = b"<details>\n<summary>Install</summary>\n\nRun the old installer.\n\n</details>\n"
+    old = disclosure + b"\n" + disclosure.replace(b"Install", b"Remove")
+    result = _project(old, old.replace(b"old installer", b"new installer", 1))
+    assert [(block["kind"], block["html"]) for block in result["blocks"]] == [
+        (
+            "removed",
+            "<details open>\n<summary>Install</summary>\n"
+            "<p>Run the <del>old</del> installer.</p>\n</details>",
+        ),
+        (
+            "added",
+            "<details open>\n<summary>Install</summary>\n"
+            "<p>Run the <ins>new</ins> installer.</p>\n</details>",
+        ),
+        (
+            "context",
+            "<details>\n<summary>Remove</summary>\n<p>Run the old installer.</p>\n</details>",
+        ),
+    ]
+    added = _project(None, disclosure)["blocks"]
+    assert [block["html"].split("\n")[0] for block in added] == ["<details open>"]
+
+
 def test_a_document_cannot_write_the_change_marks() -> None:
     """The page tints every `ins` in an added row and every `del` in a removed one, so a
     document's own are drawn as `span` and `s`: here the address changed, and the one

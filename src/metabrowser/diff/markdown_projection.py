@@ -1639,13 +1639,23 @@ def _namespace_ids(blocks: Sequence[_Block], namespace: str, side: str) -> dict[
 
 
 def _html(
-    node: _Element, ids: dict[str, str], *, removed: bool, references: list[LocalReference]
+    node: _Element,
+    ids: dict[str, str],
+    *,
+    removed: bool,
+    changed: bool,
+    references: list[LocalReference],
 ) -> str:
-    """Serialize a block; a live local destination becomes a numbered placeholder."""
+    """Serialize a block; a live local destination becomes a numbered placeholder.
+
+    A `<details>` in a *changed* block, removed or added, is written open, so the marks
+    inside it show without a reader opening each side's to compare them. KPress's
+    sanitizer drops a source's own `open`, so the Document view shows every one closed.
+    """
 
     def inner() -> str:
         return "".join(
-            _html(child, ids, removed=removed, references=references)
+            _html(child, ids, removed=removed, changed=changed, references=references)
             if isinstance(child, _Element)
             else escape(child, quote=False)
             for child in node.children
@@ -1678,6 +1688,8 @@ def _html(
                 attrs.append(f"\x00{len(references) - 1}\x00")
             continue
         attrs.append(f' {name}="{escape(value)}"')
+    if changed and tag == "details":
+        attrs.append(" open")
     start = f"<{tag}{''.join(attrs)}>"
     if local_image:
         references.append(LocalReference(local_image, True, start, alt))
@@ -1844,6 +1856,7 @@ class _Projector:
                     node,
                     self.old_ids if old else self.new_ids,
                     removed=old,
+                    changed=kind != "context",
                     references=self.references,
                 ),
                 "source_only": source_only,

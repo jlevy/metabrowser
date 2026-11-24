@@ -196,6 +196,8 @@ changed is never folded away.
 Raw HTML, such as `<br>`, `<details>`, or a centered `<p align="center">`, renders as
 the Document view renders it, through the same sanitizer; an HTML edit it does not show,
 such as a class or a style, is a change that only **Source** shows.
+A `<details>` in a changed block shows open, so the words marked inside it show; the
+Document view shows it closed.
 A task list renders as the Document view renders an untrusted document, without its
 boxes, so ticking or unticking one is a change that only **Source** shows.
 

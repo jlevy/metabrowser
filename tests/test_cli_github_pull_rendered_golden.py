@@ -243,6 +243,11 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
         "added",
         "context",
     ]
+    # Each side's disclosure is open, so its marks show without opening it.
+    assert all(
+        block["html"].startswith("<details open>\n<summary>Install</summary>")  # pyright: ignore[reportUnknownMemberType]
+        for block in layout["blocks"][1:3]  # pyright: ignore[reportIndexIssue, reportUnknownVariableType, reportGeneralTypeIssues]
+    )
     assert "<summary>Install</summary>" in layout["blocks"][2]["html"]  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportGeneralTypeIssues]
     assert "<ins>new</ins>" in layout["blocks"][2]["html"]  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportGeneralTypeIssues]
     notes = rendered(f"&file={ids['wiki/footnotes.md']}")
