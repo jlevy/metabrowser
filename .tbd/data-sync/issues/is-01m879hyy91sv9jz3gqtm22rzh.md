@@ -3,17 +3,31 @@ type: is
 id: is-01m879hyy91sv9jz3gqtm22rzh
 title: Let wide Markdown tables use surplus reading-pane width
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 7
+version: 10
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/787
     at: 2026-11-24T17:37:41.870Z
+  - kind: other
+    url: https://github.com/jlevy/metabrowser/actions/runs/45456971323
+    at: 2026-11-24T19:12:07.621Z
+  - kind: other
+    url: https://github.com/jlevy/metabrowser/actions/runs/45462394194
+    at: 2026-11-24T19:12:07.623Z
+delegate: codex@macbookpro
 labels: []
 dependencies: []
+hold: null
+hold_until: null
 created_at: 2026-11-24T17:27:16.680Z
-updated_at: 2026-11-24T18:27:47.976Z
+updated_at: 2026-11-24T19:12:10.602Z
+started_at: 2026-11-24T19:12:00.946Z
+closed_at: 2026-11-24T19:12:10.597Z
+close_reason: "Merged as #787 after exact make verify and a green main push. Chrome and installed Mac WebKit verified wider Markdown tables on wide panes, retaining the measured medium and narrow layout."
+resolution: null
+duplicate_of: null
 ---
 A wide table in a standalone rendered Markdown document, including the three-column table in docs/project/architecture/arch-diff-pipeline.md, should grow beyond the prose measure when the reading pane has room. Preserve the existing display at medium and narrow pane widths, the prose measure, the TOC, and internal scrolling when a table is wider than the space available. Check the pinned KPress support first and verify actual layout across width bands.
 
