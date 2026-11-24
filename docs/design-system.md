@@ -237,9 +237,17 @@ own sans style, not the serif’s accent.
 An h6 follows the reading face like an h2, and keeps its italic because the request this
 rule answers named only h2s. The `md-body` fallback sets no italic in either face.
 
+A document’s face rule is in KPress’s `document.css`, so a page that shows one must load
+it. A rendered diff loads the stylesheets its projection names, each same-origin one
+under `/kpress-static/` whatever KPress’s version (`kpressStylesheets` in
+`builtin_plugins/diff/diff-markdown.js`), and warns in the console of one it leaves out
+or one that does not load.
+Without them, its document reads in sans.
+
 `test_serif_is_only_for_documents` holds which rules may set a face and which builders
 mark chrome prose. `tests/test_prose_faces_chrome.py` reads the faces they draw in, and
-each Markdown text’s h2 style, in Chrome, under both reading fonts and both font sets.
+each Markdown text’s h2 style, in Chrome, under both reading fonts and both font sets,
+and a pull request’s rendered Markdown under a development KPress’s addresses.
 
 ### Type Scale
 

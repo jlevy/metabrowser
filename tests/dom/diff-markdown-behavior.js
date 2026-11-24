@@ -148,7 +148,10 @@ class Element {
 
 const make = (tag) => new Element(tag);
 let sharedChange;
+// The page's address, which KPress's stylesheets are resolved against (kpressStylesheets).
+const PAGE = "http://127.0.0.1:8000/pull/1/files";
 globalThis.document = {
+  baseURI: PAGE,
   createElement: make,
   createTextNode: (textContent) => ({ textContent }),
   createDocumentFragment: make,
@@ -214,11 +217,76 @@ async function main() {
     appendBlocks,
     createMarkdownViews,
     firstScreenRendered,
+    kpressStylesheets,
     markdownTargets,
     refusalReason,
     renderedFormat,
     supportsRenderedChange,
   } = await import(pathToFileURL(path.join(plugin, "diff-markdown.js")));
+  // Which of a projection's stylesheets the page loads: same-origin KPress CSS, by the
+  // address the browser resolves, whatever characters the server's stamp and KPress's
+  // PEP 440 version put in its segments. Each one left out is named in a warning.
+  {
+    const kept = [
+      // A release, unstamped and stamped.
+      "/kpress-static/v0.3.9/css/document.css",
+      "/kpress-static/@a009bfcd7946408c/v0.3.9/css/document.css",
+      // An editable or development KPress: a local version segment.
+      "/kpress-static/@a009bfcd7946408c/v0.3.10.dev10+5c60a81/css/document.css",
+      // The rest of what PEP 440 allows: an epoch, a pre-release, a post-release.
+      "/kpress-static/@a009bfcd7946408c/v1!0.4.0rc1.post2/css/document.css",
+      // The page's own origin, written out.
+      "http://127.0.0.1:8000/kpress-static/v0.3.9/css/print.css",
+    ];
+    const dropped = [
+      "https://elsewhere.example/kpress-static/v0.3.9/css/document.css",
+      "//elsewhere.example/kpress-static/v0.3.9/css/document.css",
+      "http://127.0.0.1:9000/kpress-static/v0.3.9/css/document.css",
+      // Out of KPress's route once the path is normalized.
+      "/kpress-static/../static/styles.css",
+      "/kpress-static/%2e%2e/static/styles.css",
+      "/static/styles.css",
+      // Not a stylesheet's address.
+      "/kpress-static/v0.3.9/js/toc.js",
+      "data:text/css,p{font-family:serif}",
+      "",
+    ];
+    const warned = [];
+    const warn = console.warn;
+    console.warn = (...args) => warned.push(args);
+    const manifest = kpressStylesheets(
+      {
+        schema_version: "kpress-asset-manifest-v2",
+        import_map: { "/kpress-static/js/runtime.js": "/kpress-static/v0.3.9/js/runtime.js" },
+        assets: [
+          ...[...kept, ...dropped].map((public_url) => ({ loading: "stylesheet", public_url })),
+          // A script is not a stylesheet, so it is neither kept nor named.
+          { loading: "module", public_url: "/kpress-static/v0.3.9/js/toc.js" },
+        ],
+      },
+      PAGE,
+    );
+    console.warn = warn;
+    assert.deepEqual(
+      manifest.assets.map((asset) => asset.public_url),
+      kept,
+      "same-origin KPress CSS is kept, whatever its version",
+    );
+    assert.deepEqual(manifest.import_map, {}, "nothing of the manifest runs");
+    assert.equal(warned.length, 1, "one warning names every stylesheet left out");
+    assert.deepEqual(warned[0][1], dropped);
+    console.warn = (...args) => warned.push(args);
+    kpressStylesheets(
+      {
+        schema_version: "kpress-asset-manifest-v2",
+        import_map: {},
+        assets: kept.map((public_url) => ({ loading: "stylesheet", public_url })),
+      },
+      PAGE,
+    );
+    console.warn = warn;
+    assert.equal(warned.length, 1, "a manifest of KPress CSS alone warns of nothing");
+  }
   // The format a change renders as, from both its sides' names, as the server's route
   // reads them (`_rendered_format` in github/pull_rendered_diff.py): an extension in any
   // case, one format on both sides, files only, and a dotfile's name is no extension.
@@ -558,8 +626,16 @@ async function main() {
     ],
   };
   // The server names KPress's stylesheets under the package's asset stamp
-  // (metabrowser.asset_stamps); only same-origin KPress CSS is kept.
+  // (metabrowser.asset_stamps) and KPress's version; only same-origin KPress CSS is kept.
+  // An editable or development KPress's version has a PEP 440 local segment, whose `+`
+  // a pattern over the address's characters once refused, dropping document.css, so a
+  // rendered document read in sans under the serif reading font (mb-2r08).
   const stamped = "/kpress-static/@0123456789abcdef/v0.3.5/css/document.css";
+  const local = "/kpress-static/@a009bfcd7946408c/v0.3.10.dev10+5c60a81/css/document.css";
+  const away = "https://elsewhere.example/kpress-static/x.css";
+  const styleWarnings = [];
+  const warnBefore = console.warn;
+  console.warn = (...args) => styleWarnings.push(args);
   calls[0].resolve({
     ...ready,
     assets: {
@@ -567,17 +643,27 @@ async function main() {
       import_map: {},
       assets: [
         { loading: "stylesheet", public_url: stamped },
+        { loading: "stylesheet", public_url: local },
         { loading: "stylesheet", public_url: "/kpress-static/v0.3.5/css/print.css" },
-        { loading: "stylesheet", public_url: "https://elsewhere.example/kpress-static/x.css" },
+        { loading: "stylesheet", public_url: away },
         { loading: "module", public_url: "/kpress-static/@0123456789abcdef/v0.3.5/js/toc.js" },
       ],
     },
   });
   await new Promise(setImmediate);
+  console.warn = warnBefore;
   assert.deepEqual(
     styled,
-    [[stamped, "/kpress-static/v0.3.5/css/print.css"]],
-    "a stamped KPress stylesheet loads; another origin's and a script do not",
+    [[stamped, local, "/kpress-static/v0.3.5/css/print.css"]],
+    "a release's and a local version's KPress stylesheets load; another origin's and a script do not",
+  );
+  assert.deepEqual(
+    styleWarnings.map(([message, urls]) => [
+      message.startsWith("metabrowser diff: KPress stylesheets"),
+      urls,
+    ]),
+    [[true, [away]]],
+    "the stylesheet left out is named in a warning",
   );
   assert.deepEqual(
     calls.map(({ id }) => id),
