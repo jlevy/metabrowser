@@ -1538,14 +1538,28 @@ def test_raw_html_projects_only_where_a_deadline_stops_it(monkeypatch: pytest.Mo
     assert len(worst) <= MARKDOWN_DIFF_MAX_BYTES
     assert b"[" not in worst
     inline = b"# Doc\n\nSome <b>bold\n\nmore text.\n"
+    # MarkdownIt reads each of these as one comment, where the sanitizer's parser ends the
+    # comment at `--!>` or the opening `<!-->` and builds the rest (`_COMMENT`).
+    payload = worst.removesuffix(b"\n")
+    ended_early = [
+        b"Para <!-- x --!>" + payload + b" --> end.\n",
+        b"> <!-- x --!>" + payload + b" -->\n",
+        b"- <!--> " + payload + b" -->\n",
+    ]
+    assert all(len(text) <= MARKDOWN_DIFF_MAX_BYTES for text in ended_early)
+    pairs = [(None, worst), (worst, None), (b"# Doc\n", inline), (inline, b"# Doc\n")]
+    pairs += [(None, text) for text in ended_early]
     with monkeypatch.context() as patched:
         patched.setattr(markdown_projection, "sanitize_raw_html", unexpected)
-        for old, new in ((None, worst), (worst, None), (b"# Doc\n", inline), (inline, b"# Doc\n")):
+        for old, new in pairs:
             refused = prepare_markdown_diff(
                 old=old, new=new, patch=_patch(old, new), namespace="n"
             ).projection
             assert refused["status"] == "too_large"
             assert "reason" not in refused, "a budget's refusal names no cause: the child is asked"
+    for text in ended_early:
+        small = text.replace(payload, _left_open(3, 2).removesuffix(b"\n"))
+        assert _prepared(small, stoppable=True)["status"] == "ready"
     # The child renders it, each element rebuilt in each later block as the Document view
     # renders it, and flags the attributes the allowlist drops.
     assert _prepared(_left_open(3, 2), stoppable=True)["blocks"] == [
@@ -1558,9 +1572,36 @@ def test_raw_html_projects_only_where_a_deadline_stops_it(monkeypatch: pytest.Mo
         }
     ]
     # Markdown renders balanced elements, which the parser rebuilds none of, and a comment
-    # renders nothing: a thread projects both.
-    plain = b"# Doc\n\n<!-- a note -->\n\nSome **bold** text.\n"
-    assert _prepared(plain, stoppable=False)["status"] == "ready"
+    # renders nothing: a thread projects both, empty comments included.
+    for plain in (
+        b"# Doc\n\n<!-- a note -->\n\nSome **bold** <!-- inline --> text.\n",
+        b"A <!----> b <!--> c <!---> d\n",
+    ):
+        assert _prepared(plain, stoppable=False)["status"] == "ready"
+
+
+def test_a_comment_is_one_only_where_the_sanitizer_ends_it() -> None:
+    """A thread projects a comment, which renders nothing, and refuses any other raw HTML
+    (`_is_raw`), so `_COMMENT` matches only comments the sanitizer's parser ends at their
+    last character: one it ends early renders the rest. Checked over every comment whose
+    text is up to five of `<!->a`, the characters that open and close one."""
+
+    from itertools import product
+
+    from kpress.format.sanitize import sanitize_raw_html
+
+    comment = markdown_projection._COMMENT  # pyright: ignore[reportPrivateUsage]
+    after = "<b>t</b>"
+    bodies = ("".join(body) for size in range(6) for body in product("<!->a", repeat=size))
+    written = ["<!-->", "<!--->", *(f"<!--{body}-->" for body in bodies)]
+    matched = [text for text in written if comment.fullmatch(text)]
+    assert len(matched) > len(written) / 2
+    assert [
+        text for text in matched if sanitize_raw_html(text + after, "sanitized")[0] != after
+    ] == []
+    for early in ("<!-- x --!> y -->", "<!--> y -->", "<!---> y -->", "<!-- x <!--> y -->"):
+        assert not comment.fullmatch(early)
+        assert sanitize_raw_html(early, "sanitized")[0] == " y --&gt;"
 
 
 def test_nesting_is_refused_whether_or_not_a_deadline_stops_the_projection() -> None:
@@ -1983,6 +2024,11 @@ def test_notes_join_to_kpress_where_they_are_written(
             "Before.\n\n<script>alert(1)</script>\n\n<style>p{}</style>\n\nAfter.\n",
             [(0, 1), (6, 7)],
             id="HTML the allowlist drops whole",
+        ),
+        pytest.param(
+            "# T\n\n<!-- x --!><p>Shown</p> -->\n\nAfter.\n",
+            [(0, 1), (2, 3), (4, 5)],
+            id="a comment the sanitizer ends early",
         ),
         pytest.param(
             "Intro.\n\n<svg><style><table></style></svg>\n\nB.\n\nC.\n",
