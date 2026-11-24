@@ -2118,7 +2118,6 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ("ICONS.toggle +", "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'"),
         ("${ICONS.toggle}", '"icon-btn nav-collapse-toggle disclosure-toggle"'),
     ),
-    "server.py": (("<summary", 'class="icon-btn root-details-trigger disclosure-toggle"'),),
     "charts.js": (("ICONS.toggle +", "'<div class=\"tally-node disclosure-toggle'"),),
     "filter-controls.js": (("${menuChevron}", 'class="chip chip-menu-trigger disclosure-toggle"'),),
     "source-ref-selector.js": (

@@ -528,7 +528,7 @@ def test_the_shell_names_the_repository_and_its_pinned_revision(
     assert "header-revision" not in contents
     assert re.match(
         r'\s*<span id="header-home-label" hidden>Home:</span>\s*'
-        r'<details id="root-details"[^>]*>\s*<summary\b',
+        r'<div id="root-details"[^>]*>\s*<button\b',
         shell.text[home.end() :],
     )
     tip = attributes[attributes.index('data-mirror-tip="') :].split('"', 2)[1]

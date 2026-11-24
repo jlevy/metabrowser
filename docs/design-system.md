@@ -1110,7 +1110,8 @@ The tooltip clears while the menu is open.
 The circled i has a distinct dot and foot at sidebar size.
 It uses the shared icon-only button with muted ink at rest and the same highlight on
 hover, focus, or while the menu is open.
-Click it again, click outside the menu, or press Escape to close it.
+Its button owns the open state and shares the
+[menu dismissal rule](#shared-overlay-lifecycle).
 
 The menu shows information about the folder, including its local path, file count, size,
 and commit when available.
@@ -1330,7 +1331,7 @@ state looks like.
 
 | Offers | Primitive | ARIA and keyboard | Used by |
 | --- | --- | --- | --- |
-| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags, and for a checkout Branches / Tags / Remotes |
+| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags, and for a checkout Branches / Remotes / Tags |
 | Any of a set of labelled values | `.chip-group[data-select="many"]` | `group` of buttons with `aria-pressed`; each a tab stop | An agent log’s event types |
 | One of a few values in a menu, where the glyph is the label | `.menu-chooser` of `.menu-seg` | `group` of `menuitemradio` with `aria-checked`; each a tab stop | Theme and reading font |
 | One of a long list | A named trigger over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns and the Files revision chooser for mirrors and checkouts |
@@ -4153,7 +4154,10 @@ mark on a tree or palette row, or a menu row’s leading mark.
 Never inline a pixel size at a use site.
 Where an icon reserves a column in a palette or menu row, or a file identity’s, the
 alignment box around it is `--icon-box`, one step wider than the glyph, so the mark sits
-optically centered.
+optically centered. In a text heading, align adjacent glyphs with the visual center of
+the text. The sidebar’s folder mark and Info button share `--heading-icon-offset-y` to
+center their SVGs on the name’s capital-height band.
+Their hit targets and the heading’s line box keep their original geometry.
 
 A tree row’s leading slot is the glyph’s own width, `--tree-icon-slot`, which is
 `--icon-glyph`: a folder’s or a container’s chevron, a file’s type icon, a change
@@ -5974,12 +5978,17 @@ but neither installs another document-level shortcut dispatcher.
 
 Opening and closing meet these requirements:
 
+- activating an open menu’s trigger closes it once, with the same result for pointer,
+  keyboard, and accessibility actions;
+- a press or activation outside both the trigger and panel closes the menu and leaves
+  focus on the reader’s destination;
 - pointer and keyboard triggers reach the same controller and state;
 - triggers expose the appropriate accessible name, `aria-expanded`, `aria-controls`, and
   `aria-haspopup` value;
 - the interaction that opens a surface cannot dismiss it in the same event sequence;
 - scrolling inside a bounded overlay does not dismiss it;
-- closing restores focus to the connected trigger or a documented connected fallback;
+- closing from within the surface restores focus to the connected trigger or a
+  documented connected fallback;
 - modal background content cannot receive pointer, keyboard, or assistive-technology
   interaction while the dialog is open; and
 - `dispose()` removes portals, scrims, registrations, observers, and listeners and

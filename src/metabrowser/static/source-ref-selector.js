@@ -110,12 +110,12 @@
     remote: "remote branches",
   });
   /** @type {Readonly<Record<MetabrowserSourceRefKind, string>>} */
-  const KIND_LABEL = Object.freeze({ branch: "Branches", tag: "Tags", remote: "Remotes" });
+  const KIND_LABEL = Object.freeze({ branch: "Branches", remote: "Remotes", tag: "Tags" });
   /** The lists each subject has; the listing says the same in `kinds`.
    * @type {readonly MetabrowserSourceRefKind[]} */
   const MIRROR_KINDS = Object.freeze(["branch", "tag"]);
   /** @type {readonly MetabrowserSourceRefKind[]} */
-  const CHECKOUT_KINDS = Object.freeze(["branch", "tag", "remote"]);
+  const CHECKOUT_KINDS = Object.freeze(["branch", "remote", "tag"]);
 
   /**
    * What the button says for the ref and commit a page was rendered for. Pure.

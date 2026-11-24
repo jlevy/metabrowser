@@ -1,0 +1,1 @@
+- Order the checkout revision chooser as Branches, Remotes, Tags.

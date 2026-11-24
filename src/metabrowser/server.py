@@ -2532,10 +2532,11 @@ async def index(
           <span class="header-home-name" id="header-home-name">{initial_path}</span>
         </a>
         <span id="header-home-label" hidden>Home:</span>
-        <details id="root-details" class="root-details"{root_repository_attr}>
-          <summary class="icon-btn root-details-trigger disclosure-toggle"
-                   aria-label="{root_kind_label} details" data-tip-text="{root_kind_label} details"></summary>
-          <div class="menu root-details-panel">
+        <div id="root-details" class="root-details"{root_repository_attr}>
+          <button type="button" class="icon-btn root-details-trigger disclosure-toggle"
+                  aria-expanded="false" aria-controls="root-details-panel"
+                  aria-label="{root_kind_label} details" data-tip-text="{root_kind_label} details"></button>
+          <div id="root-details-panel" class="menu root-details-panel" hidden>
             <div class="root-details-info">
               <strong>{root_kind_label}</strong>
               <div class="root-details-local">
@@ -2549,7 +2550,7 @@ async def index(
             {root_repository_links}
             <div class="root-details-status" role="status"></div>
           </div>
-        </details>
+        </div>
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,
