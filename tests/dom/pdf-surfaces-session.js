@@ -38,14 +38,15 @@ function assert(condition, message) {
   }
 }
 
+// The origin the recorder's in-process client is served at (tests/test_pdf_surfaces_session.py).
+const PAGE_ORIGIN = "http://testserver";
+
 /**
- * Whether a page served with *policy* may embed a same-origin address: its `object-src`,
- * or `default-src` when it names none, as a browser reads them. No policy admits anything.
+ * The source list a page served with *policy* applies to a load: its first directive in
+ * *chain* the policy names, as a browser falls back (`frame-src`, then `child-src`, then
+ * `default-src`). Null when it names none, which admits anything.
  */
-function admitsSameOriginObject(policy) {
-  if (!policy) {
-    return true;
-  }
+function sourcesFor(policy, chain) {
   const directives = new Map(
     policy
       .split(";")
@@ -53,11 +54,54 @@ function admitsSameOriginObject(policy) {
       .filter((words) => words[0])
       .map(([name, ...sources]) => [name.toLowerCase(), sources]),
   );
-  const sources = directives.get("object-src") ?? directives.get("default-src");
-  if (sources === undefined) {
+  for (const name of chain) {
+    if (directives.has(name)) {
+      return directives.get(name);
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether *sources* admit *href*, a same-origin address: `'self'` and `*` do, and a
+ * source with a path does when the path is the address's, exactly, or a prefix of it for
+ * a path ending in `/` (CSP's path matching, which ignores the query).
+ */
+function sourcesAdmit(sources, href) {
+  if (sources === null) {
     return true;
   }
-  return sources.some((source) => source === "'self'" || source === "*");
+  const target = new URL(href, PAGE_ORIGIN);
+  return sources.some((source) => {
+    if (source === "'self'" || source === "*") {
+      return true;
+    }
+    if (!/^https?:\/\//.test(source)) {
+      return false;
+    }
+    const allowed = new URL(source);
+    if (allowed.origin !== target.origin) {
+      return false;
+    }
+    return allowed.pathname.endsWith("/")
+      ? target.pathname.startsWith(allowed.pathname)
+      : target.pathname === allowed.pathname;
+  });
+}
+
+/**
+ * Whether a page served with *policy* lets an `<embed>` of *href* show the browser's PDF
+ * viewer: the object itself under `object-src`, and, as Chrome draws the PDF in a frame
+ * of that address, the frame under `frame-src` too. No policy admits anything.
+ */
+function admitsViewerAt(policy, href) {
+  if (!policy) {
+    return true;
+  }
+  return (
+    sourcesAdmit(sourcesFor(policy, ["object-src", "default-src"]), href) &&
+    sourcesAdmit(sourcesFor(policy, ["frame-src", "child-src", "default-src"]), href)
+  );
 }
 
 /** The pieces of a recorded `/raw` answer a reader's browser acts on. */
@@ -105,7 +149,7 @@ async function fileViews() {
           view: chosen.id,
           shows,
           ...(shows === "viewer"
-            ? { policyAdmitsViewer: admitsSameOriginObject(policy) }
+            ? { policyAdmitsViewer: admitsViewerAt(policy, body.getAttribute("src")) }
             : { note: body.textContent }),
           actions: bar.children.map((link) => {
             const seen = describe(link).attributes;
@@ -128,7 +172,11 @@ async function fileViews() {
         served: {
           sourceKind: served.shell.source_kind,
           activeContent: served.shell.capabilities?.active_content ?? null,
-          objectPolicy: admitsSameOriginObject(policy) ? "admits /raw" : "blocks embedding",
+          embedPolicy: admitsViewerAt(policy, "/raw?path=any.pdf")
+            ? admitsViewerAt(policy, "/api/file?path=any.pdf")
+              ? "admits this origin"
+              : "admits /raw only"
+            : "blocks embedding",
         },
         files,
       });

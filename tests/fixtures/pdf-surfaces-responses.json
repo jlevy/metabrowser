@@ -102,7 +102,7 @@
         "active_content": false,
         "mutations": false
       },
-      "content-security-policy": "default-src 'self'; object-src 'none'"
+      "content-security-policy": "default-src 'self'; frame-src http://testserver/raw; object-src http://testserver/raw"
     },
     "files": {
       "papers/report.pdf": {
@@ -198,7 +198,7 @@
         "active_content": false,
         "mutations": false
       },
-      "content-security-policy": "default-src 'self'; object-src 'none'"
+      "content-security-policy": "default-src 'self'; frame-src http://testserver/raw; object-src http://testserver/raw"
     },
     "files": {
       "papers/report.pdf": {

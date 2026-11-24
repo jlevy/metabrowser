@@ -131,9 +131,12 @@ def test_the_untrusted_shell_runs_only_this_servers_scripts(untrusted: None) -> 
         "img-src 'self' data: https:",
         "connect-src 'self'",
         "worker-src http://testserver/plugin-static/",
-        "frame-src 'none'",
+        "frame-src http://testserver/raw;",
         "frame-ancestors 'none'",
-        "object-src 'none'",
+        # Frames and objects only from `/raw` itself, by exact path: never a prefix
+        # (`/raw/`), and never another route of this origin. The PDF view embeds a
+        # file's bytes there, and Chrome checks the frame it draws them in as well.
+        "object-src http://testserver/raw;",
         "base-uri 'none'",
         "form-action 'none'",
     ):
