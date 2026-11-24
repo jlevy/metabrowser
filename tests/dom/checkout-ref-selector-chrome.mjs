@@ -564,7 +564,19 @@ try {
   await capture("working-tree");
   result.workingTreePanel = await openPanel();
   await capture("working-tree-panel");
-  result.workingTreeRemotes = await openPanelList("Remotes");
+  await chrome.evaluate('document.querySelector(".source-ref-selector-kinds button").focus()');
+  for (const type of ["keyDown", "keyUp"]) {
+    await chrome.send("Input.dispatchKeyEvent", {
+      type,
+      key: "ArrowRight",
+      code: "ArrowRight",
+      windowsVirtualKeyCode: 39,
+    });
+  }
+  await chrome.waitFor(
+    'document.activeElement.dataset.chipValue === "remote" && document.activeElement.getAttribute("aria-checked") === "true" && document.querySelector(".source-ref-selector-list").getAttribute("aria-busy") === "false"',
+  );
+  result.workingTreeRemotes = await chrome.evaluate(PANEL);
   result.workingTreeTags = await openPanelList("Tags");
   await openPanelList("Branches");
 
@@ -695,6 +707,9 @@ try {
   // 7. A revision's own page browses as any page does: a file, and its history. None of
   // its requests is refused, since each names the commit the server serves. Last, since
   // the Commits tab adds entries to the history that step 6 walks.
+  await openPanel();
+  await switchBy(rowNamed("topic"));
+  result.checkedOutBranch = await chrome.evaluate(PAGE);
   await openPanel();
   await switchBy(rowNamed("feature"));
   takeDataRequests();

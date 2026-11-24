@@ -561,6 +561,8 @@
   --icon-glyph: 14px;
   --icon-box: 16px;
   --icon-btn-size: 24px;
+  /* Center heading glyphs on the capital band, above the full line-box center. */
+  --heading-icon-offset-y: -1px;
   /* From a category's icon to its name in the heading (.category-icon): a tree row's
      gap from its file icon to its name, so the mark sits off the word as it does in a
      row, and a Group by heading's name lines up with its rows' names. */
@@ -587,6 +589,9 @@
   --radius-circle: 50%;
   /* Space between independently bounded chips in a wrapping cluster. */
   --chip-cluster-gap: 4px;
+  /* Inline labels and references share an outer height, including any border. */
+  --compact-chip-height: 16px;
+  --compact-chip-padding-inline: 5px;
   /* A chip's box, in one place. The filter bar has to reserve a chip's height
      before any chip exists (see `.nav-filter-bar`), so the padding and border
      that make up that height cannot live only in `.chip` -- a reservation that
@@ -1837,6 +1842,7 @@ body {
   color: var(--muted);
 }
 .header-root-kind > svg {
+  translate: 0 var(--heading-icon-offset-y);
   width: 100%;
   height: 100%;
 }
@@ -1868,6 +1874,7 @@ body {
 }
 /* The root details menu sits beside Home and uses the shared menu rows. */
 .root-details {
+  display: flex;
   margin-inline-start: -4px;
   flex: none;
   color: var(--text);
@@ -1875,18 +1882,26 @@ body {
   letter-spacing: normal;
   text-transform: none;
 }
-.root-details-trigger {
-  list-style: none;
+/* Center the button directly on the heading's flex axis, then align Info's ink
+   with the source mark. In the shared 24-unit SVG box, the folder's ink sits
+   half a unit up, Git's half a unit down, and the mirror's on the center. */
+.header-path:has(> [data-root-kind="folder"]) ~ .root-details {
+  --source-mark-ink-offset-y: calc(var(--icon-glyph) / -48);
 }
-.root-details[open] > .root-details-trigger {
+.header-path:has(> [data-root-kind="git"]) ~ .root-details {
+  --source-mark-ink-offset-y: calc(var(--icon-glyph) / 48);
+}
+.root-details-trigger[aria-expanded="true"] {
   background: var(--hover-bg);
   color: var(--text);
 }
-.root-details-trigger::-webkit-details-marker {
-  display: none;
+/* The button owns the hover target for the decorative glyph. */
+.root-details-trigger > span {
+  pointer-events: none;
 }
 .root-details-trigger svg {
   display: block;
+  translate: 0 calc(var(--heading-icon-offset-y) + var(--source-mark-ink-offset-y, 0px));
 }
 .root-details-panel {
   position: absolute;
@@ -1895,7 +1910,7 @@ body {
   max-height: min(60vh, 28rem);
   overflow: auto;
 }
-.root-details:not([open]) > .root-details-panel,
+.root-details-panel[hidden],
 .root-details-panel [hidden],
 .root-details-source:empty {
   display: none;
@@ -3136,19 +3151,13 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* The badge's border reaches into the row's padding rather than making its row taller:
-   every row is placed at one row's height (`drawWindow` in source-ref-selector.js), and
-   the badged row, measured first, was 2px taller than the rest, which left a gap under
-   every row. It is an outlined tag in the row's muted ink, not a status badge: it
-   shares .file-header-badge's radius, size and nowrap, but not its filled, bold,
-   two-pad box, whose block size would be that taller row (docs/design-system.md,
-   "Badges"). */
+/* The compact tag fits inside the ref chooser's measured row line. */
 .source-ref-selector-badge {
   flex: 0 0 auto;
-  margin-block: -1px;
-  padding: 0 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
+  padding: 0 var(--compact-chip-padding-inline);
+  border: var(--chip-border) solid var(--border);
+  border-radius: var(--radius-tag);
+  line-height: calc(var(--compact-chip-height) - 2 * var(--chip-border));
   color: var(--muted);
 }
 /* Where the reader's own `origin/<branch>` is not where the origin's branch is: the same
@@ -7861,15 +7870,9 @@ pre.code-block.metabrowser-source-lines > code {
    size the name carries the meaning, so it is always bold, and the
    square corner separates "a ref" from "a filter" at a glance.
 
-   This rule sizes every chip by one ratio to the text it sits in, wherever
-   it appears: a Git history row, a commit's summary and tooltip, a pull
-   request's header, a Pulls row, the ref selector (docs/design-system.md,
-   "Branch Chips"). No context overrides its type or box, and the boxes a
-   chip sits in leave the text's size to inherit. The line is 4/3 of the
-   chip's size, 16px at 12px as before, so the box scales with the text: at
-   most 16.8px, and the 15.6px chip of a 13px history row keeps a HEAD ring
-   (1px out, 1px off) inside its 22px row. Padding and the tag's notch stay
-   in px. The menu chevron is an overlay within the chip. */
+   The type scales with the surrounding text. The box shares the compact
+   chip height with labels, so a HEAD ring (1px out, 1px off) fits inside a
+   22px history row. The menu chevron overlays the label. */
 .git-ref {
   display: inline-flex;
   align-items: center;
@@ -7882,9 +7885,9 @@ pre.code-block.metabrowser-source-lines > code {
      `codex/pr-comparison-body-admission-01a1a051`. Still bounded, since
      one very long ref must not own the row. */
   max-width: 22em;
-  padding: 0 5px;
+  padding: 0 var(--compact-chip-padding-inline);
   border-radius: var(--radius-tag);
-  line-height: 1.333;
+  line-height: var(--compact-chip-height);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7956,7 +7959,7 @@ pre.code-block.metabrowser-source-lines > code {
   display: inline-grid;
   grid-template-columns: minmax(0, max-content) max-content minmax(0, max-content);
   align-items: center;
-  min-width: calc(2 * 5px + 3em);
+  min-width: calc(2 * var(--compact-chip-padding-inline) + 3em);
   max-width: 100%;
   vertical-align: middle;
   /* No size of its own: the arrow is the size of the text around the merge,
