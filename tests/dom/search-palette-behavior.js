@@ -71,6 +71,8 @@ class FakeElement {
     this._textContent = "";
     this.focusCalls = 0;
     this.selectCalls = 0;
+    this.selectionStart = 0;
+    this.selectionEnd = 0;
     this.scrollCalls = 0;
     this.scrollTop = 0;
   }
@@ -190,6 +192,12 @@ class FakeElement {
 
   select() {
     this.selectCalls += 1;
+    this.setSelectionRange(0, this.value.length);
+  }
+
+  setSelectionRange(start, end) {
+    this.selectionStart = start;
+    this.selectionEnd = end;
   }
 
   scrollIntoView() {
@@ -633,6 +641,15 @@ async function main() {
   const question = fakeEvent("keydown", { key: "?", shiftKey: true, target: initialFocus });
   document.dispatchEvent(question);
   check("? leaves the palette closed", overlay.hidden === true && !question.defaultPrevented);
+
+  const hash = fakeEvent("keydown", {
+    code: "Digit3",
+    key: "#",
+    shiftKey: true,
+    target: initialFocus,
+  });
+  document.dispatchEvent(hash);
+  check("# is unclaimed in a plain folder", overlay.hidden === true && !hash.defaultPrevented);
 
   // Shift never changes a key: Shift+T is T, and a slash typed with Shift, as
   // on a German layout, is a slash.
@@ -1363,6 +1380,23 @@ async function pullSearchSession() {
     });
   }
 
+  const hash = { code: "Digit3", key: "#", shiftKey: true };
+  const editor = document.createElement("input");
+  document.body.append(editor);
+  editor.focus();
+  const editableHash = fakeEvent("keydown", { ...hash, target: editor });
+  document.dispatchEvent(editableHash);
+  check(
+    "typing # in an editor leaves the palette closed",
+    !palette.isOpen() && !editableHash.defaultPrevented,
+  );
+  editor.remove();
+  const closeModal = shortcuts.activateScope("test-modal", { exclusive: true });
+  const modalHash = fakeEvent("keydown", { ...hash, target: landing });
+  document.dispatchEvent(modalHash);
+  check("# leaves an exclusive modal alone", !palette.isOpen() && !modalHash.defaultPrevented);
+  closeModal();
+
   palette.open();
   const heading = dialog.querySelector(".modal-title").textContent;
   const placeholder = input.getAttribute("placeholder");
@@ -1475,7 +1509,23 @@ async function pullSearchSession() {
   );
 
   catalog.observeRecent([{ path: "notes/#render.md", type: "file" }]);
-  type("#");
+  palette.close(false);
+  landing.focus();
+  const openPullSearch = fakeEvent("keydown", { ...hash, target: landing });
+  document.dispatchEvent(openPullSearch);
+  if (controller.state()?.request.query !== "#") {
+    throw new Error("# must start a pull request search with the hash already entered");
+  }
+  check("# opens the same palette", palette.isOpen() && openPullSearch.defaultPrevented);
+  equal("the shortcut starts the input with #", input.value, "#");
+  check(
+    "the query is focused with the caret after #",
+    document.activeElement === input && input.selectionStart === 1 && input.selectionEnd === 1,
+  );
+  const hashInsidePalette = fakeEvent("keydown", { ...hash, target: input });
+  input.dispatchEvent(hashInsidePalette);
+  check("# remains typeable in the search field", !hashInsidePalette.defaultPrevented);
+
   const recentsSignal = await recentsRecheckStarted.promise;
   const recents = choices();
   equal("a lone hash immediately shows the recent cached PRs", recents, [grownPull, mixedPull]);

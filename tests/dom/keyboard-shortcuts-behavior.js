@@ -133,6 +133,13 @@ equal("question visible", question.visible, ["?"]);
 equal("question spoken", question.spoken, "Question mark");
 equal("question aria omitted", question.ariaKeyshortcuts, "");
 
+const hash = shortcuts.describeBindings([{ key: "#" }]);
+equal(
+  "hash uses its character, spoken name, and no physical ARIA key",
+  [hash.visible, hash.spoken, hash.ariaKeyshortcuts],
+  [["#"], "Hash", ""],
+);
+
 const alternatives = shortcuts.describeBindings([{ key: "t" }, { key: "/" }]);
 equal("alternative key labels", alternatives.visible, ["T", "/"]);
 equal("alternative spoken phrase", alternatives.spoken, "T or slash");
@@ -234,6 +241,11 @@ for (const [label, event, binding] of [
     "a slash typed with Shift, as on a German layout, is a slash",
     keyboardEvent("/", { code: "Digit7", shiftKey: true }),
     { key: "/" },
+  ],
+  [
+    "hash typed by the key in the Backslash position still matches hash",
+    keyboardEvent("#", { code: "Backslash" }),
+    { key: "#" },
   ],
   ["a Numpad digit matches by key", keyboardEvent("1", { code: "Numpad1" }), { key: "1" }],
   [

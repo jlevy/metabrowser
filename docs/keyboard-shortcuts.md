@@ -16,6 +16,7 @@ work.
 | --- | --- | --- |
 | `?` | Help | Always |
 | `T` or `/` | Quick Search, the file finder | Always |
+| `#` | Quick Search with the pull request prefix entered | A GitHub repository is shown |
 | `0` | Home: the served folder’s home view, every tab at its first | Always |
 | `\` | Hide or show the navigation pane | Always |
 | `F` | The Files tab | Always |
@@ -57,9 +58,9 @@ and the folder’s view are read again.
 Backslash does what a click on the chevron at the start of the main page’s foot does: it
 hides the navigation pane, and the page slides over it to fill the window, or shows the
 pane again. Shift-Backslash, which types `|` on a US keyboard, does the same.
-The key is read by the character it types, so the key in the same place on a UK or
-German keyboard, which types `#`, does nothing; where Backslash needs Option or AltGr,
-the chevron is the way to hide the pane.
+Shortcuts use the character the key types.
+On UK and German keyboards, the key in that position types `#`. Use the chevron on
+layouts where Backslash needs Option or AltGr.
 While the pane is hidden, the keys of its controls, such as `0`, `F`, and the filters’
 numbers, do nothing until it is shown again.
 
@@ -112,8 +113,10 @@ Grouped by stack, a stack’s row opens nothing: Enter and Space open or close i
 opens it or goes to its first pull request, and Left closes it or returns to it from a
 pull request inside it whose files are closed.
 
-In Quick Search, Up and Down move through the results, Enter opens one, and Escape
-closes it. In Help, `?` or Escape closes it.
+Press `#` to open Quick Search for pull requests.
+The cursor starts after the prefix, ready for a number or title.
+Up and Down move through the results, Enter opens one, and Escape closes Quick Search.
+In Help, `?` or Escape closes it.
 
 ## Browser and App Keys
 
