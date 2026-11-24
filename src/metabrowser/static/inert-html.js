@@ -8,10 +8,11 @@
 // attributes, new text, images kept only inside the served tree and otherwise turned
 // into a fallback, other tags unwrapped, and the dropped ones gone with their content. No
 // class, name, data, style, or event attribute survives, nor any SVG, MathML, media,
-// stylesheet, frame, form, or input but a task list's disabled box, and no id the
-// document wrote: in a document inside the served tree each heading gets the anchor
-// github.com would give it, `user-content-` and the slug of its text, and a `#name` link
-// becomes `#user-content-name`. The server makes the anchors; a heading keeps the one it
+// stylesheet, frame, form, or input but a disabled checkbox in the shape of a task
+// list's box, wherever the document writes one, and no id the document wrote: in a
+// document inside the served tree each heading gets the anchor github.com would give it,
+// `user-content-` and the slug of its text, and a `#name` link becomes
+// `#user-content-name`. The server makes the anchors; a heading keeps the one it
 // arrives with, which can only name that namespace, so the page and the server agree
 // whatever Unicode version each slugs by.
 //
@@ -124,8 +125,9 @@
   // The attributes each tag may keep; every value is checked by allowedAttributes,
   // except a heading's id, which is always sanitizeNodes' own anchor, an image's loading,
   // which is always lazy, its referrerpolicy, which is always no-referrer, and a span's,
-  // which only the image fallback's own shape keeps. An input is kept only as a task
-  // list's box, in the shape CHECKBOX_ATTRIBUTES writes.
+  // which only the image fallback's own shape keeps. An input is kept only in the shape
+  // of a task list's box, which CHECKBOX_ATTRIBUTES writes, wherever the document writes
+  // a checkbox.
   const ALLOWED_ATTRIBUTES = Object.freeze({
     a: Object.freeze(["href", "target", "rel"]),
     img: Object.freeze(["loading", "referrerpolicy", "src", "alt", "align", "width", "height"]),
@@ -624,8 +626,8 @@
         continue;
       }
       if (tag === "input") {
-        // Kept only as a task list's box; any other input is void, so nothing of it is
-        // left.
+        // Kept only in the shape of a task list's box, wherever a checkbox is written;
+        // any other input is void, so nothing of it is left.
         const kept = allowedAttributes("input", read, base);
         if (kept.length > 0) {
           out.push(element(doc, "input", kept));

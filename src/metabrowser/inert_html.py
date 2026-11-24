@@ -54,10 +54,12 @@ only what is listed here and drops the rest.
   address, so the hardener's own answer hardens to itself, as the page needs it to. A
   document that writes the shape gets a chip and a tooltip of that address, which do
   nothing else.
-- Checkboxes: an ``input`` is kept only as a task list's box, as KPress and github.com
-  write one for ``- [ ]`` and ``- [x]``: ``type="checkbox"``, always ``disabled``, and
-  ``checked`` when the document's was, so a ticked item reads as ticked
-  (:data:`CHECKBOX_ATTRIBUTES`). Like an image, it is not an allowed tag: any other
+- Checkboxes: an ``input`` is kept only in the shape of a task list's box, as KPress
+  and github.com write one for ``- [ ]`` and ``- [x]``: ``type="checkbox"``, always
+  ``disabled``, and ``checked`` when the document's was, so a ticked item reads as
+  ticked (:data:`CHECKBOX_ATTRIBUTES`). The allowlist reads HTML, not where it came
+  from, so a checkbox the document writes in raw HTML, in a paragraph or a table cell,
+  is kept in that shape too. Like an image, it is not an allowed tag: any other
   ``input``, and any other attribute of one, goes. A disabled checkbox with no name,
   value, or form cannot be focused, changed, or submitted, and reaches no handler.
 - Heading anchors, in a document inside the served tree only: every ``h1`` to ``h6``
@@ -184,8 +186,8 @@ DIMENSIONS: Final = {
 # image's loading, which is always lazy, its referrerpolicy, which is always no-referrer,
 # and a span's, which only the image fallback's own shape (IMAGE_FALLBACK_CLASS) keeps. An
 # image is not an allowed tag: it is kept, with these, only inside the served tree and
-# from an https address. Nor is an input: it is kept only as a task list's box, in the
-# shape CHECKBOX_ATTRIBUTES writes.
+# from an https address. Nor is an input: it is kept only in the shape of a task list's
+# box, which CHECKBOX_ATTRIBUTES writes, wherever the document writes a checkbox.
 ALLOWED_ATTRIBUTES: Final = {
     "a": ("href", "target", "rel"),
     "img": ("loading", "referrerpolicy", "src", "alt", "align", "width", "height"),
@@ -701,8 +703,8 @@ class _Hardener(HTMLParser):
             self._image(values)
             return
         if tag == "input":
-            # Kept only as a task list's box; any other input is void, so nothing of it is
-            # left.
+            # Kept only in the shape of a task list's box, wherever a checkbox is written;
+            # any other input is void, so nothing of it is left.
             if kept := allowed_attributes("input", values, self.base):
                 self.out.append(_open_tag("input", kept))
             return
