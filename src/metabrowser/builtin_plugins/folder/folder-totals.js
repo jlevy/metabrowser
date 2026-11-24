@@ -1,3 +1,5 @@
+import { familyIconPath } from "./file-type-summary-model.js";
+
 /** @typedef {import("./distribution-hover.js").DistributionHover} DistributionHover */
 /** @typedef {import("./distribution-hover.js").DistributionHoverTarget} DistributionHoverTarget */
 /**
@@ -9,7 +11,13 @@
  */
 /** @typedef {{state: "pending" | "complete", totalFiles?: number, totalBytes?: number, unignoredFiles?: number, unignoredBytes?: number}} FolderTotals */
 /** @typedef {{files: number, bytes: number, filesText: string, bytesText: string}} FolderTotalsMetricRow */
-/** @typedef {{key: string, label: string, paletteKey: string, files: number, bytes: number, value: number, share: number}} FolderTotalsSegment */
+/**
+ * A family's share of a row, with what its tooltip names: its category, by the display
+ * group's label, and the path its icon is looked up by, the one the Details table's
+ * family row shows (file-type-summary-model.js), or null for none.
+ *
+ * @typedef {{key: string, label: string, category: string, iconPath: string | null, paletteKey: string, files: number, bytes: number, value: number, share: number}} FolderTotalsSegment
+ */
 /** @typedef {{value: number, segments: ReadonlyArray<FolderTotalsSegment>}} FolderTotalsPopulation */
 /** @typedef {{metric: "files" | "size", all: FolderTotalsPopulation, files: FolderTotalsPopulation, ignored: FolderTotalsPopulation}} FolderTotalsComposition */
 
@@ -229,7 +237,8 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
   const sortPopulation = "all";
   const groups = new Map(envelope.groups.map((group) => [group.id, group]));
   const families = new Map(fileTypes.families.map((family) => [family.id, family]));
-  /** @type {Array<{key: string, label: string, paletteKey: string, groupId: string, tally: {allFiles: number, allBytes: number, unignoredFiles: number, unignoredBytes: number}}>} */
+  const categories = new Map(fileTypes.displayGroups.map((group) => [group.id, group.label]));
+  /** @type {Array<{key: string, label: string, iconPath: string | null, paletteKey: string, groupId: string, tally: {allFiles: number, allBytes: number, unignoredFiles: number, unignoredBytes: number}}>} */
   const candidates = [];
   for (const group of fileTypes.displayGroups) {
     const rawGroup = groups.get(group.id);
@@ -244,6 +253,8 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
       candidates.push({
         key: `family:${tally.id}`,
         label: family.label,
+        // The icon its Details row shows.
+        iconPath: familyIconPath(family),
         paletteKey: `family:${tally.id}`,
         groupId: group.id,
         tally,
@@ -254,6 +265,7 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
     candidates.push({
       key: "(none)",
       label: "No extension",
+      iconPath: "file",
       paletteKey: "",
       groupId: "other",
       tally: envelope.specialTypes.noExtension,
@@ -263,6 +275,7 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
     candidates.push({
       key: "",
       label: "Other types",
+      iconPath: null,
       paletteKey: "",
       groupId: "other",
       tally: envelope.specialTypes.remainingTypes,
@@ -299,6 +312,8 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
       return Object.freeze({
         key: candidate.key,
         label: candidate.label,
+        category: categories.get(candidate.groupId) ?? "",
+        iconPath: candidate.iconPath,
         paletteKey: candidate.paletteKey,
         files,
         bytes,
@@ -460,7 +475,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric, hove
         const counts = `${mb.formatFileCount(segment.files)} · ${mb.formatSize(segment.bytes)}`;
         drawn.set(segment.key, {
           fill,
-          tooltip: `<strong>${mb.escapeHtml(segment.label)}</strong><br>${counts}`,
+          tooltip: segmentTooltipHtml(segment, counts),
           counts,
         });
         // The segment says where the pointer is, as a legend entry naming its family does,
@@ -478,6 +493,24 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric, hove
         return fill;
       }),
     );
+  }
+
+  /**
+   * A segment's tooltip names its family as the Overview's Details table does: its
+   * category over it in the table's label type (.data-label), then the family led by
+   * its icon, then its file count and byte size.
+   * @param {FolderTotalsSegment} segment
+   * @param {string} counts
+   */
+  function segmentTooltipHtml(segment, counts) {
+    const icon = segment.iconPath ? mb.fileTypeIcon(segment.iconPath) : null;
+    const iconHtml = icon?.svg
+      ? `<span class="${mb.escapeHtml(["file-identity-icon", "tm-tip-icon", icon.className].filter(Boolean).join(" "))}" aria-hidden="true">${icon.svg}</span>`
+      : "";
+    const category = segment.category
+      ? `<div class="data-label">${mb.escapeHtml(segment.category)}</div>`
+      : "";
+    return `${category}<div class="tip-name tm-tip-name">${iconHtml}<span>${mb.escapeHtml(segment.label)}</span></div><div class="tip-detail">${mb.escapeHtml(counts)}</div>`;
   }
 
   /**

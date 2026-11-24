@@ -209,7 +209,7 @@ $ node tests/dom/treemap-legend-session.js
     ],
     "pointer": null,
     "shimmers": false,
-    "tooltip": "Markdown / 2 files · 200 B",
+    "tooltip": "Documentation / Markdown / 2 files · 200 B",
     "anchoredOn": "Total family:markdown"
   },
   "the map laid out again under the Markdown entry": {

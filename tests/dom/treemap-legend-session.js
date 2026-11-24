@@ -895,7 +895,7 @@ function ownPointOf(cells, index) {
   segment("Total", "family:markdown").emit("mouseleave");
   assert(
     same(onSegment.marked, ["Total family:markdown", "legend family:markdown"]) &&
-      onSegment.tooltip === "Markdown / 2 files · 200 B" &&
+      onSegment.tooltip === "Documentation / Markdown / 2 files · 200 B" &&
       onSegment.anchoredOn === "Total family:markdown",
     `the Total row's Markdown segment: ${JSON.stringify(onSegment)}`,
   );

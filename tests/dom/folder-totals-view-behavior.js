@@ -124,6 +124,11 @@ document.body = new Element("body");
     escapeHtml: (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;"),
     formatFileCount: (value) => `${value} files`,
     formatSize: (value) => `${value} B`,
+    // The icon registry by path, as the Details table's rows look a family's up.
+    fileTypeIcon: (iconPath) =>
+      iconPath === "x.py"
+        ? { className: "ft-python", svg: "<svg>py</svg>" }
+        : { className: "", svg: "" },
     sizeClass: () => "",
     tooltip: {
       hide: (within) => tooltipCalls.push({ action: "hide", within }),
@@ -178,6 +183,8 @@ document.body = new Element("body");
         {
           key: "family:python",
           label: "Python",
+          category: "Code",
+          iconPath: "x.py",
           paletteKey: "family:python",
           files: 18,
           bytes: 180,
@@ -187,6 +194,8 @@ document.body = new Element("body");
         {
           key: "family:markdown",
           label: "Markdown",
+          category: "",
+          iconPath: null,
           paletteKey: "family:markdown",
           files: 12,
           bytes: 120,
@@ -256,10 +265,26 @@ document.body = new Element("body");
   check(
     "semantic family segments reuse the shared nav tooltip",
     tooltipCalls[0]?.action === "show" &&
-      tooltipCalls[0]?.html === "<strong>Python</strong><br>18 files · 180 B" &&
+      tooltipCalls[0]?.html ===
+        '<div class="data-label">Code</div>' +
+          '<div class="tip-name tm-tip-name"><span class="file-identity-icon tm-tip-icon ft-python" aria-hidden="true"><svg>py</svg></span><span>Python</span></div>' +
+          '<div class="tip-detail">18 files · 180 B</div>' &&
       tooltipCalls[1]?.action === "hide",
     JSON.stringify(tooltipCalls.map((c) => c.action)),
   );
+  // A family with no category or icon to name says only its name and counts.
+  tooltipCalls.length = 0;
+  filesTrack.children[1].emit("mouseenter", hoverEvent);
+  filesTrack.children[1].emit("mouseleave", hoverEvent);
+  check(
+    "a segment with no category or icon names only its family",
+    tooltipCalls[0]?.html ===
+      '<div class="tip-name tm-tip-name"><span>Markdown</span></div><div class="tip-detail">12 files · 120 B</div>',
+    String(tooltipCalls[0]?.html),
+  );
+  tooltipCalls.length = 0;
+  segment.emit("mouseenter", hoverEvent);
+  segment.emit("mouseleave", hoverEvent);
   // The hover is drawn on the segment by an attribute, not by :hover, so a legend entry
   // naming the segment can draw it too; it marks that segment alone, and leaving takes it
   // off along with the tooltip, put away where it was anchored, on the segment.
@@ -512,7 +537,8 @@ document.body = new Element("body");
   check(
     "a segment marks itself; a hover from outside marks its family in every row, one tooltip",
     fromSegment.action === "show" &&
-      fromSegment.html === "<strong>Markdown</strong><br>12 files · 120 B" &&
+      fromSegment.html ===
+        '<div class="tip-name tm-tip-name"><span>Markdown</span></div><div class="tip-detail">12 files · 120 B</div>' &&
       fromSegment.anchor === markdown &&
       segmentMarks.length === 1 &&
       segmentMarks[0] === filesPython &&

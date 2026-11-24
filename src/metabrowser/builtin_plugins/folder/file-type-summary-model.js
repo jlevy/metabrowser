@@ -383,7 +383,7 @@ const GENERIC_FILE_ICON = "file";
  * @param {{extensions?: ReadonlyArray<string>}} descriptor
  * @returns {string | null}
  */
-function familyIconPath(descriptor) {
+export function familyIconPath(descriptor) {
   const canonical = descriptor.extensions?.[0];
   return typeof canonical === "string" && canonical ? `x${canonical}` : null;
 }

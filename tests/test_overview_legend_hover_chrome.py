@@ -24,7 +24,7 @@ motion. This holds that:
   left out, centered on the entry and clear of it; moving from the name to the dot changes
   nothing;
 - pointing at a segment lifts and grows it alone, marks its family's entry, and shows the
-  same counts under the family's name, centered on the segment and clear of it;
+  same counts under the family's category and name, centered on the segment and clear of it;
 - every grown bar clears the tracks beside it and the legend, no layout box moves under
   the hover, and every entry keeps its size;
 - under ``prefers-reduced-motion: reduce`` the marks still lift and grow, at once, with no
@@ -111,7 +111,8 @@ def _free_port() -> int:
 # The Python family's tooltip on its legend entry, which shows the name, and on its segment,
 # which does not: its Total segment, the row the legend's shares are of with Show ignored on
 # (docs/design-system.md, "Aggregate Distributions").
-_PYTHON_TOOLTIP = {"legend": "6 files · 18 B", "segment": "Python 6 files · 18 B"}
+# On a segment, its category in the label type, which draws it in capitals, over the name.
+_PYTHON_TOOLTIP = {"legend": "6 files · 18 B", "segment": "CODE Python 6 files · 18 B"}
 _PYTHON_BARS = ["Files family:python", "Ignored family:python", "Total family:python"]
 _PYTHON_ENTRY = "legend family:python"
 # --viz-hover-grow in static/styles.css.
