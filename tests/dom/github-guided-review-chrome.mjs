@@ -25,7 +25,9 @@
 //    arrows, and the way on below a step move between them, the step's text sits at the
 //    description's inset, Open full diff goes to the file's Changes address, and a guide that
 //    cannot be read says so in place: none and two blocks. A stale guide still reads, under
-//    one warning and its remedy, with no list.
+//    one warning and its remedy, with no list. Below the overview there is no way back, and
+//    below the last step no way on (mb-meoh): the pager's buttons once set a display that
+//    outranked `[hidden]`, which drew a bare arrow at each end.
 // 5. Where a list's markers fall (mb-u46w): the out-of-date notice once listed commits in a
 //    list whose bullets sat on the notice's left border. An outside marker has no box of its
 //    own, so each is measured by setting it inside for a moment, which moves the item's first
@@ -73,6 +75,11 @@ const ROWS = `[...document.querySelectorAll(".github-pull-guide-excerpt .diff-li
     apart: boxes.every((box, at) => at === 0 || box.left >= boxes[at - 1].right - 1),
   };
 })`;
+/** Whether the way back and the way on below a step each have a box on the page. A button
+ * marked `hidden` has none. */
+const WAYS = `[".github-pull-guide-pager-previous", ".github-pull-guide-pager-next"].map(
+  (selector) => (document.querySelector(selector)?.getClientRects().length ?? 0) > 0,
+)`;
 /** Each list marker under *scope*: how far its left edge is inside its panel's border, in
  * pixels, negative when it is outside. A marker is the list's own, measured by setting it
  * inside for a moment, or a bullet drawn as a positioned `::before`, as KPress draws a
@@ -211,6 +218,8 @@ try {
   await pressR();
   await waitFor(`location.pathname === "/pull/7"`);
   await introduced();
+  await waitFor(`document.querySelector(".github-pull-guide-pager")?.hidden === false`);
+  same("below the overview, the way on and no way back", await evaluate(WAYS), [false, true]);
   same(
     "the step list",
     await evaluate(
@@ -301,8 +310,10 @@ try {
   );
 
   // 4. Steps, Open full diff.
+  same("below a middle step, both ways", await evaluate(WAYS), [true, true]);
   await click("Next step");
   await settled("Read the new guide");
+  same("below the last step, the way back and no way on", await evaluate(WAYS), [true, false]);
   const second = await evaluate(ROWS);
   same(
     "step 2's added line, then the whole diff of the file it cites with no range",
