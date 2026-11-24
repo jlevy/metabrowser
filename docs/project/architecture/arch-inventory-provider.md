@@ -176,7 +176,7 @@ must not traverse inventory entries or manufacture a diagnostics dependency.
 | `directory` | `DirectoryQuery` | Positive depth, page-row, and work bounds | Directory-first, canonical UTF-8 name-ordered rows and an opaque continuation |
 | `filtered_tree` | `FilteredTreeQuery` | Positive depth, page-row, and work bounds | Matching tree rows and selected scalar totals |
 | `grouped_tree` | `GroupedTreeQuery` | Positive depth, page-row, and work bounds; one to `MAX_TREE_GROUPS` groups | Each group’s filtered tree from one pass: its first page, totals, and a filtered-tree continuation |
-| `rollup` | `RollupQuery` | Nonnegative depth and ranking bounds; positive node and work bounds | Typed File Rollup Format record for one directory |
+| `rollup` | `RollupQuery` | Nonnegative depth and ranking bounds; positive node and work bounds; an ignored scope, `include` or `exclude`, and an encoding, `json` or `compact` | Typed File Rollup Format record for one directory |
 | `navigation` | `NavigationQuery` | Positive tally-row and work bounds | Typed population, extension, family, preset, and recency record |
 | `recent` | `RecentQuery` | Positive row, count, and work bounds plus explicit observation time | Newest matching files and an exact-or-lower-bound product count; truncation is derived |
 | `catalog` | `CatalogQuery` | Positive page-row, count, and work bounds; optional terminal-extension, ancestor-name, and size predicates | Canonical UTF-8 path-ordered file identities, logical extensions, opaque continuation, and an exact-or-lower-bound product count |

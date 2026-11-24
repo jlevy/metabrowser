@@ -1521,6 +1521,8 @@ type MetabrowserPlugins = Readonly<{
 type MetabrowserRollupEnvelope = {
   root: string;
   path: string;
+  /** Present only when the body is in the compact encoding. */
+  encoding?: "compact";
   node: Record<string, unknown> | null;
   ext_tallies: Array<Array<unknown>>;
   file_type_breakdown: MetabrowserFileTypeBreakdown | null;
@@ -1588,14 +1590,21 @@ type MetabrowserFileTypeLegend = {
 type MetabrowserRollupOptions = {
   active?: () => boolean;
   debounceMs?: number;
-  depth?: number;
+  depth?: number | "max";
+  /** `compact` writes each expanded folder's files as positional `files` entries
+   * (`RollupCompactFile` in wire_models.py); the SDK returns the body undecoded. */
+  encoding?: "json" | "compact";
   ext_rank?: "bytes" | "dual";
   ext_top?: number;
   filename_top?: number;
+  /** `exclude` leaves gitignored entries out of children and the node budget. */
+  ignored?: "include" | "exclude";
+  /** The node budget: a positive integer, or `max` for `ROLLUP_MAX_NODES`. */
+  nodes?: number | "max";
   onError?: (error: unknown) => void;
   remaining_top?: number;
   signal?: AbortSignal;
-  top?: number;
+  top?: number | "max";
 };
 
 type MetabrowserRollupWatch = {

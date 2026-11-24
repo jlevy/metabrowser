@@ -24,7 +24,7 @@ const source = fs
   )
   .replace(/^export\s*\{[^}]*\};$/gm, "")
   .concat(
-    "\nglobalThis.MetabrowserTreemapLayout = { LAYOUT_DEFAULTS, cellTypography, squarify, packLevel, layoutTree, worstAspect };",
+    "\nglobalThis.MetabrowserTreemapLayout = { LAYOUT_DEFAULTS, ICON_DEFAULTS, TYPOGRAPHY_DEFAULTS, cellTypography, compareChildren, iconOnlyPx, labelIconGapPx, labelIconPx, labelIconRoomPx, squarify, packLevel, layoutTree, typeKey, worstAspect };",
   );
 vm.runInContext(source, sandbox, { filename: "treemap-layout.js" });
 
@@ -163,6 +163,87 @@ function fileNode(name, pathStr, size, extras) {
   );
 }
 
+// ── Child order: value first; ties by type, then by name ────────
+{
+  const item = (name, value, ext, extras) => ({
+    value,
+    node: { name, path: name, type: "file", ext },
+    sortType: ext.toLowerCase(),
+    sortName: name.toLowerCase(),
+    ...extras,
+  });
+  const items = [
+    item("z.py", 5, ".py"),
+    item("big.txt", 9, ".txt"),
+    item("README", 5, ""),
+    item("B.md", 5, ".MD"),
+    item("a.md", 5, ".md"),
+    { value: 5, rest: true },
+    item("tiny.md", 1, ".md"),
+  ];
+  const order = items
+    .slice()
+    .sort(layout.compareChildren)
+    .map((each) => (each.rest ? "(rest)" : each.node.name));
+  check(
+    "value leads, ties group by extension then name, none and the remainder last",
+    order.join(",") === "big.txt,a.md,B.md,z.py,README,(rest),tiny.md",
+    order.join(","),
+  );
+  // A folder sorts by its dominant extension, which colors it; a file by its own, case
+  // folded.
+  check(
+    "a folder's type is its dominant extension, a file's its own",
+    layout.typeKey({ type: "dir", dominant_ext: ".MD", ext: ".py" }) === ".md" &&
+      layout.typeKey({ type: "file", ext: ".Py" }) === ".py" &&
+      layout.typeKey({ type: "file" }) === "",
+  );
+  // By Files every file ties, so a flat folder lays out by type, then by name.
+  const root = dirNode("root", "", {
+    total_files: 4,
+    children: [
+      fileNode("b.py", "b.py", 100),
+      fileNode("NOTES", "NOTES", 100, { ext: "" }),
+      fileNode("x.MD", "x.MD", 100, { ext: ".MD" }),
+      fileNode("a.json", "a.json", 100, { ext: ".json" }),
+    ],
+  });
+  const top = layout
+    .layoutTree(root, { w: 300, h: 100 }, { metric: "files" })
+    .filter((cell) => cell.depth === 0)
+    .map((cell) => cell.path);
+  check(
+    "a flat folder by Files lays out by type",
+    top.join(",") === "a.json,x.MD,b.py,NOTES",
+    top.join(","),
+  );
+  // With the palette's families (typeOf), a family of several extensions sits together:
+  // JavaScript's .js and .mjs, apart from JSON, then by extension within the family.
+  const families = { ".js": "family:js", ".mjs": "family:js", ".json": "family:json" };
+  check(
+    "a type is its family where typeOf names one",
+    layout.typeKey({ type: "file", ext: ".mjs" }, (ext) => families[ext]) === "family:js",
+  );
+  const mixed = dirNode("root", "", {
+    total_files: 4,
+    children: [
+      fileNode("b.mjs", "b.mjs", 100, { ext: ".mjs" }),
+      fileNode("c.json", "c.json", 100, { ext: ".json" }),
+      fileNode("z.js", "z.js", 100, { ext: ".js" }),
+      fileNode("a.mjs", "a.mjs", 100, { ext: ".mjs" }),
+    ],
+  });
+  const byFamily = layout
+    .layoutTree(mixed, { w: 300, h: 100 }, { metric: "files", typeOf: (ext) => families[ext] })
+    .filter((cell) => cell.depth === 0)
+    .map((cell) => cell.path);
+  check(
+    "ties sit by family, then extension, then name",
+    byFamily.join(",") === "z.js,a.mjs,b.mjs,c.json",
+    byFamily.join(","),
+  );
+}
+
 // ── Fluid typography: continuous, bounded, and geometry-aware ───
 {
   const tiny = layout.cellTypography({ w: 40, h: 20 });
@@ -180,12 +261,83 @@ function fileNode(name, pathStr, size, extras) {
   );
   check(
     "font sizes stay within the documented bounds",
-    tiny.labelPx === 11 && large.labelPx === 24 && tiny.valuePx === 10 && large.valuePx === 18,
+    tiny.labelPx === 9 && large.labelPx === 24 && tiny.valuePx === 9 && large.valuePx === 18,
     JSON.stringify({ tiny, large }),
+  );
+  // A folder's name is a heading over its files: it stops at the navigation's sizes, and
+  // its header strip with it, however large the folder.
+  const largeFolder = layout.cellTypography({ w: 900, h: 600 }, "dir");
+  const smallFolder = layout.cellTypography({ w: 40, h: 20 }, "dir");
+  check(
+    "a folder's label and value stop at the navigation's sizes",
+    largeFolder.labelPx === 13 &&
+      largeFolder.valuePx === 12 &&
+      largeFolder.headerPx === 20 &&
+      smallFolder.labelPx === tiny.labelPx,
+    JSON.stringify({ largeFolder, smallFolder }),
   );
   check(
     "a narrow sliver cannot claim large type from area alone",
     layout.cellTypography({ w: 1000, h: 18 }).labelPx === tiny.labelPx,
+  );
+}
+
+// ── Icons: sized to their cell, smaller with it, within the glyph bounds ───
+{
+  const { glyphMinPx, glyphMaxPx } = layout.ICON_DEFAULTS;
+  check(
+    "the glyph bounds stay under the navigation's 14 px glyph",
+    glyphMinPx === 4 && glyphMaxPx === 12,
+    JSON.stringify(layout.ICON_DEFAULTS),
+  );
+  // Beside a label, the glyph follows the label's size, never past the bounds.
+  const besideLabel = [9, 12, 13, 14, 18, 24].map((px) => layout.labelIconPx(px));
+  check(
+    "a label's glyph grows with the label and stops at the cap",
+    JSON.stringify(besideLabel) === JSON.stringify([8, 10, 11, 12, 12, 12]),
+    JSON.stringify(besideLabel),
+  );
+  check(
+    "a label's glyph is no taller than the smallest label",
+    layout.labelIconPx(layout.TYPOGRAPHY_DEFAULTS.labelMinPx) <=
+      layout.TYPOGRAPHY_DEFAULTS.labelMinPx,
+  );
+  check(
+    "the gap and the room a glyph takes scale with the label",
+    layout.labelIconGapPx(10) === 4 &&
+      layout.labelIconRoomPx(10) === layout.labelIconPx(10) + 4 &&
+      layout.labelIconRoomPx(9) < layout.labelIconRoomPx(20),
+    `${layout.labelIconRoomPx(9)}/${layout.labelIconRoomPx(20)}`,
+  );
+  // Alone, the glyph is a share of the cell's short side: smaller cells, smaller glyphs,
+  // down to the smallest; below it, none.
+  const alone = [5, 6, 8, 9, 11, 12, 15, 30].map((side) => layout.iconOnlyPx({ w: side, h: side }));
+  check(
+    "an icon alone shrinks with its cell to the smallest glyph, then is not drawn",
+    JSON.stringify(alone) === JSON.stringify([0, 4, 5, 6, 7, 8, 8, 8]),
+    JSON.stringify(alone),
+  );
+  check(
+    "an icon alone is never larger than the glyph beside its label",
+    layout.iconOnlyPx({ w: 30, h: 30 }, 9) === layout.labelIconPx(9) &&
+      layout.iconOnlyPx({ w: 30, h: 30 }, 14) === layout.labelIconPx(14),
+  );
+  let monotone = true;
+  let fits = true;
+  for (let side = 1; side <= 60; side += 0.5) {
+    const glyph = layout.iconOnlyPx({ w: side, h: 400 }, 24);
+    if (glyph > layout.iconOnlyPx({ w: side + 0.5, h: 400 }, 24)) {
+      monotone = false;
+    }
+    if (glyph > 0 && (glyph < glyphMinPx || glyph > glyphMaxPx || glyph > side - 2)) {
+      fits = false;
+    }
+  }
+  check("an icon alone never shrinks as its cell grows", monotone);
+  check("an icon alone stays within the bounds and inside its cell's edge", fits);
+  check(
+    "a sliver's icon is sized by its short side",
+    layout.iconOnlyPx({ w: 300, h: 9 }) === 6 && layout.iconOnlyPx({ w: 6, h: 300 }) === 4,
   );
 
   const nestedRoot = dirNode("root", "", {
@@ -260,6 +412,279 @@ function fileNode(name, pathStr, size, extras) {
     "file-metric remainder retains its true byte magnitude",
     fileRemainder && fileRemainder.bytes === 1000,
     JSON.stringify(fileRemainder),
+  );
+}
+
+// ── containment, depth, framing, and budget spread ──────────────
+{
+  // Every cell lies inside its parent folder's cell and inside the viewport,
+  // at every depth, including the right and bottom edges.
+  /** A folder `depth` levels deep, `fanout` subfolders and `files` files per level. */
+  function deepTree(prefix, depth, fanout, files) {
+    const children = [];
+    for (let i = 0; i < files; i += 1) {
+      children.push(fileNode(`f${i}.py`, `${prefix}f${i}.py`, 100 + i * 37));
+    }
+    if (depth > 0) {
+      for (let d = 0; d < fanout; d += 1) {
+        children.push(deepTree(`${prefix}d${d}/`, depth - 1, fanout, files));
+      }
+    }
+    const total = children.reduce((sum, c) => sum + (c.type === "dir" ? c.total_size : c.size), 0);
+    const count = children.reduce((sum, c) => sum + (c.type === "dir" ? c.total_files : 1), 0);
+    const name = prefix.split("/").filter(Boolean).at(-1) || "root";
+    return dirNode(name, prefix.replace(/\/$/, ""), {
+      total_size: total,
+      unignored_size: total,
+      total_files: count,
+      unignored_files: count,
+      children,
+    });
+  }
+  const tree = deepTree("", 5, 3, 4);
+  const view = { w: 1037, h: 611 };
+  const cells = layout.layoutTree(tree, view, { metric: "size" });
+  const byPath = new Map(cells.filter((c) => c.kind === "dir").map((c) => [c.path, c]));
+  const eps = 1e-6;
+  let escapesParent = 0;
+  let escapesView = 0;
+  for (const c of cells) {
+    if (c.x < -eps || c.y < -eps || c.x + c.w > view.w + eps || c.y + c.h > view.h + eps) {
+      escapesView += 1;
+    }
+    // A remainder cell carries its folder's own path.
+    const parentPath = c.kind === "rest" ? c.path : c.path.split("/").slice(0, -1).join("/");
+    const parent = parentPath ? byPath.get(parentPath) : null;
+    if (
+      parent &&
+      (c.x < parent.x - eps ||
+        c.y < parent.y - eps ||
+        c.x + c.w > parent.x + parent.w + eps ||
+        c.y + c.h > parent.y + parent.h + eps)
+    ) {
+      escapesParent += 1;
+    }
+  }
+  check("no cell escapes the viewport", escapesView === 0, `${escapesView}`);
+  check("no cell escapes its parent folder", escapesParent === 0, `${escapesParent}`);
+  check(
+    "nesting reaches past the old two-level limit",
+    Math.max(...cells.map((c) => c.depth)) >= 3,
+    `${Math.max(...cells.map((c) => c.depth))}`,
+  );
+  const parentsFirst = cells.every((c, i) => {
+    const parentPath = c.kind === "rest" ? null : c.path.split("/").slice(0, -1).join("/");
+    const parent = parentPath ? byPath.get(parentPath) : null;
+    return !parent || cells.indexOf(parent) < i;
+  });
+  check("parents are emitted before their children", parentsFirst);
+
+  // A folder too small for a header still nests, framed, with no header strip.
+  const framed = cells.filter((c) => c.framed);
+  check("small folders nest in a frame", framed.length > 0, `${framed.length}`);
+  const framedChild = framed
+    .map((f) => [f, cells.find((c) => c.path.startsWith(`${f.path}/`))])
+    .find(([, child]) => child);
+  check(
+    "a framed folder's children start one pad inside it, not below a header",
+    framedChild && Math.abs(framedChild[1].y - framedChild[0].y) < framedChild[0].headerPx,
+    JSON.stringify(framedChild),
+  );
+  // The frame thins with depth, ceil(padPx * frameDecay^depth), and a folder
+  // smaller than frameNestMinPx on a side has none: its children tile it.
+  const { padPx, frameDecay, frameNestMinPx } = layout.LAYOUT_DEFAULTS;
+  const offsets = framed.map((f) => {
+    const inside = cells.filter(
+      (c) => c.path.startsWith(`${f.path}/`) || (c.kind === "rest" && c.path === f.path),
+    );
+    const expected =
+      Math.min(f.w, f.h) >= frameNestMinPx ? Math.ceil(padPx * frameDecay ** f.depth) : 0;
+    return [
+      Math.min(...inside.map((c) => c.x)) - f.x,
+      Math.min(...inside.map((c) => c.y)) - f.y,
+      expected,
+    ];
+  });
+  check(
+    "a framed folder's children start exactly one frame width inside it",
+    offsets.every(([dx, dy, want]) => Math.abs(dx - want) < eps && Math.abs(dy - want) < eps),
+    JSON.stringify(offsets.slice(0, 4)),
+  );
+  check(
+    "frames thin with depth",
+    framed.some((f) => f.depth >= 3 && Math.min(f.w, f.h) >= frameNestMinPx)
+      ? offsets.every(([dx, , want], k) => framed[k].depth < 3 || dx <= 1 + eps || want === 0)
+      : true,
+    JSON.stringify(offsets.filter((_, k) => framed[k].depth >= 3).slice(0, 4)),
+  );
+
+  // Each cell names its parent's index, the folder whose interior holds it, which
+  // hit testing and hover marks walk.
+  const parentIndexes = cells.every((c, i) => {
+    if (c.parent === -1) {
+      return c.depth === 0;
+    }
+    const p = cells[c.parent];
+    return (
+      c.parent < i &&
+      p.kind === "dir" &&
+      p.depth === c.depth - 1 &&
+      (c.kind === "rest" ? c.path === p.path : c.path.startsWith(`${p.path}/`))
+    );
+  });
+  check("every cell names its parent's index", parentIndexes);
+  const interiors = cells.every(
+    (c) =>
+      !c.nested ||
+      (c.inner &&
+        c.inner.x >= c.x - eps &&
+        c.inner.y >= c.y - eps &&
+        c.inner.x + c.inner.w <= c.x + c.w + eps &&
+        c.inner.y + c.inner.h <= c.y + c.h + eps),
+  );
+  check("a nesting folder records the interior its children tile", interiors);
+  // A folder the map would label is labelled, not framed: framing it hid the
+  // names of folders that had room for them.
+  const labelMin = { w: layout.LAYOUT_DEFAULTS.labelMinW, h: layout.LAYOUT_DEFAULTS.labelMinH };
+  check(
+    "only folders too small for a label are framed",
+    framed.every((f) => f.w < labelMin.w || f.h < labelMin.h),
+    JSON.stringify(framed.filter((f) => f.w >= labelMin.w && f.h >= labelMin.h).slice(0, 3)),
+  );
+  const headed = cells.filter((c) => c.nested && !c.framed);
+  check(
+    "a folder nests under its label only with room for the label and a row of children",
+    headed.length > 0 && headed.every((c) => c.w >= labelMin.w && c.h >= 40),
+    `${headed.length}`,
+  );
+
+  // A folder whose children all folded into its remainder at the rollup's node
+  // budget has nothing to nest: it stays one solid cell, not a frame around a
+  // single inert remainder.
+  const restOnly = layout.layoutTree(
+    dirNode("root", "", {
+      total_size: 2000,
+      children: [
+        dirNode("capped", "capped", {
+          total_size: 1500,
+          children: [],
+          rest: { dirs: 0, files: 9, size: 1500, unignored_files: 9, unignored_size: 1500 },
+        }),
+        fileNode("a.py", "a.py", 500),
+      ],
+    }),
+    { w: 400, h: 300 },
+    { metric: "size" },
+  );
+  const capped = restOnly.find((c) => c.path === "capped" && c.kind === "dir");
+  check(
+    "a folder holding only its remainder stays solid",
+    !!capped && !capped.nested && !capped.framed && restOnly.every((c) => c.kind !== "rest"),
+    JSON.stringify(restOnly.map((c) => [c.kind, c.path, c.nested])),
+  );
+
+  // The budget spreads across the map rather than draining into the first
+  // folder: with a small cap, every large top-level folder still nests.
+  const wideTree = dirNode("root", "", {
+    total_size: 4 * 400 * 1000,
+    children: Array.from({ length: 4 }, (_, d) =>
+      dirNode(`d${d}`, `d${d}`, {
+        total_size: 400 * 1000,
+        total_files: 400,
+        children: Array.from({ length: 400 }, (_, i) =>
+          fileNode(`f${i}.py`, `d${d}/f${i}.py`, 1000),
+        ),
+      }),
+    ),
+  });
+  const spread = layout.layoutTree(
+    wideTree,
+    { w: 1200, h: 800 },
+    { metric: "size", maxCells: 200 },
+  );
+  const perFolder = [0, 1, 2, 3].map(
+    (d) => spread.filter((c) => c.kind === "file" && c.path.startsWith(`d${d}/`)).length,
+  );
+  check(
+    "the cell budget reaches every large folder",
+    perFolder.every((n) => n >= 20),
+    JSON.stringify(perFolder),
+  );
+  check("the cap still holds while spreading", spread.length <= 200, `${spread.length}`);
+}
+
+// ── chrome compensation: a file's area follows its value at any depth ──
+{
+  // Eight 1,000-byte files at each of seven levels, each level a folder inside
+  // the last, so every level's files sit inside one more header or frame.
+  const levels = 7;
+  /** @param {number} level @param {string} prefix */
+  function chain(level, prefix) {
+    const files = Array.from({ length: 8 }, (_, i) =>
+      fileNode(`f${i}.py`, `${prefix}f${i}.py`, 1000),
+    );
+    if (level === levels - 1) {
+      return { files, size: 8000, count: 8 };
+    }
+    const sub = chain(level + 1, `${prefix}d${level + 1}/`);
+    const dir = dirNode(`d${level + 1}`, `${prefix}d${level + 1}`, {
+      total_size: sub.size,
+      unignored_size: sub.size,
+      total_files: sub.count,
+      unignored_files: sub.count,
+      children: sub.files,
+    });
+    return { files: [...files, dir], size: sub.size + 8000, count: sub.count + 8 };
+  }
+  const top = chain(0, "");
+  const tree = dirNode("root", "", {
+    total_size: top.size,
+    unignored_size: top.size,
+    total_files: top.count,
+    unignored_files: top.count,
+    children: top.files,
+  });
+  /** @param {Record<string, any>} options */
+  function depthRatio(options) {
+    const cells = layout.layoutTree(tree, { w: 1200, h: 800 }, { metric: "size", ...options });
+    /** @param {number} depth */
+    const perValue = (depth) => {
+      const files = cells.filter((c) => c.kind === "file" && c.depth === depth);
+      return files.reduce((s, c) => s + (c.w * c.h) / c.value, 0) / Math.max(1, files.length);
+    };
+    const deepest = Math.max(...cells.filter((c) => c.kind === "file").map((c) => c.depth));
+    return { ratio: perValue(deepest) / perValue(0), deepest, cells };
+  }
+  const plain = depthRatio({ chromeRounds: 0, chromePasses: 0 });
+  const estimated = depthRatio({ chromePasses: 0 });
+  const corrected = depthRatio({});
+  check(
+    "uncompensated, the deepest files shrink by each folder's chrome",
+    plain.deepest === levels - 1 && plain.ratio < 0.8,
+    `${plain.ratio.toFixed(3)} at depth ${plain.deepest}`,
+  );
+  check(
+    "the chrome estimate gives the deepest files near their share",
+    estimated.ratio > 0.9 && estimated.ratio < 1.1,
+    estimated.ratio.toFixed(3),
+  );
+  check(
+    "the corrective pass gives the deepest files their share",
+    corrected.deepest === levels - 1 && Math.abs(corrected.ratio - 1) < 0.02,
+    corrected.ratio.toFixed(3),
+  );
+  check(
+    "a compensated cell still carries its own value, not its weight",
+    corrected.cells
+      .filter((c) => c.kind === "dir")
+      .every((c) => c.value === c.bytes && c.value === (levels - c.depth - 1) * 8000),
+    JSON.stringify(corrected.cells.filter((c) => c.kind === "dir").map((c) => [c.depth, c.value])),
+  );
+  const capped = depthRatio({ chromePassMaxCells: 10 });
+  check(
+    "a map past chromePassMaxCells keeps the estimate alone",
+    capped.ratio === estimated.ratio,
+    `${capped.ratio} vs ${estimated.ratio}`,
   );
 }
 

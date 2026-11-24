@@ -18,6 +18,7 @@ SESSION_DIR = Path(__file__).resolve().parent / "dom"
     [
         ("folder-plugin-behavior.js", "folder plugin OK"),
         ("treemap-not-indexed-session.js", '"rollupResources": 0'),
+        ("treemap-compact-session.js", '"hidOwnTooltipOnly": true'),
     ],
 )
 def test_folder_plugin_behavior(session: str, expected: str) -> None:

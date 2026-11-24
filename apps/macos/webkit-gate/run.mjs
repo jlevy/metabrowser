@@ -13,7 +13,11 @@
 // load (static-server.mjs), builds webkit-driver, the app package's WebKitDriver target,
 // then runs each case as pairs: Chrome then WebKit, then WebKit then Chrome, alternating,
 // each sample a fresh browser with a cold cache at a fixed 1200 x 820 content size, the
-// size the app's windows opened at before they were sized to the screen.
+// size the app's windows opened at before they were sized to the screen. The treemap case,
+// treemap-100k, reads a generated folder of 100,000 files (writeTreemapCorpus) from a
+// second metab of its own, which a run starts only for that case and whose index finishes
+// before the case's first sample; it times the Treemap tab, and lays the view's own rollup
+// out at the caps PAINT_MAX_CELLS is set from (TREEMAP_SWEEP_CAPS).
 // Both engines run probe.js, so they time the same intervals with the same code. Results go
 // to attic/webkit-gate/<UTC time>/: meta.json (machine, versions, corpora), samples.jsonl
 // (every record), summary.json, and summary.md, the table that
@@ -39,7 +43,7 @@ import { promisify } from "node:util";
 import { CHROME, Connection, sleep } from "../../../explorations/performance-loop/pr-cdp.mjs";
 import { Cleanup, cleanUpBeforeExit, startMetab, terminate, within } from "./processes.mjs";
 import { BENCHMARK_ASSETS, startStatic } from "./static-server.mjs";
-import { markdown, summarize } from "./summary.mjs";
+import { markdown, median, summarize } from "./summary.mjs";
 
 /**
  * @typedef {import("./summary.mjs").Metric} Metric
@@ -50,13 +54,15 @@ import { markdown, summarize } from "./summary.mjs";
  *   pairs: number, warmup: number, cases: string[] | null, checks: boolean,
  *   summarize: string | null, metab: string, out: string
  * }} Options
- * @typedef {{ metab: string, static: string }} Servers
+ * @typedef {{ metab: string, static: string, treemap: string | null }} Servers `treemap` is
+ *   the server of the treemap case's folder, running only when that case does.
  * @typedef {any} ProbeRecord A record probe.js or webkit-driver printed: JSON, whose shape
  *   each case's metrics function reads.
  * @typedef {{
  *   url: (servers: Servers) => string, config: Record<string, unknown>,
- *   metrics: (record: ProbeRecord) => Metric[], diagnostic?: boolean
- * }} CaseDefinition
+ *   metrics: (record: ProbeRecord) => Metric[], diagnostic?: boolean,
+ *   treemapCorpus?: boolean
+ * }} CaseDefinition `treemapCorpus` cases read the treemap folder (writeTreemapCorpus).
  */
 
 const run = promisify(execFile);
@@ -70,6 +76,9 @@ const SAMPLE_TIMEOUT_MS = 300_000;
 const PRINT_PAGE_LIMIT = 50;
 // How long the probe waits for a view to change before it fails the sample.
 const DOM_TIMEOUT_MS = 120_000;
+// How long the treemap folder's server may take to index it before the run fails: a safety
+// bound far past the 100,000 files' index on a loaded host, which meta.json records.
+const TREEMAP_INDEX_TIMEOUT_MS = 900_000;
 const KIB = 1024;
 const MIB = 1024 * KIB;
 
@@ -173,6 +182,22 @@ function repeatToOneLine(text, bytes) {
 }
 
 /**
+ * A fixed-seed xorshift32 generator: each call returns the next unsigned 32-bit value.
+ * @param {number} seed
+ */
+function xorshift(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state ^= state << 13;
+    state >>>= 0;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    state >>>= 0;
+    return state;
+  };
+}
+
+/**
  * Bytes shaped like an executable: a Mach-O magic number and a zero-filled header page,
  * which the server's NUL sniff classifies as binary, then 4 KiB pages of random bytes,
  * zero fill, or text, chosen by a fixed-seed xorshift generator. With `randomPercent` 0
@@ -183,15 +208,7 @@ function repeatToOneLine(text, bytes) {
  * @param {number} seed
  */
 function binaryCorpus(bytes, text, seed, randomPercent = 45) {
-  let state = seed >>> 0;
-  const next = () => {
-    state ^= state << 13;
-    state >>>= 0;
-    state ^= state >>> 17;
-    state ^= state << 5;
-    state >>>= 0;
-    return state;
-  };
+  const next = xorshift(seed);
   const pool = Buffer.from(text, "utf8");
   const buffer = Buffer.alloc(bytes);
   buffer.writeUInt32LE(0xfeedfacf, 0);
@@ -225,10 +242,247 @@ function denseJson() {
 }
 
 /**
- * Writes every corpus under `directory` and returns each one's size and SHA-256.
- * @param {string} directory
+ * The treemap case's folder, by top-level folder: its file count, whether .gitignore
+ * leaves it out, and the weight of each extension among its files. 100,000 files in all,
+ * shaped like a large monorepo's working tree: 82,000 tracked, most of them TypeScript
+ * and Python, and 18,000 under a gitignored node_modules/ and build/. A design, not a
+ * measurement: enough files that the Treemap's rollup fills ROLLUP_MAX_NODES (settings.py)
+ * and its layout reaches PAINT_MAX_CELLS (treemap-map.js), the bounds the case measures,
+ * with TypeScript the largest family, about 27% of the files, for the legend hover.
+ * @type {readonly { name: string, files: number, ignored?: boolean, mix: Record<string, number> }[]}
  */
-async function writeCorpora(directory) {
+const TREEMAP_FOLDERS = [
+  {
+    name: "packages",
+    files: 34_000,
+    mix: { ts: 44, tsx: 16, js: 4, json: 8, css: 5, svg: 4, md: 3, snap: 4, png: 2 },
+  },
+  {
+    name: "services",
+    files: 16_000,
+    mix: { py: 56, yaml: 8, json: 6, sql: 6, html: 6, md: 4, csv: 4, txt: 3, toml: 3, log: 2 },
+  },
+  { name: "tests", files: 12_000, mix: { ts: 38, py: 30, json: 18, snap: 10, yaml: 4 } },
+  { name: "docs", files: 7_000, mix: { md: 68, png: 16, svg: 9, html: 4, yaml: 3 } },
+  { name: "assets", files: 5_000, mix: { png: 48, svg: 30, jpg: 16, woff2: 6 } },
+  { name: "data", files: 4_000, mix: { csv: 40, json: 36, parquet: 12, yaml: 12 } },
+  { name: "native", files: 4_000, mix: { rs: 42, go: 30, h: 12, c: 10, toml: 6 } },
+  {
+    name: "node_modules",
+    files: 15_000,
+    ignored: true,
+    mix: { js: 52, json: 16, ts: 16, md: 10, map: 6 },
+  },
+  { name: "build", files: 3_000, ignored: true, mix: { js: 58, map: 30, css: 8, html: 4 } },
+];
+
+/**
+ * The treemap corpus's median file size by extension, in bytes; each file's size is the
+ * median times a log-normal factor (sigma 1), so a folder's sizes spread over two orders
+ * of magnitude, as a repository's do, and the Bytes metric lays out a different map from
+ * the Files metric. A design, not a measurement.
+ * @type {Readonly<Record<string, number>>}
+ */
+const TREEMAP_MEDIAN_BYTES = {
+  ts: 2400,
+  tsx: 3400,
+  js: 3000,
+  json: 900,
+  css: 1800,
+  svg: 2200,
+  md: 3600,
+  snap: 7000,
+  png: 26_000,
+  py: 3200,
+  yaml: 700,
+  sql: 1600,
+  html: 5000,
+  csv: 30_000,
+  txt: 1200,
+  toml: 450,
+  log: 40_000,
+  jpg: 70_000,
+  woff2: 32_000,
+  parquet: 240_000,
+  rs: 5200,
+  go: 4100,
+  h: 1900,
+  c: 6500,
+  map: 9000,
+};
+
+// Folder and file names, picked by the generator; a folder's names are distinct.
+const TREEMAP_FOLDER_NAMES = (
+  "core api app ui components utils lib common models views services handlers config " +
+  "shared internal plugins hooks store routes types schemas fixtures widgets forms layout " +
+  "auth billing search reports admin editor render parser network storage cache events " +
+  "jobs metrics i18n theme icons workers sync export import graph session"
+).split(" ");
+const TREEMAP_FILE_STEMS = (
+  "index main types utils helpers config constants client server handler model view " +
+  "controller service store reducer actions selectors hooks context provider button " +
+  "input table list item card modal form schema parser router query mutation test spec " +
+  "mock fixture setup"
+).split(" ");
+
+/**
+ * The treemap case's folder under `root`, from a fixed seed: TREEMAP_FOLDERS at the top,
+ * each split into nested folders of a realistic fan-out, 2 to 12 subfolders a level, of
+ * uneven sizes, and 4 to 48 files in a leaf, with up to 32 files beside the subfolders. The
+ * root also holds a README.md, a package.json, the .gitignore, and an empty .git
+ * directory, which is what makes the server read the .gitignore (as
+ * tests/test_treemap_legend_hover_chrome.py's folder does). Files other than the root's
+ * are sparse: a size and no data, since the index reads sizes and never contents, so
+ * 100,000 files cost disk metadata only. Every file and folder gets a fixed mtime, so the
+ * rollup is the same in every run. Returns the counts and a SHA-256 of the listing (path,
+ * size, and mtime of every file).
+ * @param {string} root
+ */
+function writeTreemapCorpus(root) {
+  const next = xorshift(0x27d4eb2f);
+  const uniform = () => (next() + 0.5) / 2 ** 32;
+  // 2026-01-01T00:00:00Z, the root's mtime; every other is up to three years before it.
+  const newest = 1_767_225_600;
+  const mtime = () => newest - (next() % (3 * 365 * 86_400));
+  /** @type {{ path: string, bytes: number, mtime: number }[]} */
+  const files = [];
+  /** @type {{ path: string, mtime: number }[]} */
+  const folders = [];
+
+  /** @param {Record<string, number>} mix */
+  const picker = (mix) => {
+    const entries = Object.entries(mix);
+    const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+    return () => {
+      let draw = next() % total;
+      for (const [extension, weight] of entries) {
+        if (draw < weight) {
+          return extension;
+        }
+        draw -= weight;
+      }
+      return entries[0][0];
+    };
+  };
+
+  /**
+   * @param {string} folder
+   * @param {number} count
+   * @param {() => string} extension
+   */
+  const addFiles = (folder, count, extension) => {
+    const start = next() % TREEMAP_FILE_STEMS.length;
+    for (let index = 0; index < count; index += 1) {
+      const ext = extension();
+      const stem = TREEMAP_FILE_STEMS[(start + index * 7) % TREEMAP_FILE_STEMS.length];
+      // A log-normal factor by Box-Muller.
+      const factor = Math.exp(
+        Math.sqrt(-2 * Math.log(uniform())) * Math.cos(2 * Math.PI * uniform()),
+      );
+      files.push({
+        path: `${folder}/${stem}-${index}.${ext}`,
+        bytes: Math.max(16, Math.round((TREEMAP_MEDIAN_BYTES[ext] ?? 2000) * factor)),
+        mtime: mtime(),
+      });
+    }
+  };
+
+  /**
+   * @param {string} folder
+   * @param {number} count
+   * @param {() => string} extension
+   * @param {number} depth
+   */
+  const grow = (folder, count, extension, depth) => {
+    folders.push({ path: folder, mtime: mtime() });
+    const leaf = 4 + (next() % 45);
+    if (count <= leaf || depth >= 9) {
+      addFiles(folder, count, extension);
+      return;
+    }
+    const here = Math.min(Math.floor((count * (2 + (next() % 11))) / 100), 4 + (next() % 29));
+    addFiles(folder, here, extension);
+    const rest = count - here;
+    // No more subfolders than a dozen files each would fill.
+    const children = Math.max(1, Math.min(2 + (next() % 11), Math.floor(rest / 12)));
+    const weights = Array.from({ length: children }, () => 0.1 + uniform() ** 2);
+    const sum = weights.reduce((total, weight) => total + weight, 0);
+    const shares = weights.map((weight) => Math.floor((rest * weight) / sum));
+    // Whole files: what flooring left goes to the first children, one each.
+    let left = rest - shares.reduce((total, share) => total + share, 0);
+    for (let index = 0; left > 0; index = (index + 1) % children, left -= 1) {
+      shares[index] += 1;
+    }
+    const start = next() % TREEMAP_FOLDER_NAMES.length;
+    shares.forEach((share, index) => {
+      if (share > 0) {
+        // 7 is prime to the pool's length, so a folder's names are distinct.
+        const name = TREEMAP_FOLDER_NAMES[(start + index * 7) % TREEMAP_FOLDER_NAMES.length];
+        grow(`${folder}/${name}`, share, extension, depth + 1);
+      }
+    });
+  };
+
+  for (const top of TREEMAP_FOLDERS) {
+    grow(top.name, top.files, picker(top.mix), 1);
+  }
+
+  fs.mkdirSync(path.join(root, ".git"), { recursive: true });
+  /** @type {Record<string, string>} */
+  const written = {
+    ".gitignore": "node_modules/\nbuild/\n*.log\n",
+    "README.md":
+      "# Treemap corpus\n\nA generated folder of about 100,000 files for the WebKit " +
+      "measurement gate's treemap case (apps/macos/webkit-gate/run.mjs).\n",
+    "package.json": '{\n  "name": "treemap-corpus",\n  "private": true\n}\n',
+  };
+  for (const [name, text] of Object.entries(written)) {
+    fs.writeFileSync(path.join(root, name), text);
+  }
+  for (const folder of folders) {
+    fs.mkdirSync(path.join(root, folder.path), { recursive: true });
+  }
+  for (const file of files) {
+    const descriptor = fs.openSync(path.join(root, file.path), "w");
+    try {
+      fs.ftruncateSync(descriptor, file.bytes);
+      fs.futimesSync(descriptor, file.mtime, file.mtime);
+    } finally {
+      fs.closeSync(descriptor);
+    }
+  }
+  // After every entry is in place, since adding an entry to a folder changes its mtime.
+  for (const name of Object.keys(written)) {
+    fs.utimesSync(path.join(root, name), newest, newest);
+  }
+  for (const folder of [...folders, { path: ".git", mtime: newest }]) {
+    fs.utimesSync(path.join(root, folder.path), folder.mtime, folder.mtime);
+  }
+  fs.utimesSync(root, newest, newest);
+  const listing = createHash("sha256");
+  for (const file of files) {
+    listing.update(`${file.path}\t${file.bytes}\t${file.mtime}\n`);
+  }
+  for (const [name, text] of Object.entries(written)) {
+    listing.update(`${name}\t${Buffer.byteLength(text)}\n`);
+  }
+  return {
+    files: files.length + Object.keys(written).length,
+    folders: folders.length,
+    ignored_files: files.filter((file) => /^(node_modules|build)\/|\.log$/.test(file.path)).length,
+    bytes: files.reduce((total, file) => total + file.bytes, 0),
+    sha256: listing.digest("hex"),
+  };
+}
+
+/**
+ * Writes every corpus under `directory` and returns each one's size and SHA-256 (`files`);
+ * and, when `treemap` names a directory, writes the treemap case's folder there, which
+ * only that case reads, and returns its counts and digest (`treemap`).
+ * @param {string} directory
+ * @param {string | null} [treemap]
+ */
+async function writeCorpora(directory, treemap = null) {
   fs.mkdirSync(path.join(directory, "folder"), { recursive: true });
   const source = await trackedText("src/metabrowser/*.py", "src/metabrowser/static/*.js");
   const corpora = {
@@ -262,7 +516,10 @@ async function writeCorpora(directory) {
       sha256: createHash("sha256").update(bytes).digest("hex"),
     };
   }
-  return manifest;
+  if (treemap) {
+    fs.mkdirSync(treemap, { recursive: true });
+  }
+  return { files: manifest, treemap: treemap ? writeTreemapCorpus(treemap) : null };
 }
 
 // ── Engines ─────────────────────────────────────────────────────
@@ -560,6 +817,17 @@ const HIGHLIGHT_CORPORA = [
   { language: "typescript", file: "highlight-512kib.ts" },
 ];
 
+// The cell caps the treemap case lays the view's own rollup out at, in the page, with the
+// map's own modules, beside the view's PAINT_MAX_CELLS (treemap-map.js): the curve that
+// bound is set from. 40,000 is past ROLLUP_MAX_NODES (settings.py), so it lays out every
+// node the rollup holds.
+const TREEMAP_SWEEP_CAPS = [5_000, 10_000, 15_000, 20_000, 25_000, 40_000];
+// How often one treemap sample times each step, so a loaded host's stray long task moves
+// a median rather than the sample: each metric switch direction, each legend hover, and
+// each cap of the sweep, whose best is reported as the Chrome measurement beside
+// PAINT_MAX_CELLS reported its best of five.
+const TREEMAP_ROUNDS = { metric: 3, hover: 5, sweep: 5 };
+
 /**
  * Each case: where it loads, what the probe runs, and the metrics it reports.
  * @type {Record<string, CaseDefinition>}
@@ -641,6 +909,17 @@ const CASES = {
           gated(`${sample.name}, ${sample.status} (ms)`, sample.elapsed_ms),
       ),
   },
+  "treemap-100k": {
+    url: (servers) => {
+      if (!servers.treemap) {
+        throw new Error("the treemap folder's server is not running");
+      }
+      return `${servers.treemap}/view/`;
+    },
+    config: { case: "treemap", sweepCaps: TREEMAP_SWEEP_CAPS, rounds: TREEMAP_ROUNDS },
+    metrics: treemapMetrics,
+    treemapCorpus: true,
+  },
   clamp: {
     url: (servers) => `${servers.static}/__gate/blank.html`,
     config: { case: "clamp" },
@@ -694,6 +973,83 @@ function appendMetrics(record) {
       gated(`to ${mib(step.characters)} Mi chars: append to next frame (ms)`, step.frame_ms),
     ],
   );
+}
+
+/**
+ * The treemap case: the Treemap tab's first paint, metric switches, the largest family's
+ * legend hover, the cap sweep, and what the map holds.
+ * @param {ProbeRecord} record
+ * @returns {Metric[]}
+ */
+function treemapMetrics(record) {
+  const { open, counts, switches, hover, sweep } = record.result;
+  /** @type {Metric[]} */
+  const metrics = [
+    gated("open: Treemap tab click to labels mounted (ms)", open.dom_ms),
+    gated("open: rollup response end to labels mounted (ms)", open.after_response_dom_ms),
+    gated("open: rollup response end to next frame (ms)", open.after_response_frame_ms),
+    gated("open: Treemap tab click to next frame (ms)", open.frame_ms),
+  ];
+  for (const [metric, label] of [
+    ["size", "Bytes"],
+    ["files", "Files"],
+  ]) {
+    /** @type {{ to: string, handler_ms: number, work_ms: number }[]} */
+    const timed = switches.filter(/** @param {{ to: string }} step */ (step) => step.to === metric);
+    metrics.push(
+      gated(
+        `metric to ${label}: click handler, median (ms)`,
+        median(timed.map((s) => s.handler_ms)),
+      ),
+      gated(`metric to ${label}: frame work, median (ms)`, median(timed.map((s) => s.work_ms))),
+    );
+  }
+  /** @type {{ enter_handler_ms: number, enter_ms: number, leave_handler_ms: number, leave_ms: number }[]} */
+  const rounds = hover.rounds;
+  metrics.push(
+    gated("legend hover enter, largest family: first frame work (ms)", rounds[0]?.enter_ms),
+    gated(
+      "legend hover enter: handler, median (ms)",
+      median(rounds.map((round) => round.enter_handler_ms)),
+    ),
+    gated("legend hover enter: frame work, median (ms)", median(rounds.map((r) => r.enter_ms))),
+    gated(
+      "legend hover leave: handler, median (ms)",
+      median(rounds.map((round) => round.leave_handler_ms)),
+    ),
+    gated("legend hover leave: frame work, median (ms)", median(rounds.map((r) => r.leave_ms))),
+  );
+  for (const step of sweep.caps) {
+    metrics.push(
+      gated(`cap ${step.cap}: layout, paint list, paint, hit grid, best (ms)`, step.total_ms),
+      gated(`cap ${step.cap}: family hover marks, best (ms)`, step.hover_ms),
+      counted(`cap ${step.cap}: cells laid out`, step.cells),
+    );
+  }
+  if (record.footprint) {
+    metrics.push(
+      gated("renderer footprint without graphics (MiB)", mib(record.footprint.other_bytes)),
+      counted("renderer footprint, total (MiB)", mib(record.footprint.total_bytes)),
+    );
+  }
+  /** @param {boolean | null | undefined} value */
+  const flag = (value) => (typeof value === "boolean" ? Number(value) : null);
+  metrics.push(
+    counted("open: laid out again by the next frame (1 is yes)", flag(open.relaid_out_by_frame)),
+    counted("open: laid out again once settled (1 is yes)", flag(open.relaid_out_after)),
+    counted("cells laid out", counts.cells),
+    counted("cells painted (not empty)", counts.painted),
+    counted("label elements", counts.label_elements),
+    counted("largest family's marked cells", hover.marked),
+    counted("largest family's mark ops", hover.mark_ops),
+    counted("rollup nodes", sweep.nodes),
+    counted("rollup, decoded (KiB)", Math.round(sweep.bytes / KIB)),
+    counted(
+      "rollup, encoded (KiB)",
+      open.rollup.encoded_bytes ? Math.round(open.rollup.encoded_bytes / KIB) : null,
+    ),
+  );
+  return metrics;
 }
 
 /**
@@ -854,6 +1210,43 @@ async function runChecks(driver, servers, corpus, scratch, cleanup) {
 }
 
 /**
+ * Waits until the server at `origin` has indexed the folder it serves, asking for the
+ * root's rollup as the Treemap does (treemapFullRollupQuery, treemap-map.js) until the
+ * answer is complete as the view judges one (isCompleteSnapshot), so every sample's view
+ * draws the finished tree from its first answer. Returns how long that took.
+ * @param {string} origin
+ */
+async function awaitTreemapIndex(origin) {
+  const query = new URLSearchParams({
+    path: "",
+    ext_rank: "dual",
+    depth: "max",
+    top: "max",
+    nodes: "max",
+    encoding: "compact",
+    ignored: "include",
+  });
+  const started = Date.now();
+  for (;;) {
+    const response = await fetch(`${origin}/api/rollup?${query}`);
+    if (response.ok) {
+      const envelope = /** @type {{ index_status?: string, node?: { state?: string } | null }} */ (
+        await response.json()
+      );
+      const status = envelope.index_status ?? "";
+      const finished = status === "done" || status === "truncated";
+      if (finished && envelope.node && envelope.node.state !== "pending") {
+        return { index_ms: Date.now() - started, index_status: status };
+      }
+    }
+    if (Date.now() - started > TREEMAP_INDEX_TIMEOUT_MS) {
+      throw new Error(`the treemap folder was not indexed in ${TREEMAP_INDEX_TIMEOUT_MS} ms`);
+    }
+    await sleep(1000);
+  }
+}
+
+/**
  * Writes summary.json and summary.md for a run's samples and returns the Markdown.
  * @param {string} out
  * @param {RunMeta & { pairs?: unknown, cases?: string[] }} meta
@@ -931,8 +1324,13 @@ async function measure(options, caseNames, cleanup) {
   const scratch = path.join(options.out, "scratch");
   fs.mkdirSync(scratch, { recursive: true });
   const probe = fs.readFileSync(path.join(HERE, "probe.js"), "utf8");
+  // The treemap folder is written only for a run that has its case.
+  const treemapRoot = caseNames.some((name) => CASES[name].treemapCorpus)
+    ? path.join(options.out, "corpus-treemap")
+    : null;
   console.error(`webkit-gate: writing corpora and building webkit-driver in ${options.out}`);
-  const [manifest, driver] = await Promise.all([writeCorpora(corpus), buildDriver()]);
+  const [corpora, driver] = await Promise.all([writeCorpora(corpus, treemapRoot), buildDriver()]);
+  const manifest = corpora.files;
   const metab = await startMetab(options.metab, corpus, scratch, { cleanup });
   const files = await startStatic({
     root: ROOT,
@@ -941,11 +1339,25 @@ async function measure(options, caseNames, cleanup) {
     corpusFiles: Object.keys(manifest),
     cleanup,
   });
-  const servers = { metab: metab.origin, static: files.origin };
+  // The treemap folder has a server of its own, so the other cases' server never indexes
+  // its 100,000 files. The folder goes when the run ends, after its server stops (Cleanup
+  // runs newest first): it is metadata for 100,000 files, and meta.json has its digest.
+  /** @type {{ origin: string, index_ms: number, index_status: string } | null} */
+  let treemap = null;
+  if (treemapRoot) {
+    cleanup.add(() => fs.rmSync(treemapRoot, { recursive: true, force: true }));
+    const treemapScratch = path.join(scratch, "treemap");
+    fs.mkdirSync(treemapScratch, { recursive: true });
+    const server = await startMetab(options.metab, treemapRoot, treemapScratch, { cleanup });
+    console.error("webkit-gate: waiting for the treemap folder's index");
+    treemap = { origin: server.origin, ...(await awaitTreemapIndex(server.origin)) };
+  }
+  const servers = { metab: metab.origin, static: files.origin, treemap: treemap?.origin ?? null };
   /**
    * @type {RunMeta & {
    *   pairs: number, cases: string[], viewport: string, cores: number,
-   *   corpora: Record<string, { bytes: number, sha256: string }>
+   *   corpora: Record<string, { bytes: number, sha256: string }>,
+   *   treemap_corpus?: Record<string, unknown>
    * }}
    */
   const meta = {
@@ -956,6 +1368,15 @@ async function measure(options, caseNames, cleanup) {
     cases: caseNames,
     viewport: `${WIDTH} x ${HEIGHT}`,
     corpora: manifest,
+    ...(corpora.treemap && treemap
+      ? {
+          treemap_corpus: {
+            ...corpora.treemap,
+            index_ms: treemap.index_ms,
+            index_status: treemap.index_status,
+          },
+        }
+      : {}),
   };
   fs.writeFileSync(path.join(options.out, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
   if (options.checks) {

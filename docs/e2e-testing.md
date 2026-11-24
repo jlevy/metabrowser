@@ -511,6 +511,9 @@ Strict mode is off on a developer machine, which can add these:
   `tests/test_treemap_legend_hover_chrome.py`, which moves Chrome’s pointer onto the
   Treemap’s legend entry and one of its cells and reads which cells, bars, and entry are
   marked, what they compute to, and that the view does not move;
+  `tests/test_treemap_containment_chrome.py`, which serves a wide, deep folder and reads
+  that every cell the Treemap draws lies inside its parent folder’s cell and the map’s
+  border, at a wide and a narrow window;
   `tests/test_github_pull_core_markdown_chrome.py`, which reads every frame of a pull
   request’s description as it opens on its prepared core and as its record follows, and
   holds that its Markdown source is never on screen; and
