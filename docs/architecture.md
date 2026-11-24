@@ -151,6 +151,7 @@ In `docs/project/architecture/`:
 | --- | --- |
 | [arch-cli.md](project/architecture/arch-cli.md) | Modes, the serve lifecycle, in-process `--api` dispatch, remote tunnels, and process exit |
 | [arch-server-and-content.md](project/architecture/arch-server-and-content.md) | Request flow, safe paths, validators, and the content-trust model |
+| [arch-threat-model.md](project/architecture/arch-threat-model.md) | Assets, adversaries, trust boundaries, and each threat’s policy, evidence, and accepted risk |
 | [arch-views-models-routes.md](project/architecture/arch-views-models-routes.md) | Kinds, views, formats, the URL grammar, and the route index |
 | [arch-parity-registry.md](project/architecture/arch-parity-registry.md) | The route and functional-aspect tables `devtools/check_parity.py` reads |
 | [arch-inventory-provider.md](project/architecture/arch-inventory-provider.md) | The engine-independent contract: queries, lifecycle, the cap, and change feeds |

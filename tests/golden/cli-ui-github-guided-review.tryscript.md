@@ -86,19 +86,24 @@ address, shows a card where the description had its guided-review block.
 The guide opens on its overview, the description’s card as Conversation draws it, under
 a list of its steps, and Next step goes to a step with no read, since the overview
 already has its answer; each step is a card headed as a guided review.
-A stale guide still shows its steps, under a notice at the top of the page that names
-the revision it was written for, the commits since, and the steps that cite changed
-files. A tab left while the import is on its way mounts nothing, and neither does a page
-that ends there. A new record revision asks again for the step on screen and aborts the
-read still on its way, whose late answer paints nothing, and a poll of the same record
-asks for nothing. Leaving the tab, or ending the page, disposes the view and aborts its
-read. A step is inserted as text, so markup in the guide stays markup, and each row is
-the diff plugin’s, its code a span, which the shell’s highlighter, which takes
-`pre code`, skips. Open full diff reaches the page’s own `openChangedFile`, which asks
-the route for the file’s Changes address.
-A guide stale only because GitHub reports a newer head says that, and that whether its
-steps match the newest commits is unknown.
-Commits the server counted but could not list are counted.
+A stale guide still shows its steps, read at the current head, under one warning and its
+remedy at the top of the page, with the steps and files that changed since marked; the
+commits, heads, merge bases, and paths behind it stay in the route’s answer.
+A tab left while the import is on its way mounts nothing, and neither does a page that
+ends there. A new record revision asks again for the step on screen and aborts the read
+still on its way, whose late answer paints nothing, and a poll of the same record asks
+for nothing. Leaving the tab, or ending the page, disposes the view and aborts its read.
+A step is inserted as text, so markup in the guide stays markup, and each row is the
+diff plugin’s, its code a span, which the shell’s highlighter, which takes `pre code`,
+skips. Open full diff reaches the page’s own `openChangedFile`, which asks the route for
+the file’s Changes address.
+A guide stale only because GitHub reports a newer head says nothing, since the page’s
+header already says new commits were pushed.
+A guide whose head the local copy lacks marks no step and says some may not match; above
+an excerpt it says the file may have changed, and in a reference’s place that its lines
+may have. A guide whose cited files did not change says so in a quiet line.
+A guide whose merge base alone moved is out of date too: a step that cites a file
+changed on the base side is marked, and when none is, a quiet line says so.
 A refused step keeps the step list, whose buttons survive the click that chose it, and
 says why in the step’s place.
 A core preview opens a guided pull request on its guide, which waits for the record, and
@@ -110,9 +115,9 @@ the description’s card on Conversation links the front page.
 $ node tests/dom/github-guided-review-mount-behavior.js
 [
   "the front page: guide mounted; asked step 1",
-  "a stale guide opens on: Overview; > Overview | 1 Step 1 changed since the guide | 2 Step 2 | 3 Step 3 changed since the guide",
-  "a stale guide's notice:  / This guide is out of date. / It was written for head bbbbbbb. The pull request is now at head ccccccc. / 12 commits since the guide: / ccccccc Count to <b>three</b>and 11 earlier commits / Steps 1 and 3 cite 1 file changed since: src/app.txt. The other steps still match; the changed ones are marked. Its author can update the guide's pins and ranges in the description.",
-  "and its step, in a card: Guided ReviewStep 1 of 3 · cites files changed since the guide; Step 1; This file changed after the guide was written. The excerpt is from the guide's revision.",
+  "a stale guide opens on: Overview; > Overview | 1 Step 1 changed | 2 Step 2 | 3 Step 3 changed",
+  "a stale guide's notice: warning: This guide was written for an earlier version of this pull request, so steps marked changed may not match it. Its author can update the guide.",
+  "and its step, in a card: Guided ReviewStep 1 of 3 · changed; Step 1; src/app.txt: This file changed after the guide was written. | gone.txt: This file is no longer in the pull request's changes.",
   "Conversation: guide not mounted; asked nothing",
   "its description's block: This description has a guided review. Open Guided Review",
   "its tab opens: guide mounted; asked step 1",
@@ -130,8 +135,12 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "a poll of the same record: asked step 1, step 1",
   "Guided Review opened and left before its import settled: guide not mounted; asked nothing",
   "the page ended before the import settled: asked nothing",
-  "a guide behind a newer head on GitHub: GitHub reports a newer head than this guide's. / Reload the pull request to compare the guide with the newest commits. / Whether its steps still match the newest commits is unknown.; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
-  "commits counted and not listed: This guide is out of date. / It was written for head bbbbbbb. The pull request is now at head ccccccc. / 3 commits since the guide. / None of the files its steps cite changed, so every step still matches. Its author can update the guide's pins and ranges in the description.",
+  "a guide behind a newer head on GitHub: none; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
+  "a guide whose head this copy lacks: warning: This guide was written for an earlier version of this pull request, so some steps may not match it. Its author can update the guide.; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
+  "and its step: Step 1; src/app.txt: This file may have changed since the guide was written. | gone.txt: This path is not in the comparison. | src/app.txt: These lines may have changed since the guide was written.",
+  "a guide whose cited files did not change: quiet: This guide was written for an earlier version of this pull request, but the files it cites have not changed.",
+  "a guide whose merge base alone moved: warning: This guide was written for an earlier version of this pull request, so steps marked changed may not match it. Its author can update the guide.; > Overview | 1 Step 1 changed | 2 Step 2 | 3 Step 3",
+  "and when none of its files changed: quiet: This guide was written for an earlier version of this pull request, but the files it cites have not changed.",
   "a refused step: Step 2 of 3; Overview | 1 Step 1 | > 2 Step 2 | 3 Step 3; says This step could not be read. Choose it again to retry.",
   "chosen again: asked step 1, step 2, step 2",
   "and answered: Step 2 of 3; Step 2; says nothing",

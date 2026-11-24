@@ -13,7 +13,8 @@ on the server. The page parses a render into an inert template and inserts only 
 rebuilt from the allowlist: plain text markup, links, and images inside the served tree
 or from the web over `https`, with no class, `name`, `data-*`, style, or event attribute
 but the image fallback’s own, no `id` the document wrote, and no SVG, MathML, media,
-stylesheet, frame, or form.
+stylesheet, frame, form, or input but a disabled checkbox in the shape of a task list’s
+box, wherever the document writes one.
 
 This browserless session loads the production `static/inert-html.js` and
 `builtin_plugins/markdown/inert-render.js`, and rebuilds KPress’s render of
@@ -113,7 +114,9 @@ $ node tests/dom/inert-html-session.js
   "links": {
     "document": "<a>script</a><a>mixed case</a><a>padded</a><a>split</a><a>control</a><a>data</a><a>vbscript</a><a>file</a><a>blob</a><a>mailto</a><a>ftp</a><a>websocket</a><a>view-source</a><a href=\"https://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">https</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">http</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">mixed-case scheme</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">mixed-case scheme with a CR in it</a>",
     "comment": "<a>script</a><a>mixed case</a><a>padded</a><a>split</a><a>control</a><a>data</a><a>vbscript</a><a>file</a><a>blob</a><a>mailto</a><a>ftp</a><a>websocket</a><a>view-source</a><a href=\"https://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">https</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">http</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">mixed-case scheme</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">mixed-case scheme with a CR in it</a>"
-  }
+  },
+  "kpressRemoved": "",
+  "boxes": "<ul><li><input type=\"checkbox\" disabled> open</li><li><input type=\"checkbox\" disabled checked> ticked</li></ul><table><tbody><tr><td>in a cell</td><td><input type=\"checkbox\" disabled checked></td></tr></tbody></table><p><input type=\"checkbox\" disabled checked> mixed case, padded, text, submit, bare</p>"
 }
 ? 0
 ```

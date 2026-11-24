@@ -21,11 +21,11 @@ commit, the build the skill is written for:
    captured with ``$(…)``, or written to a file, and every ``--api`` command, asks for
    ``--format json`` or ``yaml``, or ``--json`` in a plugin mode, so standard output is
    one document.
-4. **Recipes run.** Each recipe under "From a Pull-Request URL" that reads JSON with
-   ``jq`` is a run of consecutive commands of
-   ``tests/golden/cli-skill-recipes.tryscript.md`` joined with ``&&``, with the
-   placeholders that transcript names filled in, so the golden runs the skill's own
-   text. The refresh beside a checkout cannot run offline there:
+4. **Recipes run.** Each recipe under "From a Pull-Request URL", "Publish and Confirm
+   It", and "Refresh It After a Push" that reads JSON with ``jq`` is a run of
+   consecutive commands of ``tests/golden/cli-skill-recipes.tryscript.md`` joined with
+   ``&&``, with the placeholders that transcript names filled in, so the golden runs the
+   skill's own text. The refresh beside a checkout cannot run offline there:
    ``tests/test_cli_github_checkout_golden.py`` posts its body, :func:`refresh_body`, and
    :func:`refresh_findings` holds every field its filter reads to the answer that test
    pins.
@@ -47,17 +47,25 @@ commit, the build the skill is written for:
    a refusal's, a usage error's, and an ``Error:`` line's. Each rerun outside the
    sandbox carries ``--open-in app``: without it, the default ``auto`` falls back to a
    browser when no app takes the target, and starts a server outside the sandbox.
+7. **Guide values.** A one-word code span under "Write a Guided Review" and its
+   subsections, such as ``ready`` or ``side``, is a string ``guided_review.py`` spells, a
+   state its route answers or a value it compares, or a field of the block's models, so
+   a state renamed in prose fails here though check 5 leaves one-word values alone.
+8. **The block skeleton.** The block under "Write the Block", its commit IDs filled in,
+   is a guide ``parse_guide`` reads, with a quoted title holding ``: `` and a note whose
+   list keeps its lines, the two YAML rules the section states.
 
 ``docs/working-with-agents.md`` repeats the skill's commands for a person, so checks 1,
 2, 3, and 5 read it too. Outside every check: the names of query parameters, page
 addresses such as ``/pull/<n>/files``, package names, and one-word values such as
-``stale``.
+``stale`` outside the guided-review sections.
 
 Each check is proven by a mutation of the skill it must fail.
 """
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import shlex
@@ -72,6 +80,8 @@ import typer
 import typer.main
 
 from devtools import tryscript_blocks
+from metabrowser.builtin_plugins.github import guided_review
+from metabrowser.builtin_plugins.github.guided_review import GuideError, parse_guide
 from metabrowser.cli import main as cli_main
 from metabrowser.cli.exit_codes import PRESENT_REFUSED_EXIT_CODE
 from metabrowser.cli.present import DELIVERY_EXIT_CODES
@@ -117,17 +127,37 @@ _PLUGIN_MODES: Final = frozenset({"--plugins", "--plugin", "--doctor"})
 # A field path such as `.last_refresh.outcome`, or a name such as `not_cached`.
 _NAME: Final = re.compile(r"\.?[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*")
 
-# The section whose recipes the golden runs, and how it spells their placeholders.
+# The sections whose recipes the golden runs, and how it spells their placeholders.
 GOLDEN_SECTION: Final = "From a Pull-Request URL"
+GUIDE_CONFIRM_SECTION: Final = "Publish and Confirm It"
+GUIDE_REFRESH_SECTION: Final = "Refresh It After a Push"
+GOLDEN_SECTIONS: Final = (GOLDEN_SECTION, GUIDE_CONFIRM_SECTION, GUIDE_REFRESH_SECTION)
 GOLDEN_SPELLING: Final = {
     "<invocation>": (
         "METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab"
     ),
     "<url>": "https://github.com/octo/demo/pull/7",
     "<n>": "7",
+    "<k>": "1",
     "<path>": "src/app.txt",
     "<tmp>": "tmp",
 }
+
+# The section on writing a guided review and its subsections, whose one-word code spans
+# check 7 holds to the guided-review module, and the subsection with the block skeleton.
+GUIDE_SECTIONS: Final = frozenset(
+    {"Write a Guided Review", "Write the Block", GUIDE_CONFIRM_SECTION, GUIDE_REFRESH_SECTION}
+)
+SKELETON_SECTION: Final = "Write the Block"
+# The skeleton is the guide's own Markdown inside a four-backtick `markdown` fence, as the
+# format reference shows it, so the `guided-review` fence is part of what an agent copies.
+_SKELETON: Final = re.compile(r"^````markdown\n(.*?)^````$", re.MULTILINE | re.DOTALL)
+# Full commit IDs for the skeleton's placeholders, which a pin must be.
+SKELETON_SPELLING: Final = {
+    "<full merge-base commit ID>": "1" * 40,
+    "<full head commit ID>": "2" * 40,
+}
+_WORD: Final = re.compile(r"[a-z][a-z0-9_]*")
 # The section of the refresh a checkout's folder server needs before it reads a pull
 # request; its `"comparison": true` acquires a store from GitHub, so the golden cannot
 # run it, and `tests/test_cli_github_checkout_golden.py` posts its body instead.
@@ -361,12 +391,12 @@ def _value(args: tuple[str, ...], option: str) -> str | None:
 
 
 def _recipes(text: str) -> list[Code]:
-    """The recipes of :data:`GOLDEN_SECTION` that read JSON with ``jq``."""
+    """The recipes of :data:`GOLDEN_SECTIONS` that read JSON with ``jq``."""
 
     return [
         piece
         for piece in code_pieces(text)
-        if piece.block and piece.section == GOLDEN_SECTION and "jq" in _tokens(piece.text)
+        if piece.block and piece.section in GOLDEN_SECTIONS and "jq" in _tokens(piece.text)
     ]
 
 
@@ -632,13 +662,15 @@ def _runs(golden: str) -> set[str]:
 
 
 def recipe_findings(text: str, golden: str) -> list[str]:
-    """Recipes of :data:`GOLDEN_SECTION` that read JSON and the golden does not run."""
+    """Recipes of :data:`GOLDEN_SECTIONS` that read JSON and the golden does not run."""
 
     recipes = _recipes(text)
-    if not recipes:
-        return [f"SKILL.md has no recipe that reads JSON under {GOLDEN_SECTION!r}"]
+    found: list[str] = [
+        f"SKILL.md has no recipe that reads JSON under {section!r}"
+        for section in GOLDEN_SECTIONS
+        if not any(piece.section == section for piece in recipes)
+    ]
     runs = _runs(golden)
-    found: list[str] = []
     for piece in recipes:
         spelled = piece.text
         for placeholder, value in GOLDEN_SPELLING.items():
@@ -788,6 +820,74 @@ def name_findings(text: str, words: frozenset[str], name: str = "SKILL.md") -> l
     return found
 
 
+def guide_values() -> frozenset[str]:
+    """Every string ``guided_review.py`` spells, and every field of the block's models.
+
+    The strings are the states its route answers, the reasons a reference is not ready,
+    and the values it compares, such as a reference's ``side``; the fields are the keys a
+    block holds below ``collection``.
+    """
+
+    tree = ast.parse(Path(guided_review.__file__).read_text(encoding="utf-8"))
+    strings = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    models = (
+        guided_review.Collection,
+        guided_review.CollectionComparison,
+        guided_review.CollectionItem,
+        guided_review.CollectionReference,
+    )
+    return frozenset(strings | {name for model in models for name in model.model_fields})
+
+
+def guide_value_findings(text: str, values: frozenset[str]) -> list[str]:
+    """One-word code spans of :data:`GUIDE_SECTIONS` that are not among *values*."""
+
+    return [
+        f"SKILL.md:{piece.line}: `{piece.text}` is not a value or field of guided_review.py"
+        for piece in code_pieces(text)
+        if not piece.block
+        and piece.section in GUIDE_SECTIONS
+        and _WORD.fullmatch(piece.text)
+        and piece.text not in values
+    ]
+
+
+def skeleton(text: str) -> str:
+    """The description the block skeleton of :data:`SKELETON_SECTION` makes, IDs filled in."""
+
+    found = _SKELETON.findall(_section(text, SKELETON_SECTION))
+    assert len(found) == 1, f"SKILL.md has {len(found)} block skeletons under {SKELETON_SECTION!r}"
+    body = found[0]
+    for placeholder, value in SKELETON_SPELLING.items():
+        assert placeholder in body, f"the skeleton has no {placeholder}"
+        body = body.replace(placeholder, value)
+    return body
+
+
+def skeleton_findings(text: str) -> list[str]:
+    """Why the skeleton is not a guide the page reads, or does not show the rules it states."""
+
+    try:
+        guide = parse_guide(skeleton(text))
+    except GuideError as refusal:
+        return [f"the page refuses the skeleton: {refusal}"]
+    if guide is None:
+        return ["the skeleton has no guided-review block the page reads"]
+    found: list[str] = []
+    pins = (guide.comparison.merge_base, guide.comparison.head)
+    if pins != tuple(SKELETON_SPELLING.values()):
+        found.append(f"the skeleton's pins read as {pins}, not its placeholders")
+    if not any(": " in item.title for item in guide.items):
+        found.append("no title of the skeleton holds ': ', so it does not show the quoting rule")
+    if not any("\n- " in item.note for item in guide.items):
+        found.append("no note of the skeleton keeps a list's lines")
+    return found
+
+
 # ── The skill as it is ──────────────────────────────────────────────
 
 
@@ -820,7 +920,14 @@ def source() -> frozenset[str]:
 # The routes the recipes read with `jq`, and the others the skill names in prose, which
 # the reader must find for the checks to mean anything.
 RECIPE_ROUTES: Final = frozenset(
-    {"/api/plugin/github/pull?number=<n>", "$ROUTE", "/api/source/status", REFRESH_ROUTE}
+    {
+        "/api/plugin/github/pull?number=<n>",
+        "$ROUTE",
+        "/api/source/status",
+        REFRESH_ROUTE,
+        "/api/plugin/github/guided-review?number=<n>&step=<k>",
+        "/api/plugin/github/guided-review?number=<n>",
+    }
 )
 PROSE_ROUTES: Final = frozenset({"/api/routes", "/api/file?path=<log>", "/api/git/log?limit=<n>"})
 
@@ -838,7 +945,7 @@ def test_the_skill_is_read_as_commands(skill: str, guide: str) -> None:
     named = {_value(command.args, "--api") for command in found if command.whole}
     assert read >= RECIPE_ROUTES and named >= PROSE_ROUTES, (read, named)
     assert any(not command.whole for command in found)
-    assert len(_recipes(skill)) == 3
+    assert len(_recipes(skill)) == 5
     assert len(present_recipes(skill)) == 4
     assert len([c for c in commands(guide, GUIDE.name) if c.whole]) >= 8
 
@@ -891,6 +998,14 @@ def test_the_present_table_gives_each_status_its_codes(skill: str) -> None:
 
 def test_every_rerun_outside_the_sandbox_is_kept_to_the_app(skill: str) -> None:
     assert rerun_findings(skill) == []
+
+
+def test_every_guide_value_is_one_the_module_spells(skill: str) -> None:
+    assert guide_value_findings(skill, guide_values()) == []
+
+
+def test_the_block_skeleton_is_a_guide_the_page_reads(skill: str) -> None:
+    assert skeleton_findings(skill) == []
 
 
 # ── Each check fails its mutation ───────────────────────────────────
@@ -1031,6 +1146,62 @@ def test_a_name_the_source_does_not_use_fails(skill: str, source: frozenset[str]
     mutated = _mutated(skill, "`.pin_ref` names", "`.pinref` names")
     assert [finding.split(": ", 1)[1] for finding in name_findings(mutated, source)] == [
         "`.pinref` names 'pinref', which no source under src/ uses"
+    ]
+
+
+GUIDE_STEP_ROUTE: Final = "/api/plugin/github/guided-review?number=<n>&step=<k>"
+
+
+def test_a_wrong_guide_route_fails(skill: str, routes: RouteTable) -> None:
+    mutated = _mutated(skill, GUIDE_STEP_ROUTE, GUIDE_STEP_ROUTE.replace("review?", "reviews?"))
+    line = _line(mutated, "guided-reviews?")
+    assert route_findings(mutated, routes) == [
+        f"SKILL.md:{line}: /api/plugin/github/guided-reviews is not a registered route"
+    ]
+    findings = recipe_findings(mutated, GOLDEN.read_text(encoding="utf-8"))
+    assert len(findings) == 1 and findings[0].startswith(f"SKILL.md:{line}: ")
+
+
+def test_a_guide_state_the_route_never_answers_fails(skill: str, source: frozenset[str]) -> None:
+    """A renamed state passes check 5, which leaves one-word values alone, and fails check 7."""
+
+    mutated = _mutated(skill, "`.state` is `ready` when", "`.state` is `done` when")
+    assert name_findings(mutated, source) == []
+    assert guide_value_findings(mutated, guide_values()) == [
+        f"SKILL.md:{_line(mutated, '`done`')}: `done` is not a value or field of guided_review.py"
+    ]
+    field = _mutated(skill, "with a `side`,", "with a `sides`,")
+    assert [found.split(": ", 1)[1] for found in guide_value_findings(field, guide_values())] == [
+        "`sides` is not a value or field of guided_review.py"
+    ]
+
+
+def test_a_guide_recipe_the_golden_does_not_run_fails(skill: str) -> None:
+    golden = GOLDEN.read_text(encoding="utf-8")
+    filtered = _mutated(skill, ".stale.changed_steps, .stale", ".stale.steps, .stale")
+    findings = recipe_findings(filtered, golden)
+    assert len(findings) == 1 and ".stale.steps" in findings[0]
+    # A renamed heading takes its recipe out of the golden's reach, which is reported.
+    renamed = _mutated(skill, "### Publish and Confirm It\n", "### Publish It\n")
+    assert recipe_findings(renamed, golden) == [
+        f"SKILL.md has no recipe that reads JSON under {GUIDE_CONFIRM_SECTION!r}"
+    ]
+
+
+SKELETON_TITLE: Final = '"Keystone: the snapshot is served before the worker ends"'
+
+
+def test_a_skeleton_the_page_refuses_fails(skill: str) -> None:
+    unquoted = _mutated(skill, SKELETON_TITLE, SKELETON_TITLE.strip('"'))
+    assert skeleton_findings(unquoted) == [
+        "the page refuses the skeleton: The guided-review block contains invalid YAML."
+    ]
+    folded = _mutated(skill, "      note: |-\n", "      note: >-\n")
+    assert skeleton_findings(folded) == ["no note of the skeleton keeps a list's lines"]
+    bare = _mutated(skill, "      references:\n        - {path: tests/test_cache.py}\n", "")
+    assert skeleton_findings(bare) == [
+        "the page refuses the skeleton: The guided-review block does not satisfy the v1 "
+        "SoftSchema at items.1."
     ]
 
 

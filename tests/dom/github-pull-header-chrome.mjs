@@ -701,6 +701,12 @@ const MEASURE = `async (name, change, tab, width) => {
     statusBadgeHeight: badge ? box(badge).height : null,
     labels: [...header.querySelectorAll(".github-pull-label")].map((chip) => {
       const style = getComputedStyle(chip);
+      // A baseline-aligned marker measures the capital band independently of its line box.
+      const cap = document.createElement("span");
+      cap.style.cssText = "display:inline-block;width:0;height:1cap;vertical-align:baseline";
+      chip.append(cap);
+      const capOffset = centre(box(cap)) - centre(box(chip));
+      cap.remove();
       return {
         name: chip.textContent,
         color: chip.dataset.color ?? null,
@@ -714,6 +720,7 @@ const MEASURE = `async (name, change, tab, width) => {
           style.borderTopWidth, style.borderTopLeftRadius, Math.round(box(chip).height * 100) / 100,
         ].join(" "),
         height: box(chip).height,
+        capOffset,
         left: Math.round(box(chip).left * 100) / 100,
         width: Math.round(box(chip).width * 100) / 100,
       };
@@ -2668,6 +2675,11 @@ async function main() {
               labels: shape.labels.map((chip) => chip.height),
               badge: shape.statusBadgeHeight,
             }),
+          );
+          check(
+            `${theme}: label capitals center inside the compact chip`,
+            shape.labels.every((chip) => Math.abs(chip.capOffset) <= 0.5),
+            JSON.stringify(shape.labels.map(({ name, capOffset }) => ({ name, capOffset }))),
           );
           const neutralBox = shape.labels.find((chip) => chip.name === "no color")?.box;
           for (const chip of shape.labels) {

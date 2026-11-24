@@ -148,15 +148,23 @@ The page has up to five tabs:
   Markdown, plain text, reStructuredText, and the rest), each in its rendered view with
   nothing folded, so you can read what the pull request says in its docs without the
   code around it. A document with no rendered view shows its text diff, also unfolded.
+  Docs has no Split or Unified choice: its text diffs, a document’s **Source** among
+  them, are always Unified.
+  It opens on **Current**, each document’s new version, and its **Diff** | **Current**
+  chooser at the top right (`N` switches) shows what changed instead, as
+  [Diff or Current](#diff-or-current) describes.
   The tab shows only when the pull request changes a document: it appears at once and
   goes when the comparison’s File type counts say no document changed.
   An address on Docs still opens it, and says so, with a link to Changes.
 - **Changes** (`G`): the diff from the merge base to the head, **Split** or **Unified**
   (`L` switches). Markdown files open as rendered changes, as the next section describes.
+  It opens on **Diff**; the **Diff** | **Current** chooser beside the layout control
+  (`N` switches) shows the new version alone instead, as
+  [Diff or Current](#diff-or-current) describes.
   The changed-file list on the Pulls tab moves through this diff, and the selected file
   follows the diff as you scroll.
-  The **File type** menu beside the layout control (`Y`) shows only the changed files of
-  the types you choose, as a commit’s does
+  The **File type** menu ahead of the Diff | Current and layout choosers (`Y`) shows
+  only the changed files of the types you choose, as a commit’s does
   ([A Commit’s Page](browsing-history.md#a-commits-page)); the page keeps the choice
   while you visit the other tabs, and a file you jump to that it hides shows every type
   again.
@@ -226,23 +234,31 @@ The
 describes the payload, and `MAX_ITEMS` and `MAX_REFERENCES` in `guided_review.py` bound
 its steps and each step’s references.
 
-The guide is read from the cached description, and its excerpts come from the comparison
-it is pinned to. When the pull request’s head or merge base moves past the guide’s pins,
-the guide is out of date: a notice at the top of Guided Review names the revision the
-guide was written for, the pull request’s current one, and the commits since (or says
-the branch was rebased), and it marks the steps that cite a file changed since.
-Every step still shows, with excerpts from the guide’s own revision; a step that cites
-no changed file still matches the pull request.
-When GitHub reports a newer head than the cached copy has, the notice says so: what the
-newer commits changed is unknown until the pull request is fetched again.
+The guide is read from the cached description, and its excerpts come from the pull
+request’s current comparison, so a guide stays readable after new commits.
+When the pull request’s head or merge base has moved past the guide’s pins, the guide is
+out of date: one warning at the top of Guided Review says so and that its author can
+update the guide, and each step that cites a file whose content changed since is marked
+changed, in the step list and on the step.
+A reference whose file changed says so above its excerpt, or in its place when its range
+no longer resolves. When the local copy lacks the guide’s head, as after a force push,
+what changed is unknown: no step is marked, the warning says some steps may not match,
+and each excerpt says its file may have changed.
+When the guide cites no file whose content changed, as after merging the base branch in
+or a rebase that leaves them alone, a quiet line says so instead of the warning.
+When GitHub reports a newer head than the cached copy has, the page’s header says new
+commits were pushed, and, when this copy matches the guide, the guide adds nothing until
+the pull request is fetched again.
+The route’s answer, below, keeps the details: the guide’s pins and the current ones, the
+commits since, and the paths and steps that changed.
 To bring the guide current, update its pins and ranges in the PR description.
 
 A guide the page cannot read says why in place of the steps: invalid YAML, a second
 block, another contract, a field that fails the schema (with its place below
-`collection`, such as `items.0.references.0`), or pins that do not name a comparison.
-Its block then stays in the description, so its author sees what they wrote.
-The same answer is the `guided-review` route’s, which this prints from the cached pull
-request:
+`collection`, such as `items.0.references.0`), or pins whose `merge_base` is not an
+ancestor of their `head`. Its block then stays in the description, so its author sees
+what they wrote. The same answer is the `guided-review` route’s, which this prints from
+the cached pull request:
 
 ```shell
 metab <pull request URL> --api '/api/plugin/github/guided-review?number=<n>'
@@ -258,10 +274,10 @@ another fence, as in the example above, is not a guide even where the tab appear
 | A repository or pull-request URL | **Browse code** opens the pinned code, first switching the pin to this pull request’s head when another commit is served. Code served on the pull request’s head follows it: when new commits are pushed, the page moves to the new head by itself, as a page on a branch does. |
 | A checkout or a folder in one | Files and Commits keep showing your checkout, which may differ from the pull request, so there is no **Browse code**. When the checkout’s `HEAD` is the pull request’s head, the page says so and offers **Browse the checkout**. |
 
-In **Changes**, a changed file offers **View on branch**, which opens the file at the
-pull request’s head in the main view, with the file tree, tabs, and ref selector around
-it, as **Browse code** opens the whole tree.
-Where it opens follows the table above:
+In **Changes** and **Docs**, a changed file offers **View on branch**, after its name
+and line counts, which opens the file at the pull request’s head in the main view, with
+the file tree, tabs, and ref selector around it, as **Browse code** opens the whole
+tree. Where it opens follows the table above:
 
 - Opened with a repository or pull-request URL, it first switches the pin to the head
   when another commit is served, as Browse code does.
@@ -275,6 +291,29 @@ A deleted file, a symbolic link, and a submodule have no View on branch, and no 
 does while Changes shows an earlier head than the pull request’s, which no branch holds
 any more. If the pull request moves on in the moment before the page has followed it,
 View on branch and Browse code switch nothing and say that the head has moved.
+
+### Diff or Current
+
+The diff in **Changes** and **Docs**, and on a commit’s page, has a **Diff** |
+**Current** chooser at the top right, before **Split** | **Unified** where there is one.
+**Diff** shows what changed, removals included.
+**Current** shows the new version alone, with its changes marked and nothing removed:
+
+- In **Source**, the new file’s lines in one column, its added lines marked, whatever
+  the layout. Each hunk’s header names the lines of the new file it shows.
+- In **Rendered**, a Markdown file’s added blocks and front matter keys marked and its
+  removed ones left out, and a YAML or JSON tree without its removed entries.
+- A deleted file, and a file the change left empty, say that they have no lines to show.
+
+The choice is one for the whole diff: it switches every file, and what you are reading
+stays where it was on the screen, the line or block at the top of the pane, or, where
+**Current** leaves that one out, the next one it shows.
+`N` switches too. **Changes** and a commit’s page open on **Diff**, and **Docs** on
+**Current**. Metabrowser remembers your choice for **Docs** apart from the one for
+**Changes** and commits, so choosing on one tab does not change what the other opens on.
+A file’s choice of **Rendered** or **Source** is its own.
+While **Current** is shown the layout control stays, its choices unavailable, since
+Current is one column; choosing **Diff** brings back the layout you had.
 
 ### Rendered Markdown in Changes
 
@@ -290,14 +329,29 @@ language, or only whitespace and line wrapping.
 A block whose destination, title, alt text, comment, attribute, or fence language
 changed is never folded away.
 
-These files open in **Source**:
+Raw HTML, such as `<br>`, `<details>`, or a centered `<p align="center">`, renders as
+the Document view renders it, through the same sanitizer; an HTML edit it does not show,
+such as a class, a style, a second copy of an attribute, or words in a checkbox’s
+`checked`, is a change that only **Source** shows.
+A `<details>` in a changed block shows open, so the words marked inside it show; the
+Document view shows it closed.
+A task list draws its boxes, each ticked as the document ticks it, so ticking or
+unticking one is a change that **Rendered** shows; so does a checkbox written in raw
+HTML, such as one in a table cell.
 
-- files with raw HTML other than comments, such as `<br>` or `<details>`
-- files with task lists (`- [ ]`) or footnotes
-- files too large for the rendered view
+A footnote’s reference shows its number where it is written, numbered as the Document
+view numbers it, and its note shows where its definition is written rather than at the
+end; an inline note shows after the paragraph that holds it.
+
+A file with bytes that are not UTF-8, a NUL, or lines that end at a carriage return
+alone renders as the Document view renders it, a byte it cannot read as `�`. Files too
+large for the rendered view open in **Source**.
 
 Rendered also shows math and Mermaid diagrams as their source text, and does not
 highlight code blocks.
+So a footnote reference written inside math, which the Document view renders as math, is
+a footnote in Rendered, and the notes after it can number differently from the Document
+view’s.
 
 A Markdown file’s front matter shows as the Frontmatter disclosure the file’s Document
 view shows above it.
@@ -329,11 +383,16 @@ The tree reads YAML 1.2, where `no`, `off`, and `y` are strings, so a change bet
 **Source** too. A value whose type changed and whose text did not, such as a date that
 became the string that spells it, or the key `1` that became `"1"`, is drawn unchanged,
 and the tree says above it that **Source** shows a change it draws as unchanged.
+JSON with a key twice in one object shows the key once, with its last value, as the file
+view’s tree does, and a change to a value the repeated key hides, or the same value
+hidden in another object, is one **Source** shows.
+An added or deleted file that hides a value says above its tree that **Source** shows
+it.
 
 These files open in **Source**:
 
 - YAML or JSON that does not parse
-- a file with a key twice in one mapping, which two programs may read differently
+- YAML with a key twice in one mapping
 - files too large, or too deeply nested, for the rendered view
 
 ## Find a Pull Request with Quick Search

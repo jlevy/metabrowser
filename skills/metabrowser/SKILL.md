@@ -1,13 +1,15 @@
 ---
 name: metabrowser
 description: >-
-  Browse local or remote directories and files with Metabrowser, including
-  Markdown, structured data, source code, images, logs, and binary metadata; read
-  Git commits and diffs; and review GitHub pull requests from a repository URL or an
-  existing checkout. Use when a user asks to explore a directory, inspect a file or
-  live log, open a local file browser, show them a file, commit, or diff in the
-  Metabrowser app or a browser, inventory a directory, read or review a GitHub pull
-  request or its diff, or inspect and validate Metabrowser plugins.
+  Browse local or remote directories and files with Metabrowser, including Markdown,
+  structured data, source code, images, logs, and binary metadata; read Git commits
+  and diffs; review GitHub pull requests from a repository URL or an existing
+  checkout; and write guided reviews for pull requests. Use when a user asks to
+  explore a directory, inspect a file or live log, open a local file browser, show
+  them a file, commit, or diff in the Metabrowser app or a browser, inventory a
+  directory, read or review a GitHub pull request or its diff, or inspect and validate
+  Metabrowser plugins, and whenever you open or update a GitHub pull request, to add
+  or refresh its guided review.
 compatibility: >-
   Requires either a local metab command or uv (for the zero-install uvx fallback, which
   needs network access on first use). Recipes that read JSON read it with jq. Git-backed
@@ -82,6 +84,8 @@ handoff, the app needs `metab` 0.13.0 or later.
 - Read a log, including one still being written: see [Read Logs](#read-logs)
 - Read commits and diffs: see [Read Commits and Diffs](#read-commits-and-diffs)
 - Read or review a GitHub pull request: see [Read a Pull Request](#read-a-pull-request)
+- Open or update a pull request: write or refresh its guided review, as
+  [Write a Guided Review](#write-a-guided-review) says
 - Browse a remote directory through SSH: see
   [Browse a Remote Directory](#browse-a-remote-directory)
 - Inspect or validate plugins: use `--plugins --json` for structured discovery,
@@ -422,6 +426,172 @@ The
 covers private and large repositories, failures, and offline use, and the
 [command-line guide](https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md#pull-requests)
 is the reference.
+
+## Write a Guided Review
+
+A guided review is an ordered list of review steps in a pull request’s description,
+which the pull page’s **Guided Review** tab walks a reviewer through, one step at a
+time, each a note above the diff excerpts it is about.
+Add one to every pull request you open, unless the user says not to, and refresh it on
+every push: a push moves the head, and the guide reads as out of date until its pins
+move with it. This section has what you need to write, publish, and refresh one; the
+[guide](https://github.com/jlevy/metabrowser/blob/main/docs/reviewing-pull-requests.md#guided-review)
+is the format’s full reference, with its limits.
+
+A guide does more than explain the change.
+It is the reviewer’s agenda, so give each of these concerns a step, or a run of steps,
+of its own, in this order, and title each step so the list reads as that agenda:
+
+1. **Keystone decisions.** The few choices everything else follows from: a data shape, a
+   contract, a boundary, a trade-off you chose against an alternative.
+   Say what was decided, what it rules out, and cite the lines that embody it.
+   A reviewer who disagrees here should stop before reading the rest.
+2. **Key documents.** The specs, plans, architecture documents, and user guides the
+   change adds or rewrites, cited whole, with a note on what each now promises.
+3. **Each area of change.** One step per area, in dependency or execution order (the
+   format before its parser, the route before its page), each saying what to verify
+   there, not only what changed.
+   Cite the ranges that matter, and whole files for tests, goldens, and generated
+   output. Every changed file belongs to some step, the changelog fragment with the area
+   it describes.
+4. **Ambiguity and uncertainty.** What you were unsure of, a guess you made where a
+   requirement was silent, a behavior you could not measure, a risk you accepted.
+   Say plainly that a person should decide or check it, and cite the code in doubt.
+   Leave this step out only when there is truly nothing; never hide a doubt in another
+   step’s note.
+5. **Testing and QA.** Keep three things apart, each named, never merged into one claim,
+   and cite the tests and goldens the change adds or changes:
+   - what automated checks cover: those tests and goldens, what each pins, and CI at the
+     head. CI is still running when you first publish, so say so, and update the note
+     when it ends; editing the description does not move the head, so the guide stays
+     current;
+   - what you, the agent, checked yourself beyond them: a probe, a measurement, a run in
+     a browser, with its result and its conditions;
+   - what still needs a person: a look in a real browser or the app, a platform you
+     could not run, a judgment no test can make.
+     State this as a list the reviewer can tick off.
+6. **Future work.** What this change leaves for later: deferred findings with their
+   tracker IDs, follow-up plans, and open questions that need more planning before
+   anyone builds them. Cite the plan the change adds or updates.
+
+Every step cites at least one file this pull request changes: a step without a reference
+makes the page refuse the whole guide, and a reference to an unchanged file answers
+`path_not_changed`. When what a step is about did not change, such as the plan a
+follow-up belongs to, code you doubt but did not touch, or tests that cover the change
+unchanged, cite the changed file closest to it, and say in the note what the step is
+about.
+
+Smaller changes merge concerns (one step can be both the keystone and the only area),
+but keep the testing step and its three-way split on every pull request, and the
+ambiguity step whenever there is anything to say.
+
+The page shows each title and note as written, line breaks kept and Markdown printed
+literally, so write them as plain text.
+A note says what to check and why; the description says what the change is, so do not
+repeat it. When the description or a note warns of a doubt, a risk, or a check still
+running, make the warning short, give at most one simple remedy, and leave out internals
+such as commit IDs, commit lists, and merge-base or rebase mechanics.
+
+### Write the Block
+
+The guide is one `guided-review` block in the description, after the prose that
+introduces it, which the tab shows first:
+
+````markdown
+```guided-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "<full merge-base commit ID>"
+    head: "<full head commit ID>"
+  items:
+    - title: "Keystone: the snapshot is served before the worker ends"
+      note: Check that the request returns the cached snapshot without waiting.
+      references:
+        - {path: src/cache.py, side: new, start_line: 42, end_line: 51}
+    - title: "Testing, by a person: what still needs a human"
+      note: |-
+        Tick off:
+        - open the page in a browser and watch it load
+        - read a cache while it is being written
+      references:
+        - {path: tests/test_cache.py}
+```
+````
+
+- Pin `merge_base` to the merge base of the head and the base branch, after
+  `git fetch origin <base branch>`: `git merge-base origin/<base branch> <head>`. For a
+  stacked pull request the base branch is the base layer’s, not the default branch.
+  Pin `head` to the full ID of the head you pushed, `git rev-parse HEAD`.
+- A reference names a changed `path`, alone for the file’s whole diff, or with a `side`,
+  `old` or `new`, and lines that lie inside one hunk on that side.
+  Test each range against the hunks the comparison route answers
+  (`.patches["<id>"].hunks`, as [From a Pull-Request URL](#from-a-pull-request-url)
+  reads them), not a local `git diff`, whose options can draw other hunks.
+- Quote a title or note that contains `: ` or ` #`, or that starts with a backtick or
+  another YAML indicator such as `[`, `{`, or `*`, in double quotes.
+  Unquoted, a `: ` or a leading indicator makes the page refuse the block as invalid
+  YAML, and a ` #` silently cuts the text there.
+- Write a note that holds a list as a literal block, `note: |-`, which keeps its lines
+  and needs no quotes; a folded block, `>-`, joins them into one.
+- A step’s whole files share one size budget, and a file past it answers
+  `patch_too_large`: split the step, or cite the file’s ranges instead.
+  `MAX_REFERENCES` caps a step’s references, so split a step that needs more.
+  `MAX_ITEMS` caps the steps; past it, cite what a reviewer must read.
+
+### Publish and Confirm It
+
+Write the whole description to a file, the prose and then the block, and publish it:
+
+```shell
+gh pr edit <n> --body-file <tmp>/body.md
+```
+
+To change a guide that is already published, start from the description GitHub has,
+`gh pr view <n> --json body --jq .body`, and replace its block in place.
+Never add a second block: the page refuses a description with two.
+
+The `guided-review` route reads the cached description, so refresh the record first, or
+the route answers for the description you replaced.
+From a pull-request URL, run `<invocation> <url> --no-serve` and the record check of
+[From a Pull-Request URL](#from-a-pull-request-url), which must show the fetch
+succeeded; beside a checkout, POST the refresh of
+[Beside a Checkout](#beside-a-checkout) and use `<checkout>` in place of `<url>`. Then
+read each step, with `<k>` from 1 to the `.step_count` the first answer gives:
+
+```shell
+<invocation> <url> --api '/api/plugin/github/guided-review?number=<n>&step=<k>' --format json > <tmp>/step.json &&
+  jq -r '.state, (.message // empty), .step_count, (.references[]? | "\(.path) \(.state)")' <tmp>/step.json
+```
+
+- `.state` is `ready` when the page can show the guide and its pins are the pull
+  request’s, and each reference’s state follows its path: every one should be `ready`
+- `invalid` means the page refuses the guide, and `.message` says why, such as invalid
+  YAML, a second block, or a field the schema refuses, with its place below `collection`
+- `stale` means the pull request moved past the pins, as a push moves it: refresh the
+  guide, as below
+- `absent` means the description has no block, or the record is older than your edit
+- A reference that is not `ready` says why, such as `path_not_changed`,
+  `range_unavailable` for a range outside one hunk, or `patch_too_large`
+
+### Refresh It After a Push
+
+After a push, refresh the record as above, and read which steps cite a file the push
+changed:
+
+```shell
+<invocation> <url> --api '/api/plugin/github/guided-review?number=<n>' --format json > <tmp>/guide.json &&
+  jq -c '.state, .stale.changed_steps, .stale.changed_paths' <tmp>/guide.json
+```
+
+`.stale.changed_steps` are those steps, and `.stale.changed_paths` the files; a list is
+null when it could not be read, and then every step needs rechecking.
+Recheck only those steps’ ranges against the new hunks, give each file the push added a
+step, move both pins as above, and publish and confirm the guide again.
+A step that cites no changed file still matches the pull request.
 
 ## Browse a Remote Directory
 

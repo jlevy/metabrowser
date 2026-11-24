@@ -19,6 +19,8 @@ It links each document below and the contributor standards in `docs/`.
   dispatch, remote tunnels, and process exit
 - [Server and content](architecture/arch-server-and-content.md): request flow, safe
   paths, validators, and the content-trust model
+- [Threat model](architecture/arch-threat-model.md): assets, adversaries, trust
+  boundaries, and each threat’s policy, evidence, and accepted risk
 - [Views, models, and routes](architecture/arch-views-models-routes.md): kinds, views,
   formats, and the route index
 - [Parity registry](architecture/arch-parity-registry.md): the route and functional
@@ -70,6 +72,12 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Guided reviews in the agent skill](specs/active/plan-2026-11-24-guided-reviews-skill.md):
+  the skill section that writes, publishes, and refreshes a pull request’s guided
+  review, now shipped, and a `metab` check of a draft guide, still to build
+- [The Diff | Current chooser](specs/active/plan-2026-11-23-diff-current-chooser.md):
+  one chooser in the diff’s toolbar, beside Split | Unified, for the whole diff, whose
+  Current shows the new version alone with its changes marked
 - [Pull request update cadence and GitHub budget](specs/active/plan-2026-11-22-pull-request-update-cadence.md):
   a draft for free conditional probes every few seconds for what is on screen, full
   reads once every minute or two, and a budget that leaves room for the account’s other

@@ -664,6 +664,50 @@ function checks({
     ],
   );
   assert.equal(rows[4].childCount, 1, "a modified mapping counts the keys its new side holds");
+  // Current: the same tree without its removed entries, at the merged tree's paths, so
+  // what is open in Diff is open in Current.
+  const currentRows = diffRows(projection.root, open, helpers, new Map(), true);
+  assert.deepEqual(currentRows.map(rowLine), [
+    "modified open $",
+    "  context kv name",
+    "  added kv version",
+    "  modified open services",
+    "    modified open web",
+    "      context kv image",
+    "      modified open ports",
+    "        context item -",
+    "        added item -",
+    "  context open flags",
+  ]);
+  assert.deepEqual(
+    currentRows.map((row) => row.path),
+    ["$", "$/0", "$/2", "$/3", "$/3/0", "$/3/0/0", "$/3/0/1", "$/3/0/1/0", "$/3/0/1/1", "$/4"],
+  );
+  // A page counts what draws: Current draws a full page past a removed entry, and its
+  // "more" row counts only the entries Current would draw.
+  const paged = [
+    {
+      change: "modified",
+      type: "map",
+      entries: [
+        { key: "gone", change: "removed", value: 0 },
+        ...Array.from({ length: PAGE }, (_, index) => ({
+          key: `k${index}`,
+          change: "context",
+          value: index,
+        })),
+        { key: "old", change: "removed", value: 1 },
+        { key: "new", change: "added", value: 2 },
+      ],
+    },
+  ];
+  const pagedMore = (current) => {
+    const all = diffRows(paged, new Set(["$"]), helpers, new Map(), current);
+    const more = all.at(-1);
+    return [all.length, more.kind, more.hidden, more.changed];
+  };
+  assert.deepEqual(pagedMore(false), [1 + PAGE + 1, "more", 3, 2]);
+  assert.deepEqual(pagedMore(true), [1 + PAGE + 1, "more", 1, 1]);
   open.delete("$/3");
   const closed = diffRows(projection.root, open, helpers).find((row) => row.path === "$/3");
   assert.deepEqual(closed.value, { web: { image: "nginx", ports: [80, 443] } });
@@ -808,6 +852,26 @@ function checks({
   assert.equal(rowsOf(hugeHost).length, 1, "closing removes every page");
   click(rowsOf(hugeHost)[0]);
   assert.equal(rowsOf(hugeHost).length, 1 + 2 * PAGE + 1, "and reopening keeps the pages shown");
+
+  // A mounted tree switches to Current and back, keeping what the reader opened: a removed
+  // entry's rows go, and come back where they were.
+  const switchHost = element("div");
+  const switching = mountStructuredDiff(switchHost, projection.root, helpers);
+  const diffDrawn = drawn(switchHost);
+  switching.setCurrent(true);
+  const currentDrawn = drawn(switchHost);
+  assert.equal(diffDrawn.length - currentDrawn.length, 4, "a removed key and a removed mapping");
+  assert.ok(
+    currentDrawn.every((row) => !row.includes("removed")),
+    currentDrawn.join("\n"),
+  );
+  switching.setCurrent(false);
+  assert.deepEqual(drawn(switchHost), diffDrawn);
+  const openedHost = element("div");
+  const opening = mountStructuredDiff(openedHost, projection.root, helpers, { current: true });
+  assert.deepEqual(drawn(openedHost), currentDrawn, "a tree can open in Current");
+  opening.dispose();
+  switching.dispose();
 
   // Many whole values under one modified mapping: its first page of entries, then the
   // values open in order while the first draw stays within its budget.

@@ -1,0 +1,48 @@
+/* The viewer fills the pane below the bar, as a direct /raw tab would. */
+.metabrowser-pdf-host {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  min-height: 0;
+}
+
+/* The slim bar of actions above the viewer, the same chrome as the HTML preview's. */
+.metabrowser-pdf-host .pdf-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: var(--ui-row-height);
+  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+
+/* Text actions: muted, then link-coloured and underlined when pointed at or focused. */
+.metabrowser-pdf-host .pdf-action {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: var(--body-font-size);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.metabrowser-pdf-host .pdf-action:hover,
+.metabrowser-pdf-host .pdf-action:focus-visible {
+  color: var(--link);
+  text-decoration: underline;
+}
+
+.metabrowser-pdf-host .pdf-action:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.metabrowser-pdf-host .pdf-viewer {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: var(--bg);
+}

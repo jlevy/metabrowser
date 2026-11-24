@@ -50,13 +50,14 @@
     </dict>
   </array>
 
-  <!-- The app is the responsible process for its server, so the server's reads prompt in its name. -->
+  <!-- The app is the responsible process for its server, so the server's reads prompt in its name.
+       The app writes to Downloads itself only for an Open link's file that no app opens (OpenFileSaves). -->
   <key>NSDesktopFolderUsageDescription</key>
   <string>Metabrowser shows the folders you open from your Desktop.</string>
   <key>NSDocumentsFolderUsageDescription</key>
   <string>Metabrowser shows the folders you open from Documents.</string>
   <key>NSDownloadsFolderUsageDescription</key>
-  <string>Metabrowser shows the folders you open from Downloads.</string>
+  <string>Metabrowser shows the folders you open from Downloads, and saves files there that no app on this Mac opens.</string>
   <key>NSRemovableVolumesUsageDescription</key>
   <string>Metabrowser shows folders you open on removable drives.</string>
   <key>NSNetworkVolumesUsageDescription</key>

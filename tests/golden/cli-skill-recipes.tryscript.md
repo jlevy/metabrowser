@@ -18,7 +18,7 @@ before: >-
   mkdir url co tmp &&
   (cd url && METABROWSER_CONFIG_DIR="$PWD/config"
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
-  --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" .
+  --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --guided
   > fixture.log 2>&1) &&
   (cd co && METABROWSER_CONFIG_DIR="$PWD/config"
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
@@ -27,21 +27,23 @@ before: >-
 ---
 # Golden Tests: The Agent Skill’s Pull-Request Recipes
 
-The recipes in `skills/metabrowser/SKILL.md` under “Read a Pull Request”, run as an
-agent runs them. Each recipe writes `metab`’s answer to a file and reads the file with
-`jq` only when `metab` succeeded, so its parts are consecutive blocks here, split where
-the recipe chains with `&&`: each block then records the status of the command that ran
-last, and a failure stops the recipe with a nonzero status.
+The recipes in `skills/metabrowser/SKILL.md` under “Read a Pull Request” and “Write a
+Guided Review”, run as an agent runs them.
+Each recipe writes `metab`’s answer to a file and reads the file with `jq` only when
+`metab` succeeded, so its parts are consecutive blocks here, split where the recipe
+chains with `&&`: each block then records the status of the command that ran last, and a
+failure stops the recipe with a nonzero status.
 `tests/test_skill_commands.py` fails when a recipe there is not a run of consecutive
 blocks here joined with `&&`, with `<invocation>` read as `metab` and the fixture’s
 cache and configuration directories, `<url>` as `https://github.com/octo/demo/pull/7`,
-`<n>` as `7`, `<path>` as `src/app.txt`, and `<tmp>` as `tmp`.
+`<n>` as `7`, `<k>` as `1`, `<path>` as `src/app.txt`, and `<tmp>` as `tmp`.
 
 `tests/github_pull_fixture.py` builds two homes before these commands run.
 `url/home` holds a mirror of `https://github.com/octo/demo` and the records of pull
 requests 7 to 10, each fetched once through `metab <pr-url> --no-serve` with a fake `gh`
-and a fixed clock; `co/home` holds what a checkout’s folder server wrote for
-`co/checkout`: the records of 7 and 10, with no store.
+and a fixed clock, with a guided review in the descriptions of 7 and 8 and two blocks in
+9’s; `co/home` holds what a checkout’s folder server wrote for `co/checkout`: the
+records of 7 and 10, with no store.
 `gh` is `tests/fixtures/github-pull/no-gh/gh`, which fails every command, so nothing
 here reaches GitHub.
 A record fetched more than a minute ago reads as `stale`, which every one here is.
@@ -207,5 +209,105 @@ $ jq -r '.state, .comparison_route, .record.unavailable.comparison' tmp/pull.jso
 stale
 null
 no_store
+? 0
+```
+
+## Test: a guided review, read step by step
+
+The guide of 7 is pinned to its head and merge base, so it answers `ready`; the first
+answer gives the count of steps to read.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=1' --format json > tmp/step.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.state, (.message // empty), .step_count, (.references[]? | "\(.path) \(.state)")' tmp/step.json
+ready
+2
+src/app.txt ready
+? 0
+```
+
+A step whose references are not all ready still answers `ready`; each reference says why
+it is not.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=2' --format json > tmp/step.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.state, (.message // empty), .step_count, (.references[]? | "\(.path) \(.state)")' tmp/step.json
+ready
+2
+docs/new.md ready
+src/app.txt ready
+missing.txt path_not_changed
+src/app.txt range_unavailable
+? 0
+```
+
+The description of 9 holds two blocks, so the page refuses the guide and says why.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/9 --api '/api/plugin/github/guided-review?number=9&step=1' --format json > tmp/step.json
+selection: pull_request
+pin: 0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd (pull request 9 head)
+pull_request: 9 (closed; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.state, (.message // empty), .step_count, (.references[]? | "\(.path) \(.state)")' tmp/step.json
+invalid
+Use one guided-review block in the pull request description.
+null
+? 0
+```
+
+## Test: a pushed pull request names the steps to recheck
+
+The guide of 7 matches its pull request, so nothing needs rechecking.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7' --format json > tmp/guide.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.state, .stale.changed_steps, .stale.changed_paths' tmp/guide.json
+"ready"
+null
+null
+? 0
+```
+
+8 carries the same guide, pinned to 7’s head, and a commit since changed files both of
+its steps cite.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/8 --api '/api/plugin/github/guided-review?number=8' --format json > tmp/guide.json
+selection: pull_request
+pin: 8ae27617c9c475851b67ee69433d008836d112ba (pull request 8 head)
+pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.state, .stale.changed_steps, .stale.changed_paths' tmp/guide.json
+"stale"
+[1,2]
+["docs/new.md","src/app.txt"]
 ? 0
 ```

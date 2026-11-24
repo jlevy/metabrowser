@@ -35,8 +35,8 @@ Before, the first level started 4 px in from the header, with nested levels 16 p
 the tree scrolled in a box at most 60vh tall.
 
 The served folder is a Git repository too, and on the patch and on a commit's page, where
-the diff's toolbar holds the layout control alone, the session reads the chrome around the
-diff, and this holds:
+the diff's toolbar ends with its choosers' group after the Diff summary or the File type
+control, the session reads the chrome around the diff, and this holds:
 
 - the toolbar draws no rule under itself, and the first file card, with its own border,
   starts the cards' gap, 12 px, below it (docs/design-system.md, "Diff Layout Control";
@@ -462,13 +462,14 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
     # below it, is the line, on a patch, where the toolbar leads with the Diff summary, and
     # on a commit's page, where it holds the File type control, for a commit of more than
     # one file (mb-axjt), and the layout control (mb-a073). Before, both drew a 1px rule
-    # 12 px above the card's.
+    # 12 px above the card's. The choosers are one group at the toolbar's end, Diff | Current
+    # before Split | Unified.
     patch = measured["nested"]["collapsed"]["chrome"]
     commit_page = measured["commit"]
-    assert patch["toolbar"]["holds"] == ["diff-summary", "diff-layout-control"], patch
-    assert commit_page["toolbar"]["holds"] == ["diff-type-control", "diff-layout-control"], (
-        commit_page
-    )
+    assert patch["toolbar"]["holds"] == ["diff-summary", "diff-toolbar-end"], patch
+    assert commit_page["toolbar"]["holds"] == ["diff-type-control", "diff-toolbar-end"], commit_page
+    for toolbar in (patch["toolbar"], commit_page["toolbar"]):
+        assert toolbar["ends"] == ["diff-show-control", "diff-layout-control"], toolbar
     broken = _toolbar_draws_no_rule(patch["toolbar"], "patch") + _toolbar_draws_no_rule(
         commit_page["toolbar"], "commit"
     )

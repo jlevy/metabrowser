@@ -15,6 +15,7 @@ from metabrowser.content_sniff import (
     SNIFF_PREFIX_BYTES,
     ContentClass,
     classify_prefix,
+    media_type_from_prefix,
     sniff_artifact,
 )
 from metabrowser.file_kinds import FileContext
@@ -132,3 +133,20 @@ class TestFileContextSeam:
         ctx = FileContext(missing, "", content_class=ContentClass.TEXT)
         assert ctx.content_class is ContentClass.TEXT
         assert not missing.exists()
+
+
+@pytest.mark.parametrize(
+    ("prefix", "expected"),
+    [
+        (b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n", "application/pdf"),
+        (b"%PDF-1.7\n", "application/pdf"),
+        (b"%PDF", None),
+        (b" %PDF-1.4", None),
+        (b"a text file\n", None),
+        (b"", None),
+    ],
+)
+def test_media_type_from_prefix_names_only_a_signature_at_the_start(
+    prefix: bytes, expected: str | None
+) -> None:
+    assert media_type_from_prefix(prefix) == expected

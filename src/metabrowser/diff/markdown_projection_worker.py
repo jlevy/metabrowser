@@ -1087,7 +1087,8 @@ class ProjectionWorker:
         from the thread, so no caller keeps it as the input's answer.
 
         A thread projects within the input budgets beside ``MARKDOWN_DIFF_MAX_BYTES``,
-        since nothing stops it. A pair past them is the child's alone, which this waits
+        since nothing stops it, and no raw HTML (``_Limits`` in ``markdown_projection.py``).
+        A pair past them, or that holds raw HTML, is the child's alone, which this waits
         for, on every build: there :data:`_PROJECTION_TIMEOUT_S` is its bound, whatever
         its size. Only where no child can be had does the thread's refusal stand."""
 

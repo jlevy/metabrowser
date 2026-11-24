@@ -54,6 +54,15 @@ type MetabrowserRenderContext = {
   group?: string | null;
   unfold?: boolean;
   emptyText?: string;
+  /** Fixes the diff's layout at Unified whatever the reader's stored choice, with no layout
+   *  control and no `L`, as a pull request's Docs tab does. */
+  layout?: "unified";
+  /** What the diff's Diff | Current chooser opens on before the reader chooses on this
+   *  surface (Diff unless the host says Current), and the preference that choice is
+   *  remembered as (`diff.show` unless the host keeps its own): a pull request's Docs tab
+   *  opens on `"current"` and remembers it as `github.docs.show`. */
+  show?: "diff" | "current";
+  showPreference?: string;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
@@ -1181,6 +1190,8 @@ type MetabrowserFilterOption = {
   /** In a dropdown, the letter that chooses this row while the menu is open and has focus. */
   key?: string;
   label: string;
+  /** The chip's tooltip, its `data-tip-text` (`ChipOption` in filter-controls.js). */
+  tip?: string;
   title?: string;
   value: string;
 };
@@ -1934,6 +1945,20 @@ type MetabrowserSdk = {
   loadChangedFilesTree(): Promise<MetabrowserChangedFilesTree>;
   navigation: MetabrowserNavigationApi;
   sourceKind(): "filesystem" | "git_revision";
+  /**
+   * The trust profile this page was served under, from the `CAPABILITIES` block the
+   * server writes into `METABROWSER_SETTINGS` (capabilities.py). A pinned revision's page
+   * is always inert, and a page served without the block reads as inert.
+   */
+  capabilities(): Readonly<{ activeContent: boolean; mutations: boolean }>;
+  /**
+   * The actions the page's host carries out beyond what any browser does, by name, from
+   * the frozen `window.metabrowserHost` the host defines before the page's scripts run.
+   * The macOS app defines one (apps/macos OpenFileRequests.swift); a browser defines
+   * none, so it supports nothing. A plugin asks about an action, never about which host
+   * it is in. It is a hint for what to draw: the host checks every request itself.
+   */
+  host: Readonly<{ actions(): string[]; supports(action: string): boolean }>;
   repository: MetabrowserRepositoryContext | null;
   perf: MetabrowserPerf;
   registerView(kind: string, view: string, spec: MetabrowserViewSpec): void;
@@ -3762,6 +3787,7 @@ declare global {
     ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>>;
     ALLOWED_TAGS: readonly string[];
     ANCHOR_PREFIX: string;
+    CHECKBOX_ATTRIBUTES: ReadonlyArray<readonly [string, string]>;
     DIMENSIONS: Readonly<Record<string, readonly string[]>>;
     DROPPED_WITH_CONTENT: readonly string[];
     IMAGE_FALLBACK_CLASS: string;
@@ -5005,6 +5031,8 @@ declare global {
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";
+    /** The page's host's actions, defined frozen by the macOS app before any page script. */
+    metabrowserHost?: Readonly<{ actions?: ReadonlyArray<unknown> }>;
     /** Whether the server's Git dates a revision's files, so its page offers Group by age and
      * Modified within (static/app.js `noFileAges`); set on a revision's page only. */
     METABROWSER_FILE_AGES?: boolean;

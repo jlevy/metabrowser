@@ -49,7 +49,7 @@ build:
 # ignoreSIGPIPELikeTheApp in Tests/ShellCoreTests/Support.swift, and
 # ExitObservationStressTests.swift. The patterns also match StagedDownloadTests.
 webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAuthorizationTests PageRevealWebKitTests \
-	WebViewWebKitTests PageFindWebKitTests
+	WebViewWebKitTests PageFindWebKitTests OpenFileWebKitTests
 #
 # The WebKit suites run with --no-parallel. Every suite runs on the main actor, and a
 # test's WKWebView(frame:configuration:) blocks the main thread inside WebKit: a new

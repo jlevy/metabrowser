@@ -49,6 +49,16 @@ PLUGIN_SDK_VERSION = "0.8"
 # when PLUGIN_SDK_VERSION changes so omission fails the ordinary mismatch gate.
 _IMPLICIT_PLUGIN_SDK_VERSION = "0.1"
 
+# A Python distribution's name as PEP 508 allows one, without a version or extras.
+_DISTRIBUTION_NAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$")
+
+
+def normalize_distribution(name: str) -> str:
+    """A distribution name as PEP 503 compares them: lowercase, runs of ``-_.`` as ``-``."""
+
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
 # A plugin's name, which is also how another plugin's ``requires`` names it.
 _PLUGIN_NAME = re.compile(r"^[a-z][a-z0-9_-]*$")
 
@@ -176,7 +186,9 @@ class KindMatch(BaseModel):
         description=(
             "Match a file that would otherwise be `binary` whose bytes on disk hold these "
             "bytes at this offset, whatever its name. Only `ext` or `exts` may be set "
-            "beside it, and they decide only the tree's container chevron."
+            "beside it: they decide the tree's container chevron, and a file with one of "
+            "those extensions that sniffs as text is also matched when its leading bytes "
+            "hold these, as an ASCII PDF named `.pdf` is."
         ),
     )
 
@@ -474,6 +486,18 @@ class PluginInfo(BaseModel):
         ),
     )
 
+    python_requires: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The third-party Python distributions this plugin's Python code imports, by "
+            "distribution name, such as ``pyyaml``, whether or not core imports them too. "
+            "The package's ``pyproject.toml`` pins their versions: a built-in plugin's "
+            "packages ship with Metabrowser. Declaring them says which packages a plugin "
+            "would need if it were moved out of the package; ``devtools/check_plugin_deps.py`` "
+            "holds every built-in plugin's list to its imports."
+        ),
+    )
+
     @field_validator("requires")
     @classmethod
     def _requires_names_plugins(cls, requires: list[str]) -> list[str]:
@@ -483,6 +507,17 @@ class PluginInfo(BaseModel):
         if len(set(requires)) != len(requires):
             raise ValueError(f"requires lists a plugin more than once: {requires}")
         return requires
+
+    @field_validator("python_requires")
+    @classmethod
+    def _python_requires_names_distributions(cls, names: list[str]) -> list[str]:
+        for name in names:
+            if not _DISTRIBUTION_NAME.fullmatch(name):
+                raise ValueError(f"python_requires entry {name!r} is not a distribution name")
+        normalized = [normalize_distribution(name) for name in names]
+        if len(set(normalized)) != len(normalized):
+            raise ValueError(f"python_requires lists a distribution more than once: {names}")
+        return names
 
 
 class PluginManifest(BaseModel):
@@ -620,7 +655,7 @@ class PluginManifest(BaseModel):
                 if beside:
                     problems.append(
                         f"kind '{kr.id}' sets match.magic with {', '.join(beside)}; a magic "
-                        "rule takes only ext or exts, which decide the tree's chevron"
+                        "rule takes only ext or exts"
                     )
             # yaml_value_prefix is only meaningful paired with yaml_has_key
             # (mirrors the json pair).

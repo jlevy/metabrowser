@@ -190,6 +190,7 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
         ),
     ),
     "builtin_plugins/diff/diff-view.js": (
+        Listener("a Diff | Current choice's held row, released", None, via=("releaseHold",)),
         Listener("a file jump's pin release", None, via=("release",)),
     ),
     "builtin_plugins/diff/diff-summary.js": (

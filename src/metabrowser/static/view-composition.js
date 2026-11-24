@@ -468,6 +468,31 @@
     }
   }
 
+  // `metabrowser.capabilities()` and `metabrowser.host` (types.d.ts). They are here, not
+  // in the eager plugin-sdk.js, because only a view reads them and every view mounts
+  // through this bundle: the startup-script budget (performance-budgets.toml) had no room.
+  /** @returns {string[]} */
+  function hostActions() {
+    const actions = window.metabrowserHost?.actions;
+    return Array.isArray(actions) ? actions.filter((a) => typeof a === "string" && a !== "") : [];
+  }
+
+  const sdk = window.metabrowser;
+  if (sdk) {
+    sdk.capabilities = function capabilities() {
+      const block = window.METABROWSER_SETTINGS?.CAPABILITIES;
+      return Object.freeze({
+        activeContent: block?.active_content === true,
+        mutations: block?.mutations === true,
+      });
+    };
+    sdk.host = Object.freeze({
+      actions: hostActions,
+      /** @param {string} action */
+      supports: (action) => hostActions().includes(action),
+    });
+  }
+
   window.MetabrowserViewComposition = Object.freeze({
     FACE_WAIT_MS,
     bindTabs,
