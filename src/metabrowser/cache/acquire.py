@@ -253,7 +253,8 @@ class RemoteAccessError(AcquisitionError):
 
 
 class RepositoryTooLargeError(RemoteAccessError):
-    """A provider refused a first clone over its size limit, which *detail* states."""
+    """A first clone refused before it starts because it would not leave the reserve free
+    on the cache's volume (``cache/free_space.py``), which *detail* states."""
 
     def __init__(self, source_url: str, *, detail: str) -> None:
         super().__init__("too_large", source_url, detail=detail)

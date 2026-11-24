@@ -341,7 +341,10 @@ lower the reserve:
 METABROWSER_CACHE_RESERVE_MB=200 metab https://github.com/owner/repo/pull/123
 ```
 
-To pay for a long clone ahead of time, run the same URL with `--no-serve`.
+A first clone must also finish within the acquisition deadline,
+`GIT_ACQUISITION_TIMEOUT_S` in `src/metabrowser/git/process.py`: one that does not is
+stopped, its message names the deadline, and nothing is kept, so running it again does
+the same. To pay for a long clone ahead of time, run the same URL with `--no-serve`.
 
 To discard everything cached of a repository’s pull requests, the list, records, changed
 files, and refresh outcomes, while keeping its clone, run:
