@@ -980,14 +980,14 @@ with its step, when the store still has the pinned revision, and a `stale` objec
 guide’s head or that its head left the branch’s history, and the cited paths and steps
 that changed between the two comparisons, each with its bound beside its constant.
 When GitHub reports a head this copy lacks, the guide is stale too, and what the newer
-commits changed is unknown, so neither list is answered and the notice says the guide
-may be out of date.
-The page draws that as a notice above the guide and marks the changed
-steps. The limits in `guided_pr.py` (`MAX_ITEMS`, `MAX_REFERENCES`, `MAX_EXCERPT_BYTES`,
-and `MAX_STEP_PATCH_BYTES`) cap the guide’s steps, the per-step hydration, the excerpt
-text, and a step’s whole files, each with the measurement that set it beside the
-constant. The parse is kept for each pull request by record revision, so a step click
-reads the guide the first request parsed and an edited description is parsed once.
+commits changed is unknown, so neither list is answered and the notice says only that
+GitHub reports a newer head than the guide’s. The page draws that as a notice above the
+guide and marks the changed steps.
+The limits in `guided_pr.py` (`MAX_ITEMS`, `MAX_REFERENCES`, `MAX_EXCERPT_BYTES`, and
+`MAX_STEP_PATCH_BYTES`) cap the guide’s steps, the per-step hydration, the excerpt text,
+and a step’s whole files, each with the measurement that set it beside the constant.
+The parse is kept for each pull request by record revision, so a step click reads the
+guide the first request parsed and an edited description is parsed once.
 An excerpt shows a replacement whole: `_hunk_rows` includes a line that exists only on
 the other side when it lies inside the range or touches either end of it.
 Guide text and diff lines are inserted as text, in the design system’s existing parts:

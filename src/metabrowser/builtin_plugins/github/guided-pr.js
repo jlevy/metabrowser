@@ -317,12 +317,12 @@ export function staleNotice(stale, stepCount, shortCommit) {
   const headMoved = stale.current.head !== stale.guide.head;
   // A guide this copy still matches is out of date only if the newer head GitHub reports
   // moved it, which this copy cannot tell; nor can it tell whether the description there
-  // was updated with it.
+  // was updated with it. So the title says what is known.
   const known = headMoved || baseMoved;
   box.append(
     element(
       "p",
-      known ? "This guide is out of date." : "This guide may be out of date.",
+      known ? "This guide is out of date." : "GitHub reports a newer head than this guide's.",
       "github-pull-guide-stale-title",
     ),
   );
@@ -342,7 +342,9 @@ export function staleNotice(stale, stepCount, shortCommit) {
   }
   if (stale.github_newer) {
     say([
-      "GitHub reports a newer head than this copy of the pull request. Reload it to compare the guide with the newest commits.",
+      known
+        ? "GitHub reports a newer head than this copy of the pull request. Reload it to compare the guide with the newest commits."
+        : "Reload the pull request to compare the guide with the newest commits.",
     ]);
   }
   if (headMoved && stale.history === "unavailable") {

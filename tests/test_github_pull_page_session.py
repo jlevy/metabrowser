@@ -826,21 +826,22 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             # opens a `guided-pr` fence: the link leads the bar when a record brings one, stays while its tab is shown, and leaves the bar, and the
             # key, otherwise. The page cannot tell a block from an example of one inside
             # another fence, which the server's parse can (mb-y0en), so the example shows
-            # the tab too.
+            # the tab too. On the front page, which a block makes the guide, R shows the
+            # page on screen and opens no second entry of it (B20 of review B on #677).
             "no block in the description: Conversation C, Docs D, Changes G, Checks E; "
             "live conversation docs files checks",
             "R: not handled",
             "a block in the description: "
             "Guided Review R, Conversation C, Docs D, Changes G, Checks E; "
             "live conversation docs files guided checks",
-            "R: opened the guided route",
+            "R: showed Guided Review",
             "the route arrives: Guided Review",
             "the block leaves while its tab is shown: "
             "Guided Review R, Conversation C, Docs D, Changes G, Checks E; Guided Review",
             "back on Conversation: Conversation C, Docs D, Changes G, Checks E; R: not handled",
             "the block returns while Shift is held: "
             "badges Guided Review R, Conversation C, Docs D, Changes G, Checks E",
-            "R: opened the guided route",
+            "R: showed Guided Review",
             "an example of the block inside another fence: "
             "Guided Review R, Conversation C, Docs D, Changes G, Checks E",
             "disposed: keys none",

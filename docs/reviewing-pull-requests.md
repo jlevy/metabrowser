@@ -231,10 +231,9 @@ guide was written for, the pull request’s current one, and the commits since (
 the branch was rebased), and it marks the steps that cite a file changed since.
 Every step still shows, with excerpts from the guide’s own revision; a step that cites
 no changed file still matches the pull request.
-When GitHub reports a newer head than the cached copy has, the notice says the guide may
-be out of date: what the newer commits changed is unknown until the pull request is
-fetched again. To bring the guide current, update its pins and ranges in the PR
-description.
+When GitHub reports a newer head than the cached copy has, the notice says so: what the
+newer commits changed is unknown until the pull request is fetched again.
+To bring the guide current, update its pins and ranges in the PR description.
 
 A guide the page cannot read says why in place of the steps: invalid YAML, a second
 block, another contract, a field that fails the schema, or pins that do not name a

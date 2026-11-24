@@ -96,8 +96,8 @@ read. A step is inserted as text, so markup in the guide stays markup, and each 
 the diff plugin’s, its code a span, which the shell’s highlighter, which takes
 `pre code`, skips. Open full diff reaches the page’s own `openChangedFile`, which asks
 the route for the file’s Changes address.
-A guide stale only because GitHub reports a newer head says it may be out of date, and
-that whether its steps match the newest commits is unknown.
+A guide stale only because GitHub reports a newer head says that, and that whether its
+steps match the newest commits is unknown.
 Commits the server counted but could not list are counted.
 A refused step keeps the step list, whose buttons survive the click that chose it, and
 says why in the step’s place.
@@ -130,7 +130,7 @@ $ node tests/dom/github-guided-pr-mount-behavior.js
   "a poll of the same record: asked step 1, step 1",
   "Guided Review opened and left before its import settled: guide not mounted; asked nothing",
   "the page ended before the import settled: asked nothing",
-  "a guide behind a newer head on GitHub: This guide may be out of date. / GitHub reports a newer head than this copy of the pull request. Reload it to compare the guide with the newest commits. / Whether its steps still match the newest commits is unknown.; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
+  "a guide behind a newer head on GitHub: GitHub reports a newer head than this guide's. / Reload the pull request to compare the guide with the newest commits. / Whether its steps still match the newest commits is unknown.; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
   "commits counted and not listed: This guide is out of date. / It was written for head bbbbbbb. The pull request is now at head ccccccc. / 3 commits since the guide. / None of the files its steps cite changed, so every step still matches. Its author can update the guide's pins and ranges in the description.",
   "a refused step: Step 2 of 3; Overview | 1 Step 1 | > 2 Step 2 | 3 Step 3; says This step could not be read. Choose it again to retry.",
   "chosen again: asked step 1, step 2, step 2",
