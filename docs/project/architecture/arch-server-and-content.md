@@ -304,14 +304,21 @@ addresses written in full, and an image runs no script whatever its address.
 With the reader’s Block remote images on, the policy admits this origin, those `data:`
 images, and the exact avatar host for application-owned author portraits, whose URLs
 provider and browser code validate.
-The page frames no URL, since the untrusted profile removes the HTML preview, its only
-framed address; its one frame is the diagram frame
-(`builtin_plugins/markdown/diagram-frame.js`), an `about:srcdoc` document that
-`frame-src` does not govern, sandboxed to scripts and its own origin, which keeps this
-policy and adds its own, admitting less, and under which a pull request’s text’s Mermaid
-diagrams are laid out on any page.
+The page frames and embeds one address, `/raw` itself, by its exact path in `frame-src`
+and `object-src`: the PDF view’s `<embed>` of a file’s bytes, which the browser’s own
+viewer draws, and which Chrome draws in a frame of that address, checked against
+`frame-src` too. Every `/raw` answer carries its own sandbox, the sanitizer passes no
+frame or object from content, and the HTML preview, whose frames are `/raw/<path>`, is
+removed under this profile, so no other address of the origin can be framed or embedded
+(`tests/test_pdf_preview_chrome.py` embeds another and sees it refused).
+The threat this answers and the risk it accepts are in
+[the threat model](arch-threat-model.md).
+Its other frame is the diagram frame (`builtin_plugins/markdown/diagram-frame.js`), an
+`about:srcdoc` document that `frame-src` does not govern, sandboxed to scripts and its
+own origin, which keeps this policy and adds its own, admitting less, and under which a
+pull request’s text’s Mermaid diagrams are laid out on any page.
 This policy’s `style-src` admits the frame’s one stylesheet, from `/plugin-static/`.
-Nothing may frame the page; and plugins, `<base>`, and form submission are off.
+Nothing may frame the page; and `<base>` and form submission are off.
 Inline `style` attributes stay allowed because the application writes them for layout;
 untrusted Markdown carries none.
 `tests/test_untrusted_markdown.py` pins the policy and fails when the application writes

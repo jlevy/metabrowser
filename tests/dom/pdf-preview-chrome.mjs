@@ -1,13 +1,15 @@
-// A PDF's view in Chrome: the browser's own viewer inline, or the note and actions in its
-// place under the untrusted policy, and the viewer in a top-level tab either way.
+// A PDF's view in Chrome: the browser's own viewer inline under either trust profile, and
+// in a top-level tab.
 //
 // Serves ROOT, a folder holding PDF_PATH, with FLAGS (`--untrusted` or none), opens the
-// file's view, and reads what the plugin drew: the `<embed>`, the note, the actions' text,
-// and any Content-Security-Policy violation the page reported. Whether Chrome's PDF viewer
+// file's view, and reads what the plugin drew: the `<embed>`, the actions' text, and any
+// Content-Security-Policy violation the page reported. Whether Chrome's PDF viewer
 // loaded is read from the frame tree, where it is a frame of the viewer extension's
 // origin (the viewer's toolbar and pages are the extension's, which no page script
-// reads). Then opens the file's `/raw` address as a top-level tab, as Open in new tab
-// does, and reads the same. Prints one JSON line.
+// reads). Then it embeds another address of this origin, which only `/raw` may be under
+// the untrusted policy, and reads the violations that adds. Then opens the file's `/raw`
+// address as a top-level tab, as Open in new tab does, and reads the same. Prints one
+// JSON line.
 //
 // Usage: node pdf-preview-chrome.mjs METAB ROOT PORT STATE_DIR PDF_PATH [FLAGS...], with
 // CHROME_BIN and CHROME_PROFILES set (tests/dom/chrome-session.mjs). SCREENSHOTS, when
@@ -80,11 +82,24 @@ const READ = `(() => {
   return {
     embed: viewer ? {type: viewer.getAttribute("type"), src: viewer.getAttribute("src"),
       height: Math.round(viewer.getBoundingClientRect().height)} : null,
-    note: pane?.querySelector(".metabrowser-pdf-host .pdf-note")?.textContent ?? null,
     actions: Array.from(pane?.querySelectorAll(".metabrowser-pdf-host .pdf-action") ?? [],
       (a) => a.textContent),
     violations: window.__pdfViolations ?? [],
   };
+})()`;
+
+// An object of this origin that is not `/raw`: the file's own envelope. The untrusted
+// policy's `object-src` names `/raw` alone, so Chrome refuses it and reports `object-src`;
+// a trusted page has no policy and reports nothing.
+const PROBE = (filePath) => `(async () => {
+  const before = window.__pdfViolations.length;
+  const probe = document.createElement("embed");
+  probe.setAttribute("type", "application/pdf");
+  probe.setAttribute("src", "/api/file?path=" + encodeURIComponent(${JSON.stringify(filePath)}));
+  document.body.append(probe);
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  probe.remove();
+  return window.__pdfViolations.slice(before);
 })()`;
 
 /** Every frame's URL in the page's frame tree. */
@@ -156,6 +171,7 @@ try {
   const inline = await viewerLoaded(chrome);
   record.view = { ...(await chrome.evaluate(READ)), viewerLoaded: inline };
   await capture("view");
+  record.otherObject = { violations: await chrome.evaluate(PROBE(pdfPath)) };
   const raw = await chrome.evaluate(
     `document.querySelector("#preview-pane .pdf-action[target=_blank]")?.getAttribute("href") ?? null`,
   );

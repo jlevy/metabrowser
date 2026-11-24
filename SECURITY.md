@@ -72,6 +72,11 @@ interface can read every file under its root.
 - **A trusted folder is yours.** Its Markdown renders richly and an HTML file’s preview
   runs its scripts, in a sandbox that keeps them from Metabrowser’s page and API. Serve
   a folder you did not write with `--untrusted`.
+- **PDFs open in your browser’s viewer.** A PDF’s own page shows it in the browser’s
+  viewer, from every source, so the browser’s PDF engine reads the file when you open
+  that page, as it would for any PDF link.
+  Nothing else embeds one: a diff, an overview, or a Markdown document never starts a
+  viewer.
 - **The macOS app opens files in their default app.** Open hands a PDF, image, or media
   file to the app macOS assigns its type; a copy from a repository or pull request is
   quarantined and read-only first, so Gatekeeper still judges it.

@@ -130,10 +130,8 @@ or to make the page embed another of the application’s addresses.
   Chrome draws an `<embed>`’s PDF in a frame of the same address and checks it against
   `frame-src`, which is why both directives name it.
   The HTML preview, whose frames are `/raw/<path>`, is removed under this profile.
-  (Admitted by `mb-g427`; before it, both directives were `'none'` and the untrusted PDF
-  view drew a note.)
-- **Evidence** (with `mb-g427`). `tests/test_pdf_preview_chrome.py` loads the viewer on
-  an untrusted page with no policy violation and sees an object at `/api/file` refused;
+- **Evidence.** `tests/test_pdf_preview_chrome.py` loads the viewer on an untrusted page
+  with no policy violation and sees an object at `/api/file` refused;
   `tests/test_untrusted_markdown.py` and `tests/test_serve_pin.py` pin both directives
   and that `/raw` is never a code source;
   `tests/golden/cli-ui-pdf-surfaces.tryscript.md` shows each surface’s policy and

@@ -377,9 +377,12 @@ Ready now:
 
 After the threat model:
 
-- [ ] The embed on every file page (`mb-g427`): `object-src <origin>/raw` in the
-  untrusted page policy, pinned by a policy test, the surfaces golden showing `viewer`
-  on every surface, and the Chrome test loading it untrusted
+- [x] The embed on every file page (`mb-g427`): `object-src <origin>/raw` and
+  `frame-src <origin>/raw` in the untrusted page policy (Chrome draws an `<embed>`’s PDF
+  in a frame of its address and checks `frame-src` too, measured by the Chrome test),
+  pinned by the policy tests, the surfaces golden showing `viewer` on every surface, and
+  the Chrome test loading it untrusted with no violation while an object at another
+  address is refused
 - [ ] The preview (`mb-7tcl`): a plugin route that renders the first page with
   `pypdfium2` in a subprocess bounded in time and memory, a `previews` area of the cache
   root keyed by content hash, renderer version, and size, written atomically and bounded

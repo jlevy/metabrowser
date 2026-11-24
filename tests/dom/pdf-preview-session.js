@@ -2,8 +2,10 @@
 //
 // It draws the view for each combination the plan's actions table names (host: the macOS
 // app's descriptor or none; trust: active or inert), on a folder path and on a pinned
-// revision's GitPath wire, and reads the SDK's `host` and `capabilities()` accessors the
-// view decides by. Only the browser's painting of the PDF is left out.
+// revision's GitPath wire, and reads the SDK's `host` and `capabilities()` accessors. The
+// actions follow the host; the viewer is the same under either trust profile, since
+// every page's policy admits an object from `/raw`. Only the browser's painting of the
+// PDF is left out.
 
 const {
   APP_HOST,
@@ -129,7 +131,10 @@ function describeMount(container) {
   assert(!malformedHost.openFile, "a malformed descriptor was read as supporting open-file");
   assert(missingCapabilities.activeContent === false, "missing capabilities read as active");
   assert(matrix.appActive.body.tag === "embed", "app, active: no inline viewer");
-  assert(matrix.browserInert.body.tag === "p", "browser, inert: an embed the policy blocks");
+  assert(
+    Object.values(matrix).every((cell) => cell.body.tag === "embed"),
+    "a profile drew no inline viewer, though every page's policy admits one from /raw",
+  );
   assert(
     matrix.appActive.actions[0].attributes["data-metabrowser-open-file"] === "filesystem",
     "app Open link lost its marker",

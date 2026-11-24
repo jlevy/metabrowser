@@ -841,11 +841,16 @@ def test_repository_content_cannot_read_where_the_mirror_is_kept(
         for directive in (
             "img-src 'self' data:",
             "connect-src 'self'",
-            "frame-src 'none'",
+            "frame-src http://testserver/raw;",
             "frame-ancestors 'none'",
+            "object-src http://testserver/raw;",
         ):
             assert directive in policy
-        assert "/raw" not in policy
+        # `/raw` is a frame and an object only, the PDF view's `<embed>`: never code.
+        assert [part.split()[0] for part in policy.split("; ") if "/raw" in part] == [
+            "frame-src",
+            "object-src",
+        ]
         assert "access-control-allow-origin" not in shell.headers
 
         # The same content opened raw runs nothing, and its origin is refused the status.

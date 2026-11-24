@@ -21,11 +21,12 @@ draws.
 
 `seen` is the transcript a reviewer reads, one line per file per surface:
 
-- **`viewer`:** the browser’s own PDF viewer inline.
-  A view draws it only on a page whose content policy admits it: a trusted folder’s.
-- **`note`:** the untrusted note in its place, on every page served with
-  `object-src 'none'`: an `--untrusted` folder and every pin.
-  A PDF is a click away there, through Open in new tab in a browser or Open in the app.
+- **`viewer`:** the browser’s own PDF viewer inline, on every surface’s file page.
+  A view draws it only on a page whose content policy admits it, which `embedPolicy`
+  names: a trusted folder’s page has no policy, and an `--untrusted` folder’s and every
+  pin’s admit an object from `/raw` alone (`object-src <origin>/raw`), whose every
+  answer carries its own sandbox.
+  The threat this answers is in `docs/project/architecture/arch-threat-model.md`.
 - **Each action:** its label, and the status and type the server answers at the address
   it links to. Every one is `application/pdf`, the extensionless PDF’s too, because
   `/raw` takes a type from a file’s leading bytes when its name gives none
@@ -59,21 +60,21 @@ $ node tests/dom/pdf-surfaces-session.js
     "folder · app · papers/ascii.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
     "folder · app · scans/untitled: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
     "folder · app · notes/not-really.pdf: another view (text, the source view)",
-    "folderUntrusted · browser · papers/report.pdf: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "folderUntrusted · browser · papers/ascii.pdf: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "folderUntrusted · browser · scans/untitled: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "folderUntrusted · browser · papers/report.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "folderUntrusted · browser · papers/ascii.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "folderUntrusted · browser · scans/untitled: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
     "folderUntrusted · browser · notes/not-really.pdf: another view (text, the source view)",
-    "folderUntrusted · app · papers/report.pdf: note. Open → 200 application/pdf; Download → 200 application/pdf",
-    "folderUntrusted · app · papers/ascii.pdf: note. Open → 200 application/pdf; Download → 200 application/pdf",
-    "folderUntrusted · app · scans/untitled: note. Open → 200 application/pdf; Download → 200 application/pdf",
+    "folderUntrusted · app · papers/report.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
+    "folderUntrusted · app · papers/ascii.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
+    "folderUntrusted · app · scans/untitled: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
     "folderUntrusted · app · notes/not-really.pdf: another view (text, the source view)",
-    "pin · browser · papers/report.pdf: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "pin · browser · papers/ascii.pdf: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "pin · browser · scans/untitled: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "pin · browser · papers/report.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "pin · browser · papers/ascii.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "pin · browser · scans/untitled: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
     "pin · browser · notes/not-really.pdf: another view (text, the source view)",
-    "pin · app · papers/report.pdf: note. Open → 200 application/pdf; Download → 200 application/pdf",
-    "pin · app · papers/ascii.pdf: note. Open → 200 application/pdf; Download → 200 application/pdf",
-    "pin · app · scans/untitled: note. Open → 200 application/pdf; Download → 200 application/pdf",
+    "pin · app · papers/report.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
+    "pin · app · papers/ascii.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
+    "pin · app · scans/untitled: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
     "pin · app · notes/not-really.pdf: another view (text, the source view)",
     "diff · modified README.md: text diff",
     "diff · added notes/not-really.pdf: text diff",
@@ -89,7 +90,7 @@ $ node tests/dom/pdf-surfaces-session.js
       "served": {
         "sourceKind": "filesystem",
         "activeContent": true,
-        "objectPolicy": "admits /raw"
+        "embedPolicy": "admits this origin"
       },
       "files": {
         "papers/report.pdf": {
@@ -189,7 +190,7 @@ $ node tests/dom/pdf-surfaces-session.js
       "served": {
         "sourceKind": "filesystem",
         "activeContent": true,
-        "objectPolicy": "admits /raw"
+        "embedPolicy": "admits this origin"
       },
       "files": {
         "papers/report.pdf": {
@@ -292,14 +293,14 @@ $ node tests/dom/pdf-surfaces-session.js
       "served": {
         "sourceKind": "filesystem",
         "activeContent": false,
-        "objectPolicy": "blocks embedding"
+        "embedPolicy": "admits /raw only"
       },
       "files": {
         "papers/report.pdf": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open in new tab shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Download",
@@ -326,8 +327,8 @@ $ node tests/dom/pdf-surfaces-session.js
         "papers/ascii.pdf": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open in new tab shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Download",
@@ -354,8 +355,8 @@ $ node tests/dom/pdf-surfaces-session.js
         "scans/untitled": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open in new tab shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Download",
@@ -392,14 +393,14 @@ $ node tests/dom/pdf-surfaces-session.js
       "served": {
         "sourceKind": "filesystem",
         "activeContent": false,
-        "objectPolicy": "blocks embedding"
+        "embedPolicy": "admits /raw only"
       },
       "files": {
         "papers/report.pdf": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Open",
@@ -427,8 +428,8 @@ $ node tests/dom/pdf-surfaces-session.js
         "papers/ascii.pdf": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Open",
@@ -456,8 +457,8 @@ $ node tests/dom/pdf-surfaces-session.js
         "scans/untitled": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Open",
@@ -495,14 +496,14 @@ $ node tests/dom/pdf-surfaces-session.js
       "served": {
         "sourceKind": "git_revision",
         "activeContent": false,
-        "objectPolicy": "blocks embedding"
+        "embedPolicy": "admits /raw only"
       },
       "files": {
         "papers/report.pdf": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open in new tab shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Download",
@@ -529,8 +530,8 @@ $ node tests/dom/pdf-surfaces-session.js
         "papers/ascii.pdf": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open in new tab shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Download",
@@ -557,8 +558,8 @@ $ node tests/dom/pdf-surfaces-session.js
         "scans/untitled": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open in new tab shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Download",
@@ -595,14 +596,14 @@ $ node tests/dom/pdf-surfaces-session.js
       "served": {
         "sourceKind": "git_revision",
         "activeContent": false,
-        "objectPolicy": "blocks embedding"
+        "embedPolicy": "admits /raw only"
       },
       "files": {
         "papers/report.pdf": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Open",
@@ -630,8 +631,8 @@ $ node tests/dom/pdf-surfaces-session.js
         "papers/ascii.pdf": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Open",
@@ -659,8 +660,8 @@ $ node tests/dom/pdf-surfaces-session.js
         "scans/untitled": {
           "kind": "pdf",
           "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open shows this one.",
+          "shows": "viewer",
+          "policyAdmitsViewer": true,
           "actions": [
             {
               "label": "Open",

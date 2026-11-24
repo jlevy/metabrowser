@@ -207,12 +207,14 @@ def untrusted_shell_csp(
     (``server.index``), beside this policy, which covers an image the allowlist never sees:
     one a Mermaid diagram laid out in the page names, an ``A@{ img: … }`` shape in a README,
     is fetched under the page's policy and sends no referrer either.
-    The page frames no URL
-    -- the untrusted profile removes the HTML preview, its only framed address; its one
-    frame is the ``about:srcdoc`` diagram frame, under a stricter policy of its own as
+    The page frames no URL but ``/raw`` itself, the PDF view's ``<embed>``
+    -- the untrusted profile removes the HTML preview, whose frames are ``/raw/<path>``;
+    its other frame is the ``about:srcdoc`` diagram frame, under a stricter policy of its own as
     well as this one, which admits its stylesheet from ``/plugin-static/``
-    (``builtin_plugins/markdown/diagram-frame.js``) -- is framed by nothing, and has no
-    plugins, ``<base>``, or form submission. Inline ``style``
+    (``builtin_plugins/markdown/diagram-frame.js``) -- is framed by nothing, embeds an object only from
+    ``/raw`` (the PDF view's ``<embed>``; every ``/raw`` answer carries its own CSP
+    sandbox, ``docs/project/architecture/arch-threat-model.md``), and has no ``<base>``
+    or form submission. Inline ``style``
     attributes stay allowed because the application writes them; an outside ``url()``
     inside one is still limited to those image origins. A ``<style>`` element is not:
     Mermaid lays each diagram out with one, so an untrusted document with diagrams logs
@@ -245,9 +247,15 @@ def untrusted_shell_csp(
             "font-src 'self'",
             "connect-src 'self'",
             f"worker-src {plugins}",
-            "frame-src 'none'",
+            # A frame and an object only from `/raw` itself (an exact path, so never the
+            # HTML preview's `/raw/<path>`), whose every answer carries its own sandbox:
+            # the PDF view's `<embed>` of a file's bytes. Chrome draws an `<embed>`'s PDF
+            # in a frame of that address and checks it against frame-src as well, so
+            # both must name it (tests/test_pdf_preview_chrome.py). The page makes no
+            # other frame or object, and the sanitizer passes neither from content.
+            f"frame-src {origin}/raw",
             "frame-ancestors 'none'",
-            "object-src 'none'",
+            f"object-src {origin}/raw",
             "base-uri 'none'",
             "form-action 'none'",
         )

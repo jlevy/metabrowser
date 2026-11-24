@@ -163,7 +163,7 @@ def _embedding_policy(policy: str | None) -> str | None:
     kept = [
         part.strip()
         for part in policy.split(";")
-        if part.strip().split(" ", 1)[0] in ("default-src", "object-src")
+        if part.strip().split(" ", 1)[0] in ("default-src", "child-src", "frame-src", "object-src")
     ]
     return "; ".join(kept)
 
@@ -286,13 +286,13 @@ def test_every_surface_shows_what_its_policy_admits_and_links_to_the_pdf() -> No
         (surface["surface"], surface["host"]): surface["files"]["papers/report.pdf"]["shows"]
         for surface in surfaces
     }
-    assert shows == {
-        ("folder", "browser"): "viewer",
-        ("folder", "app"): "viewer",
-        ("folderUntrusted", "browser"): "note",
-        ("folderUntrusted", "app"): "note",
-        ("pin", "browser"): "note",
-        ("pin", "app"): "note",
+    # Every file page shows the viewer: the untrusted page admits an object from /raw.
+    assert set(shows.values()) == {"viewer"}, shows
+    policies = {surface["surface"]: surface["served"]["embedPolicy"] for surface in surfaces}
+    assert policies == {
+        "folder": "admits this origin",
+        "folderUntrusted": "admits /raw only",
+        "pin": "admits /raw only",
     }
     # A comparison shows a PDF as Git diffs it: a binary one, as real writers' are, by
     # saying so, and one whose bytes are all text as text. Its own view is a click away

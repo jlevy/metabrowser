@@ -13,10 +13,11 @@ and active content or inert.
 The app gets Open, a link marked `data-metabrowser-open-file` with its subject, which
 the app intercepts and opens in the default app for the type (the `open-file` action).
 A browser gets Download and Open in new tab.
-An inert page draws a note in place of the `<embed>` its policy blocks.
-It also pins the `/raw` address for a folder path and a pinned revision’s GitPath wire,
-the download name, replacement, and disposal.
-The browser painting the PDF is not modeled.
+Every profile draws the same `<embed>`: the inert page’s policy admits an object from
+`/raw` alone, so trust changes nothing here (`object-src` in
+`capabilities.untrusted_content_security_policy`). It also pins the `/raw` address for a
+folder path and a pinned revision’s GitPath wire, the download name, replacement, and
+disposal. The browser painting the PDF is not modeled.
 
 ```console
 $ node tests/dom/pdf-preview-session.js
@@ -97,11 +98,13 @@ $ node tests/dom/pdf-preview-session.js
         }
       ],
       "body": {
-        "tag": "p",
+        "tag": "embed",
         "attributes": {
-          "class": "pdf-note"
-        },
-        "text": "This source is untrusted, so its PDFs are not shown inline. Open shows this one."
+          "aria-label": "papers/<unsafe \"quoted\" & file>.pdf",
+          "class": "pdf-viewer",
+          "src": "/raw?path=papers%2F%3Cunsafe%20%22quoted%22%20%26%20file%3E.pdf",
+          "type": "application/pdf"
+        }
       },
       "childCount": 2
     },
@@ -169,11 +172,13 @@ $ node tests/dom/pdf-preview-session.js
         }
       ],
       "body": {
-        "tag": "p",
+        "tag": "embed",
         "attributes": {
-          "class": "pdf-note"
-        },
-        "text": "This source is untrusted, so its PDFs are not shown inline. Open in new tab shows this one."
+          "aria-label": "papers/<unsafe \"quoted\" & file>.pdf",
+          "class": "pdf-viewer",
+          "src": "/raw?path=papers%2F%3Cunsafe%20%22quoted%22%20%26%20file%3E.pdf",
+          "type": "application/pdf"
+        }
       },
       "childCount": 2
     }
@@ -206,11 +211,13 @@ $ node tests/dom/pdf-preview-session.js
         }
       ],
       "body": {
-        "tag": "p",
+        "tag": "embed",
         "attributes": {
-          "class": "pdf-note"
-        },
-        "text": "This source is untrusted, so its PDFs are not shown inline. Open shows this one."
+          "aria-label": "papers/report.pdf",
+          "class": "pdf-viewer",
+          "src": "/raw?path=g1-cGFwZXJz%2Fg1-cmVwb3J0LnBkZg",
+          "type": "application/pdf"
+        }
       },
       "childCount": 2
     },
@@ -241,11 +248,13 @@ $ node tests/dom/pdf-preview-session.js
         }
       ],
       "body": {
-        "tag": "p",
+        "tag": "embed",
         "attributes": {
-          "class": "pdf-note"
-        },
-        "text": "This source is untrusted, so its PDFs are not shown inline. Open in new tab shows this one."
+          "aria-label": "papers/report.pdf",
+          "class": "pdf-viewer",
+          "src": "/raw?path=g1-cGFwZXJz%2Fg1-cmVwb3J0LnBkZg",
+          "type": "application/pdf"
+        }
       },
       "childCount": 2
     }

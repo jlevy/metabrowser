@@ -47,11 +47,12 @@ def test_each_host_and_profile_gets_its_viewer_and_actions() -> None:
         "browserActive": ["Download", "Open in new tab"],
         "browserInert": ["Download", "Open in new tab"],
     }
+    # The viewer does not depend on trust: every page's policy admits `/raw` objects.
     assert {label: mount["body"]["tag"] for label, mount in matrix.items()} == {
         "appActive": "embed",
-        "appInert": "p",
+        "appInert": "embed",
         "browserActive": "embed",
-        "browserInert": "p",
+        "browserInert": "embed",
     }
     viewer = matrix["browserActive"]["body"]["attributes"]
     assert viewer["type"] == "application/pdf"

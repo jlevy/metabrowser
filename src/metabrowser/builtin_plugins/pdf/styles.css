@@ -46,9 +46,3 @@
   border: 0;
   background: var(--bg);
 }
-
-.metabrowser-pdf-host .pdf-note {
-  margin: 0;
-  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
-  color: var(--muted);
-}

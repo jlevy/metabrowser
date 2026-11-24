@@ -1,11 +1,12 @@
-"""A PDF's view in Chrome: the browser's viewer inline when trusted, a note when not.
+"""A PDF's view in Chrome: the browser's viewer inline, trusted or not.
 
 ``tests/dom/pdf-preview-chrome.mjs`` serves a folder holding a PDF, trusted and
 ``--untrusted``, and in headless Chrome opens its view and then its ``/raw`` address as a
-top-level tab, as the view's Open in new tab does. Trusted, the view's ``<embed>`` loads
-Chrome's PDF viewer under ``/raw``'s CSP sandbox, with no policy violation. Untrusted,
-the page's ``object-src 'none'`` leaves no ``<embed>`` to block: the view draws its note
-and actions instead. Either way the top-level tab loads the viewer, sandbox and all.
+top-level tab, as the view's Open in new tab does. Either way the view's ``<embed>``
+loads Chrome's PDF viewer under ``/raw``'s CSP sandbox, with no policy violation: the
+untrusted page's ``object-src`` names ``/raw`` alone. An object at any other address of
+the origin stays blocked there, which the session checks by embedding the file's
+``/api/file`` envelope. The top-level tab loads the viewer too, sandbox and all.
 
 Whether the viewer loaded is read from the frame tree, where Chrome's viewer is a frame
 of its extension's origin; its painting of the pages is Chrome's. What the view draws for
@@ -104,8 +105,7 @@ def _run(tmp_path: Path, chrome_profile: Path, flags: list[str]) -> dict[str, ob
     return record
 
 
-def test_a_trusted_pdf_shows_in_chromes_viewer_inline(tmp_path: Path, chrome_profile: Path) -> None:
-    record = _run(tmp_path, chrome_profile, [])
+def _assert_the_viewer_loads_inline(record: dict[str, object]) -> None:
     view = record["view"]
     assert isinstance(view, dict)
     assert view["embed"] == {
@@ -114,7 +114,6 @@ def test_a_trusted_pdf_shows_in_chromes_viewer_inline(tmp_path: Path, chrome_pro
         "height": view["embed"]["height"],
     }
     assert view["embed"]["height"] > 200
-    assert view["note"] is None
     assert view["actions"] == ["Download", "Open in new tab"]
     assert view["violations"] == []
     assert view["viewerLoaded"] is True
@@ -122,18 +121,16 @@ def test_a_trusted_pdf_shows_in_chromes_viewer_inline(tmp_path: Path, chrome_pro
     assert record["topLevel"] == {"viewerLoaded": True}
 
 
-def test_an_untrusted_pdf_draws_a_note_and_opens_in_a_tab(
+def test_a_trusted_pdf_shows_in_chromes_viewer_inline(tmp_path: Path, chrome_profile: Path) -> None:
+    record = _run(tmp_path, chrome_profile, [])
+    _assert_the_viewer_loads_inline(record)
+    # A trusted page has no policy, so another object of the origin reports nothing.
+    assert record["otherObject"] == {"violations": []}
+
+
+def test_an_untrusted_pdf_shows_inline_and_only_raw_may_be_embedded(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
     record = _run(tmp_path, chrome_profile, ["--untrusted"])
-    view = record["view"]
-    assert isinstance(view, dict)
-    assert view["embed"] is None
-    assert view["note"] == (
-        "This source is untrusted, so its PDFs are not shown inline."
-        " Open in new tab shows this one."
-    )
-    assert view["actions"] == ["Download", "Open in new tab"]
-    assert view["violations"] == []
-    assert view["viewerLoaded"] is False
-    assert record["topLevel"] == {"viewerLoaded": True}
+    _assert_the_viewer_loads_inline(record)
+    assert record["otherObject"] == {"violations": ["object-src"]}

@@ -360,7 +360,7 @@ id = "raw-media-type"
 source = "Sources/ShellCore/Web/OpenFileDownloads.swift"
 what = "`/raw?path=<identity>` answers with a `Content-Type` that names the file's media type: the one its name's extension gives, or, for a name that gives none, the one its leading bytes give where they name one (`content_sniff.media_type_from_prefix`: a PDF's `%PDF-`), else `application/octet-stream`. The app names an Open link's downloaded copy by it (`OpenFileTypes.copyName`), so a pinned revision's PDF named `untitled` is kept as `untitled.pdf` and opens in the Mac's PDF app. A `metab` that answers `application/octet-stream` leaves the copy its name, which the app refuses, as before."
 pinned_by = "tests/golden/cli-ui-pdf-surfaces.tryscript.md"
-holds = "pin · app · scans/untitled: note. Open → 200 application/pdf"
+holds = "pin · app · scans/untitled: viewer. Open → 200 application/pdf"
 
 [[behavior]]
 id = "json-framing"

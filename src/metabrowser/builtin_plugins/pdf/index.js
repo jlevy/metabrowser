@@ -3,9 +3,11 @@
 // The viewer is an `<embed>` of the file's `/raw` address. Every `/raw` answer carries a
 // CSP sandbox, and a sandboxed document gets no PDF viewer inside an iframe, in WebKit or
 // Chrome; an `<embed>` and a top-level tab do get one (measured in
-// docs/project/specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md). The
-// untrusted page's policy has `object-src 'none'`, which blocks the `<embed>`, so a page
-// served inert draws a note in its place and keeps the actions.
+// docs/project/specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md). Every
+// profile's page admits it: the untrusted policy's `object-src` names `/raw` alone
+// (capabilities.untrusted_content_security_policy; the threat it answers is in
+// docs/project/architecture/arch-threat-model.md). Only the file page mounts this view, so
+// a diff or an overview never starts a viewer.
 //
 // Which actions show depends on what the host supports, never on which host it is:
 // - Open: the host opens the file in the app its system assigns to PDF. The macOS app
@@ -114,21 +116,11 @@
     bar.setAttribute("class", "pdf-bar");
     bar.replaceChildren(...actions(doc, rawUrl, name));
 
-    /** @type {HTMLElement} */
-    let body;
-    if (mb.capabilities().activeContent) {
-      body = doc.createElement("embed");
-      body.setAttribute("class", "pdf-viewer");
-      body.setAttribute("type", "application/pdf");
-      body.setAttribute("src", rawUrl);
-      body.setAttribute("aria-label", shown);
-    } else {
-      body = doc.createElement("p");
-      body.setAttribute("class", "pdf-note");
-      body.textContent = mb.host.supports(OPEN_FILE_ACTION)
-        ? "This source is untrusted, so its PDFs are not shown inline. Open shows this one."
-        : "This source is untrusted, so its PDFs are not shown inline. Open in new tab shows this one.";
-    }
+    const body = doc.createElement("embed");
+    body.setAttribute("class", "pdf-viewer");
+    body.setAttribute("type", "application/pdf");
+    body.setAttribute("src", rawUrl);
+    body.setAttribute("aria-label", shown);
     container.replaceChildren(bar, body);
 
     let disposed = false;
