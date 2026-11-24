@@ -85,10 +85,11 @@ brings it. Otherwise the page says the commit is not in the mirror and offers **
 ## Branches and Tags of a Repository URL
 
 A repository opened by its URL is pinned to one commit, its default branch’s unless the
-URL names another. The button under the navigation header names the served branch, tag,
-pull request, or commit; click it or press `W` to switch.
+URL names another. The row directly below Files names the branch, tag, pull request, or
+commit. Click the branch or tag chip for its actions.
+Click the separate down chevron beside it, or press `W`, to choose another revision.
 
-It lists every one of the mirror’s branches, or every one of its tags.
+The chooser lists every one of the mirror’s branches or tags.
 The default branch is first, and the rest are newest first, by the date of each one’s
 last commit, which its row shows as an age.
 The filter box narrows either list by name.
@@ -106,9 +107,11 @@ branch moves on, the foot offers its new commit with **Switch**.
 
 ## Branches and Tags of a Local Checkout
 
-A folder that is a repository’s root has the same button, and opens on **Working tree**:
-the files on disk, with whatever you have edited, staged, or not yet added.
-Click it or press `W` to see any other branch or tag without checking it out.
+A folder that is a repository’s root opens on **Working tree**, the files on disk with
+whatever you have edited, staged, or not yet added.
+Click the checked-out branch’s chip for its actions.
+A checkout without a branch shows **Working tree** in the row.
+Click the chevron in that row or press `W` to browse the other branches and tags.
 
 - **Working tree** is the first row, and the only one that shows your live files.
 - **Branches** are the checkout’s own, with the one you have checked out first and
@@ -136,8 +139,8 @@ Click it or press `W` to see any other branch or tag without checking it out.
   Another remote’s branches, and a tag only your checkout has, are read from the
   checkout.
 - Choosing a branch or tag shows its last commit, read from the repository’s Git
-  objects. The button then names it, and the navigation header, still the folder’s name,
-  names its full commit when you hover over it.
+  objects. The revision row then names it, and the navigation header, still the folder’s
+  name, names its full commit when you hover over it.
   This includes the checked-out branch: choosing it shows what is committed, without
   your uncommitted changes, and **Working tree** is the way back to them.
 
