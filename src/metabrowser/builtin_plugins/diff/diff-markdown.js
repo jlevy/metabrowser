@@ -458,20 +458,63 @@ export function appendBlocks(fragment, blocks, build, unfold = false) {
 }
 
 /**
+ * The stylesheets of a projection's KPress asset manifest that the page loads: each
+ * `loading: "stylesheet"` entry whose address, resolved against *base*, has the page's
+ * origin and a path under `/kpress-static/`, the route that serves the KPress package
+ * (`kpress_static_asset` in server.py), ending `.css`. Nothing of the manifest runs.
+ *
+ * The check reads the address as the browser resolves it, its origin and its normalized
+ * path, and not the characters of its segments, which are the server's to choose: the
+ * asset stamp (metabrowser.asset_stamps) and KPress's version, which is a PEP 440 version
+ * and so may hold `+` and `!`, as an editable KPress's `v0.3.10.dev10+5c60a81` does
+ * (`kpress_static_url` in kpress_adapter.py). A pattern over those characters dropped
+ * every stylesheet of such a KPress (mb-2r08). Nor is it the page's own KPress prefix: a
+ * live KPress tree moves its stamp at each edit, so a projection can name a newer one than
+ * the page was rendered with.
+ *
+ * Without KPress's document.css a rendered document has no face rule and reads in the
+ * page's sans, so a stylesheet left out is named in a warning, never dropped silently.
+ *
  * @param {KpressAssetManifest} assets
+ * @param {string} base The page's address, `document.baseURI`.
  * @returns {KpressAssetManifest}
  */
-function stylesOnly(assets) {
-  return {
-    schema_version: "kpress-asset-manifest-v2",
-    import_map: {},
-    assets: assets.assets.filter(
-      (asset) =>
-        asset.loading === "stylesheet" &&
-        // `@` begins the asset stamp segment (metabrowser.asset_stamps).
-        /^\/kpress-static\/[\w./%@-]+\.css$/.test(asset.public_url ?? ""),
-    ),
-  };
+export function kpressStylesheets(assets, base) {
+  const origin = new URL(base).origin;
+  /** @type {KpressAssetManifest["assets"]} */
+  const kept = [];
+  /** @type {string[]} */
+  const dropped = [];
+  for (const asset of assets.assets) {
+    if (asset.loading !== "stylesheet") {
+      continue;
+    }
+    const url = asset.public_url ?? "";
+    /** @type {URL | null} */
+    let address = null;
+    try {
+      address = new URL(url, base);
+    } catch {
+      // Not an address: left out, and named below.
+    }
+    if (
+      address !== null &&
+      address.origin === origin &&
+      address.pathname.startsWith("/kpress-static/") &&
+      address.pathname.endsWith(".css")
+    ) {
+      kept.push(asset);
+    } else {
+      dropped.push(url);
+    }
+  }
+  if (dropped.length > 0) {
+    console.warn(
+      "metabrowser diff: KPress stylesheets the server named are not same-origin KPress CSS, so they are not loaded",
+      dropped,
+    );
+  }
+  return { schema_version: "kpress-asset-manifest-v2", import_map: {}, assets: kept };
 }
 
 /**
@@ -757,7 +800,13 @@ export function createMarkdownViews(deps) {
         throw new Error("The untrusted Markdown sanitizer is unavailable.");
       }
       if (projection.assets !== undefined) {
-        stylesReady ??= deps.loadStyles(stylesOnly(projection.assets)).catch(() => {});
+        // A stylesheet that does not load leaves the document in the page's faces, so it
+        // is said, and the file is still drawn.
+        stylesReady ??= deps
+          .loadStyles(kpressStylesheets(projection.assets, document.baseURI))
+          .catch((error) => {
+            console.warn("metabrowser diff: KPress's stylesheets did not load", error);
+          });
         await stylesReady;
       }
       if (signal.aborted || disposed) {
