@@ -202,7 +202,10 @@ def test_a_refusal_names_each_size_in_a_unit_that_shows_it(
     assert (
         "; the cache's volume has 400 MB free, less than the 1.0 GB metab leaves free;" in message
     )
-    with pytest.raises(RepositoryTooLargeError, match=r"12 KB, which can take under 1 MB, "):
+    with pytest.raises(
+        RepositoryTooLargeError,
+        match=r"12 KB, which can take 1 MB, and the cache.s volume has 1\.0 GB free",
+    ):
         asyncio.run(GithubProvider().check_first_clone(SOURCE, free_bytes=RESERVE + 10_000))
 
 

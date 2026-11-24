@@ -689,8 +689,8 @@ def _cache_space(check: Check, free: int | None) -> Check:
         check.id,
         check.title,
         "warning",
-        f"the cache's volume has {size_text(free)} free, less than the "
-        f"{size_text(reserve)} a first clone leaves free, so metab refuses every first clone "
+        f"the cache's volume has {size_text(free, 'down')} free, less than the "
+        f"{size_text(reserve, 'up')} a first clone leaves free, so metab refuses every first clone "
         "that does not borrow from a checkout",
         check.details,
         Remedy(

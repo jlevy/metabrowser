@@ -20,6 +20,10 @@ from metabrowser.cache.acquire import RepositoryTooLargeError
 from metabrowser.cache.free_space import (
     FREE_SPACE_RESERVE_ENV,
     FREE_SPACE_RESERVE_MB,
+    Rounding,
+    free_space_reserve_bytes,
+    packed_bytes,
+    refuse_unless_it_fits,
     size_text,
 )
 from metabrowser.cache.urls import GitSource
@@ -117,3 +121,53 @@ def test_no_reserve_refuses_nothing_on_a_full_volume(
 )
 def test_a_size_is_named_in_a_unit_that_shows_it(count: int, text: str) -> None:
     assert size_text(count) == text
+
+
+@pytest.mark.parametrize(
+    ("count", "rounding", "text"),
+    [
+        (999_999_999, "down", "999 MB"),
+        (999_999_999, "up", "1.0 GB"),
+        (1_000_000_001, "down", "1.0 GB"),
+        (1_000_000_001, "up", "1.1 GB"),
+        (1_099_999_999, "down", "1.0 GB"),
+        (1, "up", "1 MB"),
+        (1, "down", "under 1 MB"),
+        (10**9, "up", "1.0 GB"),
+    ],
+)
+def test_a_size_rounds_the_way_a_refusal_asks(count: int, rounding: Rounding, text: str) -> None:
+    assert size_text(count, rounding) == text
+
+
+def test_a_refusal_at_the_boundary_never_reads_as_fitting(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """One byte short, the figures still say why: what the volume has rounds down, and
+    what a clone needs or leaves rounds up (review C1 on #768)."""
+
+    monkeypatch.delenv(FREE_SPACE_RESERVE_ENV, raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    _volume_with(monkeypatch, RESERVE - 1)
+    with pytest.raises(RepositoryTooLargeError, match=r"has 999 MB free, less than the 1\.0 GB"):
+        asyncio.run(providers.check_first_clone(OTHER_HOST, home=tmp_path / "cache"))
+    reported_kb = 888_000
+    free = packed_bytes(reported_kb) + RESERVE - 1
+    with pytest.raises(RepositoryTooLargeError) as refused:
+        refuse_unless_it_fits(GITHUB.normalized, free, host="GitHub", reported_kb=reported_kb)
+    assert (
+        "which can take 1.1 GB, and the cache's volume has 2.0 GB free, of which metab "
+        "leaves 1.0 GB" in str(refused.value)
+    )
+
+
+def test_an_invalid_reserve_is_warned_about_once(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The core check and a provider's both read the reserve for one clone; the warning
+    names the variable once (review C3 on #768)."""
+
+    monkeypatch.setenv(FREE_SPACE_RESERVE_ENV, "not-a-size-for-this-test")
+    assert free_space_reserve_bytes() == RESERVE
+    assert free_space_reserve_bytes() == RESERVE
+    assert caplog.text.count(f"ignored {FREE_SPACE_RESERVE_ENV}") == 1

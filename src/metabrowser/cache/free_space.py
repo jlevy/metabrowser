@@ -17,12 +17,19 @@ every acquisition Git process at its deadline, a first clone still making progre
 from __future__ import annotations
 
 import logging
+import math
 import os
 import shutil
 from pathlib import Path
-from typing import Final, NoReturn
+from typing import Final, Literal, NoReturn
 
 log = logging.getLogger(__name__)
+
+type Rounding = Literal["nearest", "down", "up"]
+_ROUNDINGS: Final = {"nearest": round, "down": math.floor, "up": math.ceil}
+# The invalid reserve values already warned about, so that the core check and a
+# provider's, which both read the reserve for one clone, warn once (review C3 on #768).
+_WARNED: set[str] = set()
 
 # A pack is 1.0 to 1.1 times GitHub's reported size: 1.1 times for django (313 MB stored
 # for 283 MB reported, measured 2026-09-23), and 1.0 times for a 1,222,854 KB private
@@ -50,7 +57,9 @@ def free_space_reserve_bytes() -> int:
             reserve_mb = -1
         if reserve_mb >= 0:
             return reserve_mb * 1_000_000
-        log.warning("ignored %s: it is not a whole number of megabytes", FREE_SPACE_RESERVE_ENV)
+        if raw not in _WARNED:
+            _WARNED.add(raw)
+            log.warning("ignored %s: it is not a whole number of megabytes", FREE_SPACE_RESERVE_ENV)
     return FREE_SPACE_RESERVE_MB * 1_000_000
 
 
@@ -73,18 +82,30 @@ def packed_bytes(reported_kb: int) -> int:
     return int(reported_kb * 1024 * PACK_PER_REPORTED)
 
 
-def size_text(count: int) -> str:
+def size_text(count: int, rounding: Rounding = "nearest") -> str:
     """*count* bytes in decimal units: gigabytes to one place from one gigabyte, whole
     megabytes below it, and "under 1 MB" for a size that rounds to none.
+
+    A refusal rounds what the volume has ``"down"`` and what a clone needs or leaves
+    ``"up"``, so that the figures it prints never read as fitting when the bytes do not:
+    nearest rounding printed "has 1000 MB free, less than the 1.0 GB" one byte below the
+    reserve (review C1 on #768).
 
     Decimal, as :data:`FREE_SPACE_RESERVE_ENV` is; a progress line's sizes
     (``format_size`` in ``cli/clone_report.py``) are binary.
     """
 
+    rounded = _ROUNDINGS[rounding]
     if count >= 1_000_000_000:
-        return f"{count / 1e9:.1f} GB"
-    if count == 0 or count >= 1_000_000:
-        return f"{count / 1e6:.0f} MB"
+        tenths = rounded(count / 1e8)
+        if tenths >= 10:
+            return f"{tenths / 10:.1f} GB"
+        # Down from just above a gigabyte, it falls back to megabytes below.
+    megabytes = rounded(count / 1e6)
+    if megabytes >= 1000:
+        return f"{megabytes / 1000:.1f} GB"
+    if count == 0 or megabytes >= 1:
+        return f"{megabytes} MB"
     return "under 1 MB"
 
 
@@ -115,9 +136,9 @@ def refuse_unless_it_fits(source_url: str, free_bytes: int, *, host: str, report
     if needed + reserve > free_bytes:
         _refuse(
             source_url,
-            f"{host} reports {reported_kb:,} KB, which can take {size_text(needed)}, and the "
-            f"cache's volume has {size_text(free_bytes)} free, of which metab leaves "
-            f"{size_text(reserve)}",
+            f"{host} reports {reported_kb:,} KB, which can take {size_text(needed, 'up')}, and "
+            f"the cache's volume has {size_text(free_bytes, 'down')} free, of which metab "
+            f"leaves {size_text(reserve, 'up')}",
         )
 
 
@@ -125,8 +146,8 @@ def _refuse_below(source_url: str, free_bytes: int, reserve: int) -> None:
     if free_bytes < reserve:
         _refuse(
             source_url,
-            f"the cache's volume has {size_text(free_bytes)} free, less than the "
-            f"{size_text(reserve)} metab leaves free",
+            f"the cache's volume has {size_text(free_bytes, 'down')} free, less than the "
+            f"{size_text(reserve, 'up')} metab leaves free",
         )
 
 
@@ -142,6 +163,7 @@ __all__ = [
     "FREE_SPACE_RESERVE_ENV",
     "FREE_SPACE_RESERVE_MB",
     "PACK_PER_REPORTED",
+    "Rounding",
     "free_space_reserve_bytes",
     "packed_bytes",
     "refuse_below_reserve",

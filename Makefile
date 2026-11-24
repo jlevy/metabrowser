@@ -119,7 +119,7 @@ lint-check:
 #
 # `env` sets them all, so the same words work as a shell command and as the command
 # devtools/run_goldens.py runs once for each golden.
-TRYSCRIPT := env PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
+TRYSCRIPT := env -u METABROWSER_CACHE_RESERVE_MB PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
 	METABROWSER_EVENT_LOG=0 METABROWSER_NETWORK_PROBE=0 npx --no-install tryscript
 GOLDENS := tests/golden/*.tryscript.md
 # How many golden files devtools/run_goldens.py runs at a time: one per processor of a CI

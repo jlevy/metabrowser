@@ -1164,9 +1164,10 @@ async def acquire_source(
     A hit inspects an existing home without fetching or opening the cache, so it
     does not require the acquisition Git floor or owner-write on the home, and it
     makes no network request. It may try to record ``last_opened_at``; a failed write
-    is dropped and the hit still returns. A miss checks the Git floor and then lets
-    each provider refuse the first clone (the GitHub provider's size check) before
-    ``open_cache``, so neither refusal creates the application home or completes an
+    is dropped and the hit still returns. A miss checks the Git floor and then
+    refuses a first clone that does not borrow from a checkout when the cache's volume has
+    less than the free-space reserve, and lets each provider refuse it (the GitHub
+    provider's size check), before ``open_cache``, so no refusal creates the application home or completes an
     empty directory into an ``f03`` skeleton. A miss that is allowed to fetch then
     opens the cache (and sweeps staging) and fetches, telling *on_phase* each phase
     as it starts and *on_progress* how far the fetch has got. A future layout is refused
