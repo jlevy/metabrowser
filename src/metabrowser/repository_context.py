@@ -174,7 +174,7 @@ def _read_head(git_dir: Path, common_dir: Path) -> tuple[str | None, str] | None
         return None, value
     if not value.startswith("ref: refs/heads/"):
         return None
-    from metabrowser.cache.resolve import is_valid_ref_name
+    from metabrowser.git.ref_names import is_valid_ref_name
 
     reference = value.removeprefix("ref: ")
     if not is_valid_ref_name(reference):

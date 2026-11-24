@@ -1433,7 +1433,7 @@ def _pin_label_html(status: SourceStatus) -> str:
     A pin with a name is headed by the name alone, where a folder's name stands and with
     the same `.path-base` emphasis: a served mirror by the repository's name, as a
     checkout of it would be called, and a revision a folder's server shows of its own
-    checkout by the folder's name. The ref selector in the Files toolbar names the ref,
+    checkout by the folder's name. The ref selector beneath the Files tab names the ref,
     so the heading can stay focused on the name (mb-qq4e).
 
     A pin with no mirror has no origin to take a name from, and no ref selector, so its
