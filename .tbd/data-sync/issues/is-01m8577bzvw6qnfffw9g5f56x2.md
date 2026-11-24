@@ -5,7 +5,7 @@ title: "Review PR #765 (Diff | Current chooser) with review-github-pr and addres
 kind: task
 status: in_progress
 priority: 2
-version: 4
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 refs:
   - kind: pr
@@ -15,10 +15,21 @@ delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m84zd2x1v206rxsr1fspew62
+child_order_hints:
+  - is-01m85c186mdfrmndf5n8y91j2q
+  - is-01m85c1brrkrcsgqwfr7pm62zz
+  - is-01m85c1hbp8vzd4tckp00dja5r
+  - is-01m85c1n881hx61zn3gea3yhm0
+  - is-01m85c1s5ejwp81443zgh3f4r0
+  - is-01m85c1w867k2qx0nrx1ca2ztj
+  - is-01m85c2236p0fkxtbc39p9650q
+  - is-01m85c27350t737avw90vp39rh
+  - is-01m85c29empds45q6httf9shqy
+  - is-01m85c2cv5y1vwj57e44qhtzps
 hold: null
 hold_until: null
 created_at: 2026-11-23T22:08:03.577Z
-updated_at: 2026-11-23T23:23:38.848Z
+updated_at: 2026-11-23T23:32:43.492Z
 started_at: 2026-11-23T22:48:43.486Z
 ---
 
