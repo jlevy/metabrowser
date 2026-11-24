@@ -1941,7 +1941,7 @@ async function main() {
   );
   // Docs and Changes both draw the diff, and own its fetch; Docs says so when its group
   // holds no changed file.
-  const diffTabs = runtime.TABS.map((tab) => `${tab || "conversation"}: ${runtime.diffTab(tab)}`);
+  const diffTabs = runtime.TABS.map((tab) => `${tab || "the front page"}: ${runtime.diffTab(tab)}`);
   const docsEmpty = [
     ["no changed document", { manifest: { files: [] } }],
     ["one changed document", { manifest: { files: [{ id: "f1" }] } }],

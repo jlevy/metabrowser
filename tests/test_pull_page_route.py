@@ -128,9 +128,11 @@ def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
     assert "inert.sanitizeHtml(" in source
     assert 'shown?.pull?.htmlUrl ?? "https://github.com/"' in source
     assert 'ensureAsset("inert-html")' in source
-    # The route's one list of KPress's stylesheets, and nothing a text could name.
+    # The routes' one list of KPress's stylesheets, loaded in one place, and nothing a text
+    # could name: a description's from the Markdown route, Guided Review's from the guide route.
     assert source.count("mb.loadKpressAssets(") == 1
-    assert "mb.loadKpressAssets(rendered.assets)" in source
+    assert "documentStyles = mb.loadKpressAssets(assets)" in source
+    assert "textStyles(rendered.assets)" in source
     # A failure to load them leaves the text readable under the shell's rules, and is said.
     assert 'console.warn("metabrowser github: the text styles did not load", error);' in source
     # Only shell-owned icon constants are parsed; every use takes an inert copy.
@@ -209,8 +211,12 @@ def test_a_readers_place_is_kept_in_the_entry_and_disposed_with_the_page() -> No
     disposal = glue[glue.index("dispose() {") :]
     for released in ("listening.abort();", "heights.disconnect();", "keeper.dispose();"):
         assert released in disposal
-    # Only the page's own tab change is a landing: asking for the tab it shows moves nothing.
-    assert "const changed = controller.snapshot().tab !== next;" in source
+    # Only the page's own tab change is a landing: asking for the tab it shows moves nothing,
+    # and the front page and Guided Review's address show the same tab when there is a guide.
+    assert (
+        "const changed = controller.snapshot().tab !== shownTabFor(next, shown?.pull?.text ?? null);"
+        in source
+    )
     assert "place?.dispose();" in source
 
 

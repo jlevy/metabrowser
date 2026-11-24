@@ -127,11 +127,21 @@ sign of the background work.
 A cached page shows at once and refreshes in the background; the
 [design system](design-system.md#the-pull-request-page) describes how it draws.
 
-The page has up to four tabs:
+### Tabs
 
+The page has up to five tabs:
+
+- **Guided Review** (`R`), the first tab when the description includes a guide: the
+  description as the guide’s overview, then ordered review steps with commentary above
+  selected diff excerpts.
+  The tab appears when the description has a line that opens a `guided-review` fence;
+  the server’s reading of the block decides what the tab then shows.
+  A pull request with a guide opens on it at `/pull/<n>`, and Conversation moves to
+  `/pull/<n>/conversation`; without one, `/pull/<n>` is Conversation.
 - **Conversation** (`C`): the description, then comments, reviews, and commits in
   GitHub’s order, joined by a timeline line.
-  Commits that arrive while you read are added after what is shown.
+  Where the description has its guide, Conversation shows a card that opens Guided
+  Review. Commits that arrive while you read are added after what is shown.
   A short commit ID opens that commit on GitHub.
   **Review comments** lists the inline review comments with their files and diff hunks.
 - **Docs** (`D`): the changed documents alone (the File type menu’s Documentation group:
@@ -159,6 +169,95 @@ The page has up to four tabs:
   while you visit the other tabs, and a file you jump to that it hides shows every type
   again.
 - **Checks** (`E`): the check runs and commit statuses, with links to their details.
+
+### Guided Review
+
+The guide opens on its overview, the description, under a list of its steps.
+The overview is step 0 and the author’s steps follow it in their review order.
+Choose a step in the list to go straight to it, or use the arrows in the list’s head to
+page through them; below each step, the way on names the next step and the way back the
+one before. A step can bring changes from several files together, each drawn as Changes
+draws it. **Open full diff** goes to the file in Changes.
+
+To publish a guide, have the author or their agent add one top-level `guided-review`
+fenced YAML block to the GitHub PR description.
+Give the agent the PR description and the diff from its merge base to its head.
+Ask it to choose the code to review in dependency or execution order.
+Each step should explain why the reviewer is looking there and what to verify.
+
+The description is the guide’s overview.
+Guided Review opens with it, rendered as Conversation renders it and without the block,
+so write it to be read first: what the change does and why, then how its parts fit
+together. The block itself has no prose of its own.
+
+The block is a collection (`metabrowser.collection:Collection/v1`), a general format for
+ordered annotated items that guided reviews are the first use of
+([Collection Format](project/architecture/arch-collection-format.md)). In a guided
+review it holds the comparison it was written against and ordered `items`, each a step
+with a `title`, a `note` saying what to verify, and its `references`. Write each step’s
+fields as plain text: the page shows them as typed and keeps their line breaks, so
+Markdown such as backticks, lists, and links prints literally.
+
+````markdown
+```guided-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "<full merge-base commit ID>"
+    head: "<full PR head commit ID>"
+  items:
+    - title: Inspect the request path
+      note: Does the request return the snapshot before the worker finishes?
+      references:
+        - {path: src/cache.py, side: new, start_line: 42, end_line: 51}
+```
+````
+
+Use the changed path shown in Changes, the `old` or `new` side, and an inclusive line
+range within one diff hunk.
+An excerpt shows a replacement whole: a line that exists only on the other side, a
+deleted line for a `new` range or an added line for an `old` range, is shown when it
+lies inside the range or touches either end of it, so a changed line appears with what
+it replaced. A step’s excerpts share one size budget (`MAX_EXCERPT_BYTES` in
+`guided_review.py`); an excerpt past it says it is too large to show.
+A `path` alone shows the file’s whole diff, as Changes draws it: its hunk bars, and its
+long runs folded behind bars you expand.
+A step’s whole files share a budget of their own (`MAX_STEP_PATCH_BYTES` in
+`guided_review.py`); a file past it says its diff is too large to show in the step, and
+**Open full diff** shows it in Changes.
+A binary change or a rename without a text diff says it has no text changes to show.
+The
+[compiled SoftSchema](../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
+describes the payload, and `MAX_ITEMS` and `MAX_REFERENCES` in `guided_review.py` bound
+its steps and each step’s references.
+
+The guide is read from the cached description, and its excerpts come from the comparison
+it is pinned to. When the pull request’s head or merge base moves past the guide’s pins,
+the guide is out of date: a notice at the top of Guided Review names the revision the
+guide was written for, the pull request’s current one, and the commits since (or says
+the branch was rebased), and it marks the steps that cite a file changed since.
+Every step still shows, with excerpts from the guide’s own revision; a step that cites
+no changed file still matches the pull request.
+When GitHub reports a newer head than the cached copy has, the notice says so: what the
+newer commits changed is unknown until the pull request is fetched again.
+To bring the guide current, update its pins and ranges in the PR description.
+
+A guide the page cannot read says why in place of the steps: invalid YAML, a second
+block, another contract, a field that fails the schema (with its place below
+`collection`, such as `items.0.references.0`), or pins that do not name a comparison.
+Its block then stays in the description, so its author sees what they wrote.
+The same answer is the `guided-review` route’s, which this prints from the cached pull
+request:
+
+```shell
+metab <pull request URL> --api '/api/plugin/github/guided-review?number=<n>'
+```
+
+There is no check for a guide before the description carries it, and a block inside
+another fence, as in the example above, is not a guide even where the tab appears.
 
 ### Code Controls
 
@@ -487,6 +586,13 @@ A repository URL is served under the untrusted profile.
 Files of a local folder keep that folder’s
 [content-trust](command-line.md#content-trust) settings; reviewing a pull request does
 not change them.
+
+A [guide](#guided-review) is the author’s too, though a guided pull request opens on it:
+its steps show the files and lines its author chose, in the author’s order, and its
+notes are the author’s claims about them.
+Nothing says which changed files no step cites, so a guide can lead a reviewer, or an
+agent reading the `guided-review` route, past the part of a change that matters.
+**Changes** is the whole change.
 
 ## What It Does Not Do Yet
 

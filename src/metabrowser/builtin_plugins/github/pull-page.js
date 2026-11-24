@@ -246,22 +246,77 @@ export const TIMELINE_RETRY_MS = 1000;
 // The longest wait the server may name for a timeline its budget refused (`retry_after_s`,
 // HELD_RETRY_S in pull_timeline.py): the schema's own bound, an hour.
 const TIMELINE_HELD_MAX_S = 3600;
-export const TABS = Object.freeze(["", "docs", "files", "checks"]);
+// Guided Review leads, when the description carries a guide: it is the author's reading order.
+export const TABS = Object.freeze(["guided", "", "conversation", "docs", "files", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
 const TITLE_OVERHANG_PX = 4;
 /**
  * Each tab's label and key, in `TABS` order. Conversation, the default, keeps its C, and
- * Docs its D. The other two also start with C, so they take a free letter of their label:
+ * Docs its D. Guided Review takes the R of gui-ded P-*r*, a review's letter, since Docs holds
+ * D. The other two also start with C, so they take a free letter of their label:
  * chan-*g*es, and ch-*e*-cks, whose H is the Commits tab's (History) and whose K moves a
  * row up (docs/design-system.md, "Keyboard Shortcuts"). `C` is also the Charts tab's,
  * which is never shown beside a page.
  */
 const PULL_TABS = Object.freeze([
+  Object.freeze({ id: "guided", label: "Guided Review", key: "r" }),
   Object.freeze({ id: "", label: "Conversation", key: "c" }),
   Object.freeze({ id: "docs", label: "Docs", key: "d" }),
   Object.freeze({ id: "files", label: "Changes", key: "g" }),
   Object.freeze({ id: "checks", label: "Checks", key: "e" }),
 ]);
+// A cheap tab visibility hint, which does not parse: the server's Markdown parser decides if a
+// guide exists, and counts only a top-level fence, so a description that shows the format inside
+// another fence gets a tab that says there is no guide (arch-github-pull-requests.md, "Guided Review").
+const GUIDED_FENCE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*guided-review[ \t]*$/m;
+
+/**
+ * The tab a route shows, by its id in `PULL_TABS`. `/pull/<n>` is the pull request's front
+ * page: Guided Review when the description has a guide, by the same hint the tab bar reads,
+ * and Conversation otherwise. `/pull/<n>/conversation` names Conversation, whose id is "",
+ * so a guided pull request's Conversation has an address that always shows it.
+ *
+ * @param {string} route The route's tab: "", "conversation", or another tab's id.
+ * @param {string | null} description The description, or null before the record.
+ * @returns {string}
+ */
+export function shownTabFor(route, description) {
+  if (route === "conversation") {
+    return "";
+  }
+  if (route === "") {
+    return GUIDED_FENCE.test(description ?? "") ? "guided" : "";
+  }
+  return route;
+}
+
+/**
+ * The tab a stack move keeps: the same tab on the next pull request, except that Guided Review
+ * goes to its front page, which is its guide when it has one and Conversation otherwise.
+ *
+ * @param {string} tab The tab on screen.
+ */
+export function stackTab(tab) {
+  return tab === "guided" ? "" : tab;
+}
+
+/**
+ * The route that shows a tab: the front page's address for the tab the front page shows,
+ * so its link and key go to the page already on screen rather than to a second entry of it,
+ * and Conversation's is `/pull/<n>/conversation` when the front page is Guided Review
+ * (`shownTabFor`).
+ *
+ * @param {string} id The tab's id in `PULL_TABS`.
+ * @param {string | null} description
+ * @returns {string}
+ */
+export function routeForTab(id, description) {
+  const front = shownTabFor("", description);
+  if (id === front) {
+    return "";
+  }
+  return id === "" ? "conversation" : id;
+}
 
 /**
  * Whether *tab* shows the pull request's diff: Changes, every changed file, or Docs, its
@@ -2027,7 +2082,14 @@ export function createPullController(deps, options) {
   let envelope = null;
   /** @type {string | null} */
   let etag = null;
-  let tab = TABS.includes(options.tab) ? options.tab : "";
+  // What the address asks for: a tab, or "" for the front page, which `shownTab` resolves.
+  let routeTab = TABS.includes(options.tab) ? options.tab : "";
+  /**
+   * The tab on screen: the route's, with the front page resolved against the description the
+   * page shows, the record's or before it the core preview's (`textSource`), as the page
+   * resolves its address against the model's (`addressShows`), so the two never disagree.
+   */
+  const shownTab = () => shownTabFor(routeTab, partText(textSource(envelope), "body"));
   /** @type {unknown} */
   let timer = null;
   /** When `timer` fires, by `deps.now()`. */
@@ -2230,8 +2292,10 @@ export function createPullController(deps, options) {
       askTimer !== null ||
       rateLimitHolds() ||
       (envelope.record?.unavailable?.comparison === "no_store" &&
-        (diffTab(tab) ||
-          (tab === "" && deps.ownsConversation?.() === true && hasFreshComparisonMetadata())))
+        (diffTab(shownTab()) ||
+          (shownTab() === "" &&
+            deps.ownsConversation?.() === true &&
+            hasFreshComparisonMetadata())))
     ) {
       return null;
     }
@@ -2358,7 +2422,7 @@ export function createPullController(deps, options) {
   function pageState() {
     return {
       number: options.number,
-      tab,
+      tab: shownTab(),
       nowMs: deps.now(),
       error,
       errorFromComparison,
@@ -2485,7 +2549,7 @@ export function createPullController(deps, options) {
 
   function pollsFast() {
     // Optional comparison work says nothing to Conversation, so it is polled slowly there.
-    const quiet = envelope?.preparing_comparison === true && !diffTab(tab);
+    const quiet = envelope?.preparing_comparison === true && !diffTab(shownTab());
     return (
       envelope === null ||
       (envelope.refreshing && !quiet) ||
@@ -3032,7 +3096,7 @@ export function createPullController(deps, options) {
   function idleCandidate() {
     if (
       disposed ||
-      tab !== "" ||
+      shownTab() !== "" ||
       !deps.isVisible() ||
       deps.ownsConversation?.() !== true ||
       !hasPolled ||
@@ -3077,7 +3141,7 @@ export function createPullController(deps, options) {
   async function requestComparison() {
     if (
       !disposed &&
-      diffTab(tab) &&
+      diffTab(shownTab()) &&
       deps.isVisible() &&
       inFlightRefreshes === 0 &&
       envelope?.refreshing === false &&
@@ -3144,7 +3208,7 @@ export function createPullController(deps, options) {
     if (disposed || !TABS.includes(next)) {
       return;
     }
-    tab = next;
+    routeTab = next;
     cancelIdleComparison();
     walkSettling = next === "files" && how.settling === true;
     // Whichever call leaves the address owning Changes under a hold, the route's confirmation
@@ -3434,7 +3498,7 @@ export function createPullController(deps, options) {
     snapshot: () => ({
       state: envelope?.state ?? null,
       etag,
-      tab,
+      tab: shownTab(),
       timer: timer === null ? null : pollsFast() ? "fast" : "slow",
       markdown: [...markdown.keys()],
       queued: [...queue],
@@ -4510,7 +4574,7 @@ export function createStackMenu(initial, number, deps) {
 }
 
 /**
- * Give the page's tab links their keys, `C`, `G`, and `E`, through the SDK's shortcut
+ * Give the page's tab links their keys through the SDK's shortcut
  * surface. A key runs `setTab`, the page handle's own path, which moves the address as a
  * click on the link does. The links are kept across paints, so each key lasts until
  * `signal` aborts, as the page's disposal aborts it. Returns one handle per link, in
@@ -4810,8 +4874,17 @@ export function mountPullPage(container, ctx, mb) {
   let firstPaint = null;
   let firstPaintSpent = false;
   /** What the body last painted: another tab's content is never held on screen. */
-  /** @type {"none" | "loading" | "conversation" | "checks" | "files"} */
+  /** @type {"none" | "loading" | "conversation" | "checks" | "files" | "guided"} */
   let bodyShows = "none";
+  /**
+   * The Guided Review tab while it shows: the guide's view once its module loads, and the
+   * description that introduces it.
+   *
+   * @typedef {{view: ReturnType<typeof import("./guided-review.js").mountGuidedReview> | null,
+   *   introduction: {node: HTMLElement, key: string | null, block: HTMLElement | null}}} GuidedMount
+   */
+  /** @type {GuidedMount | null} */
+  let guided = null;
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
    *   settled: boolean, cacheMiss: boolean, retryPending: boolean, heldUntil: number | null,
@@ -5189,6 +5262,29 @@ export function mountPullPage(container, ctx, mb) {
   let documentStyles = null;
 
   /**
+   * Load KPress's stylesheets for the page's texts, once, from the manifest a route answers
+   * with: the Markdown route's for a description or comment, the guide's for Guided Review. Both
+   * are `kpress_adapter.document_stylesheets`, so no text chooses what the page loads.
+   *
+   * @param {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} assets
+   * @returns {Promise<void>}
+   */
+  function textStyles(assets) {
+    if (documentStyles === null) {
+      // Only a load that succeeded lets later pages insert kept renders without asking again.
+      documentStyles = mb.loadKpressAssets(assets).then(
+        () => {
+          kpressStylesSettled = true;
+        },
+        (error) => {
+          console.warn("metabrowser github: the text styles did not load", error);
+        },
+      );
+    }
+    return documentStyles;
+  }
+
+  /**
    * Whether *rendered* can be inserted in this task: the allowlist and the stylesheets an
    * earlier render loaded are in place, so it is final when it first shows.
    *
@@ -5252,7 +5348,7 @@ export function mountPullPage(container, ctx, mb) {
    * source.
    *
    * The Markdown plugin owns the host for KPress's diagrams (markdown/diagrams.js) and
-   * exports it as `drawDiagrams`, which this plugin, declaring `requires = ["markdown"]`,
+   * exports it as `drawDiagrams`, which this plugin, declaring markdown in `requires`,
    * gets from `mb.plugins.load("markdown")` (docs/plugins.md, "Declared Dependencies"),
    * so it neither imports another plugin's files nor keeps a second copy of the adapter.
    * That plugin's static modules come with the first diagram, beside KPress's diagram
@@ -5336,18 +5432,7 @@ export function mountPullPage(container, ctx, mb) {
   function renderMarkdown(part, rendered, text) {
     const element = texts.get(part);
     inserting.set(part, text);
-    if (documentStyles === null) {
-      // Only a load that succeeded lets later pages insert kept renders without asking again.
-      documentStyles = mb.loadKpressAssets(rendered.assets).then(
-        () => {
-          kpressStylesSettled = true;
-        },
-        (error) => {
-          console.warn("metabrowser github: the text styles did not load", error);
-        },
-      );
-    }
-    void Promise.all([inertReady, documentStyles]).then(([inert]) => {
+    void Promise.all([inertReady, textStyles(rendered.assets)]).then(([inert]) => {
       if (inserting.get(part) === text) {
         inserting.delete(part);
       }
@@ -5462,6 +5547,23 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
+   * Whether the address is this page's and shows *tab*, by its id in `PULL_TABS`: the front
+   * page, `/pull/<n>`, shows what `shownTabFor` resolves it to.
+   *
+   * @param {string} tab
+   */
+  function addressShows(tab) {
+    const page = `/pull/${number}`;
+    const here = window.location.pathname.replace(/\/$/, "");
+    const route =
+      here === page
+        ? ""
+        : (TABS.find((candidate) => candidate !== "" && onPageRoute(here, number, candidate)) ??
+          null);
+    return route !== null && shownTabFor(route, shown?.pull?.text ?? null) === tab;
+  }
+
+  /**
    * A link to a tab of this page or to another pull request's page. A plain click stays
    * in the app: the shell's `open` puts the route in the URL and shows it.
    *
@@ -5541,10 +5643,19 @@ export function mountPullPage(container, ctx, mb) {
 
   /** One link per tab, kept across paints so a poll does not take focus from one. */
   const tabLinks = PULL_TABS.map(({ id, label }) => {
-    const link = pageLink({ number, tab: id }, "tab-btn", [label]);
+    // Conversation's route and Guided Review's are the front page's when it shows them, and
+    // otherwise their own addresses (`routeForTab`); paintHeader keeps each link's route and
+    // address current.
+    /** @type {{number: number, tab: string}} */
+    const route = { number, tab: id };
+    const link = pageLink(route, "tab-btn", [label]);
+    if (id === "guided") {
+      link.classList.add("github-pull-guide-tab");
+    } else {
+      tabBar.append(link);
+    }
     link.setAttribute("role", "tab");
-    tabBar.append(link);
-    return { id, link };
+    return { id, link, route };
   });
   /** The links' keys, from `attachTabKeys` once the page can end them. @type {MetabrowserPublicPluginShortcutHandle[]} */
   let tabKeys = [];
@@ -5582,7 +5693,7 @@ export function mountPullPage(container, ctx, mb) {
         return menu.element;
       }
       menu = createStackMenu(stack, number, {
-        link: (target) => pageLink(memberRoute(target, model.tab), "", []),
+        link: (target) => pageLink(memberRoute(target, stackTab(model.tab)), "", []),
         icon: stackSvg === null ? null : document.importNode(stackSvg, true),
         currentTitle: model.pull?.title ?? "",
         named,
@@ -5623,7 +5734,7 @@ export function mountPullPage(container, ctx, mb) {
       shown === null ||
       shown.pull === null ||
       document.visibilityState !== "visible" ||
-      !onPageRoute(window.location.pathname, number, controller.snapshot().tab)
+      !addressShows(controller.snapshot().tab)
     ) {
       return null;
     }
@@ -6227,7 +6338,19 @@ export function mountPullPage(container, ctx, mb) {
     if (model.pull === null && model.status === "unavailable") {
       tabColumn.remove();
     } else {
-      for (const { id, link } of tabLinks) {
+      for (const [at, { id, link, route }] of tabLinks.entries()) {
+        if (id === "" || id === "guided") {
+          route.tab = routeForTab(id, model.pull?.text ?? null);
+          link.setAttribute("href", `/pull/${number}${route.tab ? `/${route.tab}` : ""}`);
+        }
+        if (id === "guided") {
+          if (model.tab !== id && !GUIDED_FENCE.test(model.pull?.text ?? "")) {
+            link.remove();
+          } else if (link.parentNode === null) {
+            tabBar.insertBefore(link, tabLinks[at + 1].link);
+            tabKeys[at]?.retarget(link);
+          }
+        }
         link.classList.toggle("active", model.tab === id);
         link.setAttribute("aria-selected", String(model.tab === id));
       }
@@ -6473,13 +6596,8 @@ export function mountPullPage(container, ctx, mb) {
         pull.truncated,
       ],
       () =>
-        h("section", { class: "page-card github-pull-card github-pull-event" }, [
-          h("div", { class: "github-pull-card-head" }, [
-            authorLabel(mb, pull.author, pull.avatar),
-            " opened ",
-            age(pull.created),
-          ]),
-          textBlock("body", pull.text, pull.truncated),
+        descriptionCard(pull, textBlock("body", pull.text, pull.truncated), [
+          ...(GUIDED_FENCE.test(pull.text) ? [guideCard(pull.text)] : []),
         ]),
     );
     /** @type {Map<string, {node: HTMLElement, pending: boolean}>} */
@@ -7923,6 +8041,139 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
+  function disposeGuided() {
+    guided?.view?.dispose();
+    guided = null;
+  }
+
+  /**
+   * The description's card: who opened the pull request and when, then its text.
+   * Conversation and Guided Review draw it alike.
+   *
+   * @param {NonNullable<PullModel["pull"]>} pull
+   * @param {HTMLElement} text The description's text block.
+   * @param {HTMLElement[]} after
+   */
+  function descriptionCard(pull, text, after) {
+    return h("section", { class: "page-card github-pull-card github-pull-event" }, [
+      h("div", { class: "github-pull-card-head" }, [
+        authorLabel(mb, pull.author, pull.avatar),
+        " opened ",
+        age(pull.created),
+      ]),
+      text,
+      ...after,
+    ]);
+  }
+
+  /**
+   * Where Conversation's description had its guided-review block: the server renders the
+   * description without it (`render_part`), and this says where the guide is read: the
+   * front page, which shows it (`routeForTab`).
+   *
+   * @param {string} description
+   */
+  function guideCard(description) {
+    return notice(null, [
+      "This description has a guided review. ",
+      pageLink({ number, tab: routeForTab("guided", description) }, "", ["Open Guided Review"]),
+    ]);
+  }
+
+  /**
+   * The guide's introduction: the description's card, as Conversation draws it, without
+   * its guided-review block. It is drawn again only when its text or its render changes.
+   *
+   * @param {PullModel} model
+   * @param {GuidedMount} mount
+   */
+  function paintGuideIntroduction(model, mount) {
+    const pull = /** @type {NonNullable<PullModel["pull"]>} */ (model.pull);
+    const key = JSON.stringify([
+      pull.text,
+      pull.truncated,
+      pull.state,
+      pull.author,
+      pull.avatar,
+      pull.created,
+      model.textRevision,
+    ]);
+    const shown = mount.introduction;
+    if (shown.key !== key || shown.block === null) {
+      shown.key = key;
+      shown.block = textBlock("body", pull.text, pull.truncated);
+      shown.block.classList.add("github-pull-guide-introduction");
+      shown.node.replaceChildren(descriptionCard(pull, shown.block, []));
+    }
+    // Each paint of the tab clears the page's texts: the description's is registered again
+    // so its Markdown lands here.
+    askForTexts([shown.block]);
+  }
+
+  /** @param {PullModel} model */
+  function paintGuided(model) {
+    const moved = model.newCommits !== null;
+    if (guided !== null) {
+      paintGuideIntroduction(model, guided);
+      guided.view?.show(model.recordRevision, moved);
+      return;
+    }
+    const introduction = h("div", {}, []);
+    const host = h(
+      "section",
+      { class: "github-pull-guided-review", "aria-label": "Guided Review" },
+      [
+        introduction,
+        h(
+          "div",
+          { class: "mb-delayed-loading", role: "status", "aria-label": "Loading the guide" },
+          [h("div", { class: "recent-loading github-pull-loading", "aria-hidden": "true" })],
+        ),
+      ],
+    );
+    /** @type {GuidedMount} */
+    const mount = { view: null, introduction: { node: introduction, key: null, block: null } };
+    guided = mount;
+    body.replaceChildren(host);
+    paintGuideIntroduction(model, mount);
+    void import("./guided-review.js").then(
+      ({ mountGuidedReview }) => {
+        if (guided !== mount || shown === null) {
+          return;
+        }
+        // The guide's text is KPress prose and its excerpts are the diff plugin's rows.
+        mount.view = mountGuidedReview(host, introduction, number, {
+          open: openChangedFile,
+          loadStyles: (assets) =>
+            Promise.all([
+              textStyles(
+                /** @type {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} */ (assets),
+              ),
+              mb.ensureKindAssets("diff"),
+            ]),
+          // The diff plugin draws the excerpts, as it draws Changes (`requires` in
+          // manifest.toml).
+          loadDrawPatch: async () => {
+            const diff = await mb.plugins.load("diff");
+            return (body, change, patch) => diff.mountFilePatch(body, change, patch, mb);
+          },
+          shortCommit: mb.shortCommit,
+        });
+        mount.view.show(shown.recordRevision, shown.newCommits !== null);
+      },
+      () => {
+        if (guided === mount) {
+          host.replaceChildren(
+            introduction,
+            h("p", { class: "github-pull-quiet", role: "status" }, [
+              "Could not load Guided Review.",
+            ]),
+          );
+        }
+      },
+    );
+  }
+
   /**
    * The note over a diff that replaced another by itself: both heads, and the way back.
    * Kept as painted while it says the same, so focus on its button survives a repaint.
@@ -7969,6 +8220,9 @@ export function mountPullPage(container, ctx, mb) {
     container.dataset.corePreview = String(model.corePreview);
     shown = model;
     noteRefreshWait(model);
+    if (model.tab !== "guided" || model.pull === null) {
+      disposeGuided();
+    }
     if (model.tab !== "files") {
       wantedFile = null;
     }
@@ -7976,7 +8230,7 @@ export function mountPullPage(container, ctx, mb) {
       // Another tab holds the body now: the conversation paints as it is when it returns.
       releaseFirstPaint("closed");
     }
-    const conversation = model.pull !== null && !diffTab(model.tab) && model.tab !== "checks";
+    const conversation = model.pull !== null && model.tab === "";
     const key = conversation ? conversationKey(model) : null;
     const action =
       key === null
@@ -7991,7 +8245,8 @@ export function mountPullPage(container, ctx, mb) {
     paintHeader(model);
     askDocs(model);
     paintStacks(model);
-    // Conversation and Checks use the reading column. Changes and Docs use the full pane.
+    // Conversation, Guided Review, and Checks use the reading column. Changes and Docs use the
+    // full pane.
     body.classList.toggle("page-reading-column", model.pull === null || !diffTab(model.tab));
     if (model.pull === null) {
       disposeDiff();
@@ -8029,6 +8284,15 @@ export function mountPullPage(container, ctx, mb) {
     }
     disposeDiff();
     wantComparison(model);
+    if (model.tab === "guided") {
+      bodyKey = "";
+      bodyShows = "guided";
+      discussion = null;
+      texts.clear();
+      observer?.disconnect();
+      paintGuided(model);
+      return;
+    }
     if (model.tab === "checks") {
       const key = JSON.stringify([
         "checks",
@@ -8086,7 +8350,7 @@ export function mountPullPage(container, ctx, mb) {
     if (firstPaintSpent || model.textRevision === null || pull === null) {
       return null;
     }
-    if (bodyShows === "files" || bodyShows === "checks") {
+    if (bodyShows === "files" || bodyShows === "checks" || bodyShows === "guided") {
       // A reader's own tab switch, from content that is not the conversation: paint now.
       firstPaintSpent = true;
       return null;
@@ -8322,7 +8586,7 @@ export function mountPullPage(container, ctx, mb) {
       discussion === null ||
       held === null ||
       document.visibilityState !== "visible" ||
-      !onPageRoute(window.location.pathname, number, "")
+      !addressShows("")
     ) {
       cancelTimeline();
       return;
@@ -8346,10 +8610,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     const read = { cachedOnly, abort: new AbortController() };
     held.read = read;
-    const owns = () =>
-      commitTimeline === held &&
-      held.read === read &&
-      onPageRoute(window.location.pathname, number, "");
+    const owns = () => commitTimeline === held && held.read === read && addressShows("");
     const load = async () => {
       if (!owns()) {
         return;
@@ -8508,7 +8769,7 @@ export function mountPullPage(container, ctx, mb) {
     (tab) => {
       // A hidden tab's key does nothing, as its link offers nothing.
       if (!tabLinks.some(({ id, link }) => id === tab && link.hidden)) {
-        page.setTab(tab);
+        page.setTab(routeForTab(tab, shown?.pull?.text ?? null));
       }
     },
     listening.signal,
@@ -8556,10 +8817,7 @@ export function mountPullPage(container, ctx, mb) {
       // A hold's lift time as the reader's clock says it, short (`holdLiftText`).
       formatHold: (liftMs, nowMs) => holdLiftText(liftMs, nowMs),
       ownsChanges: () => onDiffRoute(),
-      ownsConversation: () =>
-        active &&
-        mb.sourceKind() === "filesystem" &&
-        onPageRoute(window.location.pathname, number, ""),
+      ownsConversation: () => active && mb.sourceKind() === "filesystem" && addressShows(""),
       scheduleComparison(callback) {
         /** @type {(() => void) | undefined} */
         let cancelIdle;
@@ -8668,7 +8926,7 @@ export function mountPullPage(container, ctx, mb) {
     if (pane === null) {
       return;
     }
-    place = keepPlace(pane, body, () => shown?.tab ?? "", number, {
+    place = keepPlace(pane, body, () => addressShows(shown?.tab ?? ""), {
       pathOf: (block) =>
         /** @type {{pathForSection?: (section: Element) => string | null} | null} */ (
           diffHandle
@@ -8690,6 +8948,7 @@ export function mountPullPage(container, ctx, mb) {
     filesRefresh = null;
     wantedFile = null;
     listening.abort();
+    disposeGuided();
     summaryBrief?.dispose();
     // A disposed binding leaves its figures as drawn, so the handoff keeps them on screen.
     for (const text of [...textDiagrams.keys()]) {
@@ -8738,7 +8997,7 @@ export function mountPullPage(container, ctx, mb) {
       }
       const at = stack.pulls.indexOf(number) + delta;
       if (at >= 0 && at < stack.pulls.length) {
-        void open(memberRoute(stack.pulls[at], controller.snapshot().tab));
+        void open(memberRoute(stack.pulls[at], stackTab(controller.snapshot().tab)));
       }
       return true;
     },
@@ -8752,10 +9011,15 @@ export function mountPullPage(container, ctx, mb) {
      */
     setTab(next) {
       if (TABS.includes(next) && !onPageRoute(window.location.pathname, number, next)) {
-        void open({ number, tab: next });
+        // A tab already on screen at another of the page's addresses, Guided Review on the
+        // front page, stays where it is: its own address would be a second history entry
+        // of the same view.
+        if (!addressShows(shownTabFor(next, shown?.pull?.text ?? null))) {
+          void open({ number, tab: next });
+        }
         return;
       }
-      const changed = controller.snapshot().tab !== next;
+      const changed = controller.snapshot().tab !== shownTabFor(next, shown?.pull?.text ?? null);
       controller.setTab(next);
       if (changed) {
         place?.keeper.land();
@@ -8866,14 +9130,13 @@ export function mountPullPage(container, ctx, mb) {
  *
  * @param {HTMLElement} pane
  * @param {HTMLElement} body
- * @param {() => string} tab
- * @param {number} number
+ * @param {() => boolean} owns Whether the address still shows this page's tab.
  * @param {{pathOf(block: Element): string | null, sectionOf(path: string): Element | null | undefined}} files
  *   Which changed file a block of Changes is, and the block of a file, as the mounted diff
  *   says, so a place there is its file's whichever diff shows it (`PanePlace`). *sectionOf*
  *   answers null for a file the diff lacks and undefined while no diff can say.
  */
-function keepPlace(pane, body, tab, number, files) {
+function keepPlace(pane, body, owns, files) {
   const blocks = () => Array.from(body.querySelectorAll(PLACE_BLOCKS));
   /** @param {Element[]} [of] */
   const tops = (of = blocks()) => {
@@ -8892,7 +9155,7 @@ function keepPlace(pane, body, tab, number, files) {
     write(place) {
       // History can move on before this page is told: the entry is written only while
       // it is still this page's.
-      if (onPageRoute(window.location.pathname, number, tab())) {
+      if (owns()) {
         window.history.replaceState({ ...window.history.state, [PLACE_KEY]: place }, "");
       }
     },
