@@ -14,6 +14,9 @@ motion. This holds that:
 - the entry's name and its dot each lift and grow its family's segment in every tally row,
   Files, Ignored, and Total, and its Details row while Details is open, and nothing else,
   grown twice over on the axis that carries no data;
+- the entry marks its family's cells in the compact treemap under the breakdown, and only
+  those, their pixels copied onto the marks canvas, which lifts and does not grow, every
+  cell inside the map and none moved;
 - the entry is marked: its dot lifted, its name in its family's ink at 4.5:1 or better on
   both pages, and every other entry at rest;
 - each marked bar and the entry's dot shimmer, by opacity alone, entered together in step;
@@ -164,8 +167,21 @@ def _shimmering(reading: dict[str, Any], label: str, together: bool = True) -> N
     assert reading["shimmer"]["oneStart"] == together, (label, reading)
 
 
+def _map_marked(reading: dict[str, Any], rest: dict[str, Any], label: str) -> None:
+    """The compact treemap's cells of the family marked, and only those: lifted, not grown,
+    inside the map, and not moved."""
+
+    shown = reading["map"]
+    assert shown["cells"] > 0 and shown["sampled"] > 0, (label, reading)
+    assert shown["marked"] and shown["marked"] == shown["family"], (label, reading)
+    assert shown["liftedNotGrown"] and shown["othersAtRest"], (label, reading)
+    assert shown["inside"], (label, reading)
+    assert shown["layout"] == rest["map"]["layout"], (label, "the map moved")
+
+
 def _nothing(reading: dict[str, Any], label: str) -> None:
     assert reading["marked"] == [], (label, reading)
+    assert reading["map"]["marked"] == [] and reading["map"]["inside"], (label, reading)
     assert reading["othersAtRest"], (label, reading)
     assert reading["otherEntriesAtRest"], (label, reading)
     assert reading["shimmer"]["on"] == [], (label, reading)
@@ -218,6 +234,7 @@ def test_a_legend_entry_hovers_its_familys_marks_in_chrome(
         _entry_marked(reading, step)
         _shimmering(reading, step)
         _tooltip_on(reading, step, "legend")
+        _map_marked(reading, rest, step)
         # Nothing moves under the hover, and the entry keeps its size.
         assert reading["layout"] == rest["layout"], step
         assert reading["entrySize"] == rest["entrySize"], step

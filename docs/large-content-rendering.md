@@ -323,6 +323,8 @@ this standard. Paths are under `src/metabrowser/`.
 | `FIRST_CHUNK_BYTES`, `MAX_CHUNK_BYTES` | `builtin_plugins/binary/bytes-view.js` | The binary view’s first chunk and its largest Load more |
 | `DEFAULT_ACCENT_RUN_BUDGET` | `builtin_plugins/binary/byte-format.js` | Accent elements across the mounted binary view |
 | `LINES_PER_BLOCK` | `builtin_plugins/binary/bytes-view.js` | Deferred layout per block scrolled in |
+| `ROLLUP_MAX_NODES` | `settings.py` | The nodes one Treemap rollup carries: its bytes, the server’s build, and the browser’s parse and decode |
+| `PAINT_MAX_CELLS` | `builtin_plugins/folder/treemap-map.js` | The cells a treemap lays out and paints: one relayout’s main-thread time, and the marks a family hover draws |
 | `LAYOUT_PROJECTION_BATCH_FILES`, `FOLD_MATERIALIZATION_BATCH_ROWS`, `JUMP_QUIET_MS` | `builtin_plugins/diff/diff-view.js` | Diff main-thread work per task, and when a burst of file jumps asks for its file |
 | `MAX_FILE_PATCH_BYTES`, `MAX_MANIFEST_FILES` | `diff/adapters/git.py` | One file’s patch in a comparison, and a comparison’s file list |
 | `MAX_CACHED_MANIFESTS`, `MAX_CACHED_BODY_BYTES` | `builtin_plugins/diff/comparison_cache.py` | Server memory for kept comparisons |

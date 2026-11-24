@@ -1134,6 +1134,9 @@ class RollupQuery:
     remaining_top: int = 20
     filename_top: int = 20
     rank: Literal["bytes", "dual"] = "bytes"
+    # ``RollupOptions.ignored`` and ``.encoding`` in ``inventory_rollup.py``.
+    ignored: Literal["include", "exclude"] = "include"
+    encoding: Literal["json", "compact"] = "json"
     max_work: int = DEFAULT_QUERY_MAX_WORK
     kind: Literal[QueryKind.ROLLUP] = field(init=False, default=QueryKind.ROLLUP)
 
@@ -1144,6 +1147,10 @@ class RollupQuery:
         _require_query_max_work(self.max_work)
         for name in ("max_depth", "top", "extension_top", "remaining_top", "filename_top"):
             _require_nonnegative(getattr(self, name), name)
+        if self.ignored not in ("include", "exclude"):
+            raise ValueError(f"ignored must be include or exclude, not {self.ignored!r}")
+        if self.encoding not in ("json", "compact"):
+            raise ValueError(f"encoding must be json or compact, not {self.encoding!r}")
 
 
 @dataclass(frozen=True, slots=True)
