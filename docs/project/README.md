@@ -68,9 +68,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
-- [The Diff | Current chooser](specs/active/plan-2026-11-23-diff-current-chooser.md): a
-  second chooser beside Rendered | Source on every file bar with a text diff, one choice
-  for the whole diff, whose Current shows the new version alone with its changes marked
+- [The Diff | Current chooser](specs/active/plan-2026-11-23-diff-current-chooser.md):
+  one chooser in the diff’s toolbar, beside Split | Unified, for the whole diff, whose
+  Current shows the new version alone with its changes marked
 - [Pull request update cadence and GitHub budget](specs/active/plan-2026-11-22-pull-request-update-cadence.md):
   a draft for free conditional probes every few seconds for what is on screen, full
   reads once every minute or two, and a budget that leaves room for the account’s other
