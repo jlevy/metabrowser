@@ -8145,7 +8145,6 @@ export function mountPullPage(container, ctx, mb) {
             const diff = await mb.plugins.load("diff");
             return (body, change, patch) => diff.mountFilePatch(body, change, patch, mb);
           },
-          shortCommit: mb.shortCommit,
         });
         mount.view.show(shown.recordRevision, shown.newCommits !== null);
       },

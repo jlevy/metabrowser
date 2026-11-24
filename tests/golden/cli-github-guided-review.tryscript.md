@@ -437,11 +437,12 @@ status: 200
 ```
 
 The cached PR description may have a guide for a different comparison, an invalid guide,
-or no guide.
-A guide for a different comparison is stale, and still answers its step from
-its own pins, with what changed since: pull request 8’s branch was rebased past the
-guide’s head, so its history is `rewritten`, and both cited files changed, so both steps
-are marked. An invalid guide and an absent one return without excerpts.
+or no guide. A guide for a different comparison is stale, and still answers its step,
+read at the pull request’s current comparison, with what changed since for an agent that
+brings the guide up to date: pull request 8’s branch was rebased past the guide’s head,
+so its history is `rewritten`, both cited files changed, so both steps are marked, and
+the file step 1 cites is no longer in the pull request’s changes.
+An invalid guide and an absent one return without excerpts.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/8 --api '/api/plugin/github/guided-review?number=8'
@@ -482,7 +483,7 @@ status: 200
   },
   "comparison": {
     "merge_base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
-    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+    "head": "8ae27617c9c475851b67ee69433d008836d112ba"
   },
   "step_count": 2,
   "titles": [
@@ -498,31 +499,9 @@ status: 200
       "side": "new",
       "start_line": 1,
       "end_line": 2,
-      "state": "ready",
-      "href": "/pull/8/files/src/app.txt",
-      "hunks": [
-        {
-          "old_start": 1,
-          "old_count": 1,
-          "new_start": 1,
-          "new_count": 2,
-          "heading": null,
-          "lines": [
-            {
-              "op": "context",
-              "text": "one",
-              "text_b64": null,
-              "no_newline": false
-            },
-            {
-              "op": "add",
-              "text": "two",
-              "text_b64": null,
-              "no_newline": false
-            }
-          ]
-        }
-      ],
+      "state": "path_not_changed",
+      "href": null,
+      "hunks": [],
       "truncated": false
     }
   ],

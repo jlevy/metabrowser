@@ -14,7 +14,7 @@ import json
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -70,8 +70,10 @@ def _rows(answer: dict[str, Any], at: int = 0) -> list[str]:
     ]
 
 
-def test_a_guide_one_push_behind_is_ahead_and_read_from_its_own_pins(stand: _Stand) -> None:
-    """The ordinary stale guide: its author pushed after writing it."""
+def test_a_guide_one_push_behind_is_ahead_and_read_at_the_current_head(stand: _Stand) -> None:
+    """The ordinary stale guide: its author pushed after writing it. The answer carries
+    every detail an agent needs to bring it up to date, and its steps are read at the pull
+    request's current head, which the reviewer is reviewing."""
     origin = stand.origin
     _cache(stand, _pinned(stand, head=origin["fork_earlier"]))
     answer = _ask(stand)
@@ -86,9 +88,16 @@ def test_a_guide_one_push_behind_is_ahead_and_read_from_its_own_pins(stand: _Sta
         "changed_paths": ["docs/new.md", "src/app.txt"],
         "changed_steps": [1, 2],
     }
-    # The excerpt is the guide's revision's, where the file said "extra", not "two".
-    assert answer["comparison"] == {"merge_base": origin["base"], "head": origin["fork_earlier"]}
-    assert _rows(answer) == ["context:one", "add:extra"]
+    # The excerpt is the current head's, where the file says "two", not the guide's "extra".
+    assert answer["comparison"] == {"merge_base": origin["base"], "head": origin["fork_head"]}
+    assert _rows(answer) == ["context:one", "add:two"]
+    # A reference that no longer resolves says so in its place; the others still draw.
+    assert [(ref["path"], ref["state"]) for ref in _ask(stand, step=2)["references"]] == [
+        ("docs/new.md", "ready"),
+        ("src/app.txt", "ready"),
+        ("missing.txt", "path_not_changed"),
+        ("src/app.txt", "range_unavailable"),
+    ]
 
 
 def test_reading_a_stale_guide_keeps_the_pull_requests_manifest(stand: _Stand) -> None:
@@ -116,31 +125,37 @@ def test_a_moved_merge_base_marks_what_moved_with_it(stand: _Stand) -> None:
     stale = answer["stale"]
     assert (stale["history"], stale["commit_count"], stale["commits"]) == ("ahead", 0, [])
     assert (stale["changed_paths"], stale["changed_steps"]) == (["src/app.txt"], [1, 2])
-    assert _rows(answer) == ["context:one", "del:extra", "add:two"]
+    # Read at the current comparison, not the guide's narrower one from fork_earlier.
+    assert _rows(answer) == ["context:one", "add:two"]
 
 
 def test_a_rebased_branch_is_rewritten(stand: _Stand) -> None:
     origin = stand.origin
     _cache(stand, _pinned(stand, head=origin["merged_head"]))
-    stale = _ask(stand)["stale"]
+    answer = _ask(stand)
+    stale = answer["stale"]
     assert (stale["history"], stale["commit_count"]) == ("rewritten", 2)
     assert [commit["subject"] for commit in stale["commits"]] == ["count to two", "extra"]
     assert stale["changed_paths"] == ["docs/new.md", "src/app.txt"]
+    assert (answer["step"], _rows(answer)) == (1, ["context:one", "add:two"])
 
 
-def test_a_guide_this_copy_lacks_is_stale_with_no_step(stand: _Stand) -> None:
-    """The store lacks the guide's head: its commits and what changed are unknown, and its
-    steps cannot be read."""
+def test_a_guide_whose_head_this_copy_lacks_still_reads(stand: _Stand) -> None:
+    """The store lacks the guide's head, as after a force push it never fetched: its
+    commits and what changed are unknown, and its steps are read at the current head all
+    the same, so the guide stays readable."""
+    origin = stand.origin
     _cache(stand, _pinned(stand, head=_MISSING))
     answer = _ask(stand)
     assert answer["state"] == "stale"
-    assert "step" not in answer
     stale = answer["stale"]
     assert (stale["history"], stale["commit_count"], stale["changed_paths"]) == (
         "unavailable",
         None,
         None,
     )
+    assert answer["comparison"] == {"merge_base": origin["base"], "head": origin["fork_head"]}
+    assert (answer["step"], _rows(answer)) == (1, ["context:one", "add:two"])
 
 
 def test_a_newer_head_on_github_leaves_what_changed_unknown(
@@ -165,13 +180,14 @@ def test_a_newer_head_on_github_leaves_what_changed_unknown(
         "changed_paths": None,
         "changed_steps": None,
     }
-    # Its steps are still read, from its pins.
+    # Its steps are still read, at this copy's head.
     assert (answer["step"], _rows(answer)) == (1, ["context:one", "add:two"])
 
 
 def test_pins_that_name_no_comparison_are_refused(stand: _Stand) -> None:
-    """A merge_base that is not where the guide's head leaves the base would answer excerpts
-    read against another merge base under the pinned one's name (B9 of review B on #677)."""
+    """A merge_base that is not where the guide's head leaves the base names no comparison
+    the guide could have been written for (B9 of review B on #677): an author's mistake,
+    not an earlier version of the pull request."""
     origin = stand.origin
     _cache(stand, _pinned(stand, merge_base=origin["topic"]))
     answer = _ask(stand)
@@ -216,10 +232,16 @@ def test_a_step_past_the_guide_and_an_uncached_pull_request(stand: _Stand) -> No
     assert _ask(stand, number=11) == {"record_revision": None, "state": "not_cached"}
 
 
+@pytest.mark.parametrize("stale", [False, True], ids=["current", "stale"])
 def test_a_comparison_the_store_cannot_read_is_unavailable(
-    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, stale: bool
 ) -> None:
-    _cache(stand, guide_body(stand.origin))
+    """A stale guide's refusal is a current one's, with its diagnostics beside it for an
+    agent; the page says only why the step is unavailable."""
+    _cache(
+        stand,
+        _pinned(stand, head=stand.origin["fork_earlier"]) if stale else guide_body(stand.origin),
+    )
 
     async def unreadable(*_args: object, **_kwargs: object) -> object:
         raise DiffSourceError("the store cannot list it")
@@ -227,7 +249,9 @@ def test_a_comparison_the_store_cannot_read_is_unavailable(
     monkeypatch.setattr(guided_review, "shared_pull_manifest", unreadable)
     answer = _ask(stand)
     assert answer["state"] == "comparison_unavailable"
-    assert "stale" not in answer
+    assert ("stale" in answer) is stale
+    if stale:
+        assert answer["stale"]["changed_steps"] == [1, 2]
 
 
 def test_a_description_cut_inside_its_block_is_truncated_not_invalid(stand: _Stand) -> None:
@@ -261,6 +285,83 @@ def test_a_long_subject_is_counted_not_listed(tmp_path: Path) -> None:
     assert short["commits"] == [{"sha": short["commits"][0]["sha"], "subject": "count to two"}]  # type: ignore[index]
     long = asyncio.run(_commits_since(tmp_path / "long", "word " * 2400))
     assert long == {"history": "ahead", "commit_count": 1, "commits": []}
+
+
+def _branch_moves(root: Path) -> dict[str, str]:
+    """A pull request's branch, ``topic``, and the ways it moves after its guide is written.
+
+    ``main`` is ``first``, then ``main_moves``, which changes ``notes.txt``. ``topic`` is
+    ``first``, then ``guided``, which changes ``app.txt``, adds ``docs.md``, and is the
+    guide's head. Then
+    ``merged`` merges ``main`` into ``topic``; ``rebased`` is ``guided`` replayed onto
+    ``main_moves``; and ``reworked`` is that rebase with ``app.txt`` changed again.
+    """
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+
+    def commit(message: str, **files: str) -> str:
+        for name, text in files.items():
+            (root / name).write_text(text, encoding="utf-8")
+        git(root, "add", *files)
+        git(root, "commit", "-q", "-m", message)
+        return git(root, "rev-parse", "HEAD").decode().strip()
+
+    shas = {"first": commit("first", **{"app.txt": "one\n", "notes.txt": "a\n"})}
+    git(root, "checkout", "-q", "-b", "topic")
+    shas["guided"] = commit("count to two", **{"app.txt": "one\ntwo\n", "docs.md": "# Two\n"})
+    git(root, "checkout", "-q", "main")
+    shas["main_moves"] = commit("notes", **{"notes.txt": "a\nb\n"})
+    git(root, "checkout", "-q", "topic")
+    git(root, "merge", "-q", "--no-edit", "main")
+    shas["merged"] = git(root, "rev-parse", "HEAD").decode().strip()
+    git(root, "checkout", "-q", "-b", "rebased", shas["main_moves"])
+    shas["rebased"] = commit("count to two", **{"app.txt": "one\ntwo\n", "docs.md": "# Two\n"})
+    shas["reworked"] = commit("count to three", **{"app.txt": "one\ntwo\nthree\n"})
+    return shas
+
+
+def _moved(root: Path, shas: dict[str, str], base: str, head: str) -> dict[str, object]:
+    """The staleness of a guide pinned to ``first``..``guided``, the pull request now at
+    *base*..*head*."""
+    guide = guided_review.Collection.model_validate(
+        {
+            "comparison": {"merge_base": shas["first"], "head": shas["guided"]},
+            "items": [
+                {"title": "Count", "note": "Check it.", "references": [{"path": "app.txt"}]},
+                {"title": "Docs", "note": "Read them.", "references": [{"path": "docs.md"}]},
+            ],
+        }
+    )
+    store = SimpleNamespace(git_dir=root / ".git", object_format="sha1")
+    record = SimpleNamespace(
+        comparison=SimpleNamespace(base=shas[base]),
+        pull=SimpleNamespace(head=SimpleNamespace(sha=shas[head])),
+    )
+    staleness = guided_review._staleness(  # pyright: ignore[reportPrivateUsage]
+        cast(Any, store), cast(Any, record), guide, newer=False
+    )
+    return asyncio.run(staleness)
+
+
+@needs_git
+def test_merging_the_base_in_or_a_rebase_that_keeps_the_files_changes_no_step(
+    tmp_path: Path,
+) -> None:
+    """The base branch merged in, or the branch replayed onto it with its files the same,
+    moves both pins, and leaves every file the guide cites as it was in the guide's
+    comparison: no step is marked, so the page says no more than a quiet line. A step whose
+    file a rebase changed is marked."""
+    root = tmp_path / "repo"
+    shas = _branch_moves(root)
+    merged = _moved(root, shas, "main_moves", "merged")
+    assert (merged["history"], merged["commit_count"]) == ("ahead", 1)
+    assert (merged["changed_paths"], merged["changed_steps"]) == ([], [])
+    rebased = _moved(root, shas, "main_moves", "rebased")
+    # The rebased head has main's commit and its own, and not the guide's head.
+    assert (rebased["history"], rebased["commit_count"]) == ("rewritten", 2)
+    assert (rebased["changed_paths"], rebased["changed_steps"]) == ([], [])
+    reworked = _moved(root, shas, "main_moves", "reworked")
+    assert (reworked["changed_paths"], reworked["changed_steps"]) == (["app.txt"], [1])
 
 
 @needs_git

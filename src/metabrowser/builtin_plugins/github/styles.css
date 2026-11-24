@@ -2023,9 +2023,14 @@
   font-variant-numeric: var(--tabular-numerals);
   text-align: end;
 }
-/* The note is metadata, at its row's size ("Type Scale"). */
-.github-pull-guide-steps-link .github-pull-guide-step-changed {
+/* A changed step's mark is metadata, at its row's or its card head's size ("Type Scale"). */
+.github-pull-guide-step-changed {
   color: var(--muted);
+}
+/* An out-of-date guide's warning or quiet line stands apart from the step list below it, as
+   the step list stands apart from the step. */
+.github-pull-guide-outdated {
+  margin-block-end: 1rem;
 }
 
 /* An arrow button: the arrow alone in the step list's head, beside its words below a step. */

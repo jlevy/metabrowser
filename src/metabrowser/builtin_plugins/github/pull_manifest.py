@@ -8,9 +8,7 @@ enumeration or LRU lock: another comparison of the same pull request replaces it
 only cause a later cache miss. So the bank holds one manifest for each pull request ever
 prepared in the store; clearing the cache leaves it, as it leaves the store. Only a
 cached record's comparison is kept, so the count is the records', each read is bounded
-by `MAX_MANIFEST_RECORD_BYTES`, and the measurement below sizes the whole. A stale
-guide's pins are another comparison of its pull request, read past the bank
-(`bank` in `shared_pull_manifest`).
+by `MAX_MANIFEST_RECORD_BYTES`, and the measurement below sizes the whole.
 
 Measured 2026-11-17 on a reader's cache: 90 manifests in 9 stores, a median of 10.7 KB,
 90th percentile 44 KB, and largest 68 KB, about 500 bytes a changed file; beside them,
@@ -325,14 +323,11 @@ async def shared_pull_manifest(
     head: str,
     *,
     retain_memory: bool = True,
-    bank: bool = True,
 ) -> ResolvedManifest:
     """The comparison *base*..*head*'s manifest, shared in memory with every reader of it.
 
-    With *bank*, the pull request's kept manifest answers it and is replaced by it, which
-    is for the record's own comparison alone. Without, it is listed past the bank, as
-    another comparison of the pull request is, a stale guide's pins, so that reading it
-    does not replace the record's.
+    The pull request's kept manifest answers it and is replaced by it, so it is for the
+    record's own comparison alone.
     """
     location = GitLocation.revision(
         RepositoryStoreTarget(published.git_dir, published.object_format), head
@@ -343,9 +338,6 @@ async def shared_pull_manifest(
 
     async def load() -> ResolvedManifest:
         source = GitDiffSource(location)
-        if not bank:
-            resolved = await source.resolve(intent)
-            return ResolvedManifest(resolved, await source.manifest(resolved))
         return await load_pull_manifest(published, number, source, intent, key)
 
     return await shared_comparison_manifest(key, load) if retain_memory else await load()

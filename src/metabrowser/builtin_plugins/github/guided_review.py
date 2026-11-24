@@ -50,6 +50,7 @@ from metabrowser.view_routes import format_pull_href
 if TYPE_CHECKING:
     from markdown_it.token import Token
 
+    from metabrowser.builtin_plugins.github.pull_record import Comparison
     from metabrowser.builtin_plugins.github.pull_route import PullHost
     from metabrowser.diff.format import FileChange, FilePatch
 
@@ -79,10 +80,16 @@ MAX_REFERENCES = 8
 # took 322 ms, so this keeps the largest guide the caps admit near 150 ms. A refused block
 # costs about its YAML: _outside_shape refuses a list past these caps, or an undeclared
 # key, before the schema runs, which then judges each value in time linear in its size.
-# The densest at MAX_BODY_BYTES, 64 KiB of `0` items or of 40 titles that are long lists,
-# took 0.70 and 0.75 s to refuse, and their YAML alone 0.71 and 0.73 s, warm, best of nine
-# at a load average of 127 to 141 (2026-11-24), so upper bounds; at that load the largest
-# guide took 154 ms. Before the walk, 13,000 undeclared keys there took 105 to 136 s (D1 of
+# YAML's cost is linear too, and steepest for deep flow nesting: ruamel's scanner keeps a
+# possible simple key at each open `[` or `{` and checks them all at every token. So the
+# densest block at MAX_BODY_BYTES is groups of `0,` items 61 lists deep, the deepest
+# softschema's YAML depth bound admits under `items`: it took 2.69 s of thread CPU to
+# refuse, where 40 titles that are long lists took 0.75 s, 64 KiB of `0, ` items 0.72 s,
+# of `0,` items 1.10 s, and the largest valid guide 156 ms, best of five, interleaved, at
+# a load average of 59 to 138 (2026-11-24; E1 of review E on #677), so upper bounds. A
+# bound on flow nesting before YAML runs would bring the deep case near the flat ones,
+# but a bracket in a note's text counts toward any bound a scan before YAML can set, so
+# none is set. Before the walk, 13,000 undeclared keys there took 105 to 136 s (D1 of
 # review D on #677). read_guide pays the parse once for each record revision.
 MAX_ITEMS = 40
 # A step's ranged excerpts share this budget, each row charged _row_cost: what JSON's
@@ -112,14 +119,15 @@ MAX_EXCERPT_BYTES = MAX_BODY_BYTES
 # link.
 MAX_STEP_PATCH_BYTES: Final = 1_950_000
 
-# A stale guide's notice names the commits after the guide's head, newest first, and counts
-# the rest: it is read at a glance above the guide, and one bounded `git log` writes it.
+# A stale guide's answer names the commits after the guide's head, newest first, and counts
+# the rest, for an agent bringing the guide up to date; the page shows none of them. One
+# bounded `git log` writes the list.
 MAX_STALE_COMMITS: Final = 10
-# A commit's subject as the notice shows it, as the Conversation timeline cuts one.
+# A commit's subject as the answer carries it, as the Conversation timeline cuts one.
 MAX_STALE_SUBJECT_BYTES: Final = 240
-# The paths changed since the guide decide which of its steps still match the pull request.
-# A change past this many paths is answered as unknown rather than read whole: every step
-# is then shown with no claim either way.
+# The paths changed since the guide decide which of its steps may no longer match the pull
+# request. A change past this many paths is answered as unknown rather than read whole: no
+# step is then marked, and the page says some may not match.
 MAX_STALE_PATHS: Final = 4000
 # A path as `git diff --name-only -z` writes it is at most a filesystem path, 4096 bytes.
 _MAX_STALE_PATH_BYTES: Final = 4096
@@ -280,12 +288,16 @@ def _outside_shape(collection: object) -> list[str | int] | None:
     """Where *collection* leaves the shape the v1 schema closes, or ``None`` within it.
 
     The shape is each object a mapping of its declared keys and each list within its
-    bound. softschema's validation is quadratic in a block outside it: it writes an error
-    record for each undeclared key, each with a copy of the whole mapping, so 4,000 keys
-    took 10 to 12 s to refuse and the body bound's 13,000 about two minutes (D1 of review D
-    on #677). This walk refuses those first, at the location the schema would name: an
-    object's for its undeclared key, a list's for its length. The values inside the shape
-    are the schema's to judge, at a cost linear in their size.
+    bound. softschema's refusal of undeclared keys is quadratic in their number: it writes
+    an error record for each, each with a copy of the whole mapping, so 4,000 keys took 10
+    to 12 s to refuse and the body bound's 13,000 about two minutes (D1 of review D on
+    #677). A list past its bound costs it a record for each element. This walk refuses both
+    first, at a place the schema refuses too, the same place for a block with one problem:
+    an object's for its undeclared key, a list's for its length. Which fields hold an object
+    or a list of objects is written here by hand, and
+    `test_the_shape_walk_reaches_every_nested_model` (tests/test_guided_review.py) fails
+    when a model gains one this walk does not visit. The values inside the shape are the
+    schema's to judge, at a cost linear in their size.
     """
     if not _closed(collection, Collection):
         return []
@@ -543,29 +555,19 @@ def _references(
 
 
 async def _step_references(
-    store: PublishedSource, record: PullRecord, guide: Collection, step: CollectionItem
+    store: PublishedSource, number: int, comparison: Comparison, step: CollectionItem
 ) -> list[dict[str, object]]:
-    """The step's references, read from the guide's own comparison.
+    """The step's references, read from the pull request's current *comparison*.
 
-    Raises :class:`GuideError` when the pins do not name a comparison: the merge base Git
-    resolves for them is another commit than the guide's ``merge_base``.
+    A stale guide's steps are read there too, so a guide stays readable after a push, a
+    rebase, or a force push, whether or not the store still has the commits it was written
+    for: a reference that still resolves shows what the pull request changes now, and one
+    that does not says so in its place.
     """
-    number = record.number
-    base, head = guide.comparison.merge_base, guide.comparison.head
-    current = record.comparison
-    # Only the record's own comparison is the pull request's kept manifest
-    # (pull_manifest.py); a stale guide's is read beside it, never over it.
-    compared = await shared_pull_manifest(
-        store,
-        number,
-        base,
-        head,
-        bank=current is not None and (current.base, current.head) == (base, head),
-    )
-    if compared.resolved.left.id != base:
-        raise GuideError("The guided-review block's merge_base is not the merge base of its head.")
-    if compared.resolved.right.id != head:
-        raise GuideError("The guided-review block's head does not name a commit.")
+    base, head = comparison.base, comparison.head
+    # The record's own comparison is the pull request's kept manifest (pull_manifest.py),
+    # the one Changes reads.
+    compared = await shared_pull_manifest(store, number, base, head)
     manifest = compared.manifest
     changes = {
         display_path(change): change
@@ -643,7 +645,7 @@ async def _commits_since(location: GitLocation, old: str, new: str) -> dict[str,
         )
     except GitOutputTooLargeError:
         # Git prints a subject whole, so one long enough passes the bound, which is sized
-        # for subjects as the notice cuts them: the commits are then counted, not listed.
+        # for subjects as the answer cuts them: the commits are then counted, not listed.
         return {"history": history, "commit_count": int(count), "commits": []}
     fields = out.decode("utf-8", errors="replace").split("\0")
     commits = [
@@ -687,6 +689,18 @@ def _split_paths(out: bytes) -> set[str]:
     return {path for path in out.decode("utf-8", errors="replace").split("\0") if path}
 
 
+async def _pins_compare(location: GitLocation, pinned: CollectionComparison) -> bool | None:
+    """Whether the guide's ``merge_base`` is an ancestor of its ``head``, as a merge base is.
+
+    ``None`` when the store lacks either commit, which then says nothing about the pins.
+    """
+    try:
+        await run_git_at(["merge-base", "--is-ancestor", pinned.merge_base, pinned.head], location)
+    except GitCommandError as exc:
+        return False if exc.returncode == 1 else None
+    return True
+
+
 async def _staleness(
     store: PublishedSource | None, record: PullRecord, guide: Collection, *, newer: bool
 ) -> dict[str, object]:
@@ -694,10 +708,13 @@ async def _staleness(
 
     ``changed_paths`` are the guide's referenced paths that differ between the guide's
     comparison and the current one, at either end, and ``changed_steps`` the one-based
-    steps that cite one; each is ``None`` when that cannot be read. A step that cites no
-    changed path still matches the pull request. With *newer*, GitHub reports a head this
-    copy lacks, so what changed is unknown: the commits since are this copy's, and neither
-    list is read.
+    steps that cite one; each is ``None`` when that cannot be read, as when the store lacks
+    the guide's head after a force push. A step that cites no changed path reads as it did
+    when the guide was written. With *newer*, GitHub reports a head this copy lacks, so
+    what changed is unknown: the commits since are this copy's, and neither list is read.
+
+    Raises :class:`GuideError` for pins that do not name a comparison: a ``merge_base``
+    the store has that is not an ancestor of the guide's ``head``.
     """
     comparison = record.comparison
     pinned = guide.comparison
@@ -720,6 +737,10 @@ async def _staleness(
             answer.update(history="ahead", commit_count=0)
         else:
             answer.update(await _commits_since(location, pinned.head, head))
+        if answer["history"] != "unavailable" and await _pins_compare(location, pinned) is False:
+            raise GuideError(
+                "The guided-review block's merge_base is not the merge base of its head."
+            )
         if newer:
             return answer
         changed = (
@@ -780,33 +801,28 @@ async def guided_review(host: PullHost, number: int, step_number: int) -> dict[s
         or guide.comparison.head != record.pull.head.sha
         or (comparison is not None and guide.comparison.merge_base != comparison.base)
     )
-    staleness = await _staleness(published, record, guide, newer=newer) if stale else None
-    # A stale guide's steps are still read from its own comparison, which the store keeps:
-    # the notice above them says what changed since.
-    if published is None or (comparison is None and not stale):
-        return (
-            {**identity, "state": "stale", "stale": staleness}
-            if staleness is not None
-            else {**identity, "state": "comparison_unavailable"}
-        )
+    try:
+        staleness = await _staleness(published, record, guide, newer=newer) if stale else None
+    except GuideError as exc:
+        return {**identity, "state": "invalid", "message": str(exc)}
+    # A stale guide's diagnostics ride on every answer, a refusal's too, for an agent that
+    # brings the guide up to date; the page says only that the guide may not match.
+    diagnostics: dict[str, object] = {} if staleness is None else {"stale": staleness}
+    if published is None or comparison is None:
+        return {**identity, "state": "comparison_unavailable", **diagnostics}
     if step_number > len(guide.items):
         return {**identity, "state": "step_not_found"}
     step = guide.items[step_number - 1]
     try:
-        references = await _step_references(published, record, guide, step)
-    except GuideError as exc:
-        return {**identity, "state": "invalid", "message": str(exc)}
+        references = await _step_references(published, number, comparison, step)
     except (DiffSourceError, GitError):
-        return (
-            {**identity, "state": "stale", "stale": staleness}
-            if staleness is not None
-            else {**identity, "state": "comparison_unavailable"}
-        )
+        return {**identity, "state": "comparison_unavailable", **diagnostics}
     return {
         **identity,
         "state": "ready" if staleness is None else "stale",
-        **({} if staleness is None else {"stale": staleness}),
-        "comparison": guide.comparison.model_dump(),
+        **diagnostics,
+        # The comparison the excerpts are read from: the pull request's current one.
+        "comparison": {"merge_base": comparison.base, "head": comparison.head},
         "step_count": len(guide.items),
         # Every step's title, so the page lists the guide's steps above the one it shows.
         "titles": [item.title for item in guide.items],

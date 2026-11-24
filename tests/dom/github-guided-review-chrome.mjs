@@ -24,7 +24,14 @@
 // 4. The guide opens on its overview under a list of its steps; a step in the list, the
 //    arrows, and the way on below a step move between them, the step's text sits at the
 //    description's inset, Open full diff goes to the file's Changes address, and a guide that
-//    cannot be read says so in place: none, stale, and two blocks.
+//    cannot be read says so in place: none and two blocks. A stale guide still reads, under
+//    one warning and its remedy, with no list.
+// 5. Where a list's markers fall (mb-u46w): the out-of-date notice once listed commits in a
+//    list whose bullets sat on the notice's left border. An outside marker has no box of its
+//    own, so each is measured by setting it inside for a moment, which moves the item's first
+//    text right by the marker's width: every marker in the guide sits inside its panel's
+//    border, a description's list among them, and a list placed as the old notice drew its
+//    own is caught, which shows the measurement sees the fault.
 import { launchChrome } from "./chrome-session.mjs";
 
 const [base] = process.argv.slice(2);
@@ -66,6 +73,48 @@ const ROWS = `[...document.querySelectorAll(".github-pull-guide-excerpt .diff-li
     apart: boxes.every((box, at) => at === 0 || box.left >= boxes[at - 1].right - 1),
   };
 })`;
+/** Each list marker under *scope*: how far its left edge is inside its panel's border, in
+ * pixels, negative when it is outside. A marker is the list's own, measured by setting it
+ * inside for a moment, or a bullet drawn as a positioned `::before`, as KPress draws a
+ * description's. */
+const MARKERS = (scope) => `(() => {
+  const found = [];
+  for (const item of ${scope}.querySelectorAll("li")) {
+    if (item.getClientRects().length === 0) {
+      continue;
+    }
+    const style = getComputedStyle(item);
+    const before = getComputedStyle(item, "::before");
+    let left = null;
+    if (style.display === "list-item" && style.listStyleType !== "none") {
+      const probe = document.createElement("span");
+      item.prepend(probe);
+      const start = probe.getBoundingClientRect().left;
+      item.style.listStylePosition = "inside";
+      const width = probe.getBoundingClientRect().left - start;
+      item.style.listStylePosition = "";
+      probe.remove();
+      left = start - width;
+    } else if (
+      before.content !== "none" &&
+      before.position === "absolute" &&
+      style.position !== "static" &&
+      parseFloat(before.width) > 0
+    ) {
+      left = item.getBoundingClientRect().left + parseFloat(style.borderLeftWidth) + parseFloat(before.left);
+    }
+    if (left === null) {
+      continue;
+    }
+    let panel = item.parentElement;
+    while (panel !== null && parseFloat(getComputedStyle(panel).borderLeftWidth) === 0) {
+      panel = panel.parentElement;
+    }
+    const edge = panel.getBoundingClientRect().left + parseFloat(getComputedStyle(panel).borderLeftWidth);
+    found.push(Math.floor(left - edge));
+  }
+  return found;
+})()`;
 
 const chrome = await launchChrome(process.env.CHROME_BIN, {
   profiles: process.env.CHROME_PROFILES,
@@ -301,13 +350,13 @@ try {
   same("its guided address says so", await said(), "This pull request has no guide.");
   check("and keeps the tab it was asked for", (await evaluate(TABS)).includes("Guided Review"));
 
-  // 4. A stale guide (its head is not the record's) still shows its steps, under a notice at
-  // the top of the page that says what is out of date; a guide that cannot be read says why.
+  // 4. A stale guide (its head is not the record's) still shows its steps, read at the
+  // current head, under one warning and its remedy at the top of the page; a guide that
+  // cannot be read says why.
   await go("/pull/8/guided");
   await introduced();
-  await click("Next step");
-  await settled("Start with the count");
   await waitFor(`document.querySelector(".github-pull-guide-stale") !== null`);
+  await waitFor(`document.querySelector(".github-pull-guide-introduction .kpress-prose") !== null`);
   same(
     "a stale guide's notice leads the page",
     await evaluate(
@@ -315,19 +364,72 @@ try {
     ),
     true,
   );
-  check(
-    "and names the revisions and the commits since",
-    await evaluate(`(() => {
-      const text = document.querySelector(".github-pull-guide-stale").textContent;
-      return text.includes("It was written for head 85fcb2f") && text.includes("more guide");
-    })()`),
+  same(
+    "and says one warning and its remedy",
+    await evaluate(`document.querySelector(".github-pull-guide-stale").textContent`),
+    "This guide was written for an earlier version of this pull request, so steps marked changed may not match it. Its author can update the guide.",
   );
+  same(
+    "the steps it marks",
+    await evaluate(
+      `[...document.querySelectorAll(".github-pull-guide-steps-link")].map((link) => link.querySelector(".github-pull-guide-step-changed")?.textContent ?? "")`,
+    ),
+    ["", "changed", "changed"],
+  );
+
+  // 5. Where a list's markers fall: none in the notice, every one inside its panel, and the
+  // old notice's list caught.
+  same(
+    "the notice holds no list",
+    await evaluate(
+      `document.querySelector(".github-pull-guide-stale").querySelectorAll("ul, ol, li").length`,
+    ),
+    0,
+  );
+  const inset = await evaluate(`(() => {
+    const prose = document.querySelector(".github-pull-guide-introduction .kpress-prose");
+    const list = document.createElement("ul");
+    list.innerHTML = "<li>A description's list, drawn as KPress draws it</li>";
+    prose.append(list);
+    const found = ${MARKERS(`document.querySelector(".github-pull-guided-review")`)};
+    list.remove();
+    return found;
+  })()`);
+  check(
+    "every list marker in the guide sits inside its panel, a description's among them",
+    inset.length === 1 && inset.every((gap) => gap >= 0),
+    JSON.stringify(inset),
+  );
+  const caught = await evaluate(`(() => {
+    const notice = document.querySelector(".github-pull-guide-stale");
+    const list = document.createElement("ul");
+    list.innerHTML = "<li>8ae2761 more guide</li>";
+    notice.append(list);
+    const found = ${MARKERS(`notice`)};
+    list.remove();
+    return found;
+  })()`);
+  check(
+    "a list placed as the old notice drew its commits is caught on the border",
+    caught.length === 1 && caught[0] < 0,
+    JSON.stringify(caught),
+  );
+
+  await click("Next step");
+  await settled("Start with the count");
   same(
     "its step is a guided-review card",
     await evaluate(
       `[...document.querySelector(".github-pull-guide-card .github-pull-card-head").children].map((part) => part.textContent)`,
     ),
-    ["Guided Review", "Step 1 of 2 · cites files changed since the guide"],
+    ["Guided Review", "Step 1 of 2 · changed"],
+  );
+  same(
+    "its file, no longer in the pull request's changes, says so in its place",
+    await evaluate(
+      `[...document.querySelectorAll(".github-pull-guide-reference > p")].map((note) => note.textContent)`,
+    ),
+    ["This file is no longer in the pull request's changes."],
   );
   // The badge stands apart from its label, as a page header's state badge from its line.
   same(

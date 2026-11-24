@@ -284,11 +284,26 @@ function host() {
           const notice = view()?.children.find((node) => node.classes?.has("github-pull-quiet"));
           return notice && !notice.hidden ? notice.textContent : "nothing";
         },
-        /** The stale notice's lines, or null while there is none. */
+        /** What an out-of-date guide says above its steps, a warning or a quiet line, or
+         * "none". */
         stale() {
           const notice = container.querySelector(".github-pull-guide-stale");
-          return notice ? lines(notice) : null;
+          return notice ? said(notice) : "none";
         },
+        /** Each excerpt's path and the note it carries, as a reader reads them. */
+        references: () =>
+          container
+            .querySelectorAll(".github-pull-guide-reference")
+            .map(
+              (section) =>
+                `${section.querySelector(".diff-file-path").textContent}: ${
+                  [...section.descendants()]
+                    .filter((node) => node.tag === "p")
+                    .map((note) => note.textContent)
+                    .join(" ") || "no note"
+                }`,
+            )
+            .join(" | "),
         /** The step on screen, as the reader sees it, or null while there is none. */
         shown() {
           const title = container
@@ -311,12 +326,33 @@ function host() {
   };
 }
 
-/** A notice's lines, as a reader reads them. */
-const lines = (notice) =>
-  notice.children
-    .map((child) => child.textContent)
-    .filter(Boolean)
-    .join(" / ");
+/** What an out-of-date guide says, and whether it is a warning or a quiet line. */
+const said = (notice) =>
+  `${notice.dataset.severity ?? (notice.classes.has("github-pull-quiet") ? "quiet" : "plain")}: ${notice.textContent}`;
+
+/** The route's details of a guide written for head b on merge base a, which a page never
+ * shows: an agent brings the guide up to date with them. */
+const DETAILS = [
+  "bbbbbbb",
+  "ccccccc",
+  "aaaaaaa",
+  "Count to",
+  "src/app.txt",
+  "commit",
+  "rebase",
+  "merge base",
+];
+
+/** Whether *notice* names none of the route's details, and holds no list. */
+function plainly(notice) {
+  for (const detail of DETAILS) {
+    assert.ok(!notice.textContent.includes(detail), `the notice names ${detail}`);
+  }
+  assert.ok(
+    [notice, ...notice.descendants()].every((node) => !["ul", "ol", "li"].includes(node.tag)),
+    "the notice holds no list",
+  );
+}
 
 const asked = (reads) => reads.map((read) => `step ${read.step}`).join(", ") || "nothing";
 
@@ -335,8 +371,10 @@ async function run() {
     view.handle.dispose();
   }
 
-  // A stale guide still shows its steps, from its own revision, under a notice at the top of
-  // the page that says what it was written for, what is new, and which steps still match.
+  // A stale guide still shows its steps, read at the pull request's current head, under one
+  // warning and its remedy at the top of the page. The steps that cite a changed file are
+  // marked, and so is each such file. The commits, heads, merge bases, and paths behind it
+  // are the route's, for an agent, and never the page's (mb-b9qd).
   {
     const late = host();
     const view = late.mount(page, "guided", envelope(1));
@@ -346,12 +384,12 @@ async function run() {
       state: "stale",
       stale: {
         guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
-        current: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+        current: { merge_base: "d".repeat(40), head: "c".repeat(40) },
         github_newer: false,
-        history: "ahead",
+        history: "rewritten",
         commit_count: 12,
         commits: [{ sha: "c".repeat(40), subject: "Count to <b>three</b>" }],
-        changed_paths: ["src/app.txt"],
+        changed_paths: ["gone.txt", "src/app.txt"],
         changed_steps: [1, 3],
       },
     });
@@ -361,20 +399,15 @@ async function run() {
     const top = view.guided().children[0];
     const notice = view.container.querySelector(".github-pull-guide-stale");
     assert.ok(top.children.includes(notice), "the notice is the page's first thing");
-    steps.push(
-      `a stale guide's notice: ${notice.children.map((child) => child.textContent).join(" / ")}`,
-    );
+    plainly(notice);
+    steps.push(`a stale guide's notice: ${view.stale()}`);
     const kept = late.reads.length;
     view.press("Next step");
     await settle();
     assert.equal(late.reads.length, kept, "step 1 is the overview's own answer");
     const card = view.container.querySelector(".github-pull-guide-card");
     steps.push(
-      `and its step, in a card: ${card.querySelector(".github-pull-card-head").textContent}; ${view.shown()}; ` +
-        `${view.container
-          .querySelectorAll(".github-pull-guide-changed")
-          .map((node) => node.textContent)
-          .join("")}`,
+      `and its step, in a card: ${card.querySelector(".github-pull-card-head").textContent}; ${view.shown()}; ${view.references()}`,
     );
     view.handle.dispose();
   }
@@ -546,8 +579,9 @@ async function run() {
   }
 
   // A guide this copy matches, stale only because GitHub reports a newer head: what the
-  // newer commits changed is unknown, so the notice never says that every step still
-  // matches (B1 of review B on #677).
+  // newer commits changed is unknown, so the guide never says that its steps match (B1 of
+  // review B on #677), and the page's header already says new commits were pushed, so the
+  // guide says nothing at all.
   {
     const newer = host();
     const view = newer.mount(page, "guided", envelope(1));
@@ -568,34 +602,73 @@ async function run() {
       },
     });
     await settle();
-    assert.ok(!view.stale().includes("still matches"), "what the newer head changed is unknown");
     steps.push(`a guide behind a newer head on GitHub: ${view.stale()}; ${view.outline()}`);
     view.handle.dispose();
   }
 
-  // Commits the server counted and could not list, their subjects past its bound, are
-  // counted and not listed (B10 of review B on #677).
+  // A guide whose head this copy lacks, as after a force push it never fetched: what changed
+  // is unknown, so no step is marked, the warning says some may not match, and a reference
+  // that no longer resolves says what may be so in its place.
+  {
+    const lost = host();
+    const view = lost.mount(page, "guided", envelope(1));
+    await settle();
+    const answered = step(1, 1, 3);
+    lost.pending()[0].answer({
+      ...answered,
+      state: "stale",
+      references: [
+        ...answered.references,
+        {
+          path: "src/app.txt",
+          side: "old",
+          start_line: 2,
+          end_line: 4,
+          state: "range_unavailable",
+          href: "/pull/7/files/src/app.txt",
+          hunks: [],
+          truncated: false,
+        },
+      ],
+      stale: {
+        guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+        current: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+        github_newer: false,
+        history: "unavailable",
+        commit_count: null,
+        commits: [],
+        changed_paths: null,
+        changed_steps: null,
+      },
+    });
+    await settle();
+    plainly(view.container.querySelector(".github-pull-guide-stale"));
+    steps.push(`a guide whose head this copy lacks: ${view.stale()}; ${view.outline()}`);
+    view.press("Next step");
+    await settle();
+    steps.push(`and its step: ${view.shown()}; ${view.references()}`);
+    view.handle.dispose();
+  }
+
+  // A guide whose cited files are all as they were, after the base branch was merged in or
+  // a rebase that kept them: a quiet line, with no warning and no remedy.
   {
     host();
     const { staleNotice } = await import(
       pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guided-review.js")).href
     );
-    const notice = staleNotice(
-      {
-        guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
-        current: { merge_base: "a".repeat(40), head: "c".repeat(40) },
-        github_newer: false,
-        history: "ahead",
-        commit_count: 3,
-        commits: [],
-        changed_paths: [],
-        changed_steps: [],
-      },
-      2,
-      (commit) => commit.slice(0, 7),
-    );
-    assert.equal(notice.querySelector(".github-pull-guide-commits"), null);
-    steps.push(`commits counted and not listed: ${lines(notice)}`);
+    const notice = staleNotice({
+      guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+      current: { merge_base: "d".repeat(40), head: "c".repeat(40) },
+      github_newer: false,
+      history: "ahead",
+      commit_count: 3,
+      commits: [{ sha: "c".repeat(40), subject: "Merge main" }],
+      changed_paths: [],
+      changed_steps: [],
+    });
+    plainly(notice);
+    steps.push(`a guide whose cited files did not change: ${said(notice)}`);
   }
 
   // One step's read refused, or failed, keeps the guide: its steps, the place, and the way

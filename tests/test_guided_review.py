@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import itertools
 import re
 import threading
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from types import UnionType
+from typing import Any, TypeAliasType, Union, cast, get_args, get_origin
 
 import pytest
+from pydantic import BaseModel
+from pydantic.fields import FieldInfo
 from softschema.compile import compile_model
 
 from metabrowser.builtin_plugins.github import guided_review
@@ -23,6 +27,7 @@ from metabrowser.builtin_plugins.github.guided_review import (
     GuideError,
     _excerpt,  # pyright: ignore[reportPrivateUsage]
     _hunk_rows,  # pyright: ignore[reportPrivateUsage]
+    _outside_shape,  # pyright: ignore[reportPrivateUsage]
     _references,  # pyright: ignore[reportPrivateUsage]
     parse_guide,
     read_guide,
@@ -263,7 +268,8 @@ def test_a_block_outside_the_schemas_shape_never_reaches_the_schema(
     """softschema writes a record for each undeclared key, each with a copy of the whole
     mapping, and checks MAX_ITEMS and MAX_REFERENCES in the same pass, so a description
     at the body bound took about two minutes to refuse (D1 of review D on #677). Each such
-    shape is refused before softschema runs, at the place softschema names first."""
+    shape is refused before softschema runs, at a place softschema refuses too, the same
+    place for a block with one problem."""
     validated: list[object] = []
     real = guided_review.validate_artifact
 
@@ -281,6 +287,79 @@ def test_a_block_outside_the_schemas_shape_never_reaches_the_schema(
     # A block within the shape still reaches it.
     assert parse_guide(_GUIDE) is not None
     assert len(validated) == 1
+
+
+def _nested(field: FieldInfo) -> tuple[type[BaseModel], int | None] | None:
+    """The model a field holds and, when it holds a list of them, the list's bound."""
+    annotation = cast(object, field.annotation)
+    while isinstance(annotation, TypeAliasType):
+        annotation = annotation.__value__
+    if get_origin(annotation) in (Union, UnionType):
+        options = [arg for arg in get_args(annotation) if arg is not type(None)]
+        annotation = options[0] if len(options) == 1 else None
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation, None
+    if get_origin(annotation) is list:
+        (inner,) = get_args(annotation)
+        if isinstance(inner, type) and issubclass(inner, BaseModel):
+            bounds = [getattr(item, "max_length", None) for item in field.metadata]
+            bound = next((value for value in bounds if isinstance(value, int)), None)
+            assert bound is not None, f"a list of {inner.__name__} declares no max_length"
+            return inner, bound
+    return None
+
+
+def _places(
+    model: type[BaseModel], at: list[str | int]
+) -> Iterator[tuple[list[str | int], type[BaseModel], int | None]]:
+    """Each field reachable from *model* that holds a model or a list of models."""
+    for name, field in model.model_fields.items():
+        nested = _nested(field)
+        if nested is not None:
+            inner, bound = nested
+            yield [*at, name], inner, bound
+            yield from _places(inner, [*at, name] if bound is None else [*at, name, 0])
+
+
+def _skeleton(model: type[BaseModel]) -> dict[str, object]:
+    """A mapping of *model* inside the walk's shape: its nested models, and nothing else."""
+    document: dict[str, object] = {}
+    for name, field in model.model_fields.items():
+        nested = _nested(field)
+        if nested is not None:
+            inner, bound = nested
+            document[name] = _skeleton(inner) if bound is None else [_skeleton(inner)]
+    return document
+
+
+def _node(document: object, place: list[str | int]) -> Any:
+    node: Any = document
+    for part in place:
+        node = node[part]
+    return node
+
+
+def test_the_shape_walk_reaches_every_nested_model() -> None:
+    """The walk names by hand which fields hold an object or a list of objects. A nested
+    model it did not visit would take an undeclared key past it to softschema's quadratic
+    refusal (E2 of review E on #677), so each one reachable from Collection is refused at
+    its own place: an object for an undeclared key, and a list one past its bound."""
+    places = list(_places(Collection, []))
+    # The search finds today's three, so it would find a fourth.
+    found = [place for place, _, _ in places]
+    assert all(known in found for known in (["comparison"], ["items"], ["items", 0, "references"]))
+    assert _outside_shape(_skeleton(Collection)) is None
+    for place, inner, bound in places:
+        objects = [place] if bound is None else [[*place, 0]]
+        for at in objects:
+            document = copy.deepcopy(_skeleton(Collection))
+            _node(document, at)["undeclared"] = 0
+            assert _outside_shape(document) == at
+        if bound is not None:
+            for count, refused in ((bound, None), (bound + 1, place)):
+                document = copy.deepcopy(_skeleton(Collection))
+                _node(document, place[:-1])[place[-1]] = [_skeleton(inner)] * count
+                assert _outside_shape(document) == refused
 
 
 @pytest.fixture
