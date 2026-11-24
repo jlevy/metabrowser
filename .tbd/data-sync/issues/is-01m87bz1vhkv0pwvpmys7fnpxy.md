@@ -3,15 +3,19 @@ type: is
 id: is-01m87bz1vhkv0pwvpmys7fnpxy
 title: "PR #771 A6: the PR description is stale against the KPress 0.3.10 release"
 kind: bug
-status: open
+status: closed
 priority: 3
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels: []
 dependencies: []
 parent_id: is-01m87bxfh1ymbm8c10h6rzs8gx
 created_at: 2026-11-24T18:09:22.799Z
-updated_at: 2026-11-24T18:37:24.303Z
+updated_at: 2026-11-24T19:23:07.284Z
+closed_at: 2026-11-24T19:23:07.282Z
+close_reason: "PR #771's description corrected for review A6 at head 96e13f0a5: Summary allowlist and projection bullets (A1, A2, A3, A7), the KPress 0.3.10 section (KPress removes the link and the typeless input), Known gap 1 rewritten from a headless-Chrome re-run at 0.3.10 (bullet lists closed; an ordered list keeps its number on inert surfaces), the test plan, and the guide re-pinned to 7c4bd886b..96e13f0a5 with a step for _RawMarkup and _inline_change; route_check: 10 of 10 steps ready."
+resolution: null
+duplicate_of: null
 ---
 Low. PR body: KPress 0.3.10 section, Known gaps, test plan, guided review note. The coordinator maintains the body. PR #771, review https://github.com/jlevy/metabrowser/pull/771#pullrequestreview-6044731578
 
