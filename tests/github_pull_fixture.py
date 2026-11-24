@@ -1301,10 +1301,11 @@ def _patched(target: object, name: str, value: object) -> Generator[None]:
         setattr(target, name, original)
 
 
-def build_home(directory: Path, *, files: bool = False) -> None:
+def build_home(directory: Path, *, files: bool = False, guided: bool = False) -> None:
     """Cache the mirror and pull requests 7 to 10 through the production CLI path.
 
     With *files*, :func:`build_file_lists` adds lists of changed files.
+    With *guided*, the fake GitHub serves guides against known fixture comparisons.
 
     The seams are the in-process goldens' own: the origin URL, the Git floor (the
     machine's Git may be below it), the clock, and a fake ``gh`` first on ``PATH``.
@@ -1320,6 +1321,8 @@ def build_home(directory: Path, *, files: bool = False) -> None:
 
     origin = build_origin(directory)
     answers = scenario(origin)
+    if guided:
+        _add_guides(origin, answers)
     environment = install_fake_gh(directory, answers)
     version, _raw = detect_git_version()
     local = origin.url
@@ -1347,6 +1350,44 @@ def build_home(directory: Path, *, files: bool = False) -> None:
             build_file_lists(directory, answers)
     write_damaged_records(directory / "home")
     (directory / "root").mkdir(exist_ok=True)
+
+
+def guide_body(origin: Origin) -> str:
+    """An author-written description for the stand-in pull request 7."""
+    return f"""The app learns to count to two. Its count and its explanation live in separate
+files.
+
+```guided-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "{origin["base"]}"
+    head: "{origin["fork_head"]}"
+  items:
+    - title: Start with the count
+      note: Check that the original value is preserved.
+      references:
+        - {{path: src/app.txt, side: new, start_line: 1, end_line: 2}}
+    - title: Read the new guide
+      note: Check the new docs against the behavior.
+      references:
+        - {{path: docs/new.md, side: new, start_line: 1, end_line: 1}}
+        - {{path: src/app.txt}}
+        - {{path: missing.txt}}
+        - {{path: src/app.txt, side: old, start_line: 2, end_line: 4}}
+```
+"""
+
+
+def _add_guides(origin: Origin, answers: dict[str, Any]) -> None:
+    fence = guide_body(origin)
+    api = answers["api"]
+    api["repos/octo/demo/pulls/7"]["body"]["body"] = fence
+    api["repos/octo/demo/pulls/8"]["body"]["body"] = fence
+    api["repos/octo/demo/pulls/9"]["body"]["body"] = fence + "\n" + fence
 
 
 def _source_slug() -> str:
@@ -1456,12 +1497,13 @@ def write_damaged_records(home: Path) -> None:
     write_private_file_atomic(home, source_pull_record(slug, 13), b"{not json")
 
 
-def serve_stand_in(directory: Path, number: int, port: int) -> None:
+def serve_stand_in(directory: Path, number: int, port: int, *, exit_on_eof: bool = False) -> None:
     """Serve pull request *number* from a home :func:`build_home` wrote, for a browser.
 
     The same seams as :func:`build_home`, with the real clock, so the records read as
     stale and a refresh through the page asks the fake ``gh`` again. Nothing leaves
-    ``127.0.0.1``: the mirror refreshes from the ``file://`` origin.
+    ``127.0.0.1``: the mirror refreshes from the ``file://`` origin. With *exit_on_eof* the
+    server stops when its standard input closes, as a test that owns it needs.
     """
 
     from metabrowser.cache import acquire
@@ -1482,7 +1524,10 @@ def serve_stand_in(directory: Path, number: int, port: int) -> None:
         _patched(acquire, "remote_url_for", remote_url_for),
         _patched(acquire, "require_acquisition_git", lambda: version),
     ):
-        _run_cli([f"{CANONICAL}/pull/{number}", "--no-open", "--port", str(port)])
+        _run_cli(
+            [f"{CANONICAL}/pull/{number}", "--no-open", "--port", str(port)]
+            + (["--exit-on-eof"] if exit_on_eof else [])
+        )
 
 
 # The checkouts :func:`build_checkout_home` makes, each with its ``origin`` and any other
@@ -1564,14 +1609,26 @@ if __name__ == "__main__":
         run_files_refresh(sys.argv[2:])
     elif len(sys.argv) == 3 and sys.argv[2] == "--checkout":
         build_checkout_home(Path(sys.argv[1]).resolve())
-    elif len(sys.argv) == 5 and sys.argv[2] == "--serve":
-        serve_stand_in(Path(sys.argv[1]).resolve(), int(sys.argv[3]), int(sys.argv[4]))
+    elif (
+        len(sys.argv) in (5, 6)
+        and sys.argv[2] == "--serve"
+        and sys.argv[5:] in ([], ["--exit-on-eof"])
+    ):
+        serve_stand_in(
+            Path(sys.argv[1]).resolve(),
+            int(sys.argv[3]),
+            int(sys.argv[4]),
+            exit_on_eof=sys.argv[5:] == ["--exit-on-eof"],
+        )
     elif len(sys.argv) == 3 and sys.argv[2] == "--files":
         build_home(Path(sys.argv[1]).resolve(), files=True)
+    elif len(sys.argv) == 3 and sys.argv[2] == "--guided":
+        build_home(Path(sys.argv[1]).resolve(), guided=True)
     elif len(sys.argv) == 2:
         build_home(Path(sys.argv[1]).resolve())
     else:
         raise SystemExit(
-            "usage: github_pull_fixture.py <directory> [--files | --checkout | --serve <number> <port>] "
+            "usage: github_pull_fixture.py <directory> "
+            "[--files | --guided | --checkout | --serve <number> <port> [--exit-on-eof]] "
             "or --files-refresh <metab arguments>"
         )

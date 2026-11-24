@@ -275,6 +275,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_acquire_stall_and_hangup.py \
 	tests/test_acquire_phases.py \
 	tests/test_github_pulls.py \
+	tests/test_guided_review_route.py \
 	tests/test_github_pull_list.py \
 	tests/test_pulls_nav.py \
 	tests/test_checkout_overlay.py \

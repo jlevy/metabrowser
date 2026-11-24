@@ -802,7 +802,7 @@
    * @typedef {{
    *   label?: string, kind?: string, trunk?: boolean, head?: boolean,
    *   menu?: "inline" | "sibling" | false, copy?: "inline" | "sibling" | false,
-   *   ref?: string, repository?: string | null, snapshot?: string,
+   *   ref?: string, repository?: string | null, snapshot?: string, current?: boolean,
    * }} RefChipOptions
    */
 
@@ -833,6 +833,7 @@
             ref: options.ref,
             repository: options.repository,
             snapshot: options.snapshot,
+            current: options.current,
           })
         : null,
     };
@@ -1081,7 +1082,7 @@
   }
 
   /** @typedef {{name: string, label: string, kind: string, ref?: string,
-   * repository?: string | null, snapshot?: string}} RefMenuData */
+   * repository?: string | null, snapshot?: string, current?: boolean}} RefMenuData */
   /** @type {{ trigger: HTMLButtonElement, menu: HTMLElement, close(focus: boolean): void } | null} */
   let activeRefMenu = null;
   let refMenuIsSwitching = false;
@@ -1242,7 +1243,7 @@
     });
     /** @type {HTMLElement[]} */
     const items = [copy];
-    if (data.ref && viewable) {
+    if (data.ref && viewable && !data.current) {
       const view = doc.createElement("button");
       view.type = "button";
       renderLinkMenuItem(

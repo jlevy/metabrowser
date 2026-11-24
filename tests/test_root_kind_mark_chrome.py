@@ -128,7 +128,7 @@ def test_each_kind_of_root_draws_its_mark_before_its_name_in_chrome(
         "</body></html>\n",
         encoding="utf-8",
     )
-    # A real checkout lets the branch chip offer a local pin without contacting GitHub.
+    # A real checkout with a matching remote-tracking ref lets the chip offer GitHub offline.
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     branch = "topic/a-branch-name-that-stays-readable-when-the-nav-gets-narrow"

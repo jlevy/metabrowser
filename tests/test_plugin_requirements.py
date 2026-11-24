@@ -212,7 +212,7 @@ def test_every_builtin_loads_exactly_the_providers_it_declares() -> None:
         "event_log": {"agents"},
         "folder": {"markdown"},
         "fsqlite": {"sqlite", "table"},
-        "github": {"markdown"},
+        "github": {"markdown", "diff"},
         "html": set(),
         "image": set(),
         "markdown": set(),
