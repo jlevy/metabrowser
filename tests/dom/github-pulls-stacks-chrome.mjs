@@ -331,7 +331,12 @@ const SHELL_TIPS = `(async () => {
   const host = h("div", { style: "position: fixed; left: 320px; top: 120px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px" }, Object.values(anchors));
   document.body.append(host);
   const label = chipCut.querySelector(".git-ref-label");
+  const wholeLabel = anchors.chipWhole.querySelector(".git-ref-label");
+  // Force the vertical overflow that a tight line can report with some fonts.
+  wholeLabel.style.height = "8px";
   const result = {
+    chipWholeOverflowsVertically: wholeLabel.scrollHeight > wholeLabel.clientHeight,
+    chipWholeOverflowsHorizontally: wholeLabel.scrollWidth > wholeLabel.clientWidth,
     // The chip's label is the box cut short, inside the chip.
     chipLabelCut: label.scrollWidth > label.clientWidth,
   };
@@ -1013,6 +1018,8 @@ try {
     check(
       "the shell shows no tooltip on a whole branch chip, and shows the full name while the chip's label is cut short",
       tips.chipWhole === null &&
+        tips.chipWholeOverflowsVertically &&
+        !tips.chipWholeOverflowsHorizontally &&
         tips.chipLabelCut === true &&
         tips.chipCut === "feature/a-branch-name-longer-than-its-chip",
       JSON.stringify(tips),

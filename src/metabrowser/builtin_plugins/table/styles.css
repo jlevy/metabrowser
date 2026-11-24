@@ -43,7 +43,7 @@
 .table-chips {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--chip-cluster-gap);
 }
 .table-chips:empty {
   display: none;
@@ -53,8 +53,10 @@
   align-items: center;
   gap: 2px;
   max-width: 28em;
-  padding: 1px 2px 1px 8px;
-  border: 1px solid var(--link);
+  box-sizing: border-box;
+  min-block-size: var(--chip-height);
+  padding: var(--chip-padding-y) 2px var(--chip-padding-y) 8px;
+  border: var(--chip-border) solid var(--link);
   border-radius: var(--radius-pill);
   font-size: var(--ui-small-font-size);
 }
@@ -278,16 +280,16 @@
 .table-ref {
   display: inline-block;
   max-width: 100%;
-  padding: 0 7px;
+  padding: 0 var(--compact-chip-padding-inline);
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
+  border: var(--chip-border) solid var(--border);
+  border-radius: var(--radius-tag);
   color: var(--text);
   font-size: var(--ui-small-font-size);
-  line-height: calc(var(--table-line-height) - 2px);
+  line-height: calc(var(--compact-chip-height) - 2 * var(--chip-border));
   text-decoration: none;
   text-overflow: ellipsis;
-  vertical-align: top;
+  vertical-align: middle;
   white-space: nowrap;
 }
 .table-ref:hover {
