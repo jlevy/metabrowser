@@ -5,138 +5,16 @@
 // revision's GitPath wire, and reads the SDK's `host` and `capabilities()` accessors the
 // view decides by. Only the browser's painting of the PDF is left out.
 
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
+const {
+  APP_HOST,
+  PDF_VIEW,
+  createPage,
+  describe,
+  preparePdfView,
+} = require("./pdf-view-harness.js");
 
-const repoRoot = path.resolve(__dirname, "../..");
-let innerHtmlWrites = 0;
-
-class FakeElement {
-  constructor(tagName, ownerDocument) {
-    this.tagName = String(tagName).toUpperCase();
-    this.ownerDocument = ownerDocument;
-    this.parentNode = null;
-    this.children = [];
-    this.attributes = new Map();
-    this._innerHTML = "";
-    this._text = "";
-  }
-
-  set innerHTML(value) {
-    innerHtmlWrites += 1;
-    this._innerHTML = String(value);
-    this.replaceChildren();
-  }
-
-  get innerHTML() {
-    return this._innerHTML;
-  }
-
-  set textContent(value) {
-    this._text = String(value);
-    this.replaceChildren();
-  }
-
-  get textContent() {
-    return this._text + this.children.map((child) => child.textContent).join("");
-  }
-
-  setAttribute(name, value) {
-    this.attributes.set(String(name), String(value));
-  }
-
-  getAttribute(name) {
-    return this.attributes.get(String(name)) ?? null;
-  }
-
-  hasAttribute(name) {
-    return this.attributes.has(String(name));
-  }
-
-  removeAttribute(name) {
-    this.attributes.delete(String(name));
-  }
-
-  replaceChildren(...children) {
-    for (const child of this.children) {
-      child.parentNode = null;
-    }
-    this.children = [];
-    for (const child of children) {
-      if (child.parentNode) {
-        child.remove();
-      }
-      child.parentNode = this;
-      this.children.push(child);
-    }
-  }
-
-  remove() {
-    if (!this.parentNode) {
-      return;
-    }
-    const parent = this.parentNode;
-    parent.children = parent.children.filter((child) => child !== this);
-    this.parentNode = null;
-  }
-}
-
-const document = {
-  addEventListener() {},
-  querySelector() {
-    return null;
-  },
-  querySelectorAll() {
-    return [];
-  },
-  documentElement: {},
-};
-document.createElement = (tagName) => new FakeElement(tagName, document);
-document.head = document.createElement("head");
-
-const sandbox = {
-  console,
-  document,
-  encodeURIComponent,
-  fetch: () => Promise.reject(new Error("fetch is unavailable in the pdf session")),
-  location: { origin: "http://127.0.0.1:8411" },
-  Map,
-  Promise,
-  Set,
-  TextDecoder,
-  Uint8Array,
-  URL,
-  atob,
-  btoa,
-  clearInterval,
-  clearTimeout,
-  setInterval,
-  setTimeout,
-};
-sandbox.window = sandbox;
-sandbox.globalThis = sandbox;
-vm.createContext(sandbox);
-
-function runProduction(relative) {
-  const absolute = path.join(repoRoot, relative);
-  vm.runInContext(fs.readFileSync(absolute, "utf8"), sandbox, { filename: absolute });
-}
-
-for (const relative of [
-  "src/metabrowser/static/request-error.js",
-  "src/metabrowser/static/formatters.js",
-  "src/metabrowser/static/inventory-scope.js",
-  "src/metabrowser/static/contribution-registry.js",
-  "src/metabrowser/static/resource-context.js",
-  "src/metabrowser/static/view-state.js",
-  "src/metabrowser/static/git-path.js",
-  "src/metabrowser/static/navigation.js",
-  "src/metabrowser/static/plugin-sdk.js",
-  "src/metabrowser/static/view-composition.js",
-]) {
-  runProduction(relative);
-}
+const page = createPage();
+const { document, sandbox } = page;
 
 function assert(condition, message) {
   if (!condition) {
@@ -144,33 +22,12 @@ function assert(condition, message) {
   }
 }
 
-/** The macOS app's descriptor, as its user script defines it (apps/macos OpenFileRequests). */
-const APP_HOST = Object.freeze({ actions: Object.freeze(["open-file"]) });
-
 function setProfile({ host, activeContent, sourceKind }) {
-  if (host) {
-    sandbox.metabrowserHost = host;
-  } else {
-    delete sandbox.metabrowserHost;
-  }
-  sandbox.METABROWSER_SETTINGS = {
-    CAPABILITIES: { active_content: activeContent, mutations: false },
-  };
-  if (sourceKind === "git_revision") {
-    sandbox.METABROWSER_SOURCE_KIND = "git_revision";
-  } else {
-    delete sandbox.METABROWSER_SOURCE_KIND;
-  }
-}
-
-/** One element as the golden reads it: its tag, attributes in name order, and text. */
-function describe(element) {
-  const attributes = {};
-  for (const name of Array.from(element.attributes.keys()).sort()) {
-    attributes[name] = element.attributes.get(name);
-  }
-  const text = element.textContent;
-  return { tag: element.tagName.toLowerCase(), attributes, ...(text ? { text } : {}) };
+  page.serve({
+    capabilities: { active_content: activeContent, mutations: false },
+    sourceKind: sourceKind === "git_revision" ? "git_revision" : undefined,
+    host,
+  });
 }
 
 function describeMount(container) {
@@ -211,52 +68,18 @@ function describeMount(container) {
   };
 
   // Composition: the renderer loads with the kind's assets, not eagerly.
-  const compositor = sandbox.MetabrowserViewComposition;
-  const descriptor = {
-    id: "preview",
-    label: "PDF",
-    default: true,
-    container_class: "content-body metabrowser-pdf-host",
-    render_runtime: "client",
-  };
-  const assetRequests = [];
-  let rendererLoaded = false;
-  const ensureKindAssets = async (kind) => {
-    assetRequests.push(kind);
-    if (!rendererLoaded) {
-      runProduction("src/metabrowser/builtin_plugins/pdf/index.js");
-      rendererLoaded = true;
-    }
-  };
-  assert(sdk.getRegisteredView("pdf", "preview") === null, "pdf renderer was eager");
-  const prepared = await compositor.prepare({
-    kind: "pdf",
-    views: [descriptor],
-    preferredViewId: "preview",
-    ensureKindAssets,
-    getRegisteredView: sdk.getRegisteredView,
-    isCurrent: () => true,
-  });
-  const renderer = prepared.views[0]?.renderer;
+  const composed = await preparePdfView(page, [PDF_VIEW]);
+  const { assetRequests, prepared, renderer, lifecycle, host } = composed;
+  assert(!composed.eagerlyRegistered, "pdf renderer was eager");
   assert(prepared.status === "ready", "pdf composition did not become ready");
   assert(renderer && typeof renderer.render === "function", "pdf preview did not register");
 
-  const lifecycle = compositor.createLifecycle();
-  const host = document.createElement("main");
   const folderPath = 'papers/<unsafe "quoted" & file>.pdf';
   const gitWire = "g1-cGFwZXJz/g1-cmVwb3J0LnBkZg";
 
   async function mount(profile, filePath) {
     setProfile(profile);
-    const container = document.createElement("section");
-    const stage = lifecycle.begin();
-    const status = await compositor.mount(
-      container,
-      renderer,
-      { kind: "pdf", path: filePath },
-      stage.disposers,
-    );
-    const committed = stage.commit(() => host.replaceChildren(container));
+    const { container, committed, status } = await composed.mount(filePath);
     return { container, result: { committed, status, ...describeMount(container) } };
   }
 
@@ -269,7 +92,7 @@ function describeMount(container) {
   ]) {
     matrix[label] = (await mount(profile, folderPath)).result;
   }
-  const rendererInnerHtmlWrites = innerHtmlWrites;
+  const rendererInnerHtmlWrites = page.innerHtmlWrites();
 
   // A pinned revision is served inert, and its path is a GitPath wire.
   const pinned = await mount(

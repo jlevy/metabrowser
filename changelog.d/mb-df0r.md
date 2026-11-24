@@ -9,6 +9,10 @@
   blocks
   ([the PDF plan](docs/project/specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)).
 
+- **Raw files without an extension:** `/raw` answers a file whose name gives no type by
+  its leading bytes where they name one, so a PDF without a `.pdf` extension opens in
+  the browser’s viewer instead of downloading.
+
 - **Plugin SDK:** `metabrowser.capabilities()` reports the trust profile the page was
   served under, and `metabrowser.host.supports(action)` reports what the page’s host
   does beyond a browser, by action name.

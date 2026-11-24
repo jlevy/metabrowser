@@ -321,10 +321,15 @@ error bodies, carries the sandbox `raw_sandbox_csp` builds from `_RAW_SANDBOX_TO
 (`capabilities.py`) and `X-Content-Type-Options: nosniff`. The sandbox assigns an opaque
 origin, so script in a browsed file cannot read the application document, cookies,
 storage, or `/api` responses.
-`frame-ancestors` is omitted so nested frames inside a sandboxed page still load: the
-opaque ancestor origin would never match `'self'`. `/raw` is not behind the API origin
-check, because stylesheets and images must load as subresources; a previewed page can
-probe whether a file exists through load and error events, but cannot read its bytes.
+Its type is the one the file’s name gives; for a name that gives none, the file’s
+leading bytes may (`media_type_from_prefix` in `content_sniff.py`), so a PDF without a
+`.pdf` extension, which the `pdf` plugin claims by its bytes, is answered as a PDF
+rather than as `application/octet-stream`, which `nosniff` would leave a browser to
+download. `frame-ancestors` is omitted so nested frames inside a sandboxed page still
+load: the opaque ancestor origin would never match `'self'`. `/raw` is not behind the
+API origin check, because stylesheets and images must load as subresources; a previewed
+page can probe whether a file exists through load and error events, but cannot read its
+bytes.
 
 - **Active content off:** the sandbox omits `allow-scripts`, so a direct `/raw` link
   renders markup and loads subresources but runs nothing.

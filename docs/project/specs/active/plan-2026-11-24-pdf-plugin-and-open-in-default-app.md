@@ -314,6 +314,18 @@ together, since the app’s contract pins the marker the plugin draws.
   `cli-ui-pdf-preview.tryscript.md`): the exact production `index.js` mounted for each
   row of the actions table, with the `/raw` URLs a folder path and a pin’s wire produce,
   replacement, and disposal.
+- **Every surface, from the real server** (`tests/test_pdf_surfaces_session.py` records,
+  `tests/dom/pdf-surfaces-session.js` replays, golden
+  `cli-ui-pdf-surfaces.tryscript.md`): for a trusted folder, an `--untrusted` folder,
+  and a pin, the shell’s trust block and embedding policy, the file route’s kind and
+  views, and the `/raw` answer each action links to, with the production view mounted on
+  them in a browser and in the app; and the pin’s comparison mounted through the
+  production diff view.
+  Its transcript says, one line per file per surface, whether the reader sees the
+  viewer, the note, or a binary file’s line, and its test holds that a drawn viewer is
+  on a page whose policy admits it and that every action reaches the PDF. It found the
+  extensionless PDF answered as `application/octet-stream`, which `/raw` now types by
+  its leading bytes.
 - **SDK:** `mb.host` with no descriptor, with one, and with a malformed one;
   `mb.capabilities()` under each profile.
 - **Swift, pure:** the request parsing, the path resolution (`..`, a symlink out of the
@@ -353,6 +365,11 @@ descriptor.
 4. **A size bound.** The viewer runs out of the page’s process and loads the file
    progressively, so the plan sets no bound on the file’s own view.
    The verification task measures a large PDF; a bound comes only from that measurement.
+5. **An extensionless PDF in the app.** Open reaches the app’s type policy, which reads
+   a file’s type from its name (`OpenFileTypes.type(of:)`) and so refuses one with no
+   extension, which Launch Services would not open in Preview either.
+   A pin’s copy could take an extension from the served type; a folder’s file is opened
+   as it is.
 
 ## References
 

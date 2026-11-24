@@ -92,7 +92,12 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from metabrowser import kpress_adapter
 from metabrowser.capabilities import UNTRUSTED_CAPABILITIES
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
-from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
+from metabrowser.content_sniff import (
+    SNIFF_PREFIX_BYTES,
+    ContentClass,
+    classify_prefix,
+    media_type_from_prefix,
+)
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
     InertRenderRefused,
@@ -2450,7 +2455,8 @@ async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Res
     media_type, _ = mimetypes.guess_type(_display_basename(entry.path))
     return Response(
         content=body,
-        media_type=media_type or "application/octet-stream",
+        # A name that gives no type: the blob's leading bytes may (media_type_from_prefix).
+        media_type=media_type or media_type_from_prefix(body) or "application/octet-stream",
         headers={"cache-control": "no-store"},
     )
 
