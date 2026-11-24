@@ -198,6 +198,9 @@ const FONT = (font) => `(() => {
   return document.fonts.ready.then(() => new Promise((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))));
 })()`;
+// Two frames, so a change to the window is laid out and painted before the next step.
+const FRAME = `new Promise((resolve) =>
+  requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))`;
 
 /**
  * @typedef {{top: number, bottom: number, background: string, gutter: string | null}} Band
@@ -264,6 +267,19 @@ try {
     faces[font] = read.face;
     if (SHOTS && font === "serif") {
       fs.mkdirSync(SHOTS, { recursive: true });
+      // The frames scroll inside the preview pane, which is the window's height, and Chrome
+      // paints only what the pane shows, so the window is made as tall as the pane's content
+      // while the shots are taken, and given back before the next reading.
+      const height = await chrome.evaluate(
+        "Math.ceil(document.getElementById('preview-pane').scrollHeight)",
+      );
+      await chrome.send("Emulation.setDeviceMetricsOverride", {
+        width: 2 * FRAME_PX,
+        height,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await chrome.evaluate(FRAME);
       // Each frame, and the Document view and the diff side by side.
       for (const names of [["document"], ["diff"], ["current"], ["document", "diff"]]) {
         const clip = await chrome.evaluate(`(() => {
@@ -285,6 +301,8 @@ try {
           Buffer.from(data, "base64"),
         );
       }
+      await chrome.send("Emulation.clearDeviceMetricsOverride");
+      await chrome.evaluate(FRAME);
     }
     const document = spaced(read.frames.document);
     const old = spaced(read.frames["old document"]);
