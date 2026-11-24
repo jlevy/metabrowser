@@ -7,7 +7,6 @@ and the other carriers below.
 
 A collection is an ordered list of annotated items: each item is a title, a note, and
 the references it is about.
-That is all the format says.
 What the references point at, how they resolve, and what a reader sees are decided by
 the **carrier**, the place a collection is written and read.
 A guided review is the first carrier: a code-review guide in a pull request’s
@@ -38,14 +37,22 @@ collection:
 - **`items`** are ordered, and the order is the author’s. Each has a `title`, a `note`,
   and one or more `references`, all plain text that a reader shows as typed.
 - **A reference** is a `path`, optionally with a `side` and an inclusive line range.
-  A carrier decides what a path names and whether a range means anything: in a guided
-  review it is a changed file and a range of its diff.
+  A carrier decides what a path names and how a range resolves: in a guided review it is
+  a changed file and a range of its diff.
+  v1 adds two rules of its one carrier that the compiled schema does not express, so the
+  models enforce them (`CollectionReference` in `guided_review.py`): a path is a
+  normalized relative path (no `./`, `..`, or trailing `/`), checked as the pull route
+  forms an address; and a range needs `side` and both line numbers, in order, so every
+  v1 range is a range of a diff.
+  A carrier without a change, which cannot cite lines that way, relaxes the range rule,
+  as it does `comparison`.
 - **`comparison`** pins the change the references resolve against.
   v1 requires it, because its one carrier is a pull request’s description, which is not
   versioned with the code it describes.
   A carrier without a change, such as a file versioned with what it lists, makes it
-  optional, and that is not a break: a required field made optional is compatible
-  ([Contracts](../specs/active/plan-2026-11-14-object-data-model-and-views.md#contracts)).
+  optional. That keeps v1, since
+  [Contracts](../specs/active/plan-2026-11-14-object-data-model-and-views.md#contracts)
+  counts only a field removed, renamed, or retyped as a break.
 - **A collection has no prose of its own.** The document that carries it introduces it,
   as a pull request’s description introduces its guide.
 
@@ -53,8 +60,10 @@ The
 [compiled schema](../../../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
 is generated from the Pydantic models (`Collection` and its parts in
 `builtin_plugins/github/guided_review.py`), and `tests/test_guided_review.py` fails when
-they drift. `MAX_ITEMS` and `MAX_REFERENCES` there bound a record, each with the
-measurement that set it.
+they drift. `MAX_ITEMS` and `MAX_REFERENCES` there bound a record.
+Both were measured on guided-review costs (the parse per item, and a step’s diff
+hydration), each beside its constant; a later carrier measures its own costs before it
+keeps or changes them.
 
 ## Format and Carrier
 
@@ -70,7 +79,7 @@ The split keeps the format small enough to share:
 
 **Guided reviews** (`guided_review.py`, `guided-review.js`) are the carrier built today.
 The record is a `guided-review` fence in a pull request’s description; `comparison` is
-required, its `merge_base` must be where Git leaves its `head`, and its head a commit; a
+required, its `merge_base` must be an ancestor of its `head`, and its head a commit; a
 path is a changed file and a range lies in one hunk of its diff; excerpts are bounded by
 `MAX_EXCERPT_BYTES` and `MAX_STEP_PATCH_BYTES`; the record is stale when the pull
 request’s comparison moves.
@@ -88,9 +97,10 @@ until a second carrier needs one.
 None of these is built.
 Each would reuse the record and add only its carrier’s rules:
 
-- **Other review scenarios.** A guide to a commit, to a comparison of two branches or
-  tags, or to a working tree’s uncommitted changes would pin `comparison` as a guided
-  review does and resolve paths against that diff.
+- **Other review scenarios.** A guide to a commit, or to a comparison of two branches or
+  tags, would pin `comparison` as a guided review does and resolve paths against that
+  diff. A working tree’s uncommitted changes have no commit for `head`, so a guide to
+  them needs a pin of another kind.
   A review of a set of documents would cite files without a change.
 - **Collections in repository files** (mb-2sft): a YAML file in the served tree, read by
   a built-in `collection` plugin that takes over the format module, with Rows, Table,
@@ -101,8 +111,8 @@ Each would reuse the record and add only its carrier’s rules:
   whose links are items, read into the same record.
 - **Later uses** (mb-z9ox): object references, cards, and a Documents view.
 
-#679’s research brief, `research-2026-11-22-annotated-collections-and-guided-pr.md`,
-records the design and the owner’s decisions behind this split.
+The research brief on [#679](https://github.com/jlevy/metabrowser/pull/679) records the
+design and the owner’s decisions behind this split.
 Moving the models out of the GitHub plugin is a module move: the contract ID already
 names the `collection` plugin that will own it, so it does not change.
 

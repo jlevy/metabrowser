@@ -984,7 +984,7 @@ The request names a PR and an optional one-based step.
 The handler checks both comparison endpoints and a newer head GitHub’s list knows, and
 hydrates just the paths that the chosen step needs through the same manifest and diff
 adapter as Changes, always at the guide’s own pins.
-Pins that do not name a comparison, a `merge_base` that is not where Git leaves the
+Pins that do not name a comparison, a `merge_base` that is not an ancestor of the
 guide’s head or a head that is no commit, are answered `invalid`. Only the record’s own
 comparison is the pull request’s kept manifest (`pull_manifest.py`): a stale guide’s
 pins are listed beside it, never over it.
