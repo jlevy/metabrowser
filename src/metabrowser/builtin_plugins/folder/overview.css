@@ -217,8 +217,8 @@
     /* Inside that track the rail takes the table of contents' own inset, KPress's
        `.kpress-toc` padding (components.css: 1.2rem at the start, 0.7rem at the end), so a
        README's contents and this legend read as one column: each swatch sits on the line of
-       the contents' entry marks (their 2px leading border), and each type's name starts
-       where the contents' entries do. */
+       the contents' entry marks, and each share ends where the entries do. A copied value,
+       so tests/test_kpress_dependency_contract.py pins KPress's padding and this rule. */
     .file-overview-body .file-type-summary-share {
       position: absolute;
       inset-block-start: 0;
@@ -226,6 +226,13 @@
       box-sizing: border-box;
       width: 15rem;
       padding-inline: 1.2rem 0.7rem;
+    }
+
+    /* Each type's name starts where a level-1 entry's text does: past KPress's 2px entry
+       mark (`.kpress-toc a`) and its 0.75rem level-1 inset (`.kpress-toc-level-1 > a`),
+       less the swatch before it. In rem, so it holds at any root font size. */
+    .file-overview-body .file-type-summary-legend-item {
+      gap: calc(2px + 0.75rem - var(--mb-distribution-track-height));
     }
 
     .file-overview-body .file-type-summary-legend {
