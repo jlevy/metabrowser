@@ -487,6 +487,9 @@ Strict mode is off on a developer machine, which can add these:
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
   fold of unchanged blocks closed, open, and under the pointer, and its quote and code
   against a document’s in the light and the dark theme;
+  `tests/test_diff_markdown_spacing_chrome.py`, which measures the space between a
+  rendered Markdown diff’s blocks against the Document view of the same text, in the
+  serif and the sans reading font, and where a changed block’s band is drawn;
   `tests/test_checkout_ref_selector_chrome.py`, which serves a checkout with `metab` and
   switches it between its working tree and its branches and tags from the page, reading
   each document’s policy and the selector’s panel, and then compares every file under

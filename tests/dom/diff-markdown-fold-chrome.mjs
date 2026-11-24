@@ -122,24 +122,26 @@ const MOUNT = `(blocks) => {
 }`;
 
 // Read geometry at two card widths under the same preview pane, so a column based on
-// the viewport rather than the file box fails this check.
+// the viewport rather than the file box fails this check. A changed row's band is its
+// ::before, set from the row's padding box, whose inline start is past the row's border.
 const RENDERED_GEOMETRY = `(width) => {
   const file = document.querySelector(".diff-file");
   const row = file.querySelector(".diff-markdown-added");
   const style = getComputedStyle(row);
+  const band = getComputedStyle(row, "::before");
   file.style.inlineSize = width + "px";
   const start = file.getBoundingClientRect().left + file.clientLeft;
   const end = start + file.clientWidth;
   const prose = row.querySelector(".kpress-prose").getBoundingClientRect();
-  const band = row.getBoundingClientRect();
+  const rowBox = row.getBoundingClientRect();
   const result = {
     startInset: prose.left - start,
     endInset: end - prose.right,
     proseWidth: prose.width,
-    bandStart: band.left - start,
-    bandEnd: end - band.right,
-    gutterColor: style.borderInlineStartColor,
-    gutterWidth: parseFloat(style.borderInlineStartWidth),
+    bandStart: rowBox.left + parseFloat(style.borderLeftWidth) + parseFloat(band.left) - start,
+    bandEnd: end - (rowBox.right - parseFloat(style.borderRightWidth) - parseFloat(band.right)),
+    gutterColor: band.borderInlineStartColor,
+    gutterWidth: parseFloat(band.borderInlineStartWidth),
   };
   file.style.removeProperty("inline-size");
   return result;
@@ -177,6 +179,9 @@ const READ = `() => {
       box: box(row),
       face: face(row),
       textLeft: row.querySelector(".kpress-prose > *").getBoundingClientRect().left,
+      // Its block's margins, which pass through the row to collapse with its neighbours'.
+      marginTop: parseFloat(getComputedStyle(row.querySelector(".kpress-prose > *")).marginTop),
+      marginBottom: parseFloat(getComputedStyle(row.querySelector(".kpress-prose > *")).marginBottom),
     }));
   return {
     open: fold.open,
@@ -407,15 +412,17 @@ try {
   const after = closed.rows.findIndex((row) => !row.first);
   const before = after - 1;
   check("the fold has unchanged blocks on each side", before >= 0 && after > 0, `${after}`);
+  // A block's margins pass through its row (styles.css), and the fold has none of its own,
+  // so the space on each side of it is the margin of the block there.
   check(
-    "closed, the fold starts where the block before it ends",
-    near(closed.rows[before].box.bottom, closed.fold.top),
-    `${closed.fold.top} against ${closed.rows[before].box.bottom}`,
+    "closed, the space above the fold is the margin of the block before it",
+    near(closed.fold.top - closed.rows[before].box.bottom, closed.rows[before].marginBottom),
+    `${closed.fold.top - closed.rows[before].box.bottom} against ${closed.rows[before].marginBottom}`,
   );
   check(
-    "closed, the next block starts where the fold ends",
-    near(closed.rows[after].box.top, closed.fold.bottom),
-    `${closed.rows[after].box.top} against ${closed.fold.bottom}`,
+    "closed, the space below the fold is the margin of the block after it",
+    near(closed.rows[after].box.top - closed.fold.bottom, closed.rows[after].marginTop),
+    `${closed.rows[after].box.top - closed.fold.bottom} against ${closed.rows[after].marginTop}`,
   );
   check(
     "closed, the summary is the fold's whole box",
@@ -496,17 +503,32 @@ try {
     );
   }
   check(
-    "open, the first hidden block starts where the summary ends",
-    inserted.length > 0 && near(inserted[0].box.top, opened.summary.bottom),
-    `${inserted[0]?.box.top} against ${opened.summary.bottom}`,
+    "open, the space above the first hidden block is its margin",
+    inserted.length > 0 && near(inserted[0].box.top - opened.summary.bottom, inserted[0].marginTop),
+    `${inserted[0]?.box.top - opened.summary.bottom} against ${inserted[0]?.marginTop}`,
   );
+  // The two unchanged blocks right before the fold, spaced as the document spaces them.
+  const spacing = opened.rows[before].box.top - opened.rows[before - 1].box.bottom;
+  check("the fold has two unchanged blocks before it", before >= 1 && spacing > 0, `${spacing}`);
   for (let index = 1; index < inserted.length; index += 1) {
+    const gap = inserted[index].box.top - inserted[index - 1].box.bottom;
     check(
-      `open, "${inserted[index].text}" starts where the block before it ends`,
-      near(inserted[index].box.top, inserted[index - 1].box.bottom),
-      `${inserted[index].box.top} against ${inserted[index - 1].box.bottom}`,
+      `open, "${inserted[index].text}" is as far from the block before it as the blocks before the fold are`,
+      near(gap, spacing),
+      `${gap} against ${spacing}`,
     );
   }
+  // The block after the fold, as far from the last block the fold holds as the blocks
+  // before the fold are from each other: a disclosure's content clipped by `overflow:
+  // hidden`, KPress's, kept that block's margin inside the fold and doubled the space.
+  const next = opened.rows.find((row) => !row.folded && !row.first);
+  check(
+    "open, the block after the fold is as far from the fold's last block as the blocks before the fold are",
+    inserted.length > 0 &&
+      next !== undefined &&
+      near(next.box.top - inserted.at(-1).box.bottom, spacing),
+    `${next?.box.top - inserted.at(-1)?.box.bottom} against ${spacing}`,
+  );
   check(
     "open, the fold ends where its last block ends",
     inserted.length > 0 && near(opened.fold.bottom, inserted.at(-1).box.bottom),
@@ -518,15 +540,15 @@ try {
       near(opened.summary.height, closed.summary.height),
     `${opened.summary.top}/${opened.summary.height} against ${closed.summary.top}/${closed.summary.height}`,
   );
-  const added = inserted.reduce((sum, row) => sum + row.box.height, 0);
+  const grown = opened.fold.height - closed.fold.height;
   const shownOpen = opened.rows.filter((row) => !row.folded);
   closed.rows.forEach((row, index) => {
     const moved = shownOpen[index].box.top - row.box.top;
-    const expected = index < after ? 0 : added;
+    const expected = index < after ? 0 : grown;
     check(
-      `open, "${row.text}" moves by the inserted blocks alone`,
+      `open, "${row.text}" moves by as much as the fold grows, and no more`,
       near(moved, expected),
-      `moved ${moved}, inserted ${expected}`,
+      `moved ${moved}, the fold grew ${expected}`,
     );
   });
 
