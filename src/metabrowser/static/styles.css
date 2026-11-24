@@ -561,6 +561,8 @@
   --icon-glyph: 14px;
   --icon-box: 16px;
   --icon-btn-size: 24px;
+  /* Center heading glyphs on the capital band, above the full line-box center. */
+  --heading-icon-offset-y: -1px;
   /* From a category's icon to its name in the heading (.category-icon): a tree row's
      gap from its file icon to its name, so the mark sits off the word as it does in a
      row, and a Group by heading's name lines up with its rows' names. */
@@ -1839,6 +1841,10 @@ body {
   height: var(--icon-glyph);
   color: var(--muted);
 }
+.header-root-kind > svg,
+.root-details-trigger svg {
+  translate: 0 var(--heading-icon-offset-y);
+}
 .header-root-kind > svg {
   width: 100%;
   height: 100%;
@@ -1878,15 +1884,13 @@ body {
   letter-spacing: normal;
   text-transform: none;
 }
-.root-details-trigger {
-  list-style: none;
-}
-.root-details[open] > .root-details-trigger {
+.root-details-trigger[aria-expanded="true"] {
   background: var(--hover-bg);
   color: var(--text);
 }
-.root-details-trigger::-webkit-details-marker {
-  display: none;
+/* The summary owns the hover target for the decorative glyph. */
+.root-details-trigger > span {
+  pointer-events: none;
 }
 .root-details-trigger svg {
   display: block;
@@ -1898,7 +1902,7 @@ body {
   max-height: min(60vh, 28rem);
   overflow: auto;
 }
-.root-details:not([open]) > .root-details-panel,
+.root-details-panel[hidden],
 .root-details-panel [hidden],
 .root-details-source:empty {
   display: none;

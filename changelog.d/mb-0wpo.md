@@ -1,0 +1,1 @@
+- Align the sidebar folder and Info glyphs with the heading text.

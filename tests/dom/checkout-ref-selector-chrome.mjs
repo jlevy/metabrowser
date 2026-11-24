@@ -564,7 +564,19 @@ try {
   await capture("working-tree");
   result.workingTreePanel = await openPanel();
   await capture("working-tree-panel");
-  result.workingTreeRemotes = await openPanelList("Remotes");
+  await chrome.evaluate('document.querySelector(".source-ref-selector-kinds button").focus()');
+  for (const type of ["keyDown", "keyUp"]) {
+    await chrome.send("Input.dispatchKeyEvent", {
+      type,
+      key: "ArrowRight",
+      code: "ArrowRight",
+      windowsVirtualKeyCode: 39,
+    });
+  }
+  await chrome.waitFor(
+    'document.activeElement.dataset.chipValue === "remote" && document.activeElement.getAttribute("aria-checked") === "true" && document.querySelector(".source-ref-selector-list").getAttribute("aria-busy") === "false"',
+  );
+  result.workingTreeRemotes = await chrome.evaluate(PANEL);
   result.workingTreeTags = await openPanelList("Tags");
   await openPanelList("Branches");
 

@@ -145,8 +145,8 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert panel["folderWhole"] is True
     assert [(entry["label"], entry["chosen"]) for entry in panel["lists"]] == [
         ("Branches", True),
-        ("Tags", False),
         ("Remotes", False),
+        ("Tags", False),
     ]
     # The checked-out branch is badged, lists first, and is not the served row; the rest
     # are newest first, local-work committed in the checkout after feature (mb-dcp2).
