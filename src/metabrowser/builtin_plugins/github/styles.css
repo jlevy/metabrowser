@@ -1945,3 +1945,136 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.github-pull-guided-review [hidden] {
+  display: none;
+}
+
+/* KPress sets the guide's headings, paragraphs, and the space between them. The text is
+   plain, so its own line breaks stand, and an unbroken run wraps inside the column. */
+.github-pull-guide-prose p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The step list: a card whose head pages through the steps, and whose rows name each one,
+   the one shown marked as a document's table of contents marks its section
+   (`--highlight-bg`, `--highlight-bar`, static/styles.css). */
+/* A guide's badge leads its label as a page header's state badge leads its line: a flex
+   row, 8px apart (`.github-pull-meta`). As a space's width, the badge sat against the S of
+   "Step 5 of 9". */
+.github-pull-guide-card-head {
+  display: flex;
+  align-items: center;
+  column-gap: 8px;
+}
+.github-pull-guide-outline {
+  margin-block-end: 1rem;
+}
+.github-pull-guide-outline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.github-pull-guide-arrows {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.github-pull-guide-position {
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+}
+.github-pull-guide-steps {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+.github-pull-guide-steps-link {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 3px var(--github-pull-text-inset);
+  border: 0;
+  border-inline-start: 2px solid transparent;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.github-pull-guide-steps-link:hover {
+  background: var(--hover-bg);
+}
+.github-pull-guide-steps-link[aria-current="step"] {
+  border-inline-start-color: var(--highlight-bar);
+  background: var(--highlight-bg);
+  color: var(--link);
+}
+.github-pull-guide-steps-link:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.github-pull-guide-steps-number {
+  min-width: 1.5em;
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+  text-align: end;
+}
+/* The note is metadata, at its row's size ("Type Scale"). */
+.github-pull-guide-steps-link .github-pull-guide-step-changed {
+  color: var(--muted);
+}
+
+/* An arrow button: the arrow alone in the step list's head, beside its words below a step. */
+.github-pull-guide-arrow,
+.github-pull-guide-pager .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.github-pull-guide-arrow {
+  justify-content: center;
+  min-width: var(--icon-btn-size);
+  min-height: var(--icon-btn-size);
+  padding: 2px 6px;
+}
+.github-pull-guide-arrow:disabled,
+.github-pull-guide-pager .btn:disabled {
+  opacity: var(--dimmed-content-opacity);
+  cursor: default;
+}
+.github-pull-guide-arrow-glyph {
+  flex: none;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+}
+.github-pull-guide-pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-block: 1rem;
+}
+.github-pull-guide-pager-next {
+  margin-inline-start: auto;
+}
+
+/* Each excerpt is the diff plugin's file card and rows (guided-review.js, `renderReference`),
+   which set its type and fills. An excerpt's bar names its file and does not fold it, so it
+   takes no pointer. Three classes outrank the plugin's two-class bar rules, which load after
+   this sheet, and every selector here stays the page's own. */
+.github-pull-guided-review .github-pull-guide-references .github-pull-guide-reference-header,
+.github-pull-guided-review .github-pull-guide-reference-header .diff-file-toggle {
+  cursor: auto;
+}
+
+.github-pull-guide-reference > p {
+  padding-inline: 10px;
+}
+/* A step's excerpts sit inside its card at its text's inset, as a review comment's hunk
+   does. */
+.github-pull-guide-references {
+  padding: 0 var(--github-pull-text-inset) var(--content-padding-y);
+}

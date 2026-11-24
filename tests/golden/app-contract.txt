@@ -92,7 +92,8 @@ exit: 0
       "version": "<text>",
       "source": "<text>",
       "requires": [
-        "markdown"
+        "markdown",
+        "diff"
       ]
     },
     {

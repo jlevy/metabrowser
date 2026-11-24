@@ -635,8 +635,10 @@ private storage.
 
 A plugin offers helpers to others by exporting them from its `index.js`, which is an ES
 module, as Markdown exports `mountRendered`, `renderSource`, and `drawDiagrams`,
-structured data exports `renderInlineTree` and the tree’s helpers, and GitHub exports
-`pullStateIcon`, which the shell’s ref selector draws a branch’s pull request with.
+structured data exports `renderInlineTree` and the tree’s helpers, diff exports
+`mountFilePatch`, which draws one file’s hunks as Changes does and which GitHub’s Guided
+Review draws its excerpts with, and GitHub exports `pullStateIcon`, which the shell’s
+ref selector draws a branch’s pull request with.
 A plugin that uses them names the provider in its manifest and asks for its exports:
 
 ```toml

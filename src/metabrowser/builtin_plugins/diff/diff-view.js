@@ -713,6 +713,41 @@ export function renderFileBody(state, layout) {
 }
 
 /**
+ * One file's hunks, drawn as Changes draws a file's body: each hunk under its header bar,
+ * a long changed run behind its fold bar, and, after first paint, changed-run pairs and
+ * syntax. For another plugin that shows part of a change in its own place: Guided Review's
+ * excerpts (`mountFilePatch` in index.js). Unified only, since its host is a column.
+ *
+ * @param {HTMLElement} body The element the hunks are drawn into.
+ * @param {Record<string, unknown>} change A changed file: its `old` and `new` paths.
+ * @param {Record<string, unknown>} patch Its `hunks`, as the diff route answers them.
+ * @param {DiffViewApi} api
+ * @returns {{dispose: () => void}}
+ */
+export function mountFilePatch(body, change, patch, api) {
+  const controller = new AbortController();
+  const state = createFileState(change, patch, api, body);
+  renderFileBody(state, "unified");
+  const isCurrent = () => !controller.signal.aborted;
+  void (async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (!isCurrent()) {
+      return;
+    }
+    await enhanceFileIntraline(state, api, controller.signal, isCurrent, () => "unified");
+    if (isCurrent()) {
+      await enhanceFileSyntax(state, api, controller.signal, isCurrent);
+    }
+  })();
+  return {
+    dispose() {
+      controller.abort();
+      cancelFoldMaterializations(state);
+    },
+  };
+}
+
+/**
  * Record synchronous projection work when the host profiler is present.
  * @template T
  * @param {DiffViewApi | undefined} api
