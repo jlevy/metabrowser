@@ -443,13 +443,21 @@ class GitCommandError(GitError):
     ``stderr_summary`` is retained for logging only. It is never placed in
     a response body: git error text routinely contains absolute local
     paths.
+
+    ``stdout`` is what the command printed before it exited, within its output cap:
+    a command can fail after a listing its caller still reads, as ``fetch
+    --porcelain`` lists a ref it refused (``_refuse_case_collisions`` in
+    ``cache/acquire.py``).
     """
 
-    def __init__(self, args: Sequence[str], returncode: int, stderr_summary: str) -> None:
+    def __init__(
+        self, args: Sequence[str], returncode: int, stderr_summary: str, stdout: bytes = b""
+    ) -> None:
         super().__init__(f"git {' '.join(args)} exited {returncode}")
         self.args_used: tuple[str, ...] = tuple(args)
         self.returncode: int = returncode
         self.stderr_summary: str = stderr_summary
+        self.stdout: bytes = stdout
 
 
 class GitTimeoutError(GitError):
@@ -1503,7 +1511,7 @@ async def _run_git(
         # not a repository. Callers that treat a failure as a failure log it
         # themselves, with :func:`failure_detail` for this same text.
         log.debug("git %s exited %s: %s", " ".join(args), returncode, loggable(stderr_summary))
-        raise GitCommandError(args, returncode, stderr_summary)
+        raise GitCommandError(args, returncode, stderr_summary, stdout)
 
     return stdout
 

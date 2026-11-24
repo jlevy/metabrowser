@@ -292,20 +292,25 @@ class RefCaseCollisionError(ValidationFailedError):
     state: Final = "ref_case_collision"
 
 
-async def _refuse_case_collisions(git_dir: Path, names: tuple[str, ...]) -> None:
-    """Refuse a store whose refs a case-insensitive filesystem folded together.
+async def _refuse_case_collisions(
+    git_dir: Path, names: tuple[str, ...], *, cause: GitCommandError | None = None
+) -> None:
+    """Refuse a store whose refs a case-insensitive filesystem cannot hold apart.
 
     On such a filesystem ``refs/remotes/origin/Feature`` and ``…/feature`` are one loose
-    file: a non-atomic fetch keeps whichever it wrote last under the first name, and the
-    other name resolves to it too, so a URL could pin the wrong commit. Nothing is
-    published; a refresh reports the same state for its own fetch.
+    file, and Git's non-atomic fetch meets that in one of two ways. Git 2.50.1 keeps
+    whichever it wrote last under the first name and exits 0, so the other name resolves
+    to it too and a URL could pin the wrong commit. Git 2.56.1 writes the first, refuses
+    the other with a ``!`` line in its porcelain listing, and exits 1; *cause* is that
+    failure, whose listing still names both (measured 2026-11-23 on macOS). Either way
+    nothing is published; a refresh reports the same state for its own fetch.
     """
 
     colliding = case_colliding_refs(names)
     if colliding and await store_ignores_case(repository_store_target(git_dir=git_dir)):
         raise RefCaseCollisionError(
             f"the source {describe_case_collision(colliding)}; nothing was published"
-        )
+        ) from cause
 
 
 def _report(on_phase: PhaseReporter | None, phase: str) -> None:
@@ -590,6 +595,7 @@ async def acquire_into_staging(
                 raise PartialCloneSourceError(
                     "the source is a partial clone missing objects; clone it fully first"
                 ) from exc
+            await _refuse_case_collisions(git_dir, fetched_ref_names(exc.stdout), cause=exc)
             raise _classified(source, exc) or FetchFailedError(
                 "the fetch into staging failed"
             ) from exc
