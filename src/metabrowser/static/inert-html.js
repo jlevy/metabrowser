@@ -357,6 +357,19 @@
   }
 
   /**
+   * Whether an input's `type` makes it a checkbox, as a browser reads one: ASCII letters
+   * in any case, and nothing around them. `toLowerCase` also folds U+212A KELVIN SIGN to
+   * `k`, which no browser's match does, as inert_html.py's `_checkbox_type` has it.
+   *
+   * @param {string | null} kind
+   * @returns {boolean}
+   */
+  function isCheckboxType(kind) {
+    const written = kind ?? "";
+    return /^[A-Za-z]+$/.test(written) && written.toLowerCase() === "checkbox";
+  }
+
+  /**
    * The attributes an allowed tag keeps, in a fixed order, each value checked.
    *
    * @param {string} tag
@@ -416,8 +429,7 @@
       }
     } else if (tag === "details" && read("open") !== null) {
       kept.push(["open", ""]);
-    } else if (tag === "input" && (read("type") ?? "").toLowerCase() === "checkbox") {
-      // As a browser reads the type: in any case, and with nothing around it.
+    } else if (tag === "input" && isCheckboxType(read("type"))) {
       for (const [name, value] of CHECKBOX_ATTRIBUTES) {
         kept.push([name, value]);
       }

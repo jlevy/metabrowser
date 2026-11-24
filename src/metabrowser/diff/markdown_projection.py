@@ -66,6 +66,7 @@ from metabrowser.frontmatter_yaml import FrontmatterError, load_frontmatter_yaml
 from metabrowser.inert_html import (
     ALLOWED_TAGS,
     ANCHOR_PREFIX,
+    BARE_ATTRIBUTES,
     DROPPED_WITH_CONTENT,
     allowed_attributes,
     harden,
@@ -642,6 +643,39 @@ _SANITIZER_DROPPED_TAGS = frozenset({"tfoot"})
 _SANITIZER_DROPPED_ATTRIBUTES = frozenset(
     {("details", "open"), ("img", "referrerpolicy"), ("pre", "lang")}
 )
+# KPress's sanitizer keeps an input as its box when the input's `type`, without the ASCII
+# whitespace around it, is `checkbox` in ASCII letters of any case (`_is_checkbox_type` in
+# its sanitize.py), and writes that box as `type="checkbox"`, which the allowlist keeps; it
+# removes any other input. Asked of the sanitizer by
+# test_kpress_keeps_the_boxes_the_projection_says_it_keeps.
+_KPRESS_TYPE_SPACE = "\t\n\f\r "
+
+
+def _kpress_keeps_box(kind: str | None) -> bool:
+    written = (kind or "").strip(_KPRESS_TYPE_SPACE)
+    return written.isascii() and written.lower() == "checkbox"
+
+
+def _shows_value(tag: str, name: str, value: str | None, kept: str) -> bool:
+    """Whether the first copy of an attribute the render keeps says only what the render
+    writes of it, *kept*. The allowlist reads no boolean attribute's value, nor one it
+    writes as a constant, such as a link's `target`, so other text in either is shown
+    nowhere."""
+
+    written = value or ""
+    if name in BARE_ATTRIBUTES:
+        # The spellings HTML gives a boolean attribute's value: none, or its own name in
+        # any case.
+        return not written or (written.isascii() and written.lower() == name)
+    if name == "align":
+        # A keyword, which the allowlist reads in any case.
+        written = written.lower()
+    elif tag == "input" and name == "type":
+        # A box's type, as KPress reads it (_kpress_keeps_box).
+        written = written.strip(_KPRESS_TYPE_SPACE).lower()
+    return written == kept
+
+
 # Raw HTML at most this long is read once for each spelling (_raw_markup): a tag such as
 # `<br>` or `</kbd>` is a few dozen characters, and longer content, a whole `html_block`,
 # is read where it stands, so the cache's 1,024 entries hold at most about 256 KiB.
@@ -656,9 +690,11 @@ class _RawMarkup(HTMLParser):
     comment or declaration are shown nowhere, and make the block *concealed*. A
     destination or an alt text it keeps is shown only on hover or under its image, as a
     Markdown link's or image's is. A checkbox the document writes is kept as a task
-    list's box is, so its `type` and `checked` are shown and nothing else of it is. The
-    text and layout the render shows are compared through the render itself, so they are
-    not part of the signature.
+    list's box is, so its `type` and `checked` are shown and nothing else of it is. Each
+    attribute is read as its first copy, so every later copy is shown nowhere, and so is
+    a value the allowlist does not read (:func:`_shows_value`), such as text in a box's
+    `checked`. The text and layout the render shows are compared through the render
+    itself, so they are not part of the signature.
     """
 
     def __init__(self, dropped: int = 0) -> None:
@@ -681,16 +717,14 @@ class _RawMarkup(HTMLParser):
             self._hide("dropped", tag, *written)
             return
         # An attribute written twice is its first, as a browser and KPress's sanitizer read
-        # it: `<input type="checkbox" type="text">` renders a box.
+        # it: `<input type="checkbox" type="text">` renders a box, and its second `type`
+        # is shown nowhere.
         values = dict(reversed(attrs))
         # An image and a checkbox are kept though neither is an allowed tag; any other
-        # input goes, as the hardener drops it.
-        kept_tag = (
-            tag in ALLOWED_TAGS
-            or tag == "img"
-            or (tag == "input" and bool(allowed_attributes(tag, values, None)))
-        )
-        if not kept_tag or tag in _SANITIZER_DROPPED_TAGS:
+        # input goes, as KPress's sanitizer removes it, and the box it keeps it writes as
+        # `type="checkbox"`.
+        box = tag == "input" and _kpress_keeps_box(values.get("type"))
+        if not (tag in ALLOWED_TAGS or tag == "img" or box) or tag in _SANITIZER_DROPPED_TAGS:
             # The element goes and its content stays: its name changes nothing the page
             # draws, and its attributes are shown nowhere.
             self.entries.append(("element", tag))
@@ -698,20 +732,33 @@ class _RawMarkup(HTMLParser):
                 self._hide(tag, *written)
             return
         kept = {
-            name
-            for name, _ in allowed_attributes(tag, values, None)
+            name: value
+            for name, value in allowed_attributes(
+                tag, {**values, "type": "checkbox"} if box else values, None
+            )
             if (tag, name) not in _SANITIZER_DROPPED_ATTRIBUTES
         }
-        shown = [f"{name}={value or ''}" for name, value in attrs if name in _RAW_DESTINATIONS]
+        shown: list[str] = []
+        hidden: list[str] = []
+        seen: set[str] = set()
+        for (name, value), entry in zip(attrs, written, strict=True):
+            if name in seen:
+                # A later copy, which nothing reads.
+                hidden.append(entry)
+                continue
+            seen.add(name)
+            if name in _RAW_DESTINATIONS:
+                shown.append(entry)
+                # An empty alt text, which the allowlist does not write, says the image
+                # has none.
+                if name not in kept and (name != "alt" or value):
+                    hidden.append(entry)
+            elif name not in kept or not _shows_value(tag, name, value, kept[name]):
+                hidden.append(entry)
         if shown:
             self.entries.append((tag, *shown))
-        # An empty alt text, which the allowlist does not write, says the image has none.
-        if dropped := [
-            f"{name}={value or ''}"
-            for name, value in attrs
-            if name not in kept and (name != "alt" or value)
-        ]:
-            self._hide(tag, *dropped)
+        if hidden:
+            self._hide(tag, *hidden)
         if tag == "img" and (values.get("alt") or "").strip():
             self.alt = True
 

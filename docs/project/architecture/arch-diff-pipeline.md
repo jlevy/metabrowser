@@ -292,8 +292,12 @@ Changed words are marked by a bounded word diff.
   Each side draws its own box, so a tick beside a word edit in the same item still marks
   the words (`_inline_change`). A checkbox the document writes in raw HTML, as a README
   writes one in a table cell, is kept in the same shape, so the raw-HTML reader
-  (`_RawMarkup`) counts only its other attributes as hidden; any other `input` it reads
-  as an element the render drops, with every attribute hidden.
+  (`_RawMarkup`) counts as hidden its other attributes and any value of `checked` or
+  `disabled` but the two HTML defines, empty or the attribute’s own name
+  (`_shows_value`). It reads an input as a box where KPress’s sanitizer keeps one, when
+  its `type` is `checkbox` in ASCII letters of any case, with or without ASCII
+  whitespace around it (`_kpress_keeps_box`); any other `input` it reads as an element
+  the render drops, with every attribute hidden.
   KPress writes the item’s and the list’s classes as token attributes, where attribute
   syntax writes its own, and the allowlist drops both, so a task list a change adds, or
   an item that gains its box, is `source_only`. KPress now lists the classes it writes
@@ -309,7 +313,8 @@ Changed words are marked by a bounded word diff.
   side is one block of KPress’s own render.
 - **Hidden signature:** whatever a block’s source says that its render does not show,
   such as a link destination, a title, alt text, a fence’s info string, or raw HTML the
-  allowlist drops (an attribute, an element with its content, a comment).
+  allowlist drops (an attribute, a copy of one after its first, a value it does not
+  read, such as a link’s `target`, an element with its content, a comment).
   A changed block whose hidden signature differs is flagged `source_only`, as is a file
   whose source changes include one with no visible counterpart.
   A flagged block never folds, and the page draws no note for it: Source is how a reader

@@ -642,6 +642,9 @@ def test_a_task_lists_box_keeps_its_state_and_no_other_input_survives() -> None:
         # Every other attribute of a checkbox goes, and so does every other input.
         '<input type="CheckBox" name="agree" form="f" value="yes" onclick="alert(1)" autofocus>'
         '<input type=" checkbox" checked><input type="text" value="typed"><input type="submit">'
+        # A type a browser reads as a text field, which only Unicode lowercasing (U+212A
+        # KELVIN SIGN to k) would read as a checkbox.
+        '<input type="checKbox" checked>'
         "<input><input/>"
     )
     expected = '<input type="checkbox" disabled checked><input type="checkbox" disabled>'

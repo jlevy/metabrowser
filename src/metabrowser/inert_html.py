@@ -211,8 +211,9 @@ ALLOWED_ATTRIBUTES: Final = {
 # was ticked: the hardener writes each of these, and reads only `type` and `checked` from
 # the document.
 CHECKBOX_ATTRIBUTES: Final = (("type", "checkbox"), ("disabled", ""))
-# The attributes written without a value, whose presence is their meaning.
-_BARE_ATTRIBUTES: Final = frozenset({"open", "disabled", "checked"})
+# The attributes written without a value, whose presence is their meaning. The allowlist
+# reads none of their values: HTML spells one as nothing or as the attribute's own name.
+BARE_ATTRIBUTES: Final = frozenset({"open", "disabled", "checked"})
 # The one language a block keeps: a Mermaid diagram's, spelled as GitHub's own fallback
 # markup spells it, `<pre lang="mermaid">`, so the page can draw it as an image
 # (builtin_plugins/markdown/diagrams.js). KPress marks the block with this class inside
@@ -442,6 +443,15 @@ def link_href(href: str | None, base: str | None) -> tuple[str, bool] | None:
     return None if outside is None else (outside, True)
 
 
+def _checkbox_type(kind: str | None) -> bool:
+    """Whether an input's `type` makes it a checkbox, as a browser reads one: ASCII
+    letters in any case, and nothing around them. Python's `lower` also folds U+212A
+    KELVIN SIGN to `k`, which neither a browser's match nor KPress's sanitizer does."""
+
+    written = kind or ""
+    return written.isascii() and written.lower() == "checkbox"
+
+
 def allowed_attributes(
     tag: str, attrs: dict[str, str | None], base: str | None
 ) -> list[tuple[str, str]]:
@@ -489,8 +499,7 @@ def allowed_attributes(
                 kept.append((name, value))
     elif tag == "details" and "open" in attrs:
         kept.append(("open", ""))
-    elif tag == "input" and (attrs.get("type") or "").lower() == "checkbox":
-        # As a browser reads the type: in any case, and with nothing around it.
+    elif tag == "input" and _checkbox_type(attrs.get("type")):
         kept += CHECKBOX_ATTRIBUTES
         if "checked" in attrs:
             kept.append(("checked", ""))
@@ -651,7 +660,7 @@ def image_fallback(text: str, address: str | None) -> str:
 
 def _open_tag(tag: str, kept: list[tuple[str, str]]) -> str:
     rendered = "".join(
-        f" {name}" if name in _BARE_ATTRIBUTES else f' {name}="{escape(value)}"'
+        f" {name}" if name in BARE_ATTRIBUTES else f' {name}="{escape(value)}"'
         for name, value in kept
     )
     return f"<{tag}{rendered}>"
@@ -843,6 +852,7 @@ __all__ = [
     "ALLOWED_ATTRIBUTES",
     "ANCHOR_PREFIX",
     "ALLOWED_TAGS",
+    "BARE_ATTRIBUTES",
     "CHECKBOX_ATTRIBUTES",
     "DIMENSIONS",
     "DROPPED_WITH_CONTENT",
