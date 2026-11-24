@@ -129,6 +129,7 @@
   const KEY_DEFINITIONS = Object.freeze({
     " ": Object.freeze({ aria: "Space", spoken: "Space", visible: "Space" }),
     "/": Object.freeze({ aria: "", spoken: "slash", visible: "/" }),
+    "#": Object.freeze({ aria: "", spoken: "Hash", visible: "#" }),
     "\\": Object.freeze({ aria: "", spoken: "Backslash", visible: "\\" }),
     "?": Object.freeze({ aria: "", spoken: "Question mark", visible: "?" }),
     ArrowDown: Object.freeze({ aria: "ArrowDown", spoken: "Down arrow", visible: "↓" }),
@@ -265,13 +266,13 @@
     if (isDigitKey(key)) {
       return "digit";
     }
-    return key === "?" || key === "/" || key === "\\" ? "punctuation" : "named";
+    return key === "?" || key === "/" || key === "#" || key === "\\" ? "punctuation" : "named";
   }
 
   // The character Shift types on a punctuation binding's own key, which matches it too, so
   // Shift changes nothing: on a US keyboard Shift+\ types `|`. It is matched by the
   // character, never by the key's position: the ISO key that reports the same
-  // `Backslash` code types `#` on a German or UK layout, which is no binding's key.
+  // `Backslash` code types `#` on a German or UK layout and is matched as `#`.
   /** @type {Readonly<Record<string, string>>} */
   const SHIFTED_PUNCTUATION = Object.freeze({ "\\": "|" });
 

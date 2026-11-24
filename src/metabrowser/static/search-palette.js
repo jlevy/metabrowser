@@ -712,13 +712,19 @@
       input.removeAttribute("aria-activedescendant");
     }
 
-    /** @param {HTMLElement | null} [trigger] */
-    function open(trigger = null) {
+    /** @param {HTMLElement | null} [trigger] @param {string} [initialQuery] */
+    function open(trigger = null, initialQuery = "") {
       if (disposed) {
         return;
       }
       modal?.open(trigger);
-      input.select();
+      if (initialQuery) {
+        input.value = initialQuery;
+        input.setSelectionRange(initialQuery.length, initialQuery.length);
+        runSearch();
+      } else {
+        input.select();
+      }
     }
 
     /** @param {boolean} [restoreFocus] */
@@ -864,6 +870,27 @@
     const unsubscribe = options.controller.subscribe(consumeState);
     const unsubscribeCatalog = options.subscribeCatalog?.(onCatalogChanged) || (() => {});
     const unregisterCommands = registerCommands();
+    if (includesPulls) {
+      unregisterCommands.push(
+        options.shortcuts.register({
+          bindings: [{ key: "#" }],
+          copy: {
+            action: "Search Pull Requests",
+            description: "Open Quick Search with the pull request prefix.",
+            hint: "Search Pull Requests",
+          },
+          group: "anywhere",
+          handler: () => {
+            open(null, "#");
+            return true;
+          },
+          id: "quick-file.open-pull",
+          order: 21,
+          scope: "global",
+          surfaces: { help: "always" },
+        }),
+      );
+    }
     const unsubscribeHints = options.shortcuts.subscribe((event) => {
       const kinds = event.kind === "batch" ? event.kinds || [] : [event.kind];
       if (kinds.some((kind) => HINT_EVENT_KINDS.has(kind))) {
