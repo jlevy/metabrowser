@@ -27,7 +27,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # setup-uv fetches a manifest once, with a fixed 5 s limit, even for a pinned version,
+      # and a slow answer failed the job; it fetches nothing when the pinned uv is already in
+      # the tool cache, where this step puts it with retries (devtools/install_uv.sh).
       - name: Install uv
+        run: bash devtools/install_uv.sh 0.11.26 6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0
+
+      - name: Set up uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: "0.11.26"
