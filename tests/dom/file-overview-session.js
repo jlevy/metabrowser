@@ -546,8 +546,9 @@ const rollupError = (status) =>
             tooltip.html === null
               ? null
               : tooltip.html
-                  .replace(/<br>/g, " ")
+                  .replace(/<br>|<\/div>/g, " ")
                   .replace(/<[^>]*>/g, "")
+                  .replace(/\s+/g, " ")
                   .trim(),
           anchoredOn:
             tooltip.anchor === null
@@ -982,11 +983,11 @@ const rollupError = (status) =>
     segment.listeners.mouseenter();
     const onSegment = view.hover();
     segment.listeners.mouseleave();
-    // One value, and its family's entry; the name joins the counts on the segment, which
-    // shows none, and the tooltip sits by what the pointer is on.
+    // One value, and its family's entry; the category and the name join the counts on the
+    // segment, which shows neither, and the tooltip sits by what the pointer is on.
     assert(
       same(onSegment.marked, ["Total family:json", "legend family:json"]) &&
-        onSegment.tooltip === `JSON ${entry.tooltip}` &&
+        onSegment.tooltip === `Data JSON ${entry.tooltip}` &&
         onSegment.anchoredOn === "Total family:json",
       `the Total row's JSON segment: ${JSON.stringify(onSegment)}`,
     );
@@ -1049,7 +1050,7 @@ const rollupError = (status) =>
     view.segment("Files", "family:markdown").listeners.mouseenter();
     assert(
       same(view.hover().marked, ["Files family:markdown", "legend family:markdown"]) &&
-        view.hover().tooltip === `Markdown ${filesOnly.tooltip}`,
+        view.hover().tooltip === `Documentation Markdown ${filesOnly.tooltip}`,
       "the Files row's segment drew another hover",
     );
     view.segment("Files", "family:markdown").listeners.mouseleave();

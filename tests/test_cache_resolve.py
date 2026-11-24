@@ -6,10 +6,13 @@ import asyncio
 import os
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import (
+    FetchFailedError,
     PublishedSource,
     RefCaseCollisionError,
     acquire_source,
@@ -30,7 +33,7 @@ from metabrowser.cache.resolve import (
     resolve_selection,
 )
 from metabrowser.cache.urls import GitSource, RepositorySelection, classify_root_argument
-from metabrowser.git.process import repository_store_target
+from metabrowser.git.process import GitCommandError, repository_store_target
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
 from tests.required_tools import needs_git
@@ -415,6 +418,41 @@ def test_refs_that_differ_only_in_case_are_refused_where_the_store_cannot_hold_t
     lower = _resolve(published, b"feature")
     assert isinstance(upper, ResolvedSelection) and isinstance(lower, ResolvedSelection)
     assert (upper.commit, lower.commit) == (FIRST_COMMIT, SECOND_COMMIT)
+
+
+@pytest.mark.parametrize("colliding", [True, False], ids=["case-twins", "no-twins"])
+def test_a_fetch_that_refuses_a_case_twin_is_a_case_collision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, colliding: bool
+) -> None:
+    """Git 2.56.1 refuses the second of two case twins on a case-insensitive filesystem.
+
+    It writes ``Feature``, lists ``feature`` with a ``!``, and exits 1, where Git 2.50.1
+    folds the two and exits 0 (``_refuse_case_collisions`` in ``cache/acquire.py``). The
+    stand-in runs the real fetch, whose listing names both twins on any filesystem, then
+    exits 1 as Git 2.56.1 does, so this holds on a case-sensitive CI runner too. A fetch
+    that fails with no twins in its listing is still a failed fetch.
+    """
+
+    _allow_installed_git(monkeypatch)
+    origin = _case_colliding_origin(tmp_path) if colliding else github_origin(tmp_path)
+    source = classify_root_argument(f"file://{origin.resolve()}")
+    assert isinstance(source, GitSource)
+    real_args = acquire_module.mirror_fetch_args
+
+    def fetch_then_fail(remote_url: str, **options: Any) -> list[str]:
+        fetch = real_args(remote_url, **options)
+        return ["-c", 'alias.standin=!f() { git "$@"; exit 1; }; f', "standin", *fetch]
+
+    monkeypatch.setattr(acquire_module, "mirror_fetch_args", fetch_then_fail)
+    monkeypatch.setattr("metabrowser.cache.acquire.store_ignores_case", _always_true)
+    home = tmp_path / "home"
+    expected = RefCaseCollisionError if colliding else FetchFailedError
+    with pytest.raises(expected) as refused:
+        asyncio.run(acquire_source(source, home=home))
+    assert isinstance(refused.value.__cause__, GitCommandError)
+    if colliding:
+        assert "(refs/remotes/origin/Feature, refs/remotes/origin/feature)" in str(refused.value)
+    assert list((home / "staging").iterdir()) == []
 
 
 async def _always_true(_git_dir: Path) -> bool:

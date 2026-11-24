@@ -604,6 +604,20 @@ def _outside_the_group(snapshot: list[dict[str, Any]], node: int, profile: Path)
     return outside
 
 
+# The probe's bound, above its two Chrome starts' bounds and its two closes' waits
+# together, 76 s: each start may take 30 s (START_BOUND_MS in tests/dom/chrome-session.mjs,
+# endpointTimeoutMs in launchBrowser), and each close waits for a Chrome that on a Mac does
+# not leave promptly (stopChrome 5 s after SIGTERM and 5 s after SIGKILL; launchBrowser
+# 3 s for Browser.close and 3 s more). Measured on a 10-core Mac on 2026-11-23, three
+# probes at once at a load average near 180 took 17.6 to 18.1 s, 8.5 s of it those closes'
+# waits; six at once, the load rising from 200 to 300, took 26.3 to 27.4 s, their Chrome
+# starts 6.4 to 9.1 s and 4.7 to 5.1 s. The former 40 s was under those bounds, and the
+# probe printed nothing until it ended, so a run stopped there failed with an empty
+# message (mb-hsul). The probe writes each step's end to stderr, which a failure shows.
+PROBE_BUDGET_S = 90
+
+
+@pytest.mark.timeout(PROBE_BUDGET_S + pg.GROUP_STOP_S + pg.PROFILE_TEARDOWN_S + 10)
 def test_chrome_keeps_its_processes_in_the_launched_group(chrome_profile: Path) -> None:
     """Stopping the group stops Chrome only if Chrome stays in it. Chrome's crash reporter
     leaves: it is reparented and leads a group of its own, but it names no test profile
@@ -611,13 +625,15 @@ def test_chrome_keeps_its_processes_in_the_launched_group(chrome_profile: Path) 
 
     run = run_in_own_group(
         [require_node(), str(PROBE)],
-        timeout_s=40,
+        timeout_s=PROBE_BUDGET_S,
         env={**os.environ, "CHROME_BIN": require_chrome(), "CHROME_PROFILES": str(chrome_profile)},
     )
+    assert not run.timed_out, f"the probe ran past its {PROBE_BUDGET_S} s:\n{run.stderr}"
     assert run.returncode == 0, run.stderr or run.stdout
     probe = json.loads(run.stdout)
     for launcher, snapshot in probe["snapshots"].items():
-        assert not _outside_the_group(snapshot, probe["node"], chrome_profile), launcher
+        outside = _outside_the_group(snapshot, probe["node"], chrome_profile)
+        assert not outside, f"{launcher}: {outside}"
 
 
 STOP_CHROME = """
