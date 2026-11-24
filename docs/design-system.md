@@ -4709,9 +4709,12 @@ the lines (`tests/test_overview_label_column_chrome.py`). In the Overview’s wi
 where an expanded README’s table of contents becomes a rail, the legend leaves its place
 under the bars for that rail’s track beside File Overview, KPress’s 3rem gap past the
 card and its 15rem width, from the section’s top, one entry to a line with its share at
-the line’s end (`.file-overview-body`, `overview.css`). The switch follows the pane’s
-width alone, by the same container query, so in narrower bands File Overview is as it
-was, and the bars and the map keep the card’s measure in every band.
+the line’s end (`.file-overview-body`, `overview.css`). Inside the track it takes the
+table of contents’ own inset, so the two read as one column: each dot sits on the line
+of the contents’ entry marks and each name starts where their entries do
+(`tests/test_overview_readme_toc_chrome.py`). The switch follows the pane’s width alone,
+by the same container query, so in narrower bands File Overview is as it was, and the
+bars and the map keep the card’s measure in every band.
 The table sits behind a **Details** toggle, the same trigger and bold label as an **N
 more** row, which starts closed on each mount and keeps its state through repaints.
 Each group of rows is headed by its category, led by the category’s icon

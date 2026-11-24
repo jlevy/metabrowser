@@ -249,10 +249,22 @@ const EDGES = `(() => {
         (item) => item.getBoundingClientRect(),
       );
       const box = legend.getBoundingClientRect();
+      const track = legend.parentElement.getBoundingClientRect();
+      const first = legend.querySelector(".file-type-summary-legend-item");
+      const entry = view.querySelector(".kpress-toc a");
+      const entryText = document.createRange();
+      entryText.selectNodeContents(entry);
+      const leftOf = (selector) => first.querySelector(selector).getBoundingClientRect().left;
       return {
         rail: getComputedStyle(legend.parentElement).position === "absolute",
         left: box.left,
         width: box.width,
+        trackLeft: track.left,
+        trackWidth: track.width,
+        swatchLeft: leftOf(".file-type-summary-legend-swatch"),
+        labelLeft: leftOf(".file-type-summary-legend-label"),
+        tocEntryLeft: entry.getBoundingClientRect().left,
+        tocTextLeft: entryText.getBoundingClientRect().left,
         top: box.top,
         bodyLeft: body.left,
         bodyRight: body.right,
@@ -362,15 +374,18 @@ async function checkEdges(page, label, band) {
     edges,
   );
   // File Overview's legend: in the wide band, a rail where the README's table of contents
-  // is, from the section's top, one entry to a line; in every other band, inside the
-  // section's body under the bars, as it was.
+  // is, from the section's top, one entry to a line, each swatch on the line of the
+  // contents' entry marks and each name on the contents' text edge; in every other band,
+  // inside the section's body under the bars, as it was.
   const legend = edges.legend;
   if (band === "wide") {
     check(
-      `${label}: File Overview's legend is a rail on the table of contents' track`,
+      `${label}: File Overview's legend is a rail on the table of contents' track, aligned with its entries`,
       legend.rail &&
-        Math.abs(legend.left - legend.tocLeft) < TOLERANCE_PX &&
-        Math.abs(legend.width - legend.tocWidth) < TOLERANCE_PX &&
+        Math.abs(legend.trackLeft - legend.tocLeft) < TOLERANCE_PX &&
+        Math.abs(legend.trackWidth - legend.tocWidth) < TOLERANCE_PX &&
+        Math.abs(legend.swatchLeft - legend.tocEntryLeft) < TOLERANCE_PX &&
+        Math.abs(legend.labelLeft - legend.tocTextLeft) < TOLERANCE_PX &&
         Math.abs(legend.top - legend.bodyTop) < TOLERANCE_PX &&
         legend.items > 1 &&
         legend.lines === legend.items,
