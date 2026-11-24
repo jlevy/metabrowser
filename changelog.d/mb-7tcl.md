@@ -14,3 +14,7 @@
 - **Plugin SDK:** the `pdf` plugin exports `mountPdfCard`, for a plugin that shows a PDF
   where a viewer does not belong, and serves `/api/plugin/pdf/preview` and
   `/api/plugin/pdf/preview-image`. The diff plugin now requires `pdf`.
+
+- **App contract:** `metab --plugins --json` lists `pdf` among the diff plugin’s
+  `requires`, since a diff draws a PDF’s card with the pdf plugin.
+  The macOS app reads the list as it is and needs no change.
