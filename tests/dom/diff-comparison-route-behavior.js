@@ -204,6 +204,12 @@ async function main() {
   assert.equal(counted.options.summaryTotals, totals, "a page's totals reach the view");
   assert.equal(again.options.summaryTotals, undefined, "and only where it gives them");
 
+  // A pull request's Docs tab fixes the layout at Unified (mb-0ze2), which the view is
+  // handed; a page that fixes none leaves the reader's choice and its control.
+  const fixed = await registered.render({}, { comparison, layout: "unified" });
+  assert.equal(fixed.options.layout, "unified", "a page's fixed layout reaches the view");
+  assert.equal(again.options.layout, undefined, "and only where it fixes one");
+
   // A page's Diff summary on its own reads the comparison's manifest alone, so its patches
   // are neither read nor validated, and one whose manifest is not valid draws nothing (A5 of
   // review A on #470).

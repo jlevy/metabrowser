@@ -743,8 +743,9 @@ async function main() {
 
   // Current: the new version alone. A changed Markdown file's removed blocks and removed
   // front matter keys are hidden, by the attribute, and its added blocks and keys stay;
-  // a deleted file, which has no current version, shows its Source body, which says so.
-  // Diff draws them all again, from what was drawn.
+  // a deleted file, which has no current version, shows its Source body, which says so, and
+  // so does a file left empty, whose Rendered is all removed. Diff draws them all again, from
+  // what was drawn.
   const loads5 = [];
   const root5 = make("div");
   const view5 = createMarkdownViews({
@@ -777,8 +778,9 @@ async function main() {
   };
   const changed5 = file5("m", false);
   const deleted5 = file5("x", true);
+  const emptied5 = file5("e", false);
   view5.observe(root5, null);
-  observer.notify([changed5, deleted5].map(({ section }) => arrival({ section })));
+  observer.notify([changed5, deleted5, emptied5].map(({ section }) => arrival({ section })));
   const changedProjection = {
     version: "markdown-diff-v1",
     status: "ready",
@@ -812,6 +814,23 @@ async function main() {
   loads5[1].resolve({ ...changedProjection, frontmatter: undefined });
   await new Promise(setImmediate);
   assert.equal(deleted5.rendered.hidden, false, "and the deleted file's");
+  assert.equal(loads5[2].id, "e");
+  loads5[2].resolve({
+    version: "markdown-diff-v1",
+    status: "ready",
+    source_only: false,
+    frontmatter: {
+      change: "removed",
+      entries: [{ key: "title", text: "Notes", change: "removed" }],
+    },
+    blocks: [
+      { kind: "removed", html: "<p>Old <del>word</del></p>", source_only: false },
+      { kind: "removed", html: "<p>Last</p>", source_only: false },
+    ],
+  });
+  await new Promise(setImmediate);
+  assert.equal(emptied5.rendered.hidden, false, "and the emptied file's");
+  assert.equal(emptied5.source.hidden, true);
   view5.show(true);
   assert.deepEqual(
     hiddenParts(),
@@ -821,11 +840,15 @@ async function main() {
   assert.equal(changed5.rendered.hidden, false, "it is still the file's Rendered");
   assert.equal(deleted5.rendered.hidden, true, "a deleted file has no current version");
   assert.equal(deleted5.source.hidden, false, "so it shows its Source body, which says so");
-  assert.equal(loads5.length, 2, "nothing is asked again");
+  assert.equal(emptied5.rendered.hidden, true, "an emptied file has nothing Current draws");
+  assert.equal(emptied5.source.hidden, false, "so it shows its Source body, which says so");
+  assert.equal(loads5.length, 3, "nothing is asked again");
   view5.show(false);
   assert.deepEqual(hiddenParts(), [false, false, false, false, false, false, false]);
   assert.equal(deleted5.rendered.hidden, false, "Diff shows the deleted file's Rendered again");
   assert.equal(deleted5.source.hidden, true);
+  assert.equal(emptied5.rendered.hidden, false, "and the emptied file's");
+  assert.equal(emptied5.source.hidden, true);
   view5.dispose();
 
   // A diff that opens in Current draws a file's Rendered in it from its first draw.

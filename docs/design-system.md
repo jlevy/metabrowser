@@ -1537,8 +1537,8 @@ The diff file bar’s change stats and notes, and its View file or View on branc
 are boxes after the copy control, not text inside the toggle, so each is set at the
 path’s own size and line height: text of one size and one line height centers onto one
 baseline. The bar’s two groups ([Diff File Bar](#diff-file-bar)) are centered rows of
-boxes too, and each is centered in the bar, so the toggle, the control, and the chooser
-share the bar’s center.
+boxes too, and each, and the control between them, is centered in the bar, so the
+toggle, the control, and the chooser share the bar’s center.
 
 Two rows are deliberately not in the table.
 A [view header](#view-headers)’s eyebrow sets its text at one size and centers it.
@@ -2433,39 +2433,48 @@ same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
 `expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, and hovers with
 `--hover-bg`.
 
-The bar is two groups.
-It leads with what names the file and where it opens, in left-aligned reading order:
-chevron, kind letter, filename in the shell’s file-path typography, then the
-`[data-mb-copy]` copy control right after the name, the file-header copy affordance,
-present wherever a filename is, then the stat pair and any note, and then the View file
-or View on branch control.
-The stat pair and notes are not in the disclosure trigger but describe it
-(`aria-describedby`), so the copy control can sit between them and the name.
+The bar reads in one order, left-aligned.
+It leads with the group that names the file: chevron, kind letter, filename in the
+shell’s file-path typography, then the `[data-mb-copy]` copy control right after the
+name, the file-header copy affordance, present wherever a filename is, then the stat
+pair and any note.
+The stat pair and notes are not in the disclosure trigger but describe
+it (`aria-describedby`), so the copy control can sit between them and the name.
+The View file or View on branch control follows that group, and the bar ends with a
+file’s **Rendered** | **Source** chooser alone, so the chooser is at the far end of
+every bar that has one, on Docs and Changes alike.
+**Diff** | **Current** chooses for the whole diff, so it is in the diff’s
+[toolbar](#diff-toolbar), not on a bar.
+
 The bar reveals the copy control while the pointer is on it or the keyboard’s focus is
 in it; unseen, the control keeps its place, so nothing moves when it shows.
-The bar ends with a file’s **Rendered** | **Source** chooser alone, so the chooser is at
-the far end of every bar that has one, on Docs and Changes alike:
-`[spinner] [Rendered | Source]`. **Diff** | **Current** chooses for the whole diff, so
-it is in the diff’s [toolbar](#diff-toolbar), not on a bar.
-A long path is cut short on one line with its copy control, stats, and View file still
-after it.
+Unlike the file header’s, whose copy control ends its row, this one sits mid-row, so at
+rest its place is a gap between the name and the stats.
+View file stands further off the stats than that (`--diff-file-actions-gap` in the diff
+plugin’s `styles.css`), so the stats read with the name rather than with the action.
+
+Where the bar’s parts do not fit one line, it wraps them in order, and the name’s group
+keeps the first line, so no control is cut off.
+A bar with a chooser wraps before its name is cut at all: View file and then the chooser
+take the next line, the chooser still at the bar’s end.
+Any other bar cuts a long path short on one line with its copy control, stats, and View
+file still after it, the space before View file giving way before the name does, and
+moves View file to the next line only where the name’s group would keep less than
+`--diff-file-lead-basis`. The name’s group never breaks, so a bar narrower than that
+group alone, as one with a mode change can be in a narrow pane, still covers part of it.
 
 The whole bar is one activation surface, the folder-row rule applied to a section
 header: clicking anywhere toggles, with only the copy control, the View file or View on
 branch control, and the Rendered | Source chooser opting out.
-On a pull request’s Changes, a changed Markdown file’s bar carries that chooser, a
-joined chip pair, and before it a small spinner that keeps its place in the bar and
-appears only after the loading-state delay while the rendered view is on its way.
-Such a bar wraps where its two groups do not fit one line: the name’s group keeps the
-first line, and the group at the bar’s end takes the next, still at the bar’s end; an
-end group wider than the bar wraps too, each of its lines at the bar’s end, so no
-control is cut off. A bar with no chooser, as a code file’s, lays out as any other
-file’s, with a long path truncated on one line.
-Where the main UI can show the file the change makes, the name’s group ends with one
-quiet text action that opens it there, with the tree, the tabs, and the ref selector
-around it: **View file** on a commit’s diff, at the commit, and **View on branch** on a
-pull request’s Changes and Docs, at the pull request’s head, on a mirror or beside a
-checkout whose `HEAD` is the head.
+On a pull request’s Docs and Changes, a changed Markdown file’s bar carries that
+chooser, a joined chip pair, and before it a small spinner that keeps its place in the
+bar and appears only after the loading-state delay while the rendered view is on its
+way. A file that falls back permanently to Source loses the chooser and the spinner, and
+its bar lays out as any other file’s. Where the main UI can show the file the change
+makes, the name’s group is followed by one quiet text action that opens it there, with
+the tree, the tabs, and the ref selector around it: **View file** on a commit’s diff, at
+the commit, and **View on branch** on a pull request’s Changes and Docs, at the pull
+request’s head, on a mirror or beside a checkout whose `HEAD` is the head.
 Its label is a constant, since a branch name is the author’s, long, and on every bar;
 its tooltip says the commit and whether the pin switches.
 It stays visible rather than revealing on hover, because it is how a reader leaves the
@@ -2525,13 +2534,18 @@ stronger overlay.
 
 ### Diff Toolbar
 
-The diff’s toolbar ends with its choosers for the whole diff, on one line at its right:
-`[Diff | Current] [Split | Unified]`. A pull request’s Docs tab fixes the layout, so its
-toolbar holds **Diff** | **Current** alone, at the same end.
+The diff’s toolbar ends with its choosers for the whole diff, one group on one line at
+its right: `[Diff | Current] [Split | Unified]`. A pull request’s Docs tab fixes the
+layout, so its toolbar holds **Diff** | **Current** alone, at the same end.
 Where the diff has a [File type](#diff-file-type-control) control, it leads them.
 On a commit’s page and a pull request’s Changes and Docs the toolbar holds nothing else,
 since the page draws the [Diff summary](#diff-summary) at its top; a patch’s toolbar
 leads with the summary.
+The toolbar wraps: where the choosers do not fit beside what leads them, their group
+takes the next line together, still at the right, and a File type control too wide for
+its line wraps its own parts, so nothing runs past the toolbar or scrolls sideways
+(`.diff-toolbar` in `builtin_plugins/diff/styles.css`, measured in Chrome from 1,063 to
+320 px by `tests/test_diff_current_chrome.py`).
 
 Each chooser chooses one thing, and its scope is what it chooses:
 
@@ -2546,8 +2560,10 @@ a commit’s page, and a patch open on **Diff** and share `diff.show`; Docs open
 **Current** and keeps `github.docs.show`, so a choice on one never moves the other.
 The page that mounts the diff passes its default and its preference; a stored value that
 is not a choice reads as that default.
-Choosing redraws every file, and the file at the pane’s top keeps its place on the
-screen.
+Choosing redraws every file, and the reader’s place stays on the screen: the line or
+rendered block at the pane’s top keeps where it is, or, where the choice leaves that row
+out, the next row it draws (`anchorRow` in `diff-view.js`). A file with no such row
+keeps its own top.
 
 ### Diff Layout Control
 

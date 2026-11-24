@@ -838,6 +838,42 @@ function treeBody(container) {
   });
 }
 
+/** Whether *node* is drawn: neither it nor anything that holds it is hidden. */
+function drawnNode(node) {
+  for (let at = node; at !== null; at = at.parentElement) {
+    if (at.hidden) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** The drawn rows under *root*, in order: a Split row before the sides it holds. */
+function drawnRowsOf(root) {
+  return [...root.walk()].filter(
+    (node) => ROWS.some((name) => node.classList.contains(name)) && drawnNode(node),
+  );
+}
+
+/** A drawn row as it reads: a code row's text, each side's in Split, or a block's words. */
+function rowReads(row) {
+  const sides = row.find("diff-line-text").map((node) => node.textContent);
+  return sides.length > 0 ? sides.join(" / ") : row.textContent.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The first drawn row under *root* that reads *needle*, or holds it: a hunk header holds its
+ * heading, which a line reads too.
+ */
+function rowReading(root, needle) {
+  const rows = drawnRowsOf(root);
+  const row =
+    rows.find((each) => rowReads(each) === needle) ??
+    rows.find((each) => rowReads(each).includes(needle));
+  assert(row !== undefined, `no drawn row reads ${needle}`);
+  return row;
+}
+
 /** A chooser's chips, `*` on the chosen one. */
 function chips(control) {
   return control.children
@@ -965,24 +1001,31 @@ async function main() {
       const where = section === null ? "the toolbar" : PATHS[sections().indexOf(section)];
       return `${record.options.key.toUpperCase()} on ${where}'s ${record.target.textContent}`;
     };
-    /** What the toolbar holds, in order, and what each of its choosers reads. */
+    /**
+     * What the toolbar holds, in order, and what each of its choosers reads: the choosers'
+     * end group as the list of what it holds.
+     */
     const toolbarNow = () => {
       assert(toolbar !== undefined, "no toolbar");
-      return toolbar.children.map((child) => {
-        if (child.classList.contains("diff-show-control")) {
-          return `Diff | Current: ${chips(child)}`;
-        }
-        if (child.classList.contains("diff-layout-control")) {
-          return `Split | Unified: ${child.children
-            .map((chip) => {
-              const disabled = chip.getAttribute("aria-disabled") === "true";
-              const chosen = chip.getAttribute("aria-checked") === "true" ? "*" : "";
-              return `${chosen}${chip.textContent}${disabled ? " (unavailable)" : ""}`;
-            })
-            .join(" | ")}`;
-        }
-        return child.className;
-      });
+      return toolbar.children.map(describe);
+    };
+    const describe = (child) => {
+      if (child.classList.contains("diff-toolbar-end")) {
+        return child.children.map(describe);
+      }
+      if (child.classList.contains("diff-show-control")) {
+        return `Diff | Current: ${chips(child)}`;
+      }
+      if (child.classList.contains("diff-layout-control")) {
+        return `Split | Unified: ${child.children
+          .map((chip) => {
+            const disabled = chip.getAttribute("aria-disabled") === "true";
+            const chosen = chip.getAttribute("aria-checked") === "true" ? "*" : "";
+            return `${chosen}${chip.textContent}${disabled ? " (unavailable)" : ""}`;
+          })
+          .join(" | ")}`;
+      }
+      return child.className;
     };
     /** What each file bar's end group holds: Rendered | Source, or nothing. */
     const barEnds = () =>
@@ -1010,6 +1053,37 @@ async function main() {
         pane.dispatch("scroll");
       },
       topOf: (filePath) => sectionOf(filePath).getBoundingClientRect().top,
+      /** The pane scrolled so the first drawn row that reads *needle* is *top* px down it. */
+      scrollRowTo(needle, top) {
+        pane.scrollTop += rowReading(root, needle).getBoundingClientRect().top - top;
+        pane.dispatch("scroll");
+      },
+      /** How far down the pane the first drawn row that reads *needle* is. */
+      rowTop: (needle) => rowReading(root, needle).getBoundingClientRect().top,
+      /** The first drawn row whose box ends below the pane's top: how it reads, and its top. */
+      rowAtTop() {
+        const row = drawnRowsOf(root).find((each) => each.getBoundingClientRect().bottom > 0);
+        assert(row !== undefined, "no row at the pane's top");
+        return { reads: rowReads(row), top: row.getBoundingClientRect().top };
+      },
+      /** Focus on the chip *value* of the toolbar's chooser *group*. */
+      focus(group, value) {
+        toolbar.find(group)[0].querySelector(`[data-chip-value="${value}"]`).focus();
+      },
+      /** Where focus is: a toolbar chooser's drawn chip, or what is not one. */
+      focused() {
+        const active = page.activeElement;
+        const control = toolbar
+          .find("diff-toolbar-end")[0]
+          .children.find((each) => each.children.includes(active));
+        if (control === undefined) {
+          return active === null ? "nothing" : "a chip no longer drawn";
+        }
+        const name = control.classList.contains("diff-layout-control")
+          ? "Split | Unified"
+          : "Diff | Current";
+        return `${name}'s ${active.textContent}`;
+      },
       /**
        * A chip's click, as the chip family hands it to each handler bound around it: in the
        * toolbar's chooser *group*, or, with a *filePath*, in that file's bar.
@@ -1109,21 +1183,59 @@ async function main() {
 
   // N is the other chip of the toolbar's chooser, wherever the pane is. The reader is in
   // a.py, its bar 100 px down the pane under the end of the Markdown file, and the toolbar
-  // is out of view; the file at the pane's top keeps its place.
+  // is out of view; the block of the Markdown file at the pane's top keeps its place, while
+  // Diff draws the removed blocks above it.
   diff.scrollTo("a.py", 100);
   await settle();
-  const anchor = diff.topOf("docs/guide.md");
-  steps.push(diff.line("a.py's bar 100 px down: N stays on the toolbar's chooser"));
-  await diff.press("diff.show");
-  assert(diff.topOf("docs/guide.md") === anchor, "N moved the file at the pane's top");
+  const atTop = diff.rowAtTop();
+  const bar = diff.topOf("docs/guide.md");
   steps.push(
-    diff.line("N: Diff again, stored", {
-      place: `the Markdown file's bar ${anchor} px from the pane's top before, ${diff.topOf("docs/guide.md")} px after`,
+    diff.line("a.py's bar 100 px down: N stays on the toolbar's chooser", {
+      "pane's top": `${atTop.reads}, at ${atTop.top} px`,
+    }),
+  );
+  await diff.press("diff.show");
+  const kept = diff.rowTop(atTop.reads);
+  assert(kept === atTop.top, `N moved the block at the pane's top to ${kept} px`);
+  steps.push(
+    diff.line("N: Diff again, stored, and the block at the pane's top keeps its place", {
+      place: `${atTop.reads} is ${atTop.top} px from the pane's top before, ${kept} px after; the Markdown file's bar ${bar} px before, ${diff.topOf("docs/guide.md")} px after`,
     }),
   );
   diff.scrollTo("logo.png", 0);
   await settle();
   steps.push(diff.brief("logo.png at the pane's top: N has not moved"));
+
+  // In a code file the row at the pane's top is a line. A removed line, which Current leaves
+  // out, gives its place to the next line Current draws, which stays where it was. Diff again
+  // keeps the line now at the pane's top, the one above it, and draws the removed line below.
+  diff.scrollRowTo("    return 1", 0);
+  await settle();
+  const removed = diff.rowAtTop();
+  const next = diff.rowTop("    x = 2");
+  steps.push(
+    diff.brief("a.py's removed line at the pane's top, in Diff", {
+      "pane's top": `${removed.reads.trim()}, at ${removed.top} px`,
+      "next line": `x = 2, at ${next} px`,
+    }),
+  );
+  await diff.click("diff-show-control", "current");
+  const nextInCurrent = diff.rowTop("    x = 2");
+  assert(nextInCurrent === next, `Current moved the next line to ${nextInCurrent} px`);
+  steps.push(
+    diff.line("Current: the next line it draws keeps its place", {
+      place: `x = 2 is ${next} px from the pane's top before, ${nextInCurrent} px after`,
+    }),
+  );
+  const currentTop = diff.rowAtTop();
+  await diff.click("diff-show-control", "diff");
+  const topInDiff = diff.rowTop(currentTop.reads);
+  assert(topInDiff === currentTop.top, `Diff moved the line at the pane's top to ${topInDiff} px`);
+  steps.push(
+    diff.line("Diff again: the line at the pane's top keeps its place, the removed one below it", {
+      place: `${currentTop.reads.trim()} is ${currentTop.top} px from the pane's top before, ${topInDiff} px after; the removed line at ${diff.rowTop("    return 1")} px`,
+    }),
+  );
 
   // Layout returns with Diff, and Current is one column whatever the layout.
   pane.scrollTop = 0;
@@ -1131,9 +1243,17 @@ async function main() {
   await settle();
   await diff.click("diff-layout-control", "split");
   steps.push(diff.line("Split chosen in Diff"));
-  await diff.click("diff-show-control", "current");
+  // Focus on the layout chooser, N redraws it for Current; focus stays on its chosen chip.
+  diff.focus("diff-layout-control", "split");
+  await diff.press("diff.show");
+  assert(
+    diff.focused() === "Split | Unified's Split",
+    `focus left the layout chooser: ${diff.focused()}`,
+  );
   steps.push(
-    diff.line("Current from Split: one column, and the layout keeps Split to come back to"),
+    diff.line("Current from Split, by N with focus on Split: one column, the layout kept", {
+      focus: diff.focused(),
+    }),
   );
   await diff.click("diff-show-control", "diff");
   steps.push(diff.line("Diff: Split again"));

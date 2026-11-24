@@ -54,9 +54,9 @@ type MetabrowserRenderContext = {
   group?: string | null;
   unfold?: boolean;
   emptyText?: string;
-  /** A layout the host fixes, which the diff draws whatever the reader's stored choice, with
-   *  no layout control and no `L`: a pull request's Docs tab draws `"unified"`. */
-  layout?: "unified" | "split";
+  /** Fixes the diff's layout at Unified whatever the reader's stored choice, with no layout
+   *  control and no `L`, as a pull request's Docs tab does. */
+  layout?: "unified";
   /** What the diff's Diff | Current chooser opens on before the reader chooses on this
    *  surface (Diff unless the host says Current), and the preference that choice is
    *  remembered as (`diff.show` unless the host keeps its own): a pull request's Docs tab

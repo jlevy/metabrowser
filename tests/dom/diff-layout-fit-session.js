@@ -336,14 +336,23 @@ async function main() {
       },
       /**
        * What a host's fixed layout leaves out, the control, `L`, the preference, and what its
-       * toolbar holds without them: Diff | Current alone, whose chips and `N` this stand-in
-       * does not draw (tests/dom/diff-current-session.js has them).
+       * toolbar holds without them: its choosers' end group, which holds Diff | Current alone,
+       * whose chips and `N` this stand-in does not draw (tests/dom/diff-current-session.js has
+       * them).
        */
       fixed() {
         return {
           toolbar: host
             .find("diff-toolbar")
-            .map((toolbar) => toolbar.children.map((child) => child.className).join(", ")),
+            .map((toolbar) =>
+              toolbar.children
+                .map((child) =>
+                  child.classList.contains("diff-toolbar-end")
+                    ? `${child.className} (${child.children.map((part) => part.className).join(", ")})`
+                    : child.className,
+                )
+                .join(", "),
+            ),
           layoutControls: host.find("diff-layout-control").length,
           layoutKeys: attachments.filter((record) => record.options.id === "diff.layout").length,
           preferenceReads: reads,

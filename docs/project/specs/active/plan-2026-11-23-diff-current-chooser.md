@@ -86,9 +86,15 @@ whole-diff choosers share one line:
 
 Docs has no layout control, so its toolbar holds **Diff** | **Current** alone, at the
 same end. #759 left Docs with no toolbar when it held nothing; it has one again for this
-chooser. A file bar’s end group is `[spinner] [Rendered | Source]`, as before the
-chooser: what is chosen for one file is on its bar, and what is chosen for the whole
-diff is in its toolbar.
+chooser. The place is the toolbar’s right end, not a position across the two tabs: on
+Docs the chooser sits where **Split** | **Unified** does on Changes (review A of #765,
+A10). A file bar’s end group is `[spinner] [Rendered | Source]`, as before the chooser:
+what is chosen for one file is on its bar, and what is chosen for the whole diff is in
+its toolbar.
+
+The two choosers are one group, and the toolbar wraps: where they do not fit beside the
+File type control, as at 380 px once a type is chosen, they take the next line together,
+still at the right, and nothing scrolls sideways (review A of #765, A2).
 
 | Where | Before `mb-s5ui` | After |
 | --- | --- | --- |
@@ -111,9 +117,14 @@ Choosing, by the chooser or the key, redraws every file.
 - **Reading the new version is a task for the whole change.** A reader reading a pull
   request’s documents as they now are would otherwise choose Current on each of them.
 
-The file at the pane’s top keeps its place on the screen while the files redraw, whether
-the reader clicked the chooser or pressed the key, by the view’s `holdPlace`, once per
-batch where the redraw runs in batches; a file a jump pinned keeps the pane’s top
+The reader’s place stays on the screen while the files redraw, whether the reader
+clicked the chooser or pressed the key: the line or rendered block at the pane’s top
+keeps its offset, or, where the choice leaves that row out, the next row it draws
+(review A of #765, A3, where the file’s own top had moved the row being read by the
+height of every removed row above it).
+The view’s `holdPlace` puts that row back once per batch where the redraw runs in
+batches, and again as a long file’s folded runs materialize, until the reader moves; a
+file with no such row keeps its own top, and a file a jump pinned keeps the pane’s top
 instead.
 
 ### Composition with Split | Unified

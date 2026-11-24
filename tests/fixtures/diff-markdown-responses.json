@@ -256,7 +256,7 @@
         {
           "kind": "added",
           "side": "new",
-          "html": "<details>\n<summary>More</summary>\n<p>The <strong>details</strong>.</p>\n</details>",
+          "html": "<details open>\n<summary>More</summary>\n<p>The <strong>details</strong>.</p>\n</details>",
           "source_only": false
         }
       ],
@@ -590,10 +590,15 @@
         ]
       }
     ],
-    "<details>\n<summary>More</summary>\n<p>The <strong>details</strong>.</p>\n</details>": [
+    "<details open>\n<summary>More</summary>\n<p>The <strong>details</strong>.</p>\n</details>": [
       {
         "tag": "details",
-        "attrs": [],
+        "attrs": [
+          [
+            "open",
+            ""
+          ]
+        ],
         "children": [
           "\n",
           {

@@ -350,7 +350,8 @@ function sameRow(a, b) {
  * @param {TreeHelpers} tree
  * @param {{sourceOnly?: boolean, current?: boolean}} [options] *sourceOnly*: the answer's
  *   `source_only`, said in one line above the tree: that the tree shows no change, or,
- *   beside changes it draws, that Source shows one it draws as unchanged. *current*: the
+ *   beside changes it draws, that Source shows one it draws as unchanged, or, for an added
+ *   or a deleted file, that Source shows a value a key written again hides. *current*: the
  *   tree opens showing the new version alone (`setCurrent`).
  * @returns {{dispose: () => void, setCurrent: (next: boolean) => void}}
  */
@@ -441,11 +442,16 @@ export function mountStructuredDiff(container, root, tree, options = {}) {
   if (options.sourceOnly) {
     const note = document.createElement("p");
     note.className = "diff-structured-note";
-    // Beside changes the tree draws, a value whose type alone changed (a date that became
-    // a string, the key 1 that became "1") is drawn unchanged.
-    note.textContent = root.some((entry) => entry.change !== "context")
-      ? "Source shows a change the tree draws as unchanged."
-      : "The tree shows no change. Source shows what changed in the text.";
+    // An added or a deleted file is flagged only for a value a later one under the same
+    // key hides, which its tree draws nowhere. Beside changes the tree draws, a value
+    // whose type alone changed (a date that became a string, the key 1 that became "1")
+    // is drawn unchanged.
+    const whole = root.length === 1 && (root[0].change === "added" || root[0].change === "removed");
+    note.textContent = whole
+      ? "Source shows a value the tree does not draw: a later one under the same key hides it."
+      : root.some((entry) => entry.change !== "context")
+        ? "Source shows a change the tree draws as unchanged."
+        : "The tree shows no change. Source shows what changed in the text.";
     container.replaceChildren(note, viewport);
   } else {
     container.replaceChildren(viewport);

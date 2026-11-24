@@ -924,13 +924,13 @@ status: 200
     {
       "kind": "removed",
       "side": "old",
-      "html": "<details>\n<summary>Install</summary>\n<p>Run the <del>old</del> installer.</p>\n</details>",
+      "html": "<details open>\n<summary>Install</summary>\n<p>Run the <del>old</del> installer.</p>\n</details>",
       "source_only": false
     },
     {
       "kind": "added",
       "side": "new",
-      "html": "<details>\n<summary>Install</summary>\n<p>Run the <ins>new</ins> installer.</p>\n</details>",
+      "html": "<details open>\n<summary>Install</summary>\n<p>Run the <ins>new</ins> installer.</p>\n</details>",
       "source_only": false
     },
     {

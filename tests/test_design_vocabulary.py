@@ -349,24 +349,23 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
         text("diff-file-stats", el("diff-stat-add"), el("diff-stat-del")),
         text("diff-file-note"),
     )
-    # The bar is two groups, each a centered row of boxes, and a box in the bar itself: the
-    # name's, the toggle with the copy control right after it, the change's stats, and then
-    # the View file or View on branch control, a box at the path's size, which centering
-    # puts on its baseline; and its end's, a file's Rendered | Source chooser behind its
-    # progress mark (`add` in diff-markdown.js).
+    # The bar is a centered row of boxes: the name's group, the toggle with the copy control
+    # right after it and the change's stats; the View file or View on branch control, a box
+    # at the path's size, which centering puts on its baseline; and the group at its end, a
+    # file's Rendered | Source chooser behind its progress mark (`add` in diff-markdown.js).
+    # Each group is a centered row of boxes too.
     lead = box(
         "diff-file-lead",
         toggle,
         box("icon-btn icon-btn-reveal diff-file-copy"),
         facts,
-        box("diff-file-view"),
     )
     end = box(
         "diff-file-end",
         box("diff-markdown-progress"),
         box("diff-markdown-control"),
     )
-    bar = el("diff-file-bar diff-file-bar-markdown", lead, end)
+    bar = el("diff-file-bar diff-file-bar-markdown", lead, box("diff-file-view"), end)
     el("content-body metabrowser-diff-host", el("diff-file", bar))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-facts", facts))
@@ -566,41 +565,54 @@ def test_row_targets_share_the_hover_token() -> None:
 
 
 def test_diff_file_bar_keeps_its_actions_by_the_name_and_its_chooser_at_its_end() -> None:
-    """A diff's file bar is two groups: the name with Copy path and View file, then a chooser.
+    """A diff's file bar: the name's group, then View file, then a chooser at its end.
 
-    ``tests/dom/diff-view-behavior.js`` and ``tests/dom/diff-markdown-behavior.js`` hold what
-    each group contains, in order. Where they sit is layout, and these declarations are what
-    put them there (docs/design-system.md, "Diff File Bar"; mb-leg0). In headless Chrome, on
-    a pull request's Changes and a commit's page, in bars from 159 to 1,063 px wide, Copy
-    path started the name's group's gap after the toggle and the end group ended at the
-    bar's end pad on every bar, with no control cut off. With the stats and View on branch
-    moved into the name's group, on a pull request's Docs and Changes in bars 400 and 920 px
-    wide, the path, Copy path, the stats, and View on branch read in that order and the
-    chooser ended at the bar's end pad (Design Rule Measurements, "Row Baselines").
+    ``tests/dom/diff-view-behavior.js`` and ``tests/dom/diff-view-file-session.js`` hold what
+    each part contains, in order. Where they sit is layout, and these declarations are what
+    put them there (docs/design-system.md, "Diff File Bar"; mb-leg0, mb-ceap).
+    ``tests/test_diff_file_bar_chrome.py`` lays the bars out in headless Chrome at widths
+    from 1,063 to 159 px and holds that no part is cut off or covers another, that a bar
+    with a chooser cuts its name only on a line of its own, and that at rest the stats read
+    with the name. On a pull request's Docs and Changes and a commit's page, measured at
+    those widths, the name kept at least the width it had with View on branch in the end
+    group (review A of #759, A1; Design Rule Measurements, "Diff File Bar Widths").
     """
 
     diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(
         encoding="utf-8"
     )
     host = ".metabrowser-diff-host"
-    # The name's group and the toggle in it take their content's width and give way before
-    # anything else does, so Copy path sits right after the name at any width and a long
-    # path is cut short with the control still beside it, and the stats and View file after.
-    for selector in (".diff-file-lead", ".diff-file-toggle"):
-        rule = _rule(diff_css, f"{host} {selector}")
-        assert "flex: 0 1 auto;" in rule, f"{selector} grows or keeps its width"
-        assert "min-width: 0;" in rule, f"{selector} cannot give way to a long path"
+    # Every bar wraps its parts in order where they do not fit one line, so nothing is cut
+    # off past its end.
+    assert "flex-wrap: wrap;" in _rule(diff_css, f"{host} .diff-file-bar")
+    # The name's group gives way before anything else does, so Copy path and the stats sit
+    # right after the name at any width and a long path is cut short with them still beside
+    # it. Without a chooser the group is laid out at its basis, so a long name is cut on one
+    # line beside View file down to that basis, and grows no wider than its content, so View
+    # file follows the name; with one it is laid out whole, so View file and the chooser
+    # take the next line before the name is cut at all.
+    lead = _rule(diff_css, f"{host} .diff-file-lead")
+    assert "flex: 1 1 var(--diff-file-lead-basis);" in lead
+    assert "max-width: max-content;" in lead
+    assert "min-width: 0;" in lead
+    chooser_lead = _rule(diff_css, f"{host} .diff-file-bar-markdown .diff-file-lead")
+    assert "flex: 0 1 auto;" in chooser_lead
+    toggle = _rule(diff_css, f"{host} .diff-file-toggle")
+    assert "flex: 0 1 auto;" in toggle and "min-width: 0;" in toggle
     for selector in (".diff-file-copy", ".diff-file-facts", ".diff-file-view"):
         assert "flex: none;" in _rule(diff_css, f"{host} {selector}"), f"{selector} gives way"
+    # The space before View file is the first thing to give way, before the name.
+    space = _rule(diff_css, f"{host} .diff-file-lead:has(+ .diff-file-view)::after")
+    assert "width: var(--diff-file-actions-gap);" in space
+    assert "flex: 0 1000000 auto;" in space and "min-width: 0;" in space
     # The end group keeps its width, and its start margin takes the bar's free space, which
-    # holds it at the bar's end on a line of its own too.
+    # holds it at the bar's end on a line of its own too; empty, it takes no line.
     end = _rule(diff_css, f"{host} .diff-file-end")
     assert "flex: none;" in end
     assert "margin-inline-start: auto;" in end
-    # Only a bar with a Rendered | Source chooser wraps, and its end group, where it alone is
-    # wider than the bar, wraps too, with each line at the bar's end.
-    assert "flex-wrap" not in _rule(diff_css, f"{host} .diff-file-bar")
-    assert "flex-wrap: wrap;" in _rule(diff_css, f"{host} .diff-file-bar-markdown")
+    assert "display: none;" in _rule(diff_css, f"{host} .diff-file-end:empty")
+    # A chooser's group, where it alone is wider than the bar, wraps too, with each line at
+    # the bar's end.
     wrapping_end = _rule(diff_css, f"{host} .diff-file-bar-markdown .diff-file-end")
     assert "flex: 0 1 auto;" in wrapping_end
     assert "flex-wrap: wrap;" in wrapping_end

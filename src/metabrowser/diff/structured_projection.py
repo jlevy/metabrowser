@@ -68,7 +68,12 @@ STRUCTURED_DIFF_VERSION: Final = "structured-diff-v1"
 # ranges over four runs, recorded in its README) over this repository's 624 distinct
 # real pairs: the 456 JSON pairs are p50 15 KiB, p90 156 KiB, and 60 are past this bound
 # (lock files and recorded fixtures). The slowest real pair inside it took 7-8 ms, and a
-# synthetic 127 KiB pair of nested mappings 4 ms.
+# synthetic 127 KiB pair of nested mappings 4 ms. The slowest shape found is one key
+# written again and again, each value it hides written as JSON with its object's path
+# (_last_wins, _placed): 10,912 times a side (130,952 bytes) took 98-229 ms at best and
+# 283-498 ms at the median of 15, against 7 ms and 131 ms for a real 61 KB file, one
+# digit changed, in the same process (Apple M1 Pro, Python 3.14.7, load average 387-412,
+# 2026-11-23; review A8 of #766 measured 95 and 217 ms at a load of 150 to 270).
 STRUCTURED_DIFF_MAX_BYTES: Final = 128 * 1024
 # Both sides' bytes together, for a YAML pair. ruamel's loader is pure Python, and its
 # cost follows the nodes the text composes to, which _MAX_YAML_NODES bounds; this bounds
@@ -186,20 +191,44 @@ class _Stream(list[object]):
     origin: str = "stream"
 
 
-def _last_wins(hidden: list[str]) -> Callable[[Iterable[tuple[str, Any]]], dict[str, Any]]:
+type _Hiding = tuple[dict[str, Any], str]
+
+
+def _last_wins(hidden: list[_Hiding]) -> Callable[[Iterable[tuple[str, Any]]], dict[str, Any]]:
     """An ``object_pairs_hook`` that builds a JSON object as ``json.loads`` does, the last
     value at the key's first place, and appends each value a later one hides to *hidden*,
-    written as JSON, in the order the parser closes the objects."""
+    written as JSON with the object that hid it, in the order the parser closes the
+    objects. The object is kept, so that its identity names it until :func:`_placed`
+    reads where it is."""
 
     def build(pairs: Iterable[tuple[str, Any]]) -> dict[str, Any]:
         built: dict[str, Any] = {}
         for key, value in pairs:
             if key in built:
-                hidden.append(json.dumps([key, built[key]]))
+                hidden.append((built, json.dumps([key, built[key]])))
             built[key] = value
         return built
 
     return build
+
+
+def _placed(value: object, hidden: list[_Hiding]) -> list[str]:
+    """Each hidden value with the path of the object that hid it in *value*, so a value
+    hidden in another object is another entry; ``null`` for an object inside a value a
+    later one hid, which the tree holds nowhere."""
+
+    if not hidden:
+        return []
+    paths: dict[int, list[str | int]] = {}
+    pending: list[tuple[object, list[str | int]]] = [(value, [])]
+    while pending:
+        node, path = pending.pop()
+        if isinstance(node, dict):
+            paths[id(node)] = path
+            pending.extend((item, [*path, key]) for key, item in node.items())  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+        elif isinstance(node, list):
+            pending.extend((item, [*path, index]) for index, item in enumerate(node))  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+    return [f"[{json.dumps(paths.get(id(owner)))},{entry[1:]}" for owner, entry in hidden]
 
 
 class _Budget:
@@ -276,10 +305,11 @@ class _Projection:
     def side(self, data: bytes, fmt: Format, pair_bytes: int) -> tuple[Any, list[object]]:
         """One side's tree, and the values in it that a key written again hides."""
 
-        written: list[str] = []
+        written: list[_Hiding] = []
         value = _parse(data, fmt, pair_bytes, written)
         alike: list[object] = []
-        return self.plain(value, alike), [*written, *alike]
+        plain = self.plain(value, alike)
+        return plain, [*_placed(value, written), *alike]
 
     def plain(self, value: object, alike: list[object], depth: int = 0) -> Any:
         """*value* as JSON-safe values, counted against the node budget and given identities.
@@ -662,7 +692,7 @@ def _number_text(value: object) -> str | None:
     return None
 
 
-def _parse(data: bytes, fmt: Format, pair_bytes: int, hidden: list[str]) -> object:
+def _parse(data: bytes, fmt: Format, pair_bytes: int, hidden: list[_Hiding]) -> object:
     """One side as the tree view reads it; each JSON value a key written again hides is
     appended to *hidden*."""
 
@@ -757,7 +787,11 @@ def _project(old: bytes | None, new: bytes | None, fmt: Format) -> StructuredDif
         "format": fmt,
         "root": root,
         "source_only": (
-            old is not None and new is not None and (projection.hidden or not _visible(root))
+            (projection.hidden or not _visible(root))
+            if old is not None and new is not None
+            # An added or a deleted file: the one side's tree draws no value a key written
+            # again hides.
+            else bool(old_hidden or new_hidden)
         ),
     }
 

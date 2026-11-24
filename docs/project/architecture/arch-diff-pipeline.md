@@ -254,16 +254,19 @@ Changed words are marked by a bounded word diff.
 
 - **Fallback:** a side nested past what MarkdownIt keeps is refused with that `reason`,
   and the file shows Source with its Rendered chip unavailable and saying why.
-  The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement, bound only a
-  projection in a thread, which nothing can stop; past them the pair goes to the
-  Markdown child, whose deadline bounds it (`markdown_projection_worker.py`), and the
-  pull request route reads a pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
+  The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement, bound a
+  projection in a thread, which nothing can stop, only for Markdown without raw HTML. No
+  count over the input bounds what the sanitizer makes of raw HTML, which rebuilds each
+  formatting element left open at every later block (`_Limits`), so a thread refuses a
+  side that holds any.
+  Past a budget, or with raw HTML, the pair goes to the Markdown child, whose deadline
+  bounds its time (`markdown_projection_worker.py`), and the pull request route reads a
+  pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
   `builtin_plugins/github/pull_rendered_diff.py` (mb-rm40). The projection renders with
   math and diagrams off and without code highlighting.
   The rest of its refusals guard what it checks rather than what a file holds: a patch
   that does not match the two sides’ bytes or cover their differences, and a hardened
-  render it cannot read back as one tree; no file of this repository, added, edited or
-  cut, reaches one (mb-ueqx).
+  render it cannot read back as one tree.
 - **Source text:** each side reads as the Document view reads it.
   A byte that is not UTF-8 is U+FFFD, and a patch line that is not carries its exact
   bytes, which the projection checks; MarkdownIt makes a NUL U+FFFD. MarkdownIt also
@@ -355,8 +358,11 @@ row it changes.
   The YAML loader also refuses two keys one text spells, such as `1` and `"1"`, which
   the tree view reads as two keys and draws as the last.
   JSON with a key twice in one object reads as the tree view reads it, the last value at
-  the key’s first place, and a change to a value it hides is `source_only`. Aliases and
-  merge keys load within the loader’s budget on the value written out.
+  the key’s first place.
+  Each value it hides is kept with the path of the object that hid it, and a change to
+  one, or the same value hidden in another object, is `source_only`, as is an added or
+  deleted file that hides any.
+  Aliases and merge keys load within the loader’s budget on the value written out.
   [The structured diff measurement](../../../explorations/structured-diff/README.md)
   records the budgets over this repository’s history and the worst shapes.
 - **Source only:** the projection reads no patch.
