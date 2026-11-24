@@ -142,6 +142,13 @@ def _entry_marked(reading: dict[str, Any], label: str) -> None:
 
 def _tooltip_on(reading: dict[str, Any], label: str, anchor: str) -> None:
     assert reading["tooltip"] == _PYTHON_TOOLTIP[anchor], (label, reading)
+    # On the segment the family's icon leads its name, drawn at a glyph size; the entry,
+    # which shows the family, gives the counts alone.
+    icon = reading["tooltipIcon"]
+    if anchor == "segment":
+        assert icon is not None and icon["w"] >= 8 and icon["h"] >= 8, (label, reading)
+    else:
+        assert icon is None, (label, reading)
     placed = reading["tooltipOnAnchor"]
     # Centred on what the pointer is on, the legend entry or the segment, unless the
     # viewport's margin clamps it, and clear of it above or below.

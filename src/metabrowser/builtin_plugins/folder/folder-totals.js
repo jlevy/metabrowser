@@ -1,4 +1,4 @@
-import { familyIconPath } from "./file-type-summary-model.js";
+import { familyIconPath, GENERIC_FILE_ICON } from "./file-type-summary-model.js";
 
 /** @typedef {import("./distribution-hover.js").DistributionHover} DistributionHover */
 /** @typedef {import("./distribution-hover.js").DistributionHoverTarget} DistributionHoverTarget */
@@ -265,7 +265,8 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
     candidates.push({
       key: "(none)",
       label: "No extension",
-      iconPath: "file",
+      // The generic page an extensionless file's Treemap cell and navigation row show.
+      iconPath: GENERIC_FILE_ICON,
       paletteKey: "",
       groupId: "other",
       tally: envelope.specialTypes.noExtension,

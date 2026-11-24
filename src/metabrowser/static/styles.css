@@ -6755,6 +6755,12 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--viz-text-muted);
   font-weight: var(--weight-normal);
 }
+/* A label in a tooltip, as a File Overview segment names its category: the label type
+   in the tooltip's muted ink. Measured in Chrome on 2026-11-23, light theme, on the
+   tooltip's ground: --label-color 4.43:1, below 4.5, and this ink 4.63:1. */
+.custom-tooltip .data-label {
+  color: var(--viz-text-muted);
+}
 /* Recent-files rows while the first query is in flight: known row
    geometry, so it is drawn rather than announced. See design-system.md,
    "Loading States Are Shapes, Not Sentences". */

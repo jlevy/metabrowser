@@ -368,7 +368,7 @@ function sortRows(rows, metric) {
 }
 
 /** What resolves to the neutral page: a name the extension table cannot match. */
-const GENERIC_FILE_ICON = "file";
+export const GENERIC_FILE_ICON = "file";
 
 /**
  * The icon path for a family: a stand-in filename carrying its canonical

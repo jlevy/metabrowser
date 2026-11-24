@@ -4770,8 +4770,8 @@ the distribution counts.
 There is one chooser and one checkbox, because both act on the same numbers.
 A segment’s hover tooltip, the shared body-portaled one, names the family as Details
 does: its category in the table’s label type (`.data-label`), over the family’s name led
-by its icon, the one its Details row and a Treemap cell of its files show, then its file
-count and byte size.
+by its icon, the glyph a Treemap cell of its files shows (the generic page for files
+with no extension, none for Other types), then its file count and byte size.
 A tooltip-bearing mark deepens or lifts by `--viz-data-mark-hover-filter`, as a Treemap
 cell does, grows by `--viz-hover-grow`, and shimmers
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
