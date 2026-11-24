@@ -5,7 +5,7 @@ title: "Rendered diff: show a file with a task list, its boxes' ticks as changes
 kind: task
 status: in_progress
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 refs:
   - kind: pr
@@ -19,10 +19,12 @@ delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
+child_order_hints:
+  - is-01m87bxfh1ymbm8c10h6rzs8gx
 hold: null
 hold_until: null
 created_at: 2026-11-23T18:13:46.765Z
-updated_at: 2026-11-23T23:56:36.920Z
+updated_at: 2026-11-24T18:08:31.262Z
 started_at: 2026-11-23T18:26:01.829Z
 ---
 markdown_projection.py refuses any file with a task list (task_list), because KPress writes the checkbox as raw HTML and the inert render drops its checked state. Project the checkbox as an inert element that keeps its state, and count the state in the block's signature so ticking a box is a change.

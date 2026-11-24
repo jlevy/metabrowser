@@ -3,13 +3,22 @@ type: is
 id: is-01m87bky1pb8rhr10p26bsp6w6
 title: "A minimal built-in PDF plugin: native viewer, click-to-load in embedded contexts, Open in Preview from the macOS app"
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 7
+spec_path: docs/project/specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+child_order_hints:
+  - is-01m87cgjpq8g1efvm52trz39d1
+  - is-01m87cgkbmnfjvt895n7jt2spm
+  - is-01m87cgkzzsm8zzbr8ygpmrz5p
+hold: null
+hold_until: null
 created_at: 2026-11-24T18:03:18.453Z
-updated_at: 2026-11-24T18:08:16.495Z
+updated_at: 2026-11-24T18:18:58.429Z
+started_at: 2026-11-24T18:18:56.884Z
 ---
 Findings (2026-11-24 survey of origin/main d95398297):
 

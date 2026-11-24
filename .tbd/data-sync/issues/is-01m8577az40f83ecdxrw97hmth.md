@@ -5,7 +5,7 @@ title: "Review PR #766 (Rendered shows every diff the Document view renders) wit
 kind: task
 status: closed
 priority: 2
-version: 23
+version: 25
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 refs:
   - kind: pr
@@ -32,10 +32,12 @@ child_order_hints:
   - is-01m85ax0b8x8m875azx03pwmqy
   - is-01m85ax3fxjgdrtgegy1hg2dhd
   - is-01m85ax5p3w9nj40rtabj9nrmj
+  - is-01m87ccajvpvb9d2q4e8d11rk4
+  - is-01m87ccbvmmezxbdkyh1wztq9x
 hold: null
 hold_until: null
 created_at: 2026-11-23T22:08:02.530Z
-updated_at: 2026-11-24T01:10:25.351Z
+updated_at: 2026-11-24T18:16:39.022Z
 started_at: 2026-11-23T22:10:11.293Z
 closed_at: 2026-11-24T01:10:25.349Z
 close_reason: "Review A of PR #766 addressed: every finding has a disposition in https://github.com/jlevy/metabrowser/pull/766#issuecomment-7118822652 at head 4bc0c18b2, CI green (run 45299956083). Deferred and still open: mb-p39s (A3), mb-5b1w (A12), mb-zrng (child memory follow-up)."
