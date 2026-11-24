@@ -1,6 +1,6 @@
 tbd_format: f08
-tbd_version: 0.9.0
-tbd_fallback_version: 0.9.0
+tbd_version: 0.11.0
+tbd_fallback_version: 0.11.0
 # tbd_upgrades: tbd versions that have run `tbd setup` in this repo (oldest first);
 # tbd_version above is the most recent. Informational; updated automatically by setup.
 # tbd_fallback_version is the one exact registry fallback for format-incompatible launchers.
@@ -19,6 +19,8 @@ tbd_upgrades:
     at: 2026-08-26T23:37:50.965Z
   - version: 0.9.0
     at: 2026-09-16T15:47:45.509Z
+  - version: 0.11.0
+    at: 2026-11-23T22:40:47.352Z
 display:
   id_prefix: mb
 sync:
@@ -103,6 +105,7 @@ docs_cache:
     guidelines/common-doc-guidelines.md: internal:guidelines/common-doc-guidelines.md
     guidelines/convex-limits-best-practices.md: internal:guidelines/convex-limits-best-practices.md
     guidelines/convex-rules.md: internal:guidelines/convex-rules.md
+    guidelines/desktop-python-runtime-patterns.md: internal:guidelines/desktop-python-runtime-patterns.md
     guidelines/electrobun-app-development-patterns.md: internal:guidelines/electrobun-app-development-patterns.md
     guidelines/electron-app-development-patterns.md: internal:guidelines/electron-app-development-patterns.md
     guidelines/error-handling-rules.md: internal:guidelines/error-handling-rules.md
@@ -113,6 +116,7 @@ docs_cache:
     guidelines/general-tdd-guidelines.md: internal:guidelines/general-tdd-guidelines.md
     guidelines/general-testing-rules.md: internal:guidelines/general-testing-rules.md
     guidelines/golden-testing-guidelines.md: internal:guidelines/golden-testing-guidelines.md
+    guidelines/macos-webview-shell-patterns.md: internal:guidelines/macos-webview-shell-patterns.md
     guidelines/pnpm-monorepo-patterns.md: internal:guidelines/pnpm-monorepo-patterns.md
     guidelines/python-cli-patterns.md: internal:guidelines/python-cli-patterns.md
     guidelines/python-modern-guidelines.md: internal:guidelines/python-modern-guidelines.md
@@ -164,9 +168,6 @@ integrations:
       user_map: {}
     enabled: true
     policy:
-      # A bead reaches Linear only when it carries the `linear` label, open or
-      # closed: the project's top-level efforts (epics), each with a Feature,
-      # Improvement, or Bug label. See docs/development.md#linear.
       outbound:
         kinds: []
         statuses:
