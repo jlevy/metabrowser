@@ -25,8 +25,8 @@ The arrow keys move the one focus proxy along the folder and file cells in layou
 Enter opens the cell it is on, and Backspace, with no enclosing folder for the compact
 map, is not taken. A change of measure or of Show ignored lays the map out again, and a
 layout under a still pointer points at the cell now under it.
-A file’s name always follows its icon, and a file with no room for both shows its icon
-alone. The icon is sized to the cell: beside a name it shrinks with the name, alone it
+A file’s name sits under its icon, and a file with no room for both shows its icon
+alone. The icon is sized to the cell: over a name it shrinks with the name, alone it
 shrinks with the cell, and the smallest files show neither.
 A cell’s hover is drawn on one of two marks canvases while the other fades out; a
 folder’s copies its fill and clears its interior, so its header and frame lift and the
@@ -493,7 +493,7 @@ $ node tests/dom/treemap-compact-session.js
       "labelled": []
     },
     {
-      "step": "icons shrink with their cells: beside a name, alone, and the smallest neither",
+      "step": "icons shrink with their cells: over a name, alone, and the smallest neither",
       "cells": [
         "dir src 600x218",
         "file src/main.py 397x196",

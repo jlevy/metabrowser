@@ -4832,12 +4832,17 @@ the lines (`tests/test_overview_label_column_chrome.py`). In the Overview’s wi
 where an expanded README’s table of contents becomes a rail, the legend leaves its place
 under the bars for that rail’s track beside File Overview, KPress’s 3rem gap past the
 card and its 15rem width, from the section’s top, one entry to a line with its share at
-the line’s end (`.file-overview-body`, `overview.css`). The switch follows the pane’s
-width alone, by the same container query, so in narrower bands File Overview is as it
-was, and the bars and the map keep the card’s measure in every band.
-The table sits behind a **Details** toggle, the same trigger and bold label as an **N
-more** row, which starts closed on each mount and keeps its state through repaints.
-Each group of rows is headed by its category, led by the category’s icon
+the line’s end (`.file-overview-body`, `overview.css`). Inside the track it takes the
+table of contents’ own inset, so the two read as one column: each dot sits on the line
+of the contents’ entry marks, each name starts where a level-1 entry’s text does at any
+root font size, and each share ends where the entries do
+(`tests/test_overview_readme_toc_chrome.py`; `tests/test_kpress_dependency_contract.py`
+pins the KPress values the rail copies).
+The switch follows the pane’s width alone, by the same container query, so in narrower
+bands File Overview is as it was, and the bars and the map keep the card’s measure in
+every band. The table sits behind a **Details** toggle, the same trigger and bold label
+as an **N more** row, which starts closed on each mount and keeps its state through
+repaints. Each group of rows is headed by its category, led by the category’s icon
 ([File-Type Category Icons](#file-type-category-icons)). Every row names its category
 and reports absolute values and percentages; fills are not tab stops, carry no duplicate
 tooltips, and are hidden from the accessibility tree, and no label relies on color or
@@ -4886,10 +4891,12 @@ one where the column becomes one width, in both font sets.
 Show ignored begins checked without a saved preference and changes only the population
 the distribution counts.
 There is one chooser and one checkbox, because both act on the same numbers.
-A segment’s hover tooltip, the shared body-portaled one, gives the family name in bold
-and its file count and byte size, and a tooltip-bearing mark deepens or lifts by
-`--viz-data-mark-hover-filter`, as a Treemap cell does, grows by `--viz-hover-grow`, and
-shimmers
+A segment’s hover tooltip, the shared body-portaled one, names the family as Details
+does: its category in the table’s label type (`.data-label`), over the family’s name led
+by its icon, the glyph a Treemap cell of its files shows (the generic page for files
+with no extension, none for Other types), then its file count and byte size.
+A tooltip-bearing mark deepens or lifts by `--viz-data-mark-hover-filter`, as a Treemap
+cell does, grows by `--viz-hover-grow`, and shimmers
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
 The hover marks what its handle names.
 A segment names one value, its family’s share of its row, so pointing at it marks that
@@ -5026,10 +5033,12 @@ Its layers, bottom to top:
 
 The map lays out to its padding box, and a label lies inside its cell and the map’s
 border; `tests/test_treemap_containment_chrome.py` measures it, with the canvas’s fill
-at each cell. A file’s name always follows its icon, and a file with room for its name
-but not for both shows its icon alone, so cells of one size draw alike.
+at each cell. A file’s name sits under its icon, and a file without room for both its
+name’s smallest width and both lines shows its icon alone, so cells of one size draw
+alike. The name ellipsizes in the width it has; a size shows only when the whole of it
+fits, by the bound beside `VALUE_CHAR_EM` (`treemap-map.js`), and is otherwise left out.
 Each icon is sized to its cell, as its label is, by `ICON_DEFAULTS`
-(`builtin_plugins/folder/treemap-layout.js`): beside a name it is a share of the name’s
+(`builtin_plugins/folder/treemap-layout.js`): over a name it is a share of the name’s
 size, and alone it is centered, a share of the cell’s short side, so a smaller cell
 shows a smaller icon.
 A cell too small for the smallest glyph shows nothing and names itself in its tooltip.

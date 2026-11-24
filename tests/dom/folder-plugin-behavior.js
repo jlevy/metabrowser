@@ -354,6 +354,8 @@ for (const relative of [
 }
 // In dependency order, since each runs in the one sandbox with its imports taken out:
 // folder-totals.js and the treemap import the hover they share, the treemap the legend, and
+// folder-totals.js the summary model's icon paths, which this harness leaves out since it
+// stubs buildFolderTotalsComposition below;
 // the map component the layout, the hit grid, and the paint list; the treemap its decoder.
 const moduleSources = [
   "src/metabrowser/builtin_plugins/folder/distribution-hover.js",

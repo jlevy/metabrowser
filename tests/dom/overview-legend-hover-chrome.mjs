@@ -357,6 +357,13 @@ const READ = `(async () => {
     entrySize: entries.map((item) => { const r = item.getBoundingClientRect(); return round(r.width) + "x" + round(r.height); }),
     clearance,
     tooltip: shown() ? tip.innerText.replace(/\\s+/g, " ").trim() : null,
+    // The glyph before the family's name, drawn at the icon size, or null for none.
+    tooltipIcon: (() => {
+      const svg = shown() ? tip.querySelector(".tm-tip-icon svg") : null;
+      if (!svg) return null;
+      const r = svg.getBoundingClientRect();
+      return { w: round(r.width), h: round(r.height) };
+    })(),
     // Where the tooltip sits: its centre against the centre of what the pointer is on, and
     // whether it is above or below that rather than over it.
     tooltipOnAnchor:

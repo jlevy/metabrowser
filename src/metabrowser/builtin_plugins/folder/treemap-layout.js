@@ -146,7 +146,7 @@ const TYPOGRAPHY_DEFAULTS = Object.freeze({
  * draws it). Every size is the glyph's, in CSS pixels; the icon's box is the
  * glyph itself, since the cell or the title centers it.
  *
- * Beside a label the glyph is `labelShare` of the label's size, so a 9 px
+ * Over a label the glyph is `labelShare` of the label's size, so a 9 px
  * label has an 8 px glyph rather than the navigation's 14 px one, which stood
  * taller than its name. A cell too small for its name shows its icon alone at
  * `cellShare` of its short side, which keeps a margin on every side and names
@@ -179,7 +179,7 @@ const ICON_DEFAULTS = Object.freeze({
 });
 
 /**
- * The glyph beside a label of `labelPx`.
+ * The glyph over a label of `labelPx`.
  * @param {number} labelPx
  * @returns {number}
  */
@@ -192,7 +192,7 @@ function labelIconPx(labelPx) {
 }
 
 /**
- * The gap between a glyph and a label of `labelPx` (.tm-cell-title, styles.css).
+ * The gap between a glyph and the label of `labelPx` under it (.tm-cell-title, styles.css).
  * @param {number} labelPx
  * @returns {number}
  */
@@ -201,7 +201,7 @@ function labelIconGapPx(labelPx) {
 }
 
 /**
- * The room a glyph beside a label of `labelPx` takes in a title: the glyph and its gap.
+ * The height a glyph over a label of `labelPx` adds to a title: the glyph and its gap.
  * @param {number} labelPx
  * @returns {number}
  */
@@ -212,7 +212,7 @@ function labelIconRoomPx(labelPx) {
 /**
  * The glyph a cell too small for its name shows alone, or 0 when the cell is too
  * small even for the smallest: a share of its short side, and no larger than
- * the glyph beside the label it has no room for, of `labelPx`.
+ * the glyph over the label it has no room for, of `labelPx`.
  * @param {{w: number, h: number}} rect
  * @param {number} [labelPx]  the cell's label size; the smallest label's by default
  * @returns {number}

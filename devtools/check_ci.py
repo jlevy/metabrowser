@@ -59,7 +59,9 @@ And of every workflow file:
   An expression ends where the runner ends it, so a ``}}`` in a quoted string does not
   hide the rest;
 - no ``run:`` line has an expression that reads ``env``: the shell reads a variable as
-  ``"$NAME"``, which the runner does not paste into the script.
+  ``"$NAME"``, which the runner does not paste into the script;
+- every setup-uv step comes just after ``INSTALL_UV`` with its own version and
+  checksum, which puts that uv where setup-uv finds it without fetching anything.
 
 ``devtools/check_supply_chain.py`` holds the ``plan`` job's ``ADMITTED_GITS`` to both
 Git floors and ``publish.yml`` to trusted publishing, and ``tests/test_ci_plan.py``
@@ -200,6 +202,11 @@ ENVIRONMENT: Final = re.compile(r"(?<![\w.])env(?:[.\[),]|$)", re.IGNORECASE)
 SHELL: Final = re.compile(r"[;&|<>`$()\n]")
 # A word that runs make, wherever it is in a step's command.
 MAKE_WORD: Final = re.compile(r"\bmake\b")
+# The step every setup-uv step follows, with setup-uv's own version and checksum: it puts
+# that uv in the tool cache, because setup-uv otherwise fetches a manifest once with a
+# fixed 5 s limit, and one slow answer failed a job (devtools/install_uv.sh).
+SETUP_UV: Final = "astral-sh/setup-uv@"
+INSTALL_UV: Final = "bash devtools/install_uv.sh {version} {checksum}"
 
 Json = dict[str, object]
 
@@ -698,8 +705,17 @@ def check_workflow(name: str, workflow: Json) -> list[str]:
                 errors.append(
                     f"{where} deals {part} into shards {sorted(parts)}, not 1 through N of one N"
                 )
-        for step in steps(job):
+        job_steps = steps(job)
+        for index, step in enumerate(job_steps):
             inputs = step.get("with")
+            if str(step.get("uses", "")).startswith(SETUP_UV):
+                given = _mapping(inputs)
+                wanted = INSTALL_UV.format(
+                    version=given.get("version"), checksum=given.get("checksum")
+                )
+                before = job_steps[index - 1].get("run") if index else None
+                if not isinstance(before, str) or before.strip() != wanted:
+                    errors.append(f"{where} must run `{wanted}` just before setup-uv")
             checkout = str(step.get("uses", "")).startswith("actions/checkout@")
             if checkout and _mapping(inputs).get("persist-credentials") is not False:
                 errors.append(f"{where} must check out with persist-credentials: false")
