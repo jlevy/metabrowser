@@ -5,7 +5,7 @@ title: "Review PR #766 (Rendered shows every diff the Document view renders) wit
 kind: task
 status: in_progress
 priority: 2
-version: 20
+version: 21
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 refs:
   - kind: pr
@@ -35,7 +35,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-23T22:08:02.530Z
-updated_at: 2026-11-23T23:12:23.744Z
+updated_at: 2026-11-24T00:48:33.077Z
 started_at: 2026-11-23T22:10:11.293Z
 ---
 
@@ -51,3 +51,9 @@ Verdict: changes requested (COMMENT event). 13 findings, 3 suggestions.
 - Suggestions: A14 open <details> in changed blocks; A15 ruler.__rules__; A16 two unwrapped docstring lines.
 
 Focused tests at the head: 283 passed. CI green at the head. Not closed: the main session closes this after the findings are addressed. tbd sync not run by the sub-agent.
+
+Addressed by the fix sub-agent, pushed at 4bc0c18b262735cb8034cfaf92e6599301d27eea (base claude/docs-tab-file-header 22dfd4543 merged; no conflicts):
+- fixed: A2 8cce7c365, A4 0d87c5fc2, A5 d2637263e, A6 8bf2662a6, A7 0d87c5fc2, A8 883a0f055, A9 d2637263e, A10 b78cebec2, A11 624bdfabd, A13 2eb9b0dc5 (clause removed; 1,404 projections of the 468 tracked .md files all ready, 426 s at load ~450), A14 354aee864 + 4bc0c18b2, A15 1a3325b9c, A16 1a3325b9c. Those child beads are closed.
+- A1 (mb-mvzo): thread path fixed in 1398903ac (a thread refuses raw HTML with a no-reason budget refusal; the child projects it). Left open: the coordinator's further ask, capping the child's memory, is escalated (mb-zrng P1; KPress kpr-mgc0).
+- deferred: A3 mb-p39s (the coordinator links the native stack); A12 mb-5b1w (KPress kpr-gtv7; CommonMark and GitHub keep the text, KPress drops it).
+- Disposition reply drafted (attic/review-a-reply.txt in the fix worktree), not posted: it waits on the A1 escalation.
