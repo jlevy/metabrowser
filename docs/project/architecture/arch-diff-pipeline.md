@@ -266,8 +266,7 @@ Changed words are marked by a bounded word diff.
   math and diagrams off and without code highlighting.
   The rest of its refusals guard what it checks rather than what a file holds: a patch
   that does not match the two sides’ bytes or cover their differences, and a hardened
-  render it cannot read back as one tree; no file of this repository, added, edited or
-  cut, reaches one (mb-ueqx).
+  render it cannot read back as one tree.
 - **Source text:** each side reads as the Document view reads it.
   A byte that is not UTF-8 is U+FFFD, and a patch line that is not carries its exact
   bytes, which the projection checks; MarkdownIt makes a NUL U+FFFD. MarkdownIt also
