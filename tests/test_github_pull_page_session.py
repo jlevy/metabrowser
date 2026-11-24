@@ -195,6 +195,19 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
     return recorded
 
 
+def _until_refreshed(client: TestClient, number: int) -> None:
+    """Poll pull request *number* until its refresh has ended, as ``settle`` polls status.
+
+    Bounded as ``settle`` is, so a refresh that never ends fails this test, with what it
+    waited for, inside the recorder's budget, rather than ending the whole run.
+    """
+
+    deadline = time.monotonic() + 50
+    while client.get(_PULL, params={"number": number}).json()["refreshing"]:
+        assert time.monotonic() < deadline, f"the refresh of pull request {number} did not end"
+        time.sleep(0.01)
+
+
 def _fetched(client: TestClient, number: int) -> dict[str, Any]:
     """Pull request *number* after a reader's fetch of it has ended.
 
@@ -202,8 +215,7 @@ def _fetched(client: TestClient, number: int) -> dict[str, Any]:
     """
 
     client.post(_REFRESH, json={"number": number, "retry": True}, headers=JSON_BODY)
-    while client.get(_PULL, params={"number": number}).json()["refreshing"]:
-        time.sleep(0.01)
+    _until_refreshed(client, number)
     return _answer(client.get(_PULL, params={"number": number}))
 
 
@@ -380,8 +392,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["failed_again"] = _answer(
                 client.post(_REFRESH, json={"number": 8, "retry": True}, headers=JSON_BODY)
             )
-            while client.get(_PULL, params={"number": 8}).json()["refreshing"]:
-                time.sleep(0.01)
+            _until_refreshed(client, 8)
 
             # Served an older head of 7, as a page left open is: a refresh finds a newer
             # one, and the server follows the pull request's head to it.
@@ -445,6 +456,16 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
     return _session_tags(recorded)
 
 
+# The recorder runs about 226 processes one after another (75 launches of the fake gh, a
+# Python interpreter each, and 151 of Git) and spends about 9 s of CPU with them, measured
+# 2026-11-23 on a 10-core M1 Pro. CI's call takes about 4 s. Here, alone, it took 33 s at a
+# load average near 320 and 42 s near 400; three copies at once near 405 took 43 to 48 s.
+# Three more near 396, with an event log recording them, passed the suite's 60 s default,
+# which ends the whole run. Each was at a different step, every refresh job had ended (the
+# longest in 7.8 s), and no process ran longer than 1.5 s: slow, never stuck. Its polls
+# (``settle`` and ``_until_refreshed``) are each bounded at 50 s, so one that never ends
+# fails this test instead.
+@pytest.mark.timeout(180)
 def test_recording_is_what_a_served_pull_request_answers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
