@@ -919,6 +919,60 @@ kind of box is added to the table.
 it, and `tests/test_github_pull_text_chrome.py` measures the padding the boxes lay out,
 in a wide and a narrow pane, with nothing padded twice and no overflow.
 
+### Rendered Diff Spacing
+
+A rendered Markdown diff, in a pull request’s Changes and Docs, is the document it
+compares, so it spaces its blocks as the Document view of the same text does: the
+distance from one block’s text to the next block’s is the Document view’s, between two
+unchanged blocks, beside a changed one, and with its removed blocks hidden, which leaves
+the new version. A reader who opens a file’s Document view and then its diff reads one
+rhythm.
+
+Each block of the diff is a row of its own, `.diff-markdown-block` in the diff plugin’s
+`styles.css`, and a row sets no block padding or border.
+So a block’s KPress margins pass through its row and collapse with the next row’s, as
+two blocks of the document collapse.
+A row used to pad its block and keep the block’s margins inside it, so two blocks’
+margins added up, and an h2 sat well below where the document puts it
+([Rendered Diff Block Spacing](../explorations/performance-loop/design-rule-measurements.md#rendered-diff-block-spacing)
+has the before and after).
+
+- **A changed block’s band** (its fill and its change gutter) is drawn by its row’s
+  `::before`, not laid out, so it moves no text.
+  It reaches `--diff-markdown-band-extent` past the block’s text above and below, behind
+  the text of every block, since the article isolates its paint.
+  Two changed blocks in a row draw two bands with the document’s space between them,
+  less the two extents.
+  The extent is half the least space KPress puts between two blocks, so two bands meet
+  there and never overlap into a darker seam.
+  One band across a run of changed blocks and the document’s spacing cannot both hold
+  while a band is drawn per row and no row can read the margin its neighbor collapses
+  into.
+- **A list or a quote split into rows**, as a changed list is, one row per item, reads
+  as one: between two rows of one list or quote, its own margins give way, so its items
+  are spaced as KPress spaces them inside it, and its first and last rows keep the
+  margins that set it apart in the document.
+- **KPress’s rules that key on a previous sibling** see none, since the previous block
+  is in another row. A paragraph straight after an h4, h5, or h6, which KPress sets close
+  under it, is joined across rows, and across the one hidden row an edited paragraph’s
+  removed version leaves when the removed blocks are hidden.
+  `h2 + h3` is not: joining it would restate KPress’s margin, so an h3 straight after an
+  h2 keeps the space it has after a paragraph, a little more than the document’s.
+- **The fold of unchanged blocks** is a `<details>` whose rows are its content.
+  They undo the padding KPress gives a disclosure’s content, and the fold clips its
+  content with `overflow: clip` where KPress uses `hidden`, which would start a
+  formatting context and keep the last block’s margin inside the open fold.
+- **A table** is the one block the rule does not reach yet.
+  `withoutRenderWrappers` in `static/inert-html.js` unwraps the `<div>` KPress keeps
+  around a table when it is the block’s only element, so the diff’s table has no
+  `.kpress-table-wrap` and none of the wrapper’s margins.
+
+`tests/test_diff_markdown_spacing_chrome.py` measures the diff, the diff with its
+removed blocks hidden, and both versions’ Document views in Chrome, in the serif and the
+sans reading font, and holds every gap to the document’s, the h2-to-h3 case to the h3’s
+own space, and each band to its extent with no two overlapping.
+`tests/test_diff_markdown_fold_chrome.py` measures the fold closed and open.
+
 ### Embedded Document Themes
 
 Metabrowser owns one theme input for the embedded document:
