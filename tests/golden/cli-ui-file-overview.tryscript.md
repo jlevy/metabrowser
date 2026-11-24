@@ -361,7 +361,7 @@ $ node tests/dom/file-overview-session.js
         "Total family:json",
         "legend family:json"
       ],
-      "tooltip": "JSON 240 files · 100 B",
+      "tooltip": "Data JSON 240 files · 100 B",
       "anchoredOn": "Total family:json"
     },
     "pointer on Other": {
@@ -385,7 +385,7 @@ $ node tests/dom/file-overview-session.js
         "Total family:json",
         "legend family:json"
       ],
-      "tooltip": "JSON 240 files · 100 B",
+      "tooltip": "Data JSON 240 files · 100 B",
       "anchoredOn": "Total family:json"
     },
     "Details closed under the pointer on the JSON entry": {

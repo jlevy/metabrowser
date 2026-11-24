@@ -15,6 +15,8 @@ what it is anchored on.
 The map paints its cells on a canvas, which has no context here, so the cells it marks
 and the cell under the pointer are read through `inspectTreemap`, and the pointer is a
 mousemove on the viewport at a cell’s coordinates.
+Each label shows its cell’s size only when the whole of it fits: in a pane 56 px wide
+the folders leave their counts out and the files keep their sizes.
 Pointing at a legend entry marks every cell of its family, the files of its type but no
 nested folder, which is neutral, the family’s segment in every tally row that has one,
 and the entry, with one tooltip: the counts of the family’s segment in the row the
@@ -47,6 +49,35 @@ $ node tests/dom/treemap-legend-session.js
     "shimmers": false,
     "tooltip": null,
     "anchoredOn": null
+  },
+  "each label at 800 px and at 56 px wide": {
+    "wide": [
+      "docs 800x600 5 files",
+      "docs/a.md 234x385 100 B",
+      "docs/b.md 234x385 100 B",
+      "docs/build 327x302 1 file",
+      "docs/build/d.py 323x280 300 B",
+      "docs/c.py 469x193 300 B",
+      "docs/e.json 327x276 50 B"
+    ],
+    "middle": [
+      "docs 120x600 5 files",
+      "docs/a.md 116x111 100 B",
+      "docs/b.md 116x111 100 B",
+      "docs/build 116x136 1 file",
+      "docs/build/d.py 112x115 300 B",
+      "docs/c.py 116x111 300 B",
+      "docs/e.json 116x111 50 B"
+    ],
+    "narrow": [
+      "docs 56x600 (no size)",
+      "docs/a.md 52x110 100 B",
+      "docs/b.md 52x110 100 B",
+      "docs/build 52x139 (no size)",
+      "docs/build/d.py 48x120 300 B",
+      "docs/c.py 52x110 300 B",
+      "docs/e.json 52x110 50 B"
+    ]
   },
   "pointer on the Python entry, Show ignored on": {
     "legend": "Markdown 40% Python 40% JSON 20%",
@@ -178,7 +209,7 @@ $ node tests/dom/treemap-legend-session.js
     ],
     "pointer": null,
     "shimmers": false,
-    "tooltip": "Markdown / 2 files · 200 B",
+    "tooltip": "Documentation / Markdown / 2 files · 200 B",
     "anchoredOn": "Total family:markdown"
   },
   "the map laid out again under the Markdown entry": {
