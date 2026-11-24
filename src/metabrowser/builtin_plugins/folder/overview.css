@@ -191,8 +191,43 @@
           > .kpress-doc-layout
           > .kpress-toc
       )
+      > *,
+    .preview-pane:has(
+        > .folder-overview-host[data-active-view="true"]
+          .folder-overview-panel:not(.folder-overview-panel-collapsed)
+          > .file-overview-body
+          .file-type-summary-legend:not([hidden])
+      )
       > * {
       --reading-unit: calc(var(--doc-measure) + 2 * 2.5rem + 3rem + 15rem);
+    }
+
+    /* File Overview's type legend leaves the flow below the bars for a rail beside the
+       section, where an expanded README's table of contents sits: KPress's 3rem gap past
+       the card's edge and its 15rem track (markdown.css), from the top of the section, its
+       entries one to a line. The body stays the card's width, so the bars, Details, and
+       the map below keep the measure they have in every band. The legend is positioned on
+       the body, which clips only vertically, for the collapse, so the rail shows past its
+       edge; the reading unit above counts the rail, as it does a README's. */
+    .file-overview-body {
+      position: relative;
+      overflow-x: visible;
+    }
+
+    .file-overview-body .file-type-summary-share {
+      position: absolute;
+      inset-block-start: 0;
+      inset-inline-start: calc(100% + 3rem);
+      width: 15rem;
+    }
+
+    .file-overview-body .file-type-summary-legend {
+      flex-direction: column;
+      flex-wrap: nowrap;
+    }
+
+    .file-overview-body .file-type-summary-legend-percent {
+      margin-inline-start: auto;
     }
   }
 }

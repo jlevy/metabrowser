@@ -75,6 +75,10 @@ It links each document below and the contributor standards in `docs/`.
   a draft for free conditional probes every few seconds for what is on screen, full
   reads once every minute or two, and a budget that leaves room for the account’s other
   tools
+- [Treemap granularity: canvas cells and a denser rollup](specs/active/plan-2026-11-22-treemap-canvas-granularity.md):
+  a draft for painting every file down to a device pixel on a canvas, with DOM kept for
+  labels, focus, and hover, then sending the Treemap far more of the tree in a compact
+  encoding
 - [Tabular data browsing and live SQLite](specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md):
   a draft for one generic table plugin over CSV, record lists, and SQLite, with
   nondestructive, live reads of databases other applications are writing
@@ -197,6 +201,9 @@ It links each document below and the contributor standards in `docs/`.
 A research record stays here while it informs open work, and moves to
 [`research/archive/`](research/archive/) once its questions are answered.
 
+- [Drawing dense, deep treemaps in the browser](research/research-2026-11-22-dense-treemap-rendering.md):
+  how desktop disk-usage tools and web libraries draw treemaps down to single files, and
+  measured canvas, DOM, and hit-testing costs in Chrome and WKWebView
 - [Operational visibility into Claude Code and Codex](research/research-2026-11-19-agent-home-visibility.md):
   every file format under `~/.claude` and `~/.codex`, what Metabrowser shows of them
   today, and a proposed agents plugin built on the public plugin contract
