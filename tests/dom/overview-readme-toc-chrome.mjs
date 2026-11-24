@@ -251,7 +251,7 @@ const EDGES = `(() => {
       const box = legend.getBoundingClientRect();
       const track = legend.parentElement.getBoundingClientRect();
       const first = legend.querySelector(".file-type-summary-legend-item");
-      const entry = view.querySelector(".kpress-toc a");
+      const entry = view.querySelector(".kpress-toc .kpress-toc-level-1 > a");
       const entryText = document.createRange();
       entryText.selectNodeContents(entry);
       const leftOf = (selector) => first.querySelector(selector).getBoundingClientRect().left;
@@ -265,6 +265,10 @@ const EDGES = `(() => {
         labelLeft: leftOf(".file-type-summary-legend-label"),
         tocEntryLeft: entry.getBoundingClientRect().left,
         tocTextLeft: entryText.getBoundingClientRect().left,
+        shareRights: [...legend.querySelectorAll(".file-type-summary-legend-percent")].map(
+          (percent) => percent.getBoundingClientRect().right,
+        ),
+        tocEntryRight: entry.getBoundingClientRect().right,
         top: box.top,
         bodyLeft: body.left,
         bodyRight: body.right,
@@ -375,7 +379,8 @@ async function checkEdges(page, label, band) {
   );
   // File Overview's legend: in the wide band, a rail where the README's table of contents
   // is, from the section's top, one entry to a line, each swatch on the line of the
-  // contents' entry marks and each name on the contents' text edge; in every other band,
+  // contents' entry marks, each name on a level-1 entry's text edge, and each share ending
+  // where the entries do; in every other band,
   // inside the section's body under the bars, as it was.
   const legend = edges.legend;
   if (band === "wide") {
@@ -386,6 +391,10 @@ async function checkEdges(page, label, band) {
         Math.abs(legend.trackWidth - legend.tocWidth) < TOLERANCE_PX &&
         Math.abs(legend.swatchLeft - legend.tocEntryLeft) < TOLERANCE_PX &&
         Math.abs(legend.labelLeft - legend.tocTextLeft) < TOLERANCE_PX &&
+        legend.shareRights.length > 1 &&
+        legend.shareRights.every(
+          (right) => Math.abs(right - legend.tocEntryRight) < TOLERANCE_PX,
+        ) &&
         Math.abs(legend.top - legend.bodyTop) < TOLERANCE_PX &&
         legend.items > 1 &&
         legend.lines === legend.items,

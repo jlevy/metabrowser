@@ -4711,13 +4711,15 @@ under the bars for that rail’s track beside File Overview, KPress’s 3rem gap
 card and its 15rem width, from the section’s top, one entry to a line with its share at
 the line’s end (`.file-overview-body`, `overview.css`). Inside the track it takes the
 table of contents’ own inset, so the two read as one column: each dot sits on the line
-of the contents’ entry marks and each name starts where their entries do
-(`tests/test_overview_readme_toc_chrome.py`). The switch follows the pane’s width alone,
-by the same container query, so in narrower bands File Overview is as it was, and the
-bars and the map keep the card’s measure in every band.
-The table sits behind a **Details** toggle, the same trigger and bold label as an **N
-more** row, which starts closed on each mount and keeps its state through repaints.
-Each group of rows is headed by its category, led by the category’s icon
+of the contents’ entry marks, each name starts where a level-1 entry’s text does at any
+root font size, and each share ends where the entries do
+(`tests/test_overview_readme_toc_chrome.py`; `tests/test_kpress_dependency_contract.py`
+pins the KPress values the rail copies).
+The switch follows the pane’s width alone, by the same container query, so in narrower
+bands File Overview is as it was, and the bars and the map keep the card’s measure in
+every band. The table sits behind a **Details** toggle, the same trigger and bold label
+as an **N more** row, which starts closed on each mount and keeps its state through
+repaints. Each group of rows is headed by its category, led by the category’s icon
 ([File-Type Category Icons](#file-type-category-icons)). Every row names its category
 and reports absolute values and percentages; fills are not tab stops, carry no duplicate
 tooltips, and are hidden from the accessibility tree, and no label relies on color or
