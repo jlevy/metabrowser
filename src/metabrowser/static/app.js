@@ -2255,15 +2255,19 @@ function initRootDetails() {
       details.open = false;
     }
   });
-  const mark = document.getElementById("header-root-kind");
-  const markTip = mark?.dataset.tipText;
+  const tips = [document.getElementById("header-root-kind"), trigger].map((element) => ({
+    element,
+    text: element?.dataset.tipText,
+  }));
   details.addEventListener("toggle", async () => {
-    if (mark && markTip) {
-      if (details.open) {
-        mark.removeAttribute("data-tip-text");
-        hideTooltipWithin(mark);
-      } else {
-        mark.dataset.tipText = markTip;
+    for (const { element, text } of tips) {
+      if (element && text) {
+        if (details.open) {
+          element.removeAttribute("data-tip-text");
+          hideTooltipWithin(element);
+        } else {
+          element.dataset.tipText = text;
+        }
       }
     }
     const url = details.dataset.repositoryUrl;

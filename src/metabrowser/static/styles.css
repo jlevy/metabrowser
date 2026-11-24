@@ -1888,6 +1888,10 @@ body {
 .root-details-trigger::-webkit-details-marker {
   display: none;
 }
+/* The summary owns the hover target for the decorative glyph. */
+.root-details-trigger > span {
+  pointer-events: none;
+}
 .root-details-trigger svg {
   display: block;
 }
