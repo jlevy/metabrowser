@@ -288,9 +288,10 @@ These files open in **Source**:
 
 ## Find a Pull Request with Quick Search
 
-Press `/` or `T` to open Quick Search, and type `#` to see recent pull requests in every
-state. Digits after it, such as `#30`, complete pull-request numbers with the exact
-number first; words after it match titles.
+Press `#` to open Quick Search with the pull request prefix entered and see recent pull
+requests in every state.
+Digits after the prefix, such as `#30`, complete pull-request numbers with the exact
+number first. Words after the prefix match titles.
 Ordinary text matches files and pull-request titles together.
 Each result shows its title, number, and state, and Enter opens its Conversation.
 

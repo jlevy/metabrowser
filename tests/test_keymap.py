@@ -366,10 +366,10 @@ def test_the_documented_keymap_is_the_keys_the_app_binds() -> None:
     """The documented table and the bound keys are one set, and each row names its targets.
 
     Every reserved shell letter, every manifest view key, and every letter a built-in plugin
-    attaches has a row; every row's letter is one of those, ``?``, ``/``, or ``\\``; each Control
-    chord the registry allows has a row; a view's or a plugin control's row names its label;
-    the numbers are one row, ``1`` to ``9``, never a fixed digit; ``0``, the one digit
-    with a fixed meaning, is Home's row; and ``\\`` hides the navigation pane.
+    attaches has a row. The shell also binds punctuation, including ``#`` for pull request
+    search. Each Control chord the registry allows has a row, and a view's or a plugin
+    control's row names its label. The digits ``1`` to ``9`` share a row. Home has the
+    fixed key ``0``, and ``\\`` hides the navigation pane.
     """
     rows = _documented_keymap()
     documented = {key for keys, _meaning in rows for key in keys if len(key) == 1}
@@ -379,7 +379,8 @@ def test_the_documented_keymap_is_the_keys_the_app_binds() -> None:
     views = _manifest_views()
     plugins = _builtin_plugin_letters()
     bound = shell | {key for _kind, _label, key in views} | set(plugins)
-    assert documented - {"?", "/", "\\"} == bound
+    assert documented - {"?", "/", "#", "\\"} == bound
+    assert any(keys == ["#"] and "pull request" in meaning for keys, meaning in rows)
     assert ["\\"] in [keys for keys, _meaning in rows], "the navigation pane's key has its row"
     for _kind, label, key in views:
         assert any(key in keys and label in meaning for keys, meaning in rows), (key, label)
