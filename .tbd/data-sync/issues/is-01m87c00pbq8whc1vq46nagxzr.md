@@ -5,14 +5,21 @@ title: Align the sidebar folder and Info icons with the heading text
 kind: bug
 status: in_progress
 priority: 2
-version: 3
+version: 4
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/788
+    at: 2026-11-24T18:31:01.858Z
+  - kind: other
+    url: https://github.com/jlevy/metabrowser/actions/runs/45459575260
+    at: 2026-11-24T18:31:01.861Z
 delegate: codex@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-24T18:09:54.355Z
-updated_at: 2026-11-24T18:20:01.634Z
+updated_at: 2026-11-24T18:31:01.861Z
 started_at: 2026-11-24T18:11:57.408Z
 ---
 Measure the heading’s typography and glyph positions in a real renderer. Align its folder, checkout, mirror and Info glyphs to the visual center of the name, reuse the established icon alignment rule where appropriate, and document and verify the shared treatment.
