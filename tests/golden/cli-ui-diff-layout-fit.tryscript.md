@@ -27,6 +27,10 @@ nothing until its first report, and draws in that report, before the browser pai
 not fit it chooses Split and its sideways scroll, and it writes the preference a click
 writes. The diff attaches it once, through the SDK’s shortcut surface, on the chip it
 would select, and moves it to the new chip after each draw.
+A host that fixes the layout at **Unified**, as a pull request’s Docs tab does, gets it
+at every width under any stored choice, with no layout control and no `L`, reads and
+writes no layout preference, and its toolbar holds **Diff | Current** alone
+(`tests/golden/cli-ui-diff-current.tryscript.md`).
 
 This browserless session loads the production `builtin_plugins/diff/diff-view.js` and
 mounts a document of the conformance corpus into a small element tree.
@@ -547,6 +551,54 @@ $ node tests/dom/diff-layout-fit-session.js
         "on": "Unified (aria-checked false)",
         "retargets": 4
       }
+    },
+    {
+      "step": "a host's fixed Unified, wide, under a stored Split: no control, no L",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": false,
+      "control": null,
+      "tips": [],
+      "preference": [],
+      "toolbar": [
+        "diff-toolbar-end (diff-show-control)"
+      ],
+      "layoutControls": 0,
+      "layoutKeys": 0,
+      "preferenceReads": 0
+    },
+    {
+      "step": "narrow: Unified still, and nothing to say why",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": false,
+      "control": null,
+      "tips": [],
+      "preference": [],
+      "toolbar": [
+        "diff-toolbar-end (diff-show-control)"
+      ],
+      "layoutControls": 0,
+      "layoutKeys": 0,
+      "preferenceReads": 0
+    },
+    {
+      "step": "wide again: the host's Unified, not the stored Split",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": false,
+      "control": null,
+      "tips": [],
+      "preference": [],
+      "toolbar": [
+        "diff-toolbar-end (diff-show-control)"
+      ],
+      "layoutControls": 0,
+      "layoutKeys": 0,
+      "preferenceReads": 0
     }
   ],
   "limit": [

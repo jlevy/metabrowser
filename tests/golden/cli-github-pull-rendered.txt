@@ -243,14 +243,14 @@ status: 200
   "reason": null,
   "source": "<PATH>",
   "number": 7,
-  "pin": "4e056f0ebcc745e9ca54cf90758da3d41fc75780",
+  "pin": "1fbe7f21adea41e790684a50c64f81ea949b9b45",
   "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
   "verified_at": "2026-09-17T12:00:00Z",
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "590e28ac972d509c941fdfa843e363159e2ae85d619f478847a7169aa8fb8f26",
+  "record_revision": "cfce910ec8a75363bbac775548563f4d39cbca024c01f5190e901fe8bbec2235",
   "fresh_for_s": 60.0,
   "probe_every_s": 5.0,
   "refreshing": false,
@@ -260,10 +260,10 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
-  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&base_policy=merge_base&build=<BUILD>&store=<STORE>",
-  "image_route": "/api/plugin/github/pull-image?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>",
-  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>",
-  "size_route": "/api/plugin/github/pull-size?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "image_route": "/api/plugin/github/pull-image?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -272,12 +272,12 @@ status: 200
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/7": "W/\"dd59df6f92cad97b85a151a2281b87c29e1dbd9d62159110c0556e985a0746a0\"",
+      "repos/octo/demo/pulls/7": "W/\"c1f4c32c6dcc50fded46a4c1c596ff8244a3644329d15605cfaf25346f687501\"",
       "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
       "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
       "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
-      "repos/octo/demo/commits/4e056f0ebcc745e9ca54cf90758da3d41fc75780/check-runs?per_page=100&page=1": "W/\"5ff09c4636e418a331ccf2ffc089feda51b0887010cdd02a67b4b083bf832763\"",
-      "repos/octo/demo/commits/4e056f0ebcc745e9ca54cf90758da3d41fc75780/status?per_page=100&page=1": "W/\"0768b48f82ba5d59555a27361e5d31ce879f85e6283c1f0c2b4a79f97e938f4e\""
+      "repos/octo/demo/commits/1fbe7f21adea41e790684a50c64f81ea949b9b45/check-runs?per_page=100&page=1": "W/\"63ffda6c6400a0bfe86d1e3f4aa1ac593986e1bd3ca2d2b37b7d43fcba52ddb7\"",
+      "repos/octo/demo/commits/1fbe7f21adea41e790684a50c64f81ea949b9b45/status?per_page=100&page=1": "W/\"2b514e21cbe5882cff49f4951375af1d42494a2ab8c93f3860a978511b556d72\""
     },
     "pull": {
       "number": 7,
@@ -307,12 +307,12 @@ status: 200
       "closed_at": null,
       "base": {
         "ref": "topic",
-        "sha": "1d2b1c5861dce0cc77fb953335a5ef0b7f151252",
+        "sha": "2fba9a5d87e05d51a6218ea11251a51f92158ff3",
         "repository": "octo/demo"
       },
       "head": {
         "ref": "count-to-two",
-        "sha": "4e056f0ebcc745e9ca54cf90758da3d41fc75780",
+        "sha": "1fbe7f21adea41e790684a50c64f81ea949b9b45",
         "repository": "forker/demo"
       },
       "html_url": "<PATH>/pull/7"
@@ -400,9 +400,9 @@ status: 200
       "statuses": []
     },
     "comparison": {
-      "base": "3a5c69db3ad6d5ecef05ca15c41a51002d28db00",
-      "head": "4e056f0ebcc745e9ca54cf90758da3d41fc75780",
-      "base_commit": "1d2b1c5861dce0cc77fb953335a5ef0b7f151252",
+      "base": "905f369f455a2258ad9db5f8aa160a5a393756c2",
+      "head": "1fbe7f21adea41e790684a50c64f81ea949b9b45",
+      "base_commit": "2fba9a5d87e05d51a6218ea11251a51f92158ff3",
       "base_from": "base_branch"
     },
     "truncated": {
@@ -426,16 +426,16 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
 gh api user
 gh api repos/octo/demo/pulls/7 (If-None-Match)
-gh api repos/octo/demo/commits/4e056f0ebcc745e9ca54cf90758da3d41fc75780/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/4e056f0ebcc745e9ca54cf90758da3d41fc75780/status?per_page=100&page=1
+gh api repos/octo/demo/commits/1fbe7f21adea41e790684a50c64f81ea949b9b45/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/1fbe7f21adea41e790684a50c64f81ea949b9b45/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
 gh api user (If-None-Match)
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f10'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f11'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f10
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f11
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -466,7 +466,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -478,7 +478,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -490,7 +490,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -500,9 +500,9 @@ status: 200
         "path": "css/components.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "455ce6a0f538267b",
+        "content_hash": "7c60e6bb7d672589",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -514,7 +514,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -526,7 +526,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "f4a0751b8416f372",
         "output_path": "css/print-fonts.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -538,7 +538,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "9a5f82ca54019902",
         "output_path": "css/mono-planetaire-400-normal.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -550,7 +550,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "c5232ad5d38dc5a6",
         "output_path": "css/mono-planetaire-700-normal.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -562,7 +562,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "34bd1d5b7aa5a794",
         "output_path": "css/mono-planetaire-400-italic.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -574,7 +574,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8fe04148a6caac2d",
         "output_path": "css/mono-planetaire-700-italic.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       }
@@ -583,13 +583,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f13'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f14'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f13
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f14
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -614,7 +614,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -626,7 +626,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -638,7 +638,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -648,9 +648,9 @@ status: 200
         "path": "css/components.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "455ce6a0f538267b",
+        "content_hash": "7c60e6bb7d672589",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -662,7 +662,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -674,7 +674,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "f4a0751b8416f372",
         "output_path": "css/print-fonts.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -686,7 +686,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "9a5f82ca54019902",
         "output_path": "css/mono-planetaire-400-normal.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -698,7 +698,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "c5232ad5d38dc5a6",
         "output_path": "css/mono-planetaire-700-normal.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -710,7 +710,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "34bd1d5b7aa5a794",
         "output_path": "css/mono-planetaire-400-italic.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -722,7 +722,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8fe04148a6caac2d",
         "output_path": "css/mono-planetaire-700-italic.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       }
@@ -731,30 +731,665 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f1'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f1'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f1
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f1
 status: 200
 {
   "version": "markdown-diff-v1",
-  "status": "unsupported",
-  "blocks": [],
+  "status": "ready",
+  "blocks": [
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<h1 id=\"user-content-<ANCHORS>-new-demo\">Demo</h1>",
+      "source_only": false
+    },
+    {
+      "kind": "removed",
+      "side": "old",
+      "html": "<ul><li><input type=\"checkbox\" disabled=\"\"> Try the tasks</li></ul>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<ul><li><input type=\"checkbox\" disabled=\"\" checked=\"\"> Try the tasks</li></ul>",
+      "source_only": false
+    },
+    {
+      "kind": "removed",
+      "side": "old",
+      "html": "<ul><li><input type=\"checkbox\" disabled=\"\" checked=\"\"> Read the guide</li></ul>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<ul><li><input type=\"checkbox\" disabled=\"\"> Read the guide</li></ul>",
+      "source_only": false
+    }
+  ],
   "source_only": false,
-  "reason": "task_list"
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "7c60e6bb7d672589",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f11'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f18'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f11
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f18
+status: 200
+{
+  "version": "markdown-diff-v1",
+  "status": "ready",
+  "blocks": [
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"96\"></p>",
+      "source_only": false
+    },
+    {
+      "kind": "removed",
+      "side": "old",
+      "html": "<details open>\n<summary>Install</summary>\n<p>Run the <del>old</del> installer.</p>\n</details>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<details open>\n<summary>Install</summary>\n<p>Run the <ins>new</ins> installer.</p>\n</details>",
+      "source_only": false
+    },
+    {
+      "kind": "context",
+      "side": "new",
+      "html": "<p>Plain Markdown after.</p>",
+      "source_only": false
+    }
+  ],
+  "source_only": false,
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "7c60e6bb7d672589",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f17'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f17
+status: 200
+{
+  "version": "markdown-diff-v1",
+  "status": "ready",
+  "blocks": [
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<h1 id=\"user-content-<ANCHORS>-new-notes\">Notes</h1>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<p>A claim.<sup><a>1</a></sup></p>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<ol>\n<li><p>Its source. <a> ↑ </a></p>\n</li>\n</ol>",
+      "source_only": false
+    }
+  ],
+  "source_only": false,
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "7c60e6bb7d672589",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f20'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f20
+status: 200
+{
+  "version": "markdown-diff-v1",
+  "status": "ready",
+  "blocks": [
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<h1 id=\"user-content-<ANCHORS>-new-private-use\">Private use</h1>",
+      "source_only": false
+    },
+    {
+      "kind": "added",
+      "side": "new",
+      "html": "<p>A  character.</p>",
+      "source_only": false
+    }
+  ],
+  "source_only": false,
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8efb2fa07a0a0370",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "bc14c4d38a7a4d65",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "7c60e6bb7d672589",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8a8f7b928ad6be2f",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f12'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f12
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -764,13 +1399,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f12'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f13'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f12
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f13
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -781,13 +1416,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f14'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f15'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f14
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f15
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -827,7 +1462,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/style-tokens.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -839,7 +1474,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/syntax.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -851,7 +1486,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/document.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -861,9 +1496,9 @@ status: 200
         "path": "css/components.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "455ce6a0f538267b",
+        "content_hash": "7c60e6bb7d672589",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/components.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -875,7 +1510,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -887,7 +1522,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "f4a0751b8416f372",
         "output_path": "css/print-fonts.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/print-fonts.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/print-fonts.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -899,7 +1534,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "9a5f82ca54019902",
         "output_path": "css/mono-planetaire-400-normal.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -911,7 +1546,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "c5232ad5d38dc5a6",
         "output_path": "css/mono-planetaire-700-normal.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -923,7 +1558,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "34bd1d5b7aa5a794",
         "output_path": "css/mono-planetaire-400-italic.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-400-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -935,7 +1570,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8fe04148a6caac2d",
         "output_path": "css/mono-planetaire-700-italic.css",
-        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9/css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@e619e63103603bcc/v0.3.10/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       }
@@ -944,13 +1579,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f3'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f3'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f3
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f3
 status: 200
 {
   "version": "structured-diff-v1",
@@ -1009,13 +1644,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f2'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f2'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f2
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f2
 status: 200
 {
   "version": "structured-diff-v1",
@@ -1053,13 +1688,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f5'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f5'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f5
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f5
 status: 200
 {
   "version": "structured-diff-v1",
@@ -1077,13 +1712,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f8'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f8'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f8
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f8
 status: 200
 {
   "version": "structured-diff-v1",
@@ -1093,13 +1728,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f6'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f6'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f6
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f6
 status: 200
 {
   "version": "structured-diff-v1",
@@ -1109,13 +1744,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f4'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f4'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f4
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f4
 status: 200
 {
   "version": "structured-diff-v1",
@@ -1125,13 +1760,52 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f15'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f9'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f15
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f9
+status: 200
+{
+  "version": "structured-diff-v1",
+  "status": "ready",
+  "format": "json",
+  "root": [
+    {
+      "change": "modified",
+      "type": "map",
+      "entries": [
+        {
+          "change": "context",
+          "value": false,
+          "key": "admin"
+        },
+        {
+          "change": "removed",
+          "value": 1,
+          "key": "level"
+        },
+        {
+          "change": "added",
+          "value": 2,
+          "key": "level"
+        }
+      ]
+    }
+  ],
+  "source_only": true
+}
+--- stderr ---
+selection: pull_request
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f16'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f16
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -1141,13 +1815,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=absent'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=absent'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=absent
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=absent
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -1157,34 +1831,34 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>'
 exit: 1
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>
 status: 400
 {
   "code": "invalid_rendered_diff"
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-Error: /api/plugin/github/pull-rendered-diff?number=7&left=3a5c69db3ad6d5ecef05ca15c41a51002d28db00&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE> returned HTTP 400
+Error: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE> returned HTTP 400
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f10'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f11'
 exit: 1
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f10
+api: /api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f11
 status: 410
 {
   "code": "snapshot_expired"
 }
 --- stderr ---
 selection: pull_request
-pin: 4e056f0ebcc745e9ca54cf90758da3d41fc75780 (pull request 7 head)
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-Error: /api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=4e056f0ebcc745e9ca54cf90758da3d41fc75780&store=<STORE>&file=f10 returned HTTP 410
+Error: /api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f11 returned HTTP 410
 --- gh ---

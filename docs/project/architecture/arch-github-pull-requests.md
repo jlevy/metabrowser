@@ -319,10 +319,10 @@ otherwise a button that posts the head’s commit to `/api/source/pin`, naming t
 request’s `refs/pull/<n>/head` as the ref to serve it under, and then opens the root, so
 what moves the pin is never a link a modified click could open without moving it; a
 checkout has no pin and no Browse code.
-**View on branch** is Browse code for one file, on each file bar of Changes while the
-diff shows the pull request’s head: a link to the file’s `/view/` address when the pin
-is the head, otherwise a button that serves the head the same way first, and, beside a
-checkout whose `HEAD` is the head, a link to the working-tree file.
+**View on branch** is Browse code for one file, on each file bar of Changes and Docs
+while the diff shows the pull request’s head: a link to the file’s `/view/` address when
+the pin is the head, otherwise a button that serves the head the same way first, and,
+beside a checkout whose `HEAD` is the head, a link to the working-tree file.
 For a checkout, [Open Modes](arch-open-modes.md#pull-requests-in-a-repository-folder)
 designs both controls going to the head as a revision view in the repository folder,
 with the working-tree copy a separate, labelled action; that is not built.

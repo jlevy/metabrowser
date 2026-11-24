@@ -16,7 +16,7 @@
 // addresses under KPress's version, and an editable or development KPress's version has a
 // PEP 440 local segment, `0.3.10.dev10+5c60a81`. A filter that refused the `+` dropped
 // every stylesheet of such a KPress, and the document read in sans under the serif reading
-// font (mb-2r08). CI installs a release, so each projection's answer is given the local
+// font (mb-2r08). Where KPress is a release, each projection's answer is given the local
 // segment on its way to the page (`Fetch.requestPaused` below), as an editable KPress names
 // its addresses; the server answers any version segment with the installed files, as it
 // does a page rendered before an upgrade.
@@ -33,6 +33,8 @@ const FACE_POLL_MS = 50;
 // The local segment an editable KPress built from a commit past its release puts in its
 // version (uv-dynamic-versioning), which the projections' addresses are given.
 const LOCAL = ".dev10+5c60a81";
+// A KPress address under a version with a local segment, given here or by KPress itself.
+const LOCAL_ADDRESS = /^\/kpress-static\/(?:@[0-9a-f]+\/)?v[^/]*\+[^/]*\//;
 const RENDERED_ROUTE = "/api/plugin/github/pull-rendered-diff";
 const PAGES = ["/pull/8/docs", "/pull/8/files"];
 const TEXT = "More.";
@@ -121,6 +123,11 @@ async function main() {
           const projection = JSON.parse(text);
           for (const asset of projection?.assets?.assets ?? []) {
             const url = String(asset.public_url ?? "");
+            // A KPress built from a commit already names a local version: kept as it is.
+            if (LOCAL_ADDRESS.test(url)) {
+              localized += 1;
+              continue;
+            }
             const local = url.replace(
               /^(\/kpress-static\/(?:@[0-9a-f]+\/)?v[^/+]+)\//,
               `$1${LOCAL}/`,
@@ -194,7 +201,7 @@ async function main() {
           }
           check(
             `${where}: KPress's document.css loads from a local version's address`,
-            localized > before && read.documentSheets.some((sheet) => sheet.includes(LOCAL)),
+            localized > before && read.documentSheets.some((sheet) => LOCAL_ADDRESS.test(sheet)),
             `${localized - before} addresses given the local segment; ${JSON.stringify(read.documentSheets)}`,
           );
           check(`${where}: the diff warns of nothing`, warnings.length === 0, warnings.join("; "));

@@ -38,6 +38,8 @@ async function story({ delaySecondMount = false, counts = undefined } = {}) {
   const mounted = [];
   // Each mount's File type group (Docs asks for `type:docs`), and each jump, by that group.
   const groups = [];
+  // Each mount's layout, which Docs fixes at Unified and Changes leaves to the reader.
+  const layouts = [];
   const jumps = [];
   globalThis.fetch = async (route, options = {}) => {
     if (route === "/api/plugin/github/stacks") {
@@ -75,6 +77,7 @@ async function story({ delaySecondMount = false, counts = undefined } = {}) {
           mounted.push(context.comparison);
           const group = context.group ?? null;
           groups.push(group);
+          layouts.push(context.layout ?? null);
           if (delaySecondMount && mounted.length === 2) {
             await new Promise((resolve) => {
               releaseMount = resolve;
@@ -120,6 +123,7 @@ async function story({ delaySecondMount = false, counts = undefined } = {}) {
       [...container.descendants()].find((item) => item.tag === "a" && item.textContent === "Docs"),
     mounted,
     groups,
+    layouts,
     jumps,
     button,
     reads: () => reads,
@@ -303,6 +307,9 @@ async function docs() {
   await run.land("files");
   await run.handle.whenFilesReady();
   assert.deepEqual(run.groups, [null, "type:docs", null], "and Changes again, whole");
+  // Docs asks the diff for Unified, with no layout control (mb-0ze2); Changes asks for no
+  // layout, so the reader's stored choice and its control stand.
+  assert.deepEqual(run.layouts, [null, "unified", null], "Docs alone fixes the layout");
   await run.land("docs");
   await run.handle.whenFilesReady();
   assert.equal(

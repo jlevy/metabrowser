@@ -282,8 +282,10 @@ switcher shows, centered above a centered title.
   192 pixels. One more cost is accepted for the centered block on GitHub: the
   rendered-Markdown diff refuses raw HTML, so a README change has no rendered diff
   (measured the same day, a one-word README change projects as `unsupported`, and the
-  same change under a Markdown title as `ready`). The projection is tracked as mb-4cwy,
-  which also tracked the inert profile’s `align` until mb-5xq7 fixed it.
+  same change under a Markdown title as `ready`). The projection was tracked as mb-4cwy,
+  which also tracked the inert profile’s `align` until mb-5xq7 fixed it; since mb-4bsb
+  (2026-11-23) the projection renders raw HTML as the Document view does, so a README
+  change has its rendered diff.
   PyPI, which publishes the README as the package description, shows the alt text
   instead, as it does for today’s screenshot (see Decisions).
 
