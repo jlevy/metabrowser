@@ -82,6 +82,8 @@ handoff, the app needs `metab` 0.13.0 or later.
 - Read a log, including one still being written: see [Read Logs](#read-logs)
 - Read commits and diffs: see [Read Commits and Diffs](#read-commits-and-diffs)
 - Read or review a GitHub pull request: see [Read a Pull Request](#read-a-pull-request)
+- Open or update a pull request: write or refresh its guided review, as
+  [Write a Guided Review](#write-a-guided-review) says
 - Browse a remote directory through SSH: see
   [Browse a Remote Directory](#browse-a-remote-directory)
 - Inspect or validate plugins: use `--plugins --json` for structured discovery,
@@ -422,6 +424,62 @@ The
 covers private and large repositories, failures, and offline use, and the
 [command-line guide](https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md#pull-requests)
 is the reference.
+
+## Write a Guided Review
+
+A guided review is an ordered list of review steps in a pull request’s description,
+which the pull page’s **Guided Review** tab walks a reviewer through, one step at a
+time, each a note above the diff excerpts it is about.
+Add one to every pull request you open, unless the user says not to, and refresh it on
+every push: a push moves the head, and the guide reads as out of date until its pins
+move with it. The format, its limits, and how a page answers it are in the
+[guide](https://github.com/jlevy/metabrowser/blob/main/docs/reviewing-pull-requests.md#guided-review);
+this section says what a good guide holds.
+
+A guide does more than explain the change.
+It is the reviewer’s agenda, so give each of these concerns a step, or a run of steps,
+of its own, in this order, and title each step so the list reads as that agenda:
+
+1. **Keystone decisions.** The few choices everything else follows from: a data shape, a
+   contract, a boundary, a trade-off you chose against an alternative.
+   Say what was decided, what it rules out, and cite the lines that embody it.
+   A reviewer who disagrees here should stop before reading the rest.
+2. **Key documents.** The specs, plans, architecture documents, and user guides the
+   change adds or rewrites, cited whole, with a note on what each now promises.
+3. **Each area of change.** One step per area, in dependency or execution order (the
+   format before its parser, the route before its page), each saying what to verify
+   there, not only what changed.
+   Cite the ranges that matter, and whole files for tests, goldens, and generated
+   output. Every changed file belongs to some step.
+4. **Ambiguity and uncertainty.** What you were unsure of, a guess you made where a
+   requirement was silent, a behavior you could not measure, a risk you accepted.
+   Say plainly that a person should decide or check it, and cite where it lives.
+   Leave this step out only when there is truly nothing; never hide a doubt in another
+   step’s note.
+5. **Testing and QA.** Keep three things apart, each named, never merged into one claim:
+   - what automated checks cover: the tests and goldens added or changed, what each
+     pins, and the CI run that passed at the head;
+   - what you, the agent, checked yourself beyond them: a probe, a measurement, a run in
+     a browser, with its result and its conditions;
+   - what still needs a person: a look in a real browser or the app, a platform you
+     could not run, a judgment no test can make.
+     State this as a list the reviewer can tick off.
+6. **Future work.** What this change leaves for later: deferred findings with their
+   tracker IDs, follow-up plans, and open questions that need more planning before
+   anyone builds them. Cite the plan or the changelog entry that records them.
+
+Smaller changes merge concerns (one step can be both the keystone and the only area),
+but keep the testing step and its three-way split on every pull request, and the
+ambiguity step whenever there is anything to say.
+A step’s note says what to check and why; the description says what the change is, so do
+not repeat it.
+
+Pin `merge_base` to `git merge-base origin/<base branch> <head>`: for a stacked pull
+request that is the base layer’s branch, not the default branch.
+A range must lie inside one hunk of that comparison’s diff, on the side it names.
+Quote a title that holds a colon followed by a space, or YAML reads it as a mapping.
+After publishing, read the `guided-review` route for each step: the overview and every
+step should answer `ready`, and every reference `ready`.
 
 ## Browse a Remote Directory
 

@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft
+**Status:** In progress
 
 ## Overview
 
@@ -103,9 +103,11 @@ Review**, with:
 - when to write one: every pull request the agent opens, unless the user says not to;
 - the pins, computed with `git merge-base`, and why a stacked layer’s base is its base
   branch;
-- how to choose and order steps: dependency or execution order, a note that says what to
-  check, ranges for the lines that matter, a whole file for tests, goldens, and docs,
-  and every changed file cited somewhere;
+- what a guide covers, each concern a step or a run of steps of its own, in this order:
+  keystone decisions; key documents; each area of change, in dependency or execution
+  order with every changed file cited; ambiguity and uncertainty a person should decide;
+  testing and QA, split three ways into what automated checks cover, what the agent
+  checked itself, and what still needs a person; and future work and further planning;
 - the YAML shape and its traps (quote a title with a colon);
 - the check, then `gh pr edit <n> --body-file`, replacing an existing block rather than
   adding a second;
@@ -120,6 +122,12 @@ links to it rather than restating it.
 If the skill grows past a routing layer, the format summary moves to
 `skills/metabrowser/references/guided-reviews.md`, once the skill installer is confirmed
 to copy a skill’s subfolders.
+
+Steps per concern make a guide the reviewer’s agenda rather than a tour of the diff: a
+reviewer can stop at a keystone decision they reject, go straight to what is uncertain,
+and tick off the person-only checks, and an agent’s claims about testing are kept apart
+from what CI proves.
+The owner set these concerns on 2026-11-24 after walking the first guides.
 
 ### This Repository’s Handoff
 
@@ -152,8 +160,10 @@ The check is the guided-review carrier’s, as each carrier keeps its own route.
 
 - [ ] Add `/api/plugin/github/guided-review-check` with its parity row, the route map
   entry, and a golden on the GitHub stand-in.
-- [ ] Add **Write a Guided Review** to the skill, with the route in **Route the Task**,
-  and its recipes to `tests/golden/cli-skill-recipes.tryscript.md`.
+- [x] Add **Write a Guided Review** to the skill, with the route in **Route the Task**:
+  what a guide covers, the pins, the YAML trap, and confirming it with the route.
+- [ ] Once the check route exists, add its recipes to the section and to
+  `tests/golden/cli-skill-recipes.tryscript.md`.
 - [ ] Repeat the person-facing part in `docs/working-with-agents.md` (“ask an agent to
   add a guided review”).
 - [ ] Add the handoff line to `AGENTS.md`.
