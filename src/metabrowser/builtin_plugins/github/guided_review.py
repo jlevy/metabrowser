@@ -706,12 +706,15 @@ async def _staleness(
 ) -> dict[str, object]:
     """What a stale guide was written for, what the pull request is now, and what changed.
 
-    ``changed_paths`` are the guide's referenced paths that differ between the guide's
-    comparison and the current one, at either end, and ``changed_steps`` the one-based
-    steps that cite one; each is ``None`` when that cannot be read, as when the store lacks
-    the guide's head after a force push. A step that cites no changed path reads as it did
-    when the guide was written. With *newer*, GitHub reports a head this copy lacks, so
-    what changed is unknown: the commits since are this copy's, and neither list is read.
+    ``changed_paths`` are the guide's referenced paths whose content differs between the
+    guide's comparison and the current one, at either end, compared path by path with no
+    rename detection, and ``changed_steps`` the one-based steps that cite one; each is
+    ``None`` when that cannot be read, as when the store lacks the guide's head after a
+    force push. A step that cites no changed path cites no file whose content changed. Its
+    excerpts are the current diff's all the same, which can draw a file another way, as
+    when the diff now pairs it with a deleted file as a rename. With *newer*, GitHub reports
+    a head this copy lacks, so what changed is unknown: the commits since are this copy's,
+    and neither list is read.
 
     Raises :class:`GuideError` for pins that do not name a comparison: a ``merge_base``
     the store has that is not an ancestor of the guide's ``head``.
@@ -811,7 +814,7 @@ async def guided_review(host: PullHost, number: int, step_number: int) -> dict[s
     if published is None or comparison is None:
         return {**identity, "state": "comparison_unavailable", **diagnostics}
     if step_number > len(guide.items):
-        return {**identity, "state": "step_not_found"}
+        return {**identity, "state": "step_not_found", **diagnostics}
     step = guide.items[step_number - 1]
     try:
         references = await _step_references(published, number, comparison, step)

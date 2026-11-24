@@ -607,8 +607,10 @@ async function run() {
   }
 
   // A guide whose head this copy lacks, as after a force push it never fetched: what changed
-  // is unknown, so no step is marked, the warning says some may not match, and a reference
-  // that no longer resolves says what may be so in its place.
+  // is unknown, so no step is marked, the warning says some may not match, and each reference
+  // says what may be so, above its excerpt or in its place (A1 of review A on #795). A path
+  // the pull request does not change says what any guide's would, since whether it ever did
+  // is unknown (A7).
   {
     const lost = host();
     const view = lost.mount(page, "guided", envelope(1));
@@ -669,6 +671,38 @@ async function run() {
     });
     plainly(notice);
     steps.push(`a guide whose cited files did not change: ${said(notice)}`);
+  }
+
+  // A guide whose merge base alone moved, as when the base branch moved under the same head:
+  // it is out of date all the same, so a cited file changed on the base side marks its step,
+  // and when none did a quiet line says so (A5 of review A on #795).
+  {
+    const based = host();
+    const view = based.mount(page, "guided", envelope(1));
+    await settle();
+    const pins = { merge_base: "a".repeat(40), head: "b".repeat(40) };
+    const moved = { merge_base: "d".repeat(40), head: "b".repeat(40) };
+    const stale = {
+      guide: pins,
+      current: moved,
+      github_newer: false,
+      history: "ahead",
+      commit_count: 0,
+      commits: [],
+      changed_paths: ["src/app.txt"],
+      changed_steps: [1],
+    };
+    based.pending()[0].answer({ ...step(1, 1, 3), state: "stale", stale });
+    await settle();
+    plainly(view.container.querySelector(".github-pull-guide-stale"));
+    steps.push(`a guide whose merge base alone moved: ${view.stale()}; ${view.outline()}`);
+    view.handle.dispose();
+    const { staleNotice } = await import(
+      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/guided-review.js")).href
+    );
+    const quiet = staleNotice({ ...stale, changed_paths: [], changed_steps: [] });
+    plainly(quiet);
+    steps.push(`and when none of its files changed: ${said(quiet)}`);
   }
 
   // One step's read refused, or failed, keeps the guide: its steps, the place, and the way

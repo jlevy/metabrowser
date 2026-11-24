@@ -254,6 +254,55 @@ def test_a_comparison_the_store_cannot_read_is_unavailable(
         assert answer["stale"]["changed_steps"] == [1, 2]
 
 
+def test_a_stale_guide_on_a_record_with_no_comparison_keeps_its_diagnostics(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A record with no comparison, as when the store could not answer for it at fetch,
+    refuses every step as unavailable, and a stale guide's diagnostics ride on that refusal
+    too, with no current merge base (A4 of review A on #795)."""
+    origin = stand.origin
+    _cache(stand, _pinned(stand, head=origin["fork_earlier"]))
+    real = guided_review.cached_pull_record
+
+    def without_comparison(*args: Any) -> Any:
+        found, other, revision = real(*args)
+        assert isinstance(found, PullRecord)
+        return found.model_copy(update={"comparison": None}), other, revision
+
+    monkeypatch.setattr(guided_review, "cached_pull_record", without_comparison)
+    answer = _ask(stand)
+    assert answer["state"] == "comparison_unavailable"
+    assert answer["stale"]["current"] == {"merge_base": None, "head": origin["fork_head"]}
+    assert answer["stale"]["changed_steps"] == [1, 2]
+
+
+def test_a_step_past_a_stale_guide_keeps_its_diagnostics(stand: _Stand) -> None:
+    """Every answer for a stale guide carries its diagnostics, a step it lacks too (A2 of
+    review A on #795)."""
+    _cache(stand, _pinned(stand, head=stand.origin["fork_earlier"]))
+    answer = _ask(stand, step=3)
+    assert answer["state"] == "step_not_found"
+    assert answer["stale"]["changed_steps"] == [1, 2]
+
+
+def test_a_merge_base_this_copy_lacks_says_nothing_about_the_pins(stand: _Stand) -> None:
+    """Only a merge_base the store has can name no comparison. One it lacks, as after the
+    base branch was rewritten, leaves the guide stale with what changed unknown, and its
+    steps are read at the current head (A3 of review A on #795)."""
+    origin = stand.origin
+    _cache(stand, _pinned(stand, merge_base=_MISSING))
+    answer = _ask(stand)
+    assert answer["state"] == "stale"
+    stale = answer["stale"]
+    assert (stale["history"], stale["changed_paths"], stale["changed_steps"]) == (
+        "ahead",
+        None,
+        None,
+    )
+    assert answer["comparison"] == {"merge_base": origin["base"], "head": origin["fork_head"]}
+    assert (answer["step"], _rows(answer)) == (1, ["context:one", "add:two"])
+
+
 def test_a_description_cut_inside_its_block_is_truncated_not_invalid(stand: _Stand) -> None:
     """The record keeps MAX_BODY_BYTES of a description, so a block past that is cut, and
     reads as an unclosed fence the author closed on GitHub (B12 of review B on #677)."""

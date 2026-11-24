@@ -997,10 +997,11 @@ is what a force push leaves, so it is stale, not invalid.
 A guide whose pins are not the pull request’s current comparison is answered `stale`
 with its step and a `stale` object (`_staleness` in `guided_review.py`): both
 comparisons, the first-parent commits after the guide’s head or that its head left the
-branch’s history, and the cited paths and steps that changed between the two
-comparisons, each with its bound beside its constant, or `null` when the store lacks the
-guide’s head. When GitHub reports a head this copy lacks, the guide is stale too, and
-what the newer commits changed is unknown, so neither list is answered.
+branch’s history, and the cited paths whose content changed between the two comparisons,
+compared path by path with no rename detection, and the steps that cite one, each with
+its bound beside its constant, or `null` when the store lacks the guide’s head.
+When GitHub reports a head this copy lacks, the guide is stale too, and what the newer
+commits changed is unknown, so neither list is answered.
 A `comparison_unavailable` answer for a stale guide carries the `stale` object too.
 Those details are for agents and the goldens; the page says less (`staleNotice` in
 `guided-review.js`): one warning and one remedy when a cited file changed or what
@@ -1008,8 +1009,8 @@ changed is unknown, a quiet line when none did, and nothing when this copy match
 guide and only GitHub’s head is newer, since the page’s header already says new commits
 were pushed.
 It marks each changed step, in the step list and on the step, and says above
-a changed file’s excerpt, or in its place, that the file changed; it names no commit,
-head, merge base, path, or count.
+a changed file’s excerpt, or in its place, that the file changed, and when what changed
+is unknown that it may have; it names no commit, head, merge base, path, or count.
 The limits in `guided_review.py` (`MAX_ITEMS`, `MAX_REFERENCES`, `MAX_EXCERPT_BYTES`,
 and `MAX_STEP_PATCH_BYTES`) cap the guide’s steps, the per-step hydration, the excerpt
 text, and a step’s whole files, each with the measurement that set it beside the

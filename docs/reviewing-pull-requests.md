@@ -238,15 +238,17 @@ The guide is read from the cached description, and its excerpts come from the pu
 request’s current comparison, so a guide stays readable after new commits.
 When the pull request’s head or merge base has moved past the guide’s pins, the guide is
 out of date: one warning at the top of Guided Review says so and that its author can
-update the guide, and each step that cites a file changed since is marked changed, in
-the step list and on the step.
+update the guide, and each step that cites a file whose content changed since is marked
+changed, in the step list and on the step.
 A reference whose file changed says so above its excerpt, or in its place when its range
 no longer resolves. When the local copy lacks the guide’s head, as after a force push,
-what changed is unknown: no step is marked, and the warning says some steps may not
-match. When none of the cited files changed, as after merging the base branch in or a
-rebase that leaves them alone, a quiet line says so instead of the warning.
+what changed is unknown: no step is marked, the warning says some steps may not match,
+and each excerpt says its file may have changed.
+When the guide cites no file whose content changed, as after merging the base branch in
+or a rebase that leaves them alone, a quiet line says so instead of the warning.
 When GitHub reports a newer head than the cached copy has, the page’s header says new
-commits were pushed, and the guide adds nothing until the pull request is fetched again.
+commits were pushed, and, when this copy matches the guide, the guide adds nothing until
+the pull request is fetched again.
 The route’s answer, below, keeps the details: the guide’s pins and the current ones, the
 commits since, and the paths and steps that changed.
 To bring the guide current, update its pins and ranges in the PR description.

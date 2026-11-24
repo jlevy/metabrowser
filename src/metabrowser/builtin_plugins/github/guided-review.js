@@ -179,16 +179,20 @@ const REFERENCE_MESSAGES = Object.freeze({
 });
 
 // A reference of an out-of-date guide, read at the pull request's current head, whose file
-// changed since the guide was written: a note in its place when it no longer resolves, and
-// above its excerpt when it does. One whose change is unknown says only what may be so.
+// changed since the guide was written: a note above its excerpt when it resolves, and in its
+// place when it does not. A range that no longer lies in one hunk may have moved, or the
+// change may be elsewhere in the file, so it says only what may be so. One whose change is
+// unknown, as after a force push, says only what may be so too, and a path the pull request
+// does not change says what any guide's would (`REFERENCE_MESSAGES`), since whether it ever
+// did is unknown.
 const CHANGED_REFERENCE_MESSAGES = Object.freeze({
   ready: "This file changed after the guide was written.",
-  range_unavailable: "These lines changed after the guide was written.",
+  range_unavailable: "These lines may have changed since the guide was written.",
   path_not_changed: "This file is no longer in the pull request's changes.",
 });
 const UNKNOWN_REFERENCE_MESSAGES = Object.freeze({
+  ready: "This file may have changed since the guide was written.",
   range_unavailable: "These lines may have changed since the guide was written.",
-  path_not_changed: "This file is no longer in the pull request's changes.",
 });
 
 // What an out-of-date guide says above its steps: one warning and its one remedy, or, when
@@ -275,10 +279,10 @@ function renderReference(reference, open, change, drawPatch, drawn) {
     bar.append(full);
   }
   section.append(bar);
-  if (reference.state === "ready" && change === "changed") {
-    section.append(
-      element("p", CHANGED_REFERENCE_MESSAGES.ready, "github-pull-quiet github-pull-guide-changed"),
-    );
+  if (reference.state === "ready" && change !== "unchanged") {
+    const said =
+      change === "changed" ? CHANGED_REFERENCE_MESSAGES.ready : UNKNOWN_REFERENCE_MESSAGES.ready;
+    section.append(element("p", said, "github-pull-quiet github-pull-guide-changed"));
   }
   if (reference.state === "ready" && reference.hunks.length === 0) {
     // A rename, a mode change, or a binary file: a change with no text to show.
