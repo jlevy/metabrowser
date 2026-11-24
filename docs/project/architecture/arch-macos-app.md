@@ -30,7 +30,7 @@ Paths are under `apps/macos/`.
 | `Sources/ShellCore/Supervision/` | Spawning a server, what it says as it starts, recognizing it as ready, checking its health, and stopping it |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, settling which one runs, and the child environment |
 | `Sources/ShellCore/Setup/` | The version floor, the first-run discovery status, the doctor’s report for Check Setup…, file watches, the restart offer after an upgrade, and the launch notice |
-| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, downloads, and the web panes’ sites, policy, state, popover layout, and data store |
+| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, downloads, the host descriptor, Open links and the files they open, and the web panes’ sites, policy, state, popover layout, and data store |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`), and the title-bar mark |
 | `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views, and `TitleLineMenuItem`, the chooser’s menu item, which the tests reach here because `ShellCore` imports no AppKit |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views |
@@ -561,12 +561,16 @@ Applications.
   A clicked link to another `http`, `https`, or `mailto` URL opens in the default
   browser; the same URL reached by script, redirect, or history is cancelled, and so are
   `file://` and other schemes.
-  A link the page marks for a web pane, as View on GitHub’s is, is the one link the app
-  answers itself, with a popover
-  ([Web Panes and View on GitHub](#web-panes-and-view-on-github)).
+  A link the page marks for a web pane, as View on GitHub’s is, and a link it marks to
+  open a file in its default app, as a PDF’s Open is, are the links the app answers
+  itself, with a popover ([Web Panes and View on GitHub](#web-panes-and-view-on-github))
+  or with Launch Services
+  ([Open Links and the Host Descriptor](#open-links-and-the-host-descriptor)).
 - **Downloads.** `WKDownload` with a save panel.
-  A confirmed Replace downloads to a staging file on the same volume and renames it over
-  the original only when it finishes (`StagedDownload`).
+  An Open link’s copy of a file with no folder on disk downloads without one, into the
+  app’s caches (`OpenFileDownloads`). A confirmed Replace downloads to a staging file on
+  the same volume and renames it over the original only when it finishes
+  (`StagedDownload`).
 - **Crashes.** If the web content process dies, the window reloads within
   `RecoveryBudget.webContent`, and then shows the status view.
 - **Reload.** Command-R reloads in every state a folder window can be in (`PageReload`,
@@ -757,6 +761,69 @@ pane (bead `mb-4wqh`, which replaced the in-window GitHub view first built for
   [The hand checks](../qa/qa-macos-app-hand-checks.md#view-on-github) cover the popover
   and signing in.
 
+### Open Links and the Host Descriptor
+
+A page can ask the app to open a file in the app macOS assigns to its type, as the `pdf`
+plugin’s Open does for a PDF, which opens in Preview unless the user chose another
+([the PDF plan](../specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)).
+The page asks for a download, which a browser carries out by its own rule for the type,
+and never asks which host it is in.
+
+- **The host descriptor.** `HostDescriptor` installs a user script in the page’s own
+  world and main frame that defines `window.metabrowserHost`, frozen and neither
+  writable nor configurable, which lists the actions the app’s handlers answer:
+  `open-file` (`OpenFileRequests.action`) while `OpenFileRequests` is installed.
+  The SDK’s `mb.host.supports(action)` reads it, and a browser defines none.
+  It names actions, never the host, and a document with an opaque origin, such as a
+  sandboxed `/raw` document, gets none.
+  It is a hint for what the page draws; each handler checks every request itself.
+- **The page’s contract.** A page marks an Open link `data-metabrowser-open-file`, with
+  the file’s `/raw?path=<identity>` as its `href`, the file’s name as its `download`,
+  and its subject as the marker’s value: `filesystem` for a path relative to the folder,
+  or `git_revision` for a pinned revision’s or a mirror’s identity.
+  Everywhere else it is a download.
+  The [contract](arch-app-contract.md) declares it as the behavior `open-file-link`.
+- **Only the marked link.** `OpenFileRequests` installs a capture-phase click listener
+  in the app’s own content world, as `WebViewRequests` does, that takes a trusted
+  primary click with no modifier key on a marked link in a document whose origin is not
+  opaque, cancels the link’s download, and posts its `href`, subject, and name to a
+  handler the page’s scripts cannot reach.
+  The window answers only the main frame of the server’s own origin, for an `href` on
+  that origin (`OpenFileRequests.allows`). A modified click, a scripted one, and a click
+  in a sandboxed document are left to the link, and a `download` link without the marker
+  always goes to the save panel.
+- **What opens.** `OpenFilePlan` decides from what the window serves (`SessionRoot`),
+  which only the app knows.
+  A `filesystem` path in a folder’s window opens the file itself, once its real path is
+  a regular file inside the folder’s real path, so no `..` or symbolic link reaches
+  outside the folder. A `git_revision` path, or any path in a repository’s window, which
+  has no file on disk, opens a copy (`OpenFileDownloads`): the page’s own web view
+  downloads the `href`, with the page’s cookies, to
+  `Caches/<bundle identifier>/Opened/<unique>/<name>`, and the copy is quarantined as a
+  web download and made read-only.
+  The app sets no `LSFileQuarantineEnabled`, so it marks each copy itself.
+  Launch Services opens the file (`NSWorkspace.open`), and each launch removes copies
+  older than `OpenFileDownloads.kept`.
+- **Which types.** A file opens only if its type conforms to PDF, image, or audiovisual
+  content and is not SVG (`OpenFileTypes`): the default handler of a script, an
+  application, an installer package, a disk image, or an internet location runs or
+  mounts something, and an SVG’s is often a browser, which runs its scripts.
+  A copy is checked by its name before it downloads and by the type Launch Services
+  gives it after. Any other type is refused with an alert, which offers Reveal in Finder
+  for a file on disk, and every other failure shows an alert that names the file and
+  why.
+- **Tests.** `OpenFileTests` cover the message’s shape, the origin check, the plan
+  against a real folder (`..`, a link out of the folder, a folder, a missing file, an
+  absolute path, a repository, a pinned revision), the type policy, sealing a copy, and
+  the sweep; `OpenFileWebKitTests` cover, in a real `WKWebView`, a user’s click reaching
+  the handler with no download, a Command-click, the Download link, and a scripted click
+  left to the link, a sandboxed `/raw` document’s marked link and a message posted from
+  it refused, the handler out of the page’s reach, the descriptor frozen in the page and
+  absent from a frame, a sandboxed document, and a configuration without the handler,
+  and a copy quarantined and read-only, a server’s error, and a refused type.
+  `tests/test_macos_app_pins.py` holds the attribute, the action, and the link’s shape
+  to the plugin’s.
+
 ## The Title-Bar Accessory
 
 AppKit draws a system title in one font and color, so the window hides it and draws its
@@ -867,6 +934,11 @@ The page is the one any browser opens, and the app handles what WebKit does diff
   github.com, which the app sends to the default browser, so a user script in the app’s
   own content world takes the user’s click on it and opens the pane’s popover instead
   (`WebViewRequests`).
+- **A link marked to open a file in its default app**, as a PDF’s Open is, is a download
+  in WebKit as in any browser, and no web API reaches a native handler, so a user script
+  in the app’s own content world takes the user’s click on it and the app opens the file
+  with Launch Services (`OpenFileRequests`). The page learns that it may draw the link
+  from a descriptor the app defines (`HostDescriptor`), which no browser has.
 - **A dropped file** would make WebKit navigate to its `file://` URL, so
   `DropAwareWebView` takes file and folder drops before WebKit sees them and hands them
   to the app (`FileDrop`).

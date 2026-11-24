@@ -1,0 +1,33 @@
+[plugin]
+name = "pdf"
+display_name = "PDF"
+version = "0.0.1"
+sdk_version = "0.8"
+
+# A PDF, by its bytes or its name. Rules with one id combine with OR.
+#
+# The magic rule claims any file that starts with "%PDF-" (the hex below) and sniffs as
+# binary, whatever it is named. A magic rule is read only for a binary prefix, and a PDF
+# whose first 8 KiB is plain ASCII (no binary comment, uncompressed objects) sniffs as
+# text, so the extension rule claims a `.pdf` whatever its prefix. A `.pdf` that is not
+# a PDF is still this kind; the browser's viewer then says it cannot show it.
+[[kind]]
+id = "pdf"
+match = { magic = { offset = 0, hex = "255044462d" } }
+priority = 0
+
+[[kind]]
+id = "pdf"
+match = { exts = [".pdf"] }
+priority = 0
+
+# The PDF in the host's own viewer, with Open, Download, and Open in new tab as the host
+# supports them (index.js). No `printable`: the viewer prints the PDF itself, and
+# Command-P on the page prints the line saying the view is not printable.
+[[view]]
+kind = "pdf"
+id = "preview"
+label = "PDF"
+default = true
+container_class = "content-body metabrowser-pdf-host"
+render_runtime = "client"

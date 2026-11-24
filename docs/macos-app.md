@@ -223,6 +223,13 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   A clicked link to another site opens in your default browser; a page cannot open one
   by itself. The page’s View on GitHub button is the exception: it opens the item’s page
   on github.com in a popover ([View on GitHub](#view-on-github)).
+- **Open:** a PDF’s view has Open, which opens the PDF in the app your Mac uses for
+  PDFs, Preview unless you chose another; Download saves a copy instead.
+  In a folder, Open opens the file itself.
+  For a pinned revision or a GitHub repository, which have no file on your Mac, it opens
+  a read-only copy that Metabrowser downloads to its caches folder and removes at a
+  later launch. Open opens only PDFs, images, audio, and video, never a script, an app,
+  or an installer.
 - **Background tabs:** the tab each window shows keeps its page, and so do the three
   background tabs shown most recently, a folder open in the background counting as one.
   Any other background tab gives up its page to save memory and reloads it when shown,
@@ -454,6 +461,8 @@ The app moves nothing itself.
   this one, or when its tab or background folder gives up its page to save memory.
 - A restarted server comes back on a new port, and local storage is per origin, so what
   a page kept there starts fresh, as with the CLI.
+- Open on a pinned revision or a GitHub repository opens a read-only copy: to change the
+  file, open it from a folder on your Mac.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,
   `METABROWSER_CACHE_DIR`, and the rest) to its servers, so they always use the default
   cache and configuration locations.

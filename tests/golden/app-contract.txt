@@ -117,6 +117,13 @@ exit: 0
       "requires": []
     },
     {
+      "name": "pdf",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
       "name": "sqlite",
       "display_name": "<text>",
       "version": "<text>",

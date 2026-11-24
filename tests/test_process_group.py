@@ -135,6 +135,7 @@ CHROME_TESTS = (
     "tests.test_overview_legend_hover_chrome",
     "tests.test_overview_readme_toc_chrome",
     "tests.test_page_header_chrome",
+    "tests.test_pdf_preview_chrome",
     "tests.test_prose_faces_chrome",
     "tests.test_raw_profile_cache_chrome",
     "tests.test_reading_column_chrome",

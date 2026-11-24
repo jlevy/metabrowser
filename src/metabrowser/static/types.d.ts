@@ -1918,6 +1918,20 @@ type MetabrowserSdk = {
   loadChangedFilesTree(): Promise<MetabrowserChangedFilesTree>;
   navigation: MetabrowserNavigationApi;
   sourceKind(): "filesystem" | "git_revision";
+  /**
+   * The trust profile this page was served under, from the `CAPABILITIES` block the
+   * server writes into `METABROWSER_SETTINGS` (capabilities.py). A pinned revision's page
+   * is always inert, and a page served without the block reads as inert.
+   */
+  capabilities(): Readonly<{ activeContent: boolean; mutations: boolean }>;
+  /**
+   * The actions the page's host carries out beyond what any browser does, by name, from
+   * the frozen `window.metabrowserHost` the host defines before the page's scripts run.
+   * The macOS app defines one (apps/macos OpenFileRequests.swift); a browser defines
+   * none, so it supports nothing. A plugin asks about an action, never about which host
+   * it is in. It is a hint for what to draw: the host checks every request itself.
+   */
+  host: Readonly<{ actions(): string[]; supports(action: string): boolean }>;
   repository: MetabrowserRepositoryContext | null;
   perf: MetabrowserPerf;
   registerView(kind: string, view: string, spec: MetabrowserViewSpec): void;
@@ -4989,6 +5003,8 @@ declare global {
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";
+    /** The page's host's actions, defined frozen by the macOS app before any page script. */
+    metabrowserHost?: Readonly<{ actions?: ReadonlyArray<unknown> }>;
     /** Whether the server's Git dates a revision's files, so its page offers Group by age and
      * Modified within (static/app.js `noFileAges`); set on a revision's page only. */
     METABROWSER_FILE_AGES?: boolean;

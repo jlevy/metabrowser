@@ -535,6 +535,23 @@
     return global.METABROWSER_SOURCE_KIND === "git_revision" ? "git_revision" : "filesystem";
   }
 
+  function capabilities() {
+    const block = global.METABROWSER_SETTINGS?.CAPABILITIES;
+    return { activeContent: block?.active_content === true, mutations: block?.mutations === true };
+  }
+
+  /** @returns {string[]} */
+  function hostActions() {
+    const actions = global.metabrowserHost?.actions;
+    return Array.isArray(actions) ? actions.filter((a) => typeof a === "string" && a !== "") : [];
+  }
+
+  const host = Object.freeze({
+    actions: hostActions,
+    /** @param {string} action */
+    supports: (action) => hostActions().includes(action),
+  });
+
   function render(template, data) {
     if (typeof global.Mustache === "undefined") {
       throw new Error("metabrowser.render: Mustache.js is not loaded — bundle is missing");
@@ -1814,6 +1831,8 @@
     shortcuts: Object.freeze({ attach: queueShortcut }),
     navigation: global.MetabrowserNavigationRoute.navigation,
     sourceKind: sourceKind,
+    capabilities: capabilities,
+    host: host,
     repository: repository,
     fetchKpressRender: fetchKpressRender,
     loadKpressAssets: loadKpressAssets,

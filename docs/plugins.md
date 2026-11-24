@@ -801,6 +801,16 @@ Useful helpers include:
   than `timeout` milliseconds, and returns a canceller
   ([Idle Work](project/architecture/arch-browser-shell.md#idle-work));
 - `sourceKind()` for the served source (`filesystem` or `git_revision`).
+- `capabilities()` for the trust profile the page was served under,
+  `{activeContent, mutations}`; a pinned revision’s page is always inert, and an inert
+  page’s policy blocks frames and `<embed>` (`untrusted_shell_csp` in
+  `capabilities.py`);
+- `host.supports(action)` and `host.actions()` for what the page’s host does beyond a
+  browser, by action name, from the `window.metabrowserHost` the host defines.
+  A browser defines none.
+  The macOS app defines `open-file`: it opens an `<a data-metabrowser-open-file>` link’s
+  file in the app the system assigns to its type (`builtin_plugins/pdf/index.js` draws
+  one). Ask about an action, never about which host the page is in.
 
 A view that draws tabs of its own uses the host’s `.tab-btn` in a `.tab-bar`, with
 `<a class="tab-btn" href>` for a tab that is an address, and positions but does not

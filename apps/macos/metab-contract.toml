@@ -349,6 +349,13 @@ pinned_by = "tests/golden/cli-ui-counterpart.tryscript.md"
 holds = '"data-web-view": "open"'
 
 [[behavior]]
+id = "open-file-link"
+source = "Sources/ShellCore/Web/OpenFileRequests.swift"
+what = "A page marks a link that opens its file in the file's default app `data-metabrowser-open-file`, as the `pdf` plugin's Open is: an `a` whose `href` is the file's `/raw?path=<identity>` on the server's own origin, whose `download` is the file's name, and whose marker's value is `filesystem`, for a path relative to the folder's root, or `git_revision`, for a pinned revision's or a mirror's identity. The page draws it only when the app's host descriptor, a frozen `window.metabrowserHost`, lists the action `open-file` (`HostDescriptor`). The app's script takes a plain click on that link and opens the file under the folder, or a downloaded copy of the link's bytes; any other click is the link's own, a download."
+pinned_by = "tests/golden/cli-ui-pdf-preview.tryscript.md"
+holds = '"data-metabrowser-open-file": "filesystem"'
+
+[[behavior]]
 id = "json-framing"
 source = "Sources/ShellCore/Folders/PresentPlan.swift"
 what = "A JSON answer on stdout is one block from a line that is exactly `{` to a line that is exactly `}`, and no other line of either stream is `{`, `}`, or a whole object: the app finds the answer by those lines in the one pipe that carries both streams."
@@ -481,6 +488,12 @@ source = "Sources/ShellCore/Web/WebViewRequests.swift"
 metab = "the hook `counterpartButton` in static/plugin-sdk-views.js gives the button's main link"
 pinned_by = "tests/test_macos_app_pins.py::test_the_link_the_apps_script_takes_is_the_one_the_page_marks"
 
+[[copy]]
+swift = "OpenFileRequests.attribute, action"
+source = "Sources/ShellCore/Web/OpenFileRequests.swift"
+metab = "OPEN_FILE_MARKER, the attribute the `pdf` plugin's Open link carries, and OPEN_FILE_ACTION, the host action it asks `mb.host.supports` about, in builtin_plugins/pdf/index.js"
+pinned_by = "tests/test_macos_app_pins.py::test_the_link_the_apps_open_file_script_takes_is_the_one_the_pdf_plugin_marks"
+
 # ── The other direction ─────────────────────────────────────────────────────────────────
 #
 # What `metab --present` reads of the app before it hands it a target.
@@ -547,10 +560,13 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Supervision/ReadinessProbe.swift" = ["entry-page-answers"]
 "Sources/Metabrowser/FolderPage.swift" = ["own: the page a window loads, which the web view requests"]
 "Sources/Metabrowser/WebPane.swift" = ["own: a known site's pages, such as github.com's, in the web pane"]
+"Sources/ShellCore/Web/OpenFileDownloads.swift" = ["open-file-link"]
 
 [files.script]
 "Sources/ShellCore/Web/PagePrint.swift" = ["own: window.print, which WebKit gives the app no public way to receive"]
 "Sources/ShellCore/Web/WebViewRequests.swift" = ["web-view-link"]
+"Sources/ShellCore/Web/OpenFileRequests.swift" = ["open-file-link"]
+"Sources/ShellCore/Web/HostDescriptor.swift" = ["open-file-link"]
 "Sources/Metabrowser/WebPane.swift" = ["own: whether the pane's page holds text not yet sent"]
 "Sources/ShellCore/Web/PageFind.swift" = ["own: the page's selection, which find reads and starts from, through the DOM's own Selection"]
 

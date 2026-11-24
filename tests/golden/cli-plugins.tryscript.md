@@ -40,6 +40,7 @@ github         builtin  -                       markdown      2      pull,pull-r
 html           builtin  html                    -             2      -
 image          builtin  -                       -             1      -
 markdown       builtin  markdown,mermaid        -             4      -
+pdf            builtin  pdf                     -             1      -
 sqlite         builtin  sqlite                  table         3      info,schema,children
 structured     builtin  structured              table         3      parsed
 table          builtin  -                       -             0      tables,schema,rows,record,card
@@ -312,6 +313,23 @@ $ metab --plugins --json
         "source"
       ],
       "view_count": 4,
+      "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "pdf",
+      "display_name": "PDF",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/pdf",
+      "kinds": [
+        "pdf"
+      ],
+      "requires": [],
+      "views": [
+        "preview"
+      ],
+      "view_count": 1,
       "data_hooks": [],
       "disabled_data_hooks": []
     },
@@ -609,7 +627,7 @@ recorded on its own: the answer is on stdout, and stderr is empty.
 ```console
 $ metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 16 plugin(s) OK
+metab --doctor: 17 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
@@ -642,7 +660,7 @@ $ metab --doctor >/dev/null
 $ metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 16,
+  "plugin_count": 17,
   "problems": [],
   "open_in": {
     "value": "browser",
