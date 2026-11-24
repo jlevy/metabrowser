@@ -1180,6 +1180,27 @@ _SECOND = f'<ol start="2">\n<li><p>The second note. {_BACK}</p>\n</li>\n</ol>'
 _THIRD = b"\nMore.[^c]\n\n[^c]: A third note.\n"
 
 
+def test_the_projection_replaces_kpress_own_footnote_tail() -> None:
+    """`_FOOTNOTE_TAIL` is read from markdown-it-py's unpublished rule list: it must be
+    the footnote plugin's own rule, and the projection's parser must run its replacement
+    in that rule's place, after the inline rules."""
+
+    from kpress.format import parse_markdown
+
+    tail = markdown_projection._FOOTNOTE_TAIL  # pyright: ignore[reportPrivateUsage]
+    assert tail.__module__ == "mdit_py_plugins.footnote.index"
+    assert tail.__name__ == "footnote_tail"
+    rules = markdown_projection._KPRESS.core.ruler.getRules("")  # pyright: ignore[reportPrivateUsage]
+    assert tail not in rules
+    place = rules.index(markdown_projection._footnotes_in_place)  # pyright: ignore[reportPrivateUsage]
+    assert [rule.__name__ for rule in rules[place - 1 : place + 1]] == [
+        "inline",
+        "_footnotes_in_place",
+    ]
+    # KPress's own parser, which the Document view renders with, keeps its own rule.
+    assert "kpress-footnotes" in parse_markdown("A[^a].\n\n[^a]: Note.\n", title="").html
+
+
 def test_notes_render_where_they_are_written() -> None:
     """A reference renders in place as the Document view numbers it, and a note is a block
     of its definition's lines: a list of its own that starts at its number, with a link

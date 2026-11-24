@@ -14,9 +14,10 @@ without the boxes the allowlist drops, so ``source_only``), edits the Markdown b
 a ``<details>`` beside a centered image (``ready``, the word marked inside it), adds a
 file with a footnote (``ready``, its note where its definition is) and one holding the
 private-use character the projection parts most renders with (``ready``, parted with
-another), a file past what a thread projects, which the Markdown child answers (``ready``, kept out of the transcript for its size), a file past
-the route's own read bound (``too_large``), a note with front matter, a Markdown file
-renamed without a change (``unsupported``, ``no_changes``), and YAML that does not parse
+another), a file past what a thread projects, which the Markdown child answers
+(``ready``, kept out of the transcript for its size), a file past the route's own read
+bound (``too_large``), a note with front matter, a Markdown file renamed without a
+change (``unsupported``, ``no_changes``), and YAML that does not parse
 (``unsupported``). Its base moves to a merge of YAML and JSON files that the head then
 changes: a merged tree with changed, removed, added and unchanged entries in each format,
 a change only in a comment (``source_only``), a JSON pair inside its 128 KiB bound and a

@@ -22,11 +22,11 @@ return is that many of the projection's lines, changed or unchanged as Git says 
 whole line is (:func:`_markdown_lines`).
 
 Whatever a block's source says that its render does not show -- a link or image
-destination, a title, alt text under a shown image, an HTML comment, an attribute,
-raw HTML the allowlist drops, or a fence's info string -- is its *hidden* signature. A changed block whose hidden signature
-differs from the other side's carries ``source_only``, and so does the whole projection
-when any source change has no visible counterpart, a whitespace-only or rewrap edit
-included. Both flags are metadata for the page: a flagged block is kept out of a fold of
+destination, a title, alt text under a shown image, an HTML comment, an attribute, raw
+HTML KPress's sanitizer or the allowlist drops, or a fence's info string -- is its
+*hidden* signature. A changed block whose hidden signature differs from the other
+side's carries ``source_only``, and so does the whole projection when any source change
+has no visible counterpart, a whitespace-only or rewrap edit included. Both flags are metadata for the page: a flagged block is kept out of a fold of
 unchanged blocks, and the Rendered view draws no note about either, so a change with no
 visible counterpart shows only in the Source view.
 """
@@ -194,6 +194,11 @@ _NOTE_ELEMENTS = {
     "footnote_open": 1,
     "footnote_anchor": 1,
 }
+# KPress's own footnote_tail, which _footnotes_in_place takes the place of and calls when
+# a side's notes follow no source line. markdown-it-py's Ruler replaces a rule by name
+# (`at`) but publishes no way to read one, so this reads its list, `__rules__`
+# (markdown-it-py 4.2.0, pinned in pyproject.toml); the module fails to import when that
+# moves, and test_the_projection_replaces_kpress_own_footnote_tail when the rule does.
 _FOOTNOTE_TAIL = next(
     rule.fn for rule in _KPRESS.core.ruler.__rules__ if rule.name == "footnote_tail"
 )
