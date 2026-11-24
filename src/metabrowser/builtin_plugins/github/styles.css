@@ -468,7 +468,7 @@
   flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
-  min-height: calc(1lh + 2px);
+  min-height: var(--compact-chip-height);
   white-space: nowrap;
   font-size: var(--ui-small-font-size);
 }
@@ -484,11 +484,12 @@
    without a color GitHub gave is this neutral chip. */
 .github-pull-label {
   flex: none;
-  padding: 0 5px;
-  border: 1px solid var(--border);
+  padding: 0 var(--compact-chip-padding-inline);
+  border: var(--chip-border) solid var(--border);
   border-radius: var(--radius-tag);
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+  line-height: calc(var(--compact-chip-height) - 2 * var(--chip-border));
 }
 /* A label GitHub gave a color is painted as github.com paints it, in our chip's box: the
    formula of github.com's own label stylesheets (its global .hx_IssueLabel and Primer
