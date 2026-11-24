@@ -847,7 +847,8 @@ _README_BLOCKS = [
     'src="https://example.com/logo.png" width="120"></p>',
     '<h1 id="user-content-61be40c20e6762ac06ffd013-new-project" align="center">Project</h1>',
     "<p>Press <kbd>Ctrl</kbd> and <kbd>C</kbd>,<br>then paste.</p>",
-    "<details>\n<summary>More</summary>\n<p>The old body.</p>\n</details>",
+    # Open, as a disclosure in a changed block is; the Document view shows it closed.
+    "<details open>\n<summary>More</summary>\n<p>The old body.</p>\n</details>",
     '<div align="center">\n<p>A centered paragraph.</p>\n</div>',
     "<p>After.</p>",
 ]
@@ -882,8 +883,8 @@ def test_raw_html_renders_as_the_document_view_shows_it() -> None:
         pytest.param(
             b"The old body.",
             b"The new body.",
-            "<details>\n<summary>More</summary>\n<p>The <del>old</del> body.</p>\n</details>",
-            "<details>\n<summary>More</summary>\n<p>The <ins>new</ins> body.</p>\n</details>",
+            "<details open>\n<summary>More</summary>\n<p>The <del>old</del> body.</p>\n</details>",
+            "<details open>\n<summary>More</summary>\n<p>The <ins>new</ins> body.</p>\n</details>",
             id="the body of details",
         ),
         pytest.param(
