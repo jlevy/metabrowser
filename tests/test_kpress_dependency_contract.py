@@ -284,6 +284,38 @@ def test_pinned_kpress_owns_the_toc_insets() -> None:
     assert restated == []
 
 
+def test_file_overviews_legend_rail_copies_the_kpress_toc_inset() -> None:
+    """File Overview's legend rail restates KPress's table-of-contents inset, so a release
+    that moves it fails here.
+
+    On a wide pane the legend shares the contents' track and lines up with its entries:
+    the rail takes `.kpress-toc`'s inline padding, and each name's gap past its swatch
+    takes the entries' 2px mark and 0.75rem level-1 inset (`folder/overview.css`). CSS
+    cannot read another element's padding, and KPress exposes none of these as a custom
+    property, so the copy is pinned on both sides.
+    `tests/test_overview_readme_toc_chrome.py` measures the alignment in Chrome.
+    """
+
+    components = get_static_asset("css/components.css").content.decode("utf-8")
+    assert _kpress_values(components, ".kpress-toc", "padding") == ["0.5rem 0.7rem 1rem 1.2rem"]
+    assert _kpress_values(components, ".kpress-toc a", "border-inline-start") == [
+        "2px solid transparent"
+    ]
+    assert _kpress_values(components, ".kpress-toc-level-1 > a", "padding-inline-start") == [
+        "0.75rem"
+    ]
+
+    overview = (SOURCE_DIR / "builtin_plugins" / "folder" / "overview.css").read_text(
+        encoding="utf-8"
+    )
+    rail = ".file-overview-body .file-type-summary-share"
+    item = ".file-overview-body .file-type-summary-legend-item"
+    assert _kpress_values(overview, rail, "padding-inline") == ["1.2rem 0.7rem"]
+    assert _kpress_values(overview, item, "gap") == [
+        "calc(2px + 0.75rem - var(--mb-distribution-track-height))"
+    ]
+
+
 def test_the_app_owns_the_palette_and_corners_of_every_kpress_fragment() -> None:
     """Every KPress fragment in the page takes the app's color and corner tokens.
 

@@ -440,6 +440,14 @@ def _stale_example_paths(tree: _Tree) -> list[str]:
     return stale
 
 
+# The first check to ask the module's tree parses every authored document, about 8 MB in
+# 271 files on 2026-11-23, and renders the 101 that links name a heading of: 5.3 s of CPU
+# on a 10-core M1 Pro, linear in the bytes (0.25 to 0.78 us a byte, the largest file no
+# dearer than the smallest), of which re-parsing those 101 is about 1 s. CI's call takes
+# about 9 s. Here the call took 42 to 46 s at a load average near 400, and with its setup
+# and teardown came within 4 s of the suite's 60 s default, which ends the whole run; a
+# run near 450 was stopped by it while parsing.
+@pytest.mark.timeout(180)
 def test_relative_links_resolve(repo: _Tree) -> None:
     findings = _link_findings(repo, _authored_markdown(repo))
     assert not findings, _report("Relative links that name nothing:", findings)

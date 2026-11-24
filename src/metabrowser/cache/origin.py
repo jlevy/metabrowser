@@ -251,7 +251,9 @@ def fetched_refs(porcelain: bytes) -> dict[str, str]:
     """The refs a ``fetch --porcelain`` wrote, each with the object it wrote, in order.
 
     Each line is ``<flag> <old-oid> <new-oid> <local-ref>``, and the flag may itself be
-    a space. A pruned ref, whose new object ID is all zeros, is gone and not listed.
+    a space. A pruned ref, whose new object ID is all zeros, is gone and not listed. A
+    ref Git refused, flagged ``!``, is listed with the object it would have written; a
+    fetch that refuses one exits non-zero, so only a failed fetch's listing has one.
     """
 
     written: dict[str, str] = {}

@@ -175,9 +175,9 @@ async function main() {
       { id: "other", label: "Other" },
     ],
     families: [
-      { id: "javascript", label: "JavaScript", groupId: "code" },
-      { id: "python", label: "Python", groupId: "code" },
-      { id: "markdown", label: "Markdown", groupId: "documentation" },
+      { id: "javascript", label: "JavaScript", groupId: "code", extensions: [".js", ".mjs"] },
+      { id: "python", label: "Python", groupId: "code", extensions: [".py"] },
+      { id: "markdown", label: "Markdown", groupId: "documentation", extensions: [".md"] },
     ],
   };
   const composition = model.buildFolderTotalsComposition(rollup, fileTypes, "size");
@@ -196,6 +196,10 @@ async function main() {
     filesSegments[1].paletteKey !== "family:javascript" ||
     filesSegments[1].files !== 1 ||
     filesSegments[1].bytes !== 50 ||
+    // A segment names its category and its family's icon, the first extension's, for
+    // its tooltip; no extension takes the generic file icon, the rest none.
+    filesSegments.map((segment) => `${segment.category}:${segment.iconPath}`).join(",") !==
+      "Documentation:x.md,Code:x.js,Code:x.py,Other:null,Other:file" ||
     ignoredSegments.some((segment) => segment.label === "No extension")
   ) {
     throw new Error(`folder total composition is incorrect: ${JSON.stringify(composition)}`);
