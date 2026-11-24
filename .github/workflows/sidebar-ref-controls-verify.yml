@@ -10,7 +10,7 @@ permissions:
 
 env:
   UV_EXCLUDE_NEWER: "14 days"
-  CANDIDATE_SHA: "9606d576071785ab37544dd776cd20de733f6546"
+  CANDIDATE_SHA: "4cdcf856f77750bf3e28531ad8aa1221c463f691"
 
 jobs:
   verify:
