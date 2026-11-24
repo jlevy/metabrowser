@@ -5,7 +5,7 @@ title: "A minimal built-in PDF plugin: native viewer, click-to-load in embedded 
 kind: feature
 status: in_progress
 priority: 2
-version: 11
+version: 14
 spec_path: docs/project/specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md
 delegate: claude-code@spud10.local
 labels: []
@@ -17,10 +17,13 @@ child_order_hints:
   - is-01m87kjmmd19jzgaghbq2fht39
   - is-01m87kjy8n12djdas079ccsdt0
   - is-01m87kka20wzxkvr0p651dzn46
+  - is-01m87krme84dgxwmvhz446663e
+  - is-01m87ks05m6tw50mvp4v4s19f8
+  - is-01m87kse9g2f9z7czp82jjfm23
 hold: null
 hold_until: null
 created_at: 2026-11-24T18:03:18.453Z
-updated_at: 2026-11-24T20:22:46.590Z
+updated_at: 2026-11-24T20:26:07.436Z
 started_at: 2026-11-24T18:18:56.884Z
 ---
 Findings (2026-11-24 survey of origin/main d95398297):
