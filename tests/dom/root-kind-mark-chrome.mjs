@@ -92,7 +92,16 @@ const READ = `(() => {
   document.body.append(probe);
   const muted = getComputedStyle(probe).color;
   probe.remove();
+  const cap = document.createElement("span");
+  cap.style.cssText = "display:inline-block;width:0;height:1cap;vertical-align:baseline";
+  (name.querySelector(".path-base") ?? name).append(cap);
+  const capBox = rect(cap);
+  const capMid = (capBox.top + capBox.bottom) / 2;
+  cap.remove();
   return {
+    capMid,
+    capHeight: capBox.height,
+    info: rect(document.querySelector("#root-details > button svg")),
     kind: mark.dataset.rootKind,
     role: mark.getAttribute("role"),
     label: mark.getAttribute("aria-label"),
@@ -167,8 +176,8 @@ async function click(selector, button = "left") {
   });
 }
 
-const TRIGGER = "#root-details > summary";
-const MENU_OPEN = 'document.getElementById("root-details").open';
+const TRIGGER = "#root-details > button";
+const MENU_OPEN = `document.querySelector("${TRIGGER}").getAttribute("aria-expanded") === "true"`;
 const INFO_ICON = `(() => {
   const trigger = document.querySelector("${TRIGGER}");
   const glyph = trigger.querySelector("svg");
@@ -357,12 +366,15 @@ for (const theme of ["light", "dark"]) {
         Math.abs(at.svgBox.height - at.glyphPx) <= TOLERANCE_PX,
       JSON.stringify({ glyphPx: at.glyphPx, box: at.box, svg: at.svgBox }),
     );
-    const markMiddle = (at.box.top + at.box.bottom) / 2;
-    const nameMiddle = (at.name.top + at.name.bottom) / 2;
+    const markMiddle = (at.svgBox.top + at.svgBox.bottom) / 2;
+    const infoMiddle = (at.info.top + at.info.bottom) / 2;
     check(
-      `${where}: the mark is centered on the name's line`,
-      Math.abs(markMiddle - nameMiddle) <= 1,
-      JSON.stringify({ markMiddle, nameMiddle }),
+      `${where}: the folder and Info glyphs center on the name’s capital-height band`,
+      at.capHeight > 0 &&
+        Math.abs(markMiddle - at.capMid) <= 1 &&
+        Math.abs(infoMiddle - at.capMid) <= 1 &&
+        Math.abs(markMiddle - infoMiddle) <= 1,
+      JSON.stringify({ markMiddle, infoMiddle, capMid: at.capMid }),
     );
     check(
       `${where}: the glyph is the one the server wrote for the kind, in the muted ink`,
@@ -419,6 +431,12 @@ for (const theme of ["light", "dark"]) {
       check("the Info button opens the menu", await browser.evaluate(MENU_OPEN));
       await click(TRIGGER);
       check("clicking the same Info button closes the menu", !(await browser.evaluate(MENU_OPEN)));
+      const clickOnly = 'document.querySelector("#root-details > button").click(); ' + MENU_OPEN;
+      check("a click-only activation opens Info", await browser.evaluate(clickOnly));
+      check("a second click-only activation closes Info", !(await browser.evaluate(clickOnly)));
+      await browser.evaluate(clickOnly);
+      await browser.evaluate('document.querySelector("#tree-pane").click()');
+      check("an outside click-only activation closes Info", !(await browser.evaluate(MENU_OPEN)));
       await click(TRIGGER);
       await browser.evaluate(`(() => {
         const outside = document.getElementById("settings-btn");
@@ -441,7 +459,7 @@ for (const theme of ["light", "dark"]) {
         outside.addEventListener("contextmenu", (event) => event.preventDefault(), { once: true });
       })()`);
       for (const button of ["middle", "right"]) {
-        await browser.evaluate(`document.getElementById("root-details").open = false`);
+        await browser.evaluate(`if (${MENU_OPEN}) document.querySelector("${TRIGGER}").click()`);
         await click(TRIGGER);
         check(
           `an outside ${button} click starts with the menu open`,
@@ -450,14 +468,14 @@ for (const theme of ["light", "dark"]) {
         await click("#settings-btn", button);
         check(`an outside ${button} click closes the menu`, !(await browser.evaluate(MENU_OPEN)));
       }
-      await browser.evaluate(`document.getElementById("root-details").open = false`);
+      await browser.evaluate(`if (${MENU_OPEN}) document.querySelector("${TRIGGER}").click()`);
       await click(TRIGGER);
     }
     const details = await browser.evaluate(`(() => {
       const root = document.getElementById("root-details");
-      const summary = root.querySelector("summary");
+      const summary = root.querySelector("button");
       return {
-        open: root.open,
+        open: summary.getAttribute("aria-expanded") === "true",
         label: summary.getAttribute("aria-label"),
         local: root.querySelector(".root-details-local").innerText,
         source: root.querySelector(".root-details-source").innerText,
@@ -512,7 +530,7 @@ for (const theme of ["light", "dark"]) {
           labels: [copy.innerText, link.innerText],
           glyphs: [copy, link].map(item => item.querySelector(".menu-item-icon svg") !== null),
           owner: [copy, link].every(window.MetabrowserPluginHost.isOwnedDelegate),
-          focusedInside: panel.closest("details").open && document.activeElement === copy,
+          focusedInside: !panel.hidden && document.activeElement === copy,
           result: panel.querySelector('[role="status"]').textContent,
         };
       })()`);
@@ -545,15 +563,15 @@ for (const theme of ["light", "dark"]) {
     await screenshot(`root-kind-${kind}-${theme}-details.png`, 300);
     const dismissed = await browser.evaluate(`(() => {
       const root = document.getElementById("root-details");
-      const summary = root.querySelector("summary");
+      const summary = root.querySelector("button");
       const chords = ["altKey", "ctrlKey", "metaKey"].every((modifier) => {
         const escape = new KeyboardEvent("keydown", {
           key: "Escape", bubbles: true, cancelable: true, [modifier]: true,
         });
-        return summary.dispatchEvent(escape) && root.open;
+        return summary.dispatchEvent(escape) && summary.getAttribute("aria-expanded") === "true";
       });
       summary.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-      return chords && !root.open && document.activeElement === summary;
+      return chords && summary.getAttribute("aria-expanded") === "false" && document.activeElement === summary;
     })()`);
     check(`${where}: Escape closes the disclosure and returns focus`, dismissed, details);
     await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 900, y: 400 });
