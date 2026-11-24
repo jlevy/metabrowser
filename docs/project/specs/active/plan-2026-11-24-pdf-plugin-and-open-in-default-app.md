@@ -229,6 +229,11 @@ stays `0.8`:
   the server already writes into `METABROWSER_SETTINGS`, the profile this page was
   served under.
 
+Both are installed on `window.metabrowser` by `static/view-composition.js`, the
+compositor every view mounts through, not by the eager `plugin-sdk.js`: they put the
+shell 226 bytes over its startup-script budget, and only a view reads them
+(`performance-budgets.toml` has the measurement).
+
 #### The App’s Open-File Bridge
 
 In `apps/macos`, beside `PagePrintRequests` and `WebViewRequests`:

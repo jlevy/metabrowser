@@ -811,6 +811,8 @@ Useful helpers include:
   The macOS app defines `open-file`: it opens an `<a data-metabrowser-open-file>` link’s
   file in the app the system assigns to its type (`builtin_plugins/pdf/index.js` draws
   one). Ask about an action, never about which host the page is in.
+  The view compositor installs `capabilities()` and `host`, so a view reads them from
+  its render on, not at load.
 
 A view that draws tabs of its own uses the host’s `.tab-btn` in a `.tab-bar`, with
 `<a class="tab-btn" href>` for a tab that is an address, and positions but does not
