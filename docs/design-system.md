@@ -2523,8 +2523,10 @@ take the next line, the chooser still at the bar’s end.
 Any other bar cuts a long path short on one line with its copy control, stats, and View
 file still after it, the space before View file giving way before the name does, and
 moves View file to the next line only where the name’s group would keep less than
-`--diff-file-lead-basis`. The name’s group never breaks, so a bar narrower than that
-group alone, as one with a mode change can be in a narrow pane, still covers part of it.
+`--diff-file-lead-basis`. The name’s group never breaks, and that basis was set from the
+stats alone, so a group that also holds a mode-change note is wider than it: in a narrow
+pane View file stays on the line and squeezes the group, its change letter under the
+copy control and, with wide stats, its note under View file.
 
 The whole bar is one activation surface, the folder-row rule applied to a section
 header: clicking anywhere toggles, with only the copy control, the View file or View on
