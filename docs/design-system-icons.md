@@ -64,6 +64,9 @@ break this rule ([Known Departures](#known-departures)).
 - **A character is typography, not an icon.** An arrow between two names, a key cap’s
   arrow, and a menu’s check mark are characters; a control’s or an object’s mark is a
   drawn glyph.
+- **Menu action arrows describe the destination.** A right arrow navigates within
+  Metabrowser. An up-right arrow opens a destination externally.
+  A chevron opens a menu or disclosure.
 - **A pull request’s icon follows what the page knows.** Its state’s glyph where the
   state is known, the neutral `pull` mark where only its address is, and the GitHub mark
   for a View on GitHub action
@@ -238,6 +241,7 @@ in `/`, so neither draws a folder icon.
 | `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `github`, Octicons `mark-github-16` | View bundle | GitHub: the View on GitHub button’s mark, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
+| `arrowRight`, Lucide `arrow-right` | View bundle | Navigate within Metabrowser from a menu, including View This Branch, View This Tag, and View PR Head in Metabrowser | `static/plugin-sdk-views.js` | `--muted` | `--icon-glyph` in `.menu-item-icon` |
 | `arrowUpRight`, Lucide `arrow-up-right` | View bundle | Open in Browser and Open on GitHub menu actions | `static/plugin-sdk-views.js` | `--muted` | `--icon-glyph` in `.menu-item-icon` |
 | `layers`, Lucide `layers` | Registry | A stack of pull requests: a stack’s row, the page’s stack button, and another stack a member is in | `static/icons.js` | `--muted` on a row, the button’s text ink on the stack button | `--icon-glyph`; the text’s `1em` in a member’s place |
 | `PERSON_GLYPH`, Lucide `circle-user-round` | View bundle | A person with no avatar, in an actor identity’s box | `static/plugin-sdk-views.js` | `--muted` | `--actor-avatar-size`, the avatar it stands in for |

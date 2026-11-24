@@ -247,7 +247,9 @@ async function checkCheckoutDetails() {
   await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) !== null`, STEP_MS);
   const menuState = await browser.evaluate(`(() => {
     const menu = document.querySelector(${JSON.stringify(menu)});
+    const view = [...menu.querySelectorAll("button")].find(item => item.textContent === "View This Branch");
     return {
+      arrow: [...view.querySelectorAll(".menu-item-icon svg path")].map(path => path.getAttribute("d")),
       open: menu.contains(document.activeElement),
       label: menu.getAttribute("aria-label"),
       labels: [...menu.querySelectorAll(".menu-item")].map(item => item.textContent),
@@ -259,6 +261,7 @@ async function checkCheckoutDetails() {
     menuState.open &&
       menuState.label === `Local branch ${state.branch}` &&
       menuState.labels.join("|") === "Copy Branch Name|View This Branch|Open on GitHub" &&
+      menuState.arrow.join("|") === "M5 12h14|m12 5 7 7-7 7" &&
       menuState.url === `https://github.com/Octo/Demo/tree/refs/heads/${state.branch}`,
     JSON.stringify(menuState),
   );
@@ -402,6 +405,9 @@ for (const theme of ["light", "dark"]) {
     await hover(".header-home-name");
     await browser.waitFor(`(${TOOLTIP}) === null`, STEP_MS);
     const closedInfoIcon = await browser.evaluate(INFO_ICON);
+    const closedInfoTip = await browser.evaluate(
+      `document.querySelector("${TRIGGER}").dataset.tipText`,
+    );
     if (kind === "folder") {
       await hover(TRIGGER);
       await browser.waitFor(`(${TOOLTIP}) === "Local folder details"`, STEP_MS);
@@ -453,7 +459,6 @@ for (const theme of ["light", "dark"]) {
       return {
         open: root.open,
         label: summary.getAttribute("aria-label"),
-        tooltip: summary.dataset.tipText,
         local: root.querySelector(".root-details-local").innerText,
         source: root.querySelector(".root-details-source").innerText,
         text: root.querySelector(".root-details-info").innerText,
@@ -470,7 +475,7 @@ for (const theme of ["light", "dark"]) {
       closedInfoIcon &&
         (await browser.evaluate(INFO_ICON)) &&
         details.label === `${at.label.split(" (")[0]} details` &&
-        details.tooltip === details.label &&
+        closedInfoTip === details.label &&
         details.local.startsWith("Local path"),
       JSON.stringify(details),
     );
@@ -533,7 +538,8 @@ for (const theme of ["light", "dark"]) {
       check(`${where}: a root with no hosted URL has no link actions`, !hasActions, details);
     }
     await browser.waitFor(
-      'document.querySelector(".custom-tooltip")?.style.display !== "block"',
+      `${MENU_OPEN} && !document.querySelector("${TRIGGER}").hasAttribute("data-tip-text") &&
+        document.querySelector(".custom-tooltip")?.style.display !== "block"`,
       STEP_MS,
     );
     await screenshot(`root-kind-${kind}-${theme}-details.png`, 300);
