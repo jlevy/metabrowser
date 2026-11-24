@@ -301,6 +301,12 @@ def test_git_rollup_names_use_the_tree_display_escaping(tmp_path: Path) -> None:
             names = {child["path"]: child["name"] for child in directory["children"]}
             assert names == {child["path"]: child["name"] for child in tree_directory["children"]}
             assert sorted(names.values()) == ["new�line.txt", "x�.txt"]
+            # A wire path is not the folder's path, a `/`, and the display name, so a
+            # compact entry could not carry the path; a pin answers the JSON encoding.
+            compact = await client.get("/api/rollup", params={"depth": "2", "encoding": "compact"})
+            assert compact.status_code == 200
+            assert "encoding" not in compact.json()
+            assert compact.json()["node"] == node
 
     asyncio.run(_run())
 

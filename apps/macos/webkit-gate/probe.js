@@ -33,7 +33,8 @@
  *   case: string, timeoutMs?: number,
  *   corpora: { language: string, file: string }[],
  *   corpusUrl: string, chunks: number[], mode: "single" | "split" | "blocks",
- *   resultKey: string, errorKey: string
+ *   resultKey: string, errorKey: string,
+ *   sweepCaps: number[], rounds: { metric: number, hover: number, sweep: number }
  * }} ProbeConfig
  */
 (() => {
@@ -292,6 +293,37 @@
     return { open, clicks, content };
   }
 
+  /**
+   * Time one change as a handler and as a frame: `handler_ms`, the change's own
+   * synchronous work, and `work_ms`, that and the rendering update it causes (frameWork).
+   * @param {() => void} change
+   */
+  async function timedChange(change) {
+    let handler = 0;
+    const work = /** @type {number} */ (
+      await frameWork(() => {
+        const started = now();
+        change();
+        handler = now() - started;
+      })
+    );
+    return { handler_ms: round(handler), work_ms: round(work) };
+  }
+
+  /** Nodes in a rollup tree: every folder and file, each counted once. */
+  function countNodes(/** @type {Record<string, any>} */ node) {
+    let total = 0;
+    const stack = [node];
+    while (stack.length > 0) {
+      const next = /** @type {Record<string, any>} */ (stack.pop());
+      total += 1;
+      for (const child of Array.isArray(next.children) ? next.children : []) {
+        stack.push(child);
+      }
+    }
+    return total;
+  }
+
   /** Characters in an element's own text nodes, without building a string. */
   const textLength = (/** @type {Element} */ element) => {
     let total = 0;
@@ -341,6 +373,363 @@
         blocks: content.querySelectorAll(".binary-bytes-block").length,
         dom_elements: document.getElementsByTagName("*").length,
         scroll: await scrollWork(scroller(content)),
+      };
+    },
+
+    /**
+     * The Treemap tab on a folder's view, chosen once the folder's Overview has settled:
+     * timed from the click, and from the rollup's response end, to the mutation that mounts
+     * the map's labels, and to the next frame. Then each metric switch's relayout and
+     * repaint, and the largest family's legend hover entering and leaving, each timed as
+     * its handler and as one frame's work. Last, the view's own rollup laid out with the
+     * map's own modules at each of `sweepCaps` cells, the curve PAINT_MAX_CELLS
+     * (treemap-map.js) is set from: the layout, paint list, hit grid, and paint that a
+     * relayout runs, and the hover's marks for the largest family, as drawCellHover runs
+     * them. The sweep paints with fixed colors, where the map reads each style's from a
+     * probe element once and keeps it, and its labels are not drawn.
+     */
+    async treemap() {
+      // The shell loads many modules and requests before the rollup; the default buffer of
+      // 250 entries could drop the rollup's.
+      performance.setResourceTimingBufferSize(5000);
+      const HOST = ".folder-treemap-host";
+      const tab = /** @type {HTMLElement} */ (
+        (
+          await whenDom(() =>
+            document.querySelector('#preview-pane > .tab-bar > .tab-btn[data-tab="treemap"]'),
+          )
+        ).value
+      );
+      // The Overview's first paint, its compact map's rollup among it, before the click.
+      await quiet(1000);
+      await afterNextFrame();
+      if (document.querySelector(`${HOST} .tm-label-cell`)) {
+        throw new Error("the Treemap's labels were mounted before its tab was chosen");
+      }
+      // The map's module, whose inspectTreemap reads the map it mounted, as
+      // tests/dom/treemap-legend-hover-chrome.mjs reads it. The Overview's compact map has
+      // loaded it already, so importing it here costs the timing below nothing.
+      const mapModuleUrl = () =>
+        performance
+          .getEntriesByType("resource")
+          .map((entry) => entry.name)
+          .find((name) => /\/treemap-map\.js(\?|$)/.test(name));
+      const preloaded = mapModuleUrl();
+      const earlyModule = preloaded ? await import(preloaded) : null;
+      await afterNextFrame();
+      /** @type {unknown} */
+      let cellsAtMount = null;
+      const started = now();
+      tab.click();
+      const labelled = await whenDom(() => {
+        const label = document.querySelector(`${HOST} .tm-viewport .tm-label-cell`);
+        if (label && earlyModule) {
+          // The layout the labels belong to, to tell whether a later one replaces it.
+          cellsAtMount = earlyModule.inspectTreemap(label.closest(".tm-viewport"))?.cells ?? null;
+        }
+        return label;
+      });
+      forceLayout();
+      const layoutAt = now();
+      const mountedViewport = /** @type {HTMLElement} */ (labelled.value.closest(".tm-viewport"));
+      const boxAtMount = [mountedViewport.clientWidth, mountedViewport.clientHeight];
+      const frameAt = /** @type {number} */ (await afterNextFrame());
+      const boxAfterFrame = [mountedViewport.clientWidth, mountedViewport.clientHeight];
+      /** Whether the map has been laid out again since its labels mounted, or null. */
+      const relaidOut = () =>
+        earlyModule && cellsAtMount
+          ? earlyModule.inspectTreemap(mountedViewport)?.cells !== cellsAtMount
+          : null;
+      const relaidOutByFrame = relaidOut();
+      // The Treemap's rollup, the only one that names a node budget (treemapFullRollupQuery).
+      const rollups = /** @type {PerformanceResourceTiming[]} */ (
+        performance.getEntriesByType("resource")
+      ).filter((entry) => entry.name.includes("nodes=max") && entry.startTime >= started - 1);
+      const rollup = rollups[0];
+      if (!rollup) {
+        throw new Error("no Resource Timing entry for the Treemap's rollup");
+      }
+      const open = {
+        dom_ms: round(labelled.at - started),
+        layout_ms: round(layoutAt - started),
+        frame_ms: round(frameAt - started),
+        response_end_ms: round(rollup.responseEnd - started),
+        after_response_dom_ms: round(labelled.at - rollup.responseEnd),
+        after_response_frame_ms: round(frameAt - rollup.responseEnd),
+        rollup_requests: rollups.length,
+        // A second layout in the frame after the first, as when the legend's entries wrap
+        // the row above the map and its ResizeObserver lays it out again (treemap.js).
+        relaid_out_by_frame: relaidOutByFrame,
+        relaid_out_after: /** @type {boolean | null} */ (null),
+        box_at_mount: boxAtMount,
+        box_after_frame: boxAfterFrame,
+        rollup: {
+          transfer_bytes: rollup.transferSize || null,
+          encoded_bytes: rollup.encodedBodySize || null,
+          decoded_bytes: rollup.decodedBodySize || null,
+        },
+      };
+
+      const legendSelector = `${HOST} .tm-legend li[data-legend-key^="family:"]`;
+      await whenDom(() => document.querySelector(legendSelector));
+      await quiet(500);
+      open.relaid_out_after = relaidOut();
+      const viewport = mountedViewport;
+      const mapUrl = mapModuleUrl();
+      if (!mapUrl) {
+        throw new Error("no Resource Timing entry for treemap-map.js");
+      }
+      const mapModule = earlyModule ?? (await import(mapUrl));
+      const inspect = () => {
+        const reading = mapModule.inspectTreemap(viewport);
+        if (!reading) {
+          throw new Error("no treemap is mounted on the view's viewport");
+        }
+        return reading;
+      };
+      const mounted = inspect();
+      /** @type {Record<string, number>} */
+      const kinds = {};
+      for (const cell of mounted.cells) {
+        kinds[cell.kind] = (kinds[cell.kind] ?? 0) + 1;
+      }
+      const counts = {
+        cells: mounted.cells.length,
+        painted: mounted.cells.length - mounted.empty,
+        empty: mounted.empty,
+        paint_rects: mounted.paint.length,
+        labels: mounted.labels.length,
+        label_elements: viewport.querySelectorAll(".tm-label-cell").length,
+        kinds,
+        dpr: mounted.dpr,
+        box: { w: viewport.clientWidth, h: viewport.clientHeight },
+      };
+
+      const chip = (/** @type {string} */ value) =>
+        /** @type {HTMLElement | null} */ (
+          document.querySelector(`${HOST} .tm-rollup-controls [data-chip-value="${value}"]`)
+        );
+      const initial = chip("size")?.getAttribute("aria-checked") === "true" ? "size" : "files";
+      const other = initial === "size" ? "files" : "size";
+      const switches = [];
+      for (let pass = 0; pass < config.rounds.metric; pass += 1) {
+        for (const to of [other, initial]) {
+          await quiet(300);
+          await afterNextFrame();
+          // The controls draw themselves again on every change, so each click finds its chip.
+          const target = chip(to);
+          if (!target) {
+            throw new Error(`no ${to} metric chip`);
+          }
+          const timed = await timedChange(() => target.click());
+          if (chip(to)?.getAttribute("aria-checked") !== "true") {
+            throw new Error(`the ${to} metric chip did not take its click`);
+          }
+          switches.push({ to, ...timed, cells: inspect().cells.length });
+        }
+      }
+
+      // The family with the largest share, by the metric the map was opened with.
+      const share = (/** @type {Element} */ item) =>
+        Number.parseFloat(
+          item.querySelector(".file-type-summary-legend-percent")?.textContent ?? "",
+        ) || 0;
+      const entry = [...document.querySelectorAll(legendSelector)].reduce((best, item) =>
+        share(item) > share(best) ? item : best,
+      );
+      const key = /** @type {string} */ (/** @type {HTMLElement} */ (entry).dataset.legendKey);
+      const hover = {
+        key,
+        label: entry.querySelector(".file-type-summary-legend-label")?.textContent ?? null,
+        share: share(entry),
+        marked: 0,
+        mark_ops: 0,
+        rounds: /** @type {Record<string, number | null>[]} */ ([]),
+      };
+      for (let pass = 0; pass < config.rounds.hover; pass += 1) {
+        await quiet(300);
+        await afterNextFrame();
+        const enter = await timedChange(() => entry.dispatchEvent(new MouseEvent("mouseenter")));
+        const marking = inspect();
+        if (marking.marked.length === 0) {
+          throw new Error(`hovering ${key} marked no cell`);
+        }
+        hover.marked = marking.marked.length;
+        hover.mark_ops = marking.markOps.length;
+        await quiet(300);
+        await afterNextFrame();
+        const leave = await timedChange(() => entry.dispatchEvent(new MouseEvent("mouseleave")));
+        hover.rounds.push({
+          enter_handler_ms: enter.handler_ms,
+          enter_ms: enter.work_ms,
+          leave_handler_ms: leave.handler_ms,
+          leave_ms: leave.work_ms,
+        });
+      }
+
+      const load = (/** @type {string} */ name) => import(new URL(name, mapUrl).href);
+      const [layoutModule, paintModule, hitModule, decodeModule] = await Promise.all(
+        [
+          "./treemap-layout.js",
+          "./treemap-paint.js",
+          "./treemap-hit.js",
+          "./treemap-rollup-decode.js",
+        ].map(load),
+      );
+      const body = await (await fetch(rollup.name)).arrayBuffer();
+      const node = decodeModule.decodeRollupEnvelope(
+        JSON.parse(new TextDecoder().decode(body)),
+      ).node;
+      const includeIgnored = Boolean(
+        /** @type {HTMLInputElement | null} */ (
+          document.querySelector(
+            `${HOST} .tm-rollup-controls input[data-chip-check="folder-rollup-ignored"]`,
+          )
+        )?.checked,
+      );
+      const fileTypes = /** @type {any} */ (globalThis).metabrowser?.fileTypes;
+      if (!fileTypes) {
+        throw new Error("window.metabrowser.fileTypes is unavailable");
+      }
+      // Looked up once per extension a layout, as the map does (cellPaletteKey in
+      // treemap-map.js).
+      /** @type {Map<string, string>} */
+      const extensionKeys = new Map();
+      const paletteKey = (/** @type {Record<string, any>} */ cell) => {
+        if (cell.kind === "rest") {
+          return "";
+        }
+        const extension = cell.ext || "(none)";
+        let found = extensionKeys.get(extension);
+        if (found === undefined) {
+          found = /** @type {string} */ (fileTypes.distributionKeyForExtension(extension));
+          extensionKeys.set(extension, found);
+        }
+        return found;
+      };
+      /** @type {Map<string, {fill: string, edge: string, alpha: number}>} */
+      const styles = new Map();
+      const resolve = (/** @type {string} */ style) => {
+        let resolved = styles.get(style);
+        if (!resolved) {
+          const hue = (styles.size * 47) % 360;
+          resolved = { fill: `hsl(${hue} 55% 62%)`, edge: `hsl(${hue} 55% 42%)`, alpha: 1 };
+          styles.set(style, resolved);
+        }
+        return resolved;
+      };
+      const box = counts.box;
+      const dpr = mounted.dpr;
+      const canvas = document.createElement("canvas");
+      const marks = document.createElement("canvas");
+      for (const element of [canvas, marks]) {
+        element.width = Math.round(box.w * dpr);
+        element.height = Math.round(box.h * dpr);
+      }
+      const paintContext = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
+      const marksContext = /** @type {CanvasRenderingContext2D} */ (marks.getContext("2d"));
+      const caps = [];
+      for (const cap of config.sweepCaps) {
+        /** @type {Record<string, number> | null} */
+        let best = null;
+        /** @type {{ total: number, ops: number, apply: number } | null} */
+        let bestHover = null;
+        for (let pass = 0; pass < config.rounds.sweep; pass += 1) {
+          await afterNextFrame();
+          const begun = now();
+          // The label bounds are LAYOUT_DEFAULTS', which are the full map's (treemap-map.js).
+          const cells = layoutModule.layoutTree(node, box, {
+            maxCells: cap,
+            minCellPx: 1 / dpr,
+            metric: initial,
+            includeIgnored,
+          });
+          const laidOut = now();
+          // The map looks each cell's palette key up once a layout, for its hovers
+          // (paletteKeys in treemap-map.js).
+          extensionKeys.clear();
+          const keys = cells.map(paletteKey);
+          const keyedAt = now();
+          const listed = paintModule.paintList(
+            cells,
+            (/** @type {Record<string, any>} */ cell) => `${paletteKey(cell)}|${cell.kind}`,
+            dpr,
+          );
+          const listedAt = now();
+          hitModule.buildHitGrid(cells, box, dpr);
+          const gridded = now();
+          paintContext.setTransform(1, 0, 0, 1, 0, 0);
+          paintContext.globalAlpha = 1;
+          paintContext.fillStyle = "#fff";
+          paintContext.fillRect(0, 0, canvas.width, canvas.height);
+          paintModule.paintCells(paintContext, listed.rects, resolve);
+          const painted = now();
+          const ops = paintModule.markOps(
+            cells,
+            (/** @type {number} */ index) => keys[index] === key,
+            dpr,
+          );
+          const opsAt = now();
+          marksContext.setTransform(1, 0, 0, 1, 0, 0);
+          marksContext.clearRect(0, 0, marks.width, marks.height);
+          paintModule.applyMarkOps(marksContext, canvas, ops);
+          const hovered = now();
+          const timing = {
+            cells: cells.length,
+            layout_ms: laidOut - begun,
+            keys_ms: keyedAt - laidOut,
+            paint_list_ms: listedAt - keyedAt,
+            hit_ms: gridded - listedAt,
+            paint_ms: painted - gridded,
+            total_ms: painted - begun,
+            mark_ops: ops.length,
+          };
+          if (!best || timing.total_ms < best.total_ms) {
+            best = timing;
+          }
+          if (!bestHover || hovered - painted < bestHover.total) {
+            bestHover = {
+              total: hovered - painted,
+              ops: opsAt - painted,
+              apply: hovered - opsAt,
+            };
+          }
+        }
+        const chosen = /** @type {Record<string, number>} */ (best);
+        const marking = /** @type {{ total: number, ops: number, apply: number }} */ (bestHover);
+        caps.push({
+          cap,
+          cells: chosen.cells,
+          layout_ms: round(chosen.layout_ms),
+          keys_ms: round(chosen.keys_ms),
+          paint_list_ms: round(chosen.paint_list_ms),
+          hit_ms: round(chosen.hit_ms),
+          paint_ms: round(chosen.paint_ms),
+          total_ms: round(chosen.total_ms),
+          hover_ms: round(marking.total),
+          // The hover's parts: the mark ops, and drawing them.
+          hover_ops_ms: round(marking.ops),
+          hover_apply_ms: round(marking.apply),
+          mark_ops: chosen.mark_ops,
+        });
+      }
+      for (const element of [canvas, marks]) {
+        element.width = 0;
+        element.height = 0;
+      }
+      return {
+        open,
+        counts,
+        switches,
+        hover,
+        sweep: {
+          nodes: countNodes(node),
+          bytes: body.byteLength,
+          metric: initial,
+          includeIgnored,
+          caps,
+        },
+        dom_elements: document.getElementsByTagName("*").length,
       };
     },
 

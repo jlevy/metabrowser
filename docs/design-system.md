@@ -4705,9 +4705,15 @@ A caption naming the population labels the legend and the table for assistive te
 only.
 Legend items wrap whole: in a pane too narrow for a line of them a dot never ends a
 line with its name on the next, no entry is cut or clipped, and they read in order down
-the lines (`tests/test_overview_label_column_chrome.py`). The table sits behind a
-**Details** toggle, the same trigger and bold label as an **N more** row, which starts
-closed on each mount and keeps its state through repaints.
+the lines (`tests/test_overview_label_column_chrome.py`). In the Overview’s wide band,
+where an expanded README’s table of contents becomes a rail, the legend leaves its place
+under the bars for that rail’s track beside File Overview, KPress’s 3rem gap past the
+card and its 15rem width, from the section’s top, one entry to a line with its share at
+the line’s end (`.file-overview-body`, `overview.css`). The switch follows the pane’s
+width alone, by the same container query, so in narrower bands File Overview is as it
+was, and the bars and the map keep the card’s measure in every band.
+The table sits behind a **Details** toggle, the same trigger and bold label as an **N
+more** row, which starts closed on each mount and keeps its state through repaints.
 Each group of rows is headed by its category, led by the category’s icon
 ([File-Type Category Icons](#file-type-category-icons)). Every row names its category
 and reports absolute values and percentages; fills are not tab stops, carry no duplicate
@@ -4736,10 +4742,11 @@ The **File Overview** section begins expanded: one control row with the Files / 
 measure and the `.filter-check` **Show ignored** checkbox, the same as navigation’s,
 then three tally rows, **Files**, **Ignored**, and **Total** set off by a hairline, then
 the legend and the Details table, under no heading of their own, since they ask the same
-question at a finer resolution.
-Each tally shows one absolute value and a track segmented by the top-level families in
-their colors, in one order across the three rows; `buildFolderTotalsComposition` in
-`folder-totals.js` explains the three rows, the order, and the pending fill.
+question at a finer resolution, and last a compact treemap of where those files sit
+([Folder Treemap](#folder-treemap)). Each tally shows one absolute value and a track
+segmented by the top-level families in their colors, in one order across the three rows;
+`buildFolderTotalsComposition` in `folder-totals.js` explains the three rows, the order,
+and the pending fill.
 The bars of the tallies and of Details start at one place, in every row, with Details
 closed or open and with Files or Bytes.
 What they stand to the right of is a label column of one width,
@@ -4818,6 +4825,96 @@ Folders/Types grouping choice.
 File types already answers which extensions make up the population, while Treemap
 answers where space or file count sits and keeps folder and file cells navigable.
 
+The map is one component (`treemap-map.js`) drawn at two sizes: the Treemap view, which
+fills the pane, and a compact map at a fixed height under File Overview’s type breakdown
+(`treemap-compact.js`). The compact map draws the same tree with the same cells, colors,
+and tooltip, follows the section’s measure and Show ignored, and joins the section’s
+hover, so a legend entry marks its family’s cells there too.
+At both sizes the tree sits inside an outer box for the folder itself, labelled with the
+folder’s name (`withOuterBox`), so the two maps of one folder match.
+On the compact map, activating a cell opens the Treemap view: the outer box at the
+folder, a folder’s cell at that folder, and a file’s or a remainder’s at the folder that
+holds it. In the Treemap view the outer box opens nothing, since the view is already at
+that folder.
+It leaves out value lines and remainder glyphs, which its small cells cannot
+hold. Its box follows the breakdown’s answer, so it is there or not from the section’s
+first paint: it shows a skeleton while the index scans, and asks for its own tree only
+once the index has settled; it is left out when the breakdown’s request failed, the
+index stopped at its cap before finishing the folder, or the folder holds no files in
+the population shown, since the breakdown above already says why.
+A map whose own request fails keeps its box, says the treemap is unavailable, and tries
+again with the breakdown’s Retry.
+
+The map goes as deep as it has room for.
+Both sizes ask the rollup for its deepest and widest tree, and the server spends its
+node budget on the heaviest folders first (`inventory_rollup.py`), so the nodes go where
+the map can draw them.
+The compact map asks at the route’s default budget, which a map a few hundred pixels
+tall does not outgrow.
+The Treemap view asks at its largest, in the compact encoding, which sends a file as one
+positional entry and which the view decodes to the ordinary tree before it lays it out
+(`treemapFullRollupQuery` in `treemap-map.js`, `treemap-rollup-decode.js`). While Show
+ignored is off it asks without the gitignored nodes, so the budget goes to the nodes it
+draws. The layout fills the largest pending folder next, from a share of the remaining
+cell budget proportional to its area, so the cells reach every large region of the map
+rather than draining into the first folder drawn (`treemap-layout.js`). A folder with
+room for its label is labelled, and nests under its label strip when it is tall enough
+for a row of children too; only a folder too small for a label nests inside a thin
+frame, with no label, and its files are still drawn.
+Frames thin with depth, and a folder too small for one draws its children edge to edge,
+so deep levels keep their area for cells (`frameDecay` in `treemap-layout.js`). A folder
+whose children all fold into its remainder stays one solid cell.
+A folder is sized for its header and frame as well as its contents, so a file’s area is
+its share of the map’s value at every depth rather than shrinking by each folder’s
+chrome around it: the layout weights each folder by its value plus an estimate of the
+chrome its subtree draws, and corrects that estimate with one more layout on a map small
+enough for it to be cheap (`chromeRounds`, `chromePasses`, and `chromePassMaxCells` in
+`treemap-layout.js`, with their measurements).
+A folder’s own rectangle is therefore larger than its value alone: its area is its
+files’ and its chrome’s. Every cell lies inside its parent’s cell and inside the map’s
+border. A folder’s children are laid out largest first, which sets every cell’s size;
+children of equal value, as every file is by Files, sit by the color family their
+extension belongs to, then by extension and name, so cells of one color sit together
+(`compareChildren` in `treemap-layout.js`, given the palette’s families by the map).
+
+The map paints its cells on a canvas rather than drawing an element for each, so it
+draws cells down to a device pixel, up to `PAINT_MAX_CELLS` (`treemap-map.js`, with its
+measurement), where an element per cell cost too much to build and tear down.
+Its layers, bottom to top:
+
+- **The paint canvas** holds every cell, snapped to device pixels so neighbours share an
+  edge. A nesting folder paints its interior in its edge tone, and each child large
+  enough draws one device pixel short, so the edge shows between neighbours
+  (`treemap-paint.js`). A nested folder’s edge tone is the border tone deepened toward
+  the muted ink (`.tm-nested-folder`), so every cell stands apart from its neighbours on
+  any fill. Its colors come from probe cells styled as a cell is, so the palette, the
+  ignored dimming, and the theme stay in the stylesheet.
+- **The marks canvases**, two, hold copies of the marked cells’ pixels under the lift
+  filter. A hover that marks other cells draws them on the canvas not shown, which fades
+  in on the hover’s timing as the shown one fades out, so the lift eases in and out as a
+  bar segment’s does; under reduced motion it is drawn at once.
+- **The icons canvas** holds the icons of the cells too small for their names, each
+  rasterized once for each size and color it is drawn at, since a map can hold as many
+  such icons as cells.
+- **The hover anchor** is a transparent cell over the cell under the pointer.
+  It carries that cell’s shimmer and anchors its tooltip.
+- **The labels** are one element per labelled cell, positioned in the map’s padding box.
+- **The focus proxy** is the map’s one focusable control.
+
+The map lays out to its padding box, and a label lies inside its cell and the map’s
+border; `tests/test_treemap_containment_chrome.py` measures it, with the canvas’s fill
+at each cell. A file’s name always follows its icon, and a file with room for its name
+but not for both shows its icon alone, so cells of one size draw alike.
+Each icon is sized to its cell, as its label is, by `ICON_DEFAULTS`
+(`builtin_plugins/folder/treemap-layout.js`): beside a name it is a share of the name’s
+size, and alone it is centered, a share of the cell’s short side, so a smaller cell
+shows a smaller icon.
+A cell too small for the smallest glyph shows nothing and names itself in its tooltip.
+The icons are painted, not elements: a folder of a few thousand small files would
+otherwise hold an element per file.
+A folder has no icon, as its row in the navigation has none
+([design-system-icons.md](design-system-icons.md)).
+
 The Files context above the map mounts the same reusable folder-rollup controls used by
 Overview. The metric control appears before Files and Ignored; the scope control appears
 after them:
@@ -4832,23 +4929,33 @@ Both views observe one state object and preference key, so changing either contr
 Overview or Treemap updates the other surface without a second interpretation of scope
 or metric. The metric switches all three totals rows and the map.
 Show ignored changes map membership but leaves the explicit Files and Ignored rows
-intact.
+intact. In the Treemap view it asks again for the tree, with or without the gitignored
+nodes, and keeps the map it has, laid out as Show ignored off, until that tree arrives,
+so no folder is sized by totals whose nodes are missing; a view out of sight asks when
+it shows. If the tree with the ignored files fails, the status line says the map shows
+the others.
 
 There is no separate color selector.
-Every file maps its exact extension through the taxonomy’s distribution key, every
-folder maps its dominant extension through the same helper, and remainder cells take the
-neutral Other color.
+Every file maps its exact extension through the taxonomy’s distribution key, a folder
+drawn as one solid cell maps its dominant extension through the same helper, and
+remainder cells take the neutral Other color.
+A nested folder, whose children are drawn inside it, paints its header and frame in the
+neutral border tone (`.tm-nested-folder`): it usually holds many types, and its dominant
+one would claim them all.
 The File types panel and Treemap read the same declared palette, so a semantic family
 keeps the same color across both views and across folders.
 Modification age remains available in the tooltip; it does not compete with file type as
 a second cell-color vocabulary.
 Treemap derives a theme-aware surface wash and stronger border from that shared base
 color so labels retain contrast; the Overview’s data bars keep the full-strength swatch.
-Hover brightens the composed cell, including its type-derived surface and border, so
-their contrast and hue relationship remain intact.
-There is no separate label hover surface.
-It never changes stacking or display: nested folder containers and their descendant
-rectangles are flattened siblings, so raising a container would cover its children.
+Hover brightens the composed cell’s fill, so its contrast and hue relationship remain
+intact: the marks canvas copies the marked cells’ painted pixels, and the lift filter
+applies to the copy.
+The edges between cells never change under a hover: they stay at their deeper tone, and
+a hovered folder lifts its header and frame and leaves the edges between its children as
+they are. There is no separate label hover surface.
+It never raises or grows a cell: a folder is painted under its children, so raising it
+would cover them.
 
 Under the tally bars the Treemap shows File Overview’s legend, from the same builder
 (`distribution-legend.js` and `buildFileTypeLegendModel`), on a row one line tall that
@@ -4859,37 +4966,50 @@ the map below moves down by those lines once and is measured again for the space
 under it. The map’s cells, its bars, and its legend share one hover
 (`distribution-hover.js`), as File Overview’s do
 ([Aggregate Distributions](#aggregate-distributions)). Pointing at an entry marks every
-cell painted its family’s color, the files of its types and the folders it is the
-dominant type of, its segment in every tally row, and the entry, with the entry’s counts
-tooltip. Pointing at a cell or a segment marks it and its family’s entry, and a cell
-keeps its own tooltip.
-Every marked cell lifts, and none grows
+cell painted its family’s color, the files of its types and the solid folders it is the
+dominant type of but no nested folder, its segment in every tally row, and the entry,
+with the entry’s counts tooltip.
+Pointing at a cell or a segment marks it and its family’s entry, and a cell keeps its
+own tooltip. Every marked cell lifts, and none grows
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
-Only the cell under the pointer also shimmers, its sheen under its label: a family can
-hold every cell the map draws, and each shimmering cell is a layer and an animation of
-its own, so a family’s cells take the lift alone while the bars and the entry’s dot
-shimmer. The cost at the map’s cell limit is measured beside the rule in the folder
-plugin’s stylesheet.
+Only the file or remainder under the pointer also shimmers, on the hover anchor, which
+lies under the labels, so its sheen does too.
+A family’s cells take the lift alone while the bars and the entry’s dot shimmer: a
+family can hold every cell the map draws, and a shimmer per cell is an animation each.
+The cost is measured beside the rule in the folder plugin’s stylesheet.
+A nesting folder lifts without the shimmer, which would cover its children.
 A layout replaces the cells: it lets go of a cell’s hover, which the browser enters
 again on the new cell, and draws an entry’s hover again on the new cells.
 `tests/test_treemap_legend_hover_chrome.py` measures it.
 
 The complete visible rectangle of every folder or file is its pointer target, including
-the uncovered header, gutter, and background of a nested folder.
-When rectangles are nested, the deepest rectangle under the pointer wins; an inert
-remainder cell does not fall through to its parent.
-The nested parent remains an ARIA group and its label remains the keyboard control, so
-full-cell pointer handling never creates an invalid button containing descendant
-buttons.
+the uncovered header, gutter, and frame of a nested folder.
+A canvas says nothing about what is painted on it, so the map answers the pointer from
+the layout: a grid of buckets over the map lists the cells over each, and the pointer
+names the cell painted at the device pixel under it, the deepest whose fill covers it
+(`treemap-hit.js`), so a cell a pixel wide is the cell it names, and the edge between
+two cells is their folder’s. An inert remainder cell does not fall through to its
+parent. A hover lifts the same pixels: a marked cell’s own fill, and a marked folder’s
+header and frame, never an edge between cells (`markOps`, `treemap-paint.js`). The
+keyboard reaches every folder and file cell through the focus proxy, which the arrow
+keys move in layout order and which stays on its cell when the map is laid out again and
+which takes the cell’s accessible name, with the folder’s remainder named when it has
+one; Enter or Space opens it.
+One control rather than one per cell keeps the page’s focus order short and never makes
+a button inside another.
 
 Cell typography grows continuously with usable rectangle geometry.
 The scale combines the short side with the square root of area, which lets a genuinely
 large box grow while preventing a long, thin sliver from claiming display type.
 Folder and file labels, and value labels, stay between the bounds in
-`TYPOGRAPHY_DEFAULTS` (`builtin_plugins/folder/treemap-layout.js`). Geometry-derived
-inline custom properties are allowed here because they encode layout data, just as
-inline bar widths encode percentages; theme colors still come only from tokens and
-shared utility classes.
+`TYPOGRAPHY_DEFAULTS` (`builtin_plugins/folder/treemap-layout.js`). A folder’s label and
+value stop at the navigation’s own sizes there, `folderLabelMaxPx` and
+`folderValueMaxPx`: a folder’s name heads the files drawn inside it, and display type
+over them competed with the files for attention.
+A file’s label keeps growing with its cell.
+Geometry-derived inline custom properties are allowed here because they encode layout
+data, just as inline bar widths encode percentages; theme colors still come only from
+tokens and shared utility classes.
 
 Large nested folders place their formatted aggregate value in the reserved header row.
 Non-nested cells place the value below the name when both lines fit.
@@ -4898,11 +5018,15 @@ information; aggregate folders and remainder cells report the selected metric.
 Values use the shared byte and file-count formatters.
 A label or value that cannot fit is omitted rather than shrunk below its lower bound or
 allowed to overlap child cells.
-Visible folder labels end in `/`, while file labels carry the same file-identity icon as
-the navigation tree.
+Visible folder labels end in `/`, while file labels always carry the same file-identity
+icon as the navigation tree, as tall as the name’s line.
 The slash is a visual kind cue and is not added to the folder’s accessible name or path.
-The accessible name preserves the cell name, kind, and visible value; the tooltip
-retains the complete name, counts, bytes, and modification time.
+The accessible name preserves the cell name, kind, and visible value.
+The tooltip names the cell as the navigation does: a file’s icon, its complete path,
+which wraps inside the tooltip however long, then a folder’s file count and size or a
+file’s size, and its age, through the navigation columns’ own formatters, hues, and
+freshness classes (`mb.formatFileCount` and `mb.countClass`, `mb.sizeHtml`, and
+`mb.formatAge`).
 
 Treemap navigation preserves the user’s spatial context.
 Activating a folder cell opens that folder with Treemap selected, and Backspace opens
@@ -5595,6 +5719,11 @@ size a side effect of a decision about chrome, so the next adjustment to small c
 text moves every tooltip with it.
 A tooltip is prose the reader has stopped to read.
 `devtools/check_tooltips.py` holds this alongside the rule above.
+
+**A tooltip’s text stays inside it.** A long path or file name has no space to break at,
+so every line of the tooltip may break anywhere (`.custom-tooltip` in `styles.css`), and
+a name breaks anywhere already (`.tip-name`). `tests/test_treemap_containment_chrome.py`
+holds it on a name with no break in it.
 
 KPress’s own tooltip inside an embedded document is not this tooltip and keeps its own
 ramp; see the note beside the radius bridge in `styles.css` for why the app flattens

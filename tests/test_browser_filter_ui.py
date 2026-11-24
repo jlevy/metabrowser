@@ -177,28 +177,39 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     assert "z-index: -1;" in sheen_block
     assert "animation: viz-hover-shimmer" in " ".join(sheen_block.split())
     flattened = " ".join(reduced.split())
-    assert ".tm-cell { transition: none; }" in flattened
+    assert ".tm-cell, .tm-marks { transition: none; }" in flattened
+    # The lift fades in and out on the design system's hover timing, as a bar's does: the
+    # marks canvases cross-fade by opacity, and only the shown one is opaque.
+    marks_start = moving.index(".tm-marks {")
+    marks_block = " ".join(moving[marks_start : moving.index("}", marks_start)].split())
+    assert "opacity: 0;" in marks_block
+    assert (
+        "transition: opacity var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);"
+        in marks_block
+    )
+    assert ".tm-marks.tm-marks-shown { opacity: 1; }" in " ".join(moving.split())
     assert '.tm-cell[data-hovered="self"]::after { content: none; }' in flattened
     assert "filter" not in flattened, "reduced motion keeps the lift"
 
 
-def test_treemap_pointer_hit_testing_uses_the_full_actionable_cell() -> None:
-    """Nested ARIA buttons stay on labels, but pointer activation uses
-    the deepest visible cell rectangle rather than that label alone."""
+def test_treemap_pointer_activates_the_deepest_actionable_cell_under_it() -> None:
+    """The map paints its cells on a canvas, so the viewport takes the click and asks the
+    hit grid for the cell painted under the pointer, a label's or not, and activates it
+    only when it is actionable; the cursor says which. The grid's answer is held against a
+    scan in ``tests/dom/treemap-paint-hit-behavior.js``, and a click on a small unlabelled
+    file in Chrome in ``tests/test_treemap_containment_chrome.py``."""
 
     folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
-    treemap = (folder_root / "treemap.js").read_text()
-    plugin_css = (folder_root / "styles.css").read_text()
-    click_start = treemap.index('viewport.addEventListener("click"')
-    click_block = treemap[click_start : treemap.index('viewport.addEventListener("mouseover"')]
-
-    assert 'cls.push("tm-actionable")' in treemap
-    assert "cellForElement" in click_block
+    treemap = (folder_root / "treemap-map.js").read_text()
+    assert 'viewport.addEventListener("click", /** @type {EventListener} */ (onClick))' in treemap
+    click_block = treemap[treemap.index("function onClick(") : treemap.index("// ---- Keyboard")]
+    assert "cellAtClient(e)" in click_block
+    lookup_block = treemap[
+        treemap.index("function cellAtClient(") : treemap.index("function pointerPosition(")
+    ]
+    assert "hitGrid.lookup(at.x, at.y)" in lookup_block
     assert "cellIsActionable(cell)" in click_block
-    assert "actionableCellForElement" not in click_block
-    assert ".tm-actionable {" in plugin_css
-    assert "cursor: pointer;" in plugin_css[plugin_css.index(".tm-actionable {") :]
-    assert ".tm-nested {\n  cursor: default;" not in plugin_css
+    assert 'viewport.style.cursor = cellIsActionable(cell) ? "pointer" : ""' in treemap
 
 
 def test_single_and_multi_select_use_different_fills() -> None:

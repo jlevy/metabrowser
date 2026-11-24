@@ -881,9 +881,8 @@
 
   async function fetchRollup(path, opts) {
     // Core rollup endpoint for directory subtrees (see /api/rollup).
-    // ``path`` may be "" for the served root. Optional opts:
-    // depth / top / ext_top / filename_top / remaining_top query overrides
-    // plus ``signal``.
+    // ``path`` may be "" for the served root; opts may set the keys below,
+    // over the settings' defaults, and ``signal``.
     if (typeof path !== "string") {
       throw new Error("fetchRollup: path must be a string");
     }
@@ -891,7 +890,8 @@
     const options = opts && typeof opts === "object" ? opts : {};
     const url = new URL("/api/rollup", global.location.origin);
     url.searchParams.set("path", path);
-    for (const key of ["depth", "top", "ext_top", "filename_top", "remaining_top", "ext_rank"]) {
+    const keys = "depth top nodes ext_top filename_top remaining_top ext_rank ignored encoding";
+    for (const key of keys.split(" ")) {
       const value = options[key] !== undefined ? options[key] : defaults[key];
       if (value !== undefined && value !== null) {
         url.searchParams.set(key, String(value));
