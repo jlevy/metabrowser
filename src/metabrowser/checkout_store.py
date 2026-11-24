@@ -51,6 +51,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import weakref
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -714,8 +715,30 @@ class CheckoutStore:
         set_origin_opener(self.root, None)
 
 
+# ``0`` (or ``false``, ``no``, ``off``) keeps every application of a folder, a server's
+# and a one-shot ``--api``, ``--show``, or ``--ref``, from keeping any store of its
+# checkout's origin: the folder is served as one whose origin is on this machine, with
+# its own remote-tracking branches listed, nothing is fetched for it, and a refresh asked
+# of it is refused as a folder's with no store. The lifespan reads it
+# (:func:`lifespan_checkout_store`), so a transcript answers what a served page does.
+# A pull request's comparison, which a reader asks a provider plugin for, still makes the
+# store and fetches it from the origin (:func:`acquire_checkout_store`); a plugin's
+# background work asks :func:`origin_store_wanted` first, as the GitHub plugin's prefetch
+# does before it attaches a store for its lists. The test suite sets it, so that no
+# server a test starts as a process of its own reaches a repository's origin, which one
+# in process reaches through ``remote_url_for``; a test of the store unsets it
+# (``tests/conftest.py``, bead mb-i4x0).
+ORIGIN_STORE_ENV: Final = "METABROWSER_ORIGIN_STORE"
+_OFF: Final = frozenset({"0", "false", "no", "off"})
+
 # Whether the next application lifespan is a server's; see :func:`serve_checkout_store`.
 _serving = False
+
+
+def origin_store_wanted() -> bool:
+    """Whether an application keeps a store of its checkout's origin (:data:`ORIGIN_STORE_ENV`)."""
+
+    return os.environ.get(ORIGIN_STORE_ENV, "").strip().lower() not in _OFF
 
 
 def serve_checkout_store(serving: bool = True) -> None:
@@ -755,14 +778,15 @@ async def lifespan_checkout_store(app: Any) -> AsyncGenerator[None]:
     coordinator still runs. A server opens the store in the background, so its
     first page waits for no file read here; a one-shot command opens it at the request
     that reads it (:meth:`CheckoutStore.ensure_open`), so one that never asks about the
-    origin loads nothing of the cache.
+    origin loads nothing of the cache. Where :data:`ORIGIN_STORE_ENV` says to keep none,
+    no application has a store, whichever command opened it.
     """
 
     app.state.checkout_store = None
     store: CheckoutStore | None = None
     coordinator = refresh_coordinator(app)
     checkout = checkout_revisions() if mirror_session(app) is None else None
-    if checkout is not None and coordinator is not None:
+    if checkout is not None and coordinator is not None and origin_store_wanted():
         # Nothing an earlier application in this process kept for the root is this one's.
         set_origin_session(checkout.root, None)
         store = CheckoutStore(checkout.root, coordinator, serving=_serving)
@@ -783,6 +807,7 @@ async def lifespan_checkout_store(app: Any) -> AsyncGenerator[None]:
 __all__ = [
     "ABSENCE_DETAIL",
     "ACQUISITION_RETRY_CAP_S",
+    "ORIGIN_STORE_ENV",
     "AcquisitionFailure",
     "CheckoutStore",
     "CheckoutStoreError",
@@ -792,6 +817,7 @@ __all__ = [
     "acquire_checkout_store",
     "checkout_store",
     "lifespan_checkout_store",
+    "origin_store_wanted",
     "serve_checkout_store",
     "store_turn",
 ]

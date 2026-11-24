@@ -101,12 +101,19 @@ ceiling, `SPECULATIVE_CORE_PER_HOUR`: the prefetch, the backfill past every read
 prefix, the cores walk past the rows on screen, and the label set’s periodic read run
 inside `gh_budget.speculative`, which counts what they spend toward the share too, and
 are refused with `self_ceiling` once it is spent.
-Inside the share the prefetch goes first: the backfill and the cores walk, whose cost
-grows with the catalog, also stop at `CATALOG_SPECULATIVE_CORE_PER_HOUR`, the share less
-what the prefetch’s caps can spend, so they cannot take that part before the prefetch
-asks. What is on screen is never refused for the share, so it keeps the rest of the
-ceiling. `GET pulls-prefetch` reports the ceiling and the share and what the hour has
-used of each under `governor.ceiling`, beside the governor’s other state.
+Inside the share the backfill and the prefetch go before the cores walk, whose cost
+grows with the catalog.
+The walk asks with part of the share reserved (`pull_prefetch.reserved`): what the
+prefetch’s caps can still spend this hour while a lane has work queued or running, a
+scan’s records while a page has asked for the lane within `ASKED_WITHIN_S`, and nothing
+for a lane no page asks for, so it cannot take that part between a page’s asks.
+It also waits while the backfill has pages the budget admits
+(`pull_cores._backfill_first`). The backfill past every reader’s prefix reserves
+nothing, since Quick Search across every state and the ref chooser’s pull requests by
+branch are complete only once it is, and it costs a point a page once per catalog epoch.
+What is on screen is never refused for the share, so it keeps the rest of the ceiling.
+`GET pulls-prefetch` reports the ceiling and the share and what the hour has used of
+each under `governor.ceiling`, beside the governor’s other state.
 
 ### The GitHub Status Check
 
@@ -800,8 +807,12 @@ GitHub points they cost, and the measurements behind the order.
 A background job takes no network slot, waits behind every other job at a store turn and
 is cancelled when one starts waiting, and is joined and promoted by a reader’s request
 for the same pull request.
-`GET pulls-prefetch` reports the lane, the caps, the governor, and recent outcomes, and
-`pulls-panel.js` chooses what to name and when.
+A reader who joins a pull job that was already told to stop, a background one or a
+checkout’s optional comparison, has it started again as theirs once the stopped one has
+unwound, on a mirror and on a folder’s checkout alike
+(`RefreshCoordinator.start_again_when_stopped`). `GET pulls-prefetch` reports the lane,
+the caps, the governor, and recent outcomes, and `pulls-panel.js` chooses what to name
+and when.
 
 ## The Comparison Keep
 
@@ -862,7 +873,8 @@ no store.
   current record’s comparison as optional work (`"prepare_comparison"` with the record
   revision). It fetches only that pull request’s head and base, never deepens, holds no
   network slot, and records no outcome; a reader’s Changes request promotes it, and
-  another pull request’s refresh cancels it.
+  another pull request’s refresh cancels it while it is still optional.
+  Once a reader’s request has promoted it, it runs on as theirs.
 - **Repair:** Changes offers Refresh for a displayed comparison even while the record is
   fresh. The request carries `"recovery": {"base": …, "head": …}`, which the server
   accepts only for a pair this session issued for that pull request (the last

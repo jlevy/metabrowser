@@ -41,6 +41,12 @@ os.environ["METABROWSER_EVENT_LOG"] = "0"
 # Nor does a gh that fails make a test probe the network (metabrowser.network_cause): a
 # test of the probe names a local target itself.
 os.environ["METABROWSER_NETWORK_PROBE"] = "0"
+# Nor does a `metab` a test starts, as a process or in process, keep a store of a
+# checkout's origin (metabrowser.checkout_store), which would fetch that origin, a GitHub
+# address in most fixtures, from the network (bead mb-i4x0). A test of the store keeps
+# one in process with the `keeps_origin_store` fixture, and `remote_url_for` naming a
+# local origin.
+os.environ["METABROWSER_ORIGIN_STORE"] = "0"
 os.environ["METABROWSER_STATE_DIR"] = os.path.join(
     tempfile.gettempdir(), f"metabrowser-test-state-{os.getpid()}"
 )
@@ -314,6 +320,16 @@ def _reset_capabilities() -> Generator[None, None, None]:  # pyright: ignore[rep
     set_capabilities(DEFAULT_CAPABILITIES)
 
 
+@pytest.fixture
+def keeps_origin_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let an application in process keep a store of its checkout's origin, as one does
+    outside the suite, which keeps none (``METABROWSER_ORIGIN_STORE`` above). A test
+    that uses it points ``remote_url_for`` at a local origin, or fetches nothing."""
+    from metabrowser.checkout_store import ORIGIN_STORE_ENV
+
+    monkeypatch.delenv(ORIGIN_STORE_ENV, raising=False)
+
+
 @pytest.fixture(autouse=True)
 def _reset_served_mirror() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
     """Never let a mirror one test served reach the next test's application lifespan."""
@@ -400,6 +416,26 @@ def _reset_probe_turns() -> Generator[None, None, None]:  # pyright: ignore[repo
         loaded = sys.modules.get("metabrowser.builtin_plugins.github.served_pull")
         if loaded is not None:
             loaded.forget_probes()
+
+    forget()
+    yield
+    forget()
+
+
+@pytest.fixture(autouse=True)
+def _reset_prefetch_lanes() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start every test with no prefetch lane, as a new process.
+
+    ``pull_prefetch`` keeps one lane per repository a process serves, and an idle lane a
+    page asked for lately keeps a scan's records from the cores walk (``reserved``), so a
+    lane one test left, asked for at the shared clock, would hold back the next test's
+    walk. A process that never imported it holds none.
+    """
+
+    def forget() -> None:
+        loaded = sys.modules.get("metabrowser.builtin_plugins.github.pull_prefetch")
+        if loaded is not None:
+            loaded.forget_lanes()
 
     forget()
     yield

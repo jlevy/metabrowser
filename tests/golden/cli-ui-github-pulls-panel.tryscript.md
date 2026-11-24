@@ -1373,11 +1373,13 @@ A batch left unanswered twice is passed over and revisited after the pass, never
 its own 30 s, even when failures are staggered.
 A visible demand aborts the background batch on its way, as disposal, a pause, or a
 hidden page does before releasing its token, and each lane waits out a 6.5 s answer.
+A held batch whose rate limit has already reset backs off as any other hold does, and
+waits once for a reset still ahead.
 These virtual-clock values describe scheduler behavior, not browser paint latency.
 
 ```console
 $ node tests/dom/github-pr-prefetch-behavior.js
-{"catalogRows":24,"settledOwnershipReleases":3,"prefixOwnership":{"retained":3,"revoked":4},"latePassReceipts":["ready","partial","failed","busy","not_owner","invalid"],"hiddenBatches":[8,8,8],"busyAttemptsMs":[0,1000,3000,7000],"allVisibleReadyMs":12000,"recoveredAfterLongBusyMs":91000,"cachedAfterColdStart":24,"recoveredRaceAndRevision":[24,25],"recoveredTransientAndPartial":[24,24],"cachedPastPartialCohort":24,"cachedAfterReconnect":24,"completedBeforeDisconnect":8,"backgroundRequestsAfterCompletion":17,"passedOver":{"cached":16,"atMs":7000,"attempts":["open@3000","open@4000","all@9000","all@10000","all@41000"]},"preemption":{"visibleSentAfterMs":0,"backgroundAbortedAfterMs":0},"slowCoveredMs":51500,"giveUpMs":{"visible":10000,"background":30000},"tornDown":[{"exit":"dispose","abortedAfterMs":0,"released":1},{"exit":"pause","abortedAfterMs":0,"released":1},{"exit":"hide","abortedAfterMs":0,"released":1}],"staggeredFailures":[2,11,10]}
+{"catalogRows":24,"settledOwnershipReleases":3,"prefixOwnership":{"retained":3,"revoked":4},"latePassReceipts":["ready","partial","failed","busy","not_owner","invalid"],"hiddenBatches":[8,8,8],"busyAttemptsMs":[0,1000,3000,7000],"allVisibleReadyMs":12000,"recoveredAfterLongBusyMs":91000,"cachedAfterColdStart":24,"recoveredRaceAndRevision":[24,25],"recoveredTransientAndPartial":[24,24],"cachedPastPartialCohort":24,"cachedAfterReconnect":24,"completedBeforeDisconnect":8,"backgroundRequestsAfterCompletion":17,"passedOver":{"cached":16,"atMs":7000,"attempts":["open@3000","open@4000","all@9000","all@10000","all@41000"]},"preemption":{"visibleSentAfterMs":0,"backgroundAbortedAfterMs":0},"slowCoveredMs":51500,"giveUpMs":{"visible":10000,"background":30000},"tornDown":[{"exit":"dispose","abortedAfterMs":0,"released":1},{"exit":"pause","abortedAfterMs":0,"released":1},{"exit":"hide","abortedAfterMs":0,"released":1}],"staggeredFailures":[2,11,10],"heldBackoff":{"none":{"asks":8,"gapsMs":[1000,2000,4000,8000,16000,30000,30000]},"lapsedRateLimit":{"asks":8,"gapsMs":[1000,2000,4000,8000,16000,30000,30000]},"staleNetworkError":{"asks":8,"gapsMs":[1000,2000,4000,8000,16000,30000,30000]},"rateLimitAhead":{"asks":6,"gapsMs":[59000,2000,4000,8000,16000]}}}
 ? 0
 ```
 
