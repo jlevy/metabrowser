@@ -42,13 +42,8 @@ from metabrowser.builtin_plugins.github.urls import (
     GithubUrlReducer,
     parse_repository_url,
 )
-from metabrowser.cache.acquire import AcquisitionError, RepositoryTooLargeError
-from metabrowser.cache.free_space import (
-    FREE_SPACE_RESERVE_ENV,
-    free_space_reserve_bytes,
-    gigabytes,
-    packed_bytes,
-)
+from metabrowser.cache.acquire import AcquisitionError
+from metabrowser.cache.free_space import refuse_unless_it_fits
 from metabrowser.cache.providers import PullRequestUnavailableError
 from metabrowser.git.wire import is_full_revision
 from metabrowser.repository_context import RepositoryContext
@@ -261,19 +256,7 @@ class GithubProvider:
         if not text.isdigit():
             log.debug("skipped the size check for %s: unexpected answer", source.normalized)
             return
-        size_kb = int(text)
-        needed = packed_bytes(size_kb)
-        reserve = free_space_reserve_bytes()
-        if needed + reserve > free_bytes:
-            raise RepositoryTooLargeError(
-                source.normalized,
-                detail=(
-                    f"GitHub reports {size_kb:,} KB, which can take {gigabytes(needed)}, and "
-                    f"the cache's volume has {gigabytes(free_bytes)} free, of which metab "
-                    f"leaves {gigabytes(reserve)}; free space on the volume, set "
-                    f"METABROWSER_CACHE_DIR to one with more, or lower {FREE_SPACE_RESERVE_ENV}"
-                ),
-            )
+        refuse_unless_it_fits(source.normalized, free_bytes, host="GitHub", reported_kb=int(text))
 
     async def pull_request(
         self, published: PublishedSource, number: int, *, fetch: PullRequestFetch

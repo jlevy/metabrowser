@@ -379,19 +379,23 @@ _RESERVE: int = FREE_SPACE_RESERVE_MB * 1_000_000
 def test_free_space_below_the_first_clone_reserve_is_a_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Below the reserve a first clone leaves free, every first clone is refused."""
+    """Below the reserve a first clone leaves free, every first clone is refused but one
+    that borrows a checkout's objects, which is not checked."""
 
     cache = tmp_path / "cache"
     cache.mkdir(mode=0o700)
     _storage(monkeypatch, tmp_path, METABROWSER_CACHE_DIR=str(cache))
     monkeypatch.delenv(FREE_SPACE_RESERVE_ENV, raising=False)
-    monkeypatch.setattr(doctor, "volume_free_bytes", lambda _directory: _RESERVE - 1)
+    monkeypatch.setattr(doctor, "volume_free_bytes", lambda _directory: 400_000_000)
     low = cache_check()
     assert low.state == "warning"
     assert low.summary == (
-        "the cache's volume has 1.0 GB free, less than the 1.0 GB a first clone leaves "
-        "free, so metab refuses every first clone"
+        "the cache's volume has 400 MB free, less than the 1.0 GB a first clone leaves "
+        "free, so metab refuses every first clone that does not borrow from a checkout"
     )
+    assert ("free space", "400 MB") in low.details
+    monkeypatch.setattr(doctor, "volume_free_bytes", lambda _directory: _RESERVE - 1)
+    assert cache_check().state == "warning"
     assert low.remedy is not None and FREE_SPACE_RESERVE_ENV in low.remedy.text
     monkeypatch.setattr(doctor, "volume_free_bytes", lambda _directory: _RESERVE)
     assert cache_check().state == "ok"

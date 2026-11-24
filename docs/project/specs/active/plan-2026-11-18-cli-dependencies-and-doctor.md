@@ -319,9 +319,10 @@ Of the other ways a setup breaks that [Background](#background) lists:
   an app was found, naming the directory the app’s servers use, since the app passes
   none of them (`ChildEnvironment`). The reverse cannot happen: the app sets none.
 
-- **A full disk** is built: free space on the cache’s volume below the reserve every
-  first clone leaves free (`cache/free_space.py`), so that every first clone is refused,
-  is a warning, and a missing directory that cannot be created is a problem.
+- **A full disk** is built: free space on the cache’s volume below the reserve a first
+  clone leaves free (`cache/free_space.py`), so that every first clone that does not
+  borrow from a checkout is refused, is a warning, and a missing directory that cannot
+  be created is a problem.
 
 - **Two `metab`s** is deferred: the doctor knows only the `metab` that runs it, and
   Check Setup… runs the app’s, whose path heads Copy Report; comparing it with

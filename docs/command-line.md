@@ -555,8 +555,9 @@ sentence, the details it read, and the step that fixes it:
   be created, and its `config.yml` is one this release reads.
 - **`cache`:** the cache directory: its override is valid, it is private and writable or
   can be created, it is apart from the configuration, and how much space its volume has
-  free. Less than the reserve every first clone leaves free,
-  `METABROWSER_CACHE_RESERVE_MB`, is a warning, since every first clone is then refused.
+  free. Less than the reserve a first clone leaves free, `METABROWSER_CACHE_RESERVE_MB`,
+  is a warning, since every first clone that does not borrow from a checkout is then
+  refused.
 - **`event_log`:** whether a server writes its event log: where, and from which variable
   the directory comes.
   `METABROWSER_EVENT_LOG` turning it off is a warning, since no latency or failure is
@@ -1025,7 +1026,7 @@ Every variable is read from the process environment, so export it in the shell t
 | `METABROWSER_REQUEST_LOG` | `verbose` logs every request with its arrival and completion times |
 | `METABROWSER_SLOW_SERVER_MS` | The time, in milliseconds, past which a request is logged as slow, 2,000 by default |
 | `METABROWSER_DEBUG` | `1` enables the `/_debug/tasks` and `/_debug/inventory` diagnostics |
-| `METABROWSER_CACHE_RESERVE_MB` | The free space, in megabytes, a first clone leaves on the cache volume, 1000 by default; a first clone from GitHub that would leave less is refused before it starts |
+| `METABROWSER_CACHE_RESERVE_MB` | The free space, in megabytes, a first clone leaves on the cache volume, 1000 by default; a first clone is refused before it starts when the volume has less free, or when GitHub reports a repository that would leave less |
 | `METABROWSER_GCP_PROJECT` | The default `--project` for `--remote --gcp` |
 | `METABROWSER_INVENTORY_PROVIDER` | The inventory engine; this build ships `python` alone, the default |
 | `METABROWSER_TEXT_PREVIEW_BYTES`, `METABROWSER_TEXT_PREVIEW_MAX_BYTES`, `METABROWSER_HIGHLIGHT_MAX_BYTES` | Text loading and highlighting budgets, in bytes |

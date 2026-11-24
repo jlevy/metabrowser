@@ -180,6 +180,32 @@ def test_the_environment_sets_the_reserve(
         asyncio.run(GithubProvider().check_first_clone(SOURCE, free_bytes=6 * 10**9))
 
 
+def test_a_refusal_names_each_size_in_a_unit_that_shows_it(
+    fake_gh: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Below a gigabyte a size is named in megabytes, and a volume already below the
+    reserve is not said to leave the reserve of what it lacks."""
+
+    monkeypatch.setenv("FAKE_GH_MODE", "size")
+    monkeypatch.setenv("FAKE_GH_SIZE", "300000")
+    monkeypatch.setenv(FREE_SPACE_RESERVE_ENV, "200")
+    with pytest.raises(RepositoryTooLargeError) as refused:
+        asyncio.run(GithubProvider().check_first_clone(SOURCE, free_bytes=500_000_000))
+    message = str(refused.value)
+    assert "; GitHub reports 300,000 KB, which can take 338 MB, and the cache's volume" in message
+    assert "has 500 MB free, of which metab leaves 200 MB; free space on the volume" in message
+    monkeypatch.setenv("FAKE_GH_SIZE", "12")
+    monkeypatch.delenv(FREE_SPACE_RESERVE_ENV)
+    with pytest.raises(RepositoryTooLargeError) as below:
+        asyncio.run(GithubProvider().check_first_clone(SOURCE, free_bytes=400_000_000))
+    message = str(below.value)
+    assert (
+        "; the cache's volume has 400 MB free, less than the 1.0 GB metab leaves free;" in message
+    )
+    with pytest.raises(RepositoryTooLargeError, match=r"12 KB, which can take under 1 MB, "):
+        asyncio.run(GithubProvider().check_first_clone(SOURCE, free_bytes=RESERVE + 10_000))
+
+
 @pytest.mark.parametrize("override", ["lots", "-5", "1.5", "9" * 5000])
 def test_a_reserve_that_is_not_a_size_is_ignored_with_a_warning(
     override: str, fake_gh: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture

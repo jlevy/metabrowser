@@ -25,7 +25,7 @@ changes nothing.
 ``cache``      The cache directory resolves, is private and writable or can be     problem
                created, and is apart from the configuration; an override the
                app's servers do not get, or free space below
-               the reserve every first clone leaves free, is a warning
+               the reserve a first clone leaves free, is a warning
 ``event_log``  Whether a server writes its event log, where, and what it leaves    warning
                out; an environment that turns it off, or a state directory that
                cannot hold it, is a warning
@@ -77,7 +77,7 @@ from metabrowser.build_version import display_version
 from metabrowser.cache.free_space import (
     FREE_SPACE_RESERVE_ENV,
     free_space_reserve_bytes,
-    gigabytes,
+    size_text,
     volume_free_bytes,
 )
 from metabrowser.invisible_chars import display_segment
@@ -568,7 +568,7 @@ def cache_check(*, app_path: str | None = None) -> Check:
     details: list[tuple[str, str]] = [("directory", _shown(directory)), ("source", source)]
     free = volume_free_bytes(directory)
     if free is not None:
-        details.append(("free space", gigabytes(free)))
+        details.append(("free space", size_text(free)))
     try:
         validate_private_home(directory)
         writable = private_directory_is_writable(directory, "")
@@ -679,7 +679,8 @@ def event_log_check() -> Check:
 def _cache_space(check: Check, free: int | None) -> Check:
     """*check* as a warning when its volume has less free than the reserve a first clone
     leaves (:func:`~metabrowser.cache.free_space.free_space_reserve_bytes`), so that every
-    first clone is refused."""
+    first clone is refused but one that borrows a checkout's objects, which is not checked
+    (:func:`~metabrowser.cache.acquire.acquire_source`)."""
 
     reserve = free_space_reserve_bytes()
     if free is None or free >= reserve or check.state != "ok":
@@ -688,8 +689,9 @@ def _cache_space(check: Check, free: int | None) -> Check:
         check.id,
         check.title,
         "warning",
-        f"the cache's volume has {gigabytes(free)} free, less than the "
-        f"{gigabytes(reserve)} a first clone leaves free, so metab refuses every first clone",
+        f"the cache's volume has {size_text(free)} free, less than the "
+        f"{size_text(reserve)} a first clone leaves free, so metab refuses every first clone "
+        "that does not borrow from a checkout",
         check.details,
         Remedy(
             "Free space on the volume, set METABROWSER_CACHE_DIR to one with more, or "

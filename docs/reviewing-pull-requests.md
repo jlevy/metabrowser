@@ -327,11 +327,12 @@ Clones and records live in the cache directory that
 measures them. No command removes a clone: to reclaim the space, stop every server and
 delete the cache directory, and the next run clones again.
 
-A first clone is refused before it starts when the repository GitHub reports would not
-fit on the cache’s volume with `METABROWSER_CACHE_RESERVE_MB` still free.
+A first clone is refused before it starts when the cache’s volume has less than
+`METABROWSER_CACHE_RESERVE_MB` free, whatever the repository, or when the size GitHub
+reports for the repository would not fit with that reserve still free.
 No size is refused for itself.
-The refusal gives the repository’s size, what its clone can take, the volume’s free
-space, and the reserve.
+The refusal gives the volume’s free space and the reserve, and, where GitHub reports the
+repository’s size, that size and what its clone can take.
 Free space on the volume, point
 [`METABROWSER_CACHE_DIR`](command-line.md#storage-locations) at a volume with more, or
 lower the reserve:

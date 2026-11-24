@@ -23,7 +23,7 @@ patterns:
   PYTHON: '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+]* at [^\s"]+'
   INSTALL_LOCATION: '(?:from the source checkout|in the Python environment) [^\s"]+'
   SANDBOX: '[^\s"]+/tryscript-[A-Za-z0-9]+'
-  FREE: '[0-9]+\.[0-9] GB'
+  FREE: '(?:[0-9]+\.[0-9] GB|[0-9]+ MB|under 1 MB)'
 before: >-
   mkdir -m 700 config cache badconfig &&
   mkdir -m 755 shared &&
