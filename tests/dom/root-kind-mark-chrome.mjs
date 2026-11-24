@@ -21,7 +21,7 @@
 // - the main pane's header for the root leads with that same glyph, and the header of a folder
 //   inside the root with the ordinary folder's, so a root is never drawn as an ordinary folder;
 // - its tooltip shows over it, and is its accessible name; and
-// - the mark and name open Home; the adjacent chevron opens details and dismisses on a
+// - the mark and name open Home; the adjacent Info button opens details and dismisses on a
 //   repeated click, an outside click, or Escape.
 //
 // It saves one screenshot of the navigation's top for each kind in each theme. Each step
@@ -169,6 +169,14 @@ async function click(selector, button = "left") {
 
 const TRIGGER = "#root-details > summary";
 const MENU_OPEN = 'document.getElementById("root-details").open';
+const INFO_ICON = `(() => {
+  const trigger = document.querySelector("${TRIGGER}");
+  const glyph = trigger.querySelector("svg");
+  const template = document.createElement("template");
+  template.innerHTML = window.MetabrowserIcons.info;
+  return glyph.outerHTML === template.content.firstElementChild.outerHTML &&
+    getComputedStyle(glyph).rotate === "none";
+})()`;
 
 async function checkCheckoutDetails() {
   const chip = "#root-details .root-details-branch button";
@@ -378,14 +386,12 @@ for (const theme of ["light", "dark"]) {
 
     await hover(".header-home-name");
     await browser.waitFor(`(${TOOLTIP}) === null`, STEP_MS);
-    const closedRotation = await browser.evaluate(
-      'getComputedStyle(document.querySelector("#root-details summary svg")).rotate',
-    );
+    const closedInfoIcon = await browser.evaluate(INFO_ICON);
     await click(TRIGGER);
     if (kind === "folder" && theme === "light") {
-      check("the chevron opens the menu", await browser.evaluate(MENU_OPEN));
+      check("the Info button opens the menu", await browser.evaluate(MENU_OPEN));
       await click(TRIGGER);
-      check("clicking the same chevron closes the menu", !(await browser.evaluate(MENU_OPEN)));
+      check("clicking the same Info button closes the menu", !(await browser.evaluate(MENU_OPEN)));
       await click(TRIGGER);
       await browser.evaluate(`(() => {
         const outside = document.getElementById("settings-btn");
@@ -423,11 +429,9 @@ for (const theme of ["light", "dark"]) {
     const details = await browser.evaluate(`(() => {
       const root = document.getElementById("root-details");
       const summary = root.querySelector("summary");
-      const caret = summary.querySelector("svg");
       return {
         open: root.open,
-        closedRotation: ${JSON.stringify(closedRotation)},
-        openRotation: getComputedStyle(caret).rotate,
+        label: summary.getAttribute("aria-label"),
         local: root.querySelector(".root-details-local").innerText,
         source: root.querySelector(".root-details-source").innerText,
         text: root.querySelector(".root-details-info").innerText,
@@ -440,9 +444,10 @@ for (const theme of ["light", "dark"]) {
       JSON.stringify(details),
     );
     check(
-      `${where}: the menu keeps a down chevron and labels the local path`,
-      details.closedRotation === "90deg" &&
-        details.openRotation === details.closedRotation &&
+      `${where}: the menu keeps its Info glyph, accessible name, and local path label`,
+      closedInfoIcon &&
+        (await browser.evaluate(INFO_ICON)) &&
+        details.label === `${at.label.split(" (")[0]} details` &&
         details.local.startsWith("Local path"),
       JSON.stringify(details),
     );
@@ -543,7 +548,7 @@ for (const selector of ["#header-root-kind", ".header-home-name"]) {
   await click(TRIGGER);
   const afterMenu = await browser.evaluate(`({ path: location.pathname, open: ${MENU_OPEN} })`);
   check(
-    `the chevron opens details without navigating before clicking ${selector}`,
+    `the Info button opens details without navigating before clicking ${selector}`,
     afterMenu.open && startingPath !== "/view/" && afterMenu.path === startingPath,
     JSON.stringify({ startingPath, afterMenu }),
   );
@@ -573,7 +578,7 @@ await browser.waitFor(
   STEP_MS,
 );
 await click(TRIGGER);
-check("the chevron opens beside a sandboxed HTML preview", await browser.evaluate(MENU_OPEN));
+check("the Info button opens beside a sandboxed HTML preview", await browser.evaluate(MENU_OPEN));
 await click("iframe.file-html-preview");
 await browser.waitFor('document.activeElement.matches("iframe.file-html-preview")', STEP_MS);
 check(

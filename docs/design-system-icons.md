@@ -197,7 +197,7 @@ route may say only where `tests/test_serve_pin.py` allows.
 
 | Surface | Draws |
 | --- | --- |
-| The navigation column’s heading, before the root’s name | The root’s kind mark, `.header-root-kind`, at `--icon-glyph` in `--muted`, inside the Home link and next to the root details disclosure. The server writes the kind, its glyph, and its sentence into the first paint (`source_kind_marks.py`) |
+| The navigation column’s heading, before the root’s name | The root’s kind mark, `.header-root-kind`, at `--icon-glyph` in `--muted`, inside the Home link and next to the Info button for folder details. The server writes the kind, its glyph, and its sentence into the first paint (`source_kind_marks.py`) |
 | The main pane’s header for the root, at the title’s size | The same mark: the glyph is copied from the navigation’s (`view-header.js`, `folderGlyphHtml`), so a root’s name has one icon wherever it stands. A pinned revision of a checkout, whose root is still the root, keeps it. A folder inside the root leads with the ordinary folder |
 | The macOS title’s folder chooser and the Switch Folder panel, each row | The row’s kind mark, from its window’s `/api/identity` or its recent entry |
 | File > Open Recent and the Dock menu, each row | The row’s kind mark, from the entry’s `mode` and `git` in `metab --recent --json`, never from a look at the folder, which can raise a privacy prompt |
@@ -289,6 +289,7 @@ The state’s word beside the row’s title carries the meaning without the colo
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
 | `toggle`, Lucide `chevron-right` | Registry | Show or hide what a row holds: tree folders and containers, the tally tree, diff file bars, the Diff summary, Pulls rows, agent log events, fold expanders, the filter drawer, and menu triggers. In menus it points down and stays fixed while open | `static/icons.js` | Muted gray at rest, stronger neutral ink on interaction | Centered in its target. A branch or tag menu overlays the chip’s trailing edge |
+| `info`, Lucide `info` | Registry | Open folder details from the navigation heading | `static/icons.js` | `--muted` at rest, `--text` on interaction | `--icon-glyph` in the shared icon-button target |
 | `chevron.down` | SF Symbol | A window’s title opens its folder chooser | `apps/macos/Sources/Metabrowser/TitleAccessory.swift` | Secondary label color at rest, primary on hover or open, tertiary in an inactive window | Seven tenths of the title font’s point size, centered vertically |
 | `checkmark` | SF Symbol | The folder this window shows, in the Switch Folder panel’s list | `apps/macos/Sources/Metabrowser/SwitchFolderWindow.swift` | Secondary label color, or the selection’s ink on the selected row | The row’s default symbol size |
 | `checkmark` | SF Symbol | The folder this window shows, in the title’s folder chooser: AppKit’s own check mark for a menu item’s state, redrawn into a taller image so that it stands on the name’s line of a two-line row, beside the row’s mark | `apps/macos/Sources/ShellViews/TitleLineMenuItem.swift` | The menu’s ink and highlight, as a template image | The menu font’s 13 points, bold, small: AppKit’s own check, drawn at its size |

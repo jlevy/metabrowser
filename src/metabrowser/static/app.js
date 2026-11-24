@@ -2218,7 +2218,7 @@ function initRootDetails() {
   if (!details || !trigger || !status) {
     return;
   }
-  trigger.innerHTML = `<span aria-hidden="true">${ICONS.toggle ?? ""}</span>`;
+  trigger.innerHTML = `<span aria-hidden="true">${ICONS.info ?? ""}</span>`;
   const location = details.querySelector(".root-details-location");
   const mirrorLocation = queryHtml(".header-path")?.dataset.mirrorLocation;
   if (location && mirrorLocation) {

@@ -1886,10 +1886,7 @@ body {
   display: none;
 }
 .root-details-trigger svg {
-  width: var(--icon-glyph);
-  height: var(--icon-glyph);
   display: block;
-  rotate: 90deg;
 }
 .root-details-panel {
   position: absolute;
