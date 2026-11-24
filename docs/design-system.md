@@ -1097,10 +1097,11 @@ header says what KPress lacks.
 
 The root icon and name in the navigation column link to Home.
 The folder glyph identifies a local folder, a Git checkout, or a cloud mirror.
-The adjacent Info button opens the root’s details, with a kind-specific accessible name
-such as “Local folder details”.
-The circled Info glyph uses the shared icon-only button, with muted ink at rest and the
-same highlight on hover, focus, or while the menu is open.
+The adjacent Info button opens the root’s details.
+Its accessible name and tooltip identify the kind, for example “Local folder details”.
+The circled i has a distinct dot and foot at sidebar size.
+It uses the shared icon-only button with muted ink at rest and the same highlight on
+hover, focus, or while the menu is open.
 Click it again, click outside the menu, or press Escape to close it.
 
 The menu shows information about the folder, including its local path, file count, size,

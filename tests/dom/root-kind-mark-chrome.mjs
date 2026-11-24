@@ -402,6 +402,12 @@ for (const theme of ["light", "dark"]) {
     await hover(".header-home-name");
     await browser.waitFor(`(${TOOLTIP}) === null`, STEP_MS);
     const closedInfoIcon = await browser.evaluate(INFO_ICON);
+    if (kind === "folder") {
+      await hover(TRIGGER);
+      await browser.waitFor(`(${TOOLTIP}) === "Local folder details"`, STEP_MS);
+      await hover(".header-home-name");
+      await browser.waitFor(`(${TOOLTIP}) === null`, STEP_MS);
+    }
     await click(TRIGGER);
     if (kind === "folder" && theme === "light") {
       check("the Info button opens the menu", await browser.evaluate(MENU_OPEN));
@@ -447,6 +453,7 @@ for (const theme of ["light", "dark"]) {
       return {
         open: root.open,
         label: summary.getAttribute("aria-label"),
+        tooltip: summary.dataset.tipText,
         local: root.querySelector(".root-details-local").innerText,
         source: root.querySelector(".root-details-source").innerText,
         text: root.querySelector(".root-details-info").innerText,
@@ -463,6 +470,7 @@ for (const theme of ["light", "dark"]) {
       closedInfoIcon &&
         (await browser.evaluate(INFO_ICON)) &&
         details.label === `${at.label.split(" (")[0]} details` &&
+        details.tooltip === details.label &&
         details.local.startsWith("Local path"),
       JSON.stringify(details),
     );
