@@ -1038,14 +1038,27 @@ def test_branch_chips_scale_with_their_text() -> None:
     chip = shell[".git-ref"]
     assert chip["font-size"] == "var(--git-ref-font-size)"
     assert chip["font-weight"] == "var(--weight-bold)"
-    # The box scales with the text: 16px at 12px, and a 13px history row's chip is 15.6px,
-    # so a HEAD ring (2px out) fits the 22px row.
-    line = float(chip["line-height"])
-    assert abs(line - 4 / 3) < 0.001
-    assert 13 * scale * line + 4 <= 22
-    assert chip["padding"] == "0 5px"
+    # The shared outer height leaves room for the HEAD ring in a history row.
+    assert chip["line-height"] == "var(--compact-chip-height)"
+    assert float(root["--compact-chip-height"].removesuffix("px")) + 4 <= 22
+    assert chip["padding"] == "0 var(--compact-chip-padding-inline)"
     assert chip["border-radius"] == "var(--radius-tag)"
     assert chip["max-width"] == "22em", "the width bound scales with the chip"
+    github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    table = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "table/styles.css"))
+    for bordered_chip in (
+        shell[".source-ref-selector-badge"],
+        github[".github-pull-label"],
+        table[".table-ref"],
+    ):
+        assert (
+            bordered_chip["line-height"]
+            == "calc(var(--compact-chip-height) - 2 * var(--chip-border))"
+        )
+        assert bordered_chip["border"] == "var(--chip-border) solid var(--border)"
+        assert bordered_chip["padding"] == chip["padding"]
+        assert bordered_chip["border-radius"] == chip["border-radius"]
+    assert table[".table-chip"]["min-block-size"] == "var(--chip-height)"
     restyled = []
     sized = []
     for sheet in _stylesheets():
@@ -2879,8 +2892,9 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert group["grid-template-columns"] == (
         "minmax(0, max-content) max-content minmax(0, max-content)"
     ), "each name may shrink and the arrow never shrinks"
-    assert group["min-width"] == "calc(2 * 5px + 3em)", "the merge's floor"
-    assert shell[".git-ref"]["padding"] == "0 5px"
+    assert group["min-width"] == "calc(2 * var(--compact-chip-padding-inline) + 3em)", (
+        "the merge's floor"
+    )
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}

@@ -1403,15 +1403,25 @@ The source ref selector’s filter, the font-set picker, and the line-length num
 it in markup. `test_text_fields_carry_the_field_primitive` fails a field that restates
 what `.field` owns.
 
+### Chip Sizes
+
+| Use | Height | Components |
+| --- | --- | --- |
+| Compact labels and references | `--compact-chip-height`, including any border | Branches, tags, GitHub labels, ref chooser tags such as “checked out”, and links to referenced table rows |
+| Filters and other chip controls | `--chip-height` | Navigation filters, segmented chips, and removable table filters |
+| Status and file-type badges | The badge’s line plus its padding or border | Pull request states such as Merged, checks, and file headers |
+
+Compact chips share `--compact-chip-padding-inline` and `--radius-tag`. A bordered chip
+fits its line inside the shared height.
+The tag notch has extra leading room.
+
 ### Badges
 
 A status or file-type badge takes its fill and ink from a `--badge-<tone>-bg` and
 `--badge-<tone>-text` pair, themed for both themes and held to 4.5:1 by
 `test_status_and_badge_inks_read_in_both_themes`; a failure and a front-matter error are
-one tone, `--badge-failed-*`. `.source-ref-selector-badge` is not a status badge but an
-outlined tag in the row’s muted ink: it shares `.file-header-badge`’s radius and no-wrap
-rule and not its filled, bold, taller box, since every ref row is placed at one row’s
-height.
+one tone, `--badge-failed-*`. Ref chooser tags use the outlined form in the row’s muted
+ink, at the shared [compact chip size](#chip-sizes).
 
 ### Status Text Inks
 
@@ -2041,23 +2051,19 @@ ref it is, whether it is trunk, and whether `HEAD` is on it.
 
 #### One Ratio
 
-A chip is slightly smaller than the text around it, wherever it appears: one ratio, not
-one size. Its size is `--git-ref-font-size`, `--git-ref-font-scale` of the size it
-inherits, so a chip in a header line is larger than one in the ref selector, and both
-read as part of their line.
-One rule on `.git-ref` in `static/styles.css` sets its type and box, and its comment
-holds the figures.
-No context overrides them, and the box a chip sits in, a merge’s grid,
-a history row’s ref group, a summary’s identity group, or the ref selector’s label, sets
-no size of its own, so the chip scales from the text beside it.
+A chip’s type is slightly smaller than the surrounding text.
+Its font size is `--git-ref-font-size`, or `--git-ref-font-scale` times the inherited
+size. The merge, history, summary, and chooser containers inherit their surrounding font
+so the ratio follows the text.
+The box has the shared [compact chip height](#chip-sizes).
 
 | Property | Rule | Why |
 | --- | --- | --- |
 | Size | `--git-ref-font-size` | Slightly smaller than its text, so a branch name reads as a tag on that text rather than the text itself. The smallest context stays above `--micro-font-size`, so the ratio needs no floor |
 | Weight | `--weight-bold` | The name carries the meaning |
-| Line height | A ratio of the chip’s size | The box scales with its text and keeps a `HEAD` ring inside a history row |
+| Line height | `--compact-chip-height` | Aligns with the label chips and fits a `HEAD` ring inside a history row |
 | Corner | `--radius-tag` | Square-ish, so a ref and a filter never read as the same control |
-| Padding | In px | Room around the name, not text. A tag adds room on the left for its notch. The menu chevron overlays the chip ([Action Menu](#action-menu)) |
+| Padding | `--compact-chip-padding-inline` | A tag adds room on the left for its notch. The menu chevron overlays the chip ([Action Menu](#action-menu)) |
 | Width | A maximum in em, ellipsized, with the full name in its tooltip | In em so the bound keeps its meaning at any chip size; the measurement is beside it |
 
 `test_branch_chips_scale_with_their_text` in `tests/test_design_vocabulary.py` holds the
@@ -2988,9 +2994,8 @@ Document image sanitization remains independent; see [Content Trust](../SECURITY
 **A label is colored exactly as github.com colors it, in our chip’s box.** GitHub gives
 each label a color, six hex digits, and a description, and a reader who knows a
 repository’s labels by their colors on github.com should find the same colors here.
-The chip keeps the size every label chip has: `--ui-small-font-size`, the `0 5px`
-padding, the hairline border, `--radius-tag`, and its height, so a colored label is as
-tall as a neutral one and the header’s rows keep their heights.
+Colored and neutral chips share the same [compact box](#chip-sizes) and
+`--ui-small-font-size`. The header reserves that box’s height while waiting for labels.
 
 The colors are github.com’s own formula, read from its stylesheets (its global
 `.hx_IssueLabel` and Primer React’s `.prc-Token-IssueLabel`, which agree, on
@@ -6064,10 +6069,10 @@ revisions
   `ROWS_OVERSCAN` and `drawWindow` in `static/source-ref-selector.js`), and a row has
   one of two heights, with a pull request or without, each measured by a row drawn out
   of sight, so nothing else in a row may make it taller than the rest of its kind: the
-  badge’s border reaches into the row’s padding, and the pull request’s line is one line
-  of `--nav-metadata-line-height`, however tall the glyphs of its title are: an emoji or
-  a Japanese title falls back to a font whose `normal` line is taller, which made the
-  row 2 to 3 px taller than the list places it.
+  badge fits the row’s line, and the pull request’s line is one line of
+  `--nav-metadata-line-height`, however tall the glyphs of its title are: an emoji or a
+  Japanese title falls back to a font whose `normal` line is taller, which made the row
+  2 to 3 px taller than the list places it.
   A row with no pull request is as tall as every row was before the line existed.
   The row that takes Tab stays drawn however far the list scrolls from it, so focus on
   it is never lost, and a list that holds the served ref opens scrolled to its row.
