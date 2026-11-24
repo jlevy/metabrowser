@@ -241,8 +241,10 @@ The tree reads YAML 1.2, where `no`, `off`, and `y` are strings, so a change bet
 became the string that spells it, or the key `1` that became `"1"`, is drawn unchanged,
 and the tree says above it that **Source** shows a change it draws as unchanged.
 JSON with a key twice in one object shows the key once, with its last value, as the file
-view’s tree does, and a change to a value the repeated key hides is one **Source**
-shows.
+view’s tree does, and a change to a value the repeated key hides, or the same value
+hidden in another object, is one **Source** shows.
+An added or deleted file that hides a value says above its tree that **Source** shows
+it.
 
 These files open in **Source**:
 

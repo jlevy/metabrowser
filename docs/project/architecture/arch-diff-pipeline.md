@@ -353,8 +353,11 @@ row it changes.
   The YAML loader also refuses two keys one text spells, such as `1` and `"1"`, which
   the tree view reads as two keys and draws as the last.
   JSON with a key twice in one object reads as the tree view reads it, the last value at
-  the key’s first place, and a change to a value it hides is `source_only`. Aliases and
-  merge keys load within the loader’s budget on the value written out.
+  the key’s first place.
+  Each value it hides is kept with the path of the object that hid it, and a change to
+  one, or the same value hidden in another object, is `source_only`, as is an added or
+  deleted file that hides any.
+  Aliases and merge keys load within the loader’s budget on the value written out.
   [The structured diff measurement](../../../explorations/structured-diff/README.md)
   records the budgets over this repository’s history and the worst shapes.
 - **Source only:** the projection reads no patch.
