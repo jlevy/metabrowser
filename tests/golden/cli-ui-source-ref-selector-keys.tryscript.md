@@ -90,7 +90,7 @@ $ node tests/dom/source-ref-selector-keys-session.js
     {
       "key": "Escape from the row refs/remotes/origin/topic",
       "taken": true,
-      "focus": "topic",
+      "focus": "Switch branch or tag",
       "listOpen": false
     }
   ]

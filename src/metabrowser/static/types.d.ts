@@ -4015,6 +4015,8 @@ declare global {
     error: string | null;
     /** Whether the page is a checkout's; absent on a mirror's. */
     checkout?: boolean;
+    /** The branch whose live checkout is shown, when HEAD names a branch. */
+    workingBranch?: string;
     /** What the server came to serve instead of this page: a commit, "" for the working
      * tree, or null while the page is current. A checkout's page only. */
     stale?: string | null;
@@ -4098,12 +4100,9 @@ declare global {
 
   /** The elements the ref selector paints into. */
   type MetabrowserSourceRefSelectorParts = {
-    releaseCopies?: () => void;
     /** Set when the selector is disposed, so a late load draws nothing. */
     disposed?: boolean;
     root: HTMLElement;
-    /** The button's own box, which a ref chip's menu trigger is placed against. */
-    buttonHost: HTMLElement;
     toggle: HTMLButtonElement;
     label: HTMLElement;
     stale: HTMLElement;
@@ -4141,8 +4140,6 @@ declare global {
     iconsAsked: boolean;
     /** Set when every row is to be drawn again, though its refs are the same. */
     rebuild: boolean;
-    /** The list's scroll position the drawn rows were drawn for, which a toolbar refill takes. */
-    drawnAt: number;
     /** The list and filter the rows are of, so a new one starts at its top. */
     listing: string;
     /** Whether this listing has been scrolled to the served ref's row, which it is once. */
@@ -4171,9 +4168,6 @@ declare global {
     Readonly<{
       activate(): Promise<void>;
       button: HTMLButtonElement;
-      /** The list's scroll position now, and a function that sets it again, for a rebuild
-       * of the toolbar around it. */
-      holdScroll(): () => void;
     }>;
 
   type MetabrowserSourceRefSelectorRuntime = Readonly<{

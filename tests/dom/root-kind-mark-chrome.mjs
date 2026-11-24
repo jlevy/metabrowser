@@ -21,7 +21,7 @@
 // - the main pane's header for the root leads with that same glyph, and the header of a folder
 //   inside the root with the ordinary folder's, so a root is never drawn as an ordinary folder;
 // - its tooltip shows over it, and is its accessible name; and
-// - the mark and name open Home; the adjacent chevron opens details and dismisses on a
+// - the mark and name open Home; the adjacent Info button opens details and dismisses on a
 //   repeated click, an outside click, or Escape.
 //
 // It saves one screenshot of the navigation's top for each kind in each theme. Each step
@@ -169,18 +169,30 @@ async function click(selector, button = "left") {
 
 const TRIGGER = "#root-details > summary";
 const MENU_OPEN = 'document.getElementById("root-details").open';
+const INFO_ICON = `(() => {
+  const trigger = document.querySelector("${TRIGGER}");
+  const glyph = trigger.querySelector("svg");
+  const template = document.createElement("template");
+  template.innerHTML = window.MetabrowserIcons.info;
+  return glyph.outerHTML === template.content.firstElementChild.outerHTML &&
+    getComputedStyle(glyph).rotate === "none";
+})()`;
 
 async function checkCheckoutDetails() {
-  const chip = "#root-details .root-details-branch button";
+  const chip = "#nav-files-ref .git-ref-action";
+  const chooser = "#nav-files-ref .source-ref-selector-toggle";
   const revisionCopy = "#root-details .git-commit-revision-copy";
-  const menu = "#root-details > [data-ref-action-menu]";
+  const menu = "[data-ref-action-menu]";
+  await browser.waitFor(`document.querySelector(${JSON.stringify(chip)}) !== null`, STEP_MS);
   const state = await browser.evaluate(`(() => {
     const chip = document.querySelector(${JSON.stringify(chip)});
     const id = document.querySelector("#root-details .git-commit-sha");
     const copy = document.querySelector(${JSON.stringify(revisionCopy)});
     const { branch, revision } = window.METABROWSER_REPOSITORY_CONTEXT;
     return {
-      chip: chip.matches(".git-ref-local.git-ref-head"),
+      chip: chip.matches(".git-ref-local") && chip.textContent === branch,
+      working: chip.getAttribute("aria-label")?.endsWith(" · Working tree"),
+      hasDuplicate: document.querySelector("#root-details [data-ref-menu]") !== null,
       branch, revision,
       text: id.textContent,
       shortRevision: window.metabrowser.shortCommit(revision),
@@ -190,8 +202,10 @@ async function checkCheckoutDetails() {
     };
   })()`);
   check(
-    "checkout details show the shared local branch chip and short monospace commit",
+    "folder details retain the short monospace commit, and the branch names the Files source",
     state.chip &&
+      state.working &&
+      !state.hasDuplicate &&
       state.text === state.shortRevision &&
       state.font.includes("monospace") &&
       state.ariaLabel === "Copy revision" &&
@@ -204,13 +218,15 @@ async function checkCheckoutDetails() {
     pane.style.width = "180px";
     const chip = document.querySelector(${JSON.stringify(chip)});
     const label = chip.querySelector(".git-ref-label");
-    const panel = chip.closest(".root-details-panel");
-    const fits = chip.getBoundingClientRect().right <= panel.getBoundingClientRect().right;
+    const toggle = document.querySelector(${JSON.stringify(chooser)});
+    const toggleRect = toggle.getBoundingClientRect();
+    const fits = chip.getBoundingClientRect().right < toggleRect.left &&
+      toggleRect.right <= chip.closest("#nav-files-ref").getBoundingClientRect().right;
     const clipped = label.scrollWidth > label.clientWidth;
     pane.style.width = width;
     return fits && clipped;
   })()`);
-  check("a long branch stays inside the narrow folder details", narrow);
+  check("the branch truncates before the chooser in a narrow sidebar", narrow);
   await hover("#root-details .git-commit-sha");
   await browser.waitFor(
     `getComputedStyle(document.querySelector(${JSON.stringify(revisionCopy)})).opacity === "1"`,
@@ -226,20 +242,20 @@ async function checkCheckoutDetails() {
     (await browser.evaluate("window.rootDetailsClipboard")) === state.revision &&
       (await browser.evaluate(MENU_OPEN)),
   );
+  await click(TRIGGER);
   await click(chip);
   await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) !== null`, STEP_MS);
   const menuState = await browser.evaluate(`(() => {
-    const root = document.getElementById("root-details");
     const menu = document.querySelector(${JSON.stringify(menu)});
     return {
-      open: root.open && menu.contains(document.activeElement),
+      open: menu.contains(document.activeElement),
       label: menu.getAttribute("aria-label"),
       labels: [...menu.querySelectorAll(".menu-item")].map(item => item.textContent),
       url: menu.querySelector("a")?.href,
     };
   })()`);
   check(
-    "the nested branch menu has its context, focus, and shared actions",
+    "the selected branch menu has its context, focus, and shared actions",
     menuState.open &&
       menuState.label === `Local branch ${state.branch}` &&
       menuState.labels.join("|") === "Copy Branch Name|View This Branch|Open on GitHub" &&
@@ -248,34 +264,41 @@ async function checkCheckoutDetails() {
   );
   await click(`${menu} button`);
   check(
-    "copying the branch from the nested menu keeps the root details open",
+    "the branch menu copies its full name and stays open",
     (await browser.evaluate("window.rootDetailsClipboard")) === state.branch &&
-      (await browser.evaluate(MENU_OPEN)),
+      (await browser.evaluate(
+        `document.querySelector(${JSON.stringify(menu)})?.contains(document.activeElement)`,
+      )),
   );
   const escaped = await browser.evaluate(`(() => {
     document.activeElement.dispatchEvent(new KeyboardEvent("keydown", {
       key: "Escape", bubbles: true, cancelable: true,
     }));
-    return ${MENU_OPEN} && document.activeElement.matches(${JSON.stringify(chip)}) &&
+    return document.activeElement.matches(${JSON.stringify(chip)}) &&
       document.querySelector(${JSON.stringify(menu)}) === null;
   })()`);
-  check("the first Escape closes only the branch menu and restores chip focus", escaped);
+  check("Escape closes the branch menu and restores chip focus", escaped);
   await click(chip);
-  await click(chip);
-  check(
-    "clicking the same branch chip closes only its menu",
-    await browser.evaluate(
-      `${MENU_OPEN} && document.querySelector(${JSON.stringify(menu)}) === null`,
-    ),
-  );
-  await click(chip);
-  await click(TRIGGER);
+  await click(chooser);
   await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) === null`, STEP_MS);
   check(
-    "closing folder details clears the nested menu and its expanded state",
-    await browser.evaluate(`!(${MENU_OPEN}) &&
-      document.querySelector(${JSON.stringify(chip)}).getAttribute("aria-expanded") === "false"`),
+    "the adjacent chevron opens the chooser separately from the branch menu",
+    await browser.evaluate(`document.querySelector(${JSON.stringify(chooser)})
+      .getAttribute("aria-expanded") === "true"`),
   );
+  const closedWithoutFocus = await browser.evaluate(`(() => {
+    const chip = document.querySelector(${JSON.stringify(chip)});
+    const chooser = document.querySelector(${JSON.stringify(chooser)});
+    chip.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    return chooser.getAttribute("aria-expanded") === "false";
+  })()`);
+  check(
+    "pressing the chip dismisses the chooser without relying on focus transfer",
+    closedWithoutFocus,
+  );
+  await click(chip);
+  await browser.waitFor(`document.querySelector(${JSON.stringify(menu)}) !== null`, STEP_MS);
+  await click(chip);
   await browser.evaluate("delete navigator.clipboard");
   await click(TRIGGER);
 }
@@ -378,14 +401,12 @@ for (const theme of ["light", "dark"]) {
 
     await hover(".header-home-name");
     await browser.waitFor(`(${TOOLTIP}) === null`, STEP_MS);
-    const closedRotation = await browser.evaluate(
-      'getComputedStyle(document.querySelector("#root-details summary svg")).rotate',
-    );
+    const closedInfoIcon = await browser.evaluate(INFO_ICON);
     await click(TRIGGER);
     if (kind === "folder" && theme === "light") {
-      check("the chevron opens the menu", await browser.evaluate(MENU_OPEN));
+      check("the Info button opens the menu", await browser.evaluate(MENU_OPEN));
       await click(TRIGGER);
-      check("clicking the same chevron closes the menu", !(await browser.evaluate(MENU_OPEN)));
+      check("clicking the same Info button closes the menu", !(await browser.evaluate(MENU_OPEN)));
       await click(TRIGGER);
       await browser.evaluate(`(() => {
         const outside = document.getElementById("settings-btn");
@@ -423,11 +444,9 @@ for (const theme of ["light", "dark"]) {
     const details = await browser.evaluate(`(() => {
       const root = document.getElementById("root-details");
       const summary = root.querySelector("summary");
-      const caret = summary.querySelector("svg");
       return {
         open: root.open,
-        closedRotation: ${JSON.stringify(closedRotation)},
-        openRotation: getComputedStyle(caret).rotate,
+        label: summary.getAttribute("aria-label"),
         local: root.querySelector(".root-details-local").innerText,
         source: root.querySelector(".root-details-source").innerText,
         text: root.querySelector(".root-details-info").innerText,
@@ -440,9 +459,10 @@ for (const theme of ["light", "dark"]) {
       JSON.stringify(details),
     );
     check(
-      `${where}: the menu keeps a down chevron and labels the local path`,
-      details.closedRotation === "90deg" &&
-        details.openRotation === details.closedRotation &&
+      `${where}: the menu keeps its Info glyph, accessible name, and local path label`,
+      closedInfoIcon &&
+        (await browser.evaluate(INFO_ICON)) &&
+        details.label === `${at.label.split(" (")[0]} details` &&
         details.local.startsWith("Local path"),
       JSON.stringify(details),
     );
@@ -543,7 +563,7 @@ for (const selector of ["#header-root-kind", ".header-home-name"]) {
   await click(TRIGGER);
   const afterMenu = await browser.evaluate(`({ path: location.pathname, open: ${MENU_OPEN} })`);
   check(
-    `the chevron opens details without navigating before clicking ${selector}`,
+    `the Info button opens details without navigating before clicking ${selector}`,
     afterMenu.open && startingPath !== "/view/" && afterMenu.path === startingPath,
     JSON.stringify({ startingPath, afterMenu }),
   );
@@ -573,7 +593,7 @@ await browser.waitFor(
   STEP_MS,
 );
 await click(TRIGGER);
-check("the chevron opens beside a sandboxed HTML preview", await browser.evaluate(MENU_OPEN));
+check("the Info button opens beside a sandboxed HTML preview", await browser.evaluate(MENU_OPEN));
 await click("iframe.file-html-preview");
 await browser.waitFor('document.activeElement.matches("iframe.file-html-preview")', STEP_MS);
 check(
