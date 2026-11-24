@@ -1,4 +1,4 @@
-name: Exact sidebar follow-up verification
+name: Exact GitHub label alignment verification
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 env:
   UV_EXCLUDE_NEWER: "14 days"
-  CANDIDATE_SHA: "c0cb5cf19209549941e4e86b9a55a5f7cdf4a6d2"
+  CANDIDATE_SHA: "f66c93c71df43d57a0048f22f02026d788533c5d"
 
 jobs:
   verify:
