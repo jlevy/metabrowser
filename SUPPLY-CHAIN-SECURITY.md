@@ -297,6 +297,12 @@ more, reviewed on November 17, 2026:
 - **Actions.** No new action: the jobs use the pinned checkout, uv, Node, and cache
   actions already reviewed, and the runner image’s own `gh` and `jq`. Every checkout
   sets `persist-credentials: false`.
+- **uv.** Before each setup-uv step, `devtools/install_uv.sh` fetches the same pinned uv
+  release archive from GitHub Releases over HTTPS, refuses it unless its SHA-256 is the
+  one that step pins, and puts it in the runner’s tool cache, so setup-uv neither
+  downloads uv nor fetches its version manifest.
+  The manifest fetch has a fixed 5 s limit and no retry, and one slow answer failed a
+  job; the script retries instead.
 
 `devtools/check_ci.py`, in `make lint-check`, fails:
 
@@ -311,7 +317,9 @@ more, reviewed on November 17, 2026:
   `GitHub.Head_Ref`, or inside `format()`, with the expression ended where the runner
   ends it, so a `}}` in a quoted string hides nothing;
 - an expression in a `run:` line that reads `env`, which the shell reads as `"$NAME"`
-  instead.
+  instead;
+- a setup-uv step that does not come just after `devtools/install_uv.sh` with its own
+  version and checksum.
 
 ## Apple Developer ID Intermediate (November 17, 2026)
 
