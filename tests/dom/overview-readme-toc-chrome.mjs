@@ -577,6 +577,12 @@ async function checkProfile(label, anchorPrefix) {
       [reading.rail, file.rail],
     );
     await checkEdges(page, `${label} ${WIDE}px`, "wide");
+    // At a 20px root the legend's names still meet the contents' entries: at 16px the
+    // rail's rem-based gap and a fixed 6px one are equal, so only a larger root tells them
+    // apart. The pane stays in the wide band.
+    await page.evaluate(`document.documentElement.style.fontSize = "20px"`);
+    await checkEdges(page, `${label} ${WIDE}px at a 20px root`, "wide");
+    await page.evaluate(`document.documentElement.style.fontSize = ""`);
 
     // An entry, clicked through Chrome's input, scrolls the Overview to its heading: a middle
     // one, whose heading the pane can scroll to its top.
