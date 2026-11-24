@@ -9,7 +9,7 @@ writing the same into its first paint is ``tests/test_root_identity.py``'s. What
 browser tells is the mark itself, so this serves a plain folder, a checkout, and a mirror
 with ``metab`` and reads each page's mark in one Chrome (``tests/dom/root-kind-mark-chrome.mjs``):
 its box, its place with the name inside the Home link, its glyph and ink, and its tooltip,
-in both themes. It also exercises the Home link and adjacent details chevron with real clicks.
+in both themes. It also exercises the Home link and adjacent Info button with real clicks.
 
 Without Chrome or Node this skips (``require_chrome``, ``require_node``), and a mirror
 needs Git. The test owns everything it starts: each server stops when its stdin closes, and

@@ -25,7 +25,7 @@ work.
 | `J` or `K` | Down or up a row | A tree, Commits, Pulls, changed-file, or table row has focus |
 | `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields, on macOS and iOS |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown |
-| `W` | The branch or tag switcher | A repository opened by its URL, or a folder that is a repository’s root, is shown |
+| `W` | Open the branch or tag chooser below Files | A repository opened by its URL, or a folder that is a repository’s root, is shown |
 | `V` | The rendered view: Document, Diagram, Preview, Table, Tree, Timeline, or Log | A file’s tab bar is shown |
 | `A` | Table: a JSON or YAML list of records as a table | A JSON or YAML file is shown |
 | `S` | The source: Source, or Raw JSON; a SQLite database’s Schema; or the Sessions list of an agent home | A file’s tab bar is shown, or a folder that is or holds a Claude Code or Codex home |

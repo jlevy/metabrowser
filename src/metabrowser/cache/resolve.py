@@ -50,6 +50,7 @@ from metabrowser.git.process import (
     RepositoryStoreTarget,
     run_git,
 )
+from metabrowser.git.ref_names import is_valid_ref_name
 from metabrowser.git.wire import is_full_revision
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
@@ -70,15 +71,12 @@ MAX_REF_CANDIDATES: Final[int] = 12
 # An abbreviated ID that names more objects than this is reported as ambiguous
 # without checking each one's type, one ``cat-file -t`` spawn at a time.
 MAX_DISAMBIGUATION_OBJECTS: Final[int] = 16
-# Git's own bound on a ref name is the file system's; this is the record bound for one.
-_REF_NAME_MAX_BYTES: Final = 1024
 
 _REF_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)"
 # Seven hexadecimal digits is the shortest commit ID Git abbreviates to by default and
 # the shortest a GitHub URL shows; anything shorter matches too much to mean one commit.
 # Always ``fullmatch``: ``$`` also matches before a trailing newline.
 _COMMIT_ID = re.compile(r"[0-9a-f]{7,64}")
-_REF_FORBIDDEN = frozenset(" ~^:?*[\\\x7f")
 # The one ref a mirror holds beyond its origin's branches and tags, fetched with a pull
 # request, whose number follows the GitHub URL grammar.
 _PULL_REFS: Final = "refs/pull/"
@@ -183,32 +181,6 @@ class UnresolvedSelection:
 
 
 type SelectionResolution = ResolvedSelection | UnresolvedSelection
-
-
-def is_valid_ref_name(name: str) -> bool:
-    """Git's ``check-ref-format`` rules, for a short name or a full one under ``refs/``.
-
-    No empty component, none that begins with ``.`` or ends with ``.lock``; no ``..``,
-    ``@{``, control character, space, ``~ ^ : ? * [ \\``; not ``@`` alone; no ``.`` or
-    ``/`` at the end; encodable as UTF-8 and at most 1024 bytes. Checked here rather
-    than by running Git, so a name is refused before any process sees it.
-    """
-
-    try:
-        encoded = name.encode("utf-8")
-    except UnicodeEncodeError:
-        return False
-    if len(encoded) > _REF_NAME_MAX_BYTES:
-        return False
-    if not name or name == "@" or name.endswith((".", "/")) or name.startswith("/"):
-        return False
-    if ".." in name or "@{" in name:
-        return False
-    if any(ord(ch) < 0x20 or ch in _REF_FORBIDDEN for ch in name):
-        return False
-    return all(
-        part and not part.startswith(".") and not part.endswith(".lock") for part in name.split("/")
-    )
 
 
 def is_pinnable_ref(ref: str, namespaces: RefNamespaces = MIRROR_REFS) -> bool:

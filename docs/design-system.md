@@ -1097,18 +1097,21 @@ header says what KPress lacks.
 
 The root icon and name in the navigation column link to Home.
 The folder glyph identifies a local folder, a Git checkout, or a cloud mirror.
-The adjacent chevron opens the root’s details.
+The adjacent Info button opens the root’s details, with a kind-specific accessible name
+such as “Local folder details”.
+The circled Info glyph uses the shared icon-only button, with muted ink at rest and the
+same highlight on hover, focus, or while the menu is open.
 Click it again, click outside the menu, or press Escape to close it.
-The menu shows the local path, file count, and size when available.
+
+The menu shows information about the folder, including its local path, file count, size,
+and commit when available.
 Mirrors and pinned checkouts include a short note about where the files come from.
-A menu chevron points down at rest and while its menu is open.
-The trigger keeps its hover highlight while the menu is open.
-The macOS title-bar folder chooser follows the same convention with the platform’s
-chevron and fill.
+The branch or tag and its actions are in the [Files revision row](#the-ref-selector).
 
 If the root has a recognized GitHub repository, its URL appears above **Copy Link** and
-**Open in Browser**. A page’s **View on GitHub** menu uses the same action rows and
-icons with the current page’s URL.
+**Open in Browser**. The copy glyph and external arrow are the same as those in the
+[ref action menu](#action-menu) and the [View on GitHub menu](#view-on-github), which
+operate on their own destinations.
 
 ## View on GitHub
 
@@ -1321,7 +1324,7 @@ state looks like.
 | One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags, and for a checkout Branches / Tags / Remotes |
 | Any of a set of labelled values | `.chip-group[data-select="many"]` | `group` of buttons with `aria-pressed`; each a tab stop | An agent log’s event types |
 | One of a few values in a menu, where the glyph is the label | `.menu-chooser` of `.menu-seg` | `group` of `menuitemradio` with `aria-checked`; each a tab stop | Theme and reading font |
-| One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector of a mirror and of a checkout |
+| One of a long list | A named trigger over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns and the Files revision chooser for mirrors and checkouts |
 | A boolean whose polarity has to be legible | `.filter-check` | A real checkbox | Show ignored |
 | A boolean with no room for a word | `.icon-btn[aria-pressed]` | A button with an accessible action name | The filter drawer |
 | A boolean in the Metabrowser menu | `.menu-row` holding a real checkbox, `.menu-check` | A real checkbox, its label the row’s | Block remote images |
@@ -2091,8 +2094,7 @@ so a definition cannot differ between two places.
 | A commit’s summary | Its detail’s refs, the same parser as the row | As its row | As its row | As its row | In the chip |
 | A commit’s tooltip | The same | As its row | As its row | As its row | None: a tooltip owns no action |
 | A pull request’s header | `mb.mergeRefs`, head → base | Remote: GitHub’s branches, a fork’s as `owner:branch` | Never | Never | In the chip |
-| A checkout’s folder details | Its current branch, drawn by `mb.refChip` | Local | By `is_trunk_ref` | Its checked-out branch | In the chip |
-| The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Tag for a tag. A mirror’s branch is remote. A checkout’s own branch is local and its remote-tracking branch remote | Never; the list says “default” beside a mirror’s default branch | Never; the list says “checked out” beside the branch a checkout’s `HEAD` is on | Selected chip; chooser rows select their ref |
+| The Files revision row and chooser list | `mb.refChip` in `static/source-ref-selector.js` | Tag for a tag. A mirror’s branch is remote. A checkout’s own branch is local and its remote-tracking branch remote | Never. The list says “default” beside a mirror’s default branch | Never. The list says “checked out” beside the branch a checkout’s `HEAD` is on | Click the chip in the revision row for ref actions. Click the adjacent chevron to choose a revision |
 
 The reasons:
 
@@ -2141,9 +2143,11 @@ A down chevron fades in over a translucent backdrop at the trailing edge on hove
 keyboard focus, and while the menu is open.
 The transition uses `--transition-fast` and is skipped under reduced motion.
 Long names use the entire chip at rest.
-The chevron uses neutral ink like the folder details and **View on GitHub** chevrons.
+The chevron uses the same neutral ink as other menu triggers.
 In a clickable history row or ref chooser, the chip’s menu trigger is a separate control
 above its visible chip.
+In the [Files revision row](#the-ref-selector), the chip opens its own action menu.
+The row uses one chevron, the standalone button for the revision chooser.
 
 The menu names the ref and its kind.
 **Copy Branch Name** and **Copy Tag Name** copy the underlying name.
@@ -5481,8 +5485,9 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   controls do not fit, and never adds space when they do.
 - **Where it breaks.** Between controls, in their order, each line as full as it can be,
   so a control moves down only when it must.
-  The leading controls stay first: on a served mirror or checkout, the
-  [ref selector](#the-ref-selector) leads the Files row, before Group by.
+  The Files filters start with Group by.
+  A mirror or checkout shows the [revision row](#the-ref-selector) above the filters,
+  directly below the tabs.
   The trailing group, which takes the line’s end with an auto margin, moves down whole
   and stays right-aligned: Clear and the chevron on Files, Reload on Pulls.
   The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
@@ -6003,18 +6008,23 @@ children. Visually similar surfaces do not borrow the wrong role merely to share
 
 ### The Ref Selector
 
-The ref selector is one control for a served mirror and a served checkout: a
-`.chip-menu-trigger` that names what the Files tab shows, over a `.menu` panel with a
-list chooser, a filter box, and one row for each ref (`static/source-ref-selector.js`).
+A served mirror or a served checkout has a revision row directly below the Files tab and
+above the filters, including Group by (`static/source-ref-selector.js`). The row has two
+distinct targets:
 
-- **It leads the Files tab’s toolbar,** before Group by, because it chooses what that
-  tab shows and nothing else, and it wraps with the row as any control there does
-  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). The Pulls tab does not depend
-  on it, and a checkout’s Commits tab shows the checkout’s history whichever revision
-  Files shows, so neither tab carries it
-  ([Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md)).
-  Its list opens under the toolbar and across the pane, not under the button, because a
-  ref’s name, its commit, and the commit’s age need the room.
+- **The branch or tag chip** names the current ref.
+  Click its name to open that ref’s [action menu](#action-menu).
+- **The standalone down chevron** opens the revision chooser.
+  Its tooltip and accessible name say “Switch branch or tag”.
+  The `W` shortcut opens the same list.
+  It remains visible beside the chip and keeps its open highlight while the chooser is
+  open. The list spans the pane to give ref names, commit IDs, and ages room.
+
+The chooser has a filter box and one row per ref.
+The revision row belongs to Files.
+Pulls has its own scope, and a checkout’s Commits shows its history across Files
+revisions
+([Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md)).
 
 - **A ref’s row is its name, its commit, and its age.** The name is its
   [chip](#branch-chips), the commit is its [short ID](#short-commit-ids), and the age is
@@ -6022,17 +6032,16 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   time as its tooltip ([Age](#age)). A tag’s age is its commit’s. The ID is the size of
   the row’s text, as an ID is everywhere.
   The ages end the rows in one column, so the IDs line up.
-  A pin that names no ref puts “Commit:” and the same face on the button.
+  A pin that names no ref puts “Commit:” and the same face beside the chevron.
 
-- **A commit reads the same wherever a line names it.** The button, the rows, and a
-  mirror’s line about the commit its branch moved to all show it by the one rule in
+- **A commit reads the same wherever a line names it.** The revision row, the chooser
+  rows, and a mirror’s line about the commit its branch moved to show it by the rule in
   [Short Commit IDs](#short-commit-ids).
 
-- **The button names the ref and the heading does not.** A served mirror’s navigation
-  heading is the repository’s name alone, and a checkout’s revision’s is the folder’s
-  (`_pin_label_html` in `server.py`). The selector names the ref and its rows show the
-  short commit IDs. A pin with no mirror has no selector, so its heading is its ref and
-  its short commit.
+- **The revision row names the ref.** The navigation heading remains a Home link named
+  for the repository or checkout folder.
+  The chooser’s rows show the short commit IDs.
+  A pin with no mirror shows its ref and short commit in the heading.
 
 - **A branch that is a pull request’s head shows the pull request, on a second line.**
   The row’s own line, the chip, its badge, its commit, and its age, is every row’s;
@@ -6048,7 +6057,7 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   of the same name is another branch.
   A tag, which no pull request has for its head, never has the line, and a pull
   request’s `refs/pull/<n>/head` is not listed as a ref of its own: it is the branch’s
-  pull request, and a page served on one says “Pull request: #7” on the button.
+  pull request, and a page served on one says “Pull request: #7” in the revision row.
   The pull requests are what the repository’s provider has cached, so the list never
   waits for GitHub: a list opened before they are cached shows none, asks again every
   `PULLS_POLL_MS` while the server fills them, and its rows gain the line as the pages
@@ -6089,7 +6098,8 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   branches that are pull requests’ heads, with the two heights, each row where the rows
   before it put it, the pull request’s icon, number, and title, and the filter’s finds.
 
-A checkout adds three things, and each uses a primitive the control already had:
+A checkout also has the live working tree and can switch between it and pinned
+revisions.
 
 - **The working tree is a row, above the lists, and not in them.** It is a `.menu-item`
   like a ref’s (`.source-ref-selector-working-tree`), ruled off from the list chooser
@@ -6108,36 +6118,31 @@ A checkout adds three things, and each uses a primitive the control already had:
   The checked-out branch is not that row unless it was chosen: it says “checked out” in
   the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
 
-- **The button says “Working tree” in words,** with no chip, since a chip is a ref.
-  On a revision it is the ref’s chip, as on a mirror, so the button is what tells a
-  revision’s page from the working tree’s before the list is opened: both are headed by
-  the folder’s name. The main heading’s note says “committed revision of” the folder, and
-  the root menu describes the pinned source beside its local path.
+- **The revision row identifies the checkout’s source.** With live files, the chip names
+  the checked-out branch and opens its actions.
+  A checkout without a branch shows **Working tree** in the row.
+  The chooser’s **Working tree** entry is current in both cases.
+  On a pinned revision the row names the selected ref or commit.
+  The main heading’s note says “committed revision of” the folder.
+  The Info button’s menu describes the pinned source beside its local path.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
   freshness row a mirror offers its reload in, with one `.btn`, “Reload”
-  (`.source-ref-selector-stale`). Every tab shows it, not only Files: the Pulls tab’s
-  requests and a comparison’s are refused as the Files tab’s are, and the button is in
-  the Files toolbar, which the other tabs hide.
+  (`.source-ref-selector-stale`). Every tab shows it because the Pulls tab and
+  comparison requests can also be refused.
+  The chooser belongs to Files.
   A checkout’s Commits tab is answered whichever revision is served (`SourcePinGuard` in
   `source_routes.py`). It appears only after another tab has switched the server.
 
-- **The selector keeps its box from first paint.** The module arrives after the tree’s
-  first rows, so the server draws the selector in the Files toolbar with the button it
-  will have, and the module adopts that button and never swaps it, so focus put on it
-  early stays ([Regions Keep Their Boxes](#regions-keep-their-boxes)). The toolbar is
-  drawn again whenever a filter or a tally changes, and it carries the selector over
-  rather than drawing it, so an open list keeps what was typed and where it was scrolled
-  to, and the control that had focus keeps it.
-  A box taken out of the page loses its scroll position, and a scroll made a moment
-  before has sent no event to say where, so the page reads each scrolled box’s position
-  before it rebuilds the bar and sets it again after: no scroll the page or the browser
-  makes is put back at the position the last event named (`renderNavFilterBar` in
-  `static/app.js`; `tests/test_ref_selector_long_list_chrome.py` scrolls and redraws in
-  one task). `tests/test_checkout_ref_selector_chrome.py` records the selector’s height
-  and the first tree row’s place in every frame of the working tree’s page and of a
-  revision’s, and each has one value; `tests/test_files_totals_stable_chrome.py` holds
-  the same for every box of the Files navigation on a folder that holds a `.git`.
+- **The revision row keeps its box from first paint.** The server draws the row before
+  the chooser module loads.
+  The module adopts the chevron button, preserving focus that reaches it early
+  ([Regions Keep Their Boxes](#regions-keep-their-boxes)). Changes to filters or tallies
+  leave the open chooser’s query, scroll position, and focus in place.
+  `tests/test_checkout_ref_selector_chrome.py` records the selector’s height and the
+  first tree row’s place in every frame of the working tree’s page and of a revision’s,
+  and each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
+  every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and
