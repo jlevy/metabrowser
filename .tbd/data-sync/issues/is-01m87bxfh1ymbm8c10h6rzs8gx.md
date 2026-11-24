@@ -3,9 +3,9 @@ type: is
 id: is-01m87bxfh1ymbm8c10h6rzs8gx
 title: "Address PR #771 review A: task-list boxes (raw checkbox, word marks, comments, fixtures, supply chain)"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 delegate: claude-code@spud10.local
 labels: []
@@ -22,7 +22,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-24T18:08:31.262Z
-updated_at: 2026-11-24T18:09:32.016Z
+updated_at: 2026-11-24T18:48:49.771Z
 started_at: 2026-11-24T18:09:32.013Z
+closed_at: 2026-11-24T18:48:49.769Z
+close_reason: Every review A finding has a disposition; reply https://github.com/jlevy/metabrowser/pull/771#issuecomment-7141184760 at head 96e13f0a5, CI run 45461427302 green. A6 deferred as mb-b9d1 (open) for the coordinator's PR-description update.
+resolution: null
+duplicate_of: null
 ---
 Review A (senior, round 1, head 7de0b098d) on PR #771: https://github.com/jlevy/metabrowser/pull/771#pullrequestreview-6044731578. Seven findings A1-A7.
