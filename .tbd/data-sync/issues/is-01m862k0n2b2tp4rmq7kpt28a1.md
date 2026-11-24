@@ -3,17 +3,21 @@ type: is
 id: is-01m862k0n2b2tp4rmq7kpt28a1
 title: Use an info icon for the sidebar folder details menu
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 5
+version: 6
 delegate: codex@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-24T06:06:16.737Z
-updated_at: 2026-11-24T06:37:38.587Z
+updated_at: 2026-11-24T07:13:37.366Z
 started_at: 2026-11-24T06:37:09.489Z
+closed_at: 2026-11-24T07:13:37.366Z
+close_reason: "Merged #783 at c5ebd6a3c after exact independent review 6034754728, passing PR CI 45341711474 and full verify 45341734830. Post-merge main CI 45345226133 passed. Rebuilt and restarted the active development app and verified all four restored windows and their servers on the exact runtime."
+resolution: null
+duplicate_of: null
 ---
 Replace the root folder details trigger chevron with a minimal shared Info icon. Keep Home on the folder name, common menu dismissal and labeled link actions. Document how the Info button, ref chip and ref chooser differ.
 
