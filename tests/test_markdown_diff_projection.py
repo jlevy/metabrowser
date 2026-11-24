@@ -844,6 +844,39 @@ def test_ticking_one_box_and_unticking_another_are_changes_the_render_shows() ->
     ]
 
 
+@pytest.mark.parametrize(
+    ("before", "after", "removed", "added"),
+    [
+        pytest.param(
+            b"- [ ] Write the plan for the next release",
+            b"- [x] Write the plan for the final release",
+            f"{_OPEN} Write the plan for the <del>next</del> release",
+            f"{_TICKED} Write the plan for the <ins>final</ins> release",
+            id="ticked",
+        ),
+        pytest.param(
+            b"- [x] Review it",
+            b"- [ ] Review it twice",
+            f"{_TICKED} Review it",
+            f"{_OPEN} Review it <ins>twice</ins>",
+            id="unticked",
+        ),
+    ],
+)
+def test_a_tick_beside_a_word_edit_keeps_the_words_marked(
+    before: bytes, after: bytes, removed: str, added: str
+) -> None:
+    """Each side draws its own box, ticked or not, and the one changed text beside it is
+    marked as it would be beside a box that kept its state."""
+
+    old = _TASKS.replace(b"- [ ] Write the plan", b"- [ ] Write the plan for the next release")
+    result = _project(old, old.replace(before, after))
+    assert [(block["kind"], block["html"], block["source_only"]) for block in _changed(result)] == [
+        ("removed", f"<ul><li>{removed}</li></ul>", False),
+        ("added", f"<ul><li>{added}</li></ul>", False),
+    ]
+
+
 def test_a_box_is_its_tokens_state_and_one_element_of_the_tally() -> None:
     """The box is KPress's token (`_TASK_CHECKBOX_TOKEN`), its state the token's
     ``meta["checked"]``, which the render shows; the tally that bounds the render tree

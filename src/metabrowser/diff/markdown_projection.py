@@ -1577,11 +1577,16 @@ def _inline_change(
         return None
     changes: list[tuple[tuple[int, ...], str, str, bool]] = []
 
+    def attributes(node: _Element) -> tuple[tuple[str, str], ...]:
+        # A box is drawn on each side in its own state, so a tick beside the one changed
+        # text does not stop that text being marked; a tick alone changes no text.
+        ignored = ("id", "checked") if node.tag == "input" else ("id",)
+        return tuple(pair for pair in node.attrs if pair[0] not in ignored)
+
     def compare(left: _Element, right: _Element, at: tuple[int, ...], pre: bool) -> bool:
         if (
             left.tag != right.tag
-            or tuple(pair for pair in left.attrs if pair[0] != "id")
-            != tuple(pair for pair in right.attrs if pair[0] != "id")
+            or attributes(left) != attributes(right)
             or len(left.children) != len(right.children)
         ):
             return False
