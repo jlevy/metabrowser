@@ -3,6 +3,7 @@ name = "github"
 display_name = "GitHub"
 version = "0.0.1"
 sdk_version = "0.8"
+python_requires = ["markdown-it-py", "pydantic", "softschema", "starlette"]
 # A text's Mermaid diagrams are drawn by the Markdown plugin's diagram host, and Guided Review's
 # excerpts by the diff plugin's file renderer (`mountFilePatch`).
 requires = ["markdown", "diff"]

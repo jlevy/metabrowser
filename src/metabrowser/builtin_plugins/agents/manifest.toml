@@ -3,6 +3,7 @@ name = "agents"
 display_name = "Agent Session Browser"
 version = "0.0.1"
 sdk_version = "0.8"
+python_requires = ["cachetools", "prettyfmt", "starlette"]
 # Each event's payload in the Log is drawn as the structured plugin's tree.
 requires = ["structured"]
 register = "metabrowser.builtin_plugins.agents.adapters"

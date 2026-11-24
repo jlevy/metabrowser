@@ -68,6 +68,11 @@ $ metab --plugins --json
       "requires": [
         "structured"
       ],
+      "python_requires": [
+        "cachetools",
+        "prettyfmt",
+        "starlette"
+      ],
       "views": [
         "agents",
         "agent-sessions",
@@ -97,6 +102,9 @@ $ metab --plugins --json
       "static_root": "[BUILTIN]/binary",
       "kinds": [],
       "requires": [],
+      "python_requires": [
+        "starlette"
+      ],
       "views": [
         "bytes"
       ],
@@ -118,6 +126,7 @@ $ metab --plugins --json
       "requires": [
         "table"
       ],
+      "python_requires": [],
       "views": [
         "table",
         "source"
@@ -137,6 +146,9 @@ $ metab --plugins --json
       ],
       "requires": [
         "structured"
+      ],
+      "python_requires": [
+        "starlette"
       ],
       "views": [
         "diff"
@@ -160,6 +172,9 @@ $ metab --plugins --json
       ],
       "requires": [
         "agents"
+      ],
+      "python_requires": [
+        "starlette"
       ],
       "views": [
         "timeline",
@@ -187,6 +202,7 @@ $ metab --plugins --json
       "requires": [
         "markdown"
       ],
+      "python_requires": [],
       "views": [
         "overview",
         "treemap"
@@ -207,6 +223,9 @@ $ metab --plugins --json
       "requires": [
         "sqlite",
         "table"
+      ],
+      "python_requires": [
+        "starlette"
       ],
       "views": [
         "table",
@@ -231,6 +250,12 @@ $ metab --plugins --json
       "requires": [
         "markdown",
         "diff"
+      ],
+      "python_requires": [
+        "markdown-it-py",
+        "pydantic",
+        "softschema",
+        "starlette"
       ],
       "views": [
         "pull-request",
@@ -274,6 +299,7 @@ $ metab --plugins --json
         "html"
       ],
       "requires": [],
+      "python_requires": [],
       "views": [
         "preview",
         "source"
@@ -290,6 +316,7 @@ $ metab --plugins --json
       "static_root": "[BUILTIN]/image",
       "kinds": [],
       "requires": [],
+      "python_requires": [],
       "views": [
         "preview"
       ],
@@ -308,6 +335,7 @@ $ metab --plugins --json
         "mermaid"
       ],
       "requires": [],
+      "python_requires": [],
       "views": [
         "rendered",
         "source",
@@ -328,6 +356,7 @@ $ metab --plugins --json
         "pdf"
       ],
       "requires": [],
+      "python_requires": [],
       "views": [
         "preview"
       ],
@@ -346,6 +375,9 @@ $ metab --plugins --json
       ],
       "requires": [
         "table"
+      ],
+      "python_requires": [
+        "starlette"
       ],
       "views": [
         "table",
@@ -372,6 +404,13 @@ $ metab --plugins --json
       "requires": [
         "table"
       ],
+      "python_requires": [
+        "cachetools",
+        "json5",
+        "pyyaml",
+        "ruamel.yaml",
+        "starlette"
+      ],
       "views": [
         "tree",
         "table",
@@ -391,6 +430,9 @@ $ metab --plugins --json
       "static_root": "[BUILTIN]/table",
       "kinds": [],
       "requires": [],
+      "python_requires": [
+        "starlette"
+      ],
       "views": [],
       "view_count": 0,
       "data_hooks": [
@@ -410,6 +452,7 @@ $ metab --plugins --json
       "static_root": "[BUILTIN]/text",
       "kinds": [],
       "requires": [],
+      "python_requires": [],
       "views": [
         "source"
       ],
@@ -427,6 +470,7 @@ $ metab --plugins --json
       "requires": [
         "agents"
       ],
+      "python_requires": [],
       "views": [
         "log",
         "raw"
@@ -445,13 +489,14 @@ $ metab --plugins --json
 
 ```console
 $ metab --plugin markdown
-name:         markdown
-display_name: Markdown
-version:      0.0.1
-sdk_version:  0.8
-source:       builtin
-static_root:  [BUILTIN]/markdown
-requires:     (none)
+name:            markdown
+display_name:    Markdown
+version:         0.0.1
+sdk_version:     0.8
+source:          builtin
+static_root:     [BUILTIN]/markdown
+requires:        (none)
+python_requires: (none)
 
 kinds:
   - id=markdown priority=0 match={'ext': '.md'}
@@ -514,6 +559,7 @@ $ metab --plugin markdown --json
     "source": "builtin",
     "static_root": "[BUILTIN]/markdown",
     "requires": [],
+    "python_requires": [],
     "kinds": [
       {
         "id": "markdown",

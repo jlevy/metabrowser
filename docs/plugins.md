@@ -174,6 +174,7 @@ The `[plugin]` table supports:
 | `extra_scripts` | no | Plain JavaScript filenames loaded before `index.js`. |
 | `extra_styles` | no | Plain CSS filenames loaded before the plugin’s selected-kind renderer mounts. |
 | `requires` | no | Names of the plugins whose exports this plugin loads with `mb.plugins.load`, and `table` for a plugin with a `[[table_source]]`; see [Declared Dependencies](#declared-dependencies). |
+| `python_requires` | no | The third-party Python distributions the plugin’s Python code imports, by distribution name (`pyyaml`, not `yaml`); see [Python Dependencies](#python-dependencies). |
 
 Extra asset entries may not contain slashes, traversal segments, or a leading dot.
 
@@ -688,6 +689,20 @@ kind’s view, from whichever plugin serves that kind, as the pull-request page 
 `diff` kind. That needs no declaration, and discovery and the doctor do not see it.
 To use one named plugin’s renderers, load its exports, as the generic JSONL and
 event-log views draw with the agents plugin’s `renderLog` and `renderRaw`.
+
+### Python Dependencies
+
+`python_requires` names the third-party distributions a plugin’s own Python files
+import, whether or not core imports them too.
+It installs nothing and pins no version: a built-in plugin ships inside the
+`metabrowser` package, so `pyproject.toml` pins every package it imports.
+The list says which of Metabrowser’s dependencies a plugin would need if it were moved
+out of the package, and which ones core would no longer need.
+`devtools/check_plugin_deps.py`, run by `make lint-check`, holds each built-in plugin’s
+list to its imports, and every runtime dependency to some import, and prints the
+plugin-only packages.
+Nothing checks the list for another plugin yet.
+`metab --plugins --json` and `--plugin NAME` show each plugin’s list.
 
 ### Rendering and Formatting
 

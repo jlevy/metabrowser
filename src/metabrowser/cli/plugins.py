@@ -85,6 +85,7 @@ def _plugin_summary(plugin: LoadedPlugin) -> dict[str, object]:
         "static_root": str(plugin.static_root),
         "kinds": sorted({kind.id for kind in plugin.manifest.kind}),
         "requires": list(plugin.manifest.plugin.requires),
+        "python_requires": list(plugin.manifest.plugin.python_requires),
         "views": [view.id for view in plugin.manifest.view],
         "view_count": len(plugin.manifest.view),
         "data_hooks": [hook.route for hook in _active_data_hooks(plugin)],
@@ -113,6 +114,7 @@ def _plugin_details(plugin: LoadedPlugin) -> dict[str, object]:
         "source": plugin.source,
         "static_root": str(plugin.static_root),
         "requires": list(plugin.manifest.plugin.requires),
+        "python_requires": list(plugin.manifest.plugin.python_requires),
         # A field a manifest can leave out is shown only where the manifest declares it,
         # so a plugin's details say what that plugin asks for.
         "kinds": [
@@ -213,13 +215,14 @@ def show_plugin(name: str, plugins_dir: list[Path] | None = None, *, as_json: bo
             raise typer.Exit(code=1)
         return
 
-    typer.echo(f"name:         {plugin.name}")
-    typer.echo(f"display_name: {plugin.manifest.plugin.display_name or '(none)'}")
-    typer.echo(f"version:      {plugin.manifest.plugin.version}")
-    typer.echo(f"sdk_version:  {plugin.manifest.plugin.sdk_version}")
-    typer.echo(f"source:       {plugin.source}")
-    typer.echo(f"static_root:  {plugin.static_root}")
-    typer.echo(f"requires:     {', '.join(plugin.manifest.plugin.requires) or '(none)'}")
+    typer.echo(f"name:            {plugin.name}")
+    typer.echo(f"display_name:    {plugin.manifest.plugin.display_name or '(none)'}")
+    typer.echo(f"version:         {plugin.manifest.plugin.version}")
+    typer.echo(f"sdk_version:     {plugin.manifest.plugin.sdk_version}")
+    typer.echo(f"source:          {plugin.source}")
+    typer.echo(f"static_root:     {plugin.static_root}")
+    typer.echo(f"requires:        {', '.join(plugin.manifest.plugin.requires) or '(none)'}")
+    typer.echo(f"python_requires: {', '.join(plugin.manifest.plugin.python_requires) or '(none)'}")
     typer.echo("")
     typer.echo("kinds:")
     for k in plugin.manifest.kind:

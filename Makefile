@@ -66,6 +66,7 @@ lint:
 	$(UV_RUN) python -m devtools.check_ci
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
+	$(UV_RUN) python -m devtools.check_plugin_deps
 	$(UV_RUN) python -m devtools.check_app_contract check --against $(CHANGELOG_BASE)
 	$(UV_RUN) python -m devtools.check_goldens
 	$(UV_RUN) python -m devtools.changelog check --against $(CHANGELOG_BASE)
@@ -97,6 +98,7 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_ci
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
+	$(UV_RUN) python -m devtools.check_plugin_deps
 	$(UV_RUN) python -m devtools.check_app_contract check --against $(CHANGELOG_BASE)
 	$(UV_RUN) python -m devtools.check_goldens
 	$(UV_RUN) python -m devtools.changelog check --against $(CHANGELOG_BASE)

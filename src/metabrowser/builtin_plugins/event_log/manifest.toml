@@ -3,6 +3,7 @@ name = "event-log"
 display_name = "Event log"
 version = "0.0.1"
 sdk_version = "0.8"
+python_requires = ["starlette"]
 # Raw JSON is the agents plugin's JSONL renderer, loaded through its exports.
 requires = ["agents"]
 

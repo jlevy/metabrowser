@@ -349,10 +349,14 @@ Phase 2 is stacked on it, one pull request for each group below that is ready.
 
 Ready now:
 
-- [ ] Plugin Python dependencies (`mb-vdh3`): a `python_requires` manifest field, a
-  check that every plugin import is declared and every declared package ships, core
-  importing no plugin-only package, no runtime dependency unimported (`psutil` moves to
-  a dev group), and `metab --plugins` listing them
+- [x] Plugin Python dependencies (`mb-vdh3`): a `python_requires` manifest field, and
+  `devtools/check_plugin_deps.py` in `make lint-check`, which holds every plugin import
+  to a declaration and every declaration to an import and a runtime dependency, fails a
+  runtime dependency nothing imports (`psutil` moved to the dev group), and prints the
+  plugin-only packages (today `prettyfmt`, for `agents`). `metab --plugins --json` and
+  `--plugin NAME` show each list.
+  Which packages are plugin-only is the check’s answer, not the CLI’s: telling needs
+  every core import, which a source check reads and an installed `metab` should not.
 - [ ] Claim by bytes and no viewer in a diff (`mb-d00o`): the `.pdf` rule requires
   `%PDF-`, and the surfaces session asserts a mounted diff holds no `<embed>`,
   `<object>`, or `<iframe>`

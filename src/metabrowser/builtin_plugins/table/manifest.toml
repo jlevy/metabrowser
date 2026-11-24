@@ -3,6 +3,7 @@ name = "table"
 display_name = "Tables"
 version = "0.0.1"
 sdk_version = "0.8"
+python_requires = ["starlette"]
 
 # The table experience every tabular source shares. The plugin has no kind of its own:
 # a source plugin claims a kind, declares `requires = ["table"]`, and names the adapter
