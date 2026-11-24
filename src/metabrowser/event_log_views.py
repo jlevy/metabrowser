@@ -123,12 +123,17 @@ _FROM_START: Final = 3
 
 
 class ViewError(ValueError):
-    """A request the views cannot answer; ``code`` says why, for the route's answer."""
+    """A request the views cannot answer; ``code`` says why, for the route's answer.
 
-    def __init__(self, message: str, code: str, status: int = 400) -> None:
+    The message is what the view shows; *detail*, when given, is what an agent needs
+    beyond it, such as the span ID a request named.
+    """
+
+    def __init__(self, message: str, code: str, status: int = 400, *, detail: str = "") -> None:
         super().__init__(message)
         self.code = code
         self.status = status
+        self.detail = detail
 
 
 @dataclass(slots=True)
@@ -710,7 +715,12 @@ def timeline(
     """
 
     if parent is not None and parent not in table.spans:
-        raise ViewError(f"no span {parent} in this log", "span_missing", status=404)
+        raise ViewError(
+            "This span is not in this log.",
+            "span_missing",
+            status=404,
+            detail=f"no span {parent} in this log",
+        )
     kept = _kept(table, query)
     below = _counted(table, kept)
 

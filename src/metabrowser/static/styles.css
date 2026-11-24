@@ -196,9 +196,8 @@
        highlighted source, code blocks, Markdown inline code, and raw
        log payloads.
 
-     Four deliberate exceptions, and no others:
+     Three deliberate exceptions, and no others:
        .compression-badge          a 7px glyph — iconography, not text
-       .metabrowser-kpress-error-detail   a verbatim error payload
        .log-event-header           structured log values (event type,
                                    timestamps) rather than prose or paths
        .git-commit-sha             a short commit ID, where every character
@@ -5932,8 +5931,7 @@ a.tab-btn {
   border-color: var(--status-error);
 }
 
-/* A KPress render failure: the document could not be rendered at all, so it
-   stacks its message above a detail block rather than sitting in a row. */
+/* A KPress render failure: the document could not be rendered at all. */
 .metabrowser-kpress-render-error {
   margin: 0 0 12px;
 }
@@ -5960,13 +5958,6 @@ a.tab-btn {
 
 .partial-notice-readout {
   font-variant-numeric: var(--tabular-numerals);
-}
-.metabrowser-kpress-error-detail {
-  margin: 8px 0 0;
-  white-space: pre-wrap;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--mono-block-font-size);
 }
 /* ── Code blocks (highlight.js integration) ─────────────────── */
 

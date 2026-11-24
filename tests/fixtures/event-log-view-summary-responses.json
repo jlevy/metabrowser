@@ -937,7 +937,7 @@
     "errors?path=absent.jsonl": {
       "status": 404,
       "body": {
-        "error": "Not found",
+        "error": "This log file was not found.",
         "code": "not_found"
       }
     }

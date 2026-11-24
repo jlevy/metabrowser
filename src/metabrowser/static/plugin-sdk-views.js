@@ -1170,13 +1170,12 @@
         global.location.assign("/view/");
         leaving = true;
       } else {
-        const answer = await response.json().catch(() => null);
+        // The answer's words and code are an agent's (`metab --api`); the menu says what
+        // the reader can do (docs/design-system-messages.md).
         status.textContent =
           response.status === 202
-            ? "Fetching this ref. Try again when the fetch ends."
-            : typeof answer?.error === "string"
-              ? answer.error
-              : "Could not open this ref.";
+            ? "This ref is still being fetched. Try again shortly."
+            : "Could not open this ref.";
       }
     } catch {
       status.textContent = "Could not open this ref.";

@@ -687,7 +687,7 @@ function contentOf(container) {
     await mounted;
     check(
       "an undecodable artifact reports decompression",
-      container.innerHTML.includes("could not be decompressed"),
+      container.innerHTML.includes("compressed file could not be read"),
       container.innerHTML,
     );
   }

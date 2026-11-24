@@ -605,16 +605,20 @@
           })
         : await decode();
     if (data && data.type === "plugin_error") {
+      // The message is the answer's reader sentence; its `detail` is the agent's, and
+      // stays on the payload (docs/design-system-messages.md, "Where the Detail Goes").
       /** @type {Error & {status?: number, payload?: unknown}} */
-      const err = new Error(
-        (data.error || "Plugin data hook failed") + (data.detail ? `: ${data.detail}` : ""),
-      );
+      const err = new Error(data.error || PLUGIN_DATA_FAILED);
       err.status = resp.status;
       err.payload = data;
       throw err;
     }
     return data;
   }
+
+  // What a failed data hook or render says when its answer names no reader sentence.
+  const PLUGIN_DATA_FAILED = "Could not load this view's data.";
+  const KPRESS_RENDER_FAILED = "This document could not be rendered.";
 
   async function fetchJsonl(path, opts) {
     // Plugins fetch JSONL content through the same /api/file endpoint the
@@ -1077,11 +1081,12 @@
     };
   }
 
-  function formatKpressError(payload, status) {
+  // A render's failure as a reader reads it: the answer's `error`, its reader sentence.
+  // Its `detail`, `diagnostics`, and status stay on the error's payload and status for a
+  // caller that logs them (docs/design-system-messages.md, "Where the Detail Goes").
+  function formatKpressError(payload) {
     const body = payload && typeof payload === "object" ? payload : {};
-    const base = body.error || "KPress render failed";
-    const detail = body.detail || "";
-    return `${base + (detail ? `: ${detail}` : "")} (HTTP ${status})`;
+    return typeof body.error === "string" && body.error ? body.error : KPRESS_RENDER_FAILED;
   }
 
   function _headOrBody() {
@@ -1524,11 +1529,11 @@
     try {
       payload = await resp.json();
     } catch (_e) {
-      payload = { error: "KPress render returned non-JSON response" };
+      payload = { error: KPRESS_RENDER_FAILED };
     }
     if (!resp.ok) {
       /** @type {Error & {status?: number, payload?: unknown}} */
-      const err = new Error(formatKpressError(payload, resp.status));
+      const err = new Error(formatKpressError(payload));
       err.status = resp.status;
       err.payload = payload;
       throw err;
@@ -1726,7 +1731,7 @@
       }, 1500);
     }
     clipboard.writeText(text).then(
-      () => feedback("Copied!", true),
+      () => feedback("Copied", true),
       () => feedback("Copy failed", false),
     );
   }

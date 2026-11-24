@@ -265,36 +265,20 @@ async function main() {
     );
   }
   for (const [status, body, message] of [
-    [
-      202,
-      { code: "selection_pending" },
-      `The mirror is fetching ${at}; try again when the fetch ends.`,
-    ],
-    [
-      404,
-      { code: "selection_not_found" },
-      `Commit ${at} is not in the mirror, and its origin does not have it.`,
-    ],
-    [
-      502,
-      { code: "selection_fetch_failed" },
-      `Commit ${at} is not in the mirror, and fetching it failed.`,
-    ],
+    [202, { code: "selection_pending" }, "This commit is still being fetched. Try again shortly."],
+    [404, { code: "selection_not_found" }, "This commit is not on the origin."],
+    [502, { code: "selection_fetch_failed" }, "This commit could not be fetched. Try again."],
     [
       409,
       { code: "ref_moved" },
       "This pull request's head has moved; reload to see the newer changes.",
     ],
-    [
-      409,
-      { code: "unsupported_for_subject" },
-      `Could not switch to ${at} (unsupported_for_subject).`,
-    ],
-    [415, { code: "invalid_request" }, `Could not switch to ${at} (invalid_request).`],
-    [500, null, `Could not switch to ${at} (HTTP 500).`],
-    [403, "forbidden", `Could not switch to ${at} (HTTP 403).`],
+    [409, { code: "unsupported_for_subject" }, "Could not open this commit. Try again."],
+    [415, { code: "invalid_request" }, "Could not open this commit. Try again."],
+    [500, null, "Could not open this commit. Try again."],
+    [403, "forbidden", "Could not open this commit. Try again."],
   ]) {
-    equal(`HTTP ${status} is said in words`, switchRefusal(COMMIT, status, body), message);
+    equal(`HTTP ${status} is said in words`, switchRefusal(body), message);
     const refused = switcher([
       { status, body },
       { status: 200, body: {} },

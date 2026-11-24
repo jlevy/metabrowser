@@ -199,7 +199,7 @@ $ node tests/dom/git-commit-history-session.js
     },
     "opened": {
       "url": "/commit/aaaaaaa",
-      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character lowercase ID, not “aaaaaaa”.",
+      "pane": "Full commit ID needed: Use the commit’s full lowercase ID in the address, or open it from its row.",
       "owner": "git",
       "navPanel": "git",
       "requests": [
@@ -208,7 +208,7 @@ $ node tests/dom/git-commit-history-session.js
     },
     "landed": {
       "url": "/commit/aaaaaaa",
-      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character lowercase ID, not “aaaaaaa”.",
+      "pane": "Full commit ID needed: Use the commit’s full lowercase ID in the address, or open it from its row.",
       "owner": "git",
       "navPanel": "git",
       "requests": [
@@ -217,7 +217,7 @@ $ node tests/dom/git-commit-history-session.js
     },
     "unreachable": {
       "url": "/commit/aaaaaaa",
-      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character lowercase ID, not “aaaaaaa”.",
+      "pane": "Full commit ID needed: Use the commit’s full lowercase ID in the address, or open it from its row.",
       "owner": "git",
       "navPanel": "git",
       "requests": [
@@ -226,7 +226,7 @@ $ node tests/dom/git-commit-history-session.js
     },
     "uppercase": {
       "url": "/commit/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character lowercase ID, not “AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA”.",
+      "pane": "Full commit ID needed: Use the commit’s full lowercase ID in the address, or open it from its row.",
       "owner": "git",
       "navPanel": "git",
       "requests": [

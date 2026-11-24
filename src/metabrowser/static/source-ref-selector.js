@@ -84,8 +84,7 @@
   const PULL_MORE_LIMIT = 5;
   // What the list says beside a filter's finds while the server has cached only some of the
   // repository's pull requests: a number or a title may match more branches than it lists.
-  const PULLS_INCOMPLETE =
-    "Pull requests are not all cached yet, so a number or title may match more branches.";
+  const PULLS_INCOMPLETE = "Some pull requests are still loading, so more branches may match.";
   // Rows drawn beyond the list's view on either side, so a scroll or a key finds the next
   // rows drawn already. The list draws the rows in its view and these, whatever the
   // listing holds, and places each by its index over a box as tall as all of them
@@ -189,20 +188,20 @@
     if (own.commit === null) {
       return {
         text: "not in checkout",
-        tip: `Your checkout has no ${row.name} of its own. This row is the origin's, as Metabrowser last fetched it.`,
+        tip: `Your checkout has no ${row.name} of its own. This row is the origin's, as last fetched.`,
       };
     }
     const mine = own.committed_at;
     const theirs = row.committed_at;
-    const when =
+    const where =
       mine === null || theirs === null || mine === theirs
-        ? ""
+        ? "another commit"
         : mine < theirs
-          ? ", an earlier commit by date"
-          : ", a later commit by date";
+          ? "an earlier commit by date"
+          : "a later commit by date";
     return {
       text: "yours differs",
-      tip: `Your checkout's ${row.name} is at ${window.MetabrowserFormatters.shortCommit(own.commit)}${when}, where your own Git commands left it. This row is the origin's, as Metabrowser last fetched it.`,
+      tip: `Your checkout's ${row.name} is at ${where}. This row is the origin's, as last fetched.`,
     };
   }
 
@@ -301,9 +300,9 @@
           tone: "quiet",
         };
       } else {
-        const why = store.detail === null ? "" : ` ${store.detail}`;
+        // The store's reason (`store.detail`) is the answer's, for an agent.
         origin = {
-          text: `Origin not fetched.${why} These are the checkout's own.`,
+          text: "Origin not fetched. These are the checkout's own.",
           fetchedAt: null,
           tone: "warning",
         };
@@ -611,22 +610,22 @@
   /**
    * Why a switch was refused, the way the selector says it.
    *
-   * @param {number} status
    * @param {unknown} body
    * @param {boolean} checkout Whether the refs are a checkout's, which fetches nothing.
    */
-  function switchFailure(status, body, checkout) {
+  function switchFailure(body, checkout) {
     const record = /** @type {{code?: unknown} | null} */ (
       body !== null && typeof body === "object" ? body : null
     );
     const code = record !== null && typeof record.code === "string" ? record.code : "";
     if (code === "selection_pending") {
-      return "The mirror is fetching that ref; choose it again when the fetch ends.";
+      return "That branch or tag is still being fetched. Choose it again shortly.";
     }
     if (code === "selection_not_found") {
-      return `That ref is no longer in the ${checkout ? "checkout" : "mirror"}.`;
+      return `That branch or tag is no longer in the ${checkout ? "checkout" : "mirror"}.`;
     }
-    return `Could not switch (${code || `HTTP ${status}`}).`;
+    // The status and code are the answer's, for an agent (docs/design-system-messages.md).
+    return "Could not switch. Try again.";
   }
 
   /**
@@ -766,11 +765,12 @@
           // that folder for a repository's root: there is nothing to choose among, so
           // the row goes, as the Commits tab does when discovery says the same.
           gone = true;
-        } else if (refusal?.code === "unsupported_git" && typeof refusal.error === "string") {
-          // The server's own words: which Git a checkout's revisions are read with.
-          error = refusal.error;
+        } else if (refusal?.code === "unsupported_git") {
+          // Which Git is needed, and why, is the answer's `error`, for an agent.
+          error = "Git on this machine is too old to list these. Update Git to see them.";
         } else {
-          error = `The ${KIND_PLURAL[state.kind]} could not be listed (HTTP ${response.status}).`;
+          // The status is the answer's, which the network panel shows.
+          error = `The ${KIND_PLURAL[state.kind]} could not be listed. Try again.`;
         }
       } catch {
         error = "The server did not answer.";
@@ -967,7 +967,7 @@
           decided(true);
           return;
         }
-        state.error = switchFailure(response.status, response.body, checkout);
+        state.error = switchFailure(response.body, checkout);
       } catch {
         state.error = "The switch request failed.";
       } finally {

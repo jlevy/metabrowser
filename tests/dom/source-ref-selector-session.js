@@ -411,7 +411,7 @@ async function runCheckout() {
   const refusedGit = selector.open();
   await page.answer(recording.unsupported_git);
   await refusedGit;
-  steps.push(page.observe("an older Git is refused in the server's words"));
+  steps.push(page.observe("an older Git is refused, and the page says so"));
   selector.dispose();
 
   // A mirror has no working tree to choose, and its freshness row makes that offer.

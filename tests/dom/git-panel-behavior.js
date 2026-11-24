@@ -1303,7 +1303,7 @@ async function run() {
       exact: true,
     },
   );
-  assertNotContains("detail: no truncation note", previewHtml, "the diff below is bounded");
+  assertNotContains("detail: no truncation note", previewHtml, "only some of them are shown");
   await internals.renderCommitDetail({
     is_repo: true,
     commit: commit(SHA_A, [], "outside commit"),
@@ -1335,7 +1335,7 @@ async function run() {
   });
   // A silently bounded diff reads as a complete one, which is the worse
   // failure — so the bound has to be stated, with the real total.
-  assertContains("detail: truncation is stated", previewHtml, "the diff below is bounded");
+  assertContains("detail: truncation is stated", previewHtml, "only some of them are shown");
   assertContains("detail: truncation names the total", previewHtml, "900");
   // A commit past the diff's bound on files: its summary is handed the whole commit's
   // totals, which the server counts before it caps the list, not the list's own (A3 of
@@ -5799,7 +5799,7 @@ async function run() {
     await tick();
     await tick();
     assertContains("inside the window: names the miss", previewHtml, "Commit not found");
-    assertContains("inside the window: says what it knows", previewHtml, "as fetched");
+    assertContains("inside the window: says what it knows", previewHtml, "as last fetched");
     assertNotContains("inside the window: no fetch is claimed", previewHtml, "did not bring it");
     assertNotContains("inside the window: never said fetching", previewHtml, "Fetching");
     assertEqual("inside the window: the route is asked once", commitRequests(SHA_INSIDE), 1);

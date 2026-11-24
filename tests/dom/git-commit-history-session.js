@@ -894,7 +894,9 @@ async function createPage(start, options = {}) {
     const short = await createPage(`/commit/${SHORT}`);
     const opened = short.read();
     assert(opened.pane.startsWith("Full commit ID needed"), `a short ID: ${opened.pane}`);
-    assert(opened.pane.includes(SHORT), "a short ID's state does not name the address");
+    // The remedy, not the ID: the address bar already shows what was typed
+    // (docs/design-system-messages.md).
+    assert(opened.pane.includes("full lowercase ID"), "a short ID's state does not say what to do");
     await short.open("src/a.py");
     short.read();
     await short.back();

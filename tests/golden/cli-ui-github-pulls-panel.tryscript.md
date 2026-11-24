@@ -589,7 +589,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "newer_cache": {
       "status": "absent",
       "connection": {
-        "text": "The pull-request list in the cache was written by a newer Metabrowser (row projection 3, where this release reads up to 2), and this one leaves it as it is. Upgrade metab to read it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one.",
+        "text": "Could not refresh the list.",
         "state": "paused",
         "reload": true
       }
@@ -597,7 +597,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "unknown_cache": {
       "status": "absent",
       "connection": {
-        "text": "The pull-request list in the cache cannot be checked for the Metabrowser that wrote it (the catalog is not in the rollback-journal mode this release writes), so this one leaves it as it is. Upgrade metab if a newer one wrote it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one.",
+        "text": "Could not refresh the list.",
         "state": "paused",
         "reload": true
       }
@@ -605,7 +605,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "not_logged_in": {
       "status": "current",
       "connection": {
-        "text": "Run gh auth login --hostname github.com to connect. Showing cached pull requests.",
+        "text": "Run gh auth login --hostname github.com to sign in to GitHub. Showing cached pull requests.",
         "state": "paused",
         "reload": true
       }
@@ -613,7 +613,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "gh_too_old": {
       "status": "current",
       "connection": {
-        "text": "Update GitHub CLI, then run gh auth status --hostname github.com. Showing cached pull requests.",
+        "text": "GitHub CLI needs an update. Showing cached pull requests.",
         "help": "update",
         "state": "paused",
         "reload": true
@@ -630,7 +630,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "network_error": {
       "status": "current",
       "connection": {
-        "text": "GitHub could not be reached. Showing cached pull requests.",
+        "text": "Could not reach GitHub. Showing cached pull requests.",
         "state": "paused",
         "reload": true
       }
@@ -638,7 +638,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "gh_failed": {
       "status": "current",
       "connection": {
-        "text": "The saved catalog refresh failed. Showing cached pull requests.",
+        "text": "Could not refresh the list. Showing cached pull requests.",
         "state": "paused",
         "reload": true
       }
@@ -646,7 +646,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "account_changed": {
       "status": "stale",
       "connection": {
-        "text": "The saved catalog refresh failed. Showing cached pull requests.",
+        "text": "Could not refresh the list. Showing cached pull requests.",
         "state": "paused",
         "reload": true
       }
@@ -654,7 +654,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "gh_missing": {
       "status": "current",
       "connection": {
-        "text": "Install GitHub CLI, then run gh auth login --hostname github.com. Showing cached pull requests.",
+        "text": "GitHub CLI is not installed. Showing cached pull requests.",
         "help": "install",
         "state": "paused",
         "reload": true
@@ -663,7 +663,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "cache_unwritable": {
       "status": "current",
       "connection": {
-        "text": "The saved catalog refresh failed. Showing cached pull requests.",
+        "text": "Could not refresh the list. Showing cached pull requests.",
         "state": "paused",
         "reload": true
       }
@@ -883,7 +883,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "revalidating": false
       },
       "after": {
-        "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
+        "message": "The refresh could not start while other pull requests are being fetched.",
         "canRefresh": true,
         "revalidating": false
       }
@@ -1041,7 +1041,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "an age, before": "2h",
     "an age, two hours on": "4h",
     "rows built to tell it": 0,
-    "a passive retry over cached rows breathes the announced outage, with no spinner": "GitHub could not be reached. Showing cached pull requests.",
+    "a passive retry over cached rows breathes the announced outage, with no spinner": "Could not reach GitHub. Showing cached pull requests.",
     "closing twelve expanded trees enforces retention immediately": {
       "whileExpanded": 10,
       "afterClosingAll": 9

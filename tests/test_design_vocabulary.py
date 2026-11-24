@@ -591,7 +591,7 @@ def test_diff_file_bar_keeps_copy_by_the_name_and_its_controls_at_its_end() -> N
     assert "justify-content: flex-end;" in wrapping_end
     # Copy path shows while the pointer is on the bar or the keyboard's focus is in it, the
     # reveal contract of every `.icon-btn-reveal` ("Copyable Identifiers Use One Delegate"),
-    # and through its own "Copied!", as a file header's does. The focus is `:focus-visible`:
+    # and through its own "Copied", as a file header's does. The focus is `:focus-visible`:
     # in headless Chrome a mouse press on the name focused the disclosure, and under
     # `:focus-within` the control stayed at full opacity with the pointer off the bar.
     reveal = (

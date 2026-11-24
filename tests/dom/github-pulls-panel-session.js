@@ -1509,7 +1509,7 @@ async function paintStory(panel, selection = false) {
     };
     await answer({ status: 200, etag: null, body: outage });
     assert(answers[0].init.method === "POST", "watch starts a passive retry");
-    const retryMessage = "GitHub could not be reached. Showing cached pull requests.";
+    const retryMessage = "Could not reach GitHub. Showing cached pull requests.";
     const assertRetry = () => {
       assert(message.textContent === retryMessage, "the outage text stays visible");
       assert(live[0].textContent === retryMessage, "the polite announcement stays steady");

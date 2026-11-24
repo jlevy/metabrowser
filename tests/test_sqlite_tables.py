@@ -349,7 +349,8 @@ def test_long_values_are_previewed_past_the_inline_bound(
     assert record["cells"]["body"]["bytes"] == 1_200_000
     assert len(record["cells"]["body"]["text"]) == 64 * 1024
     refused = _get(client, "rows", path="app.db/huge", sort="body")
-    assert refused["code"] == "bad_query" and "longer than" in refused["error"]
+    assert refused["code"] == "bad_query" and "longer than" in refused["detail"]
+    assert refused["error"] == "Column 'body' holds a value too large to sort by."
     # In a WITHOUT ROWID table a value past the inline bound has its size alone.
     blobs = _get(client, "rows", path="app.db/blobs")["rows"]
     assert blobs[2]["cells"]["v"] == {"length": 6000, "preview": False}
@@ -845,8 +846,8 @@ def test_pre_octet_length_library_still_has_info(
     for op in ("sqlite_catalog", "sqlite_ddl"):
         refusal = ask({"op": op, "seconds": 2, "args": args})
         assert refusal["state"] == "unsupported"
-        assert "requires SQLite 3.43.0" in refusal["error"]
-        assert "uses SQLite 3.42.0" in refusal["error"]
+        assert "needs SQLite 3.43.0" in refusal["error"]
+        assert "uses SQLite 3.42.0" in refusal["detail"]
 
 
 def test_every_admitted_function_is_one_the_adapter_calls() -> None:

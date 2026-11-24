@@ -92,6 +92,7 @@ class UnsupportedSourceCapabilityError(ContentReadError):
 
     code = "unsupported_for_subject"
     http_status = 409
+    reader_message = "This is not available here."
 
     def __init__(self, capability: str) -> None:
         self.capability = capability

@@ -88,7 +88,7 @@ def test_a_refused_document_shows_its_source_under_one_notice_in_chrome(
     )
     assert result.returncode == 0, result.stderr or result.stdout
     record = json.loads(result.stdout.strip().splitlines()[-1])
-    said = "This document took longer than 0.5 seconds to render, so its source is shown."
+    said = "This document took too long to render, so its source is shown."
     readme, slow, reload = record["readme"], record["slow"], record["reload"]
     assert readme["inReadmePanel"] is True
     assert readme["notice"] == f"{said} Open the file"

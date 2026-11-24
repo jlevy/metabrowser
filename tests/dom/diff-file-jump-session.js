@@ -759,7 +759,7 @@ async function main() {
   const pastCap = capped.handle.scrollToFile("past/the/cap.py");
   const truncation = capped.pane
     .find("diff-availability")
-    .find((notice) => notice.textContent.startsWith("The change list was truncated"));
+    .find((notice) => notice.textContent.startsWith("The change list is too long"));
   assert(truncation, "missing comparison truncation notice");
   say("the same in a list that stopped at its bound says so", capped, pastCap, {
     warning: truncation.textContent,

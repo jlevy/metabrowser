@@ -573,8 +573,9 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     }
     for state, said in unavailable.items():
         assert said["files"].startswith("Changes "), state
-    assert "does not guess" in unavailable["base_uncertain"]["files"]
-    assert "not readable here" in unavailable["commits_unavailable"]["files"]
+    # A state another fetch can settle ends with that remedy.
+    for state in ("base_uncertain", "commits_unavailable", "comparison_timeout"):
+        assert unavailable[state]["files"].split(". ")[-1].startswith("Refresh"), state
     # A checkout's page offers nothing that serves or switches code: it has no pin.
     for when, checkout_page in transcript["checkout"].items():
         if when.startswith("a mirror"):
@@ -872,13 +873,13 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # later refusal replaces, and a render takes away.
         "textRefusal": [
             "refused past the deadline: plain, 1 notice right after it, a status: "
-            "This text took longer than 5 seconds to render, so it is shown as plain text.",
+            "This text took too long to render, so it is shown as written.",
             "rebuilt for another state, its Markdown not yet answered: plain, 1 notice "
-            "right after it, a status: This text took longer than 5 seconds to render, so "
-            "it is shown as plain text., new element",
+            "right after it, a status: This text took too long to render, so it is shown "
+            "as written., new element",
             "a newer record, the same text refused again as unavailable: plain, 1 notice "
-            "right after it, a status: The renderer could not start, so this text is shown "
-            "as plain text. Reload to try again., new element",
+            "right after it, a status: This text could not be rendered, so it is shown as "
+            "written. Reload to try again., new element",
             "a newer record whose Markdown renders: rendered rendered A, no notice, same element",
         ],
         # A text's Mermaid blocks, in the description and in a comment, drawn as images
@@ -920,8 +921,7 @@ def _event_log_details_steps() -> list[str]:
         f"its comparison read, its Details open: the summary; {wait} ended ok",
         "the late line's Details: expanded false; panel in the header false",
         f"a page whose comparison is read at once: the summary; {wait} ended ok",
-        'a failed refresh, ended 2026-09-17T12:30:00Z: "The last refresh failed: GitHub could '
-        'not be reached because the connection to api.github.com timed outDetails"',
+        'a failed refresh, ended 2026-09-17T12:30:00Z: "Could not reach GitHub.Details"',
         'Details asked for {"client":"k3v9q2zx","since":"2026-09-17T11:30:00Z",'
         '"until":"2026-09-17T12:31:00Z"}, abortable true',
         'no reporter: "The event log is not available here."',

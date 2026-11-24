@@ -941,8 +941,10 @@
   const FILE_ERROR_SUMMARY = "Could not open this file.";
   const OPEN_ERROR_MESSAGE = "Could not open this file. Try again.";
   const UNREACHABLE_SUMMARY = "Metabrowser is not reachable.";
-  const UNREACHABLE_DETAIL =
-    "It may have stopped. Start it again with metab <folder>, and this page will reconnect.";
+  const UNREACHABLE_DETAIL = "Start it again with metab <folder>, and this page reconnects.";
+  // What a failure the server did not describe shows: a renderer's exception or a body
+  // that is not JSON. Its own text goes to the console (docs/design-system-messages.md).
+  const UNEXPECTED_DETAIL = "Reload the page to try again.";
 
   /** @typedef {"starting" | "idle" | "loading" | "content" | "error" | "unreachable" | "external"} PreviewPanePhase */
   /** @typedef {Readonly<{folder: boolean, path: string, viewId?: string}>} PreviewSelection */
@@ -1017,7 +1019,9 @@
 
   /**
    * The message for one failed selection: a connection state when the server
-   * could not be reached, otherwise the file error the response described.
+   * could not be reached, the file error the response described when it has a
+   * `summary` (app.js marks a response's error so), and otherwise a fixed remedy, so a
+   * renderer's exception or a parser's never reaches the page.
    *
    * @param {unknown} error
    * @returns {PreviewFailure}
@@ -1030,16 +1034,17 @@
         summary: UNREACHABLE_SUMMARY,
       });
     }
-    const caught = /** @type {{message?: unknown, summary?: unknown}} */ (error ?? {});
-    const summary =
-      typeof caught.summary === "string" && caught.summary.trim()
-        ? caught.summary.trim()
-        : FILE_ERROR_SUMMARY;
-    const detail =
-      typeof caught.message === "string" && caught.message
-        ? caught.message
-        : String(error || "An unknown error occurred.");
-    return Object.freeze({ detail, kind: /** @type {const} */ ("error"), summary });
+    const described = /** @type {{message?: unknown, summary?: unknown}} */ (error ?? {});
+    const answered = typeof described.summary === "string" && described.summary.trim() !== "";
+    if (!answered) {
+      console.error("metabrowser: the selection could not be shown", error);
+    }
+    const said = answered ? described.message : "";
+    return Object.freeze({
+      detail: typeof said === "string" && said ? said : UNEXPECTED_DETAIL,
+      kind: /** @type {const} */ ("error"),
+      summary: answered ? String(described.summary).trim() : FILE_ERROR_SUMMARY,
+    });
   }
 
   /**

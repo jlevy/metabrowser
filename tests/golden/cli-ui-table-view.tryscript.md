@@ -1026,7 +1026,7 @@ $ node tests/dom/table-view-session.js
     "status": "At least 256 rows match",
     "chips": [],
     "notes": [
-      "The table stopped looking after 4,096 rows, at the time a request may take; these are the matches among them."
+      "These are the matches among the first 4,096 rows."
     ],
     "empty": null,
     "table": {
@@ -1058,7 +1058,7 @@ $ node tests/dom/table-view-session.js
     ],
     "status": "At least 256 rows match",
     "notes": [
-      "The table stopped looking after 4,096 rows, at the time a request may take; these are the matches among them."
+      "These are the matches among the first 4,096 rows."
     ],
     "rowcount": "-1"
   },
@@ -1071,7 +1071,7 @@ $ node tests/dom/table-view-session.js
     "status": "12,288 rows",
     "chips": [],
     "notes": [
-      "This table is too large to sort by “n” in the time a request may take. Show the table’s own order or try again."
+      "This table is too large to sort by “n”. Show the table’s own order."
     ],
     "empty": null,
     "table": "hidden",
@@ -1119,7 +1119,7 @@ $ node tests/dom/table-view-session.js
     "status": "2 rows",
     "chips": [],
     "notes": [
-      "Every row of this table was read, but some of their values were not; those are not shown."
+      "Some values in this table are too large to show."
     ],
     "empty": null,
     "table": {
@@ -1150,7 +1150,7 @@ $ node tests/dom/table-view-session.js
     "status": "At least 3 rows",
     "chips": [],
     "notes": [
-      "This table is larger than its source reads: rows, counts, sorts, and filters cover its leading part only."
+      "Only part of this table is shown, and counts, sorts, and filters cover that part."
     ],
     "empty": null,
     "table": {
@@ -1554,7 +1554,7 @@ $ node tests/dom/table-view-session.js live
   },
   "live: a watch refused says the table is not following its file, until it is live again": {
     "notes while refused": [
-      "This table is not following changes to its file now: this page watches as many files as it may."
+      "This table is not following changes to its file now."
     ],
     "notes once live": [],
     "pill": "Live"

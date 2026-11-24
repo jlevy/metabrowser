@@ -418,7 +418,7 @@
    on the name focuses the disclosure in Chrome, and `:focus-within` then
    held the control shown beside that name, the pointer long gone, until
    the focus moved on. After a copy it stays shown, in the success ink,
-   until the shared delegate takes its "Copied!" back, as the file header's
+   until the shared delegate takes its "Copied" back, as the file header's
    does. At rest it keeps its place, unseen, so nothing in the bar moves
    when it shows. */
 .metabrowser-diff-host .diff-file-bar:hover .diff-file-copy,

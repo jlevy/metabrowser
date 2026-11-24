@@ -696,7 +696,7 @@ def test_setup_guidance_retains_cached_content_and_failure_distinctions() -> Non
         "setupStates": 3,
         "views": 3,
         "nullMessageFallbacks": True,
-        "backendTextPreserved": True,
+        "backendTextWithheld": True,
         "cachedRecordPreserved": True,
         "authUsesNormalizedGuidance": True,
         "otherFailureKindsPreserved": True,

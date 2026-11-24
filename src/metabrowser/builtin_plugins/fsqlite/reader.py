@@ -71,8 +71,9 @@ def _identity_op(args: dict[str, Any], deadline: float) -> tuple[int, str | None
         library = sqlite_access.library_report()
         raise sqlite_access.SqliteAccessError(
             "unsupported",
-            f"Browsing fsqlite stores requires SQLite {library['minimum']} or later "
-            f"for bounded value reads. This reader uses SQLite {library['version']}.",
+            f"Browsing fsqlite stores needs SQLite {library['minimum']} or later.",
+            detail=f"Bounded value reads need SQLite {library['minimum']}; "
+            f"this reader uses SQLite {library['version']}.",
         )
     value, _ = sqlite_access.read(
         Path(str(args["path"])),

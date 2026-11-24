@@ -48,9 +48,18 @@ from metabrowser.sqlite_access import SqliteAccessError
 from metabrowser.sqlite_readers import request_deadline
 
 
-def _error(kind: str, path: str, code: str, message: str, status: int) -> JSONResponse:
+def _error(
+    kind: str, path: str, code: str, message: str, status: int, *, detail: str = ""
+) -> JSONResponse:
     return JSONResponse(
-        {"type": kind, "path": path, "code": code, "error": message}, status_code=status
+        {
+            "type": kind,
+            "path": path,
+            "code": code,
+            "error": message,
+            **({"detail": detail} if detail else {}),
+        },
+        status_code=status,
     )
 
 
@@ -75,10 +84,20 @@ async def _open(
             return _error(kind, path, "not_found", "Not found", 404)
         marker = resolve_session_identity(ref.identity)
     except ContentReadError as exc:
-        return _error(kind, path, exc.code, str(exc), exc.http_status)
+        return _error(kind, path, exc.code, exc.reader_message, exc.http_status, detail=str(exc))
     if marker is None or not marker.is_file() or marker.name != store.MARKER_NAME:
         return _error(kind, path, "not_found", "This is not an fsqlite store's marker.", 404)
     return StoreFiles(ref.identity, marker), inner
+
+
+def _unreadable(exc: OSError) -> dict[str, str]:
+    """The error a store's files that cannot be read answer: the operating system's words
+    are its detail."""
+    return {
+        "state": "invalid",
+        "message": "This store cannot be read.",
+        "detail": exc.strerror or str(exc),
+    }
 
 
 def _store_info(found: StoreFiles, path: str, *, deadline: float, subject: str) -> dict[str, Any]:
@@ -88,7 +107,7 @@ def _store_info(found: StoreFiles, path: str, *, deadline: float, subject: str) 
     try:
         marker = store.read_marker(found.marker)
     except store.StoreError as exc:
-        payload["error"] = {"state": exc.state, "message": str(exc)}
+        payload["error"] = exc.wire()
         return payload
     described |= {
         "format_version": marker.format_version,
@@ -115,18 +134,15 @@ def _store_info(found: StoreFiles, path: str, *, deadline: float, subject: str) 
     try:
         snapshot_payload, snapshot = store.read_snapshot(current, found.snapshot, read)
     except store.StoreError as exc:
-        payload["error"] = {"state": exc.state, "message": str(exc)}
+        payload["error"] = exc.wire()
         return payload
     except SqliteAccessError as exc:
         # The pointer named a snapshot the reader could not read: the store section still
         # says which, and the snapshot section shows the reader's state.
         snapshot = tried[-1]
-        payload["snapshot"] = {"error": {"state": exc.state, "message": str(exc)}}
+        payload["snapshot"] = {"error": exc.wire()}
     except OSError as exc:
-        payload["error"] = {
-            "state": "invalid",
-            "message": f"The store cannot be read: {exc.strerror or exc}",
-        }
+        payload["error"] = _unreadable(exc)
         return payload
     described |= {
         "version": snapshot.version,
@@ -175,13 +191,10 @@ def _store_schema(
             found.locate(store.CURRENT_NAME), found.snapshot, read
         )
     except (store.StoreError, SqliteAccessError) as exc:
-        payload["error"] = {"state": exc.state, "message": str(exc)}
+        payload["error"] = exc.wire()
         return payload
     except OSError as exc:
-        payload["error"] = {
-            "state": "invalid",
-            "message": f"The store cannot be read: {exc.strerror}",
-        }
+        payload["error"] = _unreadable(exc)
         return payload
     if name is not None and not answer["objects"]:
         return None
@@ -220,16 +233,9 @@ def _store_children(found: StoreFiles, *, deadline: float, subject: str) -> dict
     try:
         opened = source.open_store(found, deadline=deadline, subject=subject)
     except (store.StoreError, SqliteAccessError) as exc:
-        state = exc.state
-        return {"children": [], "error": {"state": state, "message": str(exc)}}
+        return {"children": [], "error": exc.wire()}
     except OSError as exc:
-        return {
-            "children": [],
-            "error": {
-                "state": "invalid",
-                "message": f"fsqlite.json cannot be read: {exc.strerror}",
-            },
-        }
+        return {"children": [], "error": _unreadable(exc)}
     return {
         "children": child_rows(found.identity, opened.tables),
         "version": opened.snapshot.version,

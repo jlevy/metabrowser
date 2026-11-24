@@ -42,6 +42,7 @@ from metabrowser.builtin_plugins.structured.parser import (
     serialize_structured_payload,
     truncated_payload,
 )
+from metabrowser.content_errors import content_error_wire
 from metabrowser.http_caching import build_scoped_etag
 from metabrowser.plugin_api import (
     ArtifactCompressionError,
@@ -105,8 +106,7 @@ async def parsed_handler(request: Request) -> JSONResponse:
         payload = await load_structured_payload(ref)
     except ContentReadError as exc:
         return JSONResponse(
-            {"error": str(exc), "code": exc.code, "path": raw_path},
-            status_code=exc.http_status,
+            {**content_error_wire(exc), "path": raw_path}, status_code=exc.http_status
         )
     return _envelope(
         path=ref.identity,

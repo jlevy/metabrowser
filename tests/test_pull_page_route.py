@@ -112,7 +112,7 @@ def test_the_pull_route_serves_the_shell_and_the_plugin_for_its_kind() -> None:
         assert client.get("/pull/7/files/no/such/file.py").status_code == 200
         for refused in ("/pull/0", "/pull/7/commits", "/pull/7/files/src/", "/pull/7/files/%2E%2E"):
             answer = client.get(refused)
-            assert (answer.status_code, answer.text) == (400, "Invalid pull-request route.")
+            assert (answer.status_code, answer.text) == (400, "This address is not a pull request.")
 
 
 def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:

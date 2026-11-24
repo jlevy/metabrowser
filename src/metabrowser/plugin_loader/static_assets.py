@@ -215,12 +215,14 @@ def _make_data_hook_handler(
     sidekick = _resolve_sidekick(spec.sidekick)
 
     def _plugin_error_response(detail: str) -> JSONResponse:
+        # `error` is what the view says (plugin-sdk.js fetchPluginData); `detail`, which
+        # may name an exception's type, is the agent's (docs/design-system-messages.md).
         return JSONResponse(
             {
                 "type": "plugin_error",
                 "plugin": plugin.name,
                 "route": route,
-                "error": "Plugin data hook failed",
+                "error": "Could not load this view's data.",
                 "detail": detail,
                 "warning": (
                     "Metabrowser returned a degraded plugin warning instead "

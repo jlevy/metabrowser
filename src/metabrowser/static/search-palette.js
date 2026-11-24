@@ -344,7 +344,7 @@
         const coverage = snapshot.complete
           ? ""
           : snapshot.truncated
-            ? " Indexing stopped at the file limit."
+            ? " Some files are not indexed."
             : " Scanning continues.";
         status.textContent = includesPulls
           ? `Search includes ${scope} and cached pull requests.${coverage}`

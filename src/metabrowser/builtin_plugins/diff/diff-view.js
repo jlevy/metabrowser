@@ -700,7 +700,7 @@ export function renderFileBody(state, layout) {
       }
       if (state.patch.truncated) {
         state.body.append(
-          noticeEl("warning", "diff-patch-truncated", "This patch was truncated at its bounds."),
+          noticeEl("warning", "diff-patch-truncated", "This patch is too long to show in full."),
         );
       }
     },
@@ -2465,7 +2465,9 @@ async function loadDeferred(file, signal, view) {
   const payload = await loadOneChange(file.revision, path, { signal });
   const result = validateDocument(payload);
   if (!result.ok) {
-    throw new Error(`invalid document: ${result.error}`);
+    // The validator's location rides as the cause, which the console report of a failed
+    // file prints (docs/design-system-messages.md).
+    throw new Error("This diff document is not valid.", { cause: result.error });
   }
   return /** @type {OneFileAnswer} */ (result.document);
 }
@@ -3406,7 +3408,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         }
       }
       if (manifest.truncated) {
-        root.append(noticeEl("warning", "", "The change list was truncated at its bounds."));
+        root.append(noticeEl("warning", "", "The change list is too long to show in full."));
       }
       view.spacer = el("div", "diff-end-spacer");
       root.append(view.spacer);

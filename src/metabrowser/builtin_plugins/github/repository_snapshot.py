@@ -216,6 +216,21 @@ def publish_revision[Cache: SnapshotCache](
         return True
 
 
+def _own_failure_stamp(
+    exc: GhError | PullDataError, *, at: str, reader: str | None
+) -> PullRefreshStamp:
+    """The stamp of a failure Metabrowser raised: its state, and its own message, which
+    names no path and repeats no output of GitHub's (:class:`.GhError`)."""
+
+    return PullRefreshStamp(
+        outcome=exc.state,
+        message=str(exc)[:MAX_REFRESH_MESSAGE_CHARS],
+        reset_at=exc.reset_at,
+        at=at,
+        reader=reader,
+    )
+
+
 def failure_stamp(
     exc: BaseException,
     repository: ListedRepository,
@@ -232,13 +247,7 @@ def failure_stamp(
 
     at = utc_stamp(pull_list.utc_now())
     if isinstance(exc, (GhError, PullDataError)):
-        return PullRefreshStamp(
-            outcome=exc.state,
-            message=str(exc)[:MAX_REFRESH_MESSAGE_CHARS],
-            reset_at=exc.reset_at,
-            at=at,
-            reader=reader,
-        )
+        return _own_failure_stamp(exc, at=at, reader=reader)
     if isinstance(exc, _CACHE_ERRORS):
         log.debug("%s: the cache refused a write: %s", subject, exc)
         # Clearing the plugin's cache mends what it holds, not the home's layout or records.

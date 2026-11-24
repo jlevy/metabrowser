@@ -44,7 +44,7 @@ $ node tests/dom/event-log-view-session.js
       "From 2026-11-19 22:00:00 UTC"
     ],
     "notices": [
-      "warning: 2 lines were not read: a torn last line, a record of another schema version, a record with no usable time, or a line that is not a record. Raw JSON shows every line."
+      "warning: 2 lines were not read. Raw JSON shows every line."
     ],
     "filterGroups": [
       "event-log-kind",
@@ -526,7 +526,7 @@ $ node tests/dom/event-log-view-session.js
       "From 2026-11-19 22:00:00 UTC"
     ],
     "notices": [
-      "notice neutral: The server went on logging in a later segment, which may hold the end of this work."
+      "notice neutral: The log continues in a later file, which may hold the end of this work."
     ]
   },
   "a file the server refuses is said so, in an alert": {
@@ -534,7 +534,10 @@ $ node tests/dom/event-log-view-session.js
       "errors?path=absent.jsonl"
     ],
     "body": [
-      "notice error: Could not read the event log: Not found"
+      "notice error: This log file was not found."
+    ],
+    "logged": [
+      "metabrowser event log: the view could not be read · 404"
     ]
   },
   "a view replaced or disposed while its answer was out draws nothing": {

@@ -1547,7 +1547,8 @@ def test_a_partial_clone_answers_object_unavailable_and_fetches_nothing(tmp_path
         ):
             diff = client.get(address)
             assert (diff.status_code, diff.json()["error"]) == (409, "object_unavailable"), address
-            assert "nothing is fetched into it" in diff.json()["message"]
+            assert diff.json()["message"] == "Part of this comparison is not in this checkout."
+            assert "nothing is fetched into it" in diff.json()["detail"]
         _pin(client, working_tree=True)
     _the_clone_is_unchanged(clone, packs, before)
 

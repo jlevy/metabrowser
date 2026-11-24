@@ -44,7 +44,13 @@ import {
   createComparisonPrefetch,
   diffComparisonLoader,
 } from "./comparison-prefetch.js";
-import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
+import {
+  rateLimitText,
+  refreshFailureText,
+  refreshRefusedText,
+  setupHelp,
+  unavailableText,
+} from "./copy.js";
 import {
   createStackIndex,
   memberRoute,
@@ -379,15 +385,18 @@ const ABSENCE = Object.freeze({
   unreadable: "The saved copy of this pull request could not be read.",
 });
 
-/** @type {Readonly<Record<string, string>>} */
-const SETUP_FAILURES = Object.freeze({
-  gh_missing:
-    "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
-  gh_too_old:
-    "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
-  not_logged_in:
-    "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
+/**
+ * What the page says of a refresh's outcome that it words itself, beside copy.js's shared
+ * words, and of any other, in one sentence each beside Refresh. The job's own message stays
+ * in the envelope's `last_refresh.message`, and the failure's Details shows what the event
+ * log holds of it.
+ * @type {Readonly<Record<string, string>>}
+ */
+const REFRESH_FAILURES = Object.freeze({
+  not_found_or_private: "GitHub could not find this pull request, or this account cannot read it.",
+  lender_missing: "The checkout cannot supply these changes.",
 });
+const REFRESH_FAILED = "Could not refresh this pull request.";
 
 /**
  * A review's state, said by a chip after its heading where the verb does not say it
@@ -416,9 +425,9 @@ const MERGEABLE = Object.freeze({
 
 /** @type {Readonly<Record<string, string>>} */
 const UNAVAILABLE = Object.freeze({
-  check_runs: "Check runs",
-  status: "Commit statuses",
-  comparison: "Changes",
+  check_runs: "check runs",
+  status: "commit statuses",
+  comparison: "changes",
 });
 
 /** @type {Readonly<Record<string, string>>} */
@@ -1227,62 +1236,87 @@ function checks(record, base) {
   return { counts, items };
 }
 
-/** @param {Record<string, any>} record @param {boolean} forChecks */
+/**
+ * "a", "a and b", or "a, b, and c".
+ *
+ * @param {string[]} words
+ */
+function joinedWords(words) {
+  return words.length < 3
+    ? words.join(" and ")
+    : `${words.slice(0, -1).join(", ")}, and ${words.at(-1)}`;
+}
+
+/**
+ * The one note over the conversation, or over the checks, when part of it is missing or
+ * cut short: at most one sentence, never one per part. A part that could not be read at
+ * all outweighs a list or text that was cut, which still shows what it holds. Why a part
+ * could not be read stays in the record's `unavailable`, and Files changed says why its
+ * Changes are missing (`filesUnavailableText`).
+ *
+ * @param {Record<string, any>} record
+ * @param {boolean} forChecks
+ * @returns {string[]}
+ */
 function notes(record, forChecks) {
-  /** @type {string[]} */
-  const said = [];
   const truncated = record.truncated ?? {};
   const checkPart = (/** @type {string} */ name) =>
     name === "check_runs" || name === "status" || name === "statuses";
+  const missing = Object.entries(record.unavailable ?? {})
+    .filter(
+      ([part, why]) =>
+        checkPart(part) === forChecks && !(part === "comparison" && why === "no_store"),
+    )
+    .map(([part]) => (Object.hasOwn(UNAVAILABLE, part) ? UNAVAILABLE[part] : "some details"));
+  if (missing.length > 0) {
+    const parts = joinedWords([...new Set(missing)]);
+    return [`${parts.charAt(0).toUpperCase()}${parts.slice(1)} could not be loaded.`];
+  }
   const cut = Object.keys(TRUNCATED).filter(
     (name) => checkPart(name) === forChecks && truncated[name] === true,
   );
+  const textCut = !forChecks && truncated.text === true;
+  if (cut.length > 0 && textCut) {
+    return ["Only part of this conversation is shown."];
+  }
   if (cut.length > 0) {
-    said.push(
-      `Only some ${cut.map((name) => TRUNCATED[name]).join(", ")} are shown: the list was longer than what is kept.`,
-    );
+    return [`Only some ${joinedWords(cut.map((name) => TRUNCATED[name]))} are shown.`];
   }
-  if (!forChecks && truncated.text === true) {
-    said.push("Some text was cut to keep this pull request’s data within its size limit.");
-  }
-  for (const [part, why] of Object.entries(record.unavailable ?? {})) {
-    if (checkPart(part) !== forChecks || (part === "comparison" && why === "no_store")) {
-      continue;
-    }
-    said.push(
-      `${UNAVAILABLE[part] ?? part} could not be read (${String(why).replaceAll("_", " ")}).`,
-    );
-  }
-  return said;
+  return textCut ? ["Some long text is shortened."] : [];
 }
 
 /**
  * What Files changed says in place of a diff, from the state the record names. Pure.
  *
- * A merge base the store's shallow history cannot settle is not a failure to read: the
- * diff could be computed and would be a guess, so the page says that it does not guess
- * and what would settle it.
+ * One statement in a reader's terms, with the one remedy that can work. A merge base the
+ * store's shallow history cannot settle is not a failure to read: the diff could be
+ * computed and would be a guess, so the page shows none, and a refresh fetches the history
+ * that settles it. The reason itself stays in the record's `unavailable.comparison`, which
+ * docs/reviewing-pull-requests.md explains.
  *
  * @param {unknown} why The record's `unavailable.comparison`.
  * @returns {string}
  */
 export function filesUnavailableText(why) {
   if (why === "base_uncertain") {
-    return "Changes are not shown: this checkout’s history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
+    return "Changes need more of this checkout’s history. Refresh to fetch it.";
   }
   if (why === "no_store") {
     return "Changes could not be fetched.";
   }
   if (why === "comparison_timeout") {
-    return "Changes are unavailable: checking this pull request’s history took too long. Refresh to try again.";
+    return "Changes took too long to prepare. Refresh to try again.";
   }
   if (why === "comparison_too_large") {
-    return "Changes are unavailable: checking this pull request’s history exceeded the comparison limit.";
+    return "Changes are too large to show here. GitHub shows them.";
   }
   if (why === "commits_unavailable") {
-    return "Changes are unavailable: a commit of this pull request’s history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
+    return "Changes need commits that are missing here. Refresh to fetch them.";
   }
-  return "Changes are unavailable: the pull request’s base could not be compared with its head.";
+  if (why === "no_merge_base") {
+    return "Changes cannot be shown because this pull request’s branches share no history.";
+  }
+  return "Changes could not be shown.";
 }
 
 /** What Changes says for a record without a store before anything has failed. */
@@ -1527,16 +1561,13 @@ export function describePull(envelope, page) {
       Number.isFinite(heldUntil) ? (page.formatHold ?? holdLiftText)(heldUntil, page.nowMs) : null,
     );
   } else if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
-    model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? OUTCOME_FALLBACK}`;
+    // The pull request shown stays, so the sentence says only what went wrong.
+    model.failure = refreshFailureText(last.outcome, REFRESH_FAILURES, REFRESH_FAILED);
     // When it ended, which the failure's Details reads the event log around (mb-9zp5).
     model.failureAt = last.at ?? null;
-    if (["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome)) {
-      model.failure += `${model.failure.endsWith(".") ? "" : "."} You can still browse local files and any cached pull requests.`;
-      if (last.outcome === "gh_missing") {
-        model.failureHelp = "install";
-      } else if (last.outcome === "gh_too_old") {
-        model.failureHelp = "update";
-      }
+    const help = setupHelp(last.outcome);
+    if (help !== undefined) {
+      model.failureHelp = help;
     }
   }
   const record = envelope.record;
@@ -1689,6 +1720,7 @@ export function describePull(envelope, page) {
       model.filesUnavailable = CHANGES_NOT_FETCHED;
     } else if (typeof page.comparisonRefusal === "string") {
       // A later read clears the refusal's error; its reason stays until the page asks again.
+      // Each refusal is one sentence (copy.js), so the two make the message's limit of two.
       model.filesUnavailable = `${model.filesUnavailable} ${page.comparisonRefusal}`;
     }
   }
@@ -1814,7 +1846,10 @@ export function isEnvelope(value) {
  * text stays plain until the newer record's is asked for. The server renders a text in
  * its Markdown child under a deadline (`pull_markdown.render_part`), and refuses one that
  * runs past it, whose renderer stops, whose renderer cannot start, or that arrives while
- * the renderer has as many other texts as it takes; KPress can also fail on a text. Each shows the text as plain text, with this line saying why.
+ * the renderer has as many other texts as it takes; KPress can also fail on a text. Each
+ * shows the text as written, with this line saying so, and a reload only where the next
+ * attempt can differ: a renderer that could not start or was busy. The code and the
+ * deadline stay in the route's answer.
  *
  * @param {number} status
  * @param {Record<string, any> | null} body
@@ -1825,20 +1860,14 @@ export function refusedTextNote(status, body) {
     return null;
   }
   switch (body.code) {
-    case "render_deadline": {
-      const seconds = typeof body.deadline_ms === "number" ? body.deadline_ms / 1000 : null;
-      const took =
-        seconds === null ? "too long" : `longer than ${seconds} second${seconds === 1 ? "" : "s"}`;
-      return `This text took ${took} to render, so it is shown as plain text.`;
-    }
+    case "render_deadline":
+      return "This text took too long to render, so it is shown as written.";
     case "renderer_exited":
-      return "The renderer stopped while rendering this text, so it is shown as plain text.";
-    case "renderer_unavailable":
-      return "The renderer could not start, so this text is shown as plain text. Reload to try again.";
-    case "renderer_busy":
-      return "The renderer is busy with other texts, so this text is shown as plain text. Reload to try again.";
     case "render_failed":
-      return "This text could not be rendered, so it is shown as plain text.";
+      return "This text could not be rendered, so it is shown as written.";
+    case "renderer_unavailable":
+    case "renderer_busy":
+      return "This text could not be rendered, so it is shown as written. Reload to try again.";
     default:
       return null;
   }
@@ -2930,7 +2959,7 @@ export function createPullController(deps, options) {
     let reread = false;
     try {
       const response = await deps.request("POST", REFRESH_ROUTE, { body: ask });
-      const body = /** @type {{pull?: unknown, error?: unknown} | null} */ (response.body);
+      const body = /** @type {{pull?: unknown, code?: unknown} | null} */ (response.body);
       const pull = body === null ? null : withHeldRecord(body.pull);
       if (
         (response.status === 202 || response.status === 200) &&
@@ -2966,8 +2995,8 @@ export function createPullController(deps, options) {
           errorFromComparison = false;
         }
       } else if (ask.retry) {
-        const said = body !== null && typeof body.error === "string" ? body.error : null;
-        error = refreshRefusedText("The refresh", said);
+        const code = body !== null && typeof body.code === "string" ? body.code : null;
+        error = refreshRefusedText("The refresh", code);
         errorFromComparison = ask.comparison === true;
         if (ask.comparison) {
           comparisonRefusal = error;
@@ -3881,8 +3910,9 @@ export function followedFrom(last, from, next) {
 /**
  * What Changes says over a diff that replaced another, or null when it replaced none. Pure.
  *
- * `head` names the head it showed and the head it shows; `base` is the same head compared
- * from another merge base, where the two commits to name would read the same.
+ * `head` is a diff of another head, which the note calls newer commits; `base` is the same
+ * head compared from another merge base. Both heads stay on the note, as its identity and in
+ * history (`rememberedChanges`), and never in its sentence.
  *
  * @param {{left: string, right: string} | null} from
  * @param {{left: string, right: string}} to
@@ -5916,16 +5946,6 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * A commit named in a sentence, as every line names one: its short ID in the commit-ID
-   * face (docs/design-system.md, "Short Commit IDs").
-   *
-   * @param {string} commit
-   */
-  function commitId(commit) {
-    return h("span", { class: "git-commit-sha" }, [mb.shortCommit(commit)]);
-  }
-
-  /**
    * An offer at the status row's end: its sentence is cut short before its control is,
    * so a narrow pane still shows the control inside the header (styles.css, "The offers").
    *
@@ -7727,7 +7747,7 @@ export function mountPullPage(container, ctx, mb) {
       }
       const view = mb.getRegisteredView("diff", "diff");
       if (!view) {
-        host.textContent = "The diff plugin is unavailable.";
+        host.textContent = "Changes could not be shown. Reload to try again.";
         if (!docs) {
           summaryUnavailable(comparison);
         }
@@ -8009,10 +8029,11 @@ export function mountPullPage(container, ctx, mb) {
         paintFollowed();
       });
       body.querySelector(".github-pull-newer-offer")?.remove();
+      // The heads are on the record and the diff's own header, never in the sentence.
       const said = notice(null, [
-        ...(diffFor?.right === comparison.right
-          ? ["The comparison has changed. "]
-          : ["The pull request now ends at ", commitId(comparison.right), ". "]),
+        diffFor?.right === comparison.right
+          ? "The comparison has changed. "
+          : "This pull request has newer commits. ",
         offer,
       ]);
       said.classList.add("github-pull-newer-offer");
@@ -8163,7 +8184,7 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * The note over a diff that replaced another by itself: both heads, and the way back.
+   * The note over a diff that replaced another by itself, and the way back.
    * Kept as painted while it says the same, so focus on its button survives a repaint.
    */
   function paintFollowed() {
@@ -8187,15 +8208,9 @@ export function mountPullPage(container, ctx, mb) {
       }
     });
     const said = notice(null, [
-      ...(note.kind === "head"
-        ? [
-            "The pull request’s head moved from ",
-            commitId(note.from),
-            " to ",
-            commitId(note.to),
-            ". ",
-          ]
-        : ["The comparison has changed. "]),
+      note.kind === "head"
+        ? "Changes now show this pull request’s newer commits. "
+        : "The comparison has changed. ",
       back,
     ]);
     said.classList.add("github-pull-followed");

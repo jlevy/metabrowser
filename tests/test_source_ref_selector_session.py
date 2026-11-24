@@ -319,7 +319,7 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
     assert "navigated" not in by_name["choosing the working tree while it is shown only closes"]
     assert by_name["a ref gone from the checkout says so, and nothing is fetched"]["paint"][
         "error"
-    ] == ("That ref is no longer in the checkout.")
+    ] == ("That branch or tag is no longer in the checkout.")
     assert by_name["a working-tree page left behind offers a reload"]["paint"]["stale"] == (
         "The server now shows another revision [Reload]"
     )
@@ -329,9 +329,10 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
     assert by_name["a folder Git does not take for a repository loses its row"]["paint"] == {
         "removed": True
     }
-    assert (
-        by_name["an older Git is refused in the server's words"]["paint"]["error"]
-        == (recording["unsupported_git"]["body"]["error"])
+    # Which Git is needed is the answer's `error`, for an agent.
+    assert recording["unsupported_git"]["body"]["code"] == "unsupported_git"
+    assert by_name["an older Git is refused, and the page says so"]["paint"]["error"] == (
+        "Git on this machine is too old to list these. Update Git to see them."
     )
     mirror = by_name["a mirror's selector asks for no working tree and offers no reload"]
     assert mirror["requests"] == [] and "stale" not in mirror["paint"]
@@ -402,7 +403,7 @@ def test_the_session_runs_on_the_recording() -> None:
         "/view/"
     ]
     assert by_name["a ref gone from the mirror says so"]["paint"]["error"] == (
-        "That ref is no longer in the mirror."
+        "That branch or tag is no longer in the mirror."
     )
     aborted = by_name["a newer filter aborts the older request"]
     assert aborted["requests"] == [
@@ -473,10 +474,12 @@ def test_the_session_draws_only_what_an_ask_for_pull_requests_moved() -> None:
     assert waiting["requests"] == [] and waiting["filterPending"] and waiting["pullsPending"]
     found = by_name["the filter finds what is cached, and the list says it may find more"]
     assert found["requests"] == ["GET /api/source/refs?kind=branch&q=try"]
-    assert found["paint"]["note"].startswith("Pull requests are not all cached yet")
+    assert found["paint"]["note"].startswith("Some pull requests are still loading")
     # What a filter finds in a catalog still filling is said not to be all of it (review A8).
     nothing = by_name["a filter that finds nothing says so, and that it may find more later"]
-    assert nothing["paint"]["note"].startswith("No branches match. Pull requests are not all")
+    assert nothing["paint"]["note"].startswith(
+        "No branches match. Some pull requests are still loading"
+    )
     # Where the list scrolls to when its rows move: the top row stays where it was, the foot
     # stays the foot, and a focused row stays in view (review A1).
     anchors = {line.split(":")[0]: line for line in session["anchors"]}

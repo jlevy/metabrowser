@@ -171,7 +171,7 @@
    *   truncated: boolean,
    * }>[] } batches
    * @property {boolean} complete
-   * @property {readonly string[]} errors
+   * @property {readonly string[]} errors the ids of the providers whose search failed
    * @property {"idle" | "searching" | "complete"} phase
    * @property {Readonly<MetabrowserSearchRequest> | null} request
    * @property {number} requestId
@@ -344,7 +344,7 @@
       const coverage = snapshot.complete
         ? ""
         : snapshot.truncated
-          ? " Indexing stopped at the file limit."
+          ? " Some files are not indexed."
           : " Scanning continues.";
       const matching =
         request.target === "all"
@@ -512,8 +512,8 @@
           results.length > 0
             ? `${results.length} pull ${results.length === 1 ? "request" : "requests"} shown.`
             : body.refreshing
-              ? "The pull request catalog is still incomplete. Try again shortly."
-              : "No matching cached pull requests.";
+              ? "Pull requests are still loading. Try again shortly."
+              : "No matching pull requests.";
         const coverage = body.limited ? " Search by number for older pull requests." : "";
         return {
           complete: body.complete,
@@ -858,8 +858,11 @@
               publishBatch(batch);
             } catch (error) {
               if (isCurrent()) {
-                const detail = error instanceof Error ? error.message : String(error);
-                errors.set(provider.id, `${provider.id}: ${detail}`);
+                // The state names the provider that failed; the palette says only that the
+                // search could not complete, and the exception goes to the console
+                // (docs/design-system-messages.md).
+                console.error(`metabrowser search: the ${provider.id} provider failed`, error);
+                errors.set(provider.id, provider.id);
                 publishComposition("searching");
               }
             } finally {

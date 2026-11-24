@@ -72,16 +72,13 @@
     server_error: "The origin answered with a server error.",
     rate_limited: "The origin is limiting requests; try again later.",
     proxy_auth_required: "The proxy between here and the origin asked for credentials.",
-    ref_case_collision:
-      "The origin has branches or tags whose names differ only in letter case, which this file system cannot keep apart, so no ref moved.",
-    validation_failed: "The origin's default branch did not arrive in the mirror as a commit.",
-    default_branch_unknown:
-      "The origin's HEAD names no branch, so the mirror keeps the default branch it had.",
-    unsupported_git: "The installed Git is older than the version Metabrowser fetches with.",
+    ref_case_collision: "The origin has branches or tags this file system cannot tell apart.",
+    validation_failed: "The origin's default branch could not be read.",
+    default_branch_unknown: "The origin names no default branch, so the last one is kept.",
+    unsupported_git: "Git on this machine is too old to fetch from the origin.",
     store_unavailable: "The mirror could not be opened.",
-    lender_missing:
-      "The checkout this mirror borrows objects from is gone. Run metab again with --checkout and where it is now.",
-    refreshing_elsewhere: "Another Metabrowser process is refreshing this mirror.",
+    lender_missing: "The checkout this mirror was made from is gone.",
+    refreshing_elsewhere: "Another Metabrowser is refreshing this mirror.",
     cancelled: "The refresh was stopped before it finished.",
     failed: "The refresh failed.",
   });
@@ -90,22 +87,18 @@
   // was fetched there is the store Metabrowser keeps of the checkout's origin.
   /** @type {Readonly<Record<string, string>>} */
   const FOLDER_OUTCOME_DETAIL = Object.freeze({
-    validation_failed:
-      "The origin's default branch did not arrive in Metabrowser's store as a commit.",
-    default_branch_unknown:
-      "The origin's HEAD names no branch, so the store keeps the default branch it had.",
-    store_unavailable: "Metabrowser's store of the origin could not be opened.",
-    lender_missing:
-      "The checkout can no longer lend its objects to Metabrowser's store of the origin.",
-    refreshing_elsewhere: "Another Metabrowser process is refreshing this store.",
+    validation_failed: "The origin's default branch could not be read.",
+    default_branch_unknown: "The origin names no default branch, so the last one is kept.",
+    store_unavailable: "Metabrowser's copy of the origin could not be opened.",
+    lender_missing: "Metabrowser's copy of the origin can no longer read this checkout.",
+    refreshing_elsewhere: "Another Metabrowser is fetching the origin.",
   });
 
   // What the row says about the address a page was opened at, while the server serves
   // the default branch in its place.
   /** @type {Readonly<Record<string, string>>} */
   const SELECTION_DETAIL = Object.freeze({
-    pending:
-      "The address this page was opened at is not in the mirror yet; it opens when the fetch brings it.",
+    pending: "The address this page was opened at opens once it is fetched.",
     not_found:
       "The address this page was opened at is not on the origin, so the default branch is shown.",
     fetch_failed:
@@ -224,7 +217,7 @@
         visible: true,
         tone: "warning",
         label: `${name} moved`,
-        detail: `${name} is now at ${window.MetabrowserFormatters.shortCommit(moved.commit)}, and this page shows the commit before.`,
+        detail: `${name} has moved, and this page shows where it was.`,
         offer: null,
         error,
         pull: null,
@@ -249,29 +242,27 @@
       OUTCOME_DETAIL[code] ??
       OUTCOME_DETAIL.failed;
     let label = folder ? `Origin fetched ${age}` : `Fetched ${age}`;
+    // One sentence: the tooltip adds its one remedy, "Press to refresh now."
+    // (docs/design-system-messages.md). The label already says when it was fetched.
     let detail = folder
-      ? `Metabrowser's store of this checkout's origin was last fetched ${age}. The checkout itself is never fetched into.`
+      ? `The origin was last fetched ${age}, without changing the checkout.`
       : `The mirror was last fetched from its origin ${age}.`;
     if (refreshing) {
       tone = "refreshing";
       label = "Refreshing…";
-      detail = folder
-        ? `Fetching from the origin into Metabrowser's store. It was last fetched ${age}.`
-        : `Fetching from the origin. The mirror was last fetched ${age}.`;
+      detail = `Fetching from the origin, last fetched ${age}.`;
     } else if (failed) {
       tone = "warning";
       label = folder ? `Refresh failed · origin fetched ${age}` : `Refresh failed · fetched ${age}`;
-      detail = folder
-        ? `${why(outcome.outcome)} The origin's branches and tags are as last fetched, and the checkout is unchanged.`
-        : `${why(outcome.outcome)} The pinned revision is still served from the mirror.`;
+      detail = why(outcome.outcome);
     } else if (outcome !== null && outcome.outcome === "refreshing_elsewhere") {
-      detail = `${why("refreshing_elsewhere")} It was last fetched here ${age}.`;
+      detail = why("refreshing_elsewhere");
     } else if (outcome !== null && outcome.outcome === "default_branch_unknown") {
-      detail = `${detail} ${why("default_branch_unknown")}`;
+      detail = why("default_branch_unknown");
     }
     if (gone && !refreshing && !failed) {
       label = `${status.ref_name ?? status.ref} no longer exists · origin fetched ${age}`;
-      detail = `${goneDetail(status)} ${detail}`;
+      detail = goneDetail(status);
     }
     const pull =
       typeof status.pull_request === "number"
@@ -286,7 +277,7 @@
     const selection = status.selection_state ?? null;
     const retrySelection = selection === "fetch_failed" && !refreshing;
     if (selection === "pending") {
-      detail = `${detail} ${SELECTION_DETAIL.pending}`;
+      detail = SELECTION_DETAIL.pending;
     } else if (selection === "not_found") {
       tone = "warning";
       label = `Address not found · fetched ${age}`;
@@ -294,8 +285,7 @@
     } else if (retrySelection) {
       tone = "warning";
       label = `Address not fetched · fetched ${age}`;
-      const why = outcome !== null ? (OUTCOME_DETAIL[outcome.outcome] ?? "") : "";
-      detail = `${SELECTION_DETAIL.fetch_failed} ${why}`.trim();
+      detail = SELECTION_DETAIL.fetch_failed;
     }
     /** @type {MetabrowserSourceOffer | null} */
     let offer = null;
@@ -325,14 +315,15 @@
         kind: "switch",
         ref: status.ref,
         latest: status.latest,
-        // "Now at", not "newer": a force-push can move a branch back. The commit follows
-        // the words in the commit-ID face, as every line names one.
-        text: `${refLabel(status, { start: true })} is now at`,
+        // "Has moved", not "has newer commits": a force-push can move a branch back. The
+        // commit it moved to is the model's, for an agent; the sentence names no commit
+        // (docs/design-system-messages.md).
+        text: `${refLabel(status, { start: true })} has moved`,
         commit: window.MetabrowserFormatters.shortCommit(status.latest),
         button: "Switch",
       };
     } else if (status.ref !== null && status.ref_on_origin === false && !refreshing) {
-      detail = `${detail} ${refLabel(status, { start: true })} is no longer on the origin; its commits stay readable here.`;
+      detail = `${refLabel(status, { start: true })} is no longer on the origin; its commits stay readable here.`;
     }
     // The attended pull request's page is one link away from every page on its pin.
     return { visible: true, tone, label, detail, offer, error, pull, follow: null };
@@ -367,7 +358,7 @@
    */
   function goneDetail(status) {
     const name = status.ref_name ?? status.ref;
-    return `${name} no longer exists in this checkout; this page shows its last commit, ${window.MetabrowserFormatters.shortCommit(status.pin ?? "")}.`;
+    return `${name} no longer exists in this checkout; this page shows its last commit.`;
   }
 
   /**
@@ -386,7 +377,7 @@
       visible: true,
       tone: "refreshing",
       label: `Updating to ${refLabel(status)}…`,
-      detail: `${refLabel(status, { start: true })} is now at ${window.MetabrowserFormatters.shortCommit(follow.commit)}, and this page follows it.`,
+      detail: `${refLabel(status, { start: true })} has moved, and this page follows it.`,
       offer: null,
       error: null,
       pull,
@@ -434,13 +425,12 @@
   // URL selection passes through, named for a commit instead of the page's address.
   /** @type {Readonly<Record<"pending" | "not_found" | "fetch_failed" | "no_mirror" | "pull_refused", string>>} */
   const MISSING_COMMIT_DETAIL = Object.freeze({
-    pending: "This commit is not in the mirror yet; it opens when the fetch brings it.",
-    not_found:
-      "This commit is not in the mirror, and the fetch from the origin did not bring it: no branch or tag there reaches it.",
-    fetch_failed: "This commit is not in the mirror, and it could not be fetched.",
+    pending: "It opens when it arrives.",
+    not_found: "No branch or tag on the origin has this commit.",
+    fetch_failed: "This commit could not be fetched.",
     no_mirror: "This commit is not in the repository.",
     pull_refused:
-      "The pull request's refresh, which brings its newer commits, was not queued: too many pull requests are being fetched; try again when one has finished.",
+      "Its pull request could not be refreshed while others are being fetched. Try again shortly.",
   });
 
   /**
@@ -474,7 +464,7 @@
       return {
         state: "fetch_failed",
         title: "Commit not fetched",
-        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error ?? "The server did not answer."}`,
+        detail: MISSING_COMMIT_DETAIL.fetch_failed,
         retry: true,
       };
     }
@@ -491,16 +481,18 @@
       return {
         state: "fetch_failed",
         title: `Commit not fetched · fetched ${age}`,
-        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error}`,
+        detail: MISSING_COMMIT_DETAIL.fetch_failed,
         retry: true,
       };
     }
-    const refused = page.pullRefused === true ? ` ${MISSING_COMMIT_DETAIL.pull_refused}` : "";
+    const refused = page.pullRefused === true;
     if (page.fetched !== true) {
       return {
         state: "not_found",
         title: `Commit not found · fetched ${age}`,
-        detail: `This commit is not in the mirror as fetched ${age}.${refused}`,
+        detail: refused
+          ? MISSING_COMMIT_DETAIL.pull_refused
+          : "This commit is not in the mirror as last fetched.",
         retry: true,
       };
     }
@@ -513,17 +505,17 @@
       return {
         state: "fetch_failed",
         title: `Commit not fetched · fetched ${age}`,
-        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${OUTCOME_DETAIL[outcome.outcome] ?? OUTCOME_DETAIL.failed}`,
+        detail: OUTCOME_DETAIL[outcome.outcome] ?? OUTCOME_DETAIL.failed,
         retry: true,
       };
     }
-    if (refused !== "") {
+    if (refused) {
       // The branches and tags were fetched; the pull request's head, which may be the
       // commit, was not.
       return {
         state: "fetch_failed",
         title: `Commit not fetched · fetched ${age}`,
-        detail: `${MISSING_COMMIT_DETAIL.fetch_failed}${refused}`,
+        detail: MISSING_COMMIT_DETAIL.pull_refused,
         retry: true,
       };
     }
@@ -1009,8 +1001,13 @@
             pullRefresh: typeof answer.pull_refresh === "string" ? answer.pull_refresh : null,
           };
         } else if (!options.own) {
-          const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
-          error = said === null ? "The refresh could not be started." : `Refresh refused: ${said}.`;
+          // The answer's own words are the agent's (`metab --api`); its code says
+          // whether waiting would help.
+          const code = answer !== null && "code" in answer ? answer.code : null;
+          error =
+            code === "too_many"
+              ? "Other refreshes are running. Try again shortly."
+              : "The refresh could not be started.";
         }
       } catch {
         if (!options.own) {
@@ -1167,11 +1164,7 @@
       parts.push(model.label);
     }
     if (model.offer !== null) {
-      parts.push(
-        model.offer.kind === "switch"
-          ? `${model.offer.text} ${model.offer.commit}`
-          : model.offer.text,
-      );
+      parts.push(model.offer.text);
     }
     if (model.error !== null) {
       parts.push(model.error.replace(/\.$/, ""));
@@ -1232,12 +1225,6 @@
       offer.className = "source-freshness-offer";
       const text = document.createElement("span");
       text.textContent = model.offer.text;
-      if (model.offer.kind === "switch") {
-        const commit = document.createElement("span");
-        commit.className = "git-commit-sha";
-        commit.textContent = model.offer.commit;
-        text.append(" ", commit);
-      }
       const button = document.createElement("button");
       button.type = "button";
       button.className = "btn source-freshness-accept";

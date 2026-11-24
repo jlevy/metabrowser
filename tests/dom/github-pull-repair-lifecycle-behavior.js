@@ -222,7 +222,7 @@ async function history() {
       assert.equal(run.mounted[1].right, "e".repeat(40), "route return follows the newer head");
       assert.match(
         run.container.textContent,
-        /The pull request’s head moved from .+ to .+Show the earlier changes/,
+        /Changes now show this pull request’s newer commits\. Show the earlier changes/,
       );
     }
     if (outcome === "pending") {

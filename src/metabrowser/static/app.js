@@ -1107,8 +1107,9 @@ async function loadTree(options = {}) {
       renderInitialTreeRows();
 
       /** Replace whatever is on screen with a failure the reader can act on. */
-      function failTree(reason) {
-        console.warn(`loadTree: ${reason}`);
+      /** @param {unknown} cause What failed, for the console; the page says only that it did. */
+      function failTree(cause) {
+        console.warn("loadTree: could not load the tree", cause);
         const treeEl = document.getElementById("tree-content");
         if (treeEl) {
           treeEl.innerHTML =
@@ -1121,7 +1122,7 @@ async function loadTree(options = {}) {
       try {
         resp = await fetch(treeUrl(""));
         if (!resp.ok) {
-          failTree(`HTTP ${resp.status}`);
+          failTree({ status: resp.status });
           return;
         }
         data = await _perf.measureAsync(
@@ -1133,7 +1134,7 @@ async function loadTree(options = {}) {
         // A throw lands here as a non-ok status does: the inline rows are already
         // painted, so a dropped connection or a malformed body would otherwise leave a tree
         // that appears complete with no chrome, no counts, and no error.
-        failTree(String(error));
+        failTree(error);
         return;
       }
       observeFileAges(data.ages);
@@ -1381,7 +1382,7 @@ async function loadGroupedTreeInner(state, load) {
     // A refresh that fails keeps the sections on screen; its pacing retries it with a
     // backoff (requestGroupedRefresh). A first load has nothing to keep.
     if (owns() && !preserve) {
-      failGroupedTree(String(error));
+      failGroupedTree(error);
     }
     return false;
   }
@@ -1550,8 +1551,9 @@ function groupingRowPrefetchUrl(row) {
   );
 }
 
-function failGroupedTree(reason) {
-  console.warn(`loadGroupedTree: ${reason}`);
+/** @param {unknown} cause What failed, for the console; the page says only that it did. */
+function failGroupedTree(cause) {
+  console.warn("loadGroupedTree: could not load the groups", cause);
   var panel = document.getElementById("tab-files");
   if (panel) {
     panel.innerHTML =
@@ -2801,16 +2803,15 @@ function responseErrorDetail(body) {
   var text = String(body || "").trim();
   if (text) {
     try {
-      var parsed = JSON.parse(text);
-      var detail = parsed?.error || parsed?.detail;
-      if (typeof detail === "string" && detail.trim()) {
-        return detail.trim();
+      // The answer's `error` is its reader sentence; `detail` is the agent's, and a
+      // plain-text body is a proxy's or a framework's, so neither is shown
+      // (docs/design-system-messages.md, "Where the Detail Goes").
+      var said = JSON.parse(text)?.error;
+      if (typeof said === "string" && said.trim()) {
+        return said.trim();
       }
     } catch (_error) {
-      // A plain-text response is already suitable for the preview message.
-    }
-    if (text.length <= 400) {
-      return text;
+      // Not JSON: the fixed sentence below says it.
     }
   }
   return "The server could not complete the request.";
