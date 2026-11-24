@@ -271,12 +271,17 @@ def test_every_surface_shows_what_its_policy_admits_and_links_to_the_pdf() -> No
             # A view never draws a viewer its page's policy would leave blank.
             if seen["shows"] == "viewer":
                 assert seen["policyAdmitsViewer"] is True, label
-            # Every action reaches an answer, and a real PDF's is the PDF.
+            # A text file named like a PDF is text, not a viewer showing an error.
+            if name == "notes/not-really.pdf":
+                assert seen["kind"] == "text", label
+                assert seen["shows"] == "another view", label
+                continue
+            # Every other file is a PDF, and every action reaches the PDF.
+            assert seen["kind"] == "pdf", label
             for action in seen["actions"]:
                 assert action["answer"]["status"] == 200, label
-                if name != "notes/not-really.pdf":
-                    assert action["answer"]["type"] == "application/pdf", label
-                    assert action["answer"]["head"].startswith("%PDF-"), label
+                assert action["answer"]["type"] == "application/pdf", label
+                assert action["answer"]["head"].startswith("%PDF-"), label
     shows = {
         (surface["surface"], surface["host"]): surface["files"]["papers/report.pdf"]["shows"]
         for surface in surfaces

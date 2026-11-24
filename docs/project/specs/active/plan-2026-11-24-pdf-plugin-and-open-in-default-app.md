@@ -357,7 +357,7 @@ Ready now:
   `--plugin NAME` show each list.
   Which packages are plugin-only is the check’s answer, not the CLI’s: telling needs
   every core import, which a source check reads and an installed `metab` should not.
-- [ ] Claim by bytes and no viewer in a diff (`mb-d00o`): the `.pdf` rule requires
+- [x] Claim by bytes and no viewer in a diff (`mb-d00o`): the `.pdf` rule requires
   `%PDF-`, and the surfaces session asserts a mounted diff holds no `<embed>`,
   `<object>`, or `<iframe>`
 - [ ] The app (`mb-0fwu`): a pin’s copy named with the extension of its served type, and

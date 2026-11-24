@@ -1,7 +1,9 @@
 """``magic`` kind rules: a binary format claimed by the bytes it starts with.
 
-A magic rule matches only where a file would otherwise be ``binary``, whatever its name,
-on the bytes on disk; ``ext`` or ``exts`` beside it decide only the tree's chevron. The
+A magic rule matches where a file would otherwise be ``binary``, whatever its name, on the
+bytes on disk; ``ext`` or ``exts`` beside it decide the tree's chevron, and also claim a
+file with one of those extensions that sniffs as text when its leading bytes hold the
+magic, as an ASCII PDF named ``.pdf`` is. The
 classification sites are pinned end to end by ``tests/golden/cli-api-sqlite.tryscript.md``
 (a served folder) and ``tests/test_sqlite_pin.py`` (a Git pin).
 """
@@ -59,6 +61,37 @@ def test_a_magic_rule_never_matches_by_its_extensions() -> None:
     classify = build_classifier(rules)
     assert classify(FileContext(Path("/nowhere/app.db"), ".db")) is None
     assert classify_identity(rules, ext=".db", basename="app.db") is None
+
+
+PDF_HEX = b"%PDF-".hex()
+
+
+def test_a_magic_rule_claims_a_text_file_with_its_extension_by_its_bytes(
+    tmp_path: Path,
+) -> None:
+    rules = _rules(("pdf", {"magic": {"hex": PDF_HEX}, "exts": [".pdf"]}, 0))
+    classify = build_classifier(rules)
+    ascii_pdf = tmp_path / "ascii.pdf"
+    ascii_pdf.write_bytes(b"%PDF-1.4\n1 0 obj << >> endobj\n")
+    not_a_pdf = tmp_path / "not-really.pdf"
+    not_a_pdf.write_bytes(b"just some notes\n")
+    renamed = tmp_path / "ascii.txt"
+    renamed.write_bytes(ascii_pdf.read_bytes())
+    assert classify(FileContext(ascii_pdf, ".pdf")) == "pdf"
+    assert classify(FileContext(not_a_pdf, ".pdf")) is None
+    assert classify(FileContext(renamed, ".txt")) is None
+    head = ascii_pdf.read_bytes()
+    assert classify_identity(rules, ext=".pdf", basename="a.pdf", prefix=head) == "pdf"
+    assert classify_identity(rules, ext=".pdf", basename="a.pdf", prefix=b"notes") is None
+    assert classify_identity(rules, ext=".txt", basename="a.txt", prefix=head) is None
+
+
+def test_a_magic_rule_without_an_extension_never_claims_a_text_file(tmp_path: Path) -> None:
+    rules = _rules(("pdf", {"magic": {"hex": PDF_HEX}}, 0))
+    ascii_pdf = tmp_path / "ascii.pdf"
+    ascii_pdf.write_bytes(b"%PDF-1.4\n")
+    assert build_classifier(rules)(FileContext(ascii_pdf, ".pdf")) is None
+    assert classify_identity(rules, ext=".pdf", basename="a.pdf", prefix=b"%PDF-1.4") is None
 
 
 def test_priority_then_discovery_order_decides_between_magic_rules() -> None:

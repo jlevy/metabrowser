@@ -186,7 +186,9 @@ class KindMatch(BaseModel):
         description=(
             "Match a file that would otherwise be `binary` whose bytes on disk hold these "
             "bytes at this offset, whatever its name. Only `ext` or `exts` may be set "
-            "beside it, and they decide only the tree's container chevron."
+            "beside it: they decide the tree's container chevron, and a file with one of "
+            "those extensions that sniffs as text is also matched when its leading bytes "
+            "hold these, as an ASCII PDF named `.pdf` is."
         ),
     )
 
@@ -653,7 +655,7 @@ class PluginManifest(BaseModel):
                 if beside:
                     problems.append(
                         f"kind '{kr.id}' sets match.magic with {', '.join(beside)}; a magic "
-                        "rule takes only ext or exts, which decide the tree's chevron"
+                        "rule takes only ext or exts"
                     )
             # yaml_value_prefix is only meaningful paired with yaml_has_key
             # (mirrors the json pair).

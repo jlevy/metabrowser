@@ -244,9 +244,13 @@ A `magic` rule claims a binary format by the bytes it starts with, whatever the 
 called: every file that would otherwise be `binary` is checked against every magic rule,
 so a SQLite database named `History` is SQLite.
 It takes only `ext` or `exts` beside it, which decide the tree’s container chevron and
-do not narrow the match, and its bytes must end within the sniff prefix (`MAGIC_MAX_END`
-in `src/metabrowser/plugin_loader/manifest.py`). It is checked on the bytes on disk, so
-a compressed file keeps its kind:
+do not narrow the match for a binary file, and its bytes must end within the sniff
+prefix (`MAGIC_MAX_END` in `src/metabrowser/plugin_loader/manifest.py`). It is checked
+on the bytes on disk, so a compressed file keeps its kind.
+A file with one of those extensions that sniffs as text is claimed too, but only when
+its leading bytes hold the magic: an ASCII PDF named `.pdf` is a PDF, and a text file
+named `.pdf` is text.
+A magic rule with no extension never claims a text file.
 
 ```toml
 [[kind]]

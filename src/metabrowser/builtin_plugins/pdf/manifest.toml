@@ -4,21 +4,14 @@ display_name = "PDF"
 version = "0.0.1"
 sdk_version = "0.8"
 
-# A PDF, by its bytes or its name. Rules with one id combine with OR.
-#
-# The magic rule claims any file that starts with "%PDF-" (the hex below) and sniffs as
-# binary, whatever it is named. A magic rule is read only for a binary prefix, and a PDF
-# whose first 8 KiB is plain ASCII (no binary comment, uncompressed objects) sniffs as
-# text, so the extension rule claims a `.pdf` whatever its prefix. A `.pdf` that is not
-# a PDF is still this kind; the browser's viewer then says it cannot show it.
+# A PDF, by its bytes. The magic rule claims any file that starts with "%PDF-" (the hex
+# below) and sniffs as binary, whatever it is named. A PDF whose first 8 KiB is plain
+# ASCII (no binary comment, uncompressed objects) sniffs as text, and the extension
+# beside the magic claims it then: a `.pdf` that sniffs as text is a PDF only when it
+# starts with "%PDF-". A text file named `.pdf` is text, not a viewer showing an error.
 [[kind]]
 id = "pdf"
-match = { magic = { offset = 0, hex = "255044462d" } }
-priority = 0
-
-[[kind]]
-id = "pdf"
-match = { exts = [".pdf"] }
+match = { magic = { offset = 0, hex = "255044462d" }, exts = [".pdf"] }
 priority = 0
 
 # The PDF in the host's own viewer, with Open, Download, and Open in new tab as the host

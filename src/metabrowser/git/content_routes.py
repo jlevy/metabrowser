@@ -329,6 +329,7 @@ def _plugin_kind_for_git_path(
     json_top_level: dict[str, Any] | None = None,
     yaml_top_level: dict[str, Any] | None = None,
     frontmatter: dict[str, Any] | None = None,
+    prefix: bytes | None = None,
 ) -> str | None:
     from metabrowser.plugin_loader.classify import classify_identity
     from metabrowser.server import _PLUGIN_KIND_RULES
@@ -341,6 +342,7 @@ def _plugin_kind_for_git_path(
         json_top_level=json_top_level,
         yaml_top_level=yaml_top_level,
         frontmatter=frontmatter,
+        prefix=prefix,
     )
 
 
@@ -2058,6 +2060,7 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
         json_top_level=json_top,
         yaml_top_level=yaml_top,
         frontmatter=frontmatter,
+        prefix=body[:SNIFF_PREFIX_BYTES],
     ) or (classify_by_ext(ext) if ext else "text")
     payload.update(
         {
@@ -2140,6 +2143,7 @@ async def _windowed_blob_file_response(
         json_top_level=json_top,
         yaml_top_level=yaml_top,
         frontmatter=frontmatter,
+        prefix=head[:SNIFF_PREFIX_BYTES],
     ) or (classify_by_ext(ext) if ext else "text")
     payload.update(
         {

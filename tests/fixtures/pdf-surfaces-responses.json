@@ -75,11 +75,11 @@
       "notes/not-really.pdf": {
         "file": {
           "path": "notes/not-really.pdf",
-          "kind": "pdf",
+          "kind": "text",
           "views": [
             {
-              "id": "preview",
-              "label": "PDF",
+              "id": "source",
+              "label": "Source",
               "default": true
             }
           ]
@@ -171,11 +171,11 @@
       "notes/not-really.pdf": {
         "file": {
           "path": "notes/not-really.pdf",
-          "kind": "pdf",
+          "kind": "text",
           "views": [
             {
-              "id": "preview",
-              "label": "PDF",
+              "id": "source",
+              "label": "Source",
               "default": true
             }
           ]
@@ -267,11 +267,11 @@
       "notes/not-really.pdf": {
         "file": {
           "path": "g1-bm90ZXM/g1-bm90LXJlYWxseS5wZGY",
-          "kind": "pdf",
+          "kind": "text",
           "views": [
             {
-              "id": "preview",
-              "label": "PDF",
+              "id": "source",
+              "label": "Source",
               "default": true
             }
           ]

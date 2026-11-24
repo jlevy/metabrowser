@@ -379,6 +379,14 @@ async function comparison() {
       body: notice ? notice.reads() : "text diff",
     });
   }
+  // A heavy diff must not grow a PDF viewer per changed PDF: no element the diff drew,
+  // and no markup it wrote, is an embed, object, or iframe.
+  const viewers = [...host.walk()].filter(
+    (node) =>
+      ["EMBED", "OBJECT", "IFRAME"].includes(node.tagName) ||
+      /<(embed|object|iframe)\b/i.test(node.innerHTML),
+  );
+  assert(viewers.length === 0, `the diff drew a viewer: ${viewers.map((node) => node.tagName)}`);
   handle.dispose();
   return changes;
 }
@@ -393,13 +401,17 @@ async function comparison() {
       const actions = (file.actions ?? [])
         .map((action) => `${action.label} → ${action.answer?.status} ${action.answer?.type}`)
         .join("; ");
-      return `${surface.surface} · ${surface.host} · ${name}: ${file.shows}. ${actions}`;
+      const after = file.actions ? `. ${actions}` : ` (${file.kind}, the ${file.view} view)`;
+      return `${surface.surface} · ${surface.host} · ${name}: ${file.shows}${after}`;
     }),
   );
   const changed = pinComparison.map(
     (change) => `diff · ${change.change} ${change.path}: ${change.body}`,
   );
-  console.log(JSON.stringify({ seen: [...seen, ...changed], surfaces, pinComparison }, null, 2));
+  const noViewer = "diff · draws no embed, object, or iframe";
+  console.log(
+    JSON.stringify({ seen: [...seen, ...changed, noViewer], surfaces, pinComparison }, null, 2),
+  );
 })().catch((error) => {
   console.error(error);
   process.exit(1);

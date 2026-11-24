@@ -31,16 +31,20 @@ draws.
   `/raw` takes a type from a file’s leading bytes when its name gives none
   (`content_sniff.media_type_from_prefix`); with `nosniff` a browser would otherwise
   download it.
+- **`another view`:** a file the `pdf` plugin does not claim, with its kind and view.
+  A text file named `.pdf` is text: the plugin claims a `.pdf` that sniffs as text only
+  when it starts with `%PDF-`, so the reader gets its source, not a viewer that cannot
+  open it.
 - **`diff`:** a comparison shows a PDF as Git diffs it.
   A binary PDF says “Binary file; no textual diff.”, as GitHub’s Files changed does, and
   an all-ASCII one is a text diff.
   Its own view is the file bar’s View file, pinned in
   `cli-ui-diff-view-file.tryscript.md`.
 
-A `.pdf` that is not a PDF is still drawn as one, since the `pdf` plugin claims the
-name, and the browser’s viewer says it cannot open it.
-In the app, Open on the extensionless PDF reaches the app’s type check, which reads a
-file by its name and refuses it.
+A diff draws no PDF viewer at all, so a heavy comparison never grows one per changed
+PDF: the last line says the mounted diff holds no embed, object, or iframe, which the
+session asserts. In the app, Open on the extensionless PDF reaches the app’s type check,
+which reads a file by its name and refuses it.
 The browser’s painting of a PDF is Chrome’s (`tests/test_pdf_preview_chrome.py`).
 
 ```console
@@ -50,32 +54,33 @@ $ node tests/dom/pdf-surfaces-session.js
     "folder · browser · papers/report.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
     "folder · browser · papers/ascii.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
     "folder · browser · scans/untitled: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "folder · browser · notes/not-really.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "folder · browser · notes/not-really.pdf: another view (text, the source view)",
     "folder · app · papers/report.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
     "folder · app · papers/ascii.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
     "folder · app · scans/untitled: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
-    "folder · app · notes/not-really.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
+    "folder · app · notes/not-really.pdf: another view (text, the source view)",
     "folderUntrusted · browser · papers/report.pdf: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
     "folderUntrusted · browser · papers/ascii.pdf: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
     "folderUntrusted · browser · scans/untitled: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "folderUntrusted · browser · notes/not-really.pdf: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "folderUntrusted · browser · notes/not-really.pdf: another view (text, the source view)",
     "folderUntrusted · app · papers/report.pdf: note. Open → 200 application/pdf; Download → 200 application/pdf",
     "folderUntrusted · app · papers/ascii.pdf: note. Open → 200 application/pdf; Download → 200 application/pdf",
     "folderUntrusted · app · scans/untitled: note. Open → 200 application/pdf; Download → 200 application/pdf",
-    "folderUntrusted · app · notes/not-really.pdf: note. Open → 200 application/pdf; Download → 200 application/pdf",
+    "folderUntrusted · app · notes/not-really.pdf: another view (text, the source view)",
     "pin · browser · papers/report.pdf: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
     "pin · browser · papers/ascii.pdf: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
     "pin · browser · scans/untitled: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "pin · browser · notes/not-really.pdf: note. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "pin · browser · notes/not-really.pdf: another view (text, the source view)",
     "pin · app · papers/report.pdf: note. Open → 200 application/pdf; Download → 200 application/pdf",
     "pin · app · papers/ascii.pdf: note. Open → 200 application/pdf; Download → 200 application/pdf",
     "pin · app · scans/untitled: note. Open → 200 application/pdf; Download → 200 application/pdf",
-    "pin · app · notes/not-really.pdf: note. Open → 200 application/pdf; Download → 200 application/pdf",
+    "pin · app · notes/not-really.pdf: another view (text, the source view)",
     "diff · modified README.md: text diff",
     "diff · added notes/not-really.pdf: text diff",
     "diff · added papers/ascii.pdf: text diff",
     "diff · added papers/report.pdf: Binary file; no textual diff.",
-    "diff · added scans/untitled: Binary file; no textual diff."
+    "diff · added scans/untitled: Binary file; no textual diff.",
+    "diff · draws no embed, object, or iframe"
   ],
   "surfaces": [
     {
@@ -172,32 +177,9 @@ $ node tests/dom/pdf-surfaces-session.js
           ]
         },
         "notes/not-really.pdf": {
-          "kind": "pdf",
-          "view": "preview",
-          "shows": "viewer",
-          "policyAdmitsViewer": true,
-          "actions": [
-            {
-              "label": "Download",
-              "href": "/raw?path=notes%2Fnot-really.pdf",
-              "download": "not-really.pdf",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            },
-            {
-              "label": "Open in new tab",
-              "href": "/raw?path=notes%2Fnot-really.pdf",
-              "target": "_blank",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            }
-          ]
+          "kind": "text",
+          "view": "source",
+          "shows": "another view"
         }
       }
     },
@@ -298,33 +280,9 @@ $ node tests/dom/pdf-surfaces-session.js
           ]
         },
         "notes/not-really.pdf": {
-          "kind": "pdf",
-          "view": "preview",
-          "shows": "viewer",
-          "policyAdmitsViewer": true,
-          "actions": [
-            {
-              "label": "Open",
-              "href": "/raw?path=notes%2Fnot-really.pdf",
-              "download": "not-really.pdf",
-              "opensInApp": "filesystem",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            },
-            {
-              "label": "Download",
-              "href": "/raw?path=notes%2Fnot-really.pdf",
-              "download": "not-really.pdf",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            }
-          ]
+          "kind": "text",
+          "view": "source",
+          "shows": "another view"
         }
       }
     },
@@ -422,32 +380,9 @@ $ node tests/dom/pdf-surfaces-session.js
           ]
         },
         "notes/not-really.pdf": {
-          "kind": "pdf",
-          "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open in new tab shows this one.",
-          "actions": [
-            {
-              "label": "Download",
-              "href": "/raw?path=notes%2Fnot-really.pdf",
-              "download": "not-really.pdf",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            },
-            {
-              "label": "Open in new tab",
-              "href": "/raw?path=notes%2Fnot-really.pdf",
-              "target": "_blank",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            }
-          ]
+          "kind": "text",
+          "view": "source",
+          "shows": "another view"
         }
       }
     },
@@ -548,33 +483,9 @@ $ node tests/dom/pdf-surfaces-session.js
           ]
         },
         "notes/not-really.pdf": {
-          "kind": "pdf",
-          "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open shows this one.",
-          "actions": [
-            {
-              "label": "Open",
-              "href": "/raw?path=notes%2Fnot-really.pdf",
-              "download": "not-really.pdf",
-              "opensInApp": "filesystem",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            },
-            {
-              "label": "Download",
-              "href": "/raw?path=notes%2Fnot-really.pdf",
-              "download": "not-really.pdf",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            }
-          ]
+          "kind": "text",
+          "view": "source",
+          "shows": "another view"
         }
       }
     },
@@ -672,32 +583,9 @@ $ node tests/dom/pdf-surfaces-session.js
           ]
         },
         "notes/not-really.pdf": {
-          "kind": "pdf",
-          "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open in new tab shows this one.",
-          "actions": [
-            {
-              "label": "Download",
-              "href": "/raw?path=g1-bm90ZXM%2Fg1-bm90LXJlYWxseS5wZGY",
-              "download": "not-really.pdf",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            },
-            {
-              "label": "Open in new tab",
-              "href": "/raw?path=g1-bm90ZXM%2Fg1-bm90LXJlYWxseS5wZGY",
-              "target": "_blank",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            }
-          ]
+          "kind": "text",
+          "view": "source",
+          "shows": "another view"
         }
       }
     },
@@ -798,33 +686,9 @@ $ node tests/dom/pdf-surfaces-session.js
           ]
         },
         "notes/not-really.pdf": {
-          "kind": "pdf",
-          "view": "preview",
-          "shows": "note",
-          "note": "This source is untrusted, so its PDFs are not shown inline. Open shows this one.",
-          "actions": [
-            {
-              "label": "Open",
-              "href": "/raw?path=g1-bm90ZXM%2Fg1-bm90LXJlYWxseS5wZGY",
-              "download": "not-really.pdf",
-              "opensInApp": "git_revision",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            },
-            {
-              "label": "Download",
-              "href": "/raw?path=g1-bm90ZXM%2Fg1-bm90LXJlYWxseS5wZGY",
-              "download": "not-really.pdf",
-              "answer": {
-                "status": 200,
-                "type": "application/pdf",
-                "head": "a text f"
-              }
-            }
-          ]
+          "kind": "text",
+          "view": "source",
+          "shows": "another view"
         }
       }
     }
