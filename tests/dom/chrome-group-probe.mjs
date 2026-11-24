@@ -44,15 +44,23 @@ function snapshot() {
 // Helpers start as the page needs them; give them a moment to.
 const settle = () => new Promise((resolve) => setTimeout(resolve, 1500));
 const snapshots = {};
+// Each step's end, in seconds since the start, on stderr: a run stopped at the test's
+// bound has printed nothing else, and this says where it was.
+const began = Date.now();
+/** @param {string} step */
+const done = (step) => console.error(`${((Date.now() - began) / 1000).toFixed(2)} s ${step}`);
 
 const session = await launchChrome(bin, { profiles });
+done("chrome-session started");
 try {
   await session.send("Page.navigate", { url: PAGE });
   await session.waitFor(`document.readyState === "complete"`);
   await settle();
   snapshots["chrome-session"] = snapshot();
+  done("chrome-session listed");
 } finally {
   await session.close();
+  done("chrome-session closed");
 }
 
 const recorderProfile = fs.mkdtempSync(path.join(profiles, "recorder-"));
@@ -60,12 +68,15 @@ const browser = await launchBrowser({
   profileDir: recorderProfile,
   extraArgs: process.platform === "linux" ? ["--no-sandbox"] : [],
 });
+done("launchBrowser started");
 try {
   await browser.page.send("Page.navigate", { url: PAGE });
   await settle();
   snapshots.launchBrowser = snapshot();
+  done("launchBrowser listed");
 } finally {
   await browser.close();
+  done("launchBrowser closed");
 }
 process.stdout.write(`${JSON.stringify({ node: process.pid, snapshots })}\n`, () =>
   process.exit(0),

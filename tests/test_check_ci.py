@@ -591,6 +591,41 @@ def test_every_checkout_drops_its_credentials(tmp_path: Path) -> None:
     assert errors == ["other.yml job job must check out with persist-credentials: false"]
 
 
+LINUX_UV_SHA256 = "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
+INSTALL_UV_STEP = f"      - name: Install uv\n        run: bash devtools/install_uv.sh 0.11.26 {LINUX_UV_SHA256}\n"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "version"),
+    [
+        pytest.param(INSTALL_UV_STEP + "\n", "", "0.11.26", id="dropped"),
+        pytest.param(
+            INSTALL_UV_STEP + "\n",
+            INSTALL_UV_STEP + "\n      - name: Between\n        run: true\n\n",
+            "0.11.26",
+            id="not-just-before",
+        ),
+        # setup-uv moved on to a release the step before it does not install.
+        pytest.param(
+            '          version: "0.11.26"\n',
+            '          version: "0.11.27"\n',
+            "0.11.27",
+            id="another-version",
+        ),
+    ],
+)
+def test_every_setup_uv_follows_the_install_of_its_own_uv(
+    tmp_path: Path, old: str, new: str, version: str
+) -> None:
+    """Without it setup-uv fetches its manifest once, with a fixed 5 s limit, and can fail."""
+
+    wanted = f"bash devtools/install_uv.sh {version} {LINUX_UV_SHA256}"
+
+    assert _errors(tmp_path, old, new) == (
+        f"ci.yml job lint must run `{wanted}` just before setup-uv"
+    )
+
+
 @pytest.mark.parametrize(
     "expression", ["github.event.pull_request.title", "github.head_ref", "github.event.issue.body"]
 )

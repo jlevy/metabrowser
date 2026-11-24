@@ -14,6 +14,8 @@ on:
       - "apps/macos/**"
       - "Makefile"
       - ".github/workflows/macos-app.yml"
+      # The script that installs uv here, whose macOS branch no other workflow runs.
+      - "devtools/install_uv.sh"
       # The shared Lucide notice copied into the signed app bundle.
       - "src/metabrowser/static/source-kind-glyphs.license.txt"
       # metab's half of handing the app a target, whose LaunchServices lookup runs here.
@@ -27,6 +29,8 @@ on:
       - "apps/macos/**"
       - "Makefile"
       - ".github/workflows/macos-app.yml"
+      # The script that installs uv here, whose macOS branch no other workflow runs.
+      - "devtools/install_uv.sh"
       # The shared Lucide notice copied into the signed app bundle.
       - "src/metabrowser/static/source-kind-glyphs.license.txt"
       # metab's half of handing the app a target, whose LaunchServices lookup runs here.
@@ -92,12 +96,18 @@ jobs:
           swift --version
           test "$(xcodebuild -version | head -n 1)" = "Xcode $XCODE"
 
+      # setup-uv fetches a manifest once, with a fixed 5 s limit, even for a pinned version,
+      # and a slow answer failed the job; it fetches nothing when the pinned uv is already in
+      # the tool cache, where this step puts it with retries (devtools/install_uv.sh).
+      # uv-aarch64-apple-darwin.tar.gz for 0.11.26: both runners are Apple silicon. ci.yml
+      # pins the Linux x86_64 archive's checksum, which does not match here.
       - name: Install uv
+        run: bash devtools/install_uv.sh 0.11.26 8f7fbf1708399b921857bce71e1d60f0d3ccf52a30caebc1c1a2f175dce13ab6
+
+      - name: Set up uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: "0.11.26"
-          # uv-aarch64-apple-darwin.tar.gz for 0.11.26: both runners are Apple silicon. ci.yml pins
-          # the Linux x86_64 archive's checksum, which does not match here.
           checksum: "8f7fbf1708399b921857bce71e1d60f0d3ccf52a30caebc1c1a2f175dce13ab6"
           enable-cache: true
           python-version: "3.13"
