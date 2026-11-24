@@ -5,11 +5,13 @@ title: "Docs tab mounts a large new Markdown document whole: #31 of investment-r
 kind: bug
 status: open
 priority: 1
-version: 1
+version: 2
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m87zs9sbky91edkksae1vbdt
 created_at: 2026-11-24T23:38:29.940Z
-updated_at: 2026-11-24T23:38:29.940Z
+updated_at: 2026-11-24T23:55:58.231Z
 ---
 Measured 2026-11-24, runtime 19cd5a41 (main dcb9f32), headless Chrome 1280x900, finterm-ai/investment-research PR 31 (one new 876,516-byte Markdown book, 17,177 lines; 13 files).
 
