@@ -269,6 +269,11 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 # until ensureAsset("chart") has loaded Chart.js, whose bundle holds static/charts.js, so
 # they moved there, 665 bytes of plugin-sdk.js as the server compresses it. With the
 # table's types and its kind-to-plugin check restored the shell is 225,192 bytes, 599 under.
+# Measured with it on 2026-11-24: `metabrowser.capabilities()` and `metabrowser.host`
+# (the PDF plugin, mb-df0r) put the folder's shell at 226,017 bytes, 226 over, against
+# main's 225,777 at 862b960c6, 14 under, with their comments already moved to types.d.ts.
+# Only a view reads them and every view mounts through the compositor, so they moved to
+# static/view-composition.js, an on-demand bundle, and the shell is back at 225,777.
 [metrics.startup_script_transfer_kb]
 category = "loading"
 maximum = 220

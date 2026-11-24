@@ -25,6 +25,7 @@ import re
 import tomllib
 from pathlib import Path
 from typing import Any, cast, get_args
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -329,6 +330,66 @@ def test_the_link_the_apps_script_takes_is_the_one_the_page_marks() -> None:
     assert link["tag"] == tag
     assert link["href"].startswith("https://github.com/")
     assert (link["target"], link["rel"]) == ("_blank", "noopener")
+
+
+def _marked(transcript: object, attribute: str) -> list[dict[str, Any]]:
+    """Every element of a session's transcript, as ``{tag, attributes}``, that carries
+    *attribute*, wherever in the transcript it is."""
+
+    found: list[dict[str, Any]] = []
+    if isinstance(transcript, dict):
+        element = cast("dict[str, Any]", transcript)
+        attributes = element.get("attributes")
+        if isinstance(attributes, dict) and attribute in attributes:
+            found.append(element)
+        for value in element.values():
+            found += _marked(value, attribute)
+    elif isinstance(transcript, list):
+        for value in cast("list[object]", transcript):
+            found += _marked(value, attribute)
+    return found
+
+
+def test_the_link_the_apps_open_file_script_takes_is_the_one_the_pdf_plugin_marks() -> None:
+    """``OpenFileRequests.attribute`` marks the ``pdf`` plugin's Open link, and its
+    ``action`` is the one the plugin asks the host descriptor about.
+
+    The app's user script takes a plain click on an ``a`` with that attribute, reads the
+    attribute's value as the link's subject and its ``download`` as the file's name, and
+    accepts only an ``href`` to ``/raw`` with one ``path``, which for ``filesystem`` it
+    resolves under the folder. The plugin draws the link only when the descriptor the app
+    defines names the action. So both are copies of the plugin's: renamed on one side
+    alone, Open would vanish from the app, or download through the save panel, with
+    every test of either side green.
+    """
+
+    attribute = _swift_value("Web/OpenFileRequests.swift", "attribute").strip('"')
+    action = _swift_value("Web/OpenFileRequests.swift", "action").strip('"')
+    source = (SHELL_CORE / "Web/OpenFileRequests.swift").read_text(encoding="utf-8")
+    subjects_block = re.search(r"enum Subject\b[^{]*\{(.*?)\n\s*\}", source, re.DOTALL)
+    assert subjects_block, "no `enum Subject` in OpenFileRequests.swift"
+    subjects = set(re.findall(r'case \w+ = "(\w+)"', subjects_block.group(1)))
+    assert subjects == {"filesystem", "git_revision"}, f"Request.Subject read as {subjects}"
+
+    plugin = (PYPROJECT.parent / "src/metabrowser/builtin_plugins/pdf/index.js").read_text(
+        encoding="utf-8"
+    )
+    assert re.search(rf'\bOPEN_FILE_MARKER = "{re.escape(attribute)}";', plugin)
+    assert re.search(rf'\bOPEN_FILE_ACTION = "{re.escape(action)}";', plugin)
+
+    marked = _marked(run_session("pdf-preview-session.js"), attribute)
+    assert {element["attributes"][attribute] for element in marked} == subjects
+    for element in marked:
+        assert element["tag"] == "a"
+        link = element["attributes"]
+        name = link["download"]
+        assert name and "/" not in name and name not in {".", ".."}, name
+        href = urlsplit(link["href"])
+        paths = parse_qs(href.query).get("path", [])
+        assert href.path == "/raw" and len(paths) == 1 and paths[0], link["href"]
+        if link[attribute] == "filesystem":
+            parts = paths[0].split("/")
+            assert not paths[0].startswith("/") and not {"", ".", ".."} & set(parts), paths[0]
 
 
 def _swift_samples(name: str, enum: str) -> set[str]:

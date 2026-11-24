@@ -45,6 +45,37 @@ trust bypass, and a link sent to the macOS app that runs, clones, or reaches any
 its [trust boundary](docs/project/architecture/arch-macos-app.md#the-trust-boundary)
 does not allow.
 
+## What Metabrowser Defends Against
+
+The [threat model](docs/project/architecture/arch-threat-model.md) lists every threat
+with the policy that answers it, the test that holds the policy, and the risk that
+remains. In short, Metabrowser defends:
+
+- **Against the author of what you browse.** A file in a folder, a repository opened
+  from its URL, or a pull request cannot run script in Metabrowser’s page, reach its
+  `/api`, read files outside the served root, or make Git run a program.
+  Every repository from a URL is untrusted, and `--untrusted` makes a folder so.
+- **Against websites.** Another site cannot read Metabrowser’s answers or change its
+  state through your browser, even by pointing its own domain at your machine.
+- **Against slow or hostile files.** Every read is bounded, and the parsers that can run
+  long run in processes Metabrowser can stop.
+- **Against other accounts on your machine.** Its cache and state refuse directories
+  another account could write.
+
+It does not defend against code you install: a plugin runs in the page and, if installed
+as a package, in the server.
+And it is not a network service: anyone who can reach a server you bound to another
+interface can read every file under its root.
+
+### Accepted Risks
+
+- **A trusted folder is yours.** Its Markdown renders richly and an HTML file’s preview
+  runs its scripts, in a sandbox that keeps them from Metabrowser’s page and API. Serve
+  a folder you did not write with `--untrusted`.
+- **The macOS app opens files in their default app.** Open hands a PDF, image, or media
+  file to the app macOS assigns its type; a copy from a repository or pull request is
+  quarantined and read-only first, so Gatekeeper still judges it.
+
 ## Trust Settings
 
 **Host names.** Every request’s `Host` header is checked against an allowlist, which

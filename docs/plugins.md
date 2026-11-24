@@ -174,6 +174,7 @@ The `[plugin]` table supports:
 | `extra_scripts` | no | Plain JavaScript filenames loaded before `index.js`. |
 | `extra_styles` | no | Plain CSS filenames loaded before the plugin’s selected-kind renderer mounts. |
 | `requires` | no | Names of the plugins whose exports this plugin loads with `mb.plugins.load`, and `table` for a plugin with a `[[table_source]]`; see [Declared Dependencies](#declared-dependencies). |
+| `python_requires` | no | The third-party Python distributions the plugin’s Python code imports, by distribution name (`pyyaml`, not `yaml`); see [Python Dependencies](#python-dependencies). |
 
 Extra asset entries may not contain slashes, traversal segments, or a leading dot.
 
@@ -243,9 +244,13 @@ A `magic` rule claims a binary format by the bytes it starts with, whatever the 
 called: every file that would otherwise be `binary` is checked against every magic rule,
 so a SQLite database named `History` is SQLite.
 It takes only `ext` or `exts` beside it, which decide the tree’s container chevron and
-do not narrow the match, and its bytes must end within the sniff prefix (`MAGIC_MAX_END`
-in `src/metabrowser/plugin_loader/manifest.py`). It is checked on the bytes on disk, so
-a compressed file keeps its kind:
+do not narrow the match for a binary file, and its bytes must end within the sniff
+prefix (`MAGIC_MAX_END` in `src/metabrowser/plugin_loader/manifest.py`). It is checked
+on the bytes on disk, so a compressed file keeps its kind.
+A file with one of those extensions that sniffs as text is claimed too, but only when
+its leading bytes hold the magic: an ASCII PDF named `.pdf` is a PDF, and a text file
+named `.pdf` is text.
+A magic rule with no extension never claims a text file.
 
 ```toml
 [[kind]]
@@ -689,6 +694,20 @@ kind’s view, from whichever plugin serves that kind, as the pull-request page 
 To use one named plugin’s renderers, load its exports, as the generic JSONL and
 event-log views draw with the agents plugin’s `renderLog` and `renderRaw`.
 
+### Python Dependencies
+
+`python_requires` names the third-party distributions a plugin’s own Python files
+import, whether or not core imports them too.
+It installs nothing and pins no version: a built-in plugin ships inside the
+`metabrowser` package, so `pyproject.toml` pins every package it imports.
+The list says which of Metabrowser’s dependencies a plugin would need if it were moved
+out of the package, and which ones core would no longer need.
+`devtools/check_plugin_deps.py`, run by `make lint-check`, holds each built-in plugin’s
+list to its imports, and every runtime dependency to some import, and prints the
+plugin-only packages.
+Nothing checks the list for another plugin yet.
+`metab --plugins --json` and `--plugin NAME` show each plugin’s list.
+
 ### Rendering and Formatting
 
 Useful helpers include:
@@ -803,6 +822,18 @@ Useful helpers include:
   than `timeout` milliseconds, and returns a canceller
   ([Idle Work](project/architecture/arch-browser-shell.md#idle-work));
 - `sourceKind()` for the served source (`filesystem` or `git_revision`).
+- `capabilities()` for the trust profile the page was served under,
+  `{activeContent, mutations}`; a pinned revision’s page is always inert, and an inert
+  page’s policy blocks frames and `<embed>` (`untrusted_shell_csp` in
+  `capabilities.py`);
+- `host.supports(action)` and `host.actions()` for what the page’s host does beyond a
+  browser, by action name, from the `window.metabrowserHost` the host defines.
+  A browser defines none.
+  The macOS app defines `open-file`: it opens an `<a data-metabrowser-open-file>` link’s
+  file in the app the system assigns to its type (`builtin_plugins/pdf/index.js` draws
+  one). Ask about an action, never about which host the page is in.
+  The view compositor installs `capabilities()` and `host`, so a view reads them from
+  its render on, not at load.
 
 A view that draws tabs of its own uses the host’s `.tab-btn` in a `.tab-bar`, with
 `<a class="tab-btn" href>` for a tab that is an address, and positions but does not

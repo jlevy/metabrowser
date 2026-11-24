@@ -1,0 +1,511 @@
+{
+  "folder": {
+    "shell": {
+      "source_kind": "filesystem",
+      "capabilities": {
+        "active_content": true,
+        "mutations": false
+      },
+      "content-security-policy": null
+    },
+    "files": {
+      "papers/report.pdf": {
+        "file": {
+          "path": "papers/report.pdf",
+          "kind": "pdf",
+          "views": [
+            {
+              "id": "preview",
+              "label": "PDF",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=papers%2Freport.pdf",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-scripts allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "%PDF-1.4"
+        }
+      },
+      "papers/ascii.pdf": {
+        "file": {
+          "path": "papers/ascii.pdf",
+          "kind": "pdf",
+          "views": [
+            {
+              "id": "preview",
+              "label": "PDF",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=papers%2Fascii.pdf",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-scripts allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "%PDF-1.7"
+        }
+      },
+      "scans/untitled": {
+        "file": {
+          "path": "scans/untitled",
+          "kind": "pdf",
+          "views": [
+            {
+              "id": "preview",
+              "label": "PDF",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=scans%2Funtitled",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-scripts allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "%PDF-1.4"
+        }
+      },
+      "notes/not-really.pdf": {
+        "file": {
+          "path": "notes/not-really.pdf",
+          "kind": "text",
+          "views": [
+            {
+              "id": "source",
+              "label": "Source",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=notes%2Fnot-really.pdf",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-scripts allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "a text f"
+        }
+      }
+    }
+  },
+  "folderUntrusted": {
+    "shell": {
+      "source_kind": "filesystem",
+      "capabilities": {
+        "active_content": false,
+        "mutations": false
+      },
+      "content-security-policy": "default-src 'self'; object-src 'none'"
+    },
+    "files": {
+      "papers/report.pdf": {
+        "file": {
+          "path": "papers/report.pdf",
+          "kind": "pdf",
+          "views": [
+            {
+              "id": "preview",
+              "label": "PDF",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=papers%2Freport.pdf",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "%PDF-1.4"
+        }
+      },
+      "papers/ascii.pdf": {
+        "file": {
+          "path": "papers/ascii.pdf",
+          "kind": "pdf",
+          "views": [
+            {
+              "id": "preview",
+              "label": "PDF",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=papers%2Fascii.pdf",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "%PDF-1.7"
+        }
+      },
+      "scans/untitled": {
+        "file": {
+          "path": "scans/untitled",
+          "kind": "pdf",
+          "views": [
+            {
+              "id": "preview",
+              "label": "PDF",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=scans%2Funtitled",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "%PDF-1.4"
+        }
+      },
+      "notes/not-really.pdf": {
+        "file": {
+          "path": "notes/not-really.pdf",
+          "kind": "text",
+          "views": [
+            {
+              "id": "source",
+              "label": "Source",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=notes%2Fnot-really.pdf",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "a text f"
+        }
+      }
+    }
+  },
+  "pin": {
+    "shell": {
+      "source_kind": "git_revision",
+      "capabilities": {
+        "active_content": false,
+        "mutations": false
+      },
+      "content-security-policy": "default-src 'self'; object-src 'none'"
+    },
+    "files": {
+      "papers/report.pdf": {
+        "file": {
+          "path": "g1-cGFwZXJz/g1-cmVwb3J0LnBkZg",
+          "kind": "pdf",
+          "views": [
+            {
+              "id": "preview",
+              "label": "PDF",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=g1-cGFwZXJz%2Fg1-cmVwb3J0LnBkZg",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "%PDF-1.4"
+        }
+      },
+      "papers/ascii.pdf": {
+        "file": {
+          "path": "g1-cGFwZXJz/g1-YXNjaWkucGRm",
+          "kind": "pdf",
+          "views": [
+            {
+              "id": "preview",
+              "label": "PDF",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=g1-cGFwZXJz%2Fg1-YXNjaWkucGRm",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "%PDF-1.7"
+        }
+      },
+      "scans/untitled": {
+        "file": {
+          "path": "g1-c2NhbnM/g1-dW50aXRsZWQ",
+          "kind": "pdf",
+          "views": [
+            {
+              "id": "preview",
+              "label": "PDF",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=g1-c2NhbnM%2Fg1-dW50aXRsZWQ",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "%PDF-1.4"
+        }
+      },
+      "notes/not-really.pdf": {
+        "file": {
+          "path": "g1-bm90ZXM/g1-bm90LXJlYWxseS5wZGY",
+          "kind": "text",
+          "views": [
+            {
+              "id": "source",
+              "label": "Source",
+              "default": true
+            }
+          ]
+        },
+        "raw": {
+          "href": "/raw?path=g1-bm90ZXM%2Fg1-bm90LXJlYWxseS5wZGY",
+          "status": 200,
+          "content-type": "application/pdf",
+          "content-security-policy": "sandbox allow-popups allow-forms allow-downloads",
+          "content-disposition": null,
+          "head": "a text f"
+        }
+      }
+    }
+  },
+  "pinComparison": {
+    "schema": "file-diff-v1",
+    "schema_version": 1,
+    "resolved": {
+      "comparison_id": "git:7b8203de61c0a0cd",
+      "source": {
+        "name": "git"
+      },
+      "kind": "content",
+      "base_policy": "first_parent",
+      "left": {
+        "kind": "commit",
+        "id": "ec4594714770e49c1bd92f14138629eb05cd2e0d",
+        "symbolic": "HEAD"
+      },
+      "right": {
+        "kind": "commit",
+        "id": "bc886a35310e7ecf5943626727fa24f111c28763"
+      },
+      "options": {
+        "context": 3,
+        "rename_detection": true,
+        "rename_similarity": 50
+      },
+      "warnings": []
+    },
+    "manifest": {
+      "files": [
+        {
+          "id": "f1",
+          "kind": "modified",
+          "old": {
+            "path": "README.md",
+            "entry_type": "file",
+            "mode": "100644",
+            "content": {
+              "kind": "git_object",
+              "oid": "7dfefccb1fa8db2ab95b836d29f65fd110735d8f"
+            }
+          },
+          "new": {
+            "path": "README.md",
+            "entry_type": "file",
+            "mode": "100644",
+            "content": {
+              "kind": "git_object",
+              "oid": "6d49b82584c214f8cf5c65f05d05a828a186327e"
+            }
+          },
+          "binary": false,
+          "availability": "ready",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "id": "f2",
+          "kind": "added",
+          "new": {
+            "path": "notes/not-really.pdf",
+            "entry_type": "file",
+            "mode": "100644",
+            "content": {
+              "kind": "git_object",
+              "oid": "faad490a1ecad314090d156fa0dd3c6123435500"
+            }
+          },
+          "binary": false,
+          "availability": "ready",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "id": "f3",
+          "kind": "added",
+          "new": {
+            "path": "papers/ascii.pdf",
+            "entry_type": "file",
+            "mode": "100644",
+            "content": {
+              "kind": "git_object",
+              "oid": "ba20a26f62639fe6ef0f9b7e3a5ce0a89cee659e"
+            }
+          },
+          "binary": false,
+          "availability": "ready",
+          "additions": 5,
+          "deletions": 0
+        },
+        {
+          "id": "f4",
+          "kind": "added",
+          "new": {
+            "path": "papers/report.pdf",
+            "entry_type": "file",
+            "mode": "100644",
+            "content": {
+              "kind": "git_object",
+              "oid": "428fc5377bc9c5bdbcf5cc0292c24c04e12f654a"
+            }
+          },
+          "binary": true,
+          "availability": "binary",
+          "additions": null,
+          "deletions": null
+        },
+        {
+          "id": "f5",
+          "kind": "added",
+          "new": {
+            "path": "scans/untitled",
+            "entry_type": "file",
+            "mode": "100644",
+            "content": {
+              "kind": "git_object",
+              "oid": "428fc5377bc9c5bdbcf5cc0292c24c04e12f654a"
+            }
+          },
+          "binary": true,
+          "availability": "binary",
+          "additions": null,
+          "deletions": null
+        }
+      ],
+      "totals": {
+        "files": 5,
+        "additions": 8,
+        "deletions": 0,
+        "exact": true
+      },
+      "truncated": false
+    },
+    "patches": {
+      "f1": {
+        "file_id": "f1",
+        "hunks": [
+          {
+            "old_start": 1,
+            "old_count": 1,
+            "new_start": 1,
+            "new_count": 3,
+            "lines": [
+              {
+                "op": "context",
+                "text": "# Papers",
+                "no_newline": false
+              },
+              {
+                "op": "add",
+                "text": "",
+                "no_newline": false
+              },
+              {
+                "op": "add",
+                "text": "The report is in papers/.",
+                "no_newline": false
+              }
+            ]
+          }
+        ],
+        "truncated": false
+      },
+      "f2": {
+        "file_id": "f2",
+        "hunks": [
+          {
+            "old_start": 0,
+            "old_count": 0,
+            "new_start": 1,
+            "new_count": 1,
+            "lines": [
+              {
+                "op": "add",
+                "text": "a text file named like a PDF",
+                "no_newline": false
+              }
+            ]
+          }
+        ],
+        "truncated": false
+      },
+      "f3": {
+        "file_id": "f3",
+        "hunks": [
+          {
+            "old_start": 0,
+            "old_count": 0,
+            "new_start": 1,
+            "new_count": 5,
+            "lines": [
+              {
+                "op": "add",
+                "text": "%PDF-1.7",
+                "no_newline": false
+              },
+              {
+                "op": "add",
+                "text": "1 0 obj",
+                "no_newline": false
+              },
+              {
+                "op": "add",
+                "text": "<< /Type /Catalog >>",
+                "no_newline": false
+              },
+              {
+                "op": "add",
+                "text": "endobj",
+                "no_newline": false
+              },
+              {
+                "op": "add",
+                "text": "%%EOF",
+                "no_newline": false
+              }
+            ]
+          }
+        ],
+        "truncated": false
+      }
+    }
+  }
+}

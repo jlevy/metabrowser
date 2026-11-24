@@ -110,10 +110,11 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         return webView
     }
 
-    /// A page's configuration: the folder's own, with the page's Print button and its links
-    /// marked to open in a web pane answered by the page that asked.
+    /// A page's configuration: the folder's own, with the page's Print button, its links
+    /// marked to open in a web pane, and its links marked to open a file in its default app
+    /// answered by the page that asked.
     private static func pageConfiguration() -> WKWebViewConfiguration {
-        WebConfiguration.make(pagePrints: pagePrints, webViews: webViews)
+        WebConfiguration.make(pagePrints: pagePrints, webViews: webViews, openFiles: openFiles)
     }
 
     private func wire(_ webView: DropAwareWebView) {
@@ -467,6 +468,126 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         let anchor = WebPopoverLayout.anchor(
             request.link, viewportWidth: request.viewportWidth, in: webView.bounds, flipped: webView.isFlipped)
         popover.show(request.page, at: anchor, of: webView)
+    }
+
+    /// Every page's Open links (`OpenFileRequests`), as the `pdf` plugin draws: each opens
+    /// its file in its default app for the page that asked, while a window shows it.
+    static let openFiles = OpenFileRequests { webView, frame, request in
+        guard let page = (webView.window?.windowController as? BrowserWindowController)?.page,
+              page.webView === webView
+        else { return }
+        page.pageAskedToOpen(request, from: frame)
+    }
+
+    /// Every page's downloaded copies, for an Open link to a file with no folder on disk
+    /// (`OpenFileDownloads`), in `Caches/<bundle identifier>/Opened/`.
+    static let openedCopies = OpenFileDownloads(
+        directory: OpenFileDownloads.directory(bundleIdentifier: appIdentity.bundleIdentifier))
+
+    /// Removes the copies an Open link downloaded more than `OpenFileDownloads.kept` ago,
+    /// off the main thread. The app calls it once, as it launches.
+    static func sweepOpenedCopies() {
+        let directory = OpenFileDownloads.directory(bundleIdentifier: appIdentity.bundleIdentifier)
+        Task.detached(priority: .utility) { OpenFileDownloads.sweep(directory) }
+    }
+
+    /// Opens the file an Open link names, for a click in the main frame of the server's own
+    /// page, as `OpenFilePlan` decides from what the folder serves.
+    private func pageAskedToOpen(_ request: OpenFileRequests.Request, from frame: WKFrameInfo) {
+        guard OpenFileRequests.allows(frame, request, under: policy) else {
+            AppLog.app.info("an Open link's click was not answered: not from this server's own page, or not to it")
+            return
+        }
+        guard let root = session?.served else { return }
+        switch OpenFilePlan.resolve(request, in: root) {
+        case .openFile(let file):
+            Self.open(file, named: request.name, reportingIn: window)
+        case .downloadThenOpen(let href, let name):
+            Self.openedCopies.start(href, named: name, in: webView) { [weak webView] result in
+                let window = webView?.window
+                switch result {
+                case .success(let copy): Self.open(copy, named: name, reportingIn: window)
+                case .failure(let failure): Self.report(failure, in: window)
+                }
+            }
+        case .refuse(let failure):
+            Self.report(failure, in: window)
+        }
+    }
+
+    /// Hands `file` to Launch Services, which opens it in the app macOS assigns to its type,
+    /// or, when no app is assigned to it, saves a copy in Downloads (`OpenFileHandoff`).
+    private static func open(_ file: URL, named name: String, reportingIn window: NSWindow?) {
+        switch OpenFileHandoff.decide(file, defaultApp: { NSWorkspace.shared.urlForApplication(toOpen: $0) }) {
+        case .open(let file):
+            Task { [weak window] in
+                do {
+                    _ = try await NSWorkspace.shared.open(file, configuration: NSWorkspace.OpenConfiguration())
+                } catch {
+                    report(OpenFileFailure(name: name, reason: "no app opened it (\(error.localizedDescription))"), in: window)
+                }
+            }
+        case .saveToDownloads(let file):
+            saveToDownloads(file, reportingIn: window)
+        }
+    }
+
+    /// Saves a copy of `file` in Downloads (`OpenFileSaves`) and says where it went. The
+    /// copy is made off the main thread: a file on another volume is copied byte by byte,
+    /// and the first write to Downloads waits for the user to answer macOS's privacy prompt.
+    private static func saveToDownloads(_ file: URL, reportingIn window: NSWindow?) {
+        let downloads = OpenFileSaves.downloads
+        Task { [weak window] in
+            let saved = await Task.detached(priority: .userInitiated) {
+                Result { () throws(OpenFileFailure) -> URL in try OpenFileSaves.save(file, into: downloads) }
+            }.value
+            switch saved {
+            case .success(let copy): tell(OpenFileSaved(copy: copy), in: window)
+            case .failure(let failure): report(failure, in: window)
+            }
+        }
+    }
+
+    /// An alert that names the copy saved in Downloads and why the file did not open, as a
+    /// sheet on `window`, or an alert of its own once the page has no window, with Show in
+    /// Finder.
+    private static func tell(_ saved: OpenFileSaved, in window: NSWindow?) {
+        AppLog.app.info("open saved to Downloads: \(saved.copy.lastPathComponent, privacy: .public)")
+        let alert = NSAlert()
+        alert.messageText = saved.title
+        alert.informativeText = saved.message
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Show in Finder")
+        let answer: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .alertSecondButtonReturn else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([saved.copy])
+        }
+        if let window {
+            alert.beginSheetModal(for: window, completionHandler: answer)
+        } else {
+            answer(alert.runModal())
+        }
+    }
+
+    /// An alert that names the file and why it did not open, as a sheet on `window`, or an
+    /// alert of its own once the page has no window, as a failed download's is. A file on
+    /// disk of a type the app does not open is offered to Finder.
+    private static func report(_ failure: OpenFileFailure, in window: NSWindow?) {
+        AppLog.app.error("open failed: \(failure.message, privacy: .public)")
+        let alert = NSAlert()
+        alert.messageText = "Open failed"
+        alert.informativeText = failure.message
+        alert.addButton(withTitle: "OK")
+        if failure.reveal != nil { alert.addButton(withTitle: "Reveal in Finder") }
+        let answer: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .alertSecondButtonReturn, let file = failure.reveal else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([file])
+        }
+        if let window {
+            alert.beginSheetModal(for: window, completionHandler: answer)
+        } else {
+            answer(alert.runModal())
+        }
     }
 
     /// After Metabrowser > Clear Website Data…: the popover's page loads again, signed out,

@@ -93,9 +93,11 @@ from metabrowser.checkout_store import checkout_store, lifespan_checkout_store
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.commit_ids import short_commit
 from metabrowser.content_sniff import (
+    MEDIA_SIGNATURE_BYTES,
     SNIFF_PREFIX_BYTES,
     ContentClass,
     classify_prefix,
+    media_type_from_prefix,
     sniff_artifact,
     sniff_artifact_prefix,
 )
@@ -4995,6 +4997,16 @@ def _raw_versions(rendered_html: str, source_path: str) -> dict[str, str]:
     return versions
 
 
+def _media_type_from_file(target: Path) -> str | None:
+    """The media type *target*'s leading bytes give, from one bounded read, or None."""
+
+    try:
+        with target.open("rb") as stream:
+            return media_type_from_prefix(stream.read(MEDIA_SIGNATURE_BYTES))
+    except OSError:
+        return None
+
+
 async def raw_file(request: Request) -> Response:
     """Serve raw bytes for one file on the active subject.
 
@@ -5018,6 +5030,9 @@ async def raw_file(request: Request) -> Response:
 
     artifact = ArtifactPath(target)
     media_type = artifact.mime_type
+    if media_type == "application/octet-stream" and not artifact.is_compressed:
+        # A name that gives no type: the file's leading bytes may (media_type_from_prefix).
+        media_type = await asyncio.to_thread(_media_type_from_file, target) or media_type
     accepts_gzip = _accepts_gzip(request.headers.get("accept-encoding", ""))
 
     # Uncompressed path: stream the file as-is. ``FileResponse`` streams in

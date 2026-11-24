@@ -44,13 +44,14 @@ The `before:` block writes operator plugins, loaded with `--plugins-dir`:
 
 ```console
 $ metab --plugins-dir ok --plugin uses-md
-name:         uses-md
-display_name: (none)
-version:      0.0.0
-sdk_version:  0.8
-source:       local:[SANDBOX]/ok/uses-md
-static_root:  [SANDBOX]/ok/uses-md
-requires:     markdown
+name:            uses-md
+display_name:    (none)
+version:         0.0.0
+sdk_version:     0.8
+source:          local:[SANDBOX]/ok/uses-md
+static_root:     [SANDBOX]/ok/uses-md
+requires:        markdown
+python_requires: (none)
 
 kinds:
 
@@ -70,7 +71,7 @@ assets in static_root:
 ```console
 $ metab --plugins-dir ok --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 17 plugin(s) OK
+metab --doctor: 18 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table

@@ -3,6 +3,7 @@ name = "sqlite"
 display_name = "SQLite"
 version = "0.0.1"
 sdk_version = "0.8"
+python_requires = ["starlette"]
 # The table plugin's routes serve this plugin's [[table_source]], and its view draws a
 # table's Table view (mb.plugins.load("table") in table-view.js).
 requires = ["table"]

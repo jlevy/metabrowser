@@ -3,6 +3,7 @@ name = "fsqlite"
 display_name = "fsqlite"
 version = "0.0.1"
 sdk_version = "0.8"
+python_requires = ["starlette"]
 # The views draw with the SQLite plugin's exports (mb.plugins.load("sqlite") in
 # store-view.js and store-tables.js): its Info model and drawing, its overview and Schema
 # views, and through them the table plugin's view of one table. The table plugin's routes

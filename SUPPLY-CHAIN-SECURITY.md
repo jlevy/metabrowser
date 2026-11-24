@@ -495,6 +495,19 @@ this one on 2026-11-16.
 - **Reach.** Development only: neither is a runtime requirement, in the wheel, or used
   by the publish workflow.
 
+### psutil Is Development Only (November 24, 2026)
+
+`psutil` moves from the runtime requirements to the `dev` group.
+No code in the package imports it: `devtools/git_history_benchmark.py` samples memory
+with it, and pytest-xdist’s `-n auto` reads physical cores through it, both in
+development.
+`devtools/check_plugin_deps.py` now fails a runtime requirement that neither
+core nor a built-in plugin imports, which is how this one was found.
+- **Lock delta.** `psutil` leaves the package’s `dependencies` and `requires-dist` and
+  joins the `dev` group’s; the locked release and its artifact hashes are unchanged.
+- **Reach.** The wheel, and the macOS app that bundles its requirements, no longer
+  install a compiled extension that nothing at run time uses.
+
 ### Automated Checks
 
 `devtools/check_supply_chain.py` checks only safeguards that span configuration files:

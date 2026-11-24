@@ -216,6 +216,7 @@ def test_every_builtin_loads_exactly_the_providers_it_declares() -> None:
         "html": set(),
         "image": set(),
         "markdown": set(),
+        "pdf": set(),
         "sqlite": {"table"},
         "structured": {"table"},
         "table": set(),

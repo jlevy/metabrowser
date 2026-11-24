@@ -160,6 +160,9 @@ the answer is changing.
 
 ## Content Trust Model
 
+The [threat model](arch-threat-model.md) says which threat each policy below answers and
+the risk it accepts; a change to a policy names its threat there.
+
 Metabrowser serves two classes of response with different privilege.
 **Application surfaces** (the shell, static assets, every `/api` route, and plugin
 assets under `/plugin-static`) are first-party code from the installed wheel and
@@ -321,10 +324,15 @@ error bodies, carries the sandbox `raw_sandbox_csp` builds from `_RAW_SANDBOX_TO
 (`capabilities.py`) and `X-Content-Type-Options: nosniff`. The sandbox assigns an opaque
 origin, so script in a browsed file cannot read the application document, cookies,
 storage, or `/api` responses.
-`frame-ancestors` is omitted so nested frames inside a sandboxed page still load: the
-opaque ancestor origin would never match `'self'`. `/raw` is not behind the API origin
-check, because stylesheets and images must load as subresources; a previewed page can
-probe whether a file exists through load and error events, but cannot read its bytes.
+Its type is the one the file’s name gives; for a name that gives none, the file’s
+leading bytes may (`media_type_from_prefix` in `content_sniff.py`), so a PDF without a
+`.pdf` extension, which the `pdf` plugin claims by its bytes, is answered as a PDF
+rather than as `application/octet-stream`, which `nosniff` would leave a browser to
+download. `frame-ancestors` is omitted so nested frames inside a sandboxed page still
+load: the opaque ancestor origin would never match `'self'`. `/raw` is not behind the
+API origin check, because stylesheets and images must load as subresources; a previewed
+page can probe whether a file exists through load and error events, but cannot read its
+bytes.
 
 - **Active content off:** the sandbox omits `allow-scripts`, so a direct `/raw` link
   renders markup and loads subresources but runs nothing.
@@ -435,14 +443,13 @@ never offered there.
 Its Markdown renders with fenced code as plain text (`plain_code`, which the Markdown
 child sets on every inert render in `diff/markdown_projection_worker.py`): the inert
 render drops the classes highlighting writes anyway, and a lexer can cost far more than
-its input’s size (`kpress_adapter._PLAIN_CODE`). The profile here is the process’s one
-capability block, which holds while a process serves one kind of view.
-[Open Modes](arch-open-modes.md#a-revision-is-never-trusted) requires a revision’s
-profile to come from the subject a request resolved, once one server can show a trusted
-working tree and untrusted revisions.
-Plain fences do not bound the render itself; the child’s deadline does
-([Inert Markdown](#inert-markdown)), so whoever wrote a pinned Markdown file, such as a
-pull request’s author, cannot decide how long the server spends rendering it.
+its input’s size (`kpress_adapter._PLAIN_CODE`). A revision’s profile comes from the
+subject a request resolved (`capabilities.capabilities_for`), so a trusted folder’s own
+revisions are served untrusted too
+([Open Modes](arch-open-modes.md#a-revision-is-never-trusted)). Plain fences do not
+bound the render itself; the child’s deadline does ([Inert Markdown](#inert-markdown)),
+so whoever wrote a pinned Markdown file, such as a pull request’s author, cannot decide
+how long the server spends rendering it.
 
 ### Borrowed Objects
 

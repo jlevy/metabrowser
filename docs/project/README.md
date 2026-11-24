@@ -19,6 +19,8 @@ It links each document below and the contributor standards in `docs/`.
   dispatch, remote tunnels, and process exit
 - [Server and content](architecture/arch-server-and-content.md): request flow, safe
   paths, validators, and the content-trust model
+- [Threat model](architecture/arch-threat-model.md): assets, adversaries, trust
+  boundaries, and each threat’s policy, evidence, and accepted risk
 - [Views, models, and routes](architecture/arch-views-models-routes.md): kinds, views,
   formats, and the route index
 - [Parity registry](architecture/arch-parity-registry.md): the route and functional

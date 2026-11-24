@@ -5,10 +5,12 @@ public enum WebConfiguration {
     /// A window's page: persistent cookies and local storage in the default store, since
     /// Metabrowser keeps its preferences in host-only cookies that every folder's server
     /// shares across ports, element full screen, the rules in `restrict(_:)`, and, given
-    /// them, the page's own Print button (`PagePrintRequests`) and its links marked to open
-    /// in a web pane (`WebViewRequests`).
+    /// them, the page's own Print button (`PagePrintRequests`), its links marked to open
+    /// in a web pane (`WebViewRequests`), and its links marked to open a file in its
+    /// default app (`OpenFileRequests`), with the host descriptor that names the actions
+    /// those handlers answer (`HostDescriptor`).
     public static func make(
-        pagePrints: PagePrintRequests? = nil, webViews: WebViewRequests? = nil
+        pagePrints: PagePrintRequests? = nil, webViews: WebViewRequests? = nil, openFiles: OpenFileRequests? = nil
     ) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
@@ -16,6 +18,8 @@ public enum WebConfiguration {
         restrict(configuration)
         pagePrints?.install(in: configuration)
         webViews?.install(in: configuration)
+        openFiles?.install(in: configuration)
+        HostDescriptor.install(actions: openFiles == nil ? [] : [OpenFileRequests.action], in: configuration)
         return configuration
     }
 

@@ -10,13 +10,16 @@ import os
 /// response ends with an orderly close after the client's own. When the body is shorter
 /// than declared, the connection waits for `release()` and is then reset, which
 /// `WKDownload` reports as a failure after it has written part of the file.
-/// `contentType` and `headers` let it serve a page instead, under headers of the test's.
+/// `contentType` and `headers` let it serve a page instead, under headers of the test's,
+/// and `status` answers with another status line, such as `404 Not Found`.
 nonisolated final class LocalHTTPServer: @unchecked Sendable {
     let body: Data
     let declaredLength: Int
     let contentType: String
     /// Extra header lines, such as `Content-Security-Policy: sandbox`.
     let headers: [String]
+    /// The status line's code and reason.
+    let status: String
     let url: URL
     private let listener: Int32
     private let sent = Latch<Void>()
@@ -25,12 +28,13 @@ nonisolated final class LocalHTTPServer: @unchecked Sendable {
 
     init(
         body: Data, declaredLength: Int? = nil, contentType: String = "application/octet-stream",
-        headers: [String] = []
+        headers: [String] = [], status: String = "200 OK"
     ) throws {
         self.body = body
         self.declaredLength = declaredLength ?? body.count
         self.contentType = contentType
         self.headers = headers
+        self.status = status
         let listener = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard listener >= 0 else { throw POSIXError(.EIO) }
         var address = sockaddr_in()
@@ -99,7 +103,7 @@ nonisolated final class LocalHTTPServer: @unchecked Sendable {
             request.append(contentsOf: buffer[..<count])
         }
         var response = Data(
-            ("HTTP/1.1 200 OK\r\nContent-Type: \(contentType)\r\n" + headers.map { $0 + "\r\n" }.joined()
+            ("HTTP/1.1 \(status)\r\nContent-Type: \(contentType)\r\n" + headers.map { $0 + "\r\n" }.joined()
                 + "Content-Length: \(declaredLength)\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n").utf8)
         response.append(body)
         let written = response.withUnsafeBytes { write(connection, $0.baseAddress, $0.count) }

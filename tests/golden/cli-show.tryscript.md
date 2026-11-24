@@ -18,6 +18,7 @@ before: >-
   printf '{"event":"start"}\n{"event":"stop"}\n' > showroot/events.jsonl &&
   printf '\000\001\002binary\n' > showroot/blob.bin &&
   printf '\211PNG\r\n\032\n' > showroot/pixel.png &&
+  printf '%%PDF-1.4\n%%\342\343\317\323\n' > showroot/paper.pdf &&
   printf '<!doctype html>\n<title>Page</title>\n<p>Hello</p>\n' > showroot/page.html &&
   printf '<div class="card">hello</div>\n' > showroot/card.html &&
   printf 'nested\n' > showroot/docs/a.md &&
@@ -27,7 +28,7 @@ before: >-
   printf 'flowchart LR\n  A --> B\n' > showroot/flow.mmd &&
   touch -t 202311142213.20 showroot/README.md showroot/notes.txt showroot/data.json showroot/table.csv showroot/flow.mmd
   showroot/change.patch showroot/session.jsonl showroot/events.jsonl showroot/blob.bin
-  showroot/pixel.png showroot/page.html showroot/card.html showroot/docs/a.md
+  showroot/pixel.png showroot/paper.pdf showroot/page.html showroot/card.html showroot/docs/a.md
   'showroot/%41.md' 'showroot/%2541.md' 'showroot/docs%1/note%.txt' showroot/docs
   'showroot/docs%1' showroot
 ---
@@ -163,6 +164,18 @@ route: /view/pixel.png
 kind: image
 views: preview (default)
 model: image envelope; size=8
+? 0
+```
+
+## Test: PDF
+
+```console
+$ metab showroot --show paper.pdf
+show: paper.pdf
+route: /view/paper.pdf
+kind: pdf
+views: preview (default)
+model: binary envelope; size=15
 ? 0
 ```
 

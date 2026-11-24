@@ -84,7 +84,7 @@ def test_plugins_list_reports_partial_discovery_as_failure(tmp_path: Path) -> No
 def test_plugins_show_builtin_dumps_manifest() -> None:
     result = _runner.invoke(_app, ["--plugin", "markdown"])
     assert result.exit_code == 0
-    assert "name:         markdown" in result.stdout
+    assert "name:            markdown" in result.stdout
     assert "markdown/rendered" in result.stdout
     assert "static_root:" in result.stdout
 

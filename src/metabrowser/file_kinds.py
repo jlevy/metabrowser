@@ -17,7 +17,7 @@ from typing import Any, cast
 
 from frontmatter_format import FmFormatError, FmStyle, fmf_split_frontmatter
 
-from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, sniff_artifact
 from metabrowser.frontmatter_yaml import (
     FRONTMATTER_MAX_BYTES,
     FrontmatterError,
@@ -25,6 +25,7 @@ from metabrowser.frontmatter_yaml import (
     unclosed_frontmatter_error,
 )
 from metabrowser.gz_io import (
+    ArtifactCompressionError,
     ArtifactDecompressionLimitError,
     ArtifactDecompressionTimeoutError,
     ArtifactPath,
@@ -163,6 +164,8 @@ class FileContext:
         "_frontmatter_cache",
         "_frontmatter_loaded",
         "_frontmatter_parse_error",
+        "_head_cache",
+        "_head_loaded",
         "_json_top_level_cache",
         "_json_top_level_loaded",
         "_yaml_top_level_cache",
@@ -194,6 +197,27 @@ class FileContext:
         self._json_top_level_loaded = False
         self._yaml_top_level_cache: dict[str, Any] | None = None
         self._yaml_top_level_loaded = False
+        self._head_cache: bytes | None = None
+        self._head_loaded = False
+
+    @property
+    def head(self) -> bytes | None:
+        """The file's first ``SNIFF_PREFIX_BYTES`` logical bytes, or None if unreadable.
+
+        Read only when a ``magic`` rule that names this file's extension asks, so a
+        text file named ``.pdf`` is checked for ``%PDF-``; cached like the parsed
+        predicates, and bounded by the sniff prefix every magic rule fits in.
+        """
+        if not self._head_loaded:
+            self._head_loaded = True
+            try:
+                with ArtifactPath(self.path).open_binary(
+                    max_output_bytes=SNIFF_PREFIX_BYTES
+                ) as stream:
+                    self._head_cache = stream.read(SNIFF_PREFIX_BYTES)
+            except (ArtifactCompressionError, OSError):
+                self._head_cache = None
+        return self._head_cache
 
     @property
     def content_class(self) -> ContentClass:

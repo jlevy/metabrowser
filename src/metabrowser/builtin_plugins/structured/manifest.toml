@@ -3,6 +3,7 @@ name = "structured"
 display_name = "Structured Data"
 version = "0.0.1"
 sdk_version = "0.8"
+python_requires = ["cachetools", "json5", "pyyaml", "ruamel.yaml", "starlette"]
 extra_scripts = ["preview.js", "tree.js"]
 # The table plugin's routes serve this plugin's [[table_source]], and its view draws the
 # Table view (mb.plugins.load("table") in index.js).
