@@ -68,7 +68,12 @@ STRUCTURED_DIFF_VERSION: Final = "structured-diff-v1"
 # ranges over four runs, recorded in its README) over this repository's 624 distinct
 # real pairs: the 456 JSON pairs are p50 15 KiB, p90 156 KiB, and 60 are past this bound
 # (lock files and recorded fixtures). The slowest real pair inside it took 7-8 ms, and a
-# synthetic 127 KiB pair of nested mappings 4 ms.
+# synthetic 127 KiB pair of nested mappings 4 ms. The slowest shape found is one key
+# written again and again, each value it hides written as JSON with its object's path
+# (_last_wins, _placed): 10,912 times a side (130,952 bytes) took 98-229 ms at best and
+# 283-498 ms at the median of 15, against 7 ms and 131 ms for a real 61 KB file, one
+# digit changed, in the same process (Apple M1 Pro, Python 3.14.7, load average 387-412,
+# 2026-11-23; review A8 of #766 measured 95 and 217 ms at a load of 150 to 270).
 STRUCTURED_DIFF_MAX_BYTES: Final = 128 * 1024
 # Both sides' bytes together, for a YAML pair. ruamel's loader is pure Python, and its
 # cost follows the nodes the text composes to, which _MAX_YAML_NODES bounds; this bounds

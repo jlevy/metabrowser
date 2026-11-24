@@ -1034,8 +1034,11 @@ def _trusted(
     wrapper and parts nothing; only a table KPress's own parser reads as text, and the
     sanitizer's as a table, sits at the top level, as one in an SVG's `<style>` does.
     Only then is each part that holds raw HTML rendered on its own to find the first one
-    whose content moved: 600 raw HTML blocks took 31 ms to project and 378 ms with every
-    part rendered alone (Apple M1 Pro, Python 3.14, load average 106-164, 2026-11-23).
+    whose content moved, which only the Markdown child does, since only it renders raw
+    HTML (_Limits). A side of `<br>` blocks under such a table costs one render a block:
+    1,190 took 1.6 s, 5,000 took 12.1 s and 20,000 took 52 s, against 46 ms, 282 ms and
+    4.6 s without the table (Apple M1 Pro, Python 3.14.7, load average 347-357,
+    2026-11-23). It is linear in the blocks, and the child's deadline stops a long one.
     """
 
     if not any(isinstance(child, _Element) and child.tag == "table" for child in root.children):
