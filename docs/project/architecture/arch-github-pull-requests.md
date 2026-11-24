@@ -981,25 +981,36 @@ describes what the carrier adds.
 validates its artifact against the installed `Collection/v1` SoftSchema
 (`metabrowser.collection:Collection/v1`), whose ordered `items` are the guide’s steps.
 An undeclared key or a list past its bound is refused before the schema runs
-(`_outside_shape`), since softschema’s refusal of one costs time quadratic in its size.
+(`_outside_shape`), since softschema’s refusal costs time quadratic in the number of
+undeclared keys, and a record for each element of a long list.
 The request names a PR and an optional one-based step.
 The handler checks both comparison endpoints and a newer head GitHub’s list knows, and
 hydrates just the paths that the chosen step needs through the same manifest and diff
-adapter as Changes, always at the guide’s own pins.
-Pins that do not name a comparison, a `merge_base` that is not an ancestor of the
-guide’s head or a head that is no commit, are answered `invalid`. Only the record’s own
-comparison is the pull request’s kept manifest (`pull_manifest.py`): a stale guide’s
-pins are listed beside it, never over it.
-It reports unresolved references in place.
+adapter as Changes, at the pull request’s current comparison, whose manifest is the one
+the record keeps (`pull_manifest.py`). A stale guide’s steps are read there too, so a
+push, a rebase, or a force push leaves the guide readable whether or not the store still
+has the commits it was written for.
+Unresolved references are reported in place.
+Pins whose `merge_base` the store has and is not an ancestor of the guide’s head do not
+name a comparison and are answered `invalid` (`_pins_compare`); a head the store lacks
+is what a force push leaves, so it is stale, not invalid.
 A guide whose pins are not the pull request’s current comparison is answered `stale`
-with its step, when the store still has the pinned revision, and a `stale` object
-(`_staleness` in `guided_review.py`): both comparisons, the first-parent commits after
-the guide’s head or that its head left the branch’s history, and the cited paths and
-steps that changed between the two comparisons, each with its bound beside its constant.
+with its step and a `stale` object (`_staleness` in `guided_review.py`): both
+comparisons, the first-parent commits after the guide’s head or that its head left the
+branch’s history, and the cited paths whose content changed between the two comparisons,
+compared path by path with no rename detection, and the steps that cite one, each with
+its bound beside its constant, or `null` when the store lacks the guide’s head.
 When GitHub reports a head this copy lacks, the guide is stale too, and what the newer
-commits changed is unknown, so neither list is answered and the notice says only that
-GitHub reports a newer head than the guide’s. The page draws that as a notice above the
-guide and marks the changed steps.
+commits changed is unknown, so neither list is answered.
+A `comparison_unavailable` answer for a stale guide carries the `stale` object too.
+Those details are for agents and the goldens; the page says less (`staleNotice` in
+`guided-review.js`): one warning and one remedy when a cited file changed or what
+changed is unknown, a quiet line when none did, and nothing when this copy matches the
+guide and only GitHub’s head is newer, since the page’s header already says new commits
+were pushed.
+It marks each changed step, in the step list and on the step, and says above
+a changed file’s excerpt, or in its place, that the file changed, and when what changed
+is unknown that it may have; it names no commit, head, merge base, path, or count.
 The limits in `guided_review.py` (`MAX_ITEMS`, `MAX_REFERENCES`, `MAX_EXCERPT_BYTES`,
 and `MAX_STEP_PATCH_BYTES`) cap the guide’s steps, the per-step hydration, the excerpt
 text, and a step’s whole files, each with the measurement that set it beside the

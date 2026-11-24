@@ -2028,14 +2028,23 @@
   font-variant-numeric: var(--tabular-numerals);
   text-align: end;
 }
-/* The note is metadata, at its row's size ("Type Scale"). */
-.github-pull-guide-steps-link .github-pull-guide-step-changed {
+/* A changed step's mark is metadata, at its row's or its card head's size ("Type Scale"). */
+.github-pull-guide-step-changed {
   color: var(--muted);
 }
+/* An out-of-date guide's warning or quiet line stands apart from the step list below it, as
+   the step list stands apart from the step. */
+.github-pull-guide-outdated {
+  margin-block-end: 1rem;
+}
 
-/* An arrow button: the arrow alone in the step list's head, beside its words below a step. */
-.github-pull-guide-arrow,
-.github-pull-guide-pager .btn {
+/* An arrow button: the arrow alone in the step list's head, beside its words below a step.
+   Only a shown one is laid out, so `hidden` hides the way back below the overview and the
+   way on below the last step: unqualified, this rule came after
+   `.github-pull-guided-review [hidden]` at the same specificity and drew a bare arrow there
+   (mb-meoh). */
+.github-pull-guide-arrow:not([hidden]),
+.github-pull-guide-pager .btn:not([hidden]) {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;

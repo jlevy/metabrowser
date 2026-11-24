@@ -234,23 +234,31 @@ The
 describes the payload, and `MAX_ITEMS` and `MAX_REFERENCES` in `guided_review.py` bound
 its steps and each step’s references.
 
-The guide is read from the cached description, and its excerpts come from the comparison
-it is pinned to. When the pull request’s head or merge base moves past the guide’s pins,
-the guide is out of date: a notice at the top of Guided Review names the revision the
-guide was written for, the pull request’s current one, and the commits since (or says
-the branch was rebased), and it marks the steps that cite a file changed since.
-Every step still shows, with excerpts from the guide’s own revision; a step that cites
-no changed file still matches the pull request.
-When GitHub reports a newer head than the cached copy has, the notice says so: what the
-newer commits changed is unknown until the pull request is fetched again.
+The guide is read from the cached description, and its excerpts come from the pull
+request’s current comparison, so a guide stays readable after new commits.
+When the pull request’s head or merge base has moved past the guide’s pins, the guide is
+out of date: one warning at the top of Guided Review says so and that its author can
+update the guide, and each step that cites a file whose content changed since is marked
+changed, in the step list and on the step.
+A reference whose file changed says so above its excerpt, or in its place when its range
+no longer resolves. When the local copy lacks the guide’s head, as after a force push,
+what changed is unknown: no step is marked, the warning says some steps may not match,
+and each excerpt says its file may have changed.
+When the guide cites no file whose content changed, as after merging the base branch in
+or a rebase that leaves them alone, a quiet line says so instead of the warning.
+When GitHub reports a newer head than the cached copy has, the page’s header says new
+commits were pushed, and, when this copy matches the guide, the guide adds nothing until
+the pull request is fetched again.
+The route’s answer, below, keeps the details: the guide’s pins and the current ones, the
+commits since, and the paths and steps that changed.
 To bring the guide current, update its pins and ranges in the PR description.
 
 A guide the page cannot read says why in place of the steps: invalid YAML, a second
 block, another contract, a field that fails the schema (with its place below
-`collection`, such as `items.0.references.0`), or pins that do not name a comparison.
-Its block then stays in the description, so its author sees what they wrote.
-The same answer is the `guided-review` route’s, which this prints from the cached pull
-request:
+`collection`, such as `items.0.references.0`), or pins whose `merge_base` is not an
+ancestor of their `head`. Its block then stays in the description, so its author sees
+what they wrote. The same answer is the `guided-review` route’s, which this prints from
+the cached pull request:
 
 ```shell
 metab <pull request URL> --api '/api/plugin/github/guided-review?number=<n>'

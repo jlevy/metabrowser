@@ -6,8 +6,6 @@
   through them; every part names a step the same way, “Step 3: title”.
   A pull request with a guide opens on it at `/pull/<n>`, Conversation moves to
   `/pull/<n>/conversation`, and there the block is a card that opens the guide.
-  An out-of-date guide still shows its steps, under a notice that names the revision it
-  was written for, the commits since, and the steps that cite changed files.
   The block is the first use of the new external format
   `metabrowser.collection:Collection/v1`, a general ordered list of annotated items not
   tied to pull requests, versioned by its contract ID, and a guide goes out of date when

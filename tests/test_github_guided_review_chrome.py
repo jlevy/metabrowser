@@ -11,7 +11,9 @@ none, and ``tests/dom/github-guided-review-chrome.mjs`` drives it: the tab and i
 request with a guide and with none, the shell's own pass over the excerpt, a row's layout, the
 steps and Open full diff, and a guide that cannot be read. Browserless, the tab's key and its
 lazy mount are pinned in ``tests/dom/github-pull-page-mount-behavior.js`` and
-``tests/dom/github-guided-review-mount-behavior.js``.
+``tests/dom/github-guided-review-mount-behavior.js``. An out-of-date guide's notice, its marks,
+and where a list's markers fall against the bordered box around them are paint too, so they are
+measured here: a marker on or past a border is what the first out-of-date notice drew (mb-u46w).
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node process
