@@ -73,6 +73,7 @@ if (input.lists) {
     attributes: inert.ALLOWED_ATTRIBUTES, prefix: inert.ANCHOR_PREFIX,
     align: inert.ALIGN_VALUES, dimensions: inert.DIMENSIONS,
     fallback: inert.IMAGE_FALLBACK_CLASS, referrer: inert.IMAGE_REFERRER_POLICY,
+    checkbox: inert.CHECKBOX_ATTRIBUTES,
   }));
   process.exit(0);
 }
@@ -170,6 +171,7 @@ def test_the_browser_and_the_server_share_one_allowlist() -> None:
     assert lists["prefix"] == inert_html.ANCHOR_PREFIX
     assert lists["fallback"] == inert_html.IMAGE_FALLBACK_CLASS
     assert lists["referrer"] == inert_html.IMAGE_REFERRER_POLICY
+    assert tuple(tuple(pair) for pair in lists["checkbox"]) == inert_html.CHECKBOX_ATTRIBUTES
     assert {tag: tuple(values) for tag, values in lists["align"].items()} == (
         inert_html.ALIGN_VALUES
     )
