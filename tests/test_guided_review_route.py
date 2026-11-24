@@ -23,7 +23,7 @@ from metabrowser.builtin_plugins.github.pull_record import MAX_BODY_BYTES, PullR
 from metabrowser.builtin_plugins.github.pull_route import PullHost, PullView
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.diff.adapters.base import DiffSourceError
-from metabrowser.git.process import GitLocation, RepositoryStoreTarget
+from metabrowser.git.process import GitError, GitLocation, GitOutputCutError, RepositoryStoreTarget
 from tests.diff_fixture_repo import git
 from tests.github_pull_fixture import guide_body, scenario
 from tests.required_tools import needs_git
@@ -261,6 +261,43 @@ def test_a_long_subject_is_counted_not_listed(tmp_path: Path) -> None:
     assert short["commits"] == [{"sha": short["commits"][0]["sha"], "subject": "count to two"}]  # type: ignore[index]
     long = asyncio.run(_commits_since(tmp_path / "long", "word " * 2400))
     assert long == {"history": "ahead", "commit_count": 1, "commits": []}
+
+
+@needs_git
+def test_paths_past_the_bound_stop_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A change past MAX_STALE_PATHS stops Git at the first path past it, rather than read
+    the byte bound's worth and split it on the event loop (D3 of review D on #677)."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    (root / "a.txt").write_text("one\n", encoding="utf-8")
+    git(root, "add", "a.txt")
+    git(root, "commit", "-q", "-m", "first")
+    old = git(root, "rev-parse", "HEAD").decode().strip()
+    names = [f"f{n}.txt" for n in range(5)]
+    for name in names:
+        (root / name).write_text("x\n", encoding="utf-8")
+    git(root, "add", *names)
+    git(root, "commit", "-q", "-m", "five files")
+    new = git(root, "rev-parse", "HEAD").decode().strip()
+    location = GitLocation.revision(RepositoryStoreTarget(root / ".git", "sha1"), new)
+    assert asyncio.run(guided_review._paths_between(location, old, new)) == set(names)
+    refused: list[GitError] = []
+    real = guided_review.run_git_at
+
+    async def recording(*args: Any, **kwargs: Any) -> bytes:
+        try:
+            return await real(*args, **kwargs)
+        except GitError as exc:
+            refused.append(exc)
+            raise
+
+    monkeypatch.setattr(guided_review, "run_git_at", recording)
+    monkeypatch.setattr(guided_review, "MAX_STALE_PATHS", 4)
+    assert asyncio.run(guided_review._paths_between(location, old, new)) is None
+    assert [type(exc) for exc in refused] == [GitOutputCutError]
+    monkeypatch.setattr(guided_review, "MAX_STALE_PATHS", 5)
+    assert asyncio.run(guided_review._paths_between(location, old, new)) == set(names)
 
 
 _VIEW = PullView(

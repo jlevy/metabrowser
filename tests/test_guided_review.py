@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import contextlib
+import itertools
 import re
+import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from softschema.compile import compile_model
@@ -25,6 +28,7 @@ from metabrowser.builtin_plugins.github.guided_review import (
     read_guide,
     without_guide,
 )
+from metabrowser.builtin_plugins.github.pull_record import MAX_BODY_BYTES
 from metabrowser.diff.format import (
     Availability,
     ChangeKind,
@@ -147,8 +151,136 @@ def _guide_of(items: int) -> str:
 
 def test_a_guide_may_have_at_most_max_items_items() -> None:
     assert parse_guide(_guide_of(MAX_ITEMS)) is not None
-    with pytest.raises(GuideError, match="does not satisfy the v1 SoftSchema"):
+    with pytest.raises(GuideError, match=r"does not satisfy the v1 SoftSchema at items\.$"):
         parse_guide(_guide_of(MAX_ITEMS + 1))
+
+
+@pytest.mark.parametrize(
+    ("edit", "where"),
+    [
+        # softschema's own refusals, at the path its error record lists (D5 of review D).
+        (('aaaa"\n    head', 'AAAA"\n    head'), " at comparison.merge_base"),
+        (("- title: Read the request first\n      note:", "- note:"), " at items.0"),
+        (("start_line: 2", "start_line: 0"), " at items.0.references.0.start_line"),
+        # The shape the walk refuses before the schema, at the same place.
+        (("start_line: 2", "start_line: 2, extra: 3"), " at items.0.references.0"),
+        (("  items:\n", "  summary: Explain the feature.\n  items:\n"), ""),
+    ],
+)
+def test_a_schema_refusal_says_where(edit: tuple[str, str], where: str) -> None:
+    body = _GUIDE.replace(*edit)
+    assert body != _GUIDE
+    with pytest.raises(GuideError) as refused:
+        parse_guide(body)
+    assert (
+        str(refused.value) == f"The guided-review block does not satisfy the v1 SoftSchema{where}."
+    )
+
+
+_SHA = "a" * 40
+_HEADER = _GUIDE.split("collection:\n")[0] + "collection:\n"
+_ITEM = "{title: t, note: n, references: [{path: a.py}]}"
+
+
+def _keys() -> Iterator[str]:
+    return (f"k{n}: 0, " for n in itertools.count())
+
+
+def _at_the_bound(collection: str, units: Iterator[str], end: str) -> str:
+    """A description of a flow-style *collection* that *units* fill to MAX_BODY_BYTES."""
+    parts = [f"{_HEADER}  {collection}"]
+    size = len(parts[0]) + len(end) + len("\n```")
+    for unit in units:
+        if size + len(unit) > MAX_BODY_BYTES:
+            break
+        parts.append(unit)
+        size += len(unit)
+    body = "".join(parts) + end + "\n```"
+    assert MAX_BODY_BYTES - 32 < len(body.encode()) <= MAX_BODY_BYTES
+    return body
+
+
+_COMPARISON = f"comparison: {{merge_base: {_SHA}, head: {_SHA}}}"
+
+
+@pytest.mark.parametrize(
+    ("body", "where"),
+    [
+        (_at_the_bound(f"{{{_COMPARISON}, items: [{_ITEM}], ", _keys(), "}"), ""),
+        (
+            _at_the_bound(
+                f"{{comparison: {{merge_base: {_SHA}, head: {_SHA}, ",
+                _keys(),
+                f"}}, items: [{_ITEM}]}}",
+            ),
+            " at comparison",
+        ),
+        (
+            _at_the_bound(
+                f"{{{_COMPARISON}, items: [{{title: t, note: n, references: [{{path: a.py}}], ",
+                _keys(),
+                "}]}",
+            ),
+            " at items.0",
+        ),
+        (
+            _at_the_bound(
+                f"{{{_COMPARISON}, items: [{{title: t, note: n, references: [{{path: a.py, ",
+                _keys(),
+                "}]}]}",
+            ),
+            " at items.0.references.0",
+        ),
+        (
+            _at_the_bound(f"{{{_COMPARISON}, items: [", itertools.repeat("{}, "), "{}]}"),
+            " at items",
+        ),
+        (_at_the_bound(f"{{{_COMPARISON}, items: [", itertools.repeat("0, "), "0]}"), " at items"),
+        (_at_the_bound(f"{{{_COMPARISON}, items: {{", _keys(), "}}"), " at items"),
+        (
+            _at_the_bound(
+                f"{{{_COMPARISON}, items: [{{title: t, note: n, references: [",
+                itertools.repeat("{path: a.py}, "),
+                "{path: a.py}]}]}",
+            ),
+            " at items.0.references",
+        ),
+    ],
+    ids=[
+        "collection keys",
+        "comparison keys",
+        "item keys",
+        "reference keys",
+        "empty items",
+        "zero items",
+        "items a mapping",
+        "references",
+    ],
+)
+def test_a_block_outside_the_schemas_shape_never_reaches_the_schema(
+    monkeypatch: pytest.MonkeyPatch, body: str, where: str
+) -> None:
+    """softschema writes a record for each undeclared key, each with a copy of the whole
+    mapping, and checks MAX_ITEMS and MAX_REFERENCES in the same pass, so a description
+    at the body bound took about two minutes to refuse (D1 of review D on #677). Each such
+    shape is refused before softschema runs, at the place softschema names first."""
+    validated: list[object] = []
+    real = guided_review.validate_artifact
+
+    def validating(*args: Any, **kwargs: Any) -> Any:
+        validated.append(kwargs["document"])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(guided_review, "validate_artifact", validating)
+    with pytest.raises(GuideError) as refused:
+        parse_guide(body)
+    assert (
+        str(refused.value) == f"The guided-review block does not satisfy the v1 SoftSchema{where}."
+    )
+    assert validated == []
+    # A block within the shape still reaches it.
+    assert parse_guide(_GUIDE) is not None
+    assert len(validated) == 1
 
 
 @pytest.fixture
@@ -195,6 +327,45 @@ def test_a_refused_guide_is_refused_from_the_cache_too(parses: list[str]) -> Non
     # A description without a guide is cached as that.
     assert read_guide(key, "two", "No guide here.") is None
     assert read_guide(key, "two", "No guide here.") is None
+    assert len(parses) == 2
+
+
+def test_two_reads_of_one_revision_share_one_parse(
+    parses: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A guided pull request's front page asks for its description's render and its guide's
+    first step at once, so the second read waits for the first one's parse rather than
+    starting its own (D2 of review D on #677)."""
+    key = ("home", "octo-demo", 7)
+    parsing = threading.Event()
+    finish = threading.Event()
+    counting = guided_review._read_description  # pyright: ignore[reportPrivateUsage]
+
+    def slow(body: str) -> tuple[Collection | None, str]:
+        parsing.set()
+        finish.wait(timeout=30)
+        return counting(body)
+
+    monkeypatch.setattr(guided_review, "_read_description", slow)
+    answers: list[Collection | None] = []
+
+    def read() -> None:
+        answers.append(read_guide(key, "one", _GUIDE))
+
+    readers = [threading.Thread(target=read) for _ in range(2)]
+    readers[0].start()
+    assert parsing.wait(timeout=30)
+    readers[1].start()
+    readers[1].join(timeout=0.2)
+    assert readers[1].is_alive()
+    finish.set()
+    for reader in readers:
+        reader.join(timeout=30)
+    assert len(parses) == 1
+    assert len(answers) == 2
+    assert answers[0] is not None and answers[0] is answers[1]
+    # Another revision parses again, once the first parse is done.
+    assert read_guide(key, "two", _GUIDE) is not answers[0]
     assert len(parses) == 2
 
 

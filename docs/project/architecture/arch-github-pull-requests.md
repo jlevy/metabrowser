@@ -980,6 +980,8 @@ describes what the carrier adds.
 `guided_review.py` extracts a top-level fence from the raw, bounded PR description and
 validates its artifact against the installed `Collection/v1` SoftSchema
 (`metabrowser.collection:Collection/v1`), whose ordered `items` are the guide’s steps.
+An undeclared key or a list past its bound is refused before the schema runs
+(`_outside_shape`), since softschema’s refusal of one costs time quadratic in its size.
 The request names a PR and an optional one-based step.
 The handler checks both comparison endpoints and a newer head GitHub’s list knows, and
 hydrates just the paths that the chosen step needs through the same manifest and diff
@@ -1002,7 +1004,8 @@ The limits in `guided_review.py` (`MAX_ITEMS`, `MAX_REFERENCES`, `MAX_EXCERPT_BY
 and `MAX_STEP_PATCH_BYTES`) cap the guide’s steps, the per-step hydration, the excerpt
 text, and a step’s whole files, each with the measurement that set it beside the
 constant. The parse is kept for each pull request by record revision, so a step click
-reads the guide the first request parsed and an edited description is parsed once.
+reads the guide the first request parsed and an edited description is parsed once, by
+the first of the requests that ask for it at once.
 An excerpt shows a replacement whole: `_hunk_rows` includes a line that exists only on
 the other side when it lies inside the range or touches either end of it.
 Guide text and diff lines are inserted as text, in the design system’s existing parts:

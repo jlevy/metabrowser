@@ -13,7 +13,7 @@ import re
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Final, Literal
+from typing import TYPE_CHECKING, Annotated, Final, Literal, TypeGuard
 
 from markdown_it import MarkdownIt
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -76,8 +76,14 @@ MAX_REFERENCES = 8
 # 10-core Mac at a load average of 13 (2026-11-20): 20 items took 66 ms with the shortest
 # text, 40 items 131 ms and 80 items 262 ms, and 40 items with the description filled to
 # MAX_BODY_BYTES took 154 ms. The body bound alone admits 480 one-reference items, which
-# took 322 ms, so this keeps the largest guide the caps admit near 150 ms. read_guide pays
-# it once for each record revision.
+# took 322 ms, so this keeps the largest guide the caps admit near 150 ms. A refused block
+# costs about its YAML: _outside_shape refuses a list past these caps, or an undeclared
+# key, before the schema runs, which then judges each value in time linear in its size.
+# The densest at MAX_BODY_BYTES, 64 KiB of `0` items or of 40 titles that are long lists,
+# took 0.70 and 0.75 s to refuse, and their YAML alone 0.71 and 0.73 s, warm, best of nine
+# at a load average of 127 to 141 (2026-11-24), so upper bounds; at that load the largest
+# guide took 154 ms. Before the walk, 13,000 undeclared keys there took 105 to 136 s (D1 of
+# review D on #677). read_guide pays the parse once for each record revision.
 MAX_ITEMS = 40
 # A step's ranged excerpts share this budget, each row charged _row_cost: what JSON's
 # escaping and a drawn row cost, so even rows of control characters or empty lines stay
@@ -257,17 +263,70 @@ def _collection(fence: Token) -> Collection:
         "status": _CONTRACT.status,
     }:
         raise GuideError("The guided-review block needs the enforced Collection/v1 contract.")
+    outside = _outside_shape(document["collection"])
+    if outside is not None:
+        raise GuideError(_schema_refusal(outside))
     result = validate_artifact(Path("guided-review"), contract=_CONTRACT, document=document)
     if not result.ok:
-        error = result.structural.errors[0]
-        path = error.get("path")
-        where = f" at {path}" if isinstance(path, str) and path else ""
-        raise GuideError(f"The guided-review block does not satisfy the v1 SoftSchema{where}.")
+        raise GuideError(_schema_refusal(result.structural.errors[0].get("path")))
     try:
         return Collection.model_validate(result.values)
     except ValidationError as exc:
         location = ".".join(str(part) for part in exc.errors()[0]["loc"])
         raise GuideError(f"Invalid guided-review reference at {location}.") from exc
+
+
+def _outside_shape(collection: object) -> list[str | int] | None:
+    """Where *collection* leaves the shape the v1 schema closes, or ``None`` within it.
+
+    The shape is each object a mapping of its declared keys and each list within its
+    bound. softschema's validation is quadratic in a block outside it: it writes an error
+    record for each undeclared key, each with a copy of the whole mapping, so 4,000 keys
+    took 10 to 12 s to refuse and the body bound's 13,000 about two minutes (D1 of review D
+    on #677). This walk refuses those first, at the location the schema would name: an
+    object's for its undeclared key, a list's for its length. The values inside the shape
+    are the schema's to judge, at a cost linear in their size.
+    """
+    if not _closed(collection, Collection):
+        return []
+    if "comparison" in collection and not _closed(collection["comparison"], CollectionComparison):
+        return ["comparison"]
+    if "items" not in collection:
+        return None
+    items = collection["items"]
+    if not isinstance(items, list) or len(items) > MAX_ITEMS:
+        return ["items"]
+    for at, item in enumerate(items):
+        if not _closed(item, CollectionItem):
+            return ["items", at]
+        if "references" not in item:
+            continue
+        references = item["references"]
+        if not isinstance(references, list) or len(references) > MAX_REFERENCES:
+            return ["items", at, "references"]
+        for to, reference in enumerate(references):
+            if not _closed(reference, CollectionReference):
+                return ["items", at, "references", to]
+    return None
+
+
+def _closed(value: object, model: type[_Model]) -> TypeGuard[dict[object, object]]:
+    """Whether *value* is a mapping of only *model*'s declared keys.
+
+    A view's ``<=`` compares the sizes first, so a mapping of many keys costs nothing here.
+    """
+    return isinstance(value, dict) and value.keys() <= model.model_fields.keys()
+
+
+def _schema_refusal(path: object) -> str:
+    """The refusal of a block the v1 schema does not admit, at *path* when there is one.
+
+    *path* is a location in the collection, as softschema's error record lists it: only
+    declared keys and list indices, since the schema refuses an undeclared key at its
+    object, so the message is still the code's own words.
+    """
+    where = f" at {'.'.join(str(part) for part in path)}" if isinstance(path, list) and path else ""
+    return f"The guided-review block does not satisfy the v1 SoftSchema{where}."
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,12 +346,26 @@ class _Read:
 _READS: dict[tuple[str, str, int], _Read] = {}
 _READS_LOCK: Final = threading.Lock()
 _MAX_READS: Final = 16
+# The pull requests a parse is under way for. A guided pull request's front page asks for
+# its description's render and its guide's first step at once, so the second request waits
+# for the first one's parse instead of starting its own (D2 of review D on #677).
+_PARSING: dict[tuple[str, str, int], threading.Event] = {}
 
 
 def _reading(key: tuple[str, str, int], revision: str, body: str) -> _Read:
-    with _READS_LOCK:
-        hit = _READS.get(key)
-    if hit is None or hit.revision != revision:
+    """The kept parse of *body* for *key* at *revision*: parsed once, however many ask."""
+    while True:
+        with _READS_LOCK:
+            hit = _READS.get(key)
+            if hit is not None and hit.revision == revision:
+                return hit
+            pending = _PARSING.get(key)
+            if pending is None:
+                done = _PARSING[key] = threading.Event()
+                break
+        # Then read the cache again: the parse may have been of another revision, or failed.
+        pending.wait()
+    try:
         try:
             guide, introduction = _read_description(body)
             hit = _Read(revision, guide, None, introduction)
@@ -302,7 +375,11 @@ def _reading(key: tuple[str, str, int], revision: str, body: str) -> _Read:
             if key not in _READS and len(_READS) >= _MAX_READS:
                 _READS.pop(next(iter(_READS)))
             _READS[key] = hit
-    return hit
+        return hit
+    finally:
+        with _READS_LOCK:
+            del _PARSING[key]
+        done.set()
 
 
 def read_guide(key: tuple[str, str, int], revision: str, body: str) -> Collection | None:
@@ -577,17 +654,37 @@ async def _commits_since(location: GitLocation, old: str, new: str) -> dict[str,
 
 
 async def _paths_between(location: GitLocation, old: str, new: str) -> set[str] | None:
-    """The paths that differ between commits *old* and *new*, or ``None`` past the bound."""
+    """The paths that differ between commits *old* and *new*, or ``None`` past the bound.
+
+    Git is stopped at the first path past MAX_STALE_PATHS, which the byte bound alone does
+    not do: it admits 399,609 paths of 40 bytes, which took 207 ms to decode and split on
+    the event loop, where counting NULs to the stop takes 0.08 ms (best of five at a load
+    average of 181 on 10 cores, 2026-11-24; D3 of review D on #677). What is left, at most
+    MAX_STALE_PATHS paths of up to 4,095 bytes, took 27 ms to split, so a thread does it.
+    """
+    written = 0
+
+    def past_the_bound(chunk: bytes) -> bool:
+        nonlocal written
+        written += chunk.count(b"\0")
+        return written > MAX_STALE_PATHS
+
     try:
         out = await run_git_at(
             ["diff", *GIT_NO_DRIVER_ARGS, "--no-renames", "--name-only", "-z", old, new, "--"],
             location,
             max_bytes=MAX_STALE_PATHS * _MAX_STALE_PATH_BYTES,
+            stop_when=past_the_bound,
         )
     except GitError:
+        # GitOutputCutError among them, which past_the_bound ends the run with.
         return None
-    paths = {path for path in out.decode("utf-8", errors="replace").split("\0") if path}
+    paths = await asyncio.to_thread(_split_paths, out)
     return paths if len(paths) <= MAX_STALE_PATHS else None
+
+
+def _split_paths(out: bytes) -> set[str]:
+    return {path for path in out.decode("utf-8", errors="replace").split("\0") if path}
 
 
 async def _staleness(

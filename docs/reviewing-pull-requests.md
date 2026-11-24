@@ -238,8 +238,9 @@ newer commits changed is unknown until the pull request is fetched again.
 To bring the guide current, update its pins and ranges in the PR description.
 
 A guide the page cannot read says why in place of the steps: invalid YAML, a second
-block, another contract, a field that fails the schema, or pins that do not name a
-comparison. Its block then stays in the description, so its author sees what they wrote.
+block, another contract, a field that fails the schema (with its place below
+`collection`, such as `items.0.references.0`), or pins that do not name a comparison.
+Its block then stays in the description, so its author sees what they wrote.
 The same answer is the `guided-review` route’s, which this prints from the cached pull
 request:
 
@@ -536,6 +537,13 @@ A repository URL is served under the untrusted profile.
 Files of a local folder keep that folder’s
 [content-trust](command-line.md#content-trust) settings; reviewing a pull request does
 not change them.
+
+A [guide](#guided-review) is the author’s too, though a guided pull request opens on it:
+its steps show the files and lines its author chose, in the author’s order, and its
+notes are the author’s claims about them.
+Nothing says which changed files no step cites, so a guide can lead a reviewer, or an
+agent reading the `guided-review` route, past the part of a change that matters.
+**Changes** is the whole change.
 
 ## What It Does Not Do Yet
 
