@@ -3926,7 +3926,7 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   is cut short at its bound, as a commit's page knows them (A3 of review A on #470).
  *   A diff narrowed to some file types (diff-type-filter.js) passes the whole comparison's
  *   manifest as *summaryManifest*, so its summary still describes the whole change set; its
- *   File type control as *toolbarControl*, which leads the layout control; and *emptyText*,
+ *   File type control as *toolbarControl*, which leads the toolbar's end group of choosers; and *emptyText*,
  *   what it says when it keeps no file. *unfold* draws every fold open, the rendered
  *   view's unchanged runs and the text diff's long changed runs alike, for a page that
  *   shows its files whole: a pull request's Docs tab. *layout* fixes the layout at

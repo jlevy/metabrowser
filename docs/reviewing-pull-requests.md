@@ -153,8 +153,8 @@ The page has up to four tabs:
   [Diff or Current](#diff-or-current) describes.
   The changed-file list on the Pulls tab moves through this diff, and the selected file
   follows the diff as you scroll.
-  The **File type** menu beside the layout control (`Y`) shows only the changed files of
-  the types you choose, as a commit’s does
+  The **File type** menu ahead of the Diff | Current and layout choosers (`Y`) shows
+  only the changed files of the types you choose, as a commit’s does
   ([A Commit’s Page](browsing-history.md#a-commits-page)); the page keeps the choice
   while you visit the other tabs, and a file you jump to that it hides shows every type
   again.
