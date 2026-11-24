@@ -1104,10 +1104,12 @@ header says what KPress lacks.
 
 The root icon and name in the navigation column link to Home.
 The folder glyph identifies a local folder, a Git checkout, or a cloud mirror.
-The adjacent Info button opens the root’s details, with a kind-specific accessible name
-such as “Local folder details”.
-The circled Info glyph uses the shared icon-only button, with muted ink at rest and the
-same highlight on hover, focus, or while the menu is open.
+The adjacent Info button opens the root’s details.
+Its accessible name and tooltip identify the kind, for example “Local folder details”.
+The tooltip clears while the menu is open.
+The circled i has a distinct dot and foot at sidebar size.
+It uses the shared icon-only button with muted ink at rest and the same highlight on
+hover, focus, or while the menu is open.
 Click it again, click outside the menu, or press Escape to close it.
 
 The menu shows information about the folder, including its local path, file count, size,
@@ -2165,9 +2167,10 @@ The row uses one chevron, the standalone button for the revision chooser.
 
 The menu names the ref and its kind.
 **Copy Branch Name** and **Copy Tag Name** copy the underlying name.
-**View This Branch** or **View This Tag** selects the full ref, including its Git
-namespace, through the same source-switch route as the chooser.
-A fork’s PR head can open the PR snapshot when it is available in the mirror.
+**View This Branch** or **View This Tag** uses the in-app right arrow and selects the
+full ref, including its Git namespace, through the same source-switch route as the
+chooser. **View PR Head in Metabrowser** uses the same arrow and opens the PR snapshot
+when it is available in the mirror.
 **Open on GitHub** shows the destination and uses the same external arrow as the
 repository menu. The remote action appears when the app can identify the matching GitHub
 repository and ref.
