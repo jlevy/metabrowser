@@ -277,27 +277,27 @@ class _Failures:
 
     def __init__(self, capacity: int) -> None:
         self._capacity = capacity
-        self._entries: OrderedDict[str, tuple[Reason, float | None]] = OrderedDict()
+        self._held: OrderedDict[str, tuple[Reason, float | None]] = OrderedDict()
 
     def get(self, key: str) -> Reason | None:
-        entry = self._entries.get(key)
+        entry = self._held.get(key)
         if entry is None:
             return None
         reason, until = entry
         if until is not None and time.monotonic() >= until:
-            del self._entries[key]
+            del self._held[key]
             return None
         return reason
 
     def remember(self, key: str, reason: Reason) -> None:
         until = None if reason in _LASTING else time.monotonic() + FAILURE_RETRY_SECONDS
-        self._entries[key] = (reason, until)
-        self._entries.move_to_end(key)
-        while len(self._entries) > self._capacity:
-            self._entries.popitem(last=False)
+        self._held[key] = (reason, until)
+        self._held.move_to_end(key)
+        while len(self._held) > self._capacity:
+            self._held.popitem(last=False)
 
     def clear(self) -> None:
-        self._entries.clear()
+        self._held.clear()
 
 
 class ContentHashes:
@@ -305,22 +305,22 @@ class ContentHashes:
 
     def __init__(self, capacity: int) -> None:
         self._capacity = capacity
-        self._entries: OrderedDict[tuple[object, ...], str] = OrderedDict()
+        self._held: OrderedDict[tuple[object, ...], str] = OrderedDict()
 
     def get(self, fingerprint: tuple[object, ...]) -> str | None:
-        found = self._entries.get(fingerprint)
+        found = self._held.get(fingerprint)
         if found is not None:
-            self._entries.move_to_end(fingerprint)
+            self._held.move_to_end(fingerprint)
         return found
 
     def remember(self, fingerprint: tuple[object, ...], digest: str) -> None:
-        self._entries[fingerprint] = digest
-        self._entries.move_to_end(fingerprint)
-        while len(self._entries) > self._capacity:
-            self._entries.popitem(last=False)
+        self._held[fingerprint] = digest
+        self._held.move_to_end(fingerprint)
+        while len(self._held) > self._capacity:
+            self._held.popitem(last=False)
 
     def clear(self) -> None:
-        self._entries.clear()
+        self._held.clear()
 
 
 _failures = _Failures(FAILURES_REMEMBERED)

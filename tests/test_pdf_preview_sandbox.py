@@ -26,9 +26,12 @@ from metabrowser.builtin_plugins.pdf import preview, preview_isolation
 from metabrowser.builtin_plugins.pdf.preview_isolation import Isolation, Sandbox
 from tests.test_pdf_surfaces_session import _PDF
 
-pytestmark = pytest.mark.skipif(
-    sys.platform != "darwin", reason="sandbox-exec, the confinement under test, is macOS's"
-)
+pytestmark = [
+    pytest.mark.macos_tier,
+    pytest.mark.skipif(
+        sys.platform != "darwin", reason="sandbox-exec, the confinement under test, is macOS's"
+    ),
+]
 
 # What the hostile code tries, each printing "allowed" or the error that stopped it.
 _ATTEMPTS = r"""
@@ -92,7 +95,7 @@ def _attempts(prefix: tuple[str, ...], tmp_path: Path) -> dict[str, str]:
             ],
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=45,
             env=preview_isolation.child_environment(),
             cwd="/",
             check=False,

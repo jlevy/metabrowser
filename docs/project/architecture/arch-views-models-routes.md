@@ -246,7 +246,9 @@ Claude Code and Codex sessions under a served folder ([Agent Catalog](#agent-cat
 ([Table Sources](arch-plugin-system.md#table-sources)); `sqlite/info`, `sqlite/schema`,
 and `sqlite/children`, a SQLite database’s Info and Schema views and its tables as
 container children
-([Navigation Containers](arch-plugin-system.md#navigation-containers)); and
+([Navigation Containers](arch-plugin-system.md#navigation-containers)); `pdf/preview`
+and `pdf/preview-image`, a PDF’s first page as a PNG the server draws
+([PDF plan](../specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)); and
 `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
 `github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
 `github/pull-size`, `github/pull-timeline`, `github/pull-markdown`,

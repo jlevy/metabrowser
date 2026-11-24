@@ -938,6 +938,22 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/pdf/preview",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/pdf/preview-image",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/sqlite/children",
       "methods": [
         "GET",
@@ -1180,7 +1196,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 98
+  "count": 100
 }
 ? 0
 ```
