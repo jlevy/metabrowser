@@ -65,14 +65,15 @@ and a pane too narrow for Split draws Unified until there is room.
 **Diff** | **Current**, before the layout control, or `N`, switches between what changed
 and the new version alone, as in a pull request
 ([Diff or Current](reviewing-pull-requests.md#diff-or-current)). A commit that changes
-more than one file has a **File type** menu beside the layout control, the same menu as
-the Files tab’s, which counts the commit’s changed files by group, family, and
-extension. Choose types in it (`Y` opens it) to show only the changed files of those
-types; the toolbar then says how many of the commit’s files it shows, with **Clear**. A
-renamed file counts under its old type and its new one, the summary at the top still
-describes the whole commit, and a file you jump to from it that the choice hides shows
-every type again. Large files load as you reach them, and a commit that changes more
-files than the page lists says that its diff is bounded.
+more than one file has a **File type** menu ahead of the Diff | Current and layout
+choosers, the same menu as the Files tab’s, which counts the commit’s changed files by
+group, family, and extension.
+Choose types in it (`Y` opens it) to show only the changed files of those types; the
+toolbar then says how many of the commit’s files it shows, with **Clear**. A renamed
+file counts under its old type and its new one, the summary at the top still describes
+the whole commit, and a file you jump to from it that the choice hides shows every type
+again. Large files load as you reach them, and a commit that changes more files than the
+page lists says that its diff is bounded.
 
 On a repository opened by its URL, each file’s bar also offers **View file**, which
 opens the file the commit made, at the commit, switching the served commit first when

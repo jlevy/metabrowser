@@ -258,15 +258,14 @@ Changed words are marked by a bounded word diff.
   projection in a thread, which nothing can stop, only for Markdown without raw HTML. No
   count over the input bounds what the sanitizer makes of raw HTML, which rebuilds each
   formatting element left open at every later block (`_Limits`), so a thread refuses a
-  side that holds any.
-  Past a budget, or with raw HTML, the pair goes to the Markdown child, whose deadline
-  bounds its time (`markdown_projection_worker.py`), and the pull request route reads a
-  pair up to `_MARKDOWN_PAIR_MAX_BYTES` in
-  `builtin_plugins/github/pull_rendered_diff.py` (mb-rm40). The projection renders with
-  math and diagrams off and without code highlighting.
-  The rest of its refusals guard what it checks rather than what a file holds: a patch
-  that does not match the two sides’ bytes or cover their differences, and a hardened
-  render it cannot read back as one tree.
+  side that holds any, a comment the sanitizer ends early included (`_COMMENT`). Past a
+  budget, or with raw HTML, the pair goes to the Markdown child, whose deadline bounds
+  its time (`markdown_projection_worker.py`), and the pull request route reads a pair up
+  to `_MARKDOWN_PAIR_MAX_BYTES` in `builtin_plugins/github/pull_rendered_diff.py`
+  (mb-rm40). The projection renders with math and diagrams off and without code
+  highlighting. The rest of its refusals guard what it checks rather than what a file
+  holds: a patch that does not match the two sides’ bytes or cover their differences,
+  and a hardened render it cannot read back as one tree.
 - **Source text:** each side reads as the Document view reads it.
   A byte that is not UTF-8 is U+FFFD, and a patch line that is not carries its exact
   bytes, which the projection checks; MarkdownIt makes a NUL U+FFFD. MarkdownIt also
@@ -280,8 +279,10 @@ Changed words are marked by a bounded word diff.
   a `<details>` that raw HTML opened in one block and closed in a later one, parts
   nothing, so those blocks are one block of all their lines (`_units`). Raw HTML the
   render drops whole, such as a script, has no block, as a comment has none.
-  `_trusted` says when a top-level boundary can still be misplaced, and how the
-  projection then finds it.
+  A comment that the sanitizer’s HTML5 parser ends before MarkdownIt’s token does, at
+  `--!>` or at an opening `<!-->`, is raw HTML that renders the rest, as the Document
+  view renders it (`_COMMENT`). `_trusted` says when a top-level boundary can still be
+  misplaced, and how the projection then finds it.
 - **Task lists:** KPress draws each box from a token of its own (`_TASK_BOX`), with the
   box’s state in the token’s `meta["checked"]`, and the allowlist keeps the `input` it
   renders as a disabled checkbox, ticked as the token is (`CHECKBOX_ATTRIBUTES` in
