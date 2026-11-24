@@ -3774,6 +3774,7 @@ glyph itself.
 | --- | --- | --- | --- |
 | `?` | `?` | Question mark | Omitted when matched as a produced character |
 | `/` | `/` | Slash | Omitted when matched as a produced character |
+| `#` | `#` | Hash | Omitted when matched as a produced character |
 | Letter key | Uppercase letter, such as `T` | The letter | Uppercase letter, such as `T` |
 | Digit key | The digit | The digit | The digit |
 | `ArrowUp` | `↑` | Up arrow | `ArrowUp` |
@@ -5273,8 +5274,9 @@ the Backslash key.** The page slides left over the pane to fill the window, and 
 chevron turns to point right; a second press slides the page back and shows the pane as
 it was. Shift-Backslash, which types `|` on a US keyboard, does the same, as Shift
 changes no key ([Keyboard Shortcuts](#keyboard-shortcuts)); the key is read by the
-character it types, so the key in its place on a UK or German keyboard, which types `#`,
-is not it.
+character it types.
+On UK and German keyboards, the key in that position types `#`, which
+opens Quick Search for pull requests in a GitHub repository.
 
 The chevron is the shared disclosure chevron in an icon button
 ([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)),
