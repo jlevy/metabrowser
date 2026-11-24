@@ -70,6 +70,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Guided reviews in the agent skill](specs/active/plan-2026-11-24-guided-reviews-skill.md):
+  the skill section that writes, publishes, and refreshes a pull request’s guided
+  review, now shipped, and a `metab` check of a draft guide, still to build
 - [The Diff | Current chooser](specs/active/plan-2026-11-23-diff-current-chooser.md):
   one chooser in the diff’s toolbar, beside Split | Unified, for the whole diff, whose
   Current shows the new version alone with its changes marked
