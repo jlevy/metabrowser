@@ -4,7 +4,10 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** In progress
+**Status:** Phase 1 in progress; bead `mb-uqwl`. The skill’s **Write a Guided Review**
+section shipped in #785, with the block skeleton and the recipes to publish, confirm,
+and refresh a guide; the check route and its recipes, the handoff line, and the
+person-facing guide remain.
 
 ## Overview
 
@@ -54,7 +57,8 @@ showed what an agent gets wrong and what it needs:
 - **Coverage.** Nothing says which changed files no step cites.
   A guide written early in a pull request’s life silently drops the files added later;
   #677’s guide missed 34 of 58 until a script listed them.
-- **YAML.** A title such as `Evidence: the route` is not valid YAML unquoted.
+- **YAML.** An unquoted title such as `Evidence: the route` makes the whole block
+  invalid YAML, and a folded note joins a list’s lines into one.
 - **Checking before publishing.** The only check is the `guided-review` route, which
   reads the cached description, so a mistake is found after the description carries it.
   A throwaway script (parse as `parse_guide` does, confirm the merge base, test each
@@ -100,7 +104,9 @@ It arrives with its parity row and a golden on the GitHub stand-in
 a pull request: write or refresh its guided review”) and a section, **Write a Guided
 Review**, with:
 
-- when to write one: every pull request the agent opens, unless the user says not to;
+- when to write one: every pull request the agent opens, a one-file change included,
+  unless the user says not to; a small change merges concerns but keeps its testing
+  step, so even a one-file guide keeps what CI proves apart from what a person checks;
 - the pins, computed with `git merge-base`, and why a stacked layer’s base is its base
   branch;
 - what a guide covers, each concern a step or a run of steps of its own, in this order:
@@ -108,17 +114,20 @@ Review**, with:
   order with every changed file cited; ambiguity and uncertainty a person should decide;
   testing and QA, split three ways into what automated checks cover, what the agent
   checked itself, and what still needs a person; and future work and further planning;
-- the YAML shape and its traps (quote a title with a colon);
+- a minimal block skeleton and the YAML rules (quote a title or note holding `: ` or
+  ` #`, and write a note with a list as a literal block);
 - the check, then `gh pr edit <n> --body-file`, replacing an existing block rather than
   adding a second;
-- confirming it with the `guided-review` route: `state` is `ready` and every reference
-  is `ready`;
+- confirming it with the `guided-review` route, after refreshing the record it reads:
+  `state` is `ready` and every reference is `ready`, step by step;
 - refreshing after each push: read the stale answer, recheck only the steps it lists,
   move the pins, check again, and publish.
 
-The format details stay in
+The skeleton is held to `parse_guide` by `tests/test_skill_commands.py`, so an agent can
+write a guide from the section alone.
+The format’s limits and full rules stay in
 [Reviewing Pull Requests](../../../reviewing-pull-requests.md#guided-review); the skill
-links to it rather than restating it.
+names the limits and links there rather than restating their values.
 If the skill grows past a routing layer, the format summary moves to
 `skills/metabrowser/references/guided-reviews.md`, once the skill installer is confirmed
 to copy a skill’s subfolders.
@@ -160,14 +169,19 @@ The check is the guided-review carrier’s, as each carrier keeps its own route.
 
 - [ ] Add `/api/plugin/github/guided-review-check` with its parity row, the route map
   entry, and a golden on the GitHub stand-in.
-- [x] Add **Write a Guided Review** to the skill, with the route in **Route the Task**:
-  what a guide covers, the pins, the YAML trap, and confirming it with the route.
+- [x] Add **Write a Guided Review** to the skill, with the route in **Route the Task**
+  and in the skill’s description: what a guide covers, the pins, the block skeleton and
+  its YAML rules, publishing with `gh pr edit`, and confirming and refreshing it with
+  the route after refreshing the record.
+- [x] Hold the section’s recipes to the golden, its states and keys to
+  `guided_review.py`, and its skeleton to `parse_guide`, each check proven by a
+  mutation.
 - [ ] Once the check route exists, add its recipes to the section and to
   `tests/golden/cli-skill-recipes.tryscript.md`.
 - [ ] Repeat the person-facing part in `docs/working-with-agents.md` (“ask an agent to
   add a guided review”).
 - [ ] Add the handoff line to `AGENTS.md`.
-- [ ] Changelog fragment.
+- [x] Changelog fragment.
 
 ## Testing Strategy
 
@@ -175,8 +189,9 @@ The check is the guided-review carrier’s, as each carrier keeps its own route.
   a wrong merge base, a stale head, and uncited files, on the GitHub stand-in.
 - `tests/test_skill_commands.py` already fails when the skill names a route `metab` does
   not register, and runs the skill’s recipes from the golden; the new recipes join it.
-- A mutation of the new section (a wrong route name, a recipe that skips the check) must
-  fail those checks, as each existing check is proven.
+- A mutation of the new section (a wrong route name, a renamed state, a skeleton the
+  page refuses) fails those checks, as each existing check is proven; once the check
+  exists, a recipe that skips it must fail too.
 - Dogfooding: the pull requests that implement this plan carry guides written by the
   skill’s own recipe.
 
@@ -191,8 +206,6 @@ for an unreleased route.
 - Should the check take the draft as a path in the checkout, or as the pull request
   description file the agent will publish, so it also confirms there is exactly one
   block?
-- Should a pull request with only a few changed files skip the guide?
-  The description alone may be the review for a one-file change.
 
 ## References
 
