@@ -1554,15 +1554,35 @@ def test_a_render_holding_the_first_plane_of_separators_takes_the_next() -> None
     old = f"{every}\n\nThe old end.\n".encode()
     result = _project(old, old.replace(b"old", b"new"))
     assert [block["kind"] for block in result["blocks"]] == ["context", "removed", "added"]
-    assert markdown_projection._separator(every) == "\U000f0000"  # pyright: ignore[reportPrivateUsage]
+    assert markdown_projection._separator(every) == "".join(  # pyright: ignore[reportPrivateUsage]
+        chr(point) for point in range(0xF0000, 0xF000B)
+    )
 
 
 def test_a_render_holding_every_separator_is_one_block(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(markdown_projection, "_SEPARATORS", (range(0xE000, 0xE001),))
+    # Eleven, of which the text holds one: a marker needs all eleven.
+    monkeypatch.setattr(markdown_projection, "_SEPARATORS", (range(0xE000, 0xE00B),))
     old = b"# Title\n\nText \xee\x80\x80 here.\n\nThe old end.\n"
     result = _project(old, old.replace(b"old", b"new"))
     assert [block["kind"] for block in result["blocks"]] == ["removed", "added"]
     assert "<ins>new</ins>" in result["blocks"][1]["html"]
+
+
+def test_a_heading_raw_html_leaves_open_takes_no_marker_into_its_anchor() -> None:
+    """The markers that part the blocks inside a heading that raw HTML left open are
+    written in characters a slug drops, so its anchor is the Document view's."""
+
+    from kpress.format import parse_markdown
+
+    from metabrowser.inert_html import ANCHOR_PREFIX, harden
+
+    source = "<h2>Title\n\nmore text\n\n</h2>\n"
+    document = harden(
+        parse_markdown(source, title="", trust_mode="sanitized", diagrams="off", math="off").html
+    )
+    assert f'id="{ANCHOR_PREFIX}titlemore-text"' in document
+    (block,) = _project(None, source.encode())["blocks"]
+    assert re.search(r'<h2 id="user-content-[0-9a-f]{24}-new-titlemore-text">', block["html"])
 
 
 # ── Sources as the Document view reads them ─────────────────────

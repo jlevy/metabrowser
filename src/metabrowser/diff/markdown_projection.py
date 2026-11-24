@@ -44,7 +44,7 @@ from difflib import SequenceMatcher
 from functools import lru_cache
 from html import escape, unescape
 from html.parser import HTMLParser
-from itertools import pairwise
+from itertools import islice, pairwise
 from math import inf
 from typing import Any, Final, Literal, NotRequired, TypedDict, cast
 from urllib.parse import unquote
@@ -865,29 +865,47 @@ def _map(token: Token, offset: int, after: int) -> tuple[int, int]:
 
 
 def _separator(text: str) -> str | None:
-    """The first of _SEPARATORS that *text* does not hold, or None when it holds them
-    all."""
+    """Eleven of _SEPARATORS that *text* does not hold, or None when it holds all but
+    fewer: the first opens and closes a boundary marker, and the other ten are its
+    index's digits. A heading's slug drops them all, as it drops no ASCII digit, so a
+    marker inside a heading that raw HTML left open adds nothing to its anchor."""
 
-    if "\ue000" not in text:
-        return "\ue000"
+    first = "".join(map(chr, _SEPARATORS[0][:11]))
+    if len(first) == 11 and not _holds(text, first):
+        return first
     held = set(text)
-    return next(
-        (chr(point) for points in _SEPARATORS for point in points if chr(point) not in held),
-        None,
+    free = "".join(
+        islice(
+            (chr(point) for points in _SEPARATORS for point in points if chr(point) not in held),
+            11,
+        )
     )
+    return free if len(free) == 11 else None
+
+
+def _holds(text: str, split: str) -> bool:
+    """Whether *text* holds any character of the separator *split*."""
+
+    return any(character in text for character in split)
 
 
 @lru_cache(maxsize=8)
 def _markers(split: str) -> re.Pattern[str]:
     """The boundaries a render parted by *split* carries."""
 
-    return re.compile(f"{split}(\\d+){split}")
+    return re.compile(f"{split[0]}([{split[1:]}]+){split[0]}")
 
 
 def _marker(index: int, split: str) -> str:
     """The boundary after block *index*, as the render carries it."""
 
-    return f"{split}{index}{split}"
+    return split[0] + str(index).translate(str.maketrans("0123456789", split[1:])) + split[0]
+
+
+def _marked_index(digits: str, split: str) -> int:
+    """The block index a marker's *digits* write."""
+
+    return int(digits.translate(str.maketrans(split[1:], "0123456789")))
 
 
 def _hardened(html: str, budget: float) -> _Html:
@@ -927,7 +945,7 @@ def _unmarked(node: _Element, split: str) -> bool:
     nothing, so the blocks on either side render as one. False when a separator is left
     anywhere else, such as in an attribute."""
 
-    whole = all(split not in value for _, value in node.attrs)
+    whole = not any(_holds(value, split) for _, value in node.attrs)
     children: list[_Element | str] = []
     for child in node.children:
         if isinstance(child, _Element):
@@ -935,7 +953,7 @@ def _unmarked(node: _Element, split: str) -> bool:
             children.append(child)
             continue
         text = _markers(split).sub("", child)
-        whole &= split not in text
+        whole &= not _holds(text, split)
         if text and children and isinstance(children[-1], str):
             children[-1] += text
         elif text:
@@ -977,11 +995,11 @@ def _units(root: _Element, count: int, split: str) -> list[_Unit] | None:
         position = 0
         for match in _markers(split).finditer(child):
             parts[-1].append(child[position : match.start()])
-            ends.append(int(match.group(1)))
+            ends.append(_marked_index(match.group(1), split))
             parts.append([])
             position = match.end()
         parts[-1].append(child[position:])
-    if any(split in node for part in parts for node in part if isinstance(node, str)):
+    if any(_holds(node, split) for part in parts for node in part if isinstance(node, str)):
         return None
     if any(later <= earlier for earlier, later in pairwise(ends)) or (
         ends and ends[-1] >= count - 1
