@@ -886,6 +886,10 @@ Its run of 2026-11-11 failed: layout is where WebKit falls behind, most in the s
 and binary views.
 [QA: WebKit Measurement Gate](../qa/qa-2026-11-11-webkit-measurement-gate.md) records
 the method, every figure, and the print and drop checks.
+Its treemap case, first run on 2026-11-23 and recorded in that document’s addendum, held
+the Treemap’s layout within 1.3 times Chrome at every cell cap and failed its family
+hover, at 1.4 to 2.6 times; with palette keys looked up once an extension a layout, a
+second run that day passed every metric.
 
 ## Why It Lives in This Repository
 

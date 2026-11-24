@@ -121,9 +121,10 @@ type OriginAbsence = (
 # deadline, ``GIT_ACQUISITION_TIMEOUT_S``. One that ran it out downloaded for all of it
 # and kept nothing, and would again: a single-branch clone of a large repository lacks
 # most of it. So nobody's asking costs at most one deadline of download for as long as
-# the server runs. At the slowest rate measured for a first clone, 1,820 KB/s
-# (``builtin_plugins/github/provider.py``, 2026-09-23), that is about 1.5 GB once; the
-# acquisition measured at :func:`acquire_checkout_store` took 21 s and kept 1.26 MB.
+# the server runs. At the slowest rate measured for a first clone, 1,820 KB/s (beside
+# ``GIT_ACQUISITION_TIMEOUT_S`` in ``git/process.py``, 2026-09-23), that is about 1.5 GB
+# once; the acquisition measured at :func:`acquire_checkout_store` took 21 s and kept
+# 1.26 MB.
 _NOT_RETRIED_UNASKED: Final[frozenset[OriginAbsence]] = frozenset({"timed_out"})
 
 # What a page says for each reason. No path and no address: the envelope names the origin.

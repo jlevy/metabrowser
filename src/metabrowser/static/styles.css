@@ -6445,6 +6445,10 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--tooltip-font-size);
   line-height: 1.4;
   max-width: 360px;
+  /* A name (.tip-name) breaks anywhere; this holds every other line inside
+     the box too, since a long path or word has no space to break at and ran
+     past the tooltip's edge. */
+  overflow-wrap: anywhere;
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--transition-fast);

@@ -1611,7 +1611,7 @@ _FONT_SIZE_EXEMPT: dict[tuple[str, str], str] = {
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) h4"): "relative fallback heading",
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) .checkbox"): "relative to its text",
     # A treemap cell's label and value are sized from the cell's area, set on each cell inline
-    # by treemap.js; the stylesheet's defaults are the small size.
+    # by treemap-map.js; the stylesheet's defaults are the small size.
     ("folder/styles.css", ".tm-cell-label"): "a cell's size, from its area",
     ("folder/styles.css", ".tm-cell-sub"): "a cell's size, from its area",
 }

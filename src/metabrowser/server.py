@@ -187,7 +187,7 @@ from metabrowser.inventory_engine.tree_page_assembly import (
     assemble_grouped_tree,
     assemble_tree_pages,
 )
-from metabrowser.inventory_rollup import RollupOptions, RollupRank
+from metabrowser.inventory_rollup import RollupEncoding, RollupIgnored, RollupOptions, RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
 from metabrowser.keymap import check_view_keys, live_view_keys
 from metabrowser.mirror_refresh import lifespan_refresh, mirror_session
@@ -224,10 +224,12 @@ from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     INVENTORY_TREE_PAGE_ROWS,
     RECENT_WINDOW_SECONDS,
+    ROLLUP_BODY_CACHE_BYTES,
     ROLLUP_BODY_CACHE_ENTRIES,
     ROLLUP_DEFAULT_DEPTH,
     ROLLUP_DEFAULT_EXT_RANK,
     ROLLUP_DEFAULT_EXT_TOP,
+    ROLLUP_DEFAULT_NODES,
     ROLLUP_DEFAULT_TOP,
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
@@ -382,16 +384,26 @@ _INLINE_LANDING_ROWS = 300
 # client that already holds the answer; a second tab opening the same folder,
 # or a reconnect, arrives without one and would otherwise re-aggregate and
 # re-serialize a body the server just produced. Bounded by
-# ``ROLLUP_BODY_CACHE_ENTRIES``: entries from a superseded index revision can
-# never be requested again, so they age out by insertion order.
+# ``ROLLUP_BODY_CACHE_ENTRIES`` and ``ROLLUP_BODY_CACHE_BYTES``: entries from a
+# superseded index revision can never be requested again, so they age out by
+# insertion order.
 _ROLLUP_BODY_CACHE: dict[str, bytes] = {}
 
 
 def _remember_rollup_body(etag: str, body: bytes | memoryview[int]) -> None:
-    """Retain one encoded rollup body for reuse by an identical request."""
+    """Retain one encoded rollup body for reuse by an identical request.
 
-    _ROLLUP_BODY_CACHE[etag] = bytes(body)
-    while len(_ROLLUP_BODY_CACHE) > ROLLUP_BODY_CACHE_ENTRIES:
+    The oldest bodies go first until both bounds hold; a body larger than the byte
+    bound is not retained, since it would evict every other and then itself.
+    """
+
+    retained = bytes(body)
+    if len(retained) > ROLLUP_BODY_CACHE_BYTES:
+        return
+    _ROLLUP_BODY_CACHE[etag] = retained
+    while len(_ROLLUP_BODY_CACHE) > ROLLUP_BODY_CACHE_ENTRIES or (
+        sum(len(cached) for cached in _ROLLUP_BODY_CACHE.values()) > ROLLUP_BODY_CACHE_BYTES
+    ):
         _ROLLUP_BODY_CACHE.pop(next(iter(_ROLLUP_BODY_CACHE)))
 
 
@@ -749,6 +761,9 @@ def _query_bounded_int(
     minimum: int,
     maximum: int,
 ) -> int:
+    # "max" asks for the bound itself, so a client need not know its value.
+    if request.query_params.get(name) == "max":
+        return maximum
     return max(minimum, min(_query_int(request, name, default), maximum))
 
 
@@ -3267,14 +3282,31 @@ async def api_tree(request: Request) -> Response:
 async def api_rollup(request: Request) -> Response:
     """Bounded treemap rollup for a directory subtree.
 
-    `GET /api/rollup?path=&depth=&top=&ext_top=&filename_top=&remaining_top=`
-    clamps parameters to the ROLLUP_* settings bounds. `node` is null while the
+    `GET /api/rollup?path=&depth=&top=&nodes=&ext_top=&filename_top=&remaining_top=`
+    `&ext_rank=&ignored=&encoding=` clamps the numeric parameters to the ROLLUP_*
+    settings bounds, and `max` asks for the bound itself (the Treemap asks for
+    `depth=max&top=max&nodes=max`). `nodes` is the node budget, ROLLUP_DEFAULT_NODES
+    unless named, which expands the heaviest folders first and gives each the share
+    of it `_emit_limit` in `inventory_rollup.py` sets. `node` is null while the
     index cannot serve the path yet (cold start); the client renders that as a
     pending treemap and refreshes off `/api/events` activity. Totals always
-    cover the full subtree. Depth truncation is represented by `children: null`
-    without a rest bucket; node-budget truncation can retain emitted `children`
-    alongside a `rest` bucket for their omitted siblings.
-    A Git pin answers from recursive blob names and sizes and omits mtime.
+    cover the full subtree. `children: null`, without a rest bucket, means the
+    directory was not expanded: it is at `depth`, or the node budget did not
+    reach it. A directory whose children ran past `top` or its share of the node
+    budget keeps the emitted `children` and a `rest` bucket for the omitted
+    siblings.
+
+    `ignored=exclude` leaves gitignored entries out of `children` and `rest` and
+    spends none of the budget on them; every total, tally, and breakdown is as with
+    `include`, the default. `encoding=compact` writes each expanded directory's
+    file children as `[name, size, mtime, ext, gitignored]` entries in its `files`
+    array, with only directories in `children`, and says `"encoding": "compact"`
+    in the envelope; `json`, the default, writes neither. A client derives a
+    compact file's path as its folder's path, a `/`, and its name, which a Git
+    pin's wire paths are not, so a pin always answers `json`. The shapes are
+    `RollupDirNode` and `RollupCompactFile` in `wire_models.py`, and the folder
+    aggregate helpers in `docs/plugins.md` describe them. A Git pin answers from
+    recursive blob names and sizes and omits mtime.
     """
 
     require_source_capability("navigation")
@@ -3310,8 +3342,19 @@ async def api_rollup(request: Request) -> Response:
                 frozenset({"bytes", "dual"}),
             ),
         )
+        ignored = cast(
+            RollupIgnored,
+            _query_choice(request, "ignored", "include", frozenset({"include", "exclude"})),
+        )
+        encoding = cast(
+            RollupEncoding,
+            _query_choice(request, "encoding", "json", frozenset({"json", "compact"})),
+        )
     except ValueError as error:
         return JSONResponse({"error": str(error)}, status_code=400)
+    nodes = _query_bounded_int(
+        request, "nodes", ROLLUP_DEFAULT_NODES, minimum=1, maximum=ROLLUP_MAX_NODES
+    )
 
     pin = as_git_revision_subject(get_source_session().subject)
     if pin is not None:
@@ -3324,11 +3367,16 @@ async def api_rollup(request: Request) -> Response:
                 depth=depth,
                 top=top,
                 ext_top=ext_top,
-                max_nodes=ROLLUP_MAX_NODES,
+                max_nodes=nodes,
                 remaining_top=remaining_top,
                 filename_top=filename_top,
                 ext_rank=ext_rank,
                 omit_mtime=True,
+                ignored=ignored,
+                # A pin's paths are wire tokens (``GitPath.to_wire``), not the folder's
+                # path, a `/`, and the display name a compact entry carries, so a pin
+                # answers the JSON encoding, and its envelope says no other.
+                encoding="json",
             ),
         )
 
@@ -3354,15 +3402,20 @@ async def api_rollup(request: Request) -> Response:
         query_id="rollup",
         path=subpath,
         max_depth=depth,
-        max_nodes=ROLLUP_MAX_NODES,
+        max_nodes=nodes,
         top=top,
         extension_top=ext_top,
         remaining_top=remaining_top,
         filename_top=filename_top,
         rank=ext_rank,
+        ignored=ignored,
+        encoding=encoding,
     )
     diagnostics = DiagnosticsQuery(query_id="rollup-diagnostics")
-    request_shape = f"{subpath}-{depth}.{top}.{ext_top}.{remaining_top}.{filename_top}.{ext_rank}"
+    request_shape = (
+        f"{subpath}-{depth}.{top}.{nodes}.{ext_top}.{remaining_top}.{filename_top}."
+        f"{ext_rank}.{ignored}.{encoding}"
+    )
 
     def etag_for(version: HostVersion) -> str:
         engine = version.engine
@@ -3398,6 +3451,7 @@ async def api_rollup(request: Request) -> Response:
                 {
                     "root": str(session_filesystem_root()),
                     "path": subpath,
+                    **({"encoding": "compact"} if encoding == "compact" else {}),
                     "node": payload.get("node") if payload is not None else None,
                     "ext_tallies": (payload.get("ext_tallies", []) if payload is not None else []),
                     "file_type_breakdown": breakdown,

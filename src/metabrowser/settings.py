@@ -263,10 +263,27 @@ TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
 # extension-tally rows before the remainder row. The semantic breakdown
 # independently caps No extension basenames and Other types extensions;
 # the route clamps every query parameter to the corresponding maximum.
+# The Treemap asks for both maxima, depth and top, and lets the node
+# budget (ROLLUP_DEFAULT_NODES, or ``nodes=`` up to ROLLUP_MAX_NODES)
+# bound the response: emission expands the heaviest folder first, so a
+# deep or wide request spends the same node budget, on the folders that
+# hold the most. The depth bounds the request, not
+# what is drawn: the node budget and the map's room decide that, and a
+# chain of single-folder levels can nest past twelve in a large pane.
+#
+# What depth does add is reach: a deep request can expand a large
+# directory far down, and expanding a directory visits every child.
+# Emission selects the leading ``top`` children rather than sorting
+# them all (``_ordered_children`` in inventory_rollup.py). Measured on
+# 2026-11-22 for a 100k-file directory at level 10, with warm
+# aggregates, depth 12 and top 200: a build_rollup took a median of
+# 0.36 s CPU when it sorted every child and 0.09 s when it selected,
+# with byte-identical output (11 interleaved runs each). The host was
+# heavily loaded (load average 245-295 on 10 CPUs), so the wall-clock
+# medians, 6.9 s and 1.5 s, measure the scheduler more than the work.
 ROLLUP_DEFAULT_DEPTH = 3
-ROLLUP_MAX_DEPTH = 6
+ROLLUP_MAX_DEPTH = 12
 ROLLUP_DEFAULT_TOP = 40
-ROLLUP_MAX_TOP = 200
 ROLLUP_DEFAULT_EXT_TOP = 12
 ROLLUP_MAX_EXT_TOP = 32
 ROLLUP_DEFAULT_EXT_RANK = "bytes"
@@ -274,13 +291,100 @@ ROLLUP_FILE_TYPE_FILENAME_LIMIT = 20
 ROLLUP_FILE_TYPE_REMAINING_LIMIT = 20
 FOLDER_DISCOVERY_MAX_ENTRIES = 4_096
 
-# Global emission budget for one rollup response. ``top`` bounds a
-# single directory; a balanced tree multiplies per level, so this cap
-# is what actually bounds response size (nodes past it become
-# children:null lazy sentinels or fold into rest buckets). The browser
-# renders at most ~800 cells, so 1200 leaves headroom for hide-mode
-# filtering without amplification.
-ROLLUP_MAX_NODES = 1_200
+# Global emission budget for one rollup response, unless ``nodes=``
+# names another. ``top`` bounds a single directory; a balanced tree
+# multiplies per level, so this cap is what actually bounds response
+# size (nodes past it become children:null lazy sentinels or fold into
+# rest buckets).
+#
+# Measured on 2026-11-22 at depth 12, top 200, warm aggregates, encoding
+# included (9 runs each; host load 230-260 on 10 CPUs, so CPU time is
+# the stable figure). This repository, 35,790 files, 33,191 of them
+# ignored:
+#
+#   nodes   unignored  unexpanded  deepest  JSON       gzip     CPU
+#   1,200     804        136        5       233,625    33,325    9 ms
+#   2,400   1,302        407        8       467,879    58,114   16 ms
+#   4,000   1,408        464        8       762,951    93,760   23 ms
+#   6,000   1,626        657        8     1,194,375   143,496   31 ms
+#
+# and a synthetic 138,001-file repository-like tree, unignored nodes
+# 796 / 1,734 / 2,728 / 3,724 at the same budgets, 12 to 28 ms CPU.
+# Most nodes were files too small for the map of the time, an element
+# per cell, which fold into their folder's remainder cell: at 1,200 the
+# Overview's compact map drew 118 cells on this repository and left 136
+# folders unexpanded. 4,000 reaches the depth the larger budgets reach
+# for about 25 ms of server CPU, so it stays the budget of a caller that
+# names none, the Overview's compact map among them.
+ROLLUP_DEFAULT_NODES = 4_000
+
+# The largest budget ``nodes=`` may name, and what ``nodes=max`` asks
+# for, as the Treemap view does. Measured on 2026-11-23 on this
+# repository's main checkout, as for ROLLUP_MAX_TOP below, at depth 12
+# with ``top`` at the budget, laid out with the canvas map's cell cap
+# as it stood (PAINT_MAX_CELLS in treemap-map.js), Files metric, Show
+# ignored on. Bytes are the result as the route encodes it, gzip at
+# delivery.GZIP_LEVEL; CPU is one build and encode with warm aggregates,
+# median of 5, on a host at load average 270-280 on 10 CPUs:
+#
+#   nodes   JSON MB  compact MB  gzip MB  CPU ms  cells   unexpanded  remainder  file cells
+#   4,000    0.79      0.43       0.09      23    3,923     19.1%      25.9%       5.6%
+#   8,000    1.57      0.82       0.19      43    7,668     12.2%      22.7%      10.3%
+#   16,000   3.19      1.50       0.36      73   15,686      2.3%      20.6%      19.1%
+#   24,000   4.79      2.10       0.53     100   23,135      0.7%      13.4%      27.1%
+#   32,000   6.37      2.62       0.68     130   25,000      0.2%       8.5%      31.2%
+#   whole    7.50      2.89       0.79     124   25,000      0.2%       8.1%      31.6%
+#
+# (the whole tree is 38,402 nodes; gzip is the JSON encoding's). The
+# unexpanded share is gone by 16,000; past about 26,000 the map
+# paints PAINT_MAX_CELLS and folds the rest into remainders, so 32,000
+# is the knee: 24,000 to 32,000 draws 4 points more of the map as
+# files, 32,000 to the whole tree 0.4 more. With Show ignored off the
+# map asks ``ignored=exclude``, and the visible tree, 2,740 nodes,
+# fits the default budget whole (0.51 MB JSON, 0.21 MB compact, 9 ms).
+# The browser's parse and layout at this size is measured separately,
+# in the WebKit gate's treemap case.
+ROLLUP_MAX_NODES = 32_000
+
+# ``top=max`` asks for no per-directory cap but the node budget's share:
+# a directory may emit up to the fraction of its own subtree that the
+# budget left is of the subtrees still waiting to expand
+# (``_emit_limit`` in inventory_rollup.py), so a flat folder early in
+# the heaviest-first order cannot spend the budget the ones after it
+# need, and a budget that covers the tree emits all of it. ``top`` can
+# never usefully pass the budget, so its maximum is the budget's.
+#
+# Measured on 2026-11-23 on this repository's main checkout (38,818
+# entries, 35,790 files, 2,740 entries visible) with the production
+# build_rollup at depth 12, laid out by the production layout at
+# 1223x587 with a cell floor of 0.5 px and no cell cap, Files metric,
+# Show ignored on, by the replay the dense treemap research describes
+# (docs/project/research/research-2026-11-22-dense-treemap-rendering.md,
+# "Rollup Budget on This Repository"). Share of the map in unexpanded folders /
+# remainder cells / file cells, in percent:
+#
+#   nodes   top 200 (before)   top = budget     budget share
+#   4,000   51.9 /  8.9 /  6   64.4 / 2.1 /  7  19.1 / 25.9 /  6
+#   8,000   36.4 /  9.5 / 11   54.2 / 0.1 / 13  12.2 / 22.7 / 10
+#   16,000  19.6 /  9.6 / 18   30.1 / 0.2 / 23   2.3 / 20.5 / 19
+#   32,000   0.4 /  9.6 / 30    6.4 / 0.0 / 37   0.2 /  5.9 / 35
+#   whole    0.2 /  9.6 / 31    0.2 / 0.0 / 41   0.2 /  0.0 / 41
+#
+# The share has the least area in unexpanded folders, and in unexpanded
+# folders and remainders together, at every budget; a cap of 200 keeps
+# 9.6% in remainders however large the budget, and raising ``top`` to
+# the budget alone leaves the most unexpanded. It draws up to 4 points
+# less of the map as files than ``top`` at the budget, which spends the
+# budget on the files of the first folders it reaches. A share by
+# subtree weight, or one with a floor of 10, 40, or 200 children, left
+# more unexpanded at every budget below the whole tree. The same
+# responses with Show ignored off, at 4,000 nodes: 7.2 / 5.8 / 58 with
+# the share, 25.8 / 14.7 / 37 before, and 33.4 / 0.0 / 48 with top at
+# the budget. A share of all entries alone
+# left 10.8% unexpanded with Show ignored on, but 0.6 / 55.7 / 14 with
+# it off, so a response that carries ignored entries shares by both
+# populations and takes the larger.
+ROLLUP_MAX_TOP = ROLLUP_MAX_NODES
 
 # Trailing debounce for treemap refresh after inventory change events;
 # read by the SDK's watchRollup.
@@ -291,17 +395,25 @@ ROLLUP_WATCH_DEBOUNCE_MS = 1_000
 # breakdown, the treemap at its own depth), and several tabs on the same folder
 # ask for the same ones, so a cache of a few entries covers the repeats.
 #
-# This bounds entries, not bytes. Measured on a 100k-file tree, the largest
-# shape the browser asks for (depth 3, default bounds) encodes to ~200 KB, and
-# a body is capped by ROLLUP_MAX_NODES regardless of tree size, so eight
-# entries is a ceiling near 1.6 MB rather than something that grows with the
-# root.
+# ROLLUP_BODY_CACHE_BYTES bounds the bytes beside the entries. A body is
+# capped by its node budget regardless of tree size, and the largest a
+# request may ask for is ROLLUP_MAX_NODES in the JSON encoding: 6.37 MB
+# on this repository at 32,000 nodes, about 200 bytes a node (the table
+# above). Eight of those would hold 51 MB. The shapes a folder's views
+# ask for together are smaller: the Treemap's at the maximum in the
+# compact encoding, 2.62 MB, the Overview's map at the default budget,
+# 0.79 MB, and the tally-only breakdown, a few kilobytes. 16 MiB holds
+# that set for four folders, or two of the largest bodies with one set
+# beside them, against the 6 MB ceiling of eight 4,000-node bodies
+# before the budget rose. A body larger than the bound is not retained,
+# since keeping it would evict every other.
 #
 # This is a settled-index optimization. During a scan the revision has already
 # moved by the time a body is stored, so every stored body is unreachable the
 # moment it lands; the reuse shows up once the crawl finishes. Superseded
 # bodies age out by insertion order rather than needing to be swept.
 ROLLUP_BODY_CACHE_ENTRIES = 8
+ROLLUP_BODY_CACHE_BYTES = 16 * 1024 * 1024
 
 
 # ── Git graph panel ──────────────────────────────────────────
@@ -617,10 +729,12 @@ __all__ = [
     "RECENT_MAX_LIMIT",
     "RECENT_RECLUSTER_DEBOUNCE_MS",
     "RECENT_WINDOW_SECONDS",
+    "ROLLUP_BODY_CACHE_BYTES",
     "ROLLUP_BODY_CACHE_ENTRIES",
     "ROLLUP_DEFAULT_DEPTH",
     "ROLLUP_DEFAULT_EXT_RANK",
     "ROLLUP_DEFAULT_EXT_TOP",
+    "ROLLUP_DEFAULT_NODES",
     "ROLLUP_DEFAULT_TOP",
     "ROLLUP_FILE_TYPE_FILENAME_LIMIT",
     "ROLLUP_FILE_TYPE_REMAINING_LIMIT",
