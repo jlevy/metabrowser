@@ -1841,11 +1841,8 @@ body {
   height: var(--icon-glyph);
   color: var(--muted);
 }
-.header-root-kind > svg,
-.root-details-trigger svg {
-  translate: 0 var(--heading-icon-offset-y);
-}
 .header-root-kind > svg {
+  translate: 0 var(--heading-icon-offset-y);
   width: 100%;
   height: 100%;
 }
@@ -1877,6 +1874,7 @@ body {
 }
 /* The root details menu sits beside Home and uses the shared menu rows. */
 .root-details {
+  display: flex;
   margin-inline-start: -4px;
   flex: none;
   color: var(--text);
@@ -1884,16 +1882,26 @@ body {
   letter-spacing: normal;
   text-transform: none;
 }
+/* Center the button directly on the heading's flex axis, then align Info's ink
+   with the source mark. In the shared 24-unit SVG box, the folder's ink sits
+   half a unit up, Git's half a unit down, and the mirror's on the center. */
+.header-path:has(> [data-root-kind="folder"]) ~ .root-details {
+  --source-mark-ink-offset-y: calc(var(--icon-glyph) / -48);
+}
+.header-path:has(> [data-root-kind="git"]) ~ .root-details {
+  --source-mark-ink-offset-y: calc(var(--icon-glyph) / 48);
+}
 .root-details-trigger[aria-expanded="true"] {
   background: var(--hover-bg);
   color: var(--text);
 }
-/* The summary owns the hover target for the decorative glyph. */
+/* The button owns the hover target for the decorative glyph. */
 .root-details-trigger > span {
   pointer-events: none;
 }
 .root-details-trigger svg {
   display: block;
+  translate: 0 calc(var(--heading-icon-offset-y) + var(--source-mark-ink-offset-y, 0px));
 }
 .root-details-panel {
   position: absolute;

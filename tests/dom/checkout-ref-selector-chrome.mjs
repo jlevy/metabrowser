@@ -708,6 +708,9 @@ try {
   // its requests is refused, since each names the commit the server serves. Last, since
   // the Commits tab adds entries to the history that step 6 walks.
   await openPanel();
+  await switchBy(rowNamed("topic"));
+  result.checkedOutBranch = await chrome.evaluate(PAGE);
+  await openPanel();
   await switchBy(rowNamed("feature"));
   takeDataRequests();
   await chrome.evaluate(

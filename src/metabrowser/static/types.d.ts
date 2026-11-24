@@ -365,6 +365,8 @@ type MetabrowserRefChipOptions = {
   ref?: string;
   repository?: string | null;
   snapshot?: string;
+  /** The Files source chip is current. Its menu omits in-app navigation. */
+  current?: boolean;
 };
 
 type MetabrowserRepositoryContext = Readonly<{

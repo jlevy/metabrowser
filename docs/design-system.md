@@ -2170,8 +2170,11 @@ The menu names the ref and its kind.
 **Copy Branch Name** and **Copy Tag Name** copy the underlying name.
 **View This Branch** or **View This Tag** uses the in-app right arrow and selects the
 full ref, including its Git namespace, through the same source-switch route as the
-chooser. **View PR Head in Metabrowser** uses the same arrow and opens the PR snapshot
-when it is available in the mirror.
+chooser. The current Files chip offers copying and an applicable GitHub destination.
+Choose the checked-out branch from the adjacent chooser to open its committed snapshot
+from a live working tree.
+**View PR Head in Metabrowser** uses the same arrow and opens the PR snapshot when it is
+available in the mirror.
 **Open on GitHub** shows the destination and uses the same external arrow as the
 repository menu. The remote action appears when the app can identify the matching GitHub
 repository and ref.
@@ -4154,10 +4157,16 @@ mark on a tree or palette row, or a menu row’s leading mark.
 Never inline a pixel size at a use site.
 Where an icon reserves a column in a palette or menu row, or a file identity’s, the
 alignment box around it is `--icon-box`, one step wider than the glyph, so the mark sits
-optically centered. In a text heading, align adjacent glyphs with the visual center of
-the text. The sidebar’s folder mark and Info button share `--heading-icon-offset-y` to
-center their SVGs on the name’s capital-height band.
-Their hit targets and the heading’s line box keep their original geometry.
+optically centered. In a text heading, lay out adjacent icons on one flex centerline and
+align their ink with the visual center of the text.
+Apply any optical adjustment to the SVG inside its slot so the click target stays
+centered in the row.
+In the sidebar heading, `--heading-icon-offset-y` places the source mark on the name’s
+capital-height band.
+Info uses the source mark’s ink center as its reference.
+The folder variants have slightly different ink bounds inside their shared 24-unit SVG
+box, so `--source-mark-ink-offset-y` carries that difference to Info at the current icon
+size.
 
 A tree row’s leading slot is the glyph’s own width, `--tree-icon-slot`, which is
 `--icon-glyph`: a folder’s or a container’s chevron, a file’s type icon, a change
