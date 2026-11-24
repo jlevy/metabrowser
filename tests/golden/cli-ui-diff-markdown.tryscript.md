@@ -41,11 +41,12 @@ open removed or added row, every key with it, when the file lost or gained it.
 Rendered blocks are removed, added, or unchanged, with changed words marked.
 Raw HTML, here a centered image, a line break, a key, and a `<details>` around Markdown,
 keeps what the server’s sanitizer and the shared allowlist keep of it, as the Document
-view does. A block whose source changed in a way its render does not show, here an HTML
-comment, is drawn like any other and never folds, and nothing is drawn to say that
-Source shows more: each row is its label and its content, and the session fails on
-anything else. Long runs of unchanged blocks fold, and a fold builds its blocks when it
-opens. An image of the head keeps its address on the image route.
+view does, except that the `<details>` in an added row is open.
+A block whose source changed in a way its render does not show, here an HTML comment, is
+drawn like any other and never folds, and nothing is drawn to say that Source shows
+more: each row is its label and its content, and the session fails on anything else.
+Long runs of unchanged blocks fold, and a fold builds its blocks when it opens.
+An image of the head keeps its address on the image route.
 A link to a file of the head keeps its `/view/` address only while the page shows the
 head, which is where that address opens the file; the server’s answer is the same for
 every page, and a page that learns another pin is served makes every such link plain
@@ -283,7 +284,7 @@ $ node tests/dom/diff-markdown-session.js
             "added: <p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"64\"></p>",
             "added: <h1 id=\"user-content-16979ee89c3406b5dab20e21-new-demo\">Demo</h1>",
             "added: <p>Welcome.<br>Press <kbd>Ctrl</kbd> to begin.</p>",
-            "added: <details> <summary>More</summary> <p>The <strong>details</strong>.</p> </details>"
+            "added: <details open=\"\"> <summary>More</summary> <p>The <strong>details</strong>.</p> </details>"
           ]
         }
       }
@@ -299,7 +300,7 @@ $ node tests/dom/diff-markdown-session.js
             "added: <p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"64\"></p>",
             "added: <h1 id=\"user-content-16979ee89c3406b5dab20e21-new-demo\">Demo</h1>",
             "added: <p>Welcome.<br>Press <kbd>Ctrl</kbd> to begin.</p>",
-            "added: <details> <summary>More</summary> <p>The <strong>details</strong>.</p> </details>"
+            "added: <details open=\"\"> <summary>More</summary> <p>The <strong>details</strong>.</p> </details>"
           ]
         }
       }

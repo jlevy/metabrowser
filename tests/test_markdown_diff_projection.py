@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import difflib
 import random
+import re
 import time
 from collections.abc import Callable, Sequence
 from html import escape
@@ -846,7 +847,8 @@ _README_BLOCKS = [
     'src="https://example.com/logo.png" width="120"></p>',
     '<h1 id="user-content-61be40c20e6762ac06ffd013-new-project" align="center">Project</h1>',
     "<p>Press <kbd>Ctrl</kbd> and <kbd>C</kbd>,<br>then paste.</p>",
-    "<details>\n<summary>More</summary>\n<p>The old body.</p>\n</details>",
+    # Open, as a disclosure in a changed block is; the Document view shows it closed.
+    "<details open>\n<summary>More</summary>\n<p>The old body.</p>\n</details>",
     '<div align="center">\n<p>A centered paragraph.</p>\n</div>',
     "<p>After.</p>",
 ]
@@ -881,8 +883,8 @@ def test_raw_html_renders_as_the_document_view_shows_it() -> None:
         pytest.param(
             b"The old body.",
             b"The new body.",
-            "<details>\n<summary>More</summary>\n<p>The <del>old</del> body.</p>\n</details>",
-            "<details>\n<summary>More</summary>\n<p>The <ins>new</ins> body.</p>\n</details>",
+            "<details open>\n<summary>More</summary>\n<p>The <del>old</del> body.</p>\n</details>",
+            "<details open>\n<summary>More</summary>\n<p>The <ins>new</ins> body.</p>\n</details>",
             id="the body of details",
         ),
         pytest.param(
@@ -945,6 +947,110 @@ def test_an_html_edit_the_render_does_not_show_is_flagged(before: bytes, after: 
 
 
 @pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        pytest.param(
+            b"Visible old <%s>secret one</%s> end.\n" % (tag, tag),
+            b"Visible new <%s>secret two</%s> end.\n" % (tag, tag),
+            id=f"text inside an inline {tag.decode()}",
+        )
+        for tag in (b"svg", b"title", b"script", b"style")
+    ]
+    + [
+        pytest.param(
+            b"<details><summary>S</summary>\n\nold body\n\n</details>\n",
+            b"<details open><summary>S</summary>\n\nnew body\n\n</details>\n",
+            id="details made open, which KPress's sanitizer drops",
+        ),
+    ],
+)
+def test_a_hidden_edit_beside_a_visible_one_is_flagged(old: bytes, new: bytes) -> None:
+    """The text between two inline tags is the content of the element they write, so an
+    element the render drops with its content hides it as a block's `html_block` would,
+    and an attribute KPress's sanitizer drops before the allowlist reads it is shown
+    nowhere either. The visible edit beside each is marked as usual."""
+
+    result = _project(old, new)
+    assert result["status"] == "ready"
+    changed = _changed(result)
+    assert [block["kind"] for block in changed] == ["removed", "added"]
+    assert all(block["source_only"] for block in changed)
+    assert result["source_only"] is True
+
+
+def test_what_kpress_drops_first_is_what_the_projection_says_it_drops() -> None:
+    """KPress's sanitizer runs before the allowlist, and what it drops of what the allowlist
+    would keep the render shows nowhere (`_SANITIZER_DROPPED_TAGS` and
+    `_SANITIZER_DROPPED_ATTRIBUTES`). A KPress release that changes its policy fails here."""
+
+    from kpress.format.sanitize import sanitize_raw_html
+
+    from metabrowser.inert_html import ALLOWED_ATTRIBUTES, ALLOWED_TAGS
+
+    values = {
+        "href": "https://example.org/",
+        "src": "https://example.org/a.png",
+        "target": "_blank",
+        "rel": "noopener",
+        "class": "x",
+        "loading": "lazy",
+        "referrerpolicy": "no-referrer",
+        "start": "3",
+        "lang": "mermaid",
+        "data-tip-text": "t",
+        "open": "",
+        "id": "x",
+        "alt": "a",
+    }
+
+    def placed(tag: str, attributes: str = "") -> str:
+        element = f"<{tag}{attributes}>x</{tag}>"
+        if tag in {"td", "th"}:
+            return f"<table><tbody><tr>{element}</tr></tbody></table>"
+        if tag in {"tr", "thead", "tbody", "tfoot"}:
+            row = "<tr><td>x</td></tr>"
+            if tag == "tr":
+                return f"<table><tbody><tr{attributes}><td>x</td></tr></tbody></table>"
+            return f"<table><{tag}{attributes}>{row}</{tag}></table>"
+        if tag == "li":
+            return f"<ul>{element}</ul>"
+        if tag in {"dt", "dd"}:
+            return f"<dl>{element}</dl>"
+        return element
+
+    tags = {
+        tag
+        for tag in ALLOWED_TAGS | {"img"}
+        if f"<{tag}" not in sanitize_raw_html(placed(tag), "sanitized")[0]
+    }
+    # An element the sanitizer drops takes its attributes with it.
+    attributes = {
+        (tag, name)
+        for tag, names in ALLOWED_ATTRIBUTES.items()
+        if tag not in tags
+        for name in names
+        if not re.search(
+            rf" {name}[=>]",
+            sanitize_raw_html(placed(tag, f' {name}="{values.get(name, "1")}"'), "sanitized")[0],
+        )
+    }
+    assert tags == markdown_projection._SANITIZER_DROPPED_TAGS  # pyright: ignore[reportPrivateUsage]
+    assert attributes == markdown_projection._SANITIZER_DROPPED_ATTRIBUTES  # pyright: ignore[reportPrivateUsage]
+
+
+def test_only_raw_html_as_short_as_a_tag_is_cached() -> None:
+    """A whole `html_block` is read where it stands, so the cache never keeps one."""
+
+    reader = markdown_projection._raw_markup_once  # pyright: ignore[reportPrivateUsage]
+    reader.cache_clear()
+    long_block = b"<div>\n" + b"<p>raw</p>\n" * 2_000 + b"</div>\n"
+    assert _project(None, long_block)["status"] == "ready"
+    assert reader.cache_info().currsize == 0
+    _project(None, b"A line<br>break.\n")
+    assert reader.cache_info().currsize == 1
+
+
+@pytest.mark.parametrize(
     ("added", "html", "flagged"),
     [
         pytest.param(
@@ -996,6 +1102,33 @@ def test_raw_html_the_render_drops_whole_is_left_to_source() -> None:
     result = _project(old, new)
     assert result["source_only"] is True
     assert [block["kind"] for block in result["blocks"]] == ["context", "context"]
+
+
+def test_a_disclosure_in_a_changed_block_is_open() -> None:
+    """The marks inside a `<details>` show without a reader opening each side's; one in an
+    unchanged block stays as the Document view shows it, closed."""
+
+    disclosure = b"<details>\n<summary>Install</summary>\n\nRun the old installer.\n\n</details>\n"
+    old = disclosure + b"\n" + disclosure.replace(b"Install", b"Remove")
+    result = _project(old, old.replace(b"old installer", b"new installer", 1))
+    assert [(block["kind"], block["html"]) for block in result["blocks"]] == [
+        (
+            "removed",
+            "<details open>\n<summary>Install</summary>\n"
+            "<p>Run the <del>old</del> installer.</p>\n</details>",
+        ),
+        (
+            "added",
+            "<details open>\n<summary>Install</summary>\n"
+            "<p>Run the <ins>new</ins> installer.</p>\n</details>",
+        ),
+        (
+            "context",
+            "<details>\n<summary>Remove</summary>\n<p>Run the old installer.</p>\n</details>",
+        ),
+    ]
+    added = _project(None, disclosure)["blocks"]
+    assert [block["html"].split("\n")[0] for block in added] == ["<details open>"]
 
 
 def test_a_document_cannot_write_the_change_marks() -> None:
@@ -1073,6 +1206,43 @@ _BACK, _GONE = "<a>\xa0\u2191\xa0</a>", "<span>\xa0\u2191\xa0</span>"
 _FIRST = f"<ol>\n<li><p>The first note. {_BACK} {_BACK}</p>\n</li>\n</ol>"
 _SECOND = f'<ol start="2">\n<li><p>The second note. {_BACK}</p>\n</li>\n</ol>'
 _THIRD = b"\nMore.[^c]\n\n[^c]: A third note.\n"
+
+
+def test_the_projection_replaces_kpress_own_footnote_tail() -> None:
+    """`_FOOTNOTE_TAIL` is read from markdown-it-py's unpublished rule list: it must be
+    the footnote plugin's own rule, and the projection's parser must run its replacement
+    in that rule's place, after the inline rules."""
+
+    from kpress.format import parse_markdown
+
+    tail = markdown_projection._FOOTNOTE_TAIL  # pyright: ignore[reportPrivateUsage]
+    assert tail.__module__ == "mdit_py_plugins.footnote.index"
+    assert tail.__name__ == "footnote_tail"
+    rules = markdown_projection._KPRESS.core.ruler.getRules("")  # pyright: ignore[reportPrivateUsage]
+    assert tail not in rules
+    place = rules.index(markdown_projection._footnotes_in_place)  # pyright: ignore[reportPrivateUsage]
+    assert [rule.__name__ for rule in rules[place - 1 : place + 1]] == [
+        "inline",
+        "_footnotes_in_place",
+    ]
+    # KPress's own parser, which the Document view renders with, keeps its own rule.
+    assert "kpress-footnotes" in parse_markdown("A[^a].\n\n[^a]: Note.\n", title="").html
+
+
+def test_a_reference_inside_math_is_a_footnote_in_rendered() -> None:
+    """Rendered shows math as its source text, so a reference written inside it is a
+    footnote there and not in the Document view, which renders math, and the notes after
+    it number differently (docs/reviewing-pull-requests.md says so)."""
+
+    from kpress.format import parse_markdown
+
+    from metabrowser.inert_html import harden
+
+    source = "Cost $x[^b] y$ then a claim[^a].\n\n[^a]: Note a.\n\n[^b]: Note b.\n"
+    blocks = [block["html"] for block in _project(None, source.encode())["blocks"]]
+    assert blocks[0] == "<p>Cost $x<sup><a>1</a></sup> y$ then a claim<sup><a>2</a></sup>.</p>"
+    document = harden(parse_markdown(source, title="", trust_mode="sanitized").html)
+    assert 'a claim<sup><a href="#user-content-fn-1">1</a></sup>' in document
 
 
 def test_notes_render_where_they_are_written() -> None:
@@ -1449,15 +1619,35 @@ def test_a_render_holding_the_first_plane_of_separators_takes_the_next() -> None
     old = f"{every}\n\nThe old end.\n".encode()
     result = _project(old, old.replace(b"old", b"new"))
     assert [block["kind"] for block in result["blocks"]] == ["context", "removed", "added"]
-    assert markdown_projection._separator(every) == "\U000f0000"  # pyright: ignore[reportPrivateUsage]
+    assert markdown_projection._separator(every) == "".join(  # pyright: ignore[reportPrivateUsage]
+        chr(point) for point in range(0xF0000, 0xF000B)
+    )
 
 
 def test_a_render_holding_every_separator_is_one_block(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(markdown_projection, "_SEPARATORS", (range(0xE000, 0xE001),))
+    # Eleven, of which the text holds one: a marker needs all eleven.
+    monkeypatch.setattr(markdown_projection, "_SEPARATORS", (range(0xE000, 0xE00B),))
     old = b"# Title\n\nText \xee\x80\x80 here.\n\nThe old end.\n"
     result = _project(old, old.replace(b"old", b"new"))
     assert [block["kind"] for block in result["blocks"]] == ["removed", "added"]
     assert "<ins>new</ins>" in result["blocks"][1]["html"]
+
+
+def test_a_heading_raw_html_leaves_open_takes_no_marker_into_its_anchor() -> None:
+    """The markers that part the blocks inside a heading that raw HTML left open are
+    written in characters a slug drops, so its anchor is the Document view's."""
+
+    from kpress.format import parse_markdown
+
+    from metabrowser.inert_html import ANCHOR_PREFIX, harden
+
+    source = "<h2>Title\n\nmore text\n\n</h2>\n"
+    document = harden(
+        parse_markdown(source, title="", trust_mode="sanitized", diagrams="off", math="off").html
+    )
+    assert f'id="{ANCHOR_PREFIX}titlemore-text"' in document
+    (block,) = _project(None, source.encode())["blocks"]
+    assert re.search(r'<h2 id="user-content-[0-9a-f]{24}-new-titlemore-text">', block["html"])
 
 
 # ── Sources as the Document view reads them ─────────────────────

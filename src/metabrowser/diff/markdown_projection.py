@@ -22,11 +22,11 @@ return is that many of the projection's lines, changed or unchanged as Git says 
 whole line is (:func:`_markdown_lines`).
 
 Whatever a block's source says that its render does not show -- a link or image
-destination, a title, alt text under a shown image, an HTML comment, an attribute,
-raw HTML the allowlist drops, or a fence's info string -- is its *hidden* signature. A changed block whose hidden signature
-differs from the other side's carries ``source_only``, and so does the whole projection
-when any source change has no visible counterpart, a whitespace-only or rewrap edit
-included. Both flags are metadata for the page: a flagged block is kept out of a fold of
+destination, a title, alt text under a shown image, an HTML comment, an attribute, raw
+HTML KPress's sanitizer or the allowlist drops, or a fence's info string -- is its
+*hidden* signature. A changed block whose hidden signature differs from the other
+side's carries ``source_only``, and so does the whole projection when any source change
+has no visible counterpart, a whitespace-only or rewrap edit included. Both flags are metadata for the page: a flagged block is kept out of a fold of
 unchanged blocks, and the Rendered view draws no note about either, so a change with no
 visible counterpart shows only in the Source view.
 """
@@ -44,7 +44,7 @@ from difflib import SequenceMatcher
 from functools import lru_cache
 from html import escape, unescape
 from html.parser import HTMLParser
-from itertools import pairwise
+from itertools import islice, pairwise
 from math import inf
 from typing import Any, Final, Literal, NotRequired, TypedDict, cast
 from urllib.parse import unquote
@@ -194,6 +194,11 @@ _NOTE_ELEMENTS = {
     "footnote_open": 1,
     "footnote_anchor": 1,
 }
+# KPress's own footnote_tail, which _footnotes_in_place takes the place of and calls when
+# a side's notes follow no source line. markdown-it-py's Ruler replaces a rule by name
+# (`at`) but publishes no way to read one, so this reads its list, `__rules__`
+# (markdown-it-py 4.2.0, pinned in pyproject.toml); the module fails to import when that
+# moves, and test_the_projection_replaces_kpress_own_footnote_tail when the rule does.
 _FOOTNOTE_TAIL = next(
     rule.fn for rule in _KPRESS.core.ruler.__rules__ if rule.name == "footnote_tail"
 )
@@ -608,6 +613,18 @@ _HTML_VOID = frozenset(
 # alignment is: every other attribute it keeps, a destination or an alt text, is shown
 # nowhere or only on hover, as a Markdown link's is.
 _RAW_DESTINATIONS = frozenset({"href", "src", "alt"})
+# What KPress's sanitizer drops before the allowlist reads it, though the allowlist would
+# keep it: an element whose content stays, and attributes. The render shows neither; the
+# hardener writes an image's referrer policy itself. Asked of the sanitizer by
+# test_what_kpress_drops_first_is_what_the_projection_says_it_drops.
+_SANITIZER_DROPPED_TAGS = frozenset({"tfoot"})
+_SANITIZER_DROPPED_ATTRIBUTES = frozenset(
+    {("details", "open"), ("img", "referrerpolicy"), ("pre", "lang")}
+)
+# Raw HTML at most this long is read once for each spelling (_raw_markup): a tag such as
+# `<br>` or `</kbd>` is a few dozen characters, and longer content, a whole `html_block`,
+# is read where it stands, so the cache's 1,024 entries hold at most about 256 KiB.
+_CACHED_RAW_CHARS = 256
 
 
 class _RawMarkup(HTMLParser):
@@ -621,12 +638,13 @@ class _RawMarkup(HTMLParser):
     through the render itself, so they are not part of the signature.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, dropped: int = 0) -> None:
         super().__init__(convert_charrefs=True)
         self.entries: list[tuple[str, ...]] = []
         self.concealed = self.alt = False
-        # Depth inside an element dropped with its content.
-        self.dropped = 0
+        # Depth inside an element dropped with its content, which raw HTML before this
+        # may have opened.
+        self.dropped = dropped
 
     def _hide(self, *entry: str) -> None:
         self.entries.append(entry)
@@ -639,7 +657,7 @@ class _RawMarkup(HTMLParser):
                 self.dropped += 1
             self._hide("dropped", tag, *written)
             return
-        if tag not in ALLOWED_TAGS and tag != "img":
+        if (tag not in ALLOWED_TAGS and tag != "img") or tag in _SANITIZER_DROPPED_TAGS:
             # The element goes and its content stays: its name changes nothing the page
             # draws, and its attributes are shown nowhere.
             self.entries.append(("element", tag))
@@ -647,7 +665,11 @@ class _RawMarkup(HTMLParser):
                 self._hide(tag, *written)
             return
         values = dict(attrs)
-        kept = {name for name, _ in allowed_attributes(tag, values, None)}
+        kept = {
+            name
+            for name, _ in allowed_attributes(tag, values, None)
+            if (tag, name) not in _SANITIZER_DROPPED_ATTRIBUTES
+        }
         shown = [f"{name}={value or ''}" for name, value in attrs if name in _RAW_DESTINATIONS]
         if shown:
             self.entries.append((tag, *shown))
@@ -682,20 +704,32 @@ class _RawMarkup(HTMLParser):
         self._hide("declaration", data)
 
 
-@lru_cache(maxsize=1024)
-def _raw_markup(content: str) -> tuple[tuple[tuple[str, ...], ...], bool, bool]:
-    """Raw HTML's hidden entries, whether it conceals anything, and whether it holds alt
-    text under an image. Inline HTML repeats a handful of tags, such as `<br>`, so each is
-    read once."""
+type _RawRead = tuple[tuple[tuple[str, ...], ...], bool, bool, int]
 
-    parser = _RawMarkup()
+
+def _raw_markup(content: str, dropped: int) -> _RawRead:
+    """Raw HTML's hidden entries, whether it conceals anything, whether it holds alt text
+    under an image, and the depth inside dropped elements after it, read from *dropped*.
+    Inline HTML repeats a handful of tags, such as `<br>`, so each short one is read once
+    (_CACHED_RAW_CHARS)."""
+
+    if len(content) <= _CACHED_RAW_CHARS:
+        return _raw_markup_once(content, dropped)
+    return _read_raw_markup(content, dropped)
+
+
+def _read_raw_markup(content: str, dropped: int) -> _RawRead:
+    parser = _RawMarkup(dropped)
     parser.feed(content)
     if parser.rawdata.startswith("<"):
         # A tag the content does not finish, which a browser drops with what it holds, and
         # which in the document reads on into what follows.
         parser._hide("unfinished", parser.rawdata)  # pyright: ignore[reportPrivateUsage]
     parser.close()
-    return tuple(parser.entries), parser.concealed, parser.alt
+    return tuple(parser.entries), parser.concealed, parser.alt, parser.dropped
+
+
+_raw_markup_once = lru_cache(maxsize=1024)(_read_raw_markup)
 
 
 def _hidden(tokens: Sequence[Token]) -> _Hidden:
@@ -708,15 +742,21 @@ def _hidden(tokens: Sequence[Token]) -> _Hidden:
     found: list[tuple[str, ...]] = []
     links: list[tuple[str, str]] = []
     concealed = alt = False
+    # Depth inside an element raw HTML opened that the render drops with its content: the
+    # text between two inline tags, `<svg>` and `</svg>`, is its content too.
+    dropped = 0
     for token in tokens:
         # The label of each link being read, as its text arrives.
         open_links: list[tuple[str, list[str]]] = []
         for member in (token, *(token.children or ())):
             if member.type in {"html_block", "html_inline"}:
-                entries, conceals, holds_alt = _raw_markup(member.content)
+                entries, conceals, holds_alt, dropped = _raw_markup(member.content, dropped)
                 found.extend(entries)
                 concealed |= conceals
                 alt |= holds_alt
+            elif dropped and not member.children and member.content.strip():
+                found.append(("dropped", member.content))
+                concealed = True
             attrs = {
                 name: str(value)
                 for name, value in (member.attrs or {}).items()
@@ -830,29 +870,47 @@ def _map(token: Token, offset: int, after: int) -> tuple[int, int]:
 
 
 def _separator(text: str) -> str | None:
-    """The first of _SEPARATORS that *text* does not hold, or None when it holds them
-    all."""
+    """Eleven of _SEPARATORS that *text* does not hold, or None when it holds all but
+    fewer: the first opens and closes a boundary marker, and the other ten are its
+    index's digits. A heading's slug drops them all, as it drops no ASCII digit, so a
+    marker inside a heading that raw HTML left open adds nothing to its anchor."""
 
-    if "\ue000" not in text:
-        return "\ue000"
+    first = "".join(map(chr, _SEPARATORS[0][:11]))
+    if len(first) == 11 and not _holds(text, first):
+        return first
     held = set(text)
-    return next(
-        (chr(point) for points in _SEPARATORS for point in points if chr(point) not in held),
-        None,
+    free = "".join(
+        islice(
+            (chr(point) for points in _SEPARATORS for point in points if chr(point) not in held),
+            11,
+        )
     )
+    return free if len(free) == 11 else None
+
+
+def _holds(text: str, split: str) -> bool:
+    """Whether *text* holds any character of the separator *split*."""
+
+    return any(character in text for character in split)
 
 
 @lru_cache(maxsize=8)
 def _markers(split: str) -> re.Pattern[str]:
     """The boundaries a render parted by *split* carries."""
 
-    return re.compile(f"{split}(\\d+){split}")
+    return re.compile(f"{split[0]}([{split[1:]}]+){split[0]}")
 
 
 def _marker(index: int, split: str) -> str:
     """The boundary after block *index*, as the render carries it."""
 
-    return f"{split}{index}{split}"
+    return split[0] + str(index).translate(str.maketrans("0123456789", split[1:])) + split[0]
+
+
+def _marked_index(digits: str, split: str) -> int:
+    """The block index a marker's *digits* write."""
+
+    return int(digits.translate(str.maketrans(split[1:], "0123456789")))
 
 
 def _hardened(html: str, budget: float) -> _Html:
@@ -892,7 +950,7 @@ def _unmarked(node: _Element, split: str) -> bool:
     nothing, so the blocks on either side render as one. False when a separator is left
     anywhere else, such as in an attribute."""
 
-    whole = all(split not in value for _, value in node.attrs)
+    whole = not any(_holds(value, split) for _, value in node.attrs)
     children: list[_Element | str] = []
     for child in node.children:
         if isinstance(child, _Element):
@@ -900,7 +958,7 @@ def _unmarked(node: _Element, split: str) -> bool:
             children.append(child)
             continue
         text = _markers(split).sub("", child)
-        whole &= split not in text
+        whole &= not _holds(text, split)
         if text and children and isinstance(children[-1], str):
             children[-1] += text
         elif text:
@@ -942,11 +1000,11 @@ def _units(root: _Element, count: int, split: str) -> list[_Unit] | None:
         position = 0
         for match in _markers(split).finditer(child):
             parts[-1].append(child[position : match.start()])
-            ends.append(int(match.group(1)))
+            ends.append(_marked_index(match.group(1), split))
             parts.append([])
             position = match.end()
         parts[-1].append(child[position:])
-    if any(split in node for part in parts for node in part if isinstance(node, str)):
+    if any(_holds(node, split) for part in parts for node in part if isinstance(node, str)):
         return None
     if any(later <= earlier for earlier, later in pairwise(ends)) or (
         ends and ends[-1] >= count - 1
@@ -999,8 +1057,11 @@ def _trusted(
     wrapper and parts nothing; only a table KPress's own parser reads as text, and the
     sanitizer's as a table, sits at the top level, as one in an SVG's `<style>` does.
     Only then is each part that holds raw HTML rendered on its own to find the first one
-    whose content moved: 600 raw HTML blocks took 31 ms to project and 378 ms with every
-    part rendered alone (Apple M1 Pro, Python 3.14, load average 106-164, 2026-11-23).
+    whose content moved, which only the Markdown child does, since only it renders raw
+    HTML (_Limits). A side of `<br>` blocks under such a table costs one render a block:
+    1,190 took 1.6 s, 5,000 took 12.1 s and 20,000 took 52 s, against 46 ms, 282 ms and
+    4.6 s without the table (Apple M1 Pro, Python 3.14.7, load average 347-357,
+    2026-11-23). It is linear in the blocks, and the child's deadline stops a long one.
     """
 
     if not any(isinstance(child, _Element) and child.tag == "table" for child in root.children):
@@ -1578,13 +1639,23 @@ def _namespace_ids(blocks: Sequence[_Block], namespace: str, side: str) -> dict[
 
 
 def _html(
-    node: _Element, ids: dict[str, str], *, removed: bool, references: list[LocalReference]
+    node: _Element,
+    ids: dict[str, str],
+    *,
+    removed: bool,
+    changed: bool,
+    references: list[LocalReference],
 ) -> str:
-    """Serialize a block; a live local destination becomes a numbered placeholder."""
+    """Serialize a block; a live local destination becomes a numbered placeholder.
+
+    A `<details>` in a *changed* block, removed or added, is written open, so the marks
+    inside it show without a reader opening each side's to compare them. KPress's
+    sanitizer drops a source's own `open`, so the Document view shows every one closed.
+    """
 
     def inner() -> str:
         return "".join(
-            _html(child, ids, removed=removed, references=references)
+            _html(child, ids, removed=removed, changed=changed, references=references)
             if isinstance(child, _Element)
             else escape(child, quote=False)
             for child in node.children
@@ -1617,6 +1688,8 @@ def _html(
                 attrs.append(f"\x00{len(references) - 1}\x00")
             continue
         attrs.append(f' {name}="{escape(value)}"')
+    if changed and tag == "details":
+        attrs.append(" open")
     start = f"<{tag}{''.join(attrs)}>"
     if local_image:
         references.append(LocalReference(local_image, True, start, alt))
@@ -1783,6 +1856,7 @@ class _Projector:
                     node,
                     self.old_ids if old else self.new_ids,
                     removed=old,
+                    changed=kind != "context",
                     references=self.references,
                 ),
                 "source_only": source_only,

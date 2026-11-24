@@ -225,6 +225,8 @@ changed is never folded away.
 Raw HTML, such as `<br>`, `<details>`, or a centered `<p align="center">`, renders as
 the Document view renders it, through the same sanitizer; an HTML edit it does not show,
 such as a class or a style, is a change that only **Source** shows.
+A `<details>` in a changed block shows open, so the words marked inside it show; the
+Document view shows it closed.
 A task list renders as the Document view renders an untrusted document, without its
 boxes, so ticking or unticking one is a change that only **Source** shows.
 
@@ -238,6 +240,9 @@ large for the rendered view open in **Source**.
 
 Rendered also shows math and Mermaid diagrams as their source text, and does not
 highlight code blocks.
+So a footnote reference written inside math, which the Document view renders as math, is
+a footnote in Rendered, and the notes after it can number differently from the Document
+view’s.
 
 A Markdown file’s front matter shows as the Frontmatter disclosure the file’s Document
 view shows above it.
@@ -270,8 +275,10 @@ The tree reads YAML 1.2, where `no`, `off`, and `y` are strings, so a change bet
 became the string that spells it, or the key `1` that became `"1"`, is drawn unchanged,
 and the tree says above it that **Source** shows a change it draws as unchanged.
 JSON with a key twice in one object shows the key once, with its last value, as the file
-view’s tree does, and a change to a value the repeated key hides is one **Source**
-shows.
+view’s tree does, and a change to a value the repeated key hides, or the same value
+hidden in another object, is one **Source** shows.
+An added or deleted file that hides a value says above its tree that **Source** shows
+it.
 
 These files open in **Source**:
 

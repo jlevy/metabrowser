@@ -266,8 +266,7 @@ Changed words are marked by a bounded word diff.
   math and diagrams off and without code highlighting.
   The rest of its refusals guard what it checks rather than what a file holds: a patch
   that does not match the two sides’ bytes or cover their differences, and a hardened
-  render it cannot read back as one tree; no file of this repository, added, edited or
-  cut, reaches one (mb-ueqx).
+  render it cannot read back as one tree.
 - **Source text:** each side reads as the Document view reads it.
   A byte that is not UTF-8 is U+FFFD, and a patch line that is not carries its exact
   bytes, which the projection checks; MarkdownIt makes a NUL U+FFFD. MarkdownIt also
@@ -353,8 +352,11 @@ row it changes.
   The YAML loader also refuses two keys one text spells, such as `1` and `"1"`, which
   the tree view reads as two keys and draws as the last.
   JSON with a key twice in one object reads as the tree view reads it, the last value at
-  the key’s first place, and a change to a value it hides is `source_only`. Aliases and
-  merge keys load within the loader’s budget on the value written out.
+  the key’s first place.
+  Each value it hides is kept with the path of the object that hid it, and a change to
+  one, or the same value hidden in another object, is `source_only`, as is an added or
+  deleted file that hides any.
+  Aliases and merge keys load within the loader’s budget on the value written out.
   [The structured diff measurement](../../../explorations/structured-diff/README.md)
   records the budgets over this repository’s history and the worst shapes.
 - **Source only:** the projection reads no patch.
