@@ -15,12 +15,15 @@ directories are; there is no public registration surface for the alpha.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from metabrowser.cache.acquire import PublishedSource
     from metabrowser.cache.urls import (
         FileAnchor,
@@ -196,11 +199,14 @@ class RepositoryProvider(Protocol):
         """What to do when *source_url* was not found or needs credentials."""
         ...
 
-    async def check_first_clone(self, source: GitSource) -> None:
+    async def check_first_clone(self, source: GitSource, *, free_bytes: int | None) -> None:
         """Refuse a first clone of *source* before it starts, by raising.
 
-        Raise :class:`~metabrowser.cache.acquire.AcquisitionError` or a subclass; do
-        nothing for a source this provider does not own or cannot check.
+        *free_bytes* is the free space on the cache's volume, at least the reserve, or
+        ``None`` when it could not be read. A provider that can size the clone passes its
+        size to :func:`~metabrowser.cache.free_space.refuse_unless_it_fits`, which holds the
+        policy. Raise :class:`~metabrowser.cache.acquire.AcquisitionError` or a subclass;
+        do nothing for a source this provider does not own or cannot check.
         """
         ...
 
@@ -328,11 +334,20 @@ def provider_credential_hint(source_url: str) -> str | None:
     return None
 
 
-async def check_first_clone(source: GitSource) -> None:
-    """Let every provider refuse a first clone of *source* before any fetch."""
+async def check_first_clone(source: GitSource, *, home: Path) -> None:
+    """Refuse a first clone of *source* into *home* before any fetch.
 
+    Whatever the source, it is refused when the volume that holds *home*, which may not
+    exist yet, has less than the reserve free; then every provider may refuse it, knowing
+    that free space.
+    """
+
+    from metabrowser.cache.free_space import refuse_below_reserve, volume_free_bytes
+
+    free_bytes = await asyncio.to_thread(volume_free_bytes, home)
+    refuse_below_reserve(source.normalized, free_bytes)
     for provider in installed_providers():
-        await provider.check_first_clone(source)
+        await provider.check_first_clone(source, free_bytes=free_bytes)
 
 
 def repository_context_for(

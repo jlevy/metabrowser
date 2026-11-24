@@ -187,10 +187,11 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             unmounted="the row's own guard, which this PR did not change",
         ),
     ),
-    "builtin_plugins/folder/treemap.js": (
+    "builtin_plugins/folder/treemap-map.js": (
         Listener(
-            "the tree map's cells",
+            "the tree map's cells, in the Treemap view",
             "if (e.altKey || e.ctrlKey || e.metaKey) { return; }",
+            via=("onKeyDown",),
             checks=("tests/dom/folder-plugin-behavior.js",),
         ),
     ),

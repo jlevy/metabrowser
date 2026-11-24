@@ -3,19 +3,23 @@
 //
 // The Treemap shows File Overview's legend under its tally bars (docs/design-system.md,
 // "Folder Treemap"). A legend entry is a handle on its family's marks: pointing at it marks
-// every cell of the family, the files of its types and the folders it is the dominant type
-// of, its segment in every tally row, and the entry. Pointing at a cell or a segment marks
-// it and its family's entry. There is one tooltip: the bars show an entry's, the counts of
+// every cell of the family, the files of its types and the solid folders it is the dominant
+// type of (a nested folder is neutral), its segment in every tally row, and the entry.
+// Pointing at a cell or a segment marks it and its family's entry. There is one tooltip: the bars show an entry's, the counts of
 // the family's segment in the tally row the legend's shares are of, anchored on the entry;
-// a cell shows its own.
+// a cell shows its own, anchored on the hover anchor the map puts over the cell under the
+// pointer.
 //
-// The Treemap view, its tally bars, the legend, the hover, the layout, and the legend
-// model are the production modules, loaded whole. The document is a stand-in that parses
-// the markup the view writes into elements, for the few calls they make on it, and
+// The Treemap view, its tally bars, the legend, the hover, the map, the layout, and the
+// legend model are the production modules, loaded whole. The document is a stand-in that
+// parses the markup the view writes into elements, for the few calls they make on it, and
 // `mb.watchRollup` hands the view the rollup each step names: one with the shape
-// `/api/rollup` answers, which cli-api.tryscript.md pins. Each step prints the legend,
-// what is marked as hovered, the tooltip's words, and what it is anchored on. Exits 1 on a
-// failed invariant.
+// `/api/rollup` answers, which cli-api.tryscript.md pins. The map paints its cells on a
+// canvas, which has no context here, so what it marks and which cell the pointer is on are
+// read through `inspectTreemap`; the pointer is moved by mousemove events on the viewport
+// at a cell's coordinates, as the browser sends them. Each step prints the legend, what is
+// marked as hovered, the cell under the pointer and whether it shimmers, the tooltip's
+// words, and what it is anchored on. Exits 1 on a failed invariant.
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -30,6 +34,19 @@ process.emitWarning = (warning, ...rest) => {
   }
   emitWarning.call(process, warning, ...rest);
 };
+
+// As the shell's hideTooltipWithin (static/app.js): a hide within any element puts away a
+// tooltip whose anchor has left the page, since nothing else would.
+function connected(node, within) {
+  const rootOf = (each) => {
+    let top = each;
+    while (top.parentNode) {
+      top = top.parentNode;
+    }
+    return top;
+  };
+  return !node || rootOf(node) === rootOf(within);
+}
 
 function assert(condition, message) {
   if (!condition) {
@@ -120,6 +137,17 @@ class FakeElement {
       this.children.push(child);
     }
   }
+  appendChild(child) {
+    this.append(child);
+    return child;
+  }
+  insertBefore(child, reference) {
+    child.remove();
+    const at = this.children.indexOf(reference);
+    child.parentNode = this;
+    this.children.splice(at === -1 ? this.children.length : at, 0, child);
+    return child;
+  }
   replaceChildren(...children) {
     for (const child of this.children) {
       child.parentNode = null;
@@ -141,17 +169,28 @@ class FakeElement {
     this.listeners[type] = (this.listeners[type] ?? []).filter((each) => each !== listener);
   }
   /**
-   * What the browser would dispatch for *type* with this element as its target: to this
-   * element alone for mouseenter and mouseleave, and up through its ancestors for
-   * mouseover and mouseout, which bubble to the map's one delegated pair.
+   * What the browser would dispatch for *type* with this element as its target, to this
+   * element's own listeners: the legend's mouseenter and mouseleave, and the map's
+   * viewport, which takes every pointer and key event itself. Returns the event, to read
+   * whether a listener took it.
    */
-  emit(type, event = {}) {
-    const bubbles = type === "mouseover" || type === "mouseout";
-    for (let node = this; node; node = bubbles ? node.parentNode : null) {
-      for (const listener of [...(node.listeners[type] ?? [])]) {
-        listener({ type, target: this, ...event });
-      }
+  emit(type, init = {}) {
+    const event = {
+      type,
+      target: this,
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+      ...init,
+    };
+    for (const listener of [...(this.listeners[type] ?? [])]) {
+      listener(event);
     }
+    return event;
   }
   descendants() {
     return this.children.flatMap((child) => [child, ...child.descendants()]);
@@ -230,6 +269,8 @@ class FakeElement {
 
 const windowListeners = new Map();
 global.window = globalThis;
+// One device pixel per CSS pixel, so the map's paint list is the same on every host.
+global.devicePixelRatio = 1;
 global.addEventListener = (type, listener) => windowListeners.set(type, listener);
 global.removeEventListener = (type) => windowListeners.delete(type);
 global.innerHeight = 1000;
@@ -407,18 +448,78 @@ const ROLLUP = {
     },
   },
 };
+/** The deepest cell containing (x, y): of the cells containing a point, the last emitted. */
+function deepestAt(cells, x, y) {
+  for (let i = cells.length - 1; i >= 0; i -= 1) {
+    const cell = cells[i];
+    if (x >= cell.x && x < cell.x + cell.w && y >= cell.y && y < cell.y + cell.h) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * A point in cell `index`'s own area, outside its children: its center when no child
+ * covers it, else the first pixel center, row by row, that none does.
+ */
+function ownPointOf(cells, index) {
+  const cell = cells[index];
+  const center = { x: cell.x + cell.w / 2, y: cell.y + cell.h / 2 };
+  if (deepestAt(cells, center.x, center.y) === index) {
+    return center;
+  }
+  for (let y = Math.floor(cell.y) + 0.5; y < cell.y + cell.h; y += 1) {
+    for (let x = Math.floor(cell.x) + 0.5; x < cell.x + cell.w; x += 1) {
+      if (deepestAt(cells, x, y) === index) {
+        return { x, y };
+      }
+    }
+  }
+  throw new Error(`no point of ${cell.path} is its own`);
+}
 
 (async () => {
   const folder = (name) =>
     pathToFileURL(path.join(__dirname, "../../src/metabrowser/builtin_plugins/folder", name)).href;
   const { registerTreemap } = await import(folder("treemap.js"));
+  // The module the view's map is, so its inspection reads the mounted map.
+  const { inspectTreemap } = await import(folder("treemap-map.js"));
 
   // The page's one tooltip, as the shell keeps it: what it shows and the element it is
   // anchored on, until a hide puts it away. A hide within an element puts away only a
   // tooltip anchored there (docs/design-system.md, "A Surface Puts Away Only Its Own
   // Tooltip"); a hide with nothing puts away whatever is up.
   const tooltip = { html: null, anchor: null };
+  const navigation = [];
   let rollupAnswer = null;
+  /** What the view's current watch asks the route for, beyond the tree's shape. */
+  let asked = null;
+  /** The tree without its gitignored nodes, as the route emits it for ignored=exclude. */
+  const withoutIgnored = (node) => ({
+    ...node,
+    children: Array.isArray(node.children)
+      ? node.children.filter((child) => !child.gitignored).map(withoutIgnored)
+      : node.children,
+  });
+  /** The tree in the compact encoding: a folder's files as `[name, size, mtime, ext, gitignored]`. */
+  const compacted = (node) => {
+    if (!Array.isArray(node.children)) {
+      return node;
+    }
+    const files = node.children.filter((child) => child.type === "file");
+    return {
+      ...node,
+      children: node.children.filter((child) => child.type !== "file").map(compacted),
+      files: files.map((file) => [
+        file.name,
+        file.size,
+        file.mtime ?? null,
+        file.ext,
+        file.gitignored ? 1 : 0,
+      ]),
+    };
+  };
   let sumsListener = null;
   let render = null;
   const mb = {
@@ -441,16 +542,29 @@ const ROLLUP = {
       `${value.toLocaleString("en-US")} ${value === 1 ? "file" : "files"}`,
     formatSize: (value) => `${value.toLocaleString("en-US")} B`,
     formatTimestamp: () => "2023-11-14",
-    navigation: { open: async () => {} },
+    // The age the SDK's formatter gives the fixtures' 2023-11-14 timestamps, fixed so the
+    // session reads the same on any day.
+    formatAge: () => ({ label: "3y ago", className: "age-old" }),
+    navigation: {
+      open: async (target, options) => {
+        navigation.push(options ? [target.path, options.viewId] : [target.path]);
+      },
+    },
     registerView(kind, id, view) {
       assert(kind === "folder" && id === "treemap", `registered ${kind} ${id}`);
       render = view.render;
     },
     sizeClass: () => "",
+    sizeHtml: (value) => `<span class="size">${value.toLocaleString("en-US")} B</span>`,
     sourceKind: () => "filesystem",
     tooltip: {
       hide(within) {
-        if (!within || within === tooltip.anchor || within.contains(tooltip.anchor)) {
+        if (
+          !within ||
+          !connected(tooltip.anchor, within) ||
+          within === tooltip.anchor ||
+          within.contains(tooltip.anchor)
+        ) {
           tooltip.html = null;
           tooltip.anchor = null;
         }
@@ -461,8 +575,20 @@ const ROLLUP = {
       },
     },
     viewState: { isActive: () => true, subscribeActive: () => () => {} },
-    watchRollup(_scope, _options, onUpdate) {
-      rollupAnswer = (envelope) => onUpdate(JSON.parse(JSON.stringify(envelope)));
+    // Answers as the route does: without the gitignored nodes when asked to leave them
+    // out, and in the compact encoding when asked for it, which the view decodes.
+    watchRollup(_scope, options, onUpdate) {
+      asked = { nodes: options.nodes, encoding: options.encoding, ignored: options.ignored };
+      rollupAnswer = (envelope) => {
+        let node = options.ignored === "exclude" ? withoutIgnored(envelope.node) : envelope.node;
+        /** @type {Record<string, any>} */
+        let answer = { ...envelope, node };
+        if (options.encoding === "compact") {
+          node = compacted(node);
+          answer = { ...envelope, encoding: "compact", node };
+        }
+        onUpdate(JSON.parse(JSON.stringify(answer)));
+      };
       return { dispose() {}, refresh: async () => {}, stale: () => false };
     },
   };
@@ -496,21 +622,51 @@ const ROLLUP = {
   rollupAnswer(ROLLUP);
 
   const viewport = () => container.querySelector(".tm-viewport");
+  const map = () => inspectTreemap(viewport());
   const legendList = () => container.querySelector(".tm-legend");
   const entry = (label) =>
     legendList().children.find(
       (item) => item.querySelector(".file-type-summary-legend-label")?.textContent === label,
     );
-  const cell = (cellPath) => viewport().querySelector(`[data-tm-path="${cellPath}"]`);
   /** The tally row a segment is drawn in, by its heading: Files, Ignored, or Total. */
   const rowOf = (segment) => segment.closest("tr").children[0].textContent;
   const segment = (row, key) =>
     container
       .querySelectorAll("[data-segment-key]")
       .find((each) => each.dataset.segmentKey === key && rowOf(each) === row);
+
+  /** The index of the drawn folder or file cell at `cellPath`. */
+  const cellIndex = (cellPath) => {
+    const index = map().cells.findIndex((cell) => cell.path === cellPath && cell.kind !== "rest");
+    assert(index >= 0, `${cellPath} is drawn`);
+    return index;
+  };
+  /** The client coordinates of a point in the viewport's box, which has no border. */
+  const client = ({ x, y }) => {
+    const rect = viewport().getBoundingClientRect();
+    return { clientX: rect.left + x, clientY: rect.top + y };
+  };
+  /** Move the pointer onto `at`, or a point of the cell at `cellPath` that is its own. */
+  const pointAt = (cellPath, at) => {
+    const index = cellIndex(cellPath);
+    const point = at ?? ownPointOf(map().cells, index);
+    viewport().emit("mousemove", client(point));
+    assert(map().hovered === index, `the pointer is on ${cellPath}`);
+    return point;
+  };
+  const leaveMap = () => viewport().emit("mouseleave");
+  const clickAt = (cellPath) =>
+    viewport().emit("click", client(ownPointOf(map().cells, cellIndex(cellPath))));
+
   const name = (element) => {
     if (element === null) {
       return null;
+    }
+    if (element.classList.contains("tm-hover-anchor")) {
+      const cells = map()?.cells;
+      return cells && viewport().contains(element)
+        ? `the anchor over ${cells[Number(element.dataset.tmCell)].path}`
+        : "a detached hover anchor";
     }
     if (element.dataset.legendKey !== undefined) {
       return `legend ${element.dataset.legendKey}`;
@@ -518,35 +674,54 @@ const ROLLUP = {
     if (element.dataset.segmentKey !== undefined) {
       return `${rowOf(element)} ${element.dataset.segmentKey}`;
     }
-    if (element.dataset.tmPath !== undefined) {
-      // A cell says how it is marked: as one of the family an entry names, or as the cell
-      // under the pointer, which alone shimmers.
-      return "hovered" in element.dataset
-        ? `cell ${element.dataset.tmPath} (${element.dataset.hovered})`
-        : `cell ${element.dataset.tmPath}`;
-    }
     return `not a mark: ${element.className}`;
   };
   /**
    * What is on screen of the legend and the hover: the legend's entries and the name a
-   * screen reader gives it, every element marked as hovered in page order, the tooltip's
-   * words, and what it is anchored on.
+   * screen reader gives it; what is marked as hovered, the bars' segments and the legend's
+   * entries in page order and then the cells the map marks in layout order; the cell under
+   * the pointer and whether its anchor shimmers, which a folder's does not; the tooltip's
+   * words; and what it is anchored on.
    */
-  const read = () => ({
-    legend: legendList().hidden ? "hidden" : legendList().textContent,
-    legendName: legendList().getAttribute("aria-label"),
-    marked: container.querySelectorAll("[data-hovered]").map(name),
-    tooltip:
-      tooltip.html === null
-        ? null
-        : tooltip.html
-            .replace(/<br>/g, " / ")
-            .replace(/<[^>]*>/g, "")
-            .trim(),
-    anchoredOn: name(tooltip.anchor),
-  });
+  const read = () => {
+    const drawn = map();
+    // A disposed map is the host's to take away, with whatever it left in the viewport.
+    const anchors = drawn ? viewport().querySelectorAll(".tm-hover-anchor") : [];
+    const hovered = drawn?.hovered ?? -1;
+    assert(anchors.length <= 1, "one hover anchor at most");
+    assert((anchors.length === 1) === hovered >= 0, "an anchor while a cell is under the pointer");
+    if (hovered >= 0) {
+      assert(Number(anchors[0].dataset.tmCell) === hovered, "the anchor is the hovered cell's");
+    }
+    return {
+      legend: legendList().hidden ? "hidden" : legendList().textContent,
+      legendName: legendList().getAttribute("aria-label"),
+      marked: [
+        ...container
+          .querySelectorAll("[data-hovered]")
+          .filter((element) => !element.classList.contains("tm-hover-anchor"))
+          .map(name),
+        ...(drawn?.marked ?? []).map((index) => `cell ${drawn.cells[index].path}`),
+      ],
+      pointer: hovered >= 0 ? `cell ${drawn.cells[hovered].path}` : null,
+      shimmers: hovered >= 0 && anchors[0].dataset.hovered === "self",
+      tooltip:
+        tooltip.html === null
+          ? null
+          : tooltip.html
+              .replace(/<br>/g, " / ")
+              .replace(/<\/div><div/g, " / <div")
+              .replace(/<[^>]*>/g, "")
+              .trim(),
+      anchoredOn: name(tooltip.anchor),
+    };
+  };
   const nothing = (reading) =>
-    reading.marked.length === 0 && reading.tooltip === null && reading.anchoredOn === null;
+    reading.marked.length === 0 &&
+    reading.pointer === null &&
+    reading.tooltip === null &&
+    reading.anchoredOn === null;
+  const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
   const transcript = {};
 
   const atRest = read();
@@ -556,21 +731,21 @@ const ROLLUP = {
   );
   transcript["the legend under the tally bars, at rest"] = atRest;
 
-  // A legend entry marks every cell of its family, the files of its type and the folder it
-  // is the dominant type of, the family's segment in each tally row, and itself.
+  // A legend entry marks every cell of its family: the files of its type, and no nested
+  // folder, whose header and frame are neutral since it holds many types (the outer box
+  // and docs/build here). It marks the family's segment in each tally row, and itself.
   entry("Python").emit("mouseenter");
   const onEntry = read();
   assert(
-    JSON.stringify(onEntry.marked) ===
-      JSON.stringify([
-        "Files family:python",
-        "Ignored family:python",
-        "Total family:python",
-        "legend family:python",
-        "cell docs/c.py (family)",
-        "cell docs/build (family)",
-        "cell docs/build/d.py (family)",
-      ]) &&
+    same(onEntry.marked, [
+      "Files family:python",
+      "Ignored family:python",
+      "Total family:python",
+      "legend family:python",
+      "cell docs/c.py",
+      "cell docs/build/d.py",
+    ]) &&
+      onEntry.pointer === null &&
       onEntry.tooltip === "2 files · 600 B" &&
       onEntry.anchoredOn === "legend family:python",
     `the Python entry: ${JSON.stringify(onEntry)}`,
@@ -579,41 +754,63 @@ const ROLLUP = {
   const leftEntry = read();
   assert(nothing(leftEntry), `left the entry: ${JSON.stringify(leftEntry)}`);
 
-  // A cell marks itself and its family's entry; its tooltip is its own. Crossing its own
-  // label is not leaving it.
-  const python = cell("docs/c.py");
-  const label = python.querySelector(".tm-cell-label") ?? python;
-  python.emit("mouseover");
+  // A cell marks itself and its family's entry; its tooltip is its own, anchored on the
+  // anchor the map puts over it. Moving within the cell, over its label, is not leaving it.
+  const cellPoint = pointAt("docs/c.py");
+  const cellAnchor = tooltip.anchor;
   const onCell = read();
-  // The pointer moves from the cell onto its label: the cell hears mouseout toward the
-  // label, read before the label's mouseover arrives, so a leave there would show.
-  python.emit("mouseout", { relatedTarget: label });
-  const withinCell = read();
-  label.emit("mouseover");
   assert(
-    JSON.stringify(onCell.marked) ===
-      JSON.stringify(["legend family:python", "cell docs/c.py (self)"]) &&
-      onCell.anchoredOn === "cell docs/c.py (self)" &&
-      onCell.tooltip.startsWith("docs/c.py / 1 file · 300 B"),
+    same(onCell.marked, ["legend family:python", "cell docs/c.py"]) &&
+      onCell.pointer === "cell docs/c.py" &&
+      onCell.shimmers &&
+      onCell.anchoredOn === "the anchor over docs/c.py" &&
+      onCell.tooltip === "docs/c.py / 300 B / modified 3y ago",
     `the c.py cell: ${JSON.stringify(onCell)}`,
   );
+  const python = map().cells[cellIndex("docs/c.py")];
+  assert(map().labels.includes(cellIndex("docs/c.py")), "the c.py cell is labelled");
+  pointAt("docs/c.py", { x: python.x + 3, y: python.y + 3 });
+  const withinCell = read();
   assert(
-    JSON.stringify(withinCell.marked) === JSON.stringify(onCell.marked),
-    `crossing the cell's label: ${JSON.stringify(withinCell)}`,
+    same(withinCell, onCell) && tooltip.anchor === cellAnchor,
+    `moving over the cell's label: ${JSON.stringify(withinCell)}`,
   );
-  label.emit("mouseout", { relatedTarget: container });
+  leaveMap();
   const leftCell = read();
   assert(nothing(leftCell), `left the cell: ${JSON.stringify(leftCell)}`);
 
-  // A folder is the color of its dominant type, so it keys to that family's entry.
-  cell("docs/build").emit("mouseover");
+  // A nested folder is neutral, so it keys to no family's entry and marks only itself. A
+  // folder lifts without the shimmer, which would cover its children. Its child under the pointer
+  // is the deepest cell there, and takes the hover.
+  pointAt("docs/build");
   const onFolder = read();
-  cell("docs/build").emit("mouseout", { relatedTarget: container });
   assert(
-    JSON.stringify(onFolder.marked) ===
-      JSON.stringify(["legend family:python", "cell docs/build (self)"]),
+    same(onFolder.marked, ["cell docs/build"]) &&
+      !onFolder.shimmers &&
+      onFolder.anchoredOn === "the anchor over docs/build",
     `the build folder: ${JSON.stringify(onFolder)}`,
   );
+  pointAt("docs/build/d.py");
+  const onChild = read();
+  assert(
+    same(onChild.marked, ["legend family:python", "cell docs/build/d.py"]) &&
+      onChild.shimmers &&
+      onChild.anchoredOn === "the anchor over docs/build/d.py",
+    `the build folder's file: ${JSON.stringify(onChild)}`,
+  );
+  leaveMap();
+
+  // A click opens the deepest cell under it: a file in the view the file opens in, and a
+  // folder in the Treemap.
+  clickAt("docs/build/d.py");
+  clickAt("docs/build");
+  clickAt("docs/e.json");
+  const clicked = [...navigation];
+  assert(
+    same(clicked, [["docs/build/d.py"], ["docs/build", "treemap"], ["docs/e.json"]]),
+    `clicks: ${JSON.stringify(clicked)}`,
+  );
+  navigation.length = 0;
 
   // The folder's sums arrive whenever a file changes, and redraw the bars alone. A cell
   // and an entry outlive that draw and hear nothing, so the bars enter their hover again.
@@ -624,15 +821,13 @@ const ROLLUP = {
     unignored_size: 550,
     state: "complete",
   };
-  cell("docs/c.py").emit("mouseover");
+  pointAt("docs/c.py", cellPoint);
   const barBefore = segment("Total", "family:python");
   sumsListener(SUMS);
   const sumsUnderCell = read();
-  cell("docs/c.py").emit("mouseout", { relatedTarget: container });
+  leaveMap();
   assert(
-    segment("Total", "family:python") !== barBefore &&
-      JSON.stringify(sumsUnderCell.marked) === JSON.stringify(onCell.marked) &&
-      sumsUnderCell.anchoredOn === onCell.anchoredOn,
+    segment("Total", "family:python") !== barBefore && same(sumsUnderCell, onCell),
     `the sums redrew the bars under a cell: ${JSON.stringify(sumsUnderCell)}`,
   );
   entry("Python").emit("mouseenter");
@@ -640,7 +835,7 @@ const ROLLUP = {
   const sumsUnderEntry = read();
   entry("Python").emit("mouseleave");
   assert(
-    JSON.stringify(sumsUnderEntry) === JSON.stringify(onEntry),
+    same(sumsUnderEntry, onEntry),
     `the sums redrew the bars under the entry: ${JSON.stringify(sumsUnderEntry)}`,
   );
 
@@ -649,74 +844,151 @@ const ROLLUP = {
   const onSegment = read();
   segment("Total", "family:markdown").emit("mouseleave");
   assert(
-    JSON.stringify(onSegment.marked) ===
-      JSON.stringify(["Total family:markdown", "legend family:markdown"]) &&
+    same(onSegment.marked, ["Total family:markdown", "legend family:markdown"]) &&
       onSegment.tooltip === "Markdown / 2 files · 200 B" &&
       onSegment.anchoredOn === "Total family:markdown",
     `the Total row's Markdown segment: ${JSON.stringify(onSegment)}`,
   );
 
   // A layout replaces every cell. The entry outlives it, so its hover is drawn again on
-  // the new cells; a cell's hover goes with its cell, until the browser enters the new one.
+  // the new cells.
   entry("Markdown").emit("mouseenter");
-  const markdownCellBefore = cell("docs/a.md");
+  const cellsBefore = map().cells;
   windowListeners.get("resize")();
   const relaidUnderEntry = read();
   assert(
-    cell("docs/a.md") !== markdownCellBefore &&
-      JSON.stringify(relaidUnderEntry.marked) ===
-        JSON.stringify([
-          "Files family:markdown",
-          "Total family:markdown",
-          "legend family:markdown",
-          "cell docs/a.md (family)",
-          "cell docs/b.md (family)",
-        ]),
+    map().cells !== cellsBefore &&
+      same(relaidUnderEntry.marked, [
+        "Files family:markdown",
+        "Total family:markdown",
+        "legend family:markdown",
+        "cell docs/a.md",
+        "cell docs/b.md",
+      ]),
     `a layout under the Markdown entry: ${JSON.stringify(relaidUnderEntry)}`,
   );
   entry("Markdown").emit("mouseleave");
-  cell("docs/e.json").emit("mouseover");
+
+  // A canvas raises no mouseover when what is under a still pointer changes, so a layout
+  // asks which cell is under the pointer and points at it, on a new anchor: the same cell
+  // after a layout that moves nothing, and the cell now there after one that does.
+  const stillPoint = pointAt("docs/e.json");
+  const jsonAnchor = tooltip.anchor;
   windowListeners.get("resize")();
   const relaidUnderCell = read();
   assert(
-    relaidUnderCell.marked.length === 0,
-    `a layout under a cell kept its hover: ${JSON.stringify(relaidUnderCell)}`,
+    same(relaidUnderCell.marked, ["legend family:json", "cell docs/e.json"]) &&
+      relaidUnderCell.anchoredOn === "the anchor over docs/e.json" &&
+      tooltip.anchor !== jsonAnchor &&
+      !viewport().contains(jsonAnchor),
+    `a layout under the e.json cell: ${JSON.stringify(relaidUnderCell)}`,
   );
-  cell("docs/e.json").emit("mouseover");
-  const reenteredCell = read();
+  controls.set({ metric: "size" });
+  const remeasured = read();
+  const nowUnder = map().cells[deepestAt(map().cells, stillPoint.x, stillPoint.y)];
   assert(
-    JSON.stringify(reenteredCell.marked) ===
-      JSON.stringify(["legend family:json", "cell docs/e.json (self)"]),
-    `entering the redrawn cell: ${JSON.stringify(reenteredCell)}`,
+    remeasured.pointer === `cell ${nowUnder.path}` &&
+      nowUnder.path !== "docs/e.json" &&
+      remeasured.anchoredOn === `the anchor over ${nowUnder.path}` &&
+      remeasured.tooltip.startsWith(nowUnder.path),
+    `the measure switched under the e.json cell: ${JSON.stringify(remeasured)}`,
   );
-  cell("docs/e.json").emit("mouseout", { relatedTarget: container });
+  controls.set({ metric: "files" });
+  const measuredBack = read();
+  assert(
+    same(measuredBack, relaidUnderCell),
+    `the measure switched back under the pointer: ${JSON.stringify(measuredBack)}`,
+  );
+  leaveMap();
+
+  // The keyboard: one focus proxy, the map's one control, which the arrows move over every
+  // folder and file cell in layout order; Enter opens the cell it is on, and Backspace the
+  // enclosing folder's Treemap.
+  const proxy = viewport().querySelector(".tm-focus");
+  const keyed = map();
+  const focusOrder = keyed.focusOrder.map((index) => keyed.cells[index].path);
+  const proxyAt = () => ({
+    on: map().focused >= 0 ? map().cells[map().focused].path : null,
+    label: proxy.getAttribute("aria-label"),
+  });
+  const keys = [{ key: "(none)", ...proxyAt() }];
+  /** @param {string} key */
+  const press = (key) => {
+    const before = map();
+    const event = viewport().emit("keydown", { key });
+    const after = map();
+    const step = { ArrowRight: 1, ArrowLeft: -1 }[key] ?? 0;
+    assert(
+      after.focused === before.focusOrder[before.focusOrder.indexOf(before.focused) + step] &&
+        event.defaultPrevented,
+      `${key} on the focus proxy: ${JSON.stringify(proxyAt())}`,
+    );
+    keys.push({ key, ...proxyAt() });
+  };
+  for (const key of ["ArrowRight", "ArrowRight", "ArrowLeft"]) {
+    press(key);
+  }
+  // Then to the folder, wherever the layout put it in the order, so Enter opens a folder.
+  const folderAt = focusOrder.indexOf("docs/build");
+  while (focusOrder.indexOf(proxyAt().on ?? "") !== folderAt) {
+    press(focusOrder.indexOf(proxyAt().on ?? "") < folderAt ? "ArrowRight" : "ArrowLeft");
+  }
+  press("Enter");
+  press("Backspace");
+  const keyboard = {
+    proxy: {
+      role: proxy.getAttribute("role"),
+      tabindex: proxy.getAttribute("tabindex"),
+      hidden: proxy.hidden,
+      controls: viewport().querySelectorAll('[role="button"]').length,
+    },
+    focusOrder,
+    keys,
+    navigation: [...navigation],
+  };
+  assert(
+    keyboard.proxy.role === "button" &&
+      keyboard.proxy.tabindex === "0" &&
+      !keyboard.proxy.hidden &&
+      keyboard.proxy.controls === 1 &&
+      navigation.length === 2 &&
+      same(navigation[0], ["docs/build", "treemap"]) &&
+      same(navigation[1], ["", "treemap"]),
+    `the keyboard: ${JSON.stringify(keyboard)}`,
+  );
+  navigation.length = 0;
 
   // Show ignored turned off under the pointer rebuilds the legend, which lets go of the
-  // hover the entry it removes held. The new entry's shares are of Files, and the map
-  // drops the ignored folder.
+  // hover the entry it removes held, and asks again for the tree without its ignored
+  // nodes. The new entry's shares are of Files, and the map drops the ignored folder.
+  const askedFirst = asked;
   entry("Python").emit("mouseenter");
   controls.set({ includeIgnored: false });
-  const toggled = read();
-  assert(nothing(toggled), `Show ignored turned off under the entry: ${JSON.stringify(toggled)}`);
+  const toggled = { ...read(), asked };
+  assert(
+    nothing(toggled) &&
+      same(askedFirst, { nodes: "max", encoding: "compact", ignored: "include" }) &&
+      same(asked, { nodes: "max", encoding: "compact", ignored: "exclude" }),
+    `Show ignored turned off under the entry: ${JSON.stringify({ askedFirst, toggled })}`,
+  );
   entry("Python").emit("mouseenter");
   const filesOnly = read();
   assert(
     filesOnly.legend === "Markdown 50% JSON 25% Python 25%" &&
       filesOnly.legendName === "Share of Files (4 files)" &&
-      JSON.stringify(filesOnly.marked) ===
-        JSON.stringify([
-          "Files family:python",
-          "Ignored family:python",
-          "Total family:python",
-          "legend family:python",
-          "cell docs/c.py (family)",
-        ]) &&
+      same(filesOnly.marked, [
+        "Files family:python",
+        "Ignored family:python",
+        "Total family:python",
+        "legend family:python",
+        "cell docs/c.py",
+      ]) &&
       filesOnly.tooltip === "1 file · 300 B",
     `the Python entry without ignored files: ${JSON.stringify(filesOnly)}`,
   );
 
-  // A refreshed rollup rebuilds the legend under the pointer and puts the hover away, and
-  // the browser enters the rebuilt entry.
+  // The tree without ignored nodes, or a refresh of it, rebuilds the legend under the
+  // pointer and puts the hover away, and the browser enters the rebuilt entry.
   rollupAnswer(ROLLUP);
   const refreshed = read();
   assert(
@@ -726,32 +998,53 @@ const ROLLUP = {
   entry("Python").emit("mouseenter");
   const reentered = read();
   assert(
-    JSON.stringify(reentered.marked) === JSON.stringify(filesOnly.marked),
+    same(reentered.marked, filesOnly.marked),
     `entering the rebuilt entry: ${JSON.stringify(reentered)}`,
   );
 
+  // Disposed with the pointer on a cell: the view lets go of the cell's hover and puts
+  // away its own tooltip.
+  entry("Python").emit("mouseleave");
+  pointAt("docs/e.json");
+  const beforeDispose = read();
+  assert(beforeDispose.pointer === "cell docs/e.json", "the pointer is on a cell at disposal");
   view.dispose();
-  const disposed = read();
-  assert(nothing(disposed), `disposal kept the hover: ${JSON.stringify(disposed)}`);
+  const disposedMap = inspectTreemap(viewport());
+  const disposed = {
+    ...read(),
+    inspectable: disposedMap !== null,
+    viewportListeners: Object.values(viewport().listeners).reduce(
+      (count, listeners) => count + listeners.length,
+      0,
+    ),
+  };
+  assert(
+    nothing(disposed) && !disposed.inspectable && disposed.viewportListeners === 0,
+    `disposal kept the hover: ${JSON.stringify(disposed)}`,
+  );
 
   Object.assign(transcript, {
     "pointer on the Python entry, Show ignored on": onEntry,
     "left the entry": leftEntry,
     "pointer on the c.py cell": onCell,
-    "pointer across the c.py cell's own label": withinCell,
-    "left the cell": leftCell,
-    "pointer on the build folder": onFolder,
+    "pointer moved within the c.py cell, over its label": withinCell,
+    "left the map": leftCell,
+    "pointer on the build folder's frame": onFolder,
+    "pointer on the build folder's file": onChild,
+    "clicked the d.py cell, the build folder's frame, and the e.json cell": clicked,
     "the folder's sums redrew the bars under the c.py cell": sumsUnderCell,
     "the folder's sums redrew the bars under the Python entry": sumsUnderEntry,
     "pointer on the Total row's Markdown segment": onSegment,
     "the map laid out again under the Markdown entry": relaidUnderEntry,
-    "the map laid out again under the e.json cell": relaidUnderCell,
-    "the browser entered the redrawn e.json cell": reenteredCell,
+    "the map laid out again under a still pointer on the e.json cell": relaidUnderCell,
+    "the measure switched to Bytes under the still pointer": remeasured,
+    "the measure switched back to Files under the still pointer": measuredBack,
+    "the keyboard on the focus proxy": keyboard,
     "Show ignored turned off under the Python entry": toggled,
     "pointer on the Python entry, Show ignored off": filesOnly,
     "the rollup refreshed under the pointer": refreshed,
     "the browser entered the rebuilt entry": reentered,
-    "the view disposed under the pointer": disposed,
+    "the view disposed with the pointer on the e.json cell": disposed,
   });
   console.warn = originalWarn;
   process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
