@@ -211,5 +211,20 @@
       }
     ],
     "source_only": true
+  },
+  "tools/package.json": {
+    "version": "structured-diff-v1",
+    "status": "ready",
+    "format": "json",
+    "root": [
+      {
+        "change": "added",
+        "value": {
+          "scripts": {},
+          "name": "demo"
+        }
+      }
+    ],
+    "source_only": true
   }
 }

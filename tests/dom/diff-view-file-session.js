@@ -429,12 +429,23 @@ function bars(container) {
   for (const section of container.find("diff-file")) {
     const bar = section.find("diff-file-bar")[0];
     const controls = bar.find("diff-file-view");
-    // The controls are the group at the bar's end, after the name's.
-    const end = bar.children.at(-1);
+    // The controls follow the name's group, which ends with its copy control and any
+    // stats or notes, as parts of the bar of their own, so a bar that wraps moves them to
+    // the next line before the name gives way; the group at the bar's end is left to a
+    // Rendered | Source chooser. A change that knows neither line count and has no note
+    // draws no stats (`renderFileBar`), so the group then ends with Copy path.
+    const [lead, ...rest] = bar.children;
+    const end = rest.at(-1);
+    const order = lead.children.map((child) => String(child.className).split(" ").at(-1));
     assert(
-      end.classList.contains("diff-file-end") &&
-        controls.every((each, index) => end.children[index] === each),
-      `${barLabel(bar)}: a View file control is not at the bar's end`,
+      lead.classList.contains("diff-file-lead") &&
+        end?.classList.contains("diff-file-end") === true &&
+        rest.length === controls.length + 1 &&
+        controls.every((each, index) => rest[index] === each) &&
+        ["expanded,diff-file-copy,diff-file-facts", "expanded,diff-file-copy"].includes(
+          order.join(","),
+        ),
+      `${barLabel(bar)}: a View file control does not follow the name, Copy path, and stats`,
     );
     shown[barLabel(bar)] = controls.map(describeControl);
   }

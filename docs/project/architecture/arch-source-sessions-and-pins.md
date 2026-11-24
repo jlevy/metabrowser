@@ -292,7 +292,7 @@ The functional rows `source.stale-pin-guard` and `source.history-landing` in the
 
 **View file and View on branch.** A diff’s file bar opens the file the change makes, its
 new side, in the main UI: **View file** on a commit’s diff, and **View on branch** on a
-pull request’s Changes while the diff shows the pull request’s head.
+pull request’s Changes and Docs while the diff shows the pull request’s head.
 The comparison document says which commit that side is at, so on a pin’s page the
 control is a link to its `/view/` address when the page shows that commit, and otherwise
 a button that switches the pin with `POST /api/source/pin`, naming the address so the

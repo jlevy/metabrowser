@@ -38,6 +38,8 @@ with no chooser. An alias reads as the value it names.
 A file whose only change is outside the tree (here a comment) notes that Source shows
 it, and one whose value changed only in type beside a drawn change (here a date that
 became a string) notes that Source shows a change the tree draws as unchanged.
+An added JSON file that writes a key twice draws the last value, as the file view does,
+and notes that Source shows the value it hides.
 The steps after it click rows of `config/app.yaml`, mount it where the tree renderer
 fails to load, and dispose of the views.
 Each row line is its change, its state (`open`, `closed`, `leaf`, `empty` or `more`),
@@ -62,7 +64,8 @@ $ node tests/dom/diff-structured-session.js
         "deploy/anchors.yaml",
         "deploy/duplicate.yaml",
         "config/comments.yaml",
-        "config/dates.yaml"
+        "config/dates.yaml",
+        "tools/package.json"
       ],
       "files": {
         "config/app.yaml": {
@@ -139,6 +142,16 @@ $ node tests/dom/diff-structured-session.js
             "  context leaf released: \"2026-11-18\"",
             "  removed leaf retries: 3",
             "  added leaf retries: 4"
+          ]
+        },
+        "tools/package.json": {
+          "chooser": "JSON diff format: *Rendered | Source",
+          "shows": "rendered",
+          "rows": [
+            "note: Source shows a value the tree does not draw: a later one under the same key hides it.",
+            "added open {2 keys}",
+            "  added empty scripts: {}",
+            "  added leaf name: \"demo\""
           ]
         }
       }

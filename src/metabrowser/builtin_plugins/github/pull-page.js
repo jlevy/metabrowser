@@ -28,16 +28,17 @@
 // plain markup twice: by the hook on the server (src/metabrowser/inert_html.py), and by
 // static/inert-html.js, which rebuilds the inserted nodes from an inert template. No
 // class, id, data, style, or event attribute survives, but for the image fallback's own,
-// nor any SVG, media, stylesheet, frame, or form; an image written in full over https is
-// kept, with no referrer sent, unless the reader has turned that off, and any other is its
-// alt text in a chip inside its link; a link is made absolute against the
+// nor any SVG, media, stylesheet, frame, form, or input but a disabled checkbox in the
+// shape of a task list's box, wherever the text writes one; an image written in full over
+// https is kept, with no referrer sent, unless the reader has turned that off, and any
+// other is its alt text in a chip inside its link; a link is made absolute against the
 // pull request's github.com page, kept only for http(s), and opened in a new tab with
 // rel="noopener noreferrer"; and no KPress script is loaded for a text, but for one with a
-// Mermaid block (a `pre` keeps `lang="mermaid"`), KPress's diagram modules, which draw each
-// block as an image laid out in a frame whose policy loads nothing (`drawTextDiagrams`).
-// KPress's stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes
-// in a KPress article of its own making, so a text reads as the same Markdown in a file
-// does.
+// Mermaid block (a `pre` keeps `lang="mermaid"`), KPress's diagram modules, which draw
+// each block as an image laid out in a frame whose policy loads nothing
+// (`drawTextDiagrams`). KPress's stylesheets are, the route's one fixed list, and the page
+// sets the rebuilt nodes in a KPress article of its own making, so a text reads as the
+// same Markdown in a file does.
 
 import {
   comparisonKey,
@@ -330,6 +331,11 @@ export function diffTab(tab) {
 
 /** The File type group the Docs tab shows, in the diff's `group=` vocabulary. */
 const DOCS_GROUP = "type:docs";
+
+/** The preference the Docs tab remembers its Diff | Current choice as, apart from the
+ * `diff.show` that Changes, a commit's page and a patch share, so a choice on one tab does
+ * not move the other. */
+const DOCS_SHOW_PREFERENCE = "github.docs.show";
 
 /**
  * Whether a diff document lists no changed file, and its list was not cut short at its
@@ -7768,9 +7774,16 @@ export function mountPullPage(container, ctx, mb) {
               summary: false,
               ...(docs
                 ? {
-                    // Docs: the documents alone, every fold open, and no File type choice.
+                    // Docs: the documents alone, every fold open, and no File type or
+                    // layout choice. A rendered document has no layout, and a document's
+                    // Source reads as its Rendered does, in one column. Docs opens on the
+                    // new versions (Current), and remembers the reader's Diff | Current
+                    // apart from Changes' `diff.show`, so neither moves the other.
                     group: DOCS_GROUP,
                     unfold: true,
+                    layout: "unified",
+                    show: "current",
+                    showPreference: DOCS_SHOW_PREFERENCE,
                     emptyText: "No documents changed in this pull request.",
                     onDocument: (/** @type {unknown} */ document_) => {
                       documented = true;

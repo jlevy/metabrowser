@@ -52,7 +52,19 @@ HOSTILE_README = (
     '<a href="/%2e%2e/raw?path=evil.js">dotdot</a> <a href="/.%2E/raw?x">dot2e</a>'
     ' <a href="/api%2ftree">slash</a> <a href="/%5capi/tree">back</a>'
     ' <img src="/%2e%2e/api/tree" alt="dotimg"> <img src="/.%2E/raw?path=x.png" alt="dot2eimg">\n'
+    # A task list, and checkboxes written in raw HTML, which are kept in its box's shape
+    # wherever they stand: in a paragraph with every attribute a form control can carry,
+    # and in a table cell; any other input goes.
+    "\n- [ ] Open\n- [x] Done\n- [X] Also done\n\n"
+    '<INPUT TYPE="CheckBox" name="agree" form="f" value="yes" onclick="alert(1)" autofocus'
+    ' checked> raw <input type="text" value="typed">\n\n'
+    '| Done |\n|---|\n| <input type="checkbox" checked> |\n'
 )
+# The boxes KPress and both allowlists keep of HOSTILE_README, in document order.
+HOSTILE_README_BOXES = [
+    '<input type="checkbox" disabled>',
+    *['<input type="checkbox" disabled checked>'] * 4,
+]
 
 # Runs the production sanitizer on a tree read from stdin and prints the rebuilt markup.
 _NODE = r"""
@@ -73,6 +85,7 @@ if (input.lists) {
     attributes: inert.ALLOWED_ATTRIBUTES, prefix: inert.ANCHOR_PREFIX,
     align: inert.ALIGN_VALUES, dimensions: inert.DIMENSIONS,
     fallback: inert.IMAGE_FALLBACK_CLASS, referrer: inert.IMAGE_REFERRER_POLICY,
+    checkbox: inert.CHECKBOX_ATTRIBUTES,
   }));
   process.exit(0);
 }
@@ -99,7 +112,8 @@ const escape = (value) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const serialize = (list) => list.map((node) => "text" in node ? escape(node.text)
   : `<${node.tag}${node.attributes.map(([name, value]) => ` ${name}="${escape(value)}"`).join("")}>`
-    + (["br", "hr", "img"].includes(node.tag) ? "" : `${serialize(node.children)}</${node.tag}>`))
+    + (["br", "hr", "img", "input"].includes(node.tag) ? ""
+      : `${serialize(node.children)}</${node.tag}>`))
   .join("");
 process.stdout.write(serialize(inert.sanitizeNodes(nodes(input.tree), doc, input.base)));
 """
@@ -169,6 +183,7 @@ def test_the_browser_and_the_server_share_one_allowlist() -> None:
     assert lists["prefix"] == inert_html.ANCHOR_PREFIX
     assert lists["fallback"] == inert_html.IMAGE_FALLBACK_CLASS
     assert lists["referrer"] == inert_html.IMAGE_REFERRER_POLICY
+    assert tuple(tuple(pair) for pair in lists["checkbox"]) == inert_html.CHECKBOX_ATTRIBUTES
     assert {tag: tuple(values) for tag, values in lists["align"].items()} == (
         inert_html.ALIGN_VALUES
     )
@@ -190,6 +205,7 @@ def test_both_sides_make_the_same_inert_markup_of_a_hostile_document(
     assert allowlist_violations(server, images=images) == []
     assert allowlist_violations(browser, images=images) == []
     assert _tokens(browser) == _tokens(server)
+    assert re.findall(r"<input[^>]*>", server) == HOSTILE_README_BOXES
 
 
 @pytest.mark.parametrize(
@@ -604,6 +620,79 @@ def test_the_reader_who_blocks_remote_images_sees_their_alt_text_in_the_same_lin
         assert _tokens(open_) == _tokens(server)
 
 
+def test_a_task_lists_box_keeps_its_state_and_no_other_input_survives() -> None:
+    """KPress's box stays a disabled checkbox, ticked as the document has it, on both sides.
+
+    The allowlist dropped every ``input``, so ``- [x] Done`` read as an item with no box,
+    and a tick was a change neither the Document view nor a rendered diff showed.
+    """
+
+    rendered = _kpress("- [ ] Open\n- [x] Done\n- [X] Also done\n")
+    server = harden(rendered)
+    assert re.findall(r"<input[^>]*>", server) == [
+        '<input type="checkbox" disabled>',
+        '<input type="checkbox" disabled checked>',
+        '<input type="checkbox" disabled checked>',
+    ]
+    assert _tokens(_node({"tree": html_tree(rendered), "base": None})) == _tokens(server)
+    written = (
+        # KPress's own box, ticked.
+        '<input class="task-list-item-checkbox" checked="checked" disabled="disabled"'
+        ' type="checkbox">'
+        # Every other attribute of a checkbox goes, and so does every other input.
+        '<input type="CheckBox" name="agree" form="f" value="yes" onclick="alert(1)" autofocus>'
+        '<input type=" checkbox" checked><input type="text" value="typed"><input type="submit">'
+        # A type a browser reads as a text field, which only Unicode lowercasing (U+212A
+        # KELVIN SIGN to k) would read as a checkbox.
+        '<input type="checKbox" checked>'
+        "<input><input/>"
+    )
+    expected = '<input type="checkbox" disabled checked><input type="checkbox" disabled>'
+    for base in (None, PR_PAGE):
+        assert harden(written, base) == expected
+        assert _node({"tree": html_tree(written), "base": base}) == expected.replace(
+            "disabled", 'disabled=""'
+        ).replace("checked>", 'checked="">')
+    assert harden(expected) == expected
+    assert allowlist_violations(expected) == []
+    # The allowlist check refuses any other shape of one.
+    assert allowlist_violations('<input type="checkbox">') == ["input[('type', 'checkbox')]"]
+    assert allowlist_violations('<input type="text" disabled>') == [
+        "input[('type', 'text'), ('disabled', None)]"
+    ]
+
+
+def test_both_sides_read_a_repeated_attribute_as_its_first() -> None:
+    """A browser keeps an attribute's first copy and drops the rest, and so do KPress's
+    sanitizer and the page's sanitizer (`getAttribute`); the server's hardener reads raw
+    HTML the same way, so what it keeps never rests on KPress having dropped the copies."""
+
+    written = (
+        '<input type="text" type="checkbox"><input type="checkbox" type="text" checked>'
+        '<p align="center" align="right">a</p><p align="middle" align="center">b</p>'
+        '<a href="https://example.org/a" href="javascript:alert(1)">c</a>'
+        '<a href="javascript:alert(1)" href="https://example.org/b">d</a>'
+        '<ol start="2" start="9"><li>e</li></ol>'
+        '<table><tr><td colspan="2" colspan="x">f</td><td colspan="x" colspan="3">g</td></tr>'
+        "</table>"
+        '<img src="https://example.com/a.png" src="javascript:alert(1)" alt="first"'
+        ' alt="second">'
+    )
+    server = harden(written)
+    assert server == (
+        '<input type="checkbox" disabled checked><p align="center">a</p><p>b</p>'
+        '<a href="https://example.org/a" target="_blank" rel="noopener noreferrer">c</a>'
+        '<a>d</a><ol start="2"><li>e</li></ol>'
+        '<table><tr><td colspan="2">f</td><td>g</td></tr></table>'
+        '<img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/a.png"'
+        ' alt="first">'
+    )
+    for base in (None, PR_PAGE):
+        assert _tokens(_node({"tree": html_tree(written), "base": base})) == _tokens(
+            harden(written, base)
+        )
+
+
 def test_a_document_keeps_the_fallbacks_shape_and_nothing_else_on_a_span() -> None:
     """The hardener's own span hardens to itself; no other attribute of a span survives."""
 
@@ -780,6 +869,11 @@ def test_the_session_plays_what_kpress_renders_of_the_hostile_readme() -> None:
     for mode in ("comment", "blocked"):
         assert allowlist_violations(transcript["badges"][mode], images=True) == []
     assert transcript["inertRender"] == {"inert": True, "trusted": False}
+    assert allowlist_violations(transcript["boxes"]) == []
+    assert re.findall(r"<input[^>]*>", transcript["boxes"]) == [
+        '<input type="checkbox" disabled>',
+        *['<input type="checkbox" disabled checked>'] * 3,
+    ]
 
 
 # Headings written to attack the anchors: names of Object.prototype and window, ids and

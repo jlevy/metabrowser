@@ -44,6 +44,11 @@ class PageElement {
     const owner = this;
     this.classList = {
       contains: (name) => owner.className.split(" ").includes(name),
+      add(...names) {
+        for (const name of names) {
+          this.toggle(name, true);
+        }
+      },
       toggle(name, force) {
         const names = new Set(owner.className.split(" ").filter(Boolean));
         const want = force === undefined ? !names.has(name) : force;
@@ -227,10 +232,11 @@ async function main() {
 
   /**
    * A mount where the root would be this wide, under this preference, in this padding; with
-   * `keys`, its api has a stand-in shortcut surface.
+   * `keys`, its api has a stand-in shortcut surface; with `options`, the host's mount options.
    */
-  function mount(contentWidth, preference, padding = 0, keys = false) {
+  function mount(contentWidth, preference, padding = 0, keys = false, options = undefined) {
     const writes = [];
+    let reads = 0;
     let change = null;
     let spec = null;
     const attachments = [];
@@ -239,7 +245,14 @@ async function main() {
       isLargeTextPreview: () => true,
       langForPath: () => "",
       prefs: {
-        get: (_key, fallback) => preference ?? fallback,
+        // The stored layout; Diff | Current's own `diff.show` has its own session.
+        get(key, fallback) {
+          if (key !== "diff.layout") {
+            return fallback;
+          }
+          reads += 1;
+          return preference ?? fallback;
+        },
         set(key, value) {
           writes.push(`${key}=${value}`);
           return true;
@@ -247,6 +260,10 @@ async function main() {
       },
       filterControls: {
         groupHtml(next) {
+          // The layout control's chips; Diff | Current's have their own session.
+          if (next.key !== "diff-layout") {
+            return "";
+          }
           spec = next;
           drawnChips = next.options.map((option) => {
             const chip = new PageElement("button");
@@ -257,8 +274,10 @@ async function main() {
           });
           return "control";
         },
-        bind(_root, handlers) {
-          change = handlers.onChange;
+        bind(root, handlers) {
+          if (root.classList.contains("diff-layout-control")) {
+            change = handlers.onChange;
+          }
           return () => {};
         },
       },
@@ -284,7 +303,7 @@ async function main() {
     host.contentWidth = contentWidth;
     host.clientWidth = contentWidth + padding;
     const built = splitRowsBuilt;
-    const handle = view.mountDiffView(host, document_, api);
+    const handle = view.mountDiffView(host, document_, api, options);
     const observer = WidthObserver.all.at(-1);
     return {
       host,
@@ -315,9 +334,33 @@ async function main() {
           retargets: record.retargets,
         };
       },
+      /**
+       * What a host's fixed layout leaves out, the control, `L`, the preference, and what its
+       * toolbar holds without them: its choosers' end group, which holds Diff | Current alone,
+       * whose chips and `N` this stand-in does not draw (tests/dom/diff-current-session.js has
+       * them).
+       */
+      fixed() {
+        return {
+          toolbar: host
+            .find("diff-toolbar")
+            .map((toolbar) =>
+              toolbar.children
+                .map((child) =>
+                  child.classList.contains("diff-toolbar-end")
+                    ? `${child.className} (${child.children.map((part) => part.className).join(", ")})`
+                    : child.className,
+                )
+                .join(", "),
+            ),
+          layoutControls: host.find("diff-layout-control").length,
+          layoutKeys: attachments.filter((record) => record.options.id === "diff.layout").length,
+          preferenceReads: reads,
+        };
+      },
       line() {
         const root = host.find("diff-root")[0];
-        const tips = spec.options.flatMap((option) =>
+        const tips = (spec?.options ?? []).flatMap((option) =>
           option.tip === undefined ? [] : [`${option.label}: ${option.tip}`],
         );
         return {
@@ -325,7 +368,7 @@ async function main() {
           splitRows: host.find("diff-split-row").length,
           unifiedRows: host.find("diff-line").length,
           builtSplit: splitRowsBuilt > built,
-          control: spec.value,
+          control: spec?.value ?? null,
           tips,
           preference: [...writes],
         };
@@ -457,6 +500,19 @@ async function main() {
   sayKey("L there chooses Split and its sideways scroll, as clicking Split does");
   keyed.handle.dispose();
   assert(keyed.key().on === "detached", "dispose left L attached");
+
+  // A layout the host fixes, as a pull request's Docs tab fixes Unified: drawn under a stored
+  // Split at any width, with no control and no `L`, its toolbar holding Diff | Current alone,
+  // and the stored choice neither read nor written.
+  await settle();
+  const fixed = mount(1049, "split", 0, true, { layout: "unified" });
+  const sayFixed = (name) => steps.push({ step: name, ...fixed.line(), ...fixed.fixed() });
+  sayFixed("a host's fixed Unified, wide, under a stored Split: no control, no L");
+  await fixed.width(440);
+  sayFixed("narrow: Unified still, and nothing to say why");
+  await fixed.width(1049);
+  sayFixed("wide again: the host's Unified, not the stored Split");
+  fixed.handle.dispose();
 
   // Height changes report too, and draw nothing: only a new width is looked at.
   const tall = mount(900);

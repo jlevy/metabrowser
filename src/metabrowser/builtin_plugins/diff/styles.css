@@ -35,21 +35,44 @@
      reaches past its chevron (`.diff-summary-toggle`). Its tree's rows take it back out, so
      their first level starts one --tree-indent in from the header (below). */
   --diff-summary-toggle-pull: 4px;
+  /* The file bar's space before its View file control, beyond the bar's gap and the
+     control's pad: at rest the stats end 44 px before View file's text and start 28 px
+     after the name's, past Copy path's slot, so they read with the name. And the least
+     the name's group keeps before View file moves to the next line, on a bar without a
+     Rendered | Source chooser (`.diff-file-lead`): the rest of the group beside the name
+     took 106 px with stats of +1 -0 and 174 px with +12,345 -12,345, so stats that wide
+     never run under View file. Measured in headless Chrome, design-rule-measurements.md
+     "Diff File Bar Widths". */
+  --diff-file-actions-gap: 32px;
+  --diff-file-lead-basis: 176px;
 }
 
 /* The toolbar draws no rule under itself (mb-a073): the first file card's own border, its
    12 px margin below, is the line between the toolbar and the files, and on a commit's or a
-   pull request's page, where the toolbar holds the layout control alone, a rule there would
+   pull request's page, where the toolbar holds the diff's choosers alone, a rule there would
    draw a second line 12 px above it. Where the toolbar leads with the Diff summary, its
    header is the tree's root, and the tree opens under it as it does at a page's top, with
-   no line between them. The toolbar is not sticky, so nothing scrolls under it. */
+   no line between them. The toolbar is not sticky, so nothing scrolls under it.
+
+   It wraps rather than run past its pane: its controls end each line, and what leads it, the
+   Diff summary, keeps the first line's start. The choosers are one group
+   (`.diff-toolbar-end`), so where they do not fit beside the File type control they take the
+   next line together, at its end. Measured in Chrome 152 at 1,063, 900, 600, 380 and 320 px
+   with each state the File type control paints (tests/dom/diff-current-chrome.mjs): nothing
+   scrolls sideways. Without the wrap, Split | Unified ran up to 200 px past the toolbar at
+   380 px (mb-dcc2). */
 .metabrowser-diff-host .diff-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
   min-height: var(--ui-row-height);
+}
+
+.metabrowser-diff-host .diff-toolbar > :not(.diff-type-control, .diff-toolbar-end) {
+  margin-inline-end: auto;
 }
 
 /* The Diff summary (diff-summary.js): a multi-file diff's header, which says what the change
@@ -187,23 +210,36 @@
   );
 }
 
-.metabrowser-diff-host .diff-layout-control {
-  flex: none;
-  margin-left: auto;
+/* The diff's choosers end the toolbar, on one line at its right: Diff | Current
+   (`renderShowControl` in diff-view.js), then Split | Unified, or Diff | Current alone
+   where the host fixes the layout, as a pull request's Docs tab does. Where the group alone
+   is wider than the toolbar, it wraps too, each of its lines at the end, as a file bar's end
+   group does. */
+.metabrowser-diff-host .diff-toolbar-end {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
 }
 
-/* The File type filter (diff-type-filter.js) leads the layout control at the toolbar's end:
-   the menu, how many files it keeps, and Clear. */
+.metabrowser-diff-host :is(.diff-show-control, .diff-layout-control) {
+  flex: none;
+}
+
+/* The File type filter (diff-type-filter.js) leads the choosers at the toolbar's end:
+   the menu, how many files it keeps, and Clear. Wider than the toolbar, as its failed load's
+   notice is at 320 px, it wraps, each of its lines at the end. */
 .metabrowser-diff-host .diff-type-control {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  margin-left: auto;
-}
-
-.metabrowser-diff-host .diff-type-control + .diff-layout-control {
-  margin-left: 0;
+  min-width: 0;
 }
 
 .metabrowser-diff-host .diff-type-note {
@@ -235,6 +271,7 @@
   position: sticky;
   top: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   min-height: var(--ui-row-height);
   gap: 4px;
@@ -252,20 +289,48 @@
   border-bottom: none;
 }
 
-/* The bar's two groups. It leads with what names the file, the disclosure and
-   the copy control beside the name, and ends with what shows the file another
-   way: a file's Rendered | Source chooser and the View file control. Each is
-   one flex item, so a long path is cut short with its copy control still beside
-   it, and where a bar wraps (`.diff-file-bar-markdown`) its end group moves to
-   the next line whole and keeps to the bar's end there. The end group's start
-   margin takes the bar's free space, which stays part of the bar's one
-   activation surface. */
+/* The bar's parts. It leads with the group that names the file: the
+   disclosure, the copy control right after the name, and the change's stats
+   and notes. The View file control follows it, and the bar ends with a file's
+   Rendered | Source chooser, at its far end. The name's group and the end group
+   are each one flex item, so nothing parts the copy control or the stats from
+   the name, and the end group moves whole. The end group's start margin takes
+   the bar's free space, which stays part of the bar's one activation surface.
+
+   Where the parts do not fit one line, the bar wraps them in order, and the
+   name's group keeps the first. A bar with a Rendered | Source chooser
+   (`.diff-file-bar-markdown`) wraps before its name is cut at all: the group
+   takes its whole width when laid out, so View file and then the end group move
+   to the next line first. Any other bar cuts a long path short on one line, the
+   group giving way down to `--diff-file-lead-basis`, and below that moves View
+   file to the next line rather than cutting it off or covering the stats.
+   `max-width` stops the group growing past its content, so View file follows
+   the name rather than the bar's end. */
 .metabrowser-diff-host .diff-file-lead {
   display: flex;
   align-items: center;
-  flex: 0 1 auto;
+  flex: 1 1 var(--diff-file-lead-basis);
   min-width: 0;
+  max-width: max-content;
   gap: 4px;
+}
+
+.metabrowser-diff-host .diff-file-bar-markdown .diff-file-lead {
+  flex: 0 1 auto;
+}
+
+/* The space before View file: wider than the copy control's slot, which sits
+   between the name and the stats, so the stats read with the name and View file
+   apart from both. It is the first thing to give way where the bar is short,
+   before the name: a flex item of the name's group that shrinks a million times
+   as fast as the toggle does. A bar that wraps View file to the next line keeps
+   the space at the end of the first, where it is unseen, so the control starts
+   its own line at the bar's start pad. */
+.metabrowser-diff-host .diff-file-lead:has(+ .diff-file-view)::after {
+  content: "";
+  flex: 0 1000000 auto;
+  width: var(--diff-file-actions-gap);
+  min-width: 0;
 }
 
 .metabrowser-diff-host .diff-file-end {
@@ -274,6 +339,12 @@
   flex: none;
   gap: 4px;
   margin-inline-start: auto;
+}
+
+/* A bar with no chooser has nothing at its end, and an empty group there could
+   still take a line of its own where the bar wraps. */
+.metabrowser-diff-host .diff-file-end:empty {
+  display: none;
 }
 
 .metabrowser-diff-host .diff-file-chevron {
@@ -322,11 +393,30 @@
   flex: none;
 }
 
-/* The note, the change letter, and the stats share the path's baseline,
-   as a nav tree row's text does ("Row Text Shares a Baseline" in the
-   design system); the chevron is a box and stays centered. */
-.metabrowser-diff-host .diff-file-toggle
-  > :is(.diff-file-kind, .diff-file-path, .diff-file-stats, .diff-file-note) {
+/* The change letter shares the path's baseline, as a nav tree row's text
+   does ("Row Text Shares a Baseline" in the design system); the chevron is a
+   box and stays centered. */
+.metabrowser-diff-host .diff-file-toggle > :is(.diff-file-kind, .diff-file-path) {
+  align-self: baseline;
+}
+
+/* The change's stats and notes, after the copy control: a box in the name's
+   group, set at the path's own size and line height, as the View file control
+   is, so centering puts their text on the path's baseline, and their own text
+   shares one baseline inside it. They keep their width: the path gives way
+   first. */
+.metabrowser-diff-host .diff-file-facts {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  line-height: normal;
+  white-space: nowrap;
+}
+
+.metabrowser-diff-host .diff-file-facts > :is(.diff-file-stats, .diff-file-note) {
   align-self: baseline;
 }
 
@@ -349,8 +439,8 @@
   font-weight: var(--weight-bold);
 }
 
-/* View file, or View on branch on a pull request: a quiet text action at
-   the end of the bar, the same whether
+/* View file, or View on branch on a pull request: a quiet text action
+   after the name and its stats, the same whether
    it is a link (the page has the file's address) or a button (following
    it switches the served pin first). It stays visible, since it is how a
    reader leaves the diff for the file, and takes the link color on hover
@@ -402,9 +492,9 @@
   display: none;
 }
 
-/* Copy path, right after the name, its stats, and its notes, as the file
-   header's follows its path ("Copyable Identifiers Use One Delegate" in the
-   design system). */
+/* Copy path, right after the name and before its stats and notes, as the
+   file header's follows its path ("Copyable Identifiers Use One Delegate" in
+   the design system). */
 .metabrowser-diff-host .diff-file-copy {
   /* A 20px hit target keeps the 24px row exact under its 1px border;
      the token re-scope leaves the icon-btn primitive untouched. */
@@ -466,6 +556,12 @@
   font-family: var(--font-mono);
   font-size: var(--mono-block-font-size);
   line-height: 1.5;
+}
+
+/* Current draws the new file's lines in one column, at their new numbers alone
+   (`renderCurrentLine` in diff-view.js), so the row has one number column. */
+.metabrowser-diff-host .diff-hunk-current .diff-line {
+  grid-template-columns: 3.5em 1.25em 1fr;
 }
 
 .metabrowser-diff-host .diff-hunk-split {
@@ -635,14 +731,10 @@
   white-space: nowrap;
 }
 
-/* A bar with a Rendered | Source chooser wraps where its two groups do not fit one
-   line: the name keeps the first to itself, and the chooser's group takes the second,
-   at the bar's end (`.diff-file-end`). Where that group alone is wider than the bar, it
-   wraps too, each of its lines at the bar's end, so no control is cut off. */
-.metabrowser-diff-host .diff-file-bar-markdown {
-  flex-wrap: wrap;
-}
-
+/* Where a bar with a Rendered | Source chooser wraps (`.diff-file-lead`), the chooser's
+   group takes a line after the name's, at the bar's end (`.diff-file-end`). Where that
+   group alone is wider than the bar, it wraps too, each of its lines at the bar's end, so
+   no control is cut off. */
 .metabrowser-diff-host .diff-file-bar-markdown .diff-file-end {
   flex: 0 1 auto;
   flex-wrap: wrap;
@@ -666,6 +758,13 @@
 }
 
 .metabrowser-diff-host :is(.diff-markdown, .diff-structured, .diff-file-body)[hidden] {
+  display: none;
+}
+
+/* What Current leaves out of rendered Markdown, its removed blocks and front matter keys,
+   which the format controller hides by the attribute (`removedParts` in diff-markdown.js):
+   hidden whatever display a block's own styles give it. */
+.metabrowser-diff-host :is(.diff-markdown-block, .diff-markdown-frontmatter :is(dt, dd))[hidden] {
   display: none;
 }
 

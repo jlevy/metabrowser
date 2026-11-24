@@ -54,6 +54,14 @@ only what is listed here and drops the rest.
   address, so the hardener's own answer hardens to itself, as the page needs it to. A
   document that writes the shape gets a chip and a tooltip of that address, which do
   nothing else.
+- Checkboxes: an ``input`` is kept only in the shape of a task list's box, as KPress
+  and github.com write one for ``- [ ]`` and ``- [x]``: ``type="checkbox"``, always
+  ``disabled``, and ``checked`` when the document's was, so a ticked item reads as
+  ticked (:data:`CHECKBOX_ATTRIBUTES`). The allowlist reads HTML, not where it came
+  from, so a checkbox the document writes in raw HTML, in a paragraph or a table cell,
+  is kept in that shape too. Like an image, it is not an allowed tag: any other
+  ``input``, and any other attribute of one, goes. A disabled checkbox with no name,
+  value, or form cannot be focused, changed, or submitted, and reaches no handler.
 - Heading anchors, in a document inside the served tree only: every ``h1`` to ``h6``
   gets an ``id`` the hardener makes, never one the document wrote, as github.com does:
   :data:`ANCHOR_PREFIX` and the GitHub slug of the heading's inert text
@@ -178,10 +186,12 @@ DIMENSIONS: Final = {
 # image's loading, which is always lazy, its referrerpolicy, which is always no-referrer,
 # and a span's, which only the image fallback's own shape (IMAGE_FALLBACK_CLASS) keeps. An
 # image is not an allowed tag: it is kept, with these, only inside the served tree and
-# from an https address.
+# from an https address. Nor is an input: it is kept only in the shape of a task list's
+# box, which CHECKBOX_ATTRIBUTES writes, wherever the document writes a checkbox.
 ALLOWED_ATTRIBUTES: Final = {
     "a": ("href", "target", "rel"),
     "img": ("loading", "referrerpolicy", "src", "alt", "align", "width", "height"),
+    "input": ("type", "disabled", "checked"),
     "span": ("class", "data-tip-text"),
     "ol": ("start",),
     "p": ("align",),
@@ -197,6 +207,13 @@ ALLOWED_ATTRIBUTES: Final = {
     "pre": ("lang",),
     **{f"h{level}": ("id", "align") for level in range(1, 7)},
 }
+# The one shape an input keeps, a task list's box, ahead of `checked` when the document's
+# was ticked: the hardener writes each of these, and reads only `type` and `checked` from
+# the document.
+CHECKBOX_ATTRIBUTES: Final = (("type", "checkbox"), ("disabled", ""))
+# The attributes written without a value, whose presence is their meaning. The allowlist
+# reads none of their values: HTML spells one as nothing or as the attribute's own name.
+BARE_ATTRIBUTES: Final = frozenset({"open", "disabled", "checked"})
 # The one language a block keeps: a Mermaid diagram's, spelled as GitHub's own fallback
 # markup spells it, `<pre lang="mermaid">`, so the page can draw it as an image
 # (builtin_plugins/markdown/diagrams.js). KPress marks the block with this class inside
@@ -426,6 +443,15 @@ def link_href(href: str | None, base: str | None) -> tuple[str, bool] | None:
     return None if outside is None else (outside, True)
 
 
+def _checkbox_type(kind: str | None) -> bool:
+    """Whether an input's `type` makes it a checkbox, as a browser reads one: ASCII
+    letters in any case, and nothing around them. Python's `lower` also folds U+212A
+    KELVIN SIGN to `k`, which neither a browser's match nor KPress's sanitizer does."""
+
+    written = kind or ""
+    return written.isascii() and written.lower() == "checkbox"
+
+
 def allowed_attributes(
     tag: str, attrs: dict[str, str | None], base: str | None
 ) -> list[tuple[str, str]]:
@@ -473,6 +499,10 @@ def allowed_attributes(
                 kept.append((name, value))
     elif tag == "details" and "open" in attrs:
         kept.append(("open", ""))
+    elif tag == "input" and _checkbox_type(attrs.get("type")):
+        kept += CHECKBOX_ATTRIBUTES
+        if "checked" in attrs:
+            kept.append(("checked", ""))
     elif tag == "pre" and (
         (attrs.get("lang") or "").lower() == DIAGRAM_LANGUAGE
         or _DIAGRAM_SOURCE_CLASS in (attrs.get("class") or "").split()
@@ -630,7 +660,8 @@ def image_fallback(text: str, address: str | None) -> str:
 
 def _open_tag(tag: str, kept: list[tuple[str, str]]) -> str:
     rendered = "".join(
-        f" {name}" if name == "open" else f' {name}="{escape(value)}"' for name, value in kept
+        f" {name}" if name in BARE_ATTRIBUTES else f' {name}="{escape(value)}"'
+        for name, value in kept
     )
     return f"<{tag}{rendered}>"
 
@@ -676,9 +707,17 @@ class _Hardener(HTMLParser):
             if tag not in _VOID:
                 self.dropped += 1
             return
-        values = dict(attrs)
+        # An attribute written twice is its first, as a browser, KPress's sanitizer, and
+        # static/inert-html.js read it: `<input type="text" type="checkbox">` is no box.
+        values = dict(reversed(attrs))
         if tag == "img":
             self._image(values)
+            return
+        if tag == "input":
+            # Kept only in the shape of a task list's box, wherever a checkbox is written;
+            # any other input is void, so nothing of it is left.
+            if kept := allowed_attributes("input", values, self.base):
+                self.out.append(_open_tag("input", kept))
             return
         if tag in ALLOWED_TAGS:
             kept = allowed_attributes(tag, values, self.base)
@@ -815,6 +854,8 @@ __all__ = [
     "ALLOWED_ATTRIBUTES",
     "ANCHOR_PREFIX",
     "ALLOWED_TAGS",
+    "BARE_ATTRIBUTES",
+    "CHECKBOX_ATTRIBUTES",
     "DIMENSIONS",
     "DROPPED_WITH_CONTENT",
     "IMAGE_FALLBACK_CLASS",

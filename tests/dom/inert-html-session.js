@@ -30,6 +30,91 @@ const hostileLinks = JSON.parse(
 const linkTree = Object.entries({ ...hostileLinks.refused, ...hostileLinks.kept }).map(
   ([name, href]) => ({ tag: "a", attrs: [["href", href]], children: [name] }),
 );
+// KPress (from jlevy/kpress#82) removes a raw `<link>` and any `<input>` that is not a
+// checkbox before the allowlist sees them, so the README no longer shows what the allowlist
+// itself does with one. The ones it carried are handed to it directly.
+const kpressRemoved = [
+  {
+    tag: "link",
+    attrs: [
+      ["rel", "stylesheet"],
+      ["href", "http://127.0.0.1:9/evil.css"],
+    ],
+    children: [],
+  },
+  { tag: "input", attrs: [["src", "https://e.x/i.png"]], children: [] },
+];
+// What the allowlist itself keeps of a checkbox, wherever a document writes one. KPress
+// rewrites every checkbox it keeps in one canonical shape before the allowlist sees it, and
+// the recorded tree has no room for a task list inside the review budget
+// (devtools/check_goldens.py), so these are handed to it directly: KPress's own box in a
+// task item, ticked and not, a checkbox in a table cell, one in mixed case with every
+// attribute a form control can carry, and the inputs the allowlist drops whole.
+const input = (...attrs) => ({ tag: "input", attrs, children: [] });
+const kpressBox = (...state) =>
+  input(
+    ["class", "task-list-item-checkbox"],
+    ...state,
+    ["disabled", "disabled"],
+    ["type", "checkbox"],
+  );
+const taskItem = (box, text) => ({
+  tag: "li",
+  attrs: [["class", "kpress-task task-list-item"]],
+  children: [box, text],
+});
+const cell = (...children) => ({ tag: "td", attrs: [], children });
+const boxTree = [
+  {
+    tag: "ul",
+    attrs: [["class", "contains-task-list"]],
+    children: [
+      taskItem(kpressBox(), " open"),
+      taskItem(kpressBox(["checked", "checked"]), " ticked"),
+    ],
+  },
+  {
+    tag: "table",
+    attrs: [],
+    children: [
+      {
+        tag: "tbody",
+        attrs: [],
+        children: [
+          {
+            tag: "tr",
+            attrs: [],
+            children: [cell("in a cell"), cell(input(["type", "checkbox"], ["checked", ""]))],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    tag: "p",
+    attrs: [],
+    children: [
+      input(
+        ["type", "CheckBox"],
+        ["name", "agree"],
+        ["form", "f"],
+        ["value", "yes"],
+        ["onclick", "alert(1)"],
+        ["autofocus", ""],
+        ["checked", ""],
+      ),
+      " mixed case,",
+      input(["type", " checkbox"], ["checked", ""]),
+      " padded,",
+      input(["type", "text"], ["value", "typed"]),
+      " text,",
+      input(["type", "submit"]),
+      " submit,",
+      input(),
+      " bare",
+    ],
+  },
+];
 // The fallback's span as the server's hardener writes it, and every other shape of one: the
 // page keeps the class exactly and an address for the tooltip, and nothing else of a span.
 const span = (attrs, text) => ({ tag: "span", attrs, children: [text] });
@@ -225,8 +310,16 @@ function serialize(nodes, inLink = false) {
       }
       // A link never holds another: a browser reads that as the first's end.
       assert(!(inLink && node.tag === "a"), "the page kept a link inside a link");
-      const allowed = inert.ALLOWED_TAGS.includes(node.tag) || node.tag === "img";
+      const allowed =
+        inert.ALLOWED_TAGS.includes(node.tag) || node.tag === "img" || node.tag === "input";
       assert(allowed, `the page kept <${node.tag}>`);
+      // An input is only ever a disabled checkbox, ticked or not.
+      assert(
+        node.tag !== "input" ||
+          JSON.stringify(node.attributes.filter(([name]) => name !== "checked")) ===
+            JSON.stringify(inert.CHECKBOX_ATTRIBUTES),
+        `the page kept an input with ${JSON.stringify(node.attributes)}`,
+      );
       for (const [name] of node.attributes) {
         const names = inert.ALLOWED_ATTRIBUTES[node.tag] ?? [];
         assert(names.includes(name), `the page kept ${node.tag}[${name}]`);
@@ -260,10 +353,12 @@ function serialize(nodes, inLink = false) {
       );
       const attributes = node.attributes
         .map(([name, value]) =>
-          name === "open" ? " open" : ` ${name}="${escapeText(value).replaceAll('"', "&quot;")}"`,
+          ["open", "disabled", "checked"].includes(name)
+            ? ` ${name}`
+            : ` ${name}="${escapeText(value).replaceAll('"', "&quot;")}"`,
         )
         .join("");
-      return ["br", "hr", "img"].includes(node.tag)
+      return ["br", "hr", "img", "input"].includes(node.tag)
         ? `<${node.tag}${attributes}>`
         : `<${node.tag}${attributes}>${serialize(node.children, inLink || node.tag === "a")}</${node.tag}>`;
     })
@@ -342,6 +437,9 @@ async function main() {
           ),
         ),
         links: { document: rebuilt(linkTree, null), comment: rebuilt(linkTree, pullRequest) },
+        kpressRemoved: rebuilt(kpressRemoved, null),
+        // Each checkbox as a disabled box, ticked as written, and no other input.
+        boxes: rebuilt(boxTree, null),
       },
       null,
       2,
