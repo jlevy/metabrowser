@@ -27,9 +27,9 @@ nothing until its first report, and draws in that report, before the browser pai
 not fit it chooses Split and its sideways scroll, and it writes the preference a click
 writes. The diff attaches it once, through the SDK’s shortcut surface, on the chip it
 would select, and moves it to the new chip after each draw.
-A host that fixes the layout, as a pull request’s Docs tab fixes **Unified**, gets it at
-every width under any stored choice, with no layout control and no `L`, reads and writes
-no layout preference, and its toolbar holds **Diff | Current** alone
+A host that fixes the layout at **Unified**, as a pull request’s Docs tab does, gets it
+at every width under any stored choice, with no layout control and no `L`, reads and
+writes no layout preference, and its toolbar holds **Diff | Current** alone
 (`tests/golden/cli-ui-diff-current.tryscript.md`).
 
 This browserless session loads the production `builtin_plugins/diff/diff-view.js` and

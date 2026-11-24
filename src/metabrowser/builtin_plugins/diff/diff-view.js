@@ -1200,12 +1200,13 @@ function repaintViewFileControls(view) {
 }
 
 /**
- * The per-file bar, in two groups, per the section-disclosure and icon button primitives
- * in the design system. It leads with what names the file and where it opens: one
- * disclosure trigger (kind, path), the copy control right after the name, the change's
- * stats and notes, which describe the trigger, and the View file controls. Its end group
- * holds a file's Rendered | Source chooser alone (diff-markdown.js), at the bar's far end.
- * Diff | Current is the whole diff's, in its toolbar (`renderShowControl`).
+ * The per-file bar, per the section-disclosure and icon button primitives in the design
+ * system. It leads with the group that names the file: one disclosure trigger (kind,
+ * path), the copy control right after the name, and the change's stats and notes, which
+ * describe the trigger. The View file controls follow that group, each a part of the bar
+ * of its own, so a bar that wraps moves them to the next line before the name gives way.
+ * Its end group holds a file's Rendered | Source chooser alone (diff-markdown.js), at the
+ * bar's far end. Diff | Current is the whole diff's, in its toolbar (`renderShowControl`).
  *
  * @param {Record<string, unknown>} change
  * @param {string} toggleId
@@ -1268,7 +1269,7 @@ function renderFileBar(change, toggleId, bodyId, factsId, view) {
     }
   }
   // Each group is one flex item: a bar that wraps or cuts a long path short never parts
-  // the copy control from the name it copies, and its end group moves as one.
+  // the copy control or the stats from the name, and its end group moves as one.
   const lead = el("div", "diff-file-lead");
   const end = el("div", "diff-file-end");
   lead.append(toggle);
@@ -1288,20 +1289,23 @@ function renderFileBar(change, toggleId, bodyId, factsId, view) {
   if (facts !== null) {
     lead.append(facts);
   }
-  bar.append(lead, end);
 
   /** @type {HTMLElement | null} */
   let notice = null;
+  /** @type {HTMLElement[]} */
+  let controls = [];
   const actions = view.viewFile?.actions(change, view.resolved) ?? [];
   if (actions.length > 0) {
     notice = el("div", "diff-availability diff-file-notice");
     notice.setAttribute("role", "status");
     notice.hidden = true;
     const said = { element: notice, timer: 0 };
-    const controls = actions.map((action) => renderViewFileControl(action, view, said));
-    lead.append(...controls);
+    controls = actions.map((action) => renderViewFileControl(action, view, said));
     view.viewFileBars.push({ change, controls, said });
   }
+  // The View file controls sit between the name's group and the end group, in neither:
+  // where the bar wraps, they take the next line, and the name keeps the first.
+  bar.append(lead, ...controls, end);
   return { bar, end, toggle, notice };
 }
 
@@ -3583,7 +3587,7 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   toolbarControl?: HTMLElement | null,
  *   emptyText?: string,
  *   unfold?: boolean,
- *   layout?: "unified" | "split",
+ *   layout?: "unified",
  *   show?: "diff" | "current",
  *   showPreference?: string
  * }} [options]
@@ -3603,21 +3607,21 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   File type control as *toolbarControl*, which leads the layout control; and *emptyText*,
  *   what it says when it keeps no file. *unfold* draws every fold open, the rendered
  *   view's unchanged runs and the text diff's long changed runs alike, for a page that
- *   shows its files whole: a pull request's Docs tab. *layout* is a layout the host fixes:
- *   the diff draws it, apart from the fallback where Split does not fit, with no layout
- *   control and no `L`, and neither reads nor writes the reader's stored choice. A pull
- *   request's Docs tab draws Unified, the form its rendered documents take. *show* is what
- *   the toolbar's Diff | Current opens on before the reader chooses on this surface, Diff
- *   unless the host says Current, and *showPreference* the preference the choice is
- *   remembered as, `diff.show` unless the host keeps its own; a stored value that is not a
- *   choice reads as *show*. A pull request's Docs tab opens on Current and remembers its
- *   choice as `github.docs.show`, so neither its choice nor Changes' moves the other.
+ *   shows its files whole: a pull request's Docs tab. *layout* fixes the layout at
+ *   Unified, which the diff then draws with no layout control and no `L`, neither reading
+ *   nor writing the reader's stored choice: a pull request's Docs tab, whose rendered
+ *   documents take that form. Split is the reader's to choose, so no host fixes it. *show*
+ *   is what the toolbar's Diff | Current opens on before the reader chooses on this
+ *   surface, Diff unless the host says Current, and *showPreference* the preference the
+ *   choice is remembered as, `diff.show` unless the host keeps its own; a stored value that
+ *   is not a choice reads as *show*. A pull request's Docs tab opens on Current and
+ *   remembers its choice as `github.docs.show`, so neither its choice nor Changes' moves
+ *   the other.
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, sectionForPath: (path: string) => HTMLElement | null, pathForSection: (section: Element) => string | null, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
-  const fixedLayout =
-    options.layout === "unified" || options.layout === "split" ? options.layout : null;
+  const fixedLayout = options.layout === "unified" ? options.layout : null;
   const chosenLayout = fixedLayout ?? readLayoutPreference(api);
   const showPreference =
     typeof options.showPreference === "string" && options.showPreference !== ""

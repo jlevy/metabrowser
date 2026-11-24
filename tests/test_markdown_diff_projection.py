@@ -76,15 +76,35 @@ def _patch(old: bytes | None, new: bytes | None, context: int = 3) -> FilePatch:
 
 
 def _project(
-    old: bytes | None, new: bytes | None, *, namespace: str = "comparison/file", context: int = 3
+    old: bytes | None,
+    new: bytes | None,
+    *,
+    namespace: str = "comparison/file",
+    context: int = 3,
+    stoppable: bool | None = None,
 ) -> MarkdownDiffProjection:
-    return project_markdown_diff(
-        old=old,
-        new=new,
-        patch=_patch(old, new, context),
-        namespace=namespace,
-        rewrite_local=lambda href, _image: href,
-    )
+    """*old* to *new* as a reader is shown it: in a thread, and in the Markdown child when
+    the thread refuses the pair only for a thread's budgets (`past_a_thread` in
+    `markdown_projection_worker.py`), as for raw HTML. *stoppable* runs one of the two."""
+
+    patch = _patch(old, new, context)
+
+    def run(stoppable: bool) -> MarkdownDiffProjection:
+        return project_markdown_diff(
+            old=old,
+            new=new,
+            patch=patch,
+            namespace=namespace,
+            rewrite_local=lambda href, _image: href,
+            stoppable=stoppable,
+        )
+
+    if stoppable is not None:
+        return run(stoppable)
+    result = run(False)
+    if result["status"] == "too_large" and "reason" not in result:
+        return run(True)
+    return result
 
 
 def test_redlines_preserve_inline_markdown_and_untouched_blocks() -> None:
@@ -221,7 +241,7 @@ def test_budget_checked_before_starting_markdown_work(monkeypatch: pytest.Monkey
         _Unexpected("ran KPress before applying the byte budget"),
     )
     text = b"x" * (MARKDOWN_DIFF_MAX_BYTES + 1)
-    assert _project(None, text)["status"] == "too_large"
+    assert _project(None, text, stoppable=False)["status"] == "too_large"
 
 
 def test_frontmatter_stays_out_of_prose_and_keeps_original_git_ranges() -> None:
@@ -498,7 +518,7 @@ def test_link_label_work_is_bounded_before_either_parser(monkeypatch: pytest.Mon
         _Unexpected("ran MarkdownIt before applying the link-label work budget"),
     )
     text = b"[\n" * 300 + b"text" + b"]" * 300
-    assert _project(None, text)["status"] == "too_large"
+    assert _project(None, text, stoppable=False)["status"] == "too_large"
 
 
 def test_soft_wrapped_paragraph_redlines_only_the_changed_source_line() -> None:
@@ -978,6 +998,46 @@ def test_raw_html_the_render_drops_whole_is_left_to_source() -> None:
     assert [block["kind"] for block in result["blocks"]] == ["context", "context"]
 
 
+def test_a_document_cannot_write_the_change_marks() -> None:
+    """The page tints every `ins` in an added row and every `del` in a removed one, so a
+    document's own are drawn as `span` and `s`: here the address changed, and the one
+    word the document marks as inserted must not read as the whole change."""
+
+    old = b"Download the installer from https://good.example/install.sh and run it.\n"
+    forged = (
+        b"Download the installer <ins>now</ins> from https://evi1.example/install.sh and run it.\n"
+    )
+    result = _project(old, forged)
+    assert result["status"] == "ready"
+    assert [(block["kind"], block["html"]) for block in result["blocks"]] == [
+        (
+            "removed",
+            "<p>Download the installer from https://good.example/install.sh and run it.</p>",
+        ),
+        (
+            "added",
+            "<p>Download the installer <span>now</span> from https://evi1.example/install.sh "
+            "and run it.</p>",
+        ),
+    ]
+    # The genuine insertion is the projection's own mark.
+    genuine = old.replace(b"installer", b"installer now")
+    assert _changed(_project(old, genuine))[1]["html"] == (
+        "<p>Download the installer <ins>now</ins> from https://good.example/install.sh "
+        "and run it.</p>"
+    )
+    written = b"Pay <del>100</del> <ins>900</ins> to the vendor.\n"
+    unchanged = _project(b"Intro.\n\n" + written, b"Intro!\n\n" + written)
+    assert unchanged["blocks"][-1] == {
+        **unchanged["blocks"][-1],
+        "kind": "context",
+        "html": "<p>Pay <s>100</s> <span>900</span> to the vendor.</p>",
+    }
+    for block in unchanged["blocks"] + result["blocks"]:
+        assert "<ins>" not in block["html"] or block["kind"] == "added"
+        assert "<del>" not in block["html"] or block["kind"] == "removed"
+
+
 def test_a_quote_changes_one_paragraph_at_a_time() -> None:
     old = b"> First paragraph.\n>\n> Second old paragraph.\n"
     new = b"> First paragraph.\n>\n> Second new paragraph.\n"
@@ -1107,6 +1167,33 @@ def test_an_inline_note_is_part_of_the_block_that_holds_it() -> None:
 
 
 @pytest.mark.parametrize(
+    ("old", "new", "kinds"),
+    [
+        pytest.param(None, b">b<table>^[]", ["added"], id="added"),
+        pytest.param(
+            b"# Doc\n\n> Quoted <table> text ^[a note]\n",
+            b"# Doc changed\n\n> Quoted <table> text ^[a note]\n",
+            ["removed", "added", "context"],
+            id="a heading edited above it",
+        ),
+    ],
+)
+def test_a_quote_whose_open_table_holds_its_inline_note_projects(
+    old: bytes | None, new: bytes, kinds: list[str]
+) -> None:
+    """The quote's slice extends over its inline note's list, which a table left open
+    keeps inside the quote's element. The note's list is not one of the quote's
+    children, which are read within the quote's own close."""
+
+    result = _project(old, new)
+    assert result["status"] == "ready"
+    assert [block["kind"] for block in result["blocks"]] == kinds
+    quote = result["blocks"][-1]["html"]
+    assert quote.startswith("<blockquote>")
+    assert "<ol>" in quote
+
+
+@pytest.mark.parametrize(
     ("old", "new"),
     [
         pytest.param(
@@ -1186,9 +1273,9 @@ def test_token_and_nesting_budgets_refuse_before_rendering(
 
     monkeypatch.setattr(markdown_projection, "_render", unexpected)
     tokens = b"Some *emphasis* and a [link](a.md) here.\n\n" * 250
-    assert _project(None, tokens)["status"] == "too_large"
+    assert _project(None, tokens, stoppable=False)["status"] == "too_large"
     nested = (b"1. " * 40)[:-1] + b"\n"
-    assert _project(None, nested)["status"] == "too_large"
+    assert _project(None, nested, stoppable=False)["status"] == "too_large"
 
 
 def test_the_node_budget_refuses_before_the_second_side_renders(
@@ -1206,7 +1293,7 @@ def test_the_node_budget_refuses_before_the_second_side_renders(
     monkeypatch.setattr(markdown_projection, "_render", counting)
     monkeypatch.setattr(markdown_projection, "_MAX_TOKENS", 10**6)
     items = b"".join(b"- item *%d*\n" % i for i in range(460))
-    result = _project(items, items + b"- more\n")
+    result = _project(items, items + b"- more\n", stoppable=False)
     assert result["status"] == "too_large"
     assert len(rendered) <= 1, "the second side rendered past the combined node budget"
 
@@ -1254,6 +1341,56 @@ def test_the_node_budget_does_not_refuse_a_stoppable_projection(
     assert any(
         "<ins>" in block["html"] or block["kind"] == "added" for block in stoppable["blocks"]
     )
+
+
+def _left_open(opened: int, blocks: int) -> bytes:
+    """One line of raw HTML that leaves *opened* distinct formatting elements open, then
+    *blocks* blocks, each of which the sanitizer's HTML parser rebuilds all of them in."""
+
+    return (
+        "<div>" + "".join(f"<b a={i}>" for i in range(opened)) + "</div>" + "<div>x</div>" * blocks
+    ).encode() + b"\n"
+
+
+def test_raw_html_projects_only_where_a_deadline_stops_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No input budget bounds what the sanitizer makes of raw HTML: 23,988 bytes inside
+    every budget render 1.3 million elements, which took 59 s and 459 MB on a thread
+    (`_Limits` records the measurement). A thread refuses a side that holds raw HTML before
+    sanitizing it, with a budget's refusal, which names no cause, so the server asks the
+    Markdown child, whose deadline stops it."""
+
+    from metabrowser.diff import markdown_projection
+
+    def unexpected(*_args: object) -> None:
+        pytest.fail("sanitized raw HTML on a thread")
+
+    worst = _left_open(1_311, 998)
+    assert len(worst) <= MARKDOWN_DIFF_MAX_BYTES
+    assert b"[" not in worst
+    inline = b"# Doc\n\nSome <b>bold\n\nmore text.\n"
+    with monkeypatch.context() as patched:
+        patched.setattr(markdown_projection, "sanitize_raw_html", unexpected)
+        for old, new in ((None, worst), (worst, None), (b"# Doc\n", inline), (inline, b"# Doc\n")):
+            refused = prepare_markdown_diff(
+                old=old, new=new, patch=_patch(old, new), namespace="n"
+            ).projection
+            assert refused["status"] == "too_large"
+            assert "reason" not in refused, "a budget's refusal names no cause: the child is asked"
+    # The child renders it, each element rebuilt in each later block as the Document view
+    # renders it, and flags the attributes the allowlist drops.
+    assert _prepared(_left_open(3, 2), stoppable=True)["blocks"] == [
+        {
+            "kind": "added",
+            "side": "new",
+            "html": "<div><b><b><b></b></b></b></div><div><b><b><b>x</b></b></b></div>"
+            "<div><b><b><b>x</b></b></b></div><b><b><b>\n</b></b></b>",
+            "source_only": True,
+        }
+    ]
+    # Markdown renders balanced elements, which the parser rebuilds none of, and a comment
+    # renders nothing: a thread projects both.
+    plain = b"# Doc\n\n<!-- a note -->\n\nSome **bold** text.\n"
+    assert _prepared(plain, stoppable=False)["status"] == "ready"
 
 
 def test_nesting_is_refused_whether_or_not_a_deadline_stops_the_projection() -> None:
@@ -1384,7 +1521,7 @@ def test_a_side_with_carriage_returns_alone_joins_to_kpress() -> None:
 
 def test_container_lines_a_carriage_return_alone_starts_count_toward_their_bound() -> None:
     lines = b"\r".join([b":::"] * (markdown_projection._MAX_CONTAINER_LINES + 1)) + b"\n"  # pyright: ignore[reportPrivateUsage]
-    assert _project(None, lines)["status"] == "too_large"
+    assert _project(None, lines, stoppable=False)["status"] == "too_large"
 
 
 @pytest.mark.parametrize(
@@ -1762,6 +1899,8 @@ def test_hostile_markdown_projects_only_allowlisted_snapshot_markup(
             patch=_patch(old, new),
             namespace="comparison/file",
             rewrite_local=lambda href, image: snapshot.reference(source, href, image),
+            # Raw HTML projects only where a deadline stops the projection.
+            stoppable=True,
         )
         # Raw HTML renders, as the Document view renders it, through the same allowlist.
         assert result["status"] == "ready", name
@@ -1780,7 +1919,7 @@ def test_code_blocks_count_toward_the_element_bound_before_rendering(
 
     monkeypatch.setattr(markdown_projection, "_render", unexpected)
     fences = b"".join(b"```\nx%d\n```\n\n" % i for i in range(1_250))
-    assert _project(None, fences)["status"] == "too_large"
+    assert _project(None, fences, stoppable=False)["status"] == "too_large"
 
 
 @pytest.mark.parametrize(
@@ -1899,7 +2038,7 @@ def test_container_lines_are_bounded_before_parsing(monkeypatch: pytest.MonkeyPa
         "metabrowser.diff.markdown_projection._KPRESS",
         _Unexpected("parsed a run of container lines past their budget"),
     )
-    assert _project(None, b"# Doc\n\n" + b":::\n" * 300)["status"] == "too_large"
+    assert _project(None, b"# Doc\n\n" + b":::\n" * 300, stoppable=False)["status"] == "too_large"
 
 
 def test_a_moved_and_edited_block_whose_rewrapped_label_points_elsewhere_is_flagged() -> None:
