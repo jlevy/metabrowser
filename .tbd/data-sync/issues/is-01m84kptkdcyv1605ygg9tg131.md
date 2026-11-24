@@ -5,15 +5,16 @@ title: The Copilot coding agent's author reads copilot-swe-agent[bot] through Gr
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
+parent_id: is-01m82h0qrnw9vg6vrj597asgpv
 hold: null
 hold_until: null
 created_at: 2026-11-23T16:26:58.540Z
-updated_at: 2026-11-23T17:29:17.235Z
+updated_at: 2026-11-23T20:48:53.950Z
 started_at: 2026-11-23T16:27:04.308Z
 closed_at: 2026-11-23T17:29:17.234Z
 close_reason: "Fixed in #762 (6fd2b2092): _REST_BOT_LOGINS maps GraphQL copilot-swe-agent to REST Copilot (one account, id 198982749, per reads of makr-code/ThemisDB#8365 and t-h-omy/Volcanae#396 on 2026-11-23). The app-authored test's new Copilot case fails with origin/main's pulls.py. Review C of #709, C1."

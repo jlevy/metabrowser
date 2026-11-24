@@ -5,16 +5,18 @@ title: "A served test checkout's origin store fetches the real origin: no seam p
 kind: bug
 status: closed
 priority: 2
-version: 3
+version: 4
+spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 delegate: claude-code@spud10
 labels:
   - ci
   - tests
 dependencies: []
+parent_id: is-01m82h0qrnw9vg6vrj597asgpv
 hold: null
 hold_until: null
 created_at: 2026-11-23T16:07:02.661Z
-updated_at: 2026-11-23T17:29:17.711Z
+updated_at: 2026-11-23T20:48:55.552Z
 started_at: 2026-11-23T16:10:58.954Z
 closed_at: 2026-11-23T17:29:17.705Z
 close_reason: "Fixed in #762 (6fd2b2092): METABROWSER_ORIGIN_STORE=0 (ORIGIN_STORE_ENV in checkout_store.py) keeps the serve command from keeping a store of a folder's origin; tests/conftest.py sets it, so subprocess servers no longer fetch https://github.com/octo/demo. The three named Chrome tests pass locally, with the gh guard at 1 call from test_ref_selector_pulls_chrome, the count before #740."

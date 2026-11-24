@@ -5,7 +5,7 @@ title: "Treemap: deeper nesting, containment fix, compact map on Overview"
 kind: feature
 status: in_progress
 priority: 2
-version: 32
+version: 46
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/722
@@ -28,6 +28,9 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/763
     at: 2026-11-23T17:32:32.217Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/764
+    at: 2026-11-23T20:35:15.807Z
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -52,10 +55,23 @@ child_order_hints:
   - is-01m84fn94wz47am8cwywj3angp
   - is-01m84fn9xvp53f535cfk3qd9cy
   - is-01m84frddm4hytc6q59eqptsbn
+  - is-01m84s4gv2cynykbv302f8ykn4
+  - is-01m8501z5hf5rvhsst744a0beq
+  - is-01m850221xfhrw4wq07prpwv8r
+  - is-01m85023kajww4yrn32509jw3b
+  - is-01m85024vhka9sywam81k0jdgx
+  - is-01m850274x9skfp0jgxdqh6vht
+  - is-01m85686ah5d88qhkbbp5bnt89
+  - is-01m857vmkheywjpjekanh9sha6
+  - is-01m857zm4f90nmkhmzc6sc9tym
+  - is-01m85azcjx7bnsywxddhmbw2w6
+  - is-01m85c06r26g2944esxtff8hsg
+  - is-01m85f546ddhc098egv5e0ehqg
+  - is-01m85f5etwt3saw23vzckem891
 hold: null
 hold_until: null
 created_at: 2026-11-23T01:05:37.128Z
-updated_at: 2026-11-23T17:32:32.218Z
+updated_at: 2026-11-24T00:26:49.459Z
 started_at: 2026-11-23T01:05:57.669Z
 closed_at: null
 close_reason: null
