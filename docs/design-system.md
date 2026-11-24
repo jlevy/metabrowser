@@ -866,12 +866,19 @@ outer gutter. KPress’s card and `--doc-measure` cap the reading column.
 In KPress’s wide document band, a document with a table of contents puts the sticky
 KPress rail to the right of the prose.
 A thumbnail sits above the prose.
-A wide table scrolls inside the column beside a rail.
-In a single column it can use available space to the right of the text.
+In KPress’s wide document band, a standalone table can grow past the prose column to its
+natural width, up to the room in the reading pane.
+The prose keeps its reading measure.
+A sticky table of contents sits at the pane’s trailing edge on a page with a top-level
+table, leaving the area before the rail available for the table.
+A table that needs more room scrolls in its own container.
+`tests/test_reading_column_chrome.py` measures the layout using the pipeline
+architecture document’s three-column table.
 
-Below that band, KPress’s icon opens the overlay from the trailing gutter to keep the
-beginning of each line clear.
-The Folder Overview README shares the same prose edge and maximum measure.
+In medium and narrow panes, tables follow KPress’s own layout, and the table of contents
+opens from the trailing gutter to keep the beginning of each line clear.
+The Folder Overview README shares the same prose edge and maximum measure, and its
+tables stay within its panel.
 Its panel headings and bodies follow the document card’s outer edge.
 Their text starts on the active tab’s label rather than at the README’s responsive inner
 inset; see [Folder Overview Is a Panel Stack](#folder-overview-is-a-panel-stack).
@@ -5305,8 +5312,11 @@ The state belongs to the page and is not kept across a reload.
 **With the pane hidden, a reading column is centered in the frame.** A column left at
 the gutter put all the room the pane gave up at its end, beside the text, and the point
 of hiding the pane is a calmer page to read.
-A rendered document, with its table of contents when it has one, and a folder’s Overview
-sit in the middle of the pane, the same room before them as after.
+A rendered document and a folder’s Overview sit in the middle of the pane, the same room
+before them as after.
+The document’s table of contents is part of that group.
+A page with a top-level table in the Document view places the rail at the trailing edge
+to make room for tables beside the reading column.
 The header’s Up, icon, and title and the first tab move with the column, so the page
 keeps one reading edge, and what is flush right, the header’s corner and the eyebrow’s
 copy button, stays there.

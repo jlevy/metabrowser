@@ -284,7 +284,76 @@ function checkCentered(label, page, shownCorner) {
   );
 }
 
+// A real documentation table has three columns. KPress's default wide marker
+// requires six, so this also tests the host's treatment of an unmarked table.
+const TABLE_LAYOUT = `(() => {
+  const pane = document.querySelector(".preview-pane");
+  const doc = pane.querySelector(':scope > .metabrowser-markdown-document[data-active-view="true"]');
+  const prose = doc.querySelector(".kpress-long-text");
+  const wrap = prose.querySelector(":scope > .kpress-table-wrap");
+  const toc = doc.querySelector(".kpress-toc");
+  const box = (element) => {
+    const { left, right, width } = element.getBoundingClientRect();
+    return { left, right, width };
+  };
+  return {
+    pane: box(pane),
+    prose: box(prose.querySelector("p")),
+    wrap: box(wrap),
+    scrollsInside: getComputedStyle(wrap).overflowX === "auto",
+    rail: toc && getComputedStyle(toc).position === "sticky" ? box(toc) : null,
+  };
+})()`;
+
+async function checkTables() {
+  await resize(WIDE[0]);
+  await open("view/arch-diff-pipeline.md");
+  const wide = await chrome.evaluate(TABLE_LAYOUT);
+  check("wide table grows beyond prose", wide.wrap.width > wide.prose.width + 100, wide);
+  check("wide table keeps the prose edge", near(wide.wrap.left, wide.prose.left), wide);
+  check(
+    "wide table fits before the sticky table of contents",
+    wide.rail && wide.wrap.right < wide.rail.left && wide.rail.right <= wide.pane.right,
+    wide,
+  );
+
+  await resize(1450);
+  const medium = await chrome.evaluate(TABLE_LAYOUT);
+  check("medium table stays within prose", near(medium.wrap.width, medium.prose.width), medium);
+  check(
+    "medium pane keeps the same prose measure",
+    near(medium.prose.width, wide.prose.width),
+    medium,
+  );
+
+  await resize(680);
+  const narrow = await chrome.evaluate(TABLE_LAYOUT);
+  check(
+    "narrow table keeps KPress's phone gutter allowance",
+    near(narrow.wrap.left, narrow.prose.left) &&
+      narrow.wrap.right > narrow.prose.right &&
+      narrow.wrap.right <= narrow.pane.right,
+    narrow,
+  );
+  check(
+    "the table retains its own horizontal scroll at every width",
+    wide.scrollsInside && medium.scrollsInside && narrow.scrollsInside,
+  );
+
+  await resize(WIDE[0]);
+  await open("view/short.md");
+  const compact = await chrome.evaluate(TABLE_LAYOUT);
+  check(
+    "compact table fits the wide document's prose",
+    near(compact.wrap.width, compact.prose.width),
+    compact,
+  );
+  phase("table widths");
+}
+
 try {
+  await checkTables();
+
   /** The gutter at each window, with the pane shown. @type {Map<number, number>} */
   const gutters = new Map();
   for (const width of WIDE) {
