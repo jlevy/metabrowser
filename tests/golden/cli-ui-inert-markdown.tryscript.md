@@ -115,7 +115,8 @@ $ node tests/dom/inert-html-session.js
     "document": "<a>script</a><a>mixed case</a><a>padded</a><a>split</a><a>control</a><a>data</a><a>vbscript</a><a>file</a><a>blob</a><a>mailto</a><a>ftp</a><a>websocket</a><a>view-source</a><a href=\"https://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">https</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">http</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">mixed-case scheme</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">mixed-case scheme with a CR in it</a>",
     "comment": "<a>script</a><a>mixed case</a><a>padded</a><a>split</a><a>control</a><a>data</a><a>vbscript</a><a>file</a><a>blob</a><a>mailto</a><a>ftp</a><a>websocket</a><a>view-source</a><a href=\"https://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">https</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">http</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">mixed-case scheme</a><a href=\"http://example.com/ok\" target=\"_blank\" rel=\"noopener noreferrer\">mixed-case scheme with a CR in it</a>"
   },
-  "kpressRemoved": ""
+  "kpressRemoved": "",
+  "boxes": "<ul><li><input type=\"checkbox\" disabled> open</li><li><input type=\"checkbox\" disabled checked> ticked</li></ul><table><tbody><tr><td>in a cell</td><td><input type=\"checkbox\" disabled checked></td></tr></tbody></table><p><input type=\"checkbox\" disabled checked> mixed case, padded, text, submit, bare</p>"
 }
 ? 0
 ```

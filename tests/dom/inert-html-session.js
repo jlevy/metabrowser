@@ -44,6 +44,77 @@ const kpressRemoved = [
   },
   { tag: "input", attrs: [["src", "https://e.x/i.png"]], children: [] },
 ];
+// What the allowlist itself keeps of a checkbox, wherever a document writes one. KPress
+// rewrites every checkbox it keeps in one canonical shape before the allowlist sees it, and
+// the recorded tree has no room for a task list inside the review budget
+// (devtools/check_goldens.py), so these are handed to it directly: KPress's own box in a
+// task item, ticked and not, a checkbox in a table cell, one in mixed case with every
+// attribute a form control can carry, and the inputs the allowlist drops whole.
+const input = (...attrs) => ({ tag: "input", attrs, children: [] });
+const kpressBox = (...state) =>
+  input(
+    ["class", "task-list-item-checkbox"],
+    ...state,
+    ["disabled", "disabled"],
+    ["type", "checkbox"],
+  );
+const taskItem = (box, text) => ({
+  tag: "li",
+  attrs: [["class", "kpress-task task-list-item"]],
+  children: [box, text],
+});
+const cell = (...children) => ({ tag: "td", attrs: [], children });
+const boxTree = [
+  {
+    tag: "ul",
+    attrs: [["class", "contains-task-list"]],
+    children: [
+      taskItem(kpressBox(), " open"),
+      taskItem(kpressBox(["checked", "checked"]), " ticked"),
+    ],
+  },
+  {
+    tag: "table",
+    attrs: [],
+    children: [
+      {
+        tag: "tbody",
+        attrs: [],
+        children: [
+          {
+            tag: "tr",
+            attrs: [],
+            children: [cell("in a cell"), cell(input(["type", "checkbox"], ["checked", ""]))],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    tag: "p",
+    attrs: [],
+    children: [
+      input(
+        ["type", "CheckBox"],
+        ["name", "agree"],
+        ["form", "f"],
+        ["value", "yes"],
+        ["onclick", "alert(1)"],
+        ["autofocus", ""],
+        ["checked", ""],
+      ),
+      " mixed case,",
+      input(["type", " checkbox"], ["checked", ""]),
+      " padded,",
+      input(["type", "text"], ["value", "typed"]),
+      " text,",
+      input(["type", "submit"]),
+      " submit,",
+      input(),
+      " bare",
+    ],
+  },
+];
 // The fallback's span as the server's hardener writes it, and every other shape of one: the
 // page keeps the class exactly and an address for the tooltip, and nothing else of a span.
 const span = (attrs, text) => ({ tag: "span", attrs, children: [text] });
@@ -367,6 +438,8 @@ async function main() {
         ),
         links: { document: rebuilt(linkTree, null), comment: rebuilt(linkTree, pullRequest) },
         kpressRemoved: rebuilt(kpressRemoved, null),
+        // Each checkbox as a disabled box, ticked as written, and no other input.
+        boxes: rebuilt(boxTree, null),
       },
       null,
       2,

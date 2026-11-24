@@ -52,7 +52,19 @@ HOSTILE_README = (
     '<a href="/%2e%2e/raw?path=evil.js">dotdot</a> <a href="/.%2E/raw?x">dot2e</a>'
     ' <a href="/api%2ftree">slash</a> <a href="/%5capi/tree">back</a>'
     ' <img src="/%2e%2e/api/tree" alt="dotimg"> <img src="/.%2E/raw?path=x.png" alt="dot2eimg">\n'
+    # A task list, and checkboxes written in raw HTML, which are kept in its box's shape
+    # wherever they stand: in a paragraph with every attribute a form control can carry,
+    # and in a table cell; any other input goes.
+    "\n- [ ] Open\n- [x] Done\n- [X] Also done\n\n"
+    '<INPUT TYPE="CheckBox" name="agree" form="f" value="yes" onclick="alert(1)" autofocus'
+    ' checked> raw <input type="text" value="typed">\n\n'
+    '| Done |\n|---|\n| <input type="checkbox" checked> |\n'
 )
+# The boxes KPress and both allowlists keep of HOSTILE_README, in document order.
+HOSTILE_README_BOXES = [
+    '<input type="checkbox" disabled>',
+    *['<input type="checkbox" disabled checked>'] * 4,
+]
 
 # Runs the production sanitizer on a tree read from stdin and prints the rebuilt markup.
 _NODE = r"""
@@ -193,6 +205,7 @@ def test_both_sides_make_the_same_inert_markup_of_a_hostile_document(
     assert allowlist_violations(server, images=images) == []
     assert allowlist_violations(browser, images=images) == []
     assert _tokens(browser) == _tokens(server)
+    assert re.findall(r"<input[^>]*>", server) == HOSTILE_README_BOXES
 
 
 @pytest.mark.parametrize(
@@ -822,6 +835,11 @@ def test_the_session_plays_what_kpress_renders_of_the_hostile_readme() -> None:
     for mode in ("comment", "blocked"):
         assert allowlist_violations(transcript["badges"][mode], images=True) == []
     assert transcript["inertRender"] == {"inert": True, "trusted": False}
+    assert allowlist_violations(transcript["boxes"]) == []
+    assert re.findall(r"<input[^>]*>", transcript["boxes"]) == [
+        '<input type="checkbox" disabled>',
+        *['<input type="checkbox" disabled checked>'] * 3,
+    ]
 
 
 # Headings written to attack the anchors: names of Object.prototype and window, ids and
