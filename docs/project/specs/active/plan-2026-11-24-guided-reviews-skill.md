@@ -55,8 +55,8 @@ showed what an agent gets wrong and what it needs:
   A guide written early in a pull request’s life silently drops the files added later;
   #677’s guide missed 34 of 58 until a script listed them.
 - **YAML.** A title such as `Evidence: the route` is not valid YAML unquoted.
-- **Checking before publishing.** The only check is the `guided-pr` route, which reads
-  the cached description, so a mistake is found after the description carries it.
+- **Checking before publishing.** The only check is the `guided-review` route, which
+  reads the cached description, so a mistake is found after the description carries it.
   A throwaway script (parse as `parse_guide` does, confirm the merge base, test each
   range against `git diff`, list uncited files) found every one of these before
   publishing, and is the model for the check below.
@@ -78,12 +78,12 @@ Three parts, each small:
 ### The Check
 
 Prefer a route to a CLI mode (AGENTS.md, CLI and Functional UI Parity):
-`/api/plugin/github/guided-pr-check` reads a draft guide from a file in the served
+`/api/plugin/github/guided-review-check` reads a draft guide from a file in the served
 checkout, by a repository-relative path through the safe-path helpers and a bounded
 read, and answers:
 
-- the parse result, with the same refusal reasons the `guided-pr` route gives (invalid
-  YAML, another contract, a field that fails the schema);
+- the parse result, with the same refusal reasons the `guided-review` route gives
+  (invalid YAML, another contract, a field that fails the schema);
 - whether `merge_base` is the merge base of `head`, and whether `head` is the pull
   request’s current head when a pull request number is given;
 - for each step, each reference’s state as the page would draw it (`ready`, or why not),
@@ -109,8 +109,8 @@ Review**, with:
 - the YAML shape and its traps (quote a title with a colon);
 - the check, then `gh pr edit <n> --body-file`, replacing an existing block rather than
   adding a second;
-- confirming it with the `guided-pr` route: `state` is `ready` and every reference is
-  `ready`;
+- confirming it with the `guided-review` route: `state` is `ready` and every reference
+  is `ready`;
 - refreshing after each push: read the stale answer, recheck only the steps it lists,
   move the pins, check again, and publish.
 
@@ -128,24 +128,30 @@ its reason: reviewers here read through Metabrowser, and a guide sets their orde
 `tbd shortcut create-or-update-pr-simple` is first-party upstream; if it should name the
 guide for every project, that change goes to tbd, not a local patch.
 
-### Naming
+### Naming and the Format
 
 The feature is **guided reviews**: the tab is **Guided Review**, and prose, the
-changelog, the skill, and pull request titles use that name, not “guided PR”. The
-identifiers still say `guided-pr`: the description’s fence, the `github/guided-pr`
-route, `guided_pr.py`, and `guided-pr.js`. The fence is the one that matters: once a
-release reads it, every description that carries a guide is released data that cannot
-update with the code, and renaming it then needs a compatibility layer.
-Before the first release it is a rename in one commit.
+changelog, the skill, and pull request titles use that name.
+The identifiers follow it, renamed in #677 before any release reads them: the
+description’s `guided-review` fence, the `github/guided-review` route,
+`guided_review.py`, and `guided-review.js`.
+
+A guided review wraps the general collection format
+(`metabrowser.collection:Collection/v1`), which is not tied to pull requests or to
+review ([Collection Format](../../architecture/arch-collection-format.md)). The skill
+teaches guided reviews as the first use of that format: what belongs to the format
+(items, notes, references) is written so that a later carrier, a review of a commit or a
+branch comparison, or a reading list in a repository file, reuses it, and only what the
+pull-request carrier adds (the pins, diff ranges, excerpt budgets, staleness) is
+specific to the section.
+The check is the guided-review carrier’s, as each carrier keeps its own route.
 
 ## Implementation Plan
 
 ### Phase 1: Check, Skill, and Handoff
 
-- [ ] Decide the identifiers’ name (Open Questions), and if they change, rename them in
-  #677 before it merges.
-- [ ] Add `/api/plugin/github/guided-pr-check` with its parity row, the route map entry,
-  and a golden on the GitHub stand-in.
+- [ ] Add `/api/plugin/github/guided-review-check` with its parity row, the route map
+  entry, and a golden on the GitHub stand-in.
 - [ ] Add **Write a Guided Review** to the skill, with the route in **Route the Task**,
   and its recipes to `tests/golden/cli-skill-recipes.tryscript.md`.
 - [ ] Repeat the person-facing part in `docs/working-with-agents.md` (“ask an agent to
@@ -172,9 +178,6 @@ for an unreleased route.
 
 ## Open Questions
 
-- Rename the identifiers to match the feature’s name before the first release: the fence
-  to `guided-review`, the route to `github/guided-review`, and the modules to match?
-  Recommended, for the fence’s sake (Naming above).
 - Should the check take the draft as a path in the checkout, or as the pull request
   description file the agent will publish, so it also confirms there is exactly one
   block?
@@ -186,7 +189,7 @@ for an unreleased route.
 - [Reviewing Pull Requests: Guided Review](../../../reviewing-pull-requests.md#guided-review)
 - [The agent skill](../../../../skills/metabrowser/SKILL.md) and
   [Working With Agents](../../../working-with-agents.md)
-- `src/metabrowser/builtin_plugins/github/guided_pr.py` (`parse_guide`, `MAX_ITEMS`,
+- `src/metabrowser/builtin_plugins/github/guided_review.py` (`parse_guide`, `MAX_ITEMS`,
   `MAX_REFERENCES`)
 - #677 (guided reviews) and #679 (the collection format’s research)
 
