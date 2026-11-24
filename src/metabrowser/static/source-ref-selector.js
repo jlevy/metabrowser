@@ -38,9 +38,8 @@
 //   (`{"for": "page"}`), which fetches a store older than the server's freshness window,
 //   and asks for the list again while that runs.
 //
-// The selector chooses what the Files tab shows and nothing else, so it leads that tab's
-// toolbar row, beside Group by, where the server draws its button (server.py); the Pulls
-// and Commits tabs do not follow it. Each listed ref shows its commit as the history
+// The selector chooses the source of the Files tab. The server draws its row above the
+// Files toolbar (server.py); the Pulls and Commits tabs do not follow it. Each listed ref shows its commit as the history
 // does, Git's short ID in the commit-ID face, and the commit's age by the shared
 // formatter (docs/design-system.md, "Age").
 //
@@ -215,7 +214,10 @@
    */
   function describe(state) {
     const checkout = state.checkout === true;
-    const label = shownLabel(state.shown, checkout);
+    const workingBranch = checkout && state.shown === null ? state.workingBranch : undefined;
+    const label = workingBranch
+      ? { kind: "Branch", name: workingBranch }
+      : shownLabel(state.shown, checkout);
     const plural = KIND_PLURAL[state.kind];
     const listing = state.listing;
     // A mirror's branch is its origin's, a remote chip; a checkout's own is a local one.
@@ -319,7 +321,9 @@
           ? {
               name: label.name,
               label: label.name,
-              ref: state.shown?.ref ?? undefined,
+              ref: workingBranch
+                ? LOCAL_BRANCH_PREFIX + workingBranch
+                : (state.shown?.ref ?? undefined),
               kind:
                 label.kind === "Tag"
                   ? "tag"
@@ -635,7 +639,7 @@
    * working tree, which is then what a switch is compared with.
    *
    * @param {MetabrowserSourceRefSelectorDependencies} deps
-   * @param {{shown?: MetabrowserSourcePage | null, checkout?: boolean}} [options]
+   * @param {{shown?: MetabrowserSourcePage | null, checkout?: boolean, workingBranch?: string}} [options]
    */
   function createSelector(deps, options = {}) {
     const checkout = options.checkout === true;
@@ -649,7 +653,7 @@
       loading: false,
       switching: false,
       error: null,
-      ...(checkout ? { checkout, stale: null } : {}),
+      ...(checkout ? { checkout, workingBranch: options.workingBranch, stale: null } : {}),
     };
     // Each listing request takes the next number; only the newest one's answer counts,
     // so a slow answer to an older filter never replaces a newer one. A newer request,
@@ -1057,18 +1061,20 @@
     parts.stale.hidden = model.stale === null;
     const refKey = JSON.stringify(model.selectedRef);
     if (parts.label.dataset.refKey !== refKey) {
-      parts.releaseCopies?.();
       parts.label.dataset.refKey = refKey;
       parts.label.replaceChildren();
       if (model.selectedRef !== null) {
-        parts.label.appendChild(
-          window.metabrowser.refChip(model.selectedRef.name, {
-            label: model.selectedRef.label,
-            kind: model.selectedRef.kind,
-            ref: model.selectedRef.ref,
-            menu: "sibling",
-          }),
-        );
+        const chip = window.metabrowser.refChip(model.selectedRef.name, {
+          label: model.selectedRef.label,
+          kind: model.selectedRef.kind,
+          ref: model.selectedRef.ref,
+        });
+        if (model.workingTree?.current) {
+          const context = model.selectedRef.label + " · Working tree";
+          chip.dataset.tipText = context;
+          chip.setAttribute("aria-label", "Actions for " + context);
+        }
+        parts.label.append(chip);
       } else if (model.pullNumber !== null) {
         const number = document.createElement("span");
         number.className = "source-ref-selector-pull-number";
@@ -1084,7 +1090,6 @@
       } else {
         parts.label.textContent = model.button;
       }
-      parts.releaseCopies = window.metabrowser.mountRefMenus(parts.toggle, parts.buttonHost);
     }
     parts.toggle.setAttribute("aria-expanded", String(model.open));
     parts.panel.hidden = !model.open;
@@ -1412,10 +1417,9 @@
     const rows = parts.rows;
     const count = rows.shown.length;
     parts.sizer.style.height = `${rows.offsets[count] ?? 0}px`;
-    rows.drawnAt = parts.list.scrollTop || 0;
     const { start, end, also } = rowWindow(
       rows.offsets,
-      rows.drawnAt,
+      parts.list.scrollTop || 0,
       parts.list.clientHeight || 0,
       rows.roving,
     );
@@ -1646,31 +1650,6 @@
   }
 
   /**
-   * Put an open list's rows right after a refill of the toolbar took the list out of the
-   * page and back (`keepAcrossRefills`). Browser only.
-   *
-   * The page reads where the list was scrolled to before it rebuilds the toolbar and sets
-   * it again after (`renderNavFilterBar` in app.js), so a scroll made a moment before,
-   * whose scroll event has not come, is where the list is: its rows are drawn for it now,
-   * and no position the last event named overrides it. A list at its top, which the
-   * browser leaves when it is put back with nothing said, goes back to where its rows
-   * were drawn for, whatever else took the list out (mb-y1k0, mb-tjbm).
-   *
-   * @param {MetabrowserSourceRefSelectorParts} parts
-   */
-  function keepScroll(parts) {
-    const { list, rows } = parts;
-    if (parts.panel.hidden) {
-      return;
-    }
-    if (list.scrollTop === 0 && rows.drawnAt > 0) {
-      list.scrollTop = rows.drawnAt;
-    } else if (list.scrollTop !== rows.drawnAt) {
-      drawWindow(parts);
-    }
-  }
-
-  /**
    * Move the row that takes Tab to *at*, bring it into the list's view, and focus it.
    * Browser only.
    *
@@ -1699,34 +1678,25 @@
    * @returns {MetabrowserSourceRefSelectorParts}
    */
   function build(element, checkout, choose) {
-    // The server draws the button in the Files toolbar's row, so the row keeps its layout
-    // from first paint. That button is adopted, not replaced: focus a reader put on it
-    // before this module arrived stays where it is.
+    // Adopt the server's chooser so it keeps any focus it received before mounting.
     const drawn = /** @type {HTMLButtonElement | null} */ (
       element.querySelector("button.source-ref-selector-toggle")
     );
     const toggle = drawn ?? document.createElement("button");
     toggle.type = "button";
+    toggle.className = "icon-btn source-ref-selector-toggle disclosure-toggle";
     toggle.setAttribute("aria-haspopup", "dialog");
+    toggle.setAttribute("aria-label", "Switch branch or tag");
     toggle.dataset.tipText = "Switch branch or tag";
+    toggle.innerHTML = window.MetabrowserIcons?.toggle ?? "";
     const label =
-      /** @type {HTMLElement | null} */ (toggle.querySelector(".source-ref-selector-label")) ??
+      /** @type {HTMLElement | null} */ (element.querySelector(".source-ref-selector-label")) ??
       document.createElement("span");
     label.className = "source-ref-selector-label";
-    const caret =
-      /** @type {HTMLElement | null} */ (toggle.querySelector(".chip-menu-caret")) ??
-      document.createElement("span");
-    toggle.className = "chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle";
-    caret.className = "chip-menu-caret";
-    caret.setAttribute("aria-hidden", "true");
-    caret.innerHTML = window.MetabrowserIcons?.toggle ?? "";
-    if (drawn === null) {
-      toggle.append(label, caret);
-    }
     // What a checkout's page says when the server comes to show something else, as a
     // freshness row: at the foot of the navigation pane, where a mirror's makes the same
     // offer, so every tab shows it. The Pulls tab's requests and a comparison's are
-    // refused as the Files tab's are, and this button is in the Files toolbar, which the
+    // refused as the Files tab's are, and the chooser is in the Files row, which the
     // other tabs hide.
     const stale = document.createElement("div");
     stale.className = "source-freshness source-ref-selector-stale";
@@ -1818,17 +1788,10 @@
       }
     });
     panel.append(workingTree, kinds, filter, list, note, origin, error);
-    // The button's own box, which a ref chip's menu trigger is placed against, so that
-    // the list's containing block stays the toolbar and the list spans the pane. Drawn
-    // by the server around its button, and adopted with it.
-    const buttonHost =
-      /** @type {HTMLElement | null} */ (
-        toggle.parentElement?.closest(".source-ref-selector-button")
-      ) ?? document.createElement("span");
-    buttonHost.className = "source-ref-selector-button";
-    // The list is put in by `mount`, once its kinds are bound.
     if (drawn === null) {
-      buttonHost.append(toggle);
+      const buttonHost = document.createElement("span");
+      buttonHost.className = "source-ref-selector-button";
+      buttonHost.append(label, toggle);
       element.replaceChildren(buttonHost);
     }
     const foot = document.getElementById("index-progress");
@@ -1840,7 +1803,6 @@
     element.hidden = false;
     return {
       root: element,
-      buttonHost,
       toggle,
       label,
       stale,
@@ -1866,77 +1828,12 @@
         model: null,
         iconsAsked: false,
         rebuild: false,
-        drawnAt: 0,
         listing: "",
         revealed: false,
         switching: false,
         choose,
       },
     };
-  }
-
-  /**
-   * Keep focus in the selector, and its list where it was scrolled to, across the Files
-   * toolbar's refills. Browser only.
-   *
-   * The selector leads the toolbar's row, which app.js draws again whenever a filter or a
-   * tally changes, while the index warms up too (renderNavFilterBar). It carries this
-   * element over rather than drawing it, so the list stays open with what was typed, but
-   * the element is out of the page for that moment, and an element taken out loses focus
-   * and its scroll position, with no scroll event to say so: a list that End had scrolled
-   * to its foot came back at its top, where no rows were drawn, with the focused row out
-   * of view (mb-y1k0). So *restore* puts the list back where its rows were drawn for, and
-   * the control that had focus gets it back, unless the reader has since put focus
-   * somewhere else: elsewhere by a key, or anywhere by a press outside the selector.
-   * Focus events do not fire in a page that is not focused, a background window's or a
-   * headless test's, so a refill that finds nothing recorded asks *fallback*: an open
-   * list's filter box, since a key or a press that takes focus out of the selector closes
-   * the list.
-   *
-   * @param {HTMLElement} element
-   * @param {() => HTMLElement | null} fallback
-   * @param {() => void} restore
-   * @param {AbortSignal} signal
-   * @returns {() => void} What stops it.
-   */
-  function keepAcrossRefills(element, fallback, restore, signal) {
-    const bar = element.closest("[data-nav-toolbar]");
-    if (bar === null) {
-      return () => {};
-    }
-    /** @type {HTMLElement | null} */
-    let focused = null;
-    element.addEventListener(
-      "focusin",
-      (event) => {
-        focused = /** @type {HTMLElement} */ (event.target);
-      },
-      { signal },
-    );
-    for (const type of ["focusin", "pointerdown"]) {
-      document.addEventListener(
-        type,
-        (event) => {
-          if (!element.contains(/** @type {Node | null} */ (event.target))) {
-            focused = null;
-          }
-        },
-        { signal, capture: true },
-      );
-    }
-    // The refill replaces the bar's children and puts this element back before the
-    // observer is told, so the list and focus are back before the frame paints.
-    const refills = new MutationObserver(() => {
-      restore();
-      const active = document.activeElement;
-      if (active === null || active === document.body) {
-        (focused?.isConnected && element.contains(focused) ? focused : fallback())?.focus({
-          preventScroll: true,
-        });
-      }
-    });
-    refills.observe(bar, { childList: true });
-    return () => refills.disconnect();
   }
 
   /** The selector this page mounted, kept for the branch or tag key, which runs the
@@ -1979,7 +1876,11 @@
         currentView: () => window.location.pathname,
         hold: (going) => window.MetabrowserSourcePinGuard?.hold(going),
       },
-      { shown: window.METABROWSER_SOURCE_PIN ?? null, checkout },
+      {
+        shown: window.METABROWSER_SOURCE_PIN ?? null,
+        checkout,
+        workingBranch: element.dataset.workingBranch,
+      },
     );
     const mounted = selector;
     const listening = new AbortController();
@@ -2004,32 +1905,31 @@
         parts.filter.focus();
       }
     };
-    // One popup at a time. The toolbar's filter menus close on a press outside the
-    // toolbar, and this button is in it, so opening the list closes an open filter menu
-    // the way a reader would, by its trigger.
-    const closeToolbarMenu = () => {
-      if (parts.panel.hidden) {
-        /** @type {HTMLElement | null | undefined} */ (
-          element
-            .closest("[data-nav-toolbar]")
-            ?.querySelector('.chip-menu[aria-expanded="true"] [data-chip-menu-toggle]')
-        )?.click();
-      }
+    const closeActionMenu = () => {
+      /** @type {HTMLButtonElement | null} */ (
+        parts.label.querySelector('button[aria-expanded="true"]')
+      )?.click();
+    };
+    // A keyboard shortcut can open the chooser without the pointer leaving either menu.
+    const dismissOtherMenus = () => {
+      closeActionMenu();
+      /** @type {HTMLElement | null} */ (
+        document.querySelector(
+          '#nav-filter-bar .chip-menu[aria-expanded="true"] [data-chip-menu-toggle]',
+        )
+      )?.click();
     };
     parts.toggle.addEventListener(
       "click",
       () => {
-        closeToolbarMenu();
+        if (parts.panel.hidden) {
+          dismissOtherMenus();
+        }
         void mounted.toggle();
         focusOpenFilter();
       },
       { signal },
     );
-    // Bound before the list joins the toolbar, so the toolbar's own binding is the one that
-    // fits the kinds' joined group to its line. A binding made inside a toolbar fits the
-    // groups under it too (filter-controls.js#keepJoinedGroupsFitted), and two fitting one
-    // group each took the other's measuring for a change to fit again, without end: the
-    // page stopped answering when the list opened.
     const unbindKinds = chipControls().bind(parts.kinds, {
       onChange(key, value, select) {
         if (key === KIND_GROUP && select === "one") {
@@ -2038,25 +1938,6 @@
       },
     });
     element.append(parts.panel);
-    // The toolbar's own chip controls are bound on the whole toolbar (app.js,
-    // initFilterBar), and would take a kind for a filter's value: a click or an arrow key
-    // on the kinds, which the binding above has handled, goes no further.
-    parts.kinds.addEventListener("click", (event) => event.stopPropagation(), { signal });
-    parts.kinds.addEventListener(
-      "keydown",
-      (event) => {
-        if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
-          event.stopPropagation();
-        }
-      },
-      { signal },
-    );
-    const stopKeeping = keepAcrossRefills(
-      element,
-      () => (parts.panel.hidden ? null : parts.filter),
-      () => keepScroll(parts),
-      signal,
-    );
     parts.filter.addEventListener("input", () => mounted.setQuery(parts.filter.value), {
       signal,
     });
@@ -2140,12 +2021,14 @@
       },
       { signal },
     );
-    // Focus that leaves the selector for another part of the page closes the list.
+    // The selected ref's own chip is a separate trigger from the chooser.
+    /** @param {Node | null} target */
+    const insideChooser = (target) => parts.panel.contains(target) || parts.toggle.contains(target);
     element.addEventListener(
       "focusout",
       (event) => {
         const to = /** @type {Node | null} */ (event.relatedTarget);
-        if (!parts.panel.hidden && to !== null && !element.contains(to)) {
+        if (!parts.panel.hidden && to !== null && !insideChooser(to)) {
           mounted.close();
         }
       },
@@ -2155,7 +2038,7 @@
     document.addEventListener(
       "pointerdown",
       (event) => {
-        if (!parts.panel.hidden && !element.contains(/** @type {Node | null} */ (event.target))) {
+        if (!parts.panel.hidden && !insideChooser(/** @type {Node | null} */ (event.target))) {
           mounted.close();
         }
       },
@@ -2163,36 +2046,25 @@
     );
     const handle = Object.freeze({
       ...mounted,
-      // Where the list is scrolled to now, and a function that sets it again: the page
-      // rebuilds the toolbar around the list (`renderNavFilterBar`), which takes it out of
-      // the page and puts it back at its top with no scroll event to say so, and a scroll
-      // made a moment before has not sent its event yet, so no position it named is that
-      // scroll's. Read before, set after, the scroll the page or the browser made wins.
-      holdScroll() {
-        const top = parts.list.scrollTop;
-        return () => {
-          if (top > 0 && !parts.panel.hidden) {
-            parts.list.scrollTop = top;
-            drawWindow(parts);
-          }
-        };
-      },
       // The control a key's badge marks, and what the key does: the button's path,
       // except that it opens the list rather than toggling it.
       button: parts.toggle,
       activate() {
-        closeToolbarMenu();
+        dismissOtherMenus();
         const opened = mounted.open();
         focusOpenFilter();
         return opened;
       },
+      close() {
+        closeActionMenu();
+        mounted.close();
+      },
       dispose() {
+        closeActionMenu();
         parts.disposed = true;
         listening.abort();
-        stopKeeping();
         unbindKinds();
         mounted.dispose();
-        parts.releaseCopies?.();
         parts.stale.remove();
         element.replaceChildren();
         element.hidden = true;

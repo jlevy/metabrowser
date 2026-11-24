@@ -513,9 +513,10 @@ in sight:
 - **Title:** `/api/identity` gives the tab and window title, and a `full_name` of the
   origin without its scheme and the pin, which never names the cache.
 - **Commit:** the navigation heading shows the name.
-  The ref selector in the Files toolbar names the ref and shows short commit IDs in its
-  rows.
-- **Location:** the root menu shows the local path to the bare repository with a short
+  The revision row below Files names the ref.
+  Its chip opens the ref’s actions, and the separate chevron opens the chooser, whose
+  list shows short commit IDs.
+- **Location:** the Info menu shows the local path to the bare repository with a short
   source note. A separate note after the address shows the store directory.
   Both abbreviate the home directory as `~` (`display_directory`).
   `static/mirror-heading.js` draws the address note from data in the mirror’s page.
