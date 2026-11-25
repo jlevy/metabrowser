@@ -209,7 +209,9 @@ async function checkCheckoutDetails() {
     const { branch, revision } = window.METABROWSER_REPOSITORY_CONTEXT;
     return {
       chip: chip.matches(".git-ref-local") && chip.textContent === branch,
-      working: chip.getAttribute("aria-label")?.endsWith(" · Working tree"),
+      working:
+        document.querySelector("#nav-files-ref .source-ref-selector-view")?.textContent ===
+        "Working tree",
       hasDuplicate: document.querySelector("#root-details [data-ref-menu]") !== null,
       branch, revision,
       text: id.textContent,
