@@ -105,9 +105,9 @@ try {
   await go("/pull/7/docs");
   const docs = await drawn(TAB, "docs/new.md");
   same(
-    "Docs draws the Markdown file rendered, under its chooser, on Current",
+    "Docs draws the Markdown file in Full, under its chooser, on Current",
     [docs.path, docs.chooser, docs.shows],
-    ["docs/new.md", ["Rendered (chosen)", "Source"], "current"],
+    ["docs/new.md", ["Full (chosen)", "Concise", "Source"], "current"],
   );
   check("and its rendered Markdown has the file's heading", /New/.test(docs.rendered ?? ""));
   await go("/pull/7/files");
