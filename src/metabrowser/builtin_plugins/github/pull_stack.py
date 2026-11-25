@@ -133,9 +133,10 @@ class StackMemberWire(TypedDict):
     title: str | None
     state: MemberState | None
     # Its author and the author's avatar, which end its member row, as they end the stack
-    # menu's (docs/design-system.md, "Authors Follow Pull Requests"): its record's, or with
-    # none the repository's cached list row's, as its title is, and the stacks route's
-    # `authors` and `avatars` are; None where neither holds it.
+    # menu's (docs/design-system.md, "Authors Follow Pull Requests"), by the rule the
+    # stacks route's `authors` and `avatars` follow (`member_identity`): its record's, or
+    # with none the repository's cached list row's, as its title is; None where neither
+    # holds it.
     author: str | None
     avatar: str | None
     # The record's comparison, or None with no usable record.
@@ -358,6 +359,7 @@ def _read_members(
     from metabrowser.builtin_plugins.github.pull_files_route import known_head
     from metabrowser.builtin_plugins.github.pull_list_route import cached_list_row
     from metabrowser.builtin_plugins.github.pull_route import cached_pull_record
+    from metabrowser.builtin_plugins.github.pull_stacks_route import member_identity
 
     members: list[_Member] = []
     for member in stack.pulls:
@@ -378,18 +380,15 @@ def _read_members(
             and head is not None
             and head != record.comparison.head
         )
+        named = member_identity(record, row)
         members.append(
             _Member(
                 number=member,
                 record=record,
                 revision=revision if record is not None else None,
-                title=record.pull.title if record is not None else row.title if row else None,
-                author=record.pull.author if record is not None else row.author if row else None,
-                avatar=record.pull.author_avatar_url
-                if record is not None
-                else row.author_avatar_url
-                if row
-                else None,
+                title=named.title,
+                author=named.author,
+                avatar=named.avatar,
                 state=member_state(
                     record,
                     row.state if row is not None else None,

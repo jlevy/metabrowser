@@ -471,10 +471,8 @@ async function mountStory() {
           model = next;
         },
         markCurrent(previous, next) {
-          // As the panel keeps it: a mark that leaves clears only the row that held it.
-          if (next !== null || marked === previous) {
-            marked = next;
-          }
+          // The panel's own rule: a mark that leaves clears only the row that held it.
+          marked = panel.markedRow(marked, previous, next);
         },
         markAnchor(_previous, next, focus) {
           anchor = next;

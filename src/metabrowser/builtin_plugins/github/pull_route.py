@@ -269,7 +269,7 @@ class _Parsed:
 # unchanged file is answered without reading or parsing it again.
 _PARSED: dict[tuple[str, str, int], _Parsed] = {}
 _PARSED_LOCK: Final = threading.Lock()
-_MAX_PARSED: Final = 16
+MAX_PARSED_RECORDS: Final = 16
 
 
 def _file_stamp(home: Path, slug: str, number: int) -> tuple[int, int, int] | None:
@@ -305,7 +305,7 @@ def cached_pull_record(
                 item["timeline_id"] = str(item["id"])
     if stamp is not None:
         with _PARSED_LOCK:
-            if key not in _PARSED and len(_PARSED) >= _MAX_PARSED:
+            if key not in _PARSED and len(_PARSED) >= MAX_PARSED_RECORDS:
                 _PARSED.pop(next(iter(_PARSED)))
             _PARSED[key] = _Parsed(stamp, record, dumped, revision)
     return record, dumped, revision

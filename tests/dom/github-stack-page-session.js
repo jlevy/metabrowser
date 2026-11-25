@@ -6,8 +6,8 @@
 // current; 71, whose top lacks 7, which has another comparison; and 72, not linear.
 //
 // It runs the production builtin_plugins/github/stack-page.js: the tab a route shows, the
-// header's rows from its first paint to the answer (`stackHeader`), what the page passes the
-// diff view for its Diff summary and its Docs and Changes, what a new answer does to the
+// header's rows from its first paint to the answer (`stackHeader`), that the page passes the
+// diff view a pull request's drawings for its Docs and Changes, what a new answer does to the
 // comparison drawn (`comparisonAction`), the line about members the top lacks, and the
 // controller (`createStackController`) over a
 // scripted poll, over a read that fails and then finds its answer current, over a cold
@@ -20,6 +20,7 @@
 // the glue (`mountStackPage`) is the drawing, which github-stack-guide-mount-session.js
 // mounts.
 
+const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
@@ -642,7 +643,6 @@ async function main() {
   const unlisted = () => null;
   const headerAt = (envelope, from, drawn, failedNow = []) => {
     const model = page.stackHeader(
-      70,
       envelope,
       from,
       from === null ? unlisted : listed,
@@ -676,29 +676,41 @@ async function main() {
     unknown_not_linear: headerAt(notLinear, null, false),
   };
 
-  // What the page passes the diff view: for the header's Diff summary, the comparison read
-  // and where a file opens, so it starts collapsed, as every Diff summary does; for Docs and Changes,
-  // a pull request's drawings, with no summary of their own and the first screen's hold.
+  // What the page passes the diff view for Docs and Changes: a pull request's drawings
+  // (diff-drawing.js), each of their values the shared drawing's, with no summary of their
+  // own and the first screen's Markdown held as a pull request's page holds it. What is the
+  // stack's own, its comparison and Docs' word for none, is printed.
+  const drawings = await import(
+    pathToFileURL(path.join(path.dirname(pagePath), "diff-drawing.js")).href
+  );
+  const { CHANGES_FIRST_SCREEN_MS } = await import(
+    pathToFileURL(path.join(path.dirname(pagePath), "pull-page.js")).href
+  );
   const signal = new AbortController().signal;
   const opens = () => {};
-  const shapeOf = (ctx) =>
-    Object.fromEntries(
-      Object.entries(ctx)
-        .filter(([name]) => !["comparisonSignal", "raw"].includes(name))
-        .map(([name, value]) => [name, typeof value === "function" ? "function" : value]),
-    );
-  const drawing = {
-    summary: shapeOf(page.summaryDrawing({}, opens)),
-    docs: shapeOf(page.diffDrawing("docs", current.comparison, { signal, onDocument: opens })),
-    changes: shapeOf(
-      page.diffDrawing("changes", current.comparison, {
-        signal,
-        raw: {},
-        types: null,
-        onTypes: opens,
-      }),
-    ),
+  const raw = {};
+  const drawn = (tab, using, shared) => {
+    const ctx = page.diffDrawing(tab, current.comparison, using);
+    for (const [name, value] of Object.entries(shared)) {
+      assert.deepEqual(ctx[name], value, `${tab}: ${name} is the shared drawing's`);
+    }
+    assert.equal(ctx.summary, false, `${tab}: the diff draws no summary of its own`);
+    assert.equal(ctx.markdownHoldMs, CHANGES_FIRST_SCREEN_MS, `${tab}: the first screen's hold`);
+    assert.equal(ctx.comparisonSignal, signal, `${tab}: the page's signal`);
+    return ctx;
   };
+  const docs = drawn(
+    "docs",
+    { signal, onDocument: opens },
+    { ...drawings.DOCS_DRAWING, group: drawings.DOCS_GROUP, onDocument: opens },
+  );
+  const changes = drawn(
+    "changes",
+    { signal, raw, types: null, onTypes: opens },
+    { ...drawings.CHANGES_DRAWING, raw, types: null, onTypes: opens },
+  );
+  assert.deepEqual(changes.comparison, docs.comparison, "Docs and Changes draw one comparison");
+  const drawing = { comparison: docs.comparison, docs_empty: docs.emptyText };
 
   const said = {
     lacking: page.lackingText(lacking),
