@@ -3,9 +3,9 @@ type: is
 id: is-01m8a3f37c0s767r9vbxkdtpex
 title: "Skill and agent guide: cover guided reviews of a whole stack (addresses, top layer, opening, file layers, reference cap, range recipes)"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
 refs:
   - kind: pr
@@ -21,6 +21,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-25T19:38:34.602Z
-updated_at: 2026-11-25T20:37:38.139Z
+updated_at: 2026-11-25T22:34:55.959Z
 started_at: 2026-11-25T19:38:38.151Z
+closed_at: 2026-11-25T22:34:55.957Z
+close_reason: "Landed in PR #848 via stack 846 (main 49975eab4)"
+resolution: null
+duplicate_of: null
 ---
