@@ -6290,7 +6290,8 @@ menu, and a table’s column menus.
 
 - **A press or a tap outside** the menu and its trigger closes it, and the press goes on
   to act on what it landed on, as a press beside the branch chooser always has.
-  A press inside the menu leaves it open.
+  A press inside the menu leaves it open, and so does a drag that starts inside it, as
+  in selecting a field’s text, and lets go outside it.
 - **A second press on the trigger** closes it, through the trigger’s own toggle.
 - **Escape** closes it and gives focus back to its trigger.
   An Escape that a surface above the menu took first, such as Quick Search’s, closes
@@ -6299,6 +6300,9 @@ menu, and a table’s column menus.
   losing focus, to another application or to a frame in the page, such as an HTML
   preview, whose presses never reach the page.
   Focus that goes nowhere, as when the focused row is removed, leaves it open.
+  A menu opened with focus outside it, as a press in Safari leaves focus where it was,
+  takes focus to its trigger, so a tree redrawn under it that puts focus back on its row
+  does not close it.
 - **Opening one menu closes any other**, so at most one is open.
 
 A press inside a filter bar beside its open dropdown closes the dropdown once the

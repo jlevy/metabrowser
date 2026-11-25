@@ -549,6 +549,8 @@ assertEqual(
       asked = selector;
       return [panel, empty, hidden];
     },
+    // Only the panels are drawn, so bind finds no dropdown open to keep closing.
+    querySelector: () => null,
   };
   fc.fitOpenMenus(root);
   assertEqual(
@@ -654,6 +656,8 @@ assertMissing("group labels are escaped", hostile, '"><img>');
     contains: () => true,
     ownerDocument: null,
     querySelectorAll: () => chips,
+    // A segmented group and no dropdown, so none is open to keep closing.
+    querySelector: () => null,
   };
   const chosen = [];
   fc.bind(root, {
@@ -1041,6 +1045,7 @@ assertEqual(
       }
       return [];
     },
+    querySelector: () => null,
   });
   const runFrames = () => {
     const waiting = [...frames.values()];

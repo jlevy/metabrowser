@@ -719,7 +719,7 @@ function initSettingsControl() {
     var setOpen = (open) => {
       wrap.setAttribute("aria-expanded", open ? "true" : "false");
     };
-    var dismissal = window.metabrowser.menus.dismissible({
+    var dismissal = /** @type {MetabrowserMenus} */ (window.metabrowser.menus).dismissible({
       name: "settings-menu",
       trigger: btn,
       inside: (node) => wrap.contains(node),
@@ -729,11 +729,7 @@ function initSettingsControl() {
     btn.addEventListener("click", () => {
       void window.MetabrowserAssets?.ensureAsset("remote-images");
       setOpen(!isOpen());
-      if (isOpen()) {
-        dismissal.opened();
-      } else {
-        dismissal.closed();
-      }
+      dismissal[isOpen() ? "opened" : "closed"]();
     });
 
     // Segments exist now — re-sync the active markers.
@@ -2292,7 +2288,7 @@ function initRootDetails() {
       status.textContent = "Repository link actions are unavailable.";
     }
   };
-  const dismissal = window.metabrowser.menus.dismissible({
+  const dismissal = /** @type {MetabrowserMenus} */ (window.metabrowser.menus).dismissible({
     name: "root-details-panel",
     trigger,
     inside: (node) => panel.contains(node),
@@ -2301,11 +2297,7 @@ function initRootDetails() {
   });
   trigger.addEventListener("click", () => {
     void setOpen(Boolean(panel.hidden));
-    if (panel.hidden) {
-      dismissal.closed();
-    } else {
-      dismissal.opened();
-    }
+    dismissal[panel.hidden ? "closed" : "opened"]();
   });
 }
 

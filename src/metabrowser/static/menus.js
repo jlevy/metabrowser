@@ -2,7 +2,8 @@
 // tap outside it and its trigger, focus arriving outside them, the window losing focus,
 // and Escape close it, and opening one closes any other. Its trigger's own click toggles
 // it, so a second press closes it. A press that closes a menu still acts on what it lands
-// on, as a press beside the branch chooser always has.
+// on, as a press beside the branch chooser always has. Opening one with focus outside it
+// moves focus to its trigger.
 //
 // Every menu in the shell and its built-in plugins closes through this, and a plugin's
 // menu does through `metabrowser.menus.dismissible` (docs/plugins.md, "Menus");
@@ -64,14 +65,25 @@
     if (listening.has(doc)) {
       return;
     }
+    // The open menus the last press went down in. Its click is theirs wherever it lands:
+    // a drag from a field in a menu to outside it clicks on an ancestor of both.
+    /** @type {Set<OpenMenu>} */
+    let pressedIn = new Set();
     // A press, a click an assistive technology sends with no press, or focus arriving
     // outside a menu and its trigger closes it. Captured, so no handler below can keep it
     // from here; the event goes on to what it landed on.
     /** @param {Event} event */
     const outside = (event) => {
       const node = /** @type {Node} */ (event.target);
+      const held = event.type === "click" ? pressedIn : null;
+      if (event.type !== "focusin") {
+        pressedIn = new Set();
+      }
       for (const entry of openMenusOf(doc)) {
-        if (!triggerOf(entry.menu)?.contains(node) && !entry.menu.inside(node)) {
+        const own = triggerOf(entry.menu)?.contains(node) || entry.menu.inside(node);
+        if (own && event.type === "pointerdown") {
+          pressedIn.add(entry);
+        } else if (!own && !held?.has(entry)) {
           closeMenu(entry, event.type === "focusin" ? "away" : "outside");
         }
       }
@@ -158,6 +170,16 @@
         entry = { menu, doc };
         openMenus.add(entry);
         listen(doc);
+        // Focus goes with the menu. A press in WebKit leaves it where it was, on a tree row
+        // say, and a rebuild that put it back there would arrive outside and close the menu.
+        const trigger = triggerOf(menu);
+        const active = doc.activeElement;
+        if (
+          trigger?.isConnected &&
+          !(active && (trigger.contains(active) || menu.inside(active)))
+        ) {
+          trigger.focus({ preventScroll: true });
+        }
       },
       closed: release,
       dispose: release,

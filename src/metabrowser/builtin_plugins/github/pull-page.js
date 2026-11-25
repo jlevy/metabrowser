@@ -5783,7 +5783,7 @@ export function mountPullPage(container, ctx, mb) {
         currentTitle: model.pull?.title ?? "",
         named,
         titleNodes: mb.titleNodes,
-        menus: mb.menus,
+        menus: /** @type {MetabrowserMenus} */ (mb.menus),
         state: (target) =>
           stackMemberState(stackIdentity?.source ?? null, target, number, stackPullState),
         onOpen() {

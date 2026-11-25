@@ -1929,9 +1929,9 @@ type MetabrowserSdk = {
     options?: { signal?: AbortSignal },
   ): Promise<MetabrowserPluginData>;
   filterControls?: MetabrowserFilterControls;
-  /** How every menu closes (docs/plugins.md, "Menus"). static/filter-controls.js sets it in
-   *  every shell; a plugin feature-detects `menus?.dismissible` for a host from before it. */
-  menus: MetabrowserMenus;
+  /** How every menu closes (docs/plugins.md, "Menus"); feature-detect `menus?.dismissible`.
+   *  static/filter-controls.js sets it in every shell, so the shell's own code relies on it. */
+  menus?: MetabrowserMenus;
   filterState?: MetabrowserFilterState;
   /** A view's letter keys and badges (SDK 0.7); feature-detect `shortcuts?.attach`. */
   shortcuts?: MetabrowserPluginShortcutsApi;

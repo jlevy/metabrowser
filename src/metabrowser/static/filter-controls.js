@@ -739,7 +739,7 @@
     return () => settleFocus(root, selector);
   }
 
-  // How every menu closes: static/menus.js, a shell tool, asked for by a menu opened sooner.
+  // How every menu closes: static/menus.js, a shell tool, fetched if one opens sooner.
   /** @param {MetabrowserDismissibleMenu} menu @returns {MetabrowserDismissibleHandle} */
   function dismissible(menu) {
     let gone = false;
@@ -748,13 +748,12 @@
     const real = () => (handle ??= window.MetabrowserMenus?.dismissible(menu));
     return Object.freeze({
       opened() {
-        const now = real();
-        if (now) {
-          now.opened();
+        if (real()) {
+          real()?.opened();
         } else {
           window.MetabrowserAssets?.ensureAsset("shell-tools").then(
             () => !gone && menu.isOpen() && real()?.opened(),
-            (error) => console.error("metabrowser: menus will not close", error),
+            console.error,
           );
         }
       },
@@ -1062,14 +1061,14 @@
       trigger: () =>
         /** @type {HTMLElement | null} */ (openWrap()?.querySelector("[data-chip-menu-toggle]")),
       inside: (node) => root.contains(node),
-      isOpen: () => openMenuKey() !== null,
+      isOpen: () => !!openWrap(),
       close(how) {
         const openKey = openMenuKey();
         const trigger = openWrap()?.querySelector("[data-chip-menu-toggle]");
-        if (openKey !== null && opts.onMenuToggle) {
-          opts.onMenuToggle(openKey, false);
+        if (openKey !== null) {
+          opts.onMenuToggle?.(openKey, false);
         }
-        // Escape gives focus back to the trigger, as the consumer rebuilt it.
+        // Escape: focus back to the trigger, as rebuilt.
         if (how === "escape") {
           settleFocus(root, trigger ? controlSelector(trigger) : null);
         }
@@ -1103,6 +1102,10 @@
     view?.addEventListener("resize", onWindowResize);
     boundRows.set(root, pickRow);
     boundMenus.set(root, dropdowns);
+    // Drawn open, as by a consumer rebinding each paint (Agents), it keeps closing.
+    if (openWrap()) {
+      dropdowns.opened();
+    }
     // In a navigation toolbar, a segmented group wider than its line takes the cluster.
     const stopFitting = keepJoinedGroupsFitted(root);
     return () => {

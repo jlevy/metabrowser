@@ -1220,6 +1220,9 @@ closing?.dispose(); // from dispose(), when the menu goes for good
 - Call `opened()` from every path that opens the menu, a key as well as a click, and
   `closed()` when the view’s own code closes it.
   The listeners are held only while a menu is open.
+- `opened()` moves focus to the trigger when focus is outside the menu and its trigger,
+  as a press in Safari leaves it; a view that puts focus into the menu does so after the
+  call.
 - `close(how)` closes the menu as the view’s own code does.
   For `"escape"` the helper then gives focus back to the trigger, unless `close` already
   moved it there; for the other reasons focus stays where the press or the key put it.
@@ -1231,7 +1234,8 @@ closing?.dispose(); // from dispose(), when the menu goes for good
   A menu opened sooner asks for them and closes alike once they land.
 - The trigger is part of the menu, so its own click decides what a press on it does;
   `inside` names the rest.
-  A press anywhere else closes it.
+  A press anywhere else closes it, but a drag that starts inside the menu, as in
+  selecting a field’s text, does not, wherever it lets go.
 
 ### Folder Overview Contributions
 

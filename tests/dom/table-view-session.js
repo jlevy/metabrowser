@@ -970,9 +970,11 @@ async function liveTable() {
   await ready(view);
   step("live: a table read, its file watched with the generation it read", liveShown(view));
 
-  // A filter half typed in the qty header's menu, not sent.
+  // A filter half typed in the qty header's menu, not sent, the focus in its field.
   click(headerButton(view, "qty", "table-head-menu"));
-  find(find(view.container, hasClass("table-menu")), hasClass("table-filter-value")).value = "4";
+  const typed = find(find(view.container, hasClass("table-menu")), hasClass("table-filter-value"));
+  typed.focus();
+  typed.value = "4";
   fileChanges("G2", 3);
   tick(100);
   await settle();

@@ -1291,7 +1291,7 @@
     const sourceChip = refMenuSourceChips.get(trigger);
     // It closes as every menu does (docs/design-system.md, "Every Menu Closes Alike"); a
     // press on the source chip beneath its overlay is the trigger's.
-    const dismissal = global.metabrowser.menus.dismissible({
+    const dismissal = /** @type {MetabrowserMenus} */ (global.metabrowser.menus).dismissible({
       name: "git-ref-menu",
       trigger,
       inside: (node) => menu.contains(node) || Boolean(sourceChip?.contains(node)),
@@ -2478,7 +2478,7 @@
       }
     }
     // It closes as every menu does (docs/design-system.md, "Every Menu Closes Alike").
-    const dismissal = global.metabrowser.menus.dismissible({
+    const dismissal = /** @type {MetabrowserMenus} */ (global.metabrowser.menus).dismissible({
       name: "counterpart-menu",
       trigger: more,
       inside: (node) => menu.contains(node),

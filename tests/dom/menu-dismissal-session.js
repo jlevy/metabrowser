@@ -8,22 +8,27 @@
 //
 // `menu` is one menu as a plugin wires it: a press or a tap outside it and its trigger,
 // focus arriving outside them, the window losing focus, and Escape close it, each for the
-// reason the helper gives its `close`; a press inside it, a second press of its trigger,
-// focus that goes nowhere, an Escape a surface above took first, and an Escape held with a
-// modifier do not close it from outside; opening one closes another; and the document is
-// listened to only while a menu is open.
+// reason the helper gives its `close`; a press inside it, a drag from a field in it let go
+// outside, a second press of its trigger, focus that goes nowhere, an Escape a surface
+// above took first, and an Escape held with a modifier do not close it from outside;
+// opening one closes another; a menu opened with focus outside it, where WebKit leaves
+// focus on a press, takes focus to its trigger, so a rebuild that puts focus back where it
+// was does not close it; and the document is listened to only while a menu is open.
 //
 // `filesBar` is the Files tab's filter bar as app.js draws it with the same renderers and
 // `bind`, its consumer rebuilding the bar on every change: Group by and the drawer's
 // dropdowns close on a press on the bar beside them, on the drawer's chevron, on Show
 // ignored, on another dropdown's trigger, and outside the bar; what each press landed on
-// still acts; and Escape gives focus back to the trigger.
+// still acts; Escape gives focus back to the trigger; and a consumer that binds the bar
+// again with a dropdown drawn open, as the Agents list does on every load, keeps it
+// closing.
 //
-// `early` is a menu that opens before the shell's tools arrive: it asks for them, and once
-// they land it closes as every menu does.
+// `early` is menus opened before the shell's tools arrive: they ask for them, and once
+// they land the one still open closes as every menu does, while one closed or disposed
+// meanwhile, and a bar's binding replaced meanwhile, stay out of it.
 //
 // A press is a browser's: `pointerdown`, then focus for a button, as Chrome gives it, then
-// `click`. Exits 1 on a failed invariant.
+// `click`; WebKit's moves no focus. Exits 1 on a failed invariant.
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -48,17 +53,19 @@ function loadShell({ early = null } = {}) {
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   if (early) {
+    const waiting = [];
+    early.loaded = false;
+    early.land = () => {
+      early.loaded = true;
+      vm.runInContext(read("menus.js"), sandbox, { filename: path.join(staticDir, "menus.js") });
+      for (const resolve of waiting.splice(0)) {
+        resolve();
+      }
+    };
     sandbox.MetabrowserAssets = {
       ensureAsset(name) {
         early.asked.push(name);
-        return new Promise((resolve) => {
-          early.land = () => {
-            vm.runInContext(read("menus.js"), sandbox, {
-              filename: path.join(staticDir, "menus.js"),
-            });
-            resolve();
-          };
-        });
+        return new Promise((resolve) => waiting.push(resolve));
       },
     };
   }
@@ -101,6 +108,12 @@ function press(node, { check = false } = {}) {
   }
 }
 
+/** A press as WebKit delivers one on a button: down and the click, with focus left alone. */
+function webkitPress(node) {
+  node.dispatchEvent({ type: "pointerdown", target: node, button: 0 });
+  node.dispatchEvent({ type: "click", target: node, button: 0 });
+}
+
 /** A key at the focused element, bubbling to the document; whether it was prevented. */
 function key(doc, name, init = {}) {
   const event = keyEvent("keydown", name, { target: doc.activeElement, ...init });
@@ -129,11 +142,15 @@ function menuSession() {
   const mb = loadShell();
   const doc = new FakeDocument();
   const closes = [];
-  /** A trigger, its panel of two items, and the wiring every menu has. */
-  function makeMenu(name) {
+  /**
+   * A trigger, its panel of an item and a field, and the wiring every menu has. One that
+   * does not `focusPanel` leaves focus where the press put it, as the gear does.
+   */
+  function makeMenu(name, { focusPanel = true } = {}) {
     const trigger = element(doc, "button", { "data-name": `${name} trigger` });
     const first = element(doc, "button", { "data-name": `${name} first item` });
-    const panel = element(doc, "div", { class: "menu", hidden: true }, first);
+    const field = element(doc, "input", { "data-name": `${name} field` });
+    const panel = element(doc, "div", { class: "menu", hidden: true }, first, field);
     doc.body.append(element(doc, "div", {}, trigger, panel));
     const dismissal = mb.menus.dismissible({
       name: `${name}-menu`,
@@ -151,22 +168,26 @@ function menuSession() {
         dismissal.closed();
       } else {
         dismissal.opened();
-        first.focus();
+        if (focusPanel) {
+          first.focus();
+        }
       }
     });
-    return { name, trigger, first, panel, dismissal };
+    return { name, trigger, first, field, panel, dismissal };
   }
   const a = makeMenu("A");
   const b = makeMenu("B");
+  const g = makeMenu("G", { focusPanel: false });
   const outside = element(doc, "button", { "data-name": "a button outside" });
   const text = element(doc, "p", {}, "text outside");
-  doc.body.append(outside, text);
+  let row = element(doc, "button", { "data-name": "a tree row" });
+  doc.body.append(outside, text, row);
 
   const steps = [];
   const step = (label, extra = {}) => {
     steps.push({
       step: label,
-      open: [a, b].filter((menu) => !menu.panel.hidden).map((menu) => menu.name),
+      open: [a, b, g].filter((menu) => !menu.panel.hidden).map((menu) => menu.name),
       closed: closes.splice(0),
       focus: focusName(doc),
       listening: listening(doc),
@@ -185,6 +206,12 @@ function menuSession() {
   step("a press on A's trigger opens it");
   press(a.first);
   step("a press inside it leaves it open");
+  // A text selection dragged from its field to outside: the click lands on an ancestor of
+  // both, here the page.
+  a.field.dispatchEvent({ type: "pointerdown", target: a.field, button: 0 });
+  a.field.focus();
+  doc.body.dispatchEvent({ type: "click", target: doc.body, button: 0 });
+  step("a drag from a field in it, let go outside, leaves it open");
   press(outside);
   step("a press on a button outside closes it");
   open(a);
@@ -221,10 +248,28 @@ function menuSession() {
   open(a);
   press(b.trigger);
   step("a press on B's trigger closes A and opens B");
+  key(doc, "Escape");
+  closes.splice(0);
+  row.focus();
+  webkitPress(g.trigger);
+  step("G opened by WebKit's press, which leaves focus on a tree row, takes focus to G");
+  // The tree rebuilt, as a refresh rebuilds it: a new row, focused again only if the row it
+  // replaces had focus.
+  const hadFocus = doc.activeElement === row;
+  row.remove();
+  row = element(doc, "button", { "data-name": "a tree row" });
+  doc.body.append(row);
+  if (hadFocus) {
+    row.focus();
+  }
+  step("a tree rebuild that keeps its focused row's focus leaves G open");
+  key(doc, "Escape");
+  open(b);
   b.dismissal.dispose();
   step("a menu disposed open, as when its view goes, lets the document go", { disposed: "B" });
   b.panel.hidden = true;
   a.dismissal.dispose();
+  g.dismissal.dispose();
   return steps;
 }
 
@@ -294,7 +339,7 @@ function filesBarSession() {
     restore();
   };
   render();
-  const unbind = fc.bind(bar, {
+  const handlers = {
     onMenuToggle(name, open) {
       state.open = open ? name : state.open === name ? null : state.open;
       render();
@@ -311,7 +356,14 @@ function filesBarSession() {
       state[name] = pressed;
       render();
     },
-  });
+  };
+  let unbind = fc.bind(bar, handlers);
+  /** Bind the bar again over a fresh paint, as the Agents list does on every load. */
+  const rebind = () => {
+    unbind();
+    render();
+    unbind = fc.bind(bar, handlers);
+  };
 
   const trigger = (name) => bar.querySelector(`[data-chip-menu-toggle="${name}"]`);
   const steps = [];
@@ -372,7 +424,15 @@ function filesBarSession() {
   step("another menu opening closes Group by");
   press(trigger("group"));
   step("Group by opening closes the other menu");
-  press(trigger("group"));
+  rebind();
+  step("the bar bound again with Group by drawn open keeps it open and listening");
+  press(treeRow);
+  step("then a press outside the bar closes it");
+  open("group");
+  rebind();
+  rebind();
+  key(doc, "Escape");
+  step("and, bound again twice, Escape closes it and gives focus back to its trigger");
   open("group");
   unbind();
   step("unbinding the bar with Group by drawn open lets the document go", { unbound: true });
@@ -385,37 +445,120 @@ async function earlySession() {
   const early = { asked: [], land: null };
   const mb = loadShell({ early });
   const doc = new FakeDocument();
-  const trigger = element(doc, "button", { "data-name": "trigger" });
-  const panel = element(doc, "div", { class: "menu" });
-  const outside = element(doc, "button", { "data-name": "a button outside" });
-  doc.body.append(trigger, panel, outside);
   const closes = [];
-  const dismissal = mb.menus.dismissible({
-    name: "early-menu",
-    trigger,
-    inside: (node) => panel.contains(node),
-    isOpen: () => !panel.hidden,
-    close(how) {
-      panel.hidden = true;
-      closes.push(how);
-    },
-  });
-  dismissal.opened();
-  const asked = {
-    step: "a menu opens before the shell's tools: it asks for them",
-    asked: [...early.asked],
-    listening: listening(doc),
-  };
+  /** A menu whose panel shows while it is open, and goes with its view. */
+  function makeMenu(name) {
+    const trigger = element(doc, "button", { "data-name": `${name} trigger` });
+    const panel = element(doc, "div", { class: "menu", hidden: true });
+    const view = element(doc, "div", {}, trigger, panel);
+    doc.body.append(view);
+    const dismissal = mb.menus.dismissible({
+      name: `${name}-menu`,
+      trigger,
+      inside: (node) => panel.contains(node),
+      isOpen: () => panel.isConnected && !panel.hidden,
+      close(how) {
+        panel.hidden = true;
+        closes.push(`${name}: ${how}`);
+      },
+    });
+    const open = () => {
+      panel.hidden = false;
+      dismissal.opened();
+    };
+    return { name, trigger, panel, view, dismissal, open };
+  }
+  const a = makeMenu("A");
+  const b = makeMenu("B");
+  const c = makeMenu("C");
+  const outside = element(doc, "button", { "data-name": "a button outside" });
+  doc.body.append(outside);
+  const openNow = () =>
+    [a, b, c].filter((menu) => menu.view.parentNode && !menu.panel.hidden).map((menu) => menu.name);
+  const steps = [];
+  const step = (label, extra = {}) =>
+    steps.push({
+      step: label,
+      ...extra,
+      loaded: early.loaded,
+      open: openNow(),
+      closed: closes.splice(0),
+      listening: listening(doc),
+    });
+
+  // Nothing closes A as B and C open, while the tools are on their way; whether the two
+  // stay out of it once they land shows in A.
+  a.open();
+  step("A opens before the shell's tools: it asks for them", { asked: early.asked.splice(0) });
+  b.open();
+  b.panel.hidden = true;
+  b.dismissal.closed();
+  step("B opens and closes before them");
+  c.open();
+  c.dismissal.dispose();
+  c.view.remove();
+  step("C opens and its view goes before them");
   early.land();
   await new Promise((resolve) => setImmediate(resolve));
-  const landed = { step: "they land, and the open menu listens", listening: listening(doc) };
+  step("they land: A listens, and B and C, closed or gone meanwhile, stay out of it");
   press(outside);
-  const closed = {
-    step: "a press outside closes it",
-    closed: closes.splice(0),
-    listening: listening(doc),
+  step("a press outside closes A");
+  return steps.concat(await earlyBarSession());
+}
+
+/** A bar drawn with Group by open, and bound again, before the shell's tools land. */
+async function earlyBarSession() {
+  const early = { asked: [], land: null };
+  const mb = loadShell({ early });
+  const fc = mb.filterControls;
+  const doc = new FakeDocument();
+  const bar = element(doc, "div", { id: "nav-filter-bar" });
+  const outside = element(doc, "button", { "data-name": "a tree row" });
+  doc.body.append(bar, outside);
+  let open = "group";
+  const render = () => {
+    bar.innerHTML = fc.menuGroupHtml({
+      key: "group",
+      select: "one",
+      label: "Group by",
+      options: [{ value: "age", label: "By age" }],
+      value: "none",
+      anyLabel: "No grouping",
+      anyValue: "none",
+      open: open === "group",
+      menuId: "filter-group-menu",
+    });
   };
-  return [asked, landed, closed];
+  const handlers = {
+    onMenuToggle(name, now) {
+      open = now ? name : null;
+      render();
+    },
+  };
+  render();
+  let unbind = fc.bind(bar, handlers);
+  unbind();
+  render();
+  unbind = fc.bind(bar, handlers);
+  const steps = [];
+  const step = (label, extra = {}) =>
+    steps.push({
+      step: label,
+      ...extra,
+      loaded: early.loaded,
+      open: open ?? "none",
+      listening: listening(doc),
+    });
+  step("a bar drawn with Group by open, bound and bound again before the shell's tools", {
+    asked: early.asked.splice(0),
+  });
+  early.land();
+  await new Promise((resolve) => setImmediate(resolve));
+  step("they land: only its last binding listens, and Group by stays open");
+  press(outside);
+  step("a press outside the bar closes Group by");
+  unbind();
+  return steps;
 }
 
 async function main() {
@@ -426,6 +569,10 @@ async function main() {
   }
   for (const step of told.filesBar.filter((each) => !each.unbound)) {
     assert.equal(step.listening > 0, step.open !== "none" || "otherMenu" in step, step.step);
+  }
+  for (const step of told.early) {
+    const open = Array.isArray(step.open) ? step.open.length > 0 : step.open !== "none";
+    assert.equal(step.listening > 0, open && step.loaded, step.step);
   }
   process.stdout.write(`${JSON.stringify(told, null, 2)}\n`);
 }
