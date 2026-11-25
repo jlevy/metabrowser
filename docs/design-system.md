@@ -1773,8 +1773,9 @@ markup holds only its words, so every fold, current or new, draws the pair witho
 asking for it, and none can carry a chevron.
 The glyph is the chevron’s size, `--toggle-chevron-size`, and weight, in the place a
 chevron would take, muted at rest and in `--text` under the pointer or the focus ring,
-in both themes. It swaps at once when the fold opens; only the group the fold opens
-travels ([Disclosure Motion](#disclosure-motion)).
+in both themes, and in `CanvasText` in forced colors, which would otherwise mask it out
+on the bar’s `Canvas`. It swaps at once when the fold opens; only the group the fold
+opens travels ([Disclosure Motion](#disclosure-motion)).
 `test_a_fold_expander_draws_the_pair_not_the_chevron` in
 `tests/test_design_vocabulary.py` holds the primitive, its two states, and that no fold
 builds or turns a chevron;
@@ -1791,7 +1792,7 @@ them. A new kind of fold in a diff calls the factory rather than drawing a bar o
 own. `tests/test_diff_markdown_fold_chrome.py` holds in Chrome that the two bars compute
 alike at rest and under the pointer, and that a fold bar and a native summary’s fold
 draw the pair in each state and theme, muted at rest and in the text’s ink under the
-pointer and the focus ring.
+pointer and the focus ring, and in `CanvasText` with forced colors emulated.
 
 ### Disclosure Motion
 

@@ -16,6 +16,8 @@ the keyboard table to the keys the app binds:
   its definition's comment names;
 - a fold expander draws KPress's expand/contract pair, the drawings of KPress's own sprite,
   and never the registry's chevron;
+- every rule that inks a masked glyph is drawn again in CanvasText in forced colors, which
+  force the mask's background to Canvas;
 - the type registry's shapes are cataloged and named for the categories and formats that
   take them, and its schema permits exactly those shapes;
 - each token a row's ink or size names is declared by a shipped stylesheet;
@@ -107,6 +109,13 @@ _FOLD_GLYPHS = {
     ".fold-expander::before": "chevrons-up-down",
     '.fold-expander[aria-expanded="true"]::before': "chevrons-down-up",
 }
+# A stylesheet's forced-colors block; a rule whose block holds no other block; the state a
+# selector is in (a pseudo-class, with its arguments, or an attribute), for the element it
+# names; and a declaration of a background's color, a mask's ink.
+_FORCED_COLORS = re.compile(r"@media\s*\(\s*forced-colors\s*:\s*active\s*\)\s*\{")
+_RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+_SELECTOR_STATE = re.compile(r"(?<!:):[a-z-]+(?:\([^()]*\))?|\[[^\]]*\]")
+_BACKGROUND_COLOR = re.compile(r"(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)")
 
 
 class Row(NamedTuple):
@@ -291,6 +300,64 @@ def _mask_glyphs() -> dict[tuple[str, str], str]:
     return found
 
 
+def _block_end(css: str, start: int) -> int:
+    """Where the block whose body starts at *start* closes."""
+    depth = 1
+    at = start
+    while depth:
+        if css[at] == "{":
+            depth += 1
+        elif css[at] == "}":
+            depth -= 1
+        at += 1
+    return at
+
+
+def _selector_list(text: str) -> tuple[str, ...]:
+    """A rule's selectors, split at the commas outside a pseudo-class's arguments."""
+    parts = [""]
+    depth = 0
+    for char in text:
+        depth += {"(": 1, ")": -1}.get(char, 0)
+        if char == "," and depth == 0:
+            parts.append("")
+        else:
+            parts[-1] += char
+    return tuple(" ".join(part.split()) for part in parts)
+
+
+def _forced_colors_inks(css: str) -> tuple[set[str], set[str]]:
+    """A stylesheet's selectors that ink a masked glyph, and those forced colors ink CanvasText.
+
+    A selector inks a masked glyph when it sets a background's color on the element and
+    pseudo-element a mask is drawn on, in any state: forced colors replace that color with
+    Canvas, the ground the glyph sits on.
+    """
+
+    def plain(selector: str) -> str:
+        return _SELECTOR_STATE.sub("", selector)
+
+    forced_blocks = [
+        (match.end(), _block_end(css, match.end())) for match in _FORCED_COLORS.finditer(css)
+    ]
+    masked: set[str] = set()
+    inking: list[tuple[str, ...]] = []
+    forced: set[str] = set()
+    for rule in _RULE.finditer(css):
+        selectors = _selector_list(rule[1])
+        ink = _BACKGROUND_COLOR.search(rule[2])
+        if any(start <= rule.start(2) < end for start, end in forced_blocks):
+            if ink is not None and ink[1].strip() == "CanvasText":
+                forced.update(selectors)
+            continue
+        if _SVG_DATA_URI.search(rule[2]):
+            masked.update(plain(selector) for selector in selectors)
+        if ink is not None:
+            inking.append(selectors)
+    inks = {selector for group in inking for selector in group if plain(selector) in masked}
+    return inks, forced
+
+
 def _typed_glyphs() -> dict[str, set[str]]:
     """Each glyph character a browser source types, as itself or as an escape, with its files.
 
@@ -451,7 +518,9 @@ def test_a_fold_expander_draws_kpress_expand_contract_pair() -> None:
     """A fold's glyphs are KPress's table-of-contents pair, not the chevron a row turns.
 
     The shell draws them, so a fold outside a rendered document has them too, and they
-    are KPress's drawings under KPress's ids, so the two products' pair is one mark.
+    are KPress's paths under KPress's ids, so the two products' pair is one mark. The
+    weight is the row chevron's, not the sprite's, and this compares paths alone
+    (docs/design-system-icons.md, "Where Icons Come From").
     """
 
     sprite = kpress_adapter.get_kpress_static_asset("icons/icons.svg").content.decode("utf-8")
@@ -466,6 +535,26 @@ def test_a_fold_expander_draws_kpress_expand_contract_pair() -> None:
     toggle = next(row for row in _rows("Registry") if row.icon == "toggle")
     assert "Never a fold expander’s" in toggle.meaning
     assert "fold expanders" not in toggle.meaning
+
+
+def test_every_masked_glyph_keeps_its_ink_in_forced_colors() -> None:
+    """A masked glyph is drawn in its background's color, which forced colors make Canvas.
+
+    That is the ground the glyph sits on, so it would vanish; each selector that inks one
+    is drawn again in CanvasText, a system color the mode does not replace
+    (docs/design-system-icons.md, "Where Icons Come From").
+    """
+
+    shell = (STATIC / "styles.css").read_text(encoding="utf-8")
+    shell_inks, _ = _forced_colors_inks(_BLOCK_COMMENT.sub("", shell))
+    # The check reaches a glyph's states, not only the rule that masks it.
+    assert ".fold-expander:is(:hover, :focus-visible)::before" in shell_inks
+    missing: list[str] = []
+    for path in _stylesheets():
+        css = _BLOCK_COMMENT.sub("", path.read_text(encoding="utf-8"))
+        inks, forced = _forced_colors_inks(css)
+        missing += [f"{_relative(path)}: {selector}" for selector in sorted(inks - forced)]
+    assert missing == [], "a masked glyph is Canvas on Canvas in forced colors"
 
 
 def test_every_typed_glyph_is_a_text_row_with_the_files_that_type_it() -> None:

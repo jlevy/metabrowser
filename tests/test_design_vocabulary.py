@@ -2075,11 +2075,15 @@ def test_a_fold_expander_draws_the_pair_not_the_chevron() -> None:
         '.fold-expander[aria-expanded="true"]::before',
         "details[open] > summary.fold-expander::before",
     ]
+    # The text's ink under the pointer and the ring, and CanvasText in forced colors, which
+    # force the glyph's background to Canvas (tests/test_icon_catalog.py holds every mask).
     assert {
         declarations["background-color"]
         for selector, declarations in rules
         if selector == ".fold-expander:is(:hover, :focus-visible)::before"
-    } == {"var(--text)"}, "the glyph takes the text's ink under the pointer and the ring"
+    } == {"var(--text)", "CanvasText"}, (
+        "the glyph takes the text's ink under the pointer and the ring"
+    )
     # Nothing styles a chevron in a fold or turns anything there, and the control itself
     # does not move: only the group it opens travels.
     for sheet in _stylesheets():
@@ -2110,8 +2114,12 @@ def test_a_fold_expander_draws_the_pair_not_the_chevron() -> None:
             assert listed_builder != builder or "summary" in glyph_text, (
                 f"{key} puts {glyph_text} in a fold expander, which draws its own glyph"
             )
+    # The factory's body alone, to its top-level closing brace, so a glyph helper declared
+    # after it in the file is not read as the factory's.
     fold = (plugins / "diff/diff-fold.js").read_text(encoding="utf-8")
-    assert "shellIcon(" not in fold.split("export function foldExpander", 1)[1]
+    factory = fold.split("export function foldExpander", 1)[1].split("\n}\n", 1)[0]
+    assert "return { control, group" in factory, "the slice is not foldExpander's body"
+    assert "shellIcon(" not in factory, "foldExpander draws a glyph; .fold-expander draws it"
     page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
     assert re.search(
         r'h\("summary", \{ class: "fold-expander disclosure-toggle" \}, \[\s*'

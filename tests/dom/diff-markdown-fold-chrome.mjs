@@ -1,8 +1,8 @@
 // A rendered Markdown diff's fold of unchanged blocks, laid out by headless Chrome: the
 // production `createMarkdownViews` (builtin_plugins/diff/diff-markdown.js) mounts the
 // route's Concise answer into the article a pull request's Changes mounts, under the
-// shell's, the diff plugin's, and KPress's stylesheets, beside a code file's fold bar as
-// diff-view.js builds it (`foldExpander` in diff-fold.js).
+// shell's, the diff and GitHub plugins', and KPress's stylesheets, beside a code file's
+// fold bar as diff-view.js builds it (`foldExpander` in diff-fold.js).
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
 //     KPRESS_STATIC=/dir/with/kpress/css/and/fonts FOLD_INPUT=/path/to/input.json \
@@ -12,7 +12,8 @@
 // docMaxChars}), copies KPress's stylesheets and faces out of the installed package, owns
 // the profile, and runs this in a process group of its own. FOLD_SHOTS, when set,
 // receives a screenshot of the comparison closed and open, and of a code fold bar and a
-// native summary's fold, closed, under the pointer, and open, in each theme.
+// review comment's fold of earlier lines, closed, under the pointer, and open, in each
+// theme and with forced colors.
 //
 // Every fold of a diff draws as one bar: a rendered Markdown file's run of unchanged
 // blocks is the bar a code file's long run of changed lines is, the same element, classes,
@@ -30,7 +31,10 @@
 // chevrons-up-down while closed and chevrons-down-up while open, read from a button's
 // `aria-expanded` and from a native summary's `details[open]`, at the chevron's size,
 // unturned, muted at rest and in the text's ink under the pointer or the focus ring, in
-// the light and the dark theme.
+// the light and the dark theme. The summary is a review comment's fold of earlier lines,
+// in pull-page.js's markup under the GitHub plugin's stylesheet. Forced colors force every
+// author background to Canvas, the ground a masked glyph sits on, so there each fold's
+// glyph, and a document's own summary's chevron, is drawn in CanvasText.
 //
 // Last, a comparison of a quote holding inline code and of a code block (FOLD_INPUT's
 // `quoted` blocks) is drawn beside a document holding the same blocks: in the light and
@@ -45,6 +49,7 @@ import { launchChrome } from "./chrome-session.mjs";
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
 const DIFF = path.join(root, "src/metabrowser/builtin_plugins/diff");
+const GITHUB = path.join(root, "src/metabrowser/builtin_plugins/github");
 const KPRESS = path.resolve(/** @type {string} */ (process.env.KPRESS_STATIC));
 const INPUT = JSON.parse(fs.readFileSync(/** @type {string} */ (process.env.FOLD_INPUT), "utf8"));
 const SHOTS = process.env.FOLD_SHOTS;
@@ -61,7 +66,8 @@ const check = (label, ok, detail = "") => {
 };
 const near = (a, b) => Math.abs(a - b) <= TOLERANCE_PX;
 
-// KPress's tokens and the shell's sheet load with the shell, then the diff plugin's.
+// KPress's tokens and the shell's sheet load with the shell, then the diff and GitHub
+// plugins', as a pull request's page loads them.
 // KPress's document stylesheets load last, the order in which the diff's rules must
 // still win; in the app they may also load before the diff plugin's. The chooser is the
 // shell's filter controls and the bars' chevron the shell's icon, both reached through
@@ -70,6 +76,7 @@ const PAGE = `<!doctype html><html style="--doc-max-chars: ${INPUT.docMaxChars}"
 <link rel="stylesheet" href="/kpress/css/style-tokens.css">
 <link rel="stylesheet" href="/static/styles.css">
 <link rel="stylesheet" href="/diff/styles.css">
+<link rel="stylesheet" href="/github/styles.css">
 ${INPUT.sheets.map((sheet) => `<link rel="stylesheet" href="/kpress/${sheet}">`).join("\n")}
 <script src="/static/icons.js"></script>
 <script>window.metabrowser = { icons: window.MetabrowserIcons };</script>
@@ -96,6 +103,8 @@ function serve() {
       file = path.join(STATIC, url.pathname.slice(8));
     } else if (url.pathname.startsWith("/diff/")) {
       file = path.join(DIFF, url.pathname.slice(6));
+    } else if (url.pathname.startsWith("/github/")) {
+      file = path.join(GITHUB, url.pathname.slice(8));
     } else if (url.pathname.startsWith("/kpress/")) {
       file = path.join(KPRESS, url.pathname.slice(8));
     }
@@ -370,32 +379,33 @@ const MARKDOWN_BAR = "article.diff-markdown .fold-expander";
 // The fold's two glyphs, KPress's table-of-contents pair, each known by a path only it has.
 const CLOSED_GLYPH = { name: "chevrons-up-down", path: "m7 15 5 5 5-5" };
 const OPEN_GLYPH = { name: "chevrons-down-up", path: "m7 20 5-5 5 5" };
-// In the page: a native summary's fold, built as a review comment's earlier lines are
-// (pull-page.js), after the code file, whose `details[open]` alone says its state.
+// In the page: a review comment's card holding a hunk whose earlier lines fold behind a
+// native summary, in the markup pull-page.js builds and the classes the GitHub plugin's
+// stylesheet styles, after the diff; its `details[open]` alone says its state.
 const MOUNT_SUMMARY = `() => {
-  const label = (className, text) => {
-    const span = document.createElement("span");
-    span.className = className;
-    span.textContent = text;
-    return span;
+  const el = (tag, className, children = []) => {
+    const node = document.createElement(tag);
+    node.className = className;
+    node.append(...children);
+    return node;
   };
-  const summary = document.createElement("summary");
-  summary.className = "fold-expander disclosure-toggle";
-  summary.append(label("summary-closed", "3 earlier lines"), label("summary-open", "Hide 3 lines"));
-  const details = document.createElement("details");
-  details.className = "summary-fold";
-  const lines = document.createElement("pre");
-  lines.textContent = "The three lines above the comment.";
-  details.append(summary, lines);
-  const style = document.createElement("style");
-  style.textContent = ".summary-fold[open] .summary-closed, .summary-fold:not([open]) .summary-open { display: none; }";
-  document.head.append(style);
-  document.querySelector(".diff-file-code").after(details);
+  const line = (text) => el("div", "github-pull-hunk-line", [text]);
+  const details = el("details", "github-pull-hunk-earlier", [
+    el("summary", "fold-expander disclosure-toggle", [
+      el("span", "github-pull-fold-closed", ["3 earlier lines"]),
+      el("span", "github-pull-fold-open", ["Hide 3 lines"]),
+    ]),
+    el("div", "github-pull-hunk", [line("The three lines above the comment.")]),
+  ]);
+  const box = el("div", "github-pull-hunk-box", [details, el("div", "github-pull-hunk", [line("+ shown")])]);
+  const card = el("div", "page-card github-pull-card", [box]);
+  document.querySelector(".metabrowser-diff-host").after(el("div", "github-pull", [card]));
   return true;
 }`;
-const SUMMARY_FOLD = ".summary-fold > summary";
-// In the page: the glyph's ink and the tokens it is held to, where the fold is, and whether
-// the fold is under the pointer or the focus ring.
+const SUMMARY_DETAILS = ".github-pull-hunk-earlier";
+const SUMMARY_FOLD = `${SUMMARY_DETAILS} > summary`;
+// In the page: the glyph's ink and the tokens it is held to, where the fold is, whether
+// the fold is under the pointer or the focus ring, and the words it shows.
 const INK = (/** @type {string} */ selector) => `(() => {
   const node = document.querySelector(${JSON.stringify(selector)});
   const token = (name) => {
@@ -413,9 +423,38 @@ const INK = (/** @type {string} */ selector) => `(() => {
     text: token("--text"),
     hovered: node.matches(":hover"),
     focused: node.matches(":focus-visible"),
+    shown: [...node.children]
+      .filter((child) => getComputedStyle(child).display !== "none")
+      .map((child) => child.textContent),
   };
 })()`;
 const CODE_BAR = ".diff-file-code .fold-expander";
+// A document's own summary, whose trailing chevron the shell masks too.
+const OWN_SUMMARY = ".metabrowser-kpress-host .kpress-doc details > summary";
+// In the page, with forced colors emulated: the ink of the glyph the control *selector*
+// masks on its *pseudo*-element, beside the mode's Canvas and CanvasText resolved there.
+const FORCED = (/** @type {string} */ selector, pseudo = "::before") => `(() => {
+  const node = document.querySelector(${JSON.stringify(selector)});
+  const system = (name) => {
+    const probe = document.createElement("span");
+    probe.style.color = name;
+    node.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  };
+  const glyph = getComputedStyle(node, ${JSON.stringify(pseudo)});
+  return {
+    forced: matchMedia("(forced-colors: active)").matches,
+    ink: glyph.backgroundColor,
+    mask: glyph.maskImage,
+    canvas: system("Canvas"),
+    canvasText: system("CanvasText"),
+    hovered: node.matches(":hover"),
+  };
+})()`;
+// The chevron a document's own summary trails, known by its path.
+const CHEVRON_PATH = "m9 18 6-6-6-6";
 // The controls whose keyboard ring the session reads, both bars and a document's own
 // summary, and how many presses of Tab it allows to reach them all from the page's start:
 // a handful do on this small page, so the bound only stops a page that lost one.
@@ -566,6 +605,9 @@ const centre = (selector) =>
     const rect = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   })()`);
+/** @param {boolean} open Opens, or closes, the code fold and the review comment's fold. */
+const OPEN_FOLDS = (open) =>
+  `(document.querySelector(${JSON.stringify(CODE_BAR)}).click(), document.querySelector(${JSON.stringify(SUMMARY_DETAILS)}).open = ${open}, true)`;
 // A data URI as the page computes it, with its escapes undone, to find a path in.
 const decoded = (/** @type {string} */ value) => {
   try {
@@ -661,7 +703,7 @@ try {
   // rest, under the pointer, and open, with the pointer off the page's folds between.
   await chrome.evaluate(`(${MOUNT_SUMMARY})()`);
   const away = { x: 1, y: 1 };
-  const pictured = [".diff-file-code", ".summary-fold"];
+  const pictured = [".diff-file-code", SUMMARY_DETAILS];
   /** @type {Record<string, any>} */
   const inks = {};
   for (const theme of /** @type {const} */ (["light", "dark"])) {
@@ -678,19 +720,45 @@ try {
     await point(await centre(SUMMARY_FOLD));
     const hoveredSummary = await chrome.evaluate(INK(SUMMARY_FOLD));
     await point(away);
-    await chrome.evaluate(
-      `(document.querySelector(${JSON.stringify(CODE_BAR)}).click(), document.querySelector(".summary-fold").open = true, true)`,
-    );
+    await chrome.evaluate(OPEN_FOLDS(true));
     const open = {
       code: await chrome.evaluate(INK(CODE_BAR)),
       summary: await chrome.evaluate(INK(SUMMARY_FOLD)),
     };
     await shot(`${theme}-open`, pictured, 2);
-    await chrome.evaluate(
-      `(document.querySelector(${JSON.stringify(CODE_BAR)}).click(), document.querySelector(".summary-fold").open = false, true)`,
-    );
+    await chrome.evaluate(OPEN_FOLDS(false));
     inks[theme] = { rest, hovered: { code: hoveredCode, summary: hoveredSummary }, open };
   }
+  // Forced colors, at rest, under the pointer, and open, then the page's own colors again.
+  await chrome.send("Emulation.setEmulatedMedia", {
+    features: [{ name: "forced-colors", value: "active" }],
+  });
+  await point(away);
+  const forcedRest = {
+    code: await chrome.evaluate(FORCED(CODE_BAR)),
+    summary: await chrome.evaluate(FORCED(SUMMARY_FOLD)),
+    own: await chrome.evaluate(FORCED(OWN_SUMMARY, "::after")),
+  };
+  await shot("forced-closed", pictured, 2);
+  await point(await centre(CODE_BAR));
+  const forcedHoveredCode = await chrome.evaluate(FORCED(CODE_BAR));
+  await point(await centre(SUMMARY_FOLD));
+  const forcedHoveredSummary = await chrome.evaluate(FORCED(SUMMARY_FOLD));
+  await shot("forced-summary-hover", pictured, 2);
+  await point(away);
+  await chrome.evaluate(OPEN_FOLDS(true));
+  const forcedOpen = {
+    code: await chrome.evaluate(FORCED(CODE_BAR)),
+    summary: await chrome.evaluate(FORCED(SUMMARY_FOLD)),
+  };
+  await shot("forced-open", pictured, 2);
+  await chrome.evaluate(OPEN_FOLDS(false));
+  await chrome.send("Emulation.setEmulatedMedia", { features: [] });
+  const forced = {
+    rest: forcedRest,
+    hovered: { code: forcedHoveredCode, summary: forcedHoveredSummary },
+    open: forcedOpen,
+  };
   const quotedMounted = await chrome.evaluate(`(${MOUNT_QUOTED})(${JSON.stringify(INPUT.quoted)})`);
   await chrome.evaluate("document.fonts.ready.then(() => true)");
   /** @type {Record<string, any>} */
@@ -700,7 +768,7 @@ try {
     quoted[theme] = await chrome.evaluate(QUOTED);
   }
   process.stderr.write(
-    `${JSON.stringify({ closed, opened, reclosed, resting, hovered, codeResting, codeHovered, rings, inks, quoted }, rounded)}\n`,
+    `${JSON.stringify({ closed, opened, reclosed, resting, hovered, codeResting, codeHovered, rings, inks, forced, quoted }, rounded)}\n`,
   );
 
   // The fold draws the shell's one ring (docs/design-system.md, "Focus Ring"). KPress's
@@ -817,10 +885,22 @@ try {
 
   // The glyph in each theme: muted at rest, the text's ink under the pointer, and the pair's
   // other half once open, on a button's `aria-expanded` and a native summary's `open` alike.
+  // Each shows one label, its closed words and then its open ones: the summary's from the
+  // GitHub plugin's sheet, which hides the other state's.
+  const WORDS = {
+    code: ["40 more changed lines", "Hide 40 lines"],
+    summary: ["3 earlier lines", "Hide 3 lines"],
+  };
   for (const theme of /** @type {const} */ (["light", "dark"])) {
     const { rest, hovered: under, open } = inks[theme];
     for (const form of /** @type {const} */ (["code", "summary"])) {
-      const name = form === "code" ? "a code fold bar" : "a native summary's fold";
+      const name = form === "code" ? "a code fold bar" : "a review comment's fold";
+      check(
+        `${theme}, ${name} shows its closed words, then its open ones`,
+        JSON.stringify([rest[form].shown, open[form].shown]) ===
+          JSON.stringify(WORDS[form].map((words) => [words])),
+        JSON.stringify([rest[form].shown, open[form].shown]),
+      );
       check(
         `${theme}, ${name} at rest draws ${CLOSED_GLYPH.name} in the muted ink`,
         !rest[form].hovered &&
@@ -840,6 +920,28 @@ try {
           open[form].ink === open[form].muted &&
           decoded(open[form].mask).includes(OPEN_GLYPH.path),
         JSON.stringify(open[form]),
+      );
+    }
+  }
+  // Forced colors: each fold's glyph in CanvasText, never the Canvas its background is
+  // forced to, closed, under the pointer, and open, and a document's own chevron alike.
+  for (const [state, read] of Object.entries(forced)) {
+    for (const [form, value] of Object.entries(read)) {
+      const name = {
+        code: "a code fold bar",
+        summary: "a review comment's fold",
+        own: "a document's own summary",
+      }[form];
+      const glyph =
+        form === "own" ? CHEVRON_PATH : state === "open" ? OPEN_GLYPH.path : CLOSED_GLYPH.path;
+      check(
+        `forced colors, ${name} ${state} draws its glyph in CanvasText, off the Canvas`,
+        value.forced &&
+          value.hovered === (state === "hovered") &&
+          value.ink === value.canvasText &&
+          value.ink !== value.canvas &&
+          decoded(value.mask).includes(glyph),
+        JSON.stringify(value),
       );
     }
   }

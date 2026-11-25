@@ -33,6 +33,10 @@ Drawn glyphs are [Lucide](https://lucide.dev) v1.17.0 (ISC) unless a row says ot
 and each definition carries a comment naming its Lucide id, which the Icon column
 repeats. Every one is inline SVG that strokes or fills `currentColor`, so the element
 around it sets its ink.
+A CSS mask is drawn in its rule’s background color instead, which forced colors replace
+with `Canvas`, the ground the glyph sits on, so each stylesheet draws its masks in
+`CanvasText` there, a system color the mode keeps, and `tests/test_icon_catalog.py`
+checks every rule that inks one.
 Rendered Markdown draws its own chrome from KPress’s icon set, the same Lucide release
 ([KPress icons](https://github.com/jlevy/kpress/blob/v0.3.0/docs/kpress-icons.md)),
 Mermaid diagrams’ toolbar and dialog included: in an untrusted document, whose allowlist
@@ -41,6 +45,9 @@ One pair in the chrome is KPress’s own: a fold expander draws KPress’s table
 expand-all pair, `chevrons-up-down` and `chevrons-down-up`, from the shell’s stylesheet,
 so that a fold outside a rendered document has it too, and `tests/test_icon_catalog.py`
 holds the two drawings to KPress’s sprite.
+It strokes them 2.5 wide, where KPress’s sprite strokes 2: the fold’s glyph stands where
+a row’s chevron would, so it takes `.toggle-chevron`’s weight, and the check compares
+paths, not weight.
 
 A glyph enters the registry only when a folder’s first paint can draw it: every page
 fetches the registry before it paints, so each glyph there is paid for by every folder

@@ -2028,6 +2028,14 @@ body {
 .metabrowser-kpress-host .kpress details[open] > summary::after {
   transform: rotate(90deg);
 }
+/* Forced colors force every author background to Canvas, which would mask the chevron
+   out of sight, so it is drawn in the mode's text ink; a system color is not forced. */
+@media (forced-colors: active) {
+  .section-disclosure-trigger::after,
+  .metabrowser-kpress-host .kpress details > summary::after {
+    background-color: CanvasText;
+  }
+}
 /* ── Disclosure toggles — a toggle never selects text ────────────
    Every control that shows or hides content carries .disclosure-toggle: a tree row
    that owns a child group, a section or fold trigger, a diff file bar, an expandable
@@ -2131,6 +2139,14 @@ details[open] > summary.fold-expander::before {
 .fold-expander:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
+}
+/* The glyph is a mask over its background, which forced colors force to Canvas, the
+   bar's own ground, so there it is drawn in the mode's text ink, which is not forced. */
+@media (forced-colors: active) {
+  .fold-expander::before,
+  .fold-expander:is(:hover, :focus-visible)::before {
+    background-color: CanvasText;
+  }
 }
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
@@ -5824,6 +5840,12 @@ a.tab-btn {
     center / contain no-repeat;
   vertical-align: -0.2em;
   width: 1.1em;
+}
+/* A mask over a background forced colors force to Canvas, as the fold's is (above). */
+@media (forced-colors: active) {
+  .mb-image-fallback::before {
+    background-color: CanvasText;
+  }
 }
 .kpress-prose a:hover > .mb-image-fallback {
   background: var(--hover-bg);
