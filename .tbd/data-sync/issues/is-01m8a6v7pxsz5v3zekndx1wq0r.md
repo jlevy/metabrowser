@@ -3,9 +3,9 @@ type: is
 id: is-01m8a6v7pxsz5v3zekndx1wq0r
 title: "Address PR #848 review B: skill reader, stack field checks, stack guide text"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
 delegate: claude-code@spud10.local
 labels: []
@@ -23,7 +23,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-25T20:37:38.139Z
-updated_at: 2026-11-25T20:37:58.299Z
+updated_at: 2026-11-25T21:01:12.871Z
 started_at: 2026-11-25T20:37:58.298Z
+closed_at: 2026-11-25T21:01:12.870Z
+close_reason: "review B addressed on PR #848 at 6efd8e8e1; dispositions posted"
+resolution: null
+duplicate_of: null
 ---
 Review B (round 2) on PR #848 at 5ad6a7e5d: B1-B8.
