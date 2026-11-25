@@ -14,7 +14,7 @@ external_key: OS-630
 external_url: https://linear.app/finterm-ai/issue/OS-630/security-hardening-close-the-threat-models-open-findings
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-25T02:45:27.043Z
+remote_updated_at: 2026-11-25T02:50:45.195Z
 state: linked
-synced_at: 2026-11-25T02:45:27.258Z
+synced_at: 2026-11-25T02:50:45.445Z
 type: lk
