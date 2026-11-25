@@ -572,7 +572,6 @@ try {
       JSON.stringify(rings[part] ?? null),
     );
   }
-  );
 
   // One bar for every fold: the Markdown file's computes as the code file's does.
   for (const [state, measured] of [

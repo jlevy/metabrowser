@@ -887,7 +887,9 @@ async function headLinkChecks(mountDiffView, byName) {
       text: `Line ${index}.`,
     }));
     book.manifest.files[0].additions = lines.length;
-    book.patches.f1.hunks = [{ lines, new_count: lines.length, new_start: 1, old_count: 0, old_start: 0 }];
+    book.patches.f1.hunks = [
+      { lines, new_count: lines.length, new_start: 1, old_count: 0, old_start: 0 },
+    ];
     const turns = async (count = 40) => {
       for (let turn = 0; turn < count; turn += 1) {
         await new Promise((resolve) => setTimeout(resolve, 0));
