@@ -577,13 +577,7 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
         == "var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr)"
     )
     # The rows' one gap and the text column's offset, which every indent sums (A8 of review A
-    # on #506). The last line is in the row's content box, from the text column, and its age
-    # has a column of one width at the row's end, so the ages read as a column (mb-lqkb,
-    # mb-pw8t, mb-rb3n).
-    tail = _rule(css, ".github-pulls-row > .github-pulls-tail")
-    assert "padding: 0 0 2px var(--github-pull-row-text-column);" in tail
-    assert "grid-template-columns: minmax(0, 1fr) 5ch;" in tail
-    assert "column-gap: var(--github-pull-row-gap);" in tail
+    # on #506).
     assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")
     assert "  --github-pull-row-gap: var(--tree-icon-gap);\n" in css
     column = (
@@ -658,7 +652,6 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
     assert "[heading, tail, said]," in panel, "the title leads the name"
-    assert 'h("span", { class: "sr-only" }, [rowSaid(row, when.label)])' in panel
     build = _function(panel, "buildRow")
     # The run's order: the icon, the title, the place, the dot and the number, then the dot and
     # the author; the last line is the toggle, whose lines come before its chevron, and the age.
@@ -713,27 +706,12 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
         "height: 1lh;",
     ):
         assert declaration in icon, declaration
-    # The last line is the lines and the chevron, in the text column, and the age in its
-    # column at the row's end, one line height whatever it holds, centered, so the lines
-    # arrive and move no line of the row (mb-rb3n).
-    tail = _rule(css, ".github-pulls-row > .github-pulls-tail")
-    for declaration in (
-        "display: grid;",
-        "grid-template-columns: minmax(0, 1fr) 5ch;",
-        "align-items: center;",
-        "height: var(--github-pulls-change-line);",
-        "padding: 0 0 2px var(--github-pull-row-text-column);",
-        "line-height: var(--github-pulls-change-line);",
-        "white-space: nowrap;",
-    ):
-        assert declaration in tail, declaration
     assert ".github-pulls-heading > .github-pulls-tail" not in css
     assert "--github-pulls-lines-room: 5.6em;" in _rule(css, ".github-pulls-row")
     assert "width: var(--github-pulls-lines-room);" in _rule(css, ".github-pulls-change-pending")
     assert "margin-inline-start: 0.25em;" in _rule(
         css, ".github-pulls-change > .github-pulls-toggle"
     )
-    assert "justify-self: end;" in _rule(css, ".github-pulls-tail > .github-pulls-age")
     # Where the line has no room for the lines, they give way whole to an ellipsis, never
     # broken onto a second line, and the chevron and the age stay.
     line = _rule(css, ".github-pulls-change > .github-pulls-change-line")

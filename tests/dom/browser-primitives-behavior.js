@@ -117,6 +117,51 @@ for (const name of [
     "styles share freshness",
     age(now / 1000 - 7200).className === age(now / 1000 - 7200, { style: "relative" }).className,
   );
+  // The one age builder: whatever a call site asks, the drawn age carries the primitive's
+  // own class beside the call site's, and telling it again swaps that class alone.
+  const { ageLabel, ageLabelHtml, retellAge } = sandbox.MetabrowserFormatters;
+  const element = () => {
+    const attributes = new Map();
+    return {
+      textContent: "",
+      getAttribute: (name) => attributes.get(name) ?? null,
+      setAttribute: (name, value) => attributes.set(name, String(value)),
+    };
+  };
+  const doc = { createElement: element };
+  const hourAgo = now / 1000 - 7200;
+  const drawn = ageLabel(doc, hourAgo, { className: "row-age", tip: "exact" });
+  check(
+    "a drawn age carries the primitive's class after the call site's",
+    drawn.getAttribute("class") === `row-age ${age(hourAgo).className}` &&
+      drawn.textContent === age(hourAgo).label &&
+      drawn.getAttribute("data-tip-text") === "exact",
+    drawn.getAttribute("class"),
+  );
+  const told = retellAge(drawn, now / 1000 - 30 * 86400);
+  check(
+    "telling an age again swaps its class and keeps the call site's",
+    told === age(now / 1000 - 30 * 86400).label &&
+      drawn.getAttribute("class") === `row-age ${age(now / 1000 - 30 * 86400).className}`,
+    drawn.getAttribute("class"),
+  );
+  retellAge(drawn, null);
+  check(
+    "an age with no time is empty and has no freshness class",
+    drawn.textContent === "" && drawn.getAttribute("class") === "row-age",
+    drawn.getAttribute("class"),
+  );
+  check(
+    "the markup and the element agree",
+    ageLabelHtml(hourAgo, { className: "row-age", tip: '<"x">' }) ===
+      `<span class="row-age ${age(hourAgo).className}" data-tip-text="&lt;&quot;x&quot;&gt;">${age(hourAgo).label}</span>` &&
+      ageLabelHtml(0, { className: "row-age" }) === "",
+  );
+  check(
+    "an age is told as of the time it is given",
+    age(hourAgo + 7200 - 600, { now: (now + 0) / 1000 }).label === "10m" &&
+      age(1000, { now: 1000 + 3 * 86400, style: "relative" }).label === "3d ago",
+  );
   sandbox.Date = Date;
   const retryable = sandbox.MetabrowserRequestErrors.classifyRequestError(
     new sandbox.MetabrowserRequestErrors.RequestError("safe", { status: 503 }),

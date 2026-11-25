@@ -722,44 +722,6 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
         assert "data-copy-path" not in source, "a local path-copy contract reappeared"
 
 
-def test_age_is_one_primitive_everywhere() -> None:
-    """An age is an age: one formatter, one styling rule, and call sites
-    that add positioning only."""
-    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
-    formatters = (STATIC / "formatters.js").read_text(encoding="utf-8")
-    assert "function age(epochSeconds, options = {})" in formatters, (
-        "the shared age primitive moved"
-    )
-    for name in ("git-panel.js", "app.js"):
-        consumer = (STATIC / name).read_text(encoding="utf-8")
-        assert "MetabrowserFormatters" in consumer and "age(" in consumer, (
-            f"{name} must take its ages from the shared primitive"
-        )
-    tiers = _rule(
-        styles, ":is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)"
-    )
-    for declaration in ("color:", "font-weight:", "font-variant-numeric:"):
-        assert declaration in tiers, f"the age primitive lost {declaration}"
-    # An age is secondary metadata, which reads at the size of the text it sits in
-    # ("Type Scale"; mb-ctlu): the primitive sets no size, and no rule sets one on an age.
-    assert "font-size" not in tiers, "an age takes the size of the text it sits in"
-    # The classes an age's own element carries: the primitive's tiers and each call site's.
-    age_selector = re.compile(
-        r"\.(age-(live|sec|min|hr|day|wk|old)|tree-item-age|git-graph-age|git-commit-age"
-        r"|git-history-summary-age|github-pulls?-age)(?![\w-])"
-    )
-    for sheet in _stylesheets():
-        for selector, declarations in _rules_of(sheet):
-            assert not (age_selector.search(selector) and "font-size" in declarations), (
-                f"{sheet.name}: {selector} sizes an age"
-            )
-    # A call site that restates color or weight has forked the vocabulary.
-    graph_age = _rule(styles, ".git-graph-age")
-    assert "color:" not in graph_age and "font-weight:" not in graph_age, (
-        ".git-graph-age must carry positioning only"
-    )
-
-
 def test_branch_chips_have_their_own_ground() -> None:
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     assert "background: var(--git-ref-bg)" in _rule(styles, ".git-ref")
@@ -1325,7 +1287,7 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
         "var(--page-header-size-margin)"
     )
     # An age in a line takes the line's size because the age primitive sets none
-    # (test_age_is_one_primitive_everywhere), so no rule restates it here.
+    # (tests/test_age_single_source.py), so no rule restates it here.
     assert not any(":is(.age-live" in selector for selector in shell if ".page-header" in selector)
     diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
     assert diff[".metabrowser-diff-host .diff-summary"]["font-size"] == "var(--body-font-size)"
@@ -2621,8 +2583,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # A row and its page match: one state's icon, from one module.
     assert "pullStateIcon(" in panel and "pullStateIcon(" in page
     assert 'aria-label", PULL_STATES[state].label' in state
-    # Ages, filters, buttons, and the spinner are the shell's.
-    assert "mb.formatAge(" in panel
+    # Filters, buttons, and the spinner are the shell's.
     assert "controls.groupHtml(" in panel
     assert 'class: "github-pulls-connection nav-metadata nav-metadata-note"' in panel
     assert 'class: "github-pulls-status nav-metadata"' in panel
@@ -3046,8 +3007,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # Branch names and file paths are chrome: no `<code>` for either.
     assert 'h("code"' not in page
     assert "mb.mergeRefs(" in page and 'kind: "remote"' in page
-    # One age, not a timestamp at each call site.
-    assert "mb.formatAge(" in page
+    # One exact time, in the age's tooltip, not a timestamp at each call site.
     assert page.count("mb.formatTimestamp(") == 1, "the exact time belongs in the age's tooltip"
     assert "`file-header-badge github-pull-badge github-pull-${kind}`" in page
     assert 'class: "notice github-pull-notice"' in page

@@ -5262,17 +5262,18 @@ export function mountPullPage(container, ctx, mb) {
     if (!Number.isFinite(at)) {
       return h("span", {}, [iso]);
     }
-    const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
     const alsoAt = also === null ? Number.NaN : Date.parse(also.iso);
     const tip =
       also !== null && Number.isFinite(alsoAt)
         ? `${exact(at)} · ${also.label} ${exact(alsoAt)}`
         : exact(at);
-    return h(
-      "span",
-      { class: `github-pull-age ${className}`, "data-tip-text": tip, "data-age-at": String(at) },
-      [label],
-    );
+    const element = mb.ageLabel(at / 1000, {
+      style: "relative",
+      className: "github-pull-age",
+      tip,
+    });
+    element.setAttribute("data-age-at", String(at));
+    return element;
   };
 
   /**
@@ -5285,13 +5286,7 @@ export function mountPullPage(container, ctx, mb) {
     for (const element of node.querySelectorAll(".github-pull-age")) {
       const at = Number(element.getAttribute("data-age-at"));
       if (Number.isFinite(at)) {
-        const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-        if (element.textContent !== label) {
-          element.textContent = label;
-        }
-        if (element.getAttribute("class") !== `github-pull-age ${className}`) {
-          element.setAttribute("class", `github-pull-age ${className}`);
-        }
+        mb.retellAge(element, at / 1000, { style: "relative" });
       }
     }
   };

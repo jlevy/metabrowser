@@ -820,13 +820,9 @@ export function createTreemapMap(mb, palette, viewport, options) {
       ),
     ];
     const age =
-      typeof cell.mtime === "number" ? mb.formatAge(cell.mtime, { style: "relative" }) : null;
-    if (age?.label) {
-      rows.push(
-        detail(
-          `modified <span class="${mb.escapeHtml(age.className)}">${mb.escapeHtml(age.label)}</span>`,
-        ),
-      );
+      typeof cell.mtime === "number" ? mb.ageLabelHtml(cell.mtime, { style: "relative" }) : "";
+    if (age !== "") {
+      rows.push(detail(`modified ${age}`));
     }
     if (cell.gitignored) {
       rows.push(detail("gitignored"));

@@ -359,7 +359,10 @@ async function main() {
       formatFileCount: (count) => `${count} files`,
       formatSize: (bytes) => `${bytes} B`,
       formatTimestamp: () => "then",
-      formatAge: () => ({ label: "then", className: "age-old" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+        label: "then",
+        className: "age-old",
+      })),
       countClass: () => "",
       sizeHtml: (bytes) => `<span class="size">${bytes} B</span>`,
       navigation: { open: (...args) => navigation.push(args) },

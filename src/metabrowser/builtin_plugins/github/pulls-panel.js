@@ -4214,12 +4214,10 @@ export function mountPullsPanel(container, ctx, mb) {
     }
   }
 
-  /** @param {PullRow} row */
-  function rowAge(row) {
+  /** When a row's pull request was updated, in epoch seconds, or null. @param {PullRow} row */
+  function rowUpdatedAt(row) {
     const parsed = row.updatedAt === null ? Number.NaN : Date.parse(row.updatedAt) / 1000;
-    const at = Number.isFinite(parsed) ? parsed : null;
-    const when = at === null ? { label: "", className: "" } : mb.formatAge(at);
-    return { at, ...when };
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   /**
@@ -4338,11 +4336,8 @@ export function mountPullsPanel(container, ctx, mb) {
       entry.icon = icon;
     }
     if (row.updatedAt !== before.updatedAt) {
-      const when = rowAge(row);
-      entry.at = when.at;
-      entry.label = when.label;
-      entry.age.textContent = when.label;
-      entry.age.className = `github-pulls-age ${when.className}`;
+      entry.at = rowUpdatedAt(row);
+      entry.label = mb.retellAge(entry.age, entry.at);
     }
     if (row.avatar !== before.avatar || row.meta !== before.meta) {
       const author = rowAuthor(row);
@@ -4362,8 +4357,7 @@ export function mountPullsPanel(container, ctx, mb) {
    * @returns {PaintedRow}
    */
   function buildRow(row, key) {
-    const when = rowAge(row);
-    const { at } = when;
+    const at = rowUpdatedAt(row);
     // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
     // "Titles").
     const title = h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title));
@@ -4402,11 +4396,9 @@ export function mountPullsPanel(container, ctx, mb) {
     // (docs/design-system.md, "Ages End the Row"). No tooltip, as nothing in the Pulls column
     // has one: the page has the exact time (docs/design-system.md, "Tooltips Add
     // Information"). The link's name says it (`rowSaid`).
-    const updated = h(
-      "span",
-      { class: `github-pulls-age ${when.className}`, "aria-hidden": "true" },
-      [when.label],
-    );
+    const updated = mb.ageLabel(at, { className: "github-pulls-age" });
+    updated.setAttribute("aria-hidden", "true");
+    const label = updated.textContent ?? "";
     // The row's last line, the lines and the chevron in the text column under the run, and the
     // age at its end: one line tall whether the lines are shown, waited for, or cannot be had,
     // so nothing moves when they arrive (github/styles.css, `.github-pulls-tail`).
@@ -4427,7 +4419,7 @@ export function mountPullsPanel(container, ctx, mb) {
       separator(),
       by,
     ]);
-    const said = h("span", { class: "sr-only" }, [rowSaid(row, when.label)]);
+    const said = h("span", { class: "sr-only" }, [rowSaid(row, label)]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
     // item: its level is the list's one, and `placeRows` tells its place. Its changed files
     // are its children, as a folder's are, closed until the reader opens them; the tree that
@@ -4484,7 +4476,7 @@ export function mountPullsPanel(container, ctx, mb) {
       info: row,
       key,
       at,
-      label: when.label,
+      label,
     };
   }
 
@@ -5128,11 +5120,9 @@ export function mountPullsPanel(container, ctx, mb) {
       if (entry.at === null) {
         continue;
       }
-      const { label, className } = mb.formatAge(entry.at);
+      const label = mb.retellAge(entry.age, entry.at);
       if (label !== entry.label) {
         entry.label = label;
-        entry.age.textContent = label;
-        entry.age.className = `github-pulls-age ${className}`;
         entry.said.textContent = rowSaid(entry.info, label);
       }
     }

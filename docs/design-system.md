@@ -131,23 +131,35 @@ OKLCH structure, semantic ordering, and dark-theme surface contrast.
 One primitive produces every age: `MetabrowserFormatters.age()` returns a label and
 freshness class (`.age-live` … `.age-old`), and the shared class rule owns its hue,
 weight, and tabular numerals.
-It sets no size: an age reads at the size of the text it sits in, a navigation row’s or
-a header line’s ([Type Scale](#type-scale)). Dense navigation uses the compact style
-(`<1m`, `5m`, `2h`, `3d`, `2w`). Full metadata and conversation cards use the relative
-style: `2h ago`, `just now`, or `in 2h` for a future timestamp.
-Unknown times have no age label.
+One builder draws every age shown: `ageLabel` and `ageLabelHtml` in
+`static/formatters.js` draw a span of the label in its freshness class, after the call
+site’s own class, and `retellAge` tells a drawn age again as time passes, swapping that
+class in place.
+Plugins reach them as `metabrowser.ageLabel`, `metabrowser.ageLabelHtml`,
+and `metabrowser.retellAge`. So no surface puts an age on the page without its ink, and
+a call site’s class only places the age.
+No stylesheet sets an age’s color, weight, size, or numerals but the freshness rule, and
+`tests/test_age_single_source.py` holds both halves: no rule whose subject is an age
+sets them, and no module paints an age from `formatAge`’s class.
+A Pulls row’s age drew gray when its column’s rule set `--muted` on it, a selector more
+specific than the freshness rule’s. It sets no size: an age reads at the size of the
+text it sits in, a navigation row’s or a header line’s ([Type Scale](#type-scale)).
+Dense navigation uses the compact style (`<1m`, `5m`, `2h`, `3d`, `2w`). Full metadata
+and conversation cards use the relative style: `2h ago`, `just now`, or `in 2h` for a
+future timestamp. Unknown times have no age label.
 The Pulls sidebar, file tree, compact Git history, and the ref selector’s list remain
 condensed navigation; PR headers, comments, reviews, full commit summaries and file and
 folder view headers use relative ages.
 Call sites choose the presentation style and positioning, never their own suffix,
 abbreviation, color, weight, or size.
-A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
-in `data-tip-text`, on a surface that has tooltips
-([Tooltips Add Information](#tooltips-add-information)). Freshness sentences such as
-“Fetched 2 min ago via GitHub CLI” retain their sentence formatter.
-When a summary shows created or opened and updated ages, omit the updated age when its
-displayed label matches the closed or merged age beside it, or else the created or
-opened age, and add the exact updated time to the tooltip of the age it repeats.
+A plugin draws an age with `metabrowser.ageLabel` and puts the exact time in its `tip`,
+its `data-tip-text`, on a surface that has tooltips
+([Tooltips Add Information](#tooltips-add-information)). `metabrowser.formatAge` gives
+the label alone, for words: an accessible name, or a sentence.
+Freshness sentences such as “Fetched 2 min ago via GitHub CLI” retain their sentence
+formatter. When a summary shows created or opened and updated ages, omit the updated age
+when its displayed label matches the closed or merged age beside it, or else the created
+or opened age, and add the exact updated time to the tooltip of the age it repeats.
 
 ### Ages End the Row
 
@@ -168,8 +180,8 @@ An age that is not in a list row stays where its words put it:
 - a single-line item with no column under it, such as a tally, “3,310 commits begun 4mo
   ago”.
 
-`tests/test_reserved_chrome.py` holds the Pulls row’s age column in source, and
-`tests/dom/github-pulls-row-lines-chrome.mjs` its place at the row’s end in Chrome.
+`tests/dom/github-pulls-row-lines-chrome.mjs` holds a Pulls row’s age at the row’s end
+in Chrome.
 
 ## Typography
 
@@ -362,9 +374,8 @@ It holds the navigation column’s one size on `.tree-pane`, the hint strips to 
 keycaps’ token, and the metadata named in its `_INHERITED_METADATA`, whose containers
 set its size, the notice and a tooltip’s detail lines among it, to setting none; a rule
 left off that list is not checked.
-`test_age_is_one_primitive_everywhere` holds the age primitive and every age call site
-to setting none.
-`tests/test_type_scale_chrome.py` reads the computed size of one of each
+`tests/test_age_single_source.py` holds the age primitive and every age call site to
+setting none. `tests/test_type_scale_chrome.py` reads the computed size of one of each
 role on the Files, Pulls, and Commits panels and the navigation column’s foot, a file’s
 and a folder’s header, a commit’s page and its Diff summary’s files, a pull request’s
 Conversation and Checks, a tooltip, a menu, Help, and Quick Search in headless Chrome,
@@ -3260,7 +3271,7 @@ Its measurements in Chrome and the app’s WebKit are in
 | Username | The shell’s [actor identity](#actor-identity): an avatar’s box, then `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor, and the person glyph stands in its box where there is none, as on a commit’s page |
 | Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
 | Label | Hairline box with `--radius-tag`, in GitHub’s color for it, its description its tooltip ([Label Colors](#label-colors)) | A name the pull request carries, the corner tag-like chips use, colored as github.com colors it so a label reads as the same label in both places |
-| Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
+| Opened, updated, commented | `metabrowser.ageLabel` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, at the card head’s size | A path is chrome, and in the main view it reads at the body size, as a diff file bar’s does ([Type Scale](#type-scale)) |
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
 | View on GitHub | The [View on GitHub](#view-on-github) button in the header’s corner, the page’s own counterpart on github.com | One button in one place on every page that has a counterpart, so it is never a link in the metadata |
@@ -3714,7 +3725,7 @@ holds the one helper and the one rule in source.
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, on the row’s inset, in the run’s start padding, centered on its first line, so every line of the run starts in the text column past it | [One Glyph Size](#one-glyph-size) |
 | Lines and chevron | The row’s last line, `.github-pulls-change` in `.github-pulls-tail`, from the text column, before the age, and one line tall whatever it holds: the [brief change line](#brief-change-line) of the line totals alone, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read, then the registry’s chevron, a space’s width on; with no lines, the chevron alone; no ground or stop of its own, and hidden from assistive technology, its words describing the link: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The toggle, the summary the chevron expands, so a click on it toggles the changed files, and a click elsewhere on the item opens it ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)); a diff summary’s toggle ends with its chevron ([Diff Summary](#diff-summary)) |
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the run’s first part, after the state icon, wrapping in the text column and never cut short (`.github-pulls-heading`) | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
-| Updated time | `metabrowser.formatAge`, muted, at the row’s end on its last line, in a 5ch column of the row’s type after the lines and the chevron (`.github-pulls-age` in `.github-pulls-tail`); the page gives the exact time | [Ages End the Row](#ages-end-the-row); [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
+| Updated time | `metabrowser.ageLabel`, in its freshness ink, at the row’s end on its last line, in a 5ch column of the row’s type after the lines and the chevron (`.github-pulls-age` in `.github-pulls-tail`); the page gives the exact time | [Ages End the Row](#ages-end-the-row); [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`), in the run after the title and the place, after a muted dot, never breaking | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
 | Username | `--nav-font-size`; `.actor-name`, in the run after the number and a muted dot, ending it, never breaking. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` too | Secondary metadata reads at the size of its line ([Type Scale](#type-scale)); usernames remain bold in normal text ink, and a row’s username ellipsizes only where it is wider than a line ([Authors Follow Pull Requests](#authors-follow-pull-requests)) |
 | Stack place | `.github-pulls-place`, after the title and before the number, in the run’s size: a muted dot, `.github-pull-stack-dot`, in `--muted` at `--micro-font-size`, then the position bold in text ink, as a stack menu’s member line has them, “title · 14/15 · #N”, with what it shows set in [Stacks](#stacks); a row in no stack has neither | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
@@ -5566,7 +5577,7 @@ The tooltip names the cell as the navigation does: a file’s icon, its complete
 which wraps inside the tooltip however long, then a folder’s file count and size or a
 file’s size, and its age, through the navigation columns’ own formatters, hues, and
 freshness classes (`mb.formatFileCount` and `mb.countClass`, `mb.sizeHtml`, and
-`mb.formatAge`).
+`mb.ageLabelHtml`).
 
 Treemap navigation preserves the user’s spatial context.
 Activating a folder cell opens that folder with Treemap selected, and Backspace opens

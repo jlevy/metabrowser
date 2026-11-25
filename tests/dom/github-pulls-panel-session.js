@@ -944,6 +944,7 @@ async function paintStory(panel, selection = false) {
     await settle();
   }
   try {
+    const ages = require("./sdk-ref-fixture.js").ageHelpers(document, () => now);
     const mb = {
       ...require("./sdk-ref-fixture.js").refHelpers(document),
       perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
@@ -954,12 +955,14 @@ async function paintStory(panel, selection = false) {
         },
         bind: () => () => {},
       },
-      formatAge(seconds) {
+      // The shell's one age builder, as of the session's clock, counting each age it tells.
+      ageLabel(...args) {
         aged += 1;
-        const minutes = Math.round((now / 1000 - seconds) / 60);
-        return minutes < 60
-          ? { label: `${minutes}m`, className: "age-min" }
-          : { label: `${Math.round(minutes / 60)}h`, className: "age-hour" };
+        return ages.ageLabel(...args);
+      },
+      retellAge(...args) {
+        aged += 1;
+        return ages.retellAge(...args);
       },
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
     };
@@ -1992,7 +1995,6 @@ async function numberStory(panel) {
           return () => {};
         },
       },
-      formatAge: () => ({ label: "1m", className: "age-min" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       shortcuts: { attach: facade.attachShortcut },
     };

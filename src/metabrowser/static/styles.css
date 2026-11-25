@@ -3818,11 +3818,9 @@ html[data-prose-font="sans"] .kpress-prose h2,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The age's box: the age in it is the shared age builder's, whose freshness class
+   alone sets its ink and weight, so the box sets neither. */
 .tree-item-age-inline {
-  color: var(--muted);
-  /* The age primitive's medium weight (not the 400 default), at the row's
-     size; warm-tier age classes below bump to --file-age-weight-recent. */
-  font-weight: var(--file-age-weight);
   flex-shrink: 0;
   white-space: nowrap;
   display: flex;
@@ -5470,10 +5468,12 @@ a.tab-btn {
 .folder-crumb-sep {
   color: var(--muted);
 }
-.folder-header-count,
-.view-header-age {
+.folder-header-count {
   color: var(--muted);
   font-variant-numeric: var(--tabular-numerals);
+  white-space: nowrap;
+}
+.view-header-age {
   white-space: nowrap;
 }
 .file-header:hover .file-header-copy {

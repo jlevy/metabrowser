@@ -319,7 +319,10 @@ async function paint() {
       perf,
       filterControls: { groupHtml: () => "", bind: () => () => {} },
       ...require("./sdk-ref-fixture.js").refHelpers(document),
-      formatAge: () => ({ label: "now", className: "" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+        label: "now",
+        className: "",
+      })),
       formatTimestamp: () => "",
     },
   );

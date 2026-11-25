@@ -1456,15 +1456,12 @@
     const commit = document.createElement("span");
     commit.className = "git-commit-sha source-ref-selector-commit";
     commit.textContent = row.commit;
-    const age = document.createElement("span");
-    if (row.committedAt !== null) {
-      const shown = window.MetabrowserFormatters.age(row.committedAt);
-      age.className = `source-ref-selector-age ${shown.className}`;
-      age.textContent = shown.label;
-      age.dataset.tipText = window.metabrowser.formatTimestamp(row.committedAt);
-    } else {
-      age.className = "source-ref-selector-age";
-    }
+    const age = window.MetabrowserFormatters.ageLabel(document, row.committedAt, {
+      className: "source-ref-selector-age",
+      ...(row.committedAt === null
+        ? {}
+        : { tip: window.metabrowser.formatTimestamp(row.committedAt) }),
+    });
     main.append(commit, age);
     button.append(main);
     item.append(button);

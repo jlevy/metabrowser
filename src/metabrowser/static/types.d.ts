@@ -681,12 +681,27 @@ type MetabrowserRequestErrorRuntime = Readonly<{
 }>;
 
 type MetabrowserFormatterRuntime = Readonly<{
-  /** Abbreviated age and its freshness class — the one age primitive. */
-  age(
-    epochSeconds: number,
-    options?: { style?: "compact" | "relative" },
-  ): { label: string; className: string };
-  ageClass(epochSeconds: number): string;
+  /** Abbreviated age and its freshness class — the one age primitive. Its label is for words;
+   *  a drawn age is `ageLabel`'s or `ageLabelHtml`'s. */
+  age(epochSeconds: number, options?: MetabrowserAgeOptions): { label: string; className: string };
+  /** An age as every surface draws one: a span of its label in its freshness class, after
+   *  the call site's own class; empty where the time is not known. */
+  ageLabel(
+    doc: Document,
+    epochSeconds: number | null | undefined,
+    options?: MetabrowserAgeLabelOptions,
+  ): HTMLSpanElement;
+  /** `ageLabel` as escaped markup, or "" where the time is not known. */
+  ageLabelHtml(
+    epochSeconds: number | null | undefined,
+    options?: MetabrowserAgeLabelOptions,
+  ): string;
+  /** Tell a drawn age as of now, its freshness class swapped in place; returns its label. */
+  retellAge(
+    element: Element,
+    epochSeconds: number | null | undefined,
+    options?: MetabrowserAgeOptions,
+  ): string;
   countClass(value: number): "" | "count-large";
   /** What a change set's summary says, in a count summary's parts: "35 files changed · 2 A,
    *  3 D, 30 M · +1,234 −3,423", its text, and its words for a screen reader. */
@@ -1723,8 +1738,6 @@ type FolderOverviewRegistry = Readonly<{
   registerPanel<T>(id: string, spec: FolderOverviewPanelSpec<T>): () => void;
 }>;
 
-type MetabrowserAgeBucket = "sec" | "min" | "hr" | "day" | "wk" | "old";
-
 type MetabrowserDirectoryTotals = Readonly<{
   path: string;
   revision: number;
@@ -1788,7 +1801,22 @@ type MetabrowserTreemapLayoutApi = {
 
 type MetabrowserSdk = {
   ageBucket(mtimeSeconds: number | null | undefined): MetabrowserAgeBucket | null;
-  ageLabelHtml(mtimeSeconds: number | null | undefined): string;
+  /** An age as every surface draws one (`MetabrowserFormatters.ageLabel`): its label in its
+   *  freshness class, after `options.className`, which places it. */
+  ageLabel(
+    secondsSinceEpoch: number | null | undefined,
+    options?: MetabrowserAgeLabelOptions,
+  ): HTMLSpanElement;
+  ageLabelHtml(
+    secondsSinceEpoch: number | null | undefined,
+    options?: MetabrowserAgeLabelOptions,
+  ): string;
+  /** Tell a drawn age as of now, its freshness class swapped in place; returns its label. */
+  retellAge(
+    element: Element,
+    secondsSinceEpoch: number | null | undefined,
+    options?: MetabrowserAgeOptions,
+  ): string;
   bench?: MetabrowserBench;
   debug?: MetabrowserDebug;
   errors: MetabrowserRequestErrorRuntime;
@@ -1867,9 +1895,10 @@ type MetabrowserSdk = {
     anchor: T,
     options?: { icon?: Element | "github"; position?: "before" | "after" },
   ): T;
+  /** An age in words, for a sentence or an accessible name; a drawn age is `ageLabel`'s. */
   formatAge(
     secondsSinceEpoch: number,
-    options?: { style?: "compact" | "relative" },
+    options?: MetabrowserAgeOptions,
   ): { label: string; className: string };
   formatTimestamp(secondsSinceEpoch: number): string;
   /** A commit's or pull request's title as nodes for its element: a conventional-commit
@@ -3337,6 +3366,14 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
 }>;
 
 declare global {
+  /** An age's freshness tier, as a treemap's fill reads it. */
+  type MetabrowserAgeBucket = "sec" | "min" | "hr" | "day" | "wk" | "old";
+  /** How an age is told: `now`, epoch seconds, is the time it is told as of, by default the
+   *  clock's. */
+  type MetabrowserAgeOptions = { style?: "compact" | "relative"; now?: number };
+  /** How an age is drawn: `className` is the call site's own class, which places it and sets
+   *  nothing of its ink; `tip` is its `data-tip-text`, the exact time. */
+  type MetabrowserAgeLabelOptions = MetabrowserAgeOptions & { className?: string; tip?: string };
   /** Why a menu closed: a press outside it, focus or the window leaving it, Escape, or another menu opening. */
   type MetabrowserMenuClose = "outside" | "away" | "escape" | "other";
   /** One menu, as `metabrowser.menus.dismissible` closes it (docs/design-system.md, "Every Menu Closes Alike"). */

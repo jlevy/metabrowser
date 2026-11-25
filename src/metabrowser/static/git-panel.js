@@ -507,10 +507,11 @@
     }
     revisionGroup += "</span>";
     const author = commit.author?.name || "";
-    const age =
-      `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}"` +
-      (compact ? "" : ` data-tip-text="${escapeHtml(exactTime(commit.committed_at))}"`) +
-      `>${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
+    const age = ageHtml(commit.committed_at, {
+      style: "relative",
+      className: "git-commit-age",
+      ...(compact ? {} : { tip: exactTime(commit.committed_at) }),
+    });
     if (compact) {
       html += `<div class="git-commit-meta">${revisionGroup}`;
       html += `<span class="actor-name git-commit-author">${escapeHtml(author)}</span>${age}</div>`;
@@ -564,26 +565,16 @@
   }
 
   /**
-   * Compact relative age, matching the tree's convention.
+   * A commit's age as markup, from the shell's one age builder, so it reads and is inked
+   * exactly as a file's: same abbreviations, same freshness class (docs/design-system.md,
+   * "Age"). `options.className` places it; "" where the time is not known.
    *
    * @param {number} epochSeconds
-   * @param {{style?: "compact" | "relative"}} [options]
+   * @param {{style?: "compact" | "relative", className?: string, tip?: string}} [options]
    * @returns {string}
    */
-  function relativeAge(epochSeconds, options) {
-    // The shared age primitive, so a commit's age reads exactly like a
-    // file's: same abbreviations, same freshness tiers.
-    return window.MetabrowserFormatters?.age(epochSeconds, options)?.label ?? "";
-  }
-
-  /**
-   * The age's freshness class, so the colour convention holds here too.
-   *
-   * @param {number} epochSeconds
-   * @returns {string}
-   */
-  function ageClass(epochSeconds) {
-    return window.MetabrowserFormatters?.ageClass(epochSeconds) ?? "";
+  function ageHtml(epochSeconds, options) {
+    return window.MetabrowserFormatters?.ageLabelHtml(epochSeconds, options) ?? "";
   }
 
   /**
@@ -2412,21 +2403,19 @@
       ]),
     );
     const firstCommitAt = state.summary.firstCommitAt;
-    const firstAge = firstCommitAt === null ? "" : relativeAge(firstCommitAt);
-    if (!firstAge || firstCommitAt === null) {
+    // "begun 3mo ago" — the age is the shell's one age builder's, inked as commit rows'
+    // are; the words around it stay ordinary row text.
+    const ageSpan = window.MetabrowserFormatters.ageLabel(document, firstCommitAt, {
+      className: "git-history-summary-age",
+    });
+    if (ageSpan.textContent === "") {
       row.replaceChildren(countSpan);
       return;
     }
-    // "begun 3mo ago" — the age value carries the shared age primitive
-    // (tier hue, weight, tabular numerals) exactly as commit rows do;
-    // the words around it stay ordinary row text.
     const firstSpan = document.createElement("span");
     firstSpan.className = "git-history-summary-first";
     const begun = document.createElement("span");
     begun.textContent = "begun";
-    const ageSpan = document.createElement("span");
-    ageSpan.className = `git-history-summary-age ${ageClass(firstCommitAt)}`;
-    ageSpan.textContent = firstAge;
     const ago = document.createElement("span");
     ago.textContent = "ago";
     firstSpan.replaceChildren(begun, ageSpan, ago);
@@ -2594,8 +2583,7 @@
       (refs ? `<span class="git-graph-refs">${refs}</span>` : "") +
       `<span class="git-graph-subject">${subjectHtml(commit.subject)}</span>` +
       `<span class="git-graph-meta"><span class="actor-name">${escapeHtml(commit.author?.name || "")}</span>` +
-      `<span class="git-graph-age ${escapeHtml(ageClass(commit.committed_at))}">` +
-      `${escapeHtml(relativeAge(commit.committed_at))}</span></span>`;
+      `${ageHtml(commit.committed_at, { className: "git-graph-age" })}</span>`;
     element.appendChild(body);
 
     element.addEventListener("click", () => selectCommit(commit.id, { rowElement: element }));
@@ -4096,8 +4084,7 @@
       ensurePageLoaded,
       emptyState,
       focusCommitRow,
-      ageClass,
-      relativeAge,
+      ageHtml,
       renderCommitSummary,
       renderCommitTooltip,
       renderCommitDetail,

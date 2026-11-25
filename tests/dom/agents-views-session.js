@@ -21,6 +21,7 @@
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { createSdkSandbox } = require("./sdk-sandbox.js");
 
 // The plugin's modules have no package.json saying they are modules, which the browser
 // never asks about. Node's warning names the process and the checkout, so it is kept out
@@ -437,6 +438,8 @@ async function main() {
     formatInteger,
     formatSize,
     formatTimestamp: (seconds) => `t${seconds}`,
+    // The shell's one age builder, as the views draw every age they show.
+    ageLabelHtml: createSdkSandbox().metabrowser.ageLabelHtml,
     navigation: { href: ({ path: target }) => `/view/${target}` },
     // The shell's count painter, as the dot between a line's groups: muted, hidden from
     // assistive technology (docs/design-system.md, "Count Summaries Bold Their Numbers").
@@ -480,7 +483,7 @@ async function main() {
         session_id: "s1",
         title: "A <b>title</b>",
         path: ".claude/projects/p/s1.jsonl",
-        age: "30 s ago",
+        at: NOW - 30,
         project: "~/work/alpha",
         models: ["m1", "m2"],
         status: "running",
@@ -490,13 +493,13 @@ async function main() {
         session_id: "s2",
         title: "No file",
         path: null,
-        age: "2 min ago",
+        at: NOW - 120,
         project: null,
         models: [],
         status: null,
       },
     ],
-    { label: "Active sessions" },
+    { label: "Active sessions", now: NOW },
   );
   // Every value a row shows comes from a session's own files, so each is escaped.
   const hostile = rows.sessionRowsHtml(
@@ -507,18 +510,18 @@ async function main() {
         session_id: "<i>id</i>",
         title: "",
         path: null,
-        age: "<i>age</i>",
+        at: null,
         project: "~/<i>project</i>",
         models: ["<i>model</i>"],
         status: "<i>status</i>",
       },
     ],
-    { label: "<i>label</i>" },
+    { label: "<i>label</i>", now: NOW },
   );
   const markup = {
     "no value a session holds reaches the row as markup": !hostile.includes("<i>"),
     "a session row's first line holds the agent, the title link, and the age last":
-      /agents-row-line"><span class="agents-agent">Claude Code<\/span><a class="agents-session-link agents-row-title"[^>]*>A &lt;b&gt;title&lt;\/b&gt;<\/a><span class="agents-row-age">30 s ago<\/span><\/div>/.test(
+      /agents-row-line"><span class="agents-agent">Claude Code<\/span><a class="agents-session-link agents-row-title"[^>]*>A &lt;b&gt;title&lt;\/b&gt;<\/a><span class="agents-row-age [^"]*">just now<\/span><\/div>/.test(
         items,
       ),
     "its second line is the status, the project, and the model, parted by the design's separator":

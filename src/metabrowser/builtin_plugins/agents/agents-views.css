@@ -182,8 +182,6 @@ a.agents-session-link:focus-visible {
 .agents-row-age {
   flex: none;
   margin-inline-start: auto;
-  color: var(--muted);
-  font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
 

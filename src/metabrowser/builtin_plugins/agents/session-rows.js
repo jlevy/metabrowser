@@ -5,7 +5,7 @@
 // that can be sorted is a button in its header with `aria-sort`, so the table is operable
 // from the keyboard, and a row's title is an anchor to the session's file.
 
-import { ageText, durationText } from "./home-model.js";
+import { durationText } from "./home-model.js";
 import { agentLabel, separatorHtml, sessionFile, sessionLinkHtml, titleOf } from "./support.js";
 
 /**
@@ -84,7 +84,9 @@ function cellHtml(mb, column, row, now) {
         ? `<span data-tip-text="${text(row.models.join(", "))}">${text(row.models.join(", "))}</span>`
         : "-";
     case "activity":
-      return text(ageText(row.last_activity, now));
+      // The shell's one age builder, in its freshness ink, as of the answer's time
+      // (docs/design-system.md, "Age").
+      return mb.ageLabelHtml(row.last_activity, { style: "relative", now }) || "-";
     case "start":
       return row.started_at === null ? "-" : text(mb.formatTimestamp(row.started_at));
     case "duration":
@@ -156,7 +158,7 @@ export function sessionTableHtml(mb, rows, options) {
  * @property {string} session_id
  * @property {string} title
  * @property {string | null} path The session's file, or `null` for a title with no link.
- * @property {string} age Said as `ageText` says it.
+ * @property {number | null} at When the session was last active, in epoch seconds.
  * @property {string | null} project
  * @property {ReadonlyArray<string>} models
  * @property {string | null} status Shown as a badge at the second line's start, or `null`.
@@ -171,7 +173,9 @@ export function sessionTableHtml(mb, rows, options) {
  *
  * @param {MetabrowserPublicSdk} mb
  * @param {ReadonlyArray<RowItem>} items
- * @param {{label: string}} options `label` names the list for assistive technology.
+ * @param {{label: string, now: number}} options `label` names the list for assistive
+ *   technology; `now`, in epoch seconds, is the time its answer was given, which its ages
+ *   are told as of.
  */
 export function sessionRowsHtml(mb, items, options) {
   const text = (/** @type {string} */ value) => mb.escapeHtml(value);
@@ -194,7 +198,12 @@ export function sessionRowsHtml(mb, items, options) {
         '<div class="agents-row-line">' +
         `<span class="agents-agent">${text(agentLabel(item.agent))}</span>` +
         sessionLinkHtml(mb, item.title, item.path, "agents-session-link agents-row-title") +
-        `<span class="agents-row-age">${text(item.age)}</span></div>` +
+        mb.ageLabelHtml(item.at, {
+          style: "relative",
+          now: options.now,
+          className: "agents-row-age",
+        }) +
+        "</div>" +
         `<div class="agents-row-meta agents-muted">${meta}</div></li>`
       );
     })

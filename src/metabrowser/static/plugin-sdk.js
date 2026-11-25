@@ -62,7 +62,8 @@
 //
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
-//     formatAge(secondsSinceEpoch, opts?) — the age primitive: {label, className}
+//     formatAge(secondsSinceEpoch, opts?) — an age in words: {label, className}; draw an
+//                                          age with ageLabel or ageLabelHtml
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
 //     titleNodes(title)                  — a commit or PR title's nodes: a conventional-
 //                                          commit prefix in span.title-prefix, then the rest
@@ -116,7 +117,7 @@
 // The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
 // partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefMenus,
 // actorIdentity/actorIdentityHtml, counterpartButton/mountCounterpart,
-// ageBucket/ageLabelHtml,
+// ageLabel/ageLabelHtml/retellAge/ageBucket,
 // renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
 // and langForExtension -- and the syntax service, highlightSyntax and
 // isLargeTextPreview, are defined in plugin-sdk-views.js, which is not a startup
@@ -1558,8 +1559,10 @@
   }
 
   // The one age primitive (docs/design-system.md, "Age"): the abbreviation and the
-  // freshness class that owns its hue, weight, size, and numerals.
-  /** @param {number} secondsSinceEpoch @param {{style?: "compact" | "relative"}} [options] */
+  // freshness class that owns its hue, weight, size, and numerals. Its label is for words,
+  // a sentence or an accessible name; an age a view shows is drawn by `ageLabel` or
+  // `ageLabelHtml` (plugin-sdk-views.js), which apply its class.
+  /** @param {number} secondsSinceEpoch @param {{style?: "compact" | "relative", now?: number}} [options] */
   function formatAge(secondsSinceEpoch, options) {
     return global.MetabrowserFormatters.age(Number(secondsSinceEpoch) || 0, options);
   }

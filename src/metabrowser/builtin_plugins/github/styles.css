@@ -1399,7 +1399,6 @@
 }
 .github-pulls-tail > .github-pulls-age {
   justify-self: end;
-  color: var(--muted);
 }
 /* The toggle: the lines, then the registry's chevron, a space's width on (0.25em, about 3 px
    at the nav's 13 px). Its words, the lines said in full, are hidden. Where the lines and the
