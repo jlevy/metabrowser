@@ -49,8 +49,10 @@ type MetabrowserRenderContext = {
   types?: Array<string> | null;
   onTypes?: (types: Array<string> | null) => void;
   /** A diff narrowed to one fixed File type group, `type:<id>`, with no File type chooser;
-   *  every fold drawn open (*unfold*); and what it says when the group holds no file
-   *  (*emptyText*). A pull request's Docs tab is `type:docs`, unfolded. */
+   *  every fold of a text diff drawn open, and each Markdown file opened in Full where it
+   *  is short enough to draw whole and in Concise otherwise (`prefer-full`, *unfold*);
+   *  and what it says when the group holds no file (*emptyText*). A pull request's Docs
+   *  tab is `type:docs`, with *unfold*. */
   group?: string | null;
   unfold?: boolean;
   emptyText?: string;

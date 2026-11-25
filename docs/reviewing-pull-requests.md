@@ -145,11 +145,11 @@ The page has up to five tabs:
   A short commit ID opens that commit on GitHub.
   **Review comments** lists the inline review comments with their files and diff hunks.
 - **Docs** (`D`): the changed documents alone (the File type menu’s Documentation group:
-  Markdown, plain text, reStructuredText, and the rest), each in its rendered view with
-  nothing folded, so you can read what the pull request says in its docs without the
-  code around it: a Markdown document in **Full**, unless it is long, when it opens in
+  Markdown, plain text, reStructuredText, and the rest), each in its rendered view, so
+  you can read what the pull request says in its docs without the code around it: a
+  Markdown document in **Full**, every block drawn, unless it is long, when it opens in
   **Concise**, its changes with the unchanged runs between them folded.
-  A document with no rendered view shows its text diff, also unfolded.
+  A document with no rendered view shows its text diff unfolded.
   Docs has no Split or Unified choice: its text diffs, a document’s **Source** among
   them, are always Unified.
   It opens on **Current**, each document’s new version, and its **Diff** | **Current**
