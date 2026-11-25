@@ -5,7 +5,7 @@ title: "General diff rendering: source-agnostic comparison model, renderer, and 
 kind: epic
 status: in_progress
 priority: 2
-version: 73
+version: 76
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 refs:
   - kind: pr
@@ -127,8 +127,11 @@ child_order_hints:
   - is-01m87bwyrgqa0wjysbad2npyez
   - is-01m85n7x6tdsh1j6b51fzcfvfx
   - is-01m87zs7wmwcmah3snhf1yjrnf
+  - is-01m87zs9sbky91edkksae1vbdt
+  - is-01m87zs6nh1dkm5w9kyfs406w5
+  - is-01m87ysp5pv3xq6escp1sdttc4
 created_at: 2026-07-18T01:38:43.961Z
-updated_at: 2026-11-25T02:35:54.169Z
+updated_at: 2026-11-25T03:54:43.058Z
 extensions:
   linear:
     id: 0390e452-459b-479d-8bc2-d469e35c1dd5

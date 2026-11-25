@@ -5,12 +5,14 @@ title: Default links keep the reader in Metabrowser views
 kind: epic
 status: open
 priority: 2
-version: 2
+version: 3
+spec_path: docs/project/specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md
 labels: []
 dependencies: []
+parent_id: is-01m87bky1pb8rhr10p26bsp6w6
 child_order_hints:
   - is-01m8842kxdffjnxq6d9r515mr3
 created_at: 2026-11-24T20:22:51.137Z
-updated_at: 2026-11-25T01:10:45.412Z
+updated_at: 2026-11-25T03:52:12.917Z
 ---
 Across plugins, a link to a file Metabrowser can show opens its Metabrowser view rather than /raw or an external page: Markdown links and embeds, diff entries, overviews, and search results. Survey where links leave Metabrowser today, and set the rule and its check.

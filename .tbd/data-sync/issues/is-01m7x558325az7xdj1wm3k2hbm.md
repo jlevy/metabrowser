@@ -5,11 +5,13 @@ title: "Guided PR: show the tab from the server's parse, and let an author valid
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
+spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
 labels: []
 dependencies: []
+parent_id: is-01m836c38mhwwhmnxwz2ydn61z
 created_at: 2026-11-20T18:58:01.441Z
-updated_at: 2026-11-20T18:58:01.441Z
+updated_at: 2026-11-25T03:53:00.396Z
 ---
 Guided PR (#599, bead mb-yakh) shows its tab from a client hint, not from the server's parse.
 

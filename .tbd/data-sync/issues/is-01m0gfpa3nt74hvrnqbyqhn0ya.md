@@ -5,11 +5,12 @@ title: "Aggregate delivery: compute once, push incrementally"
 kind: epic
 status: open
 priority: 3
-version: 21
+version: 23
+spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels:
-  - linear
   - Improvement
 dependencies: []
+parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 child_order_hints:
   - is-01m0gfq1vyhcv92j37gedat4xs
   - is-01m0gfq29dg0w2b9s716q2x384
@@ -24,7 +25,7 @@ child_order_hints:
   - is-01m0hfmknkz8znnb2m9gm4x8d4
   - is-01m0jt3f1hdn6aqt75q7ct5bpn
 created_at: 2026-08-20T21:02:05.941Z
-updated_at: 2026-11-20T19:16:22.834Z
+updated_at: 2026-11-25T03:55:10.736Z
 extensions:
   linear:
     id: 0a6ffe43-9914-47d3-a43e-d11ff31a7de1

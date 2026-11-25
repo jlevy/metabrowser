@@ -5,16 +5,18 @@ title: "Docs tab mounts a large new Markdown document whole: #31 of investment-r
 kind: bug
 status: in_progress
 priority: 1
-version: 4
+version: 5
+spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 delegate: claude-code@spud10.local
 labels: []
 dependencies:
   - type: blocks
     target: is-01m87zs9sbky91edkksae1vbdt
+parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 hold: null
 hold_until: null
 created_at: 2026-11-24T23:38:29.940Z
-updated_at: 2026-11-25T03:06:21.534Z
+updated_at: 2026-11-25T03:54:43.026Z
 started_at: 2026-11-24T23:57:42.485Z
 ---
 Measured 2026-11-24, runtime 19cd5a41 (main dcb9f32), headless Chrome 1280x900, finterm-ai/investment-research PR 31 (one new 876,516-byte Markdown book, 17,177 lines; 13 files).

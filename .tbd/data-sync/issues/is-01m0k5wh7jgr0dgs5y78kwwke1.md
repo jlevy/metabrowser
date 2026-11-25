@@ -5,7 +5,7 @@ title: "End-to-end load time: assets, time to first row, server and CLI"
 kind: epic
 status: open
 priority: 0
-version: 86
+version: 88
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels:
   - linear
@@ -91,8 +91,10 @@ child_order_hints:
   - is-01m7rapxrkqdp972d6ts7ka7aq
   - is-01m7pkgzth175ysqyfpp41brk9
   - is-01m7cmptva96jf076a85g0kabx
+  - is-01m0gfpa3nt74hvrnqbyqhn0ya
+  - is-01m2hs64m7nfagfxyf7b0hxrhr
 created_at: 2026-08-21T22:08:27.377Z
-updated_at: 2026-11-20T19:21:06.295Z
+updated_at: 2026-11-25T03:55:22.014Z
 duplicate_of: null
 extensions:
   linear:

@@ -5,7 +5,8 @@ title: Split the settings panel into tabs, with Plugins on its own tab
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 5
+spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/812
@@ -13,10 +14,11 @@ refs:
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-25T00:41:09.308Z
-updated_at: 2026-11-25T03:49:55.648Z
+updated_at: 2026-11-25T03:53:28.636Z
 started_at: 2026-11-25T00:45:02.358Z
 closed_at: 2026-11-25T03:49:25.373Z
 close_reason: "Merged in #812 (a94b19411): macOS Settings is four tabs, General, Runtime, Plugins, and Check Setup, each its own pane."

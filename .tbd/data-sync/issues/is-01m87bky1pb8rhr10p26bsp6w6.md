@@ -2,13 +2,43 @@
 type: is
 id: is-01m87bky1pb8rhr10p26bsp6w6
 title: "A minimal built-in PDF plugin: native viewer, click-to-load in embedded contexts, Open in Preview from the macOS app"
-kind: feature
+kind: epic
 status: in_progress
 priority: 2
-version: 14
+version: 25
 spec_path: docs/project/specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/790
+    at: 2026-11-25T03:51:40.034Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/793
+    at: 2026-11-25T03:51:41.939Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/796
+    at: 2026-11-25T03:51:44.221Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/797
+    at: 2026-11-25T03:51:45.764Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/798
+    at: 2026-11-25T03:51:49.259Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/799
+    at: 2026-11-25T03:51:51.364Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/800
+    at: 2026-11-25T03:51:53.261Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/804
+    at: 2026-11-25T03:51:56.397Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/808
+    at: 2026-11-25T03:51:58.855Z
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m87cgjpq8g1efvm52trz39d1
@@ -20,10 +50,11 @@ child_order_hints:
   - is-01m87krme84dgxwmvhz446663e
   - is-01m87ks05m6tw50mvp4v4s19f8
   - is-01m87kse9g2f9z7czp82jjfm23
+  - is-01m87kkeg9f737fyxfh8bkme7e
 hold: null
 hold_until: null
 created_at: 2026-11-24T18:03:18.453Z
-updated_at: 2026-11-24T20:26:07.436Z
+updated_at: 2026-11-25T03:52:13.041Z
 started_at: 2026-11-24T18:18:56.884Z
 ---
 Findings (2026-11-24 survey of origin/main d95398297):

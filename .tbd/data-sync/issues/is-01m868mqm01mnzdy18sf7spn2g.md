@@ -5,15 +5,16 @@ title: "Guided reviews in the agent skill: a draft check and a skill section"
 kind: feature
 status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-24-guided-reviews-skill.md
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+parent_id: is-01m836c38mhwwhmnxwz2ydn61z
 hold: null
 hold_until: null
 created_at: 2026-11-24T07:52:04.457Z
-updated_at: 2026-11-24T21:10:41.832Z
+updated_at: 2026-11-25T03:52:45.174Z
 started_at: 2026-11-24T21:10:17.417Z
 ---
 Teach the metabrowser agent skill to write, publish, and refresh a pull request's guided review, and give it a metab check of a draft guide before publishing. Plan: docs/project/specs/active/plan-2026-11-24-guided-reviews-skill.md.

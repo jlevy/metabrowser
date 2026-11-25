@@ -5,11 +5,13 @@ title: "Guided Review overview: show which changed files no step cites"
 kind: feature
 status: open
 priority: 3
-version: 1
+version: 2
+spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
 labels: []
 dependencies: []
+parent_id: is-01m836c38mhwwhmnxwz2ydn61z
 created_at: 2026-11-24T18:44:40.030Z
-updated_at: 2026-11-24T18:44:40.030Z
+updated_at: 2026-11-25T03:53:15.577Z
 ---
 D6 of security review D on #677 (a suggestion), deferred there.
 

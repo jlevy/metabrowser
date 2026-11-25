@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: in_progress
 priority: 1
-version: 130
+version: 131
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/768
@@ -107,10 +107,11 @@ child_order_hints:
   - is-01m85dcs632j22a09ww18etk0f
   - is-01m85esfqr64hgff7n5pxf112c
   - is-01m8869ggdm2xnwa472nzqy6d0
+  - is-01m88dg63h0bex9gxv8vja5tn6
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-25T02:23:34.679Z
+updated_at: 2026-11-25T03:55:27.215Z
 started_at: 2026-11-07T05:39:51.585Z
 extensions:
   linear:

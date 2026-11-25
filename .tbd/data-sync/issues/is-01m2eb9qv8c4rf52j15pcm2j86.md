@@ -5,16 +5,16 @@ title: Simplify catalog, feed, file preview, and Markdown engines per release re
 kind: epic
 status: open
 priority: 3
-version: 8
+version: 10
 labels:
   - simplification
-  - linear
   - Improvement
 dependencies: []
+parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 child_order_hints:
   - is-01m2h3tmn24f6ghdrzd28ywjs3
 created_at: 2026-09-13T21:38:14.503Z
-updated_at: 2026-11-20T19:21:07.156Z
+updated_at: 2026-11-25T03:55:34.531Z
 duplicate_of: null
 extensions:
   linear:

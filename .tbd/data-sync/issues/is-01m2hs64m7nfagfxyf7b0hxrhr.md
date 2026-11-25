@@ -5,13 +5,13 @@ title: "[epic] Pay down the flat-tree delivery cost carried since v0.10.0"
 kind: epic
 status: open
 priority: 1
-version: 16
+version: 18
 spec_path: docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md
 labels:
   - performance
-  - linear
   - Improvement
 dependencies: []
+parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 child_order_hints:
   - is-01m2gv1af5w404zxdq8vxedm86
   - is-01m2hrdm4kc5t3kvw1374e9tkj
@@ -22,7 +22,7 @@ child_order_hints:
   - is-01m2h6bz9ehf0pba4zs1ehjvmw
   - is-01m1dt40nmqvb9k1dpewnyk06m
 created_at: 2026-09-15T05:38:39.879Z
-updated_at: 2026-11-20T19:16:33.913Z
+updated_at: 2026-11-25T03:55:25.137Z
 extensions:
   linear:
     id: 4f128317-9c92-41b8-9ef6-d4fb131f66c6

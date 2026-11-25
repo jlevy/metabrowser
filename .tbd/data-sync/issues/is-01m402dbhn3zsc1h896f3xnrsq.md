@@ -5,7 +5,7 @@ title: "v0.12 follow-ups: deferred QA, dependency refresh, and defects found in 
 kind: epic
 status: open
 priority: 1
-version: 56
+version: 57
 labels:
   - linear
   - Bug
@@ -61,8 +61,9 @@ child_order_hints:
   - is-01m6f3nm5xr0xc912vqyky74hz
   - is-01m7h41x803666xbrm57enw9ac
   - is-01m7jfghpp62m3n15t0dqv8kmj
+  - is-01m7ey9fq9v53mp3c974mg2d89
 created_at: 2026-10-03T05:04:57.396Z
-updated_at: 2026-11-20T19:16:36.508Z
+updated_at: 2026-11-25T03:55:38.897Z
 extensions:
   linear:
     id: d35b48d1-3e75-4302-928f-acd928f51c87
