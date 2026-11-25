@@ -627,7 +627,9 @@ async function main() {
     pulls: current.members.map((member) => member.number),
     titles: current.members.map((member) => member.title),
   };
-  const listed = (number) => (number === 8 ? { state: "merged", title: null } : null);
+  // The Pulls tab's lists read 8, merged, and its author, whose member row ends in it.
+  const listed = (number) =>
+    number === 8 ? { state: "merged", title: null, author: "octo", avatar: null } : null;
   const unlisted = () => null;
   const headerAt = (envelope, from, drawn, failedNow = []) => {
     const model = page.stackHeader(
@@ -649,7 +651,7 @@ async function main() {
       members:
         model.members?.map(
           (member) =>
-            `${member.state ?? "(unknown)"} ${member.title ?? "(untitled)"} ${member.place} · #${member.number}`,
+            `${member.state ?? "(unknown)"} ${member.title ?? "(untitled)"} ${member.place} · #${member.number}${member.author === null ? "" : ` · ${member.author.login}`}`,
         ) ?? null,
       merge: model.merge === null ? null : `${model.merge.head} → ${model.merge.base}`,
       status: model.status.map((notice) => notice.text),

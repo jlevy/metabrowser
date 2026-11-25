@@ -1,8 +1,9 @@
 - **A native stack’s page is a pull request’s page for the whole stack.** Its header has
   a pull request’s parts in a pull request’s order: the Layers glyph, “Stack”, and the
   number; View on GitHub in the corner; the members, top first, each as the stack menu
-  lists it; the top member’s head branch → the stack’s base; the status line; the files
-  changed; and the Diff summary, closed until you open it.
+  lists it, its place, number, and author at the line’s end; the top member’s head
+  branch → the stack’s base; the status line; the files changed; and the Diff summary,
+  closed until you open it.
   Its tabs are a pull request’s Guided Review, when the stack has a guide, Docs, and
   Changes, which is the front page without a guide; the Files tab is gone, since the
   Diff summary lists the files, and `/stack/<n>/files` is no longer an address.

@@ -447,6 +447,43 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       ]
     },
     {
+      "step": "an address of Stack #286's page before the stacks are known: its row is revealed when they draw it",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 [1/100] · Stack #286, 3 pull requests",
+        "    #8 3/3 [1/4]",
+        "    #7 2/3 [2/4]",
+        "    #6 1/3 [3/4]",
+        "    Whole stack [4/4]",
+        "#106 [2/100]",
+        "#105 [3/100]",
+        "…",
+        "#5 [100/100]"
+      ],
+      "revealed while flat": [],
+      "revealed once grouped": [
+        "Whole stack of #286"
+      ],
+      "current": "Whole stack of #286",
+      "tabStop": "Whole stack of #286"
+    },
+    {
+      "step": "stacks read again: the row is not revealed again",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 [1/100] · Stack #286, 3 pull requests",
+        "    #8 3/3 [1/4]",
+        "    #7 2/3 [2/4]",
+        "    #6 1/3 [3/4]",
+        "    Whole stack [4/4]",
+        "#106 [2/100]",
+        "#105 [3/100]",
+        "…",
+        "#5 [100/100]"
+      ],
+      "revealed": []
+    },
+    {
       "step": "stacks read for another account: flat",
       "grouped": false,
       "rows": [

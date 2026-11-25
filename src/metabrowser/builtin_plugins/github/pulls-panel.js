@@ -753,6 +753,13 @@ export function createPullsController(deps, options = {}) {
    * row takes the current-row mark; null at any other address.
    * @type {number | null} */
   let currentStack = null;
+  /**
+   * Whether *currentStack*'s Whole stack row is still to be revealed: an address of the
+   * stack's page can come before the list draws the row, before the stacks are known or a
+   * read brings a member, and the row is revealed when it is drawn, as a pull request's row
+   * is once the list holds it (*revealPending*).
+   */
+  let wholeRevealPending = false;
   let revealCurrent = true;
   /**
    * The pull request a navigation asked the list to reveal (docs/design-system.md,
@@ -1863,8 +1870,22 @@ export function createPullsController(deps, options = {}) {
       render();
     }
     settleAnchor(true);
-    const key = wholeStackRowKey(stack);
-    if (revealCurrent && grouping().at.has(key)) {
+    wholeRevealPending = true;
+    revealWholeStack();
+  }
+
+  /** Reveal the current stack's Whole stack row if it is still to be revealed and is drawn
+   * now (*wholeRevealPending*). */
+  function revealWholeStack() {
+    if (!wholeRevealPending || currentStack === null) {
+      return;
+    }
+    const key = wholeStackRowKey(currentStack);
+    if (!grouping().at.has(key)) {
+      return;
+    }
+    wholeRevealPending = false;
+    if (revealCurrent) {
       deps.reveal(key);
     }
   }
@@ -2355,6 +2376,9 @@ export function createPullsController(deps, options = {}) {
     const awaited = first || (revealPending && sought === current);
     if (awaited && shown && current !== null && list.keys.has(current)) {
       revealRow(current);
+    }
+    if (shown) {
+      revealWholeStack();
     }
     if (placeSought(true)) {
       // The list it moved to reveals it, and this list's reads end with its filter.
@@ -2997,6 +3021,7 @@ export function createPullsController(deps, options = {}) {
         chasing = false;
         revealRow(current);
       }
+      revealWholeStack();
       if (placeSought()) {
         return;
       }
@@ -3296,6 +3321,7 @@ export function createPullsController(deps, options = {}) {
     groupingInputs += 1;
     render();
     settleAnchor();
+    revealWholeStack();
   }
 
   /**
@@ -3453,6 +3479,7 @@ export function createPullsController(deps, options = {}) {
     }
     const previous = currentStack === null ? null : wholeStackRowKey(currentStack);
     currentStack = stack;
+    wholeRevealPending = false;
     deps.markCurrent(previous, stack === null ? null : wholeStackRowKey(stack));
     if (stack !== null) {
       revealCurrent = !options.preserveScroll;

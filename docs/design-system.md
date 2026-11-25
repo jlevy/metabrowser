@@ -3907,11 +3907,13 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   dropped. Each member has its own state and ages, the page reads the stack on its own
   poll, and the page is the stack the chip would open.
 - **Author’s row and its freshness note:** dropped.
-  Each member has its own author; what the page is fetching is said on the status line.
+  Each member has its own author, which ends its member row; what the page is fetching
+  is said on the status line.
 - **Members:** the one part a pull request’s page lacks, built from an existing
   component. The stack menu’s member rows, top first, in a card, where the ages and
-  author rows stand on a pull request’s page; no row is the page, so none takes the
-  current-row mark.
+  author rows stand on a pull request’s page, each ending as the menu’s does, “2/4 ·
+  #455 · jlevy”, the author the shell’s actor identity with a 16 px avatar; no row is
+  the page, so none takes the current-row mark.
 - **Branches:** kept. The merge the stack makes, the top member’s head → the stack’s
   base, in the shell’s merge refs, held a line tall until the stack’s answer names the
   head.
@@ -3996,8 +3998,9 @@ width.
   While the address is the stack’s page, it is the current row, with a pull request’s
   current-row mark, `--highlight-bg` and the 2px `--highlight-bar`, and it is shown as a
   current pull request’s row is: an address that names the stack’s page opens the stack
-  if the reader closed it and scrolls the row into view (`setCurrent`’s `stack`,
-  `pullAddress` in `pulls-nav.js`).
+  if the reader closed it and scrolls the row into view, or, where the list does not
+  draw the row yet, as before the stacks are known, once it does (`setCurrent`’s
+  `stack`, `pullAddress` in `pulls-nav.js`).
 - **Keys.** A stack’s row is a row of the tree, as a folder is: `J` and `K` stop on it
   and open nothing; Enter and Space open or close it; Right opens it, or goes to its
   first pull request; Left closes it, or from a pull request in it, goes to it.
