@@ -412,8 +412,35 @@ function describeCard(slot) {
       : {}),
     image: page.children[0] ? Object.fromEntries(page.children[0].attributes) : null,
     caption: caption.children.map((part) => part.reads()),
+    controls: describeControls(card),
   };
 }
+
+/** The View file controls under *node*, as the bar and the card draw them. */
+function describeControls(node) {
+  return node.find("diff-file-view").map((control) => {
+    const attributes = Object.fromEntries(control.attributes);
+    return {
+      tag: control.tagName.toLowerCase(),
+      label: control.reads(),
+      tip: attributes["data-tip-text"],
+      ...(attributes.href ? { href: attributes.href } : {}),
+    };
+  });
+}
+
+// The page a pull request's Changes is: the server serves another commit than the pull
+// request's head, which is the comparison's right side, and the head has a branch. So
+// each changed file's control is View on branch, a switch, on its bar and on its card.
+const PULL_REQUEST_PAGE = {
+  kind: "pin",
+  pin: "0".repeat(40),
+  branch: "feature",
+  href: (address) => `/view/${typeof address === "string" ? address : "bytes"}`,
+  pinSwitch: { onReleased: () => () => {}, switchTo: async () => ({ kind: "busy" }) },
+  navigate() {},
+  onPinChanged: () => () => {},
+};
 
 async function comparison() {
   globalThis.document = {
@@ -426,6 +453,10 @@ async function comparison() {
     cancelAnimationFrame() {},
     addEventListener() {},
     removeEventListener() {},
+    // What the View file controls' tooltips name a commit with: the shell's own.
+    metabrowser: {
+      shortCommit: require("./changed-files-tree-fixture.js").shellFormatters().shortCommit,
+    },
   };
   globalThis.Element = DiffElement;
   globalThis.getComputedStyle = () => ({ getPropertyValue: () => "24px", fontSize: "14px" });
@@ -436,6 +467,10 @@ async function comparison() {
   };
   const diffView = await import(
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js")).href
+  );
+  const viewFileModule = await import(
+    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view-file.js"))
+      .href
   );
   const document_ = recorded.pinComparison;
   // The PDF plugin's module, in the page the PDF view runs in, on the pin's globals: what
@@ -469,7 +504,9 @@ async function comparison() {
         },
         ...require("./changed-files-tree-fixture.js").shellPainters(),
       },
-      {},
+      {
+        viewFile: (callbacks) => viewFileModule.createViewFileOpener(PULL_REQUEST_PAGE, callbacks),
+      },
     );
     await settled();
     return { host, handle, requests };
@@ -497,8 +534,12 @@ async function comparison() {
       .find("diff-file")
       .find((candidate) => candidate.find("diff-file-path")[0]?.reads().endsWith(filePath));
     assert(section !== undefined, `the diff drew no section for ${filePath}`);
-    const notice = section.find("diff-availability")[0];
+    // The file's own line, not the empty notice a View file control says a refusal in.
+    const notice = section
+      .find("diff-availability")
+      .find((node) => !node.className.split(" ").includes("diff-file-notice"));
     const slot = section.find("diff-pdf-card")[0];
+    const bar = section.find("diff-file-bar")[0];
     changes.push({
       path: filePath,
       change: change.kind,
@@ -508,7 +549,17 @@ async function comparison() {
       lines: change.additions === null ? null : `+${change.additions} −${change.deletions}`,
       body: notice ? notice.reads() : "text diff",
       card: slot ? describeCard(slot) : null,
+      barControls: bar ? describeControls(bar) : [],
     });
+    // The card's way to the PDF's page is its bar's: the same control, a press nearer.
+    const card = changes.at(-1).card;
+    if (card !== null) {
+      assert(
+        card.controls.length > 0 &&
+          JSON.stringify(card.controls) === JSON.stringify(changes.at(-1).barControls),
+        `${filePath}: the card's controls are not its bar's`,
+      );
+    }
   }
   // A heavy diff must not grow a PDF viewer per changed PDF: no element the diff drew,
   // and no markup it wrote, is an embed, object, or iframe.
@@ -545,7 +596,10 @@ async function comparison() {
     (change) =>
       `diff · ${change.change} ${change.path}: ${change.body}` +
       (change.card
-        ? ` Card: ${change.card.state}${change.card.reason ? ` (${change.card.reason})` : ""}.`
+        ? ` Card: ${change.card.state}${change.card.reason ? ` (${change.card.reason})` : ""}` +
+          `, with ${change.card.controls
+            .map((control) => `${control.label} (${control.tag}: ${control.tip})`)
+            .join(", ")}, as its bar has.`
         : ""),
   );
   const carded = Object.entries(pinComparison.cards).map(

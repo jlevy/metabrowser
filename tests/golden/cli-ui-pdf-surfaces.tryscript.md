@@ -53,7 +53,11 @@ or a pull request’s Changes draws.
   trusted with. `without a sandbox` it says why it has no image; `with a sandbox` (a
   stand-in that confines nothing, so the recording holds a drawn card on every platform)
   it shows the first page, the name, and the page count.
-  The extensionless PDF has no card: the comparison does not sniff a side.
+  The card carries its bar’s View file control, so the PDF’s page, with its viewer,
+  Open, and Download, is a press away from the card too; the diff is mounted as a pull
+  request’s Changes is, at another commit than its head, so the control is View on
+  branch, and the session asserts it is the bar’s. The extensionless PDF has no card:
+  the comparison does not sniff a side.
 
 A diff draws no PDF viewer at all, so a heavy comparison never grows one per changed
 PDF: the last line says the mounted diff holds no embed, object, or iframe, the card’s
@@ -93,10 +97,10 @@ $ node tests/dom/pdf-surfaces-session.js
     "diff · modified README.md: text diff",
     "diff · added notes/not-really.pdf: text diff",
     "diff · added papers/ascii.pdf: text diff",
-    "diff · added papers/report.pdf: Binary file; no textual diff. Card: unavailable (no_sandbox).",
+    "diff · added papers/report.pdf: Binary file; no textual diff. Card: unavailable (no_sandbox), with View on branch (button: Switch to dc9be3e, this pull request's head, and open papers/report.pdf), as its bar has.",
     "diff · added scans/untitled: Binary file; no textual diff.",
-    "diff, without a sandbox · report.pdf · Previews of this source's PDFs are drawn only in a sandbox, which this system lacks. (no image)",
-    "diff, with a sandbox · report.pdf · 1 page (image)",
+    "diff, without a sandbox · report.pdf · Previews of this source's PDFs are drawn only in a sandbox, which this system lacks. · View on branch (no image)",
+    "diff, with a sandbox · report.pdf · 1 page · View on branch (image)",
     "diff · draws no embed, object, or iframe"
   ],
   "surfaces": [
@@ -809,7 +813,14 @@ $ node tests/dom/pdf-surfaces-session.js
         "availability": "ready",
         "lines": "+2 −0",
         "body": "text diff",
-        "card": null
+        "card": null,
+        "barControls": [
+          {
+            "tag": "button",
+            "label": "View on branch",
+            "tip": "Switch to dc9be3e, this pull request's head, and open README.md"
+          }
+        ]
       },
       {
         "path": "notes/not-really.pdf",
@@ -818,7 +829,14 @@ $ node tests/dom/pdf-surfaces-session.js
         "availability": "ready",
         "lines": "+1 −0",
         "body": "text diff",
-        "card": null
+        "card": null,
+        "barControls": [
+          {
+            "tag": "button",
+            "label": "View on branch",
+            "tip": "Switch to dc9be3e, this pull request's head, and open notes/not-really.pdf"
+          }
+        ]
       },
       {
         "path": "papers/ascii.pdf",
@@ -827,7 +845,14 @@ $ node tests/dom/pdf-surfaces-session.js
         "availability": "ready",
         "lines": "+5 −0",
         "body": "text diff",
-        "card": null
+        "card": null,
+        "barControls": [
+          {
+            "tag": "button",
+            "label": "View on branch",
+            "tip": "Switch to dc9be3e, this pull request's head, and open papers/ascii.pdf"
+          }
+        ]
       },
       {
         "path": "papers/report.pdf",
@@ -842,9 +867,24 @@ $ node tests/dom/pdf-surfaces-session.js
           "image": null,
           "caption": [
             "report.pdf",
-            "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
+            "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks.",
+            "View on branch"
+          ],
+          "controls": [
+            {
+              "tag": "button",
+              "label": "View on branch",
+              "tip": "Switch to dc9be3e, this pull request's head, and open papers/report.pdf"
+            }
           ]
-        }
+        },
+        "barControls": [
+          {
+            "tag": "button",
+            "label": "View on branch",
+            "tip": "Switch to dc9be3e, this pull request's head, and open papers/report.pdf"
+          }
+        ]
       },
       {
         "path": "scans/untitled",
@@ -853,7 +893,14 @@ $ node tests/dom/pdf-surfaces-session.js
         "availability": "binary",
         "lines": null,
         "body": "Binary file; no textual diff.",
-        "card": null
+        "card": null,
+        "barControls": [
+          {
+            "tag": "button",
+            "label": "View on branch",
+            "tip": "Switch to dc9be3e, this pull request's head, and open scans/untitled"
+          }
+        ]
       }
     ],
     "cards": {
@@ -868,7 +915,15 @@ $ node tests/dom/pdf-surfaces-session.js
             "image": null,
             "caption": [
               "report.pdf",
-              "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
+              "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks.",
+              "View on branch"
+            ],
+            "controls": [
+              {
+                "tag": "button",
+                "label": "View on branch",
+                "tip": "Switch to dc9be3e, this pull request's head, and open papers/report.pdf"
+              }
             ]
           }
         ]
@@ -891,7 +946,15 @@ $ node tests/dom/pdf-surfaces-session.js
             },
             "caption": [
               "report.pdf",
-              "1 page"
+              "1 page",
+              "View on branch"
+            ],
+            "controls": [
+              {
+                "tag": "button",
+                "label": "View on branch",
+                "tip": "Switch to dc9be3e, this pull request's head, and open papers/report.pdf"
+              }
             ]
           }
         ]
