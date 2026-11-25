@@ -95,6 +95,11 @@ test:
 app:
 	VARIANT=$(dev_variant) scripts/build-app.sh
 
+# A development run records nothing in the recent targets, the one list it shares with the
+# installed app: agents launch the app this way for hand checks, and the folders they open
+# are not the user's (mb-1q02). The app passes the variable on to every `metab` it runs
+# (`ChildEnvironment.passedThrough`), so whatever the run opens later stays out too; open
+# your own folders in the installed app.
 run: app
 	set -e; source scripts/common.sh; variant_settings $(dev_variant); \
 	open --env METABROWSER_RECORD_RECENT=0 -a "$(CURDIR)/$$app" $(if $(FOLDER),"$(FOLDER)")
