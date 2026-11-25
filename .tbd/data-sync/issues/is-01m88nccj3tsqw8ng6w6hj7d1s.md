@@ -3,9 +3,9 @@ type: is
 id: is-01m88nccj3tsqw8ng6w6hj7d1s
 title: Lines summaries outside the Pulls tab still show +0 and −0
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/827
@@ -17,7 +17,11 @@ parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-25T06:13:11.311Z
-updated_at: 2026-11-25T09:03:32.317Z
+updated_at: 2026-11-25T12:13:14.137Z
 started_at: 2026-11-25T06:14:02.893Z
+closed_at: 2026-11-25T12:13:14.134Z
+close_reason: "Merged in #827 (Pulls rows and the PR page)"
+resolution: null
+duplicate_of: null
 ---
 Reported by the user after #824 merged: the PR page's summary still reads like '+3,893 −0'. The user's rule (mb-efum) was meant for every lines summary: leave out a side that is zero, show both when both are nonzero, and '0 lines' when neither changed. #824 applied it only to the Pulls tab's rows and stack headings behind an opt-in. Done when every surface that paints the shell's brief change line follows the rule (PR page brief summary, diff header, commit hover card and totals line, changed-files summary, Pulls), the opt-in is gone so it is the one behavior, and goldens pin each surface.

@@ -5,7 +5,7 @@ title: "Native macOS app: thin AppKit shell over metab"
 kind: epic
 status: in_progress
 priority: 1
-version: 167
+version: 168
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 refs:
   - kind: pr
@@ -65,6 +65,9 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/837
     at: 2026-11-25T11:34:06.865Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/827
+    at: 2026-11-25T12:13:17.607Z
 labels:
   - linear
   - Feature
@@ -216,7 +219,7 @@ child_order_hints:
   - is-01m88neq949qcww91exfehyas3
   - is-01m88pf9e36vd3c65ybr0cakhc
 created_at: 2026-11-11T03:02:47.974Z
-updated_at: 2026-11-25T11:34:06.867Z
+updated_at: 2026-11-25T12:13:17.608Z
 extensions:
   linear:
     id: 92793121-e71d-4d48-964f-9c3f40100392

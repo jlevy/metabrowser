@@ -3,9 +3,9 @@ type: is
 id: is-01m88nc13mnmbtce6r3t9wxqtz
 title: "Pulls row: a stack member's place sits on top of its state icon"
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/827
@@ -17,7 +17,11 @@ parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-25T06:12:59.566Z
-updated_at: 2026-11-25T09:03:38.048Z
+updated_at: 2026-11-25T12:13:11.903Z
 started_at: 2026-11-25T06:13:47.621Z
+closed_at: 2026-11-25T12:13:11.898Z
+close_reason: "Merged in #827 (Pulls rows and the PR page)"
+resolution: null
+duplicate_of: null
 ---
 Reported by the user after #821 merged: in the Pulls tab's nav column, a stack member's place (e.g. bold 1/2) is drawn on top of the PR state icon instead of after it. #821 positions the icon absolutely and leaves its slot with the heading's first-line text-indent. Done when the place always starts after the icon (one stack, several stacks, every width the pane allows, both themes), pinned by a Chrome check that the icon's box and the place's box do not overlap, on markup the real Pulls panel renders.
