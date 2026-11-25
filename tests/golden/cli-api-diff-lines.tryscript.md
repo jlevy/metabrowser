@@ -37,11 +37,13 @@ before: >-
 A code file’s diff shows each change with three lines of context, and the page opens the
 unchanged lines between its hunks, above the first, and below the last behind the diff’s
 fold bar (docs/design-system.md, “Fold Expanders”). It reads them here: `view=lines` on
-the comparison route answers a run of one changed file’s side, the new side unless
-`side=old` asks for the old one, from `start` (1-based), `count` lines long and at most
-`DIFF_GAP_LINES` (settings.py).
-The answer says how many lines the side has and whether it ends in a newline, which is
-how the page learns where the file ends below its last hunk.
+the comparison route answers a run of one changed file’s new side, from `start`
+(1-based), or before `end` for a gap the page opens upward to a hunk, `count` lines long
+and at most `DIFF_GAP_LINES` (settings.py).
+A run of long lines stops at `MAX_LINES_ANSWER_BYTES` of text (`diff/side_lines.py`),
+keeping the lines nearest the line it was asked from, so `start` says where an answer
+begins. The answer says how many lines the side has and whether it ends in a newline,
+which is how the page learns where the file ends below its last hunk.
 A pull request’s comparison route (`/api/plugin/github/pull-comparison`) answers the
 same view, as it answers the comparison itself.
 
@@ -60,7 +62,6 @@ status: 200
   "comparison_id": "git:e46d73d09b6c9e6f",
   "file_id": "f1",
   "path": "app.py",
-  "side": "new",
   "start": 9,
   "lines": [
     "line 9",
@@ -86,7 +87,6 @@ status: 200
   "comparison_id": "git:e46d73d09b6c9e6f",
   "file_id": "f1",
   "path": "app.py",
-  "side": "new",
   "start": 34,
   "lines": [
     "line 34",
@@ -103,29 +103,32 @@ status: 200
 ? 0
 ```
 
-## Test: a deleted file’s lines are its old side’s
+## Test: the lines up to a hunk, by their end
+
+The page opens the gap above a hunk from the hunk upward, so it asks for the lines
+before the hunk’s first, here the 3 above line 27.
 
 ```console
-$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&file=gone.py&view=lines&start=1&count=5&side=old'
-api: /api/plugin/diff/comparison?revision=HEAD&file=gone.py&view=lines&start=1&count=5&side=old
+$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&file=app.py&view=lines&end=27&count=3'
+api: /api/plugin/diff/comparison?revision=HEAD&file=app.py&view=lines&end=27&count=3
 status: 200
 {
   "comparison_id": "git:e46d73d09b6c9e6f",
-  "file_id": "f2",
-  "path": "gone.py",
-  "side": "old",
-  "start": 1,
+  "file_id": "f1",
+  "path": "app.py",
+  "start": 24,
   "lines": [
-    "first",
-    "second"
+    "line 24",
+    "line 25",
+    "line 26"
   ],
-  "line_count": 2,
+  "line_count": 40,
   "ends_with_newline": true
 }
 ? 0
 ```
 
-## Test: a side the change does not have is refused
+## Test: a deleted file has no new side to read
 
 The page shows a separator it cannot open as it always did, so a refusal is a 409 with
 the sentence the page would say, and the reason beside it for an agent.
@@ -163,6 +166,21 @@ Error: /api/plugin/diff/comparison?revision=HEAD&file=logo.bin&view=lines&start=
 ```
 
 ## Test: an ask the route cannot read
+
+A run is named by its start or its end, not both.
+
+```console
+$ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&file=app.py&view=lines&start=1&end=4&count=5'
+api: /api/plugin/diff/comparison?revision=HEAD&file=app.py&view=lines&start=1&end=4&count=5
+status: 400
+{
+  "error": "diff_lines",
+  "message": "view=lines names a start or an end, not both.",
+  "path": "app.py"
+}
+Error: /api/plugin/diff/comparison?revision=HEAD&file=app.py&view=lines&start=1&end=4&count=5 returned HTTP 400
+? 1
+```
 
 ```console
 $ metab gitroot --api '/api/plugin/diff/comparison?revision=HEAD&file=app.py&view=lines&start=0&count=5'

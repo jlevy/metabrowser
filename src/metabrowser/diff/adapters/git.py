@@ -93,6 +93,13 @@ _LINES_NOT_SHOWN = "These lines cannot be shown."
 
 log = logging.getLogger(__name__)
 
+CONTEXT_LINES = 3
+"""The unchanged lines a comparison's patch keeps around each change, Git's own default. The
+patch run passes it as ``--unified`` (:meth:`GitDiffSource._patch`), so a reader's
+``diff.context`` does not change it, and a comparison says it as ``options.context``, which
+the diff view reads to tell where a last hunk's trailing context may not be the file's end
+(``hunkGaps`` in diff-view.js)."""
+
 MAX_MANIFEST_FILES = 2000
 """Manifest cap. A 2000-file change set is far past reviewable; beyond it
 the manifest reports `truncated` with a cursor rather than growing without
@@ -730,7 +737,7 @@ class GitDiffSource:
             right=SnapshotRef(
                 kind=SnapshotKind.commit, id=right, symbolic=str(intent.get("right") or "") or None
             ),
-            options=DiffOptions(context=3, rename_detection=True, rename_similarity=50),
+            options=DiffOptions(context=CONTEXT_LINES, rename_detection=True, rename_similarity=50),
         )
 
     async def _merge_base(self, left: str, right: str) -> str:
@@ -1323,6 +1330,8 @@ class GitDiffSource:
                 ),
                 *(["-M50", "-C"] if renames else ["--no-renames"]),
                 *([] if diff_filter is None else [f"--diff-filter={diff_filter}"]),
+                # The context the comparison says it has, whatever `diff.context` says.
+                f"--unified={resolved.options.context}",
                 # The shape the parser reads, whatever a folder's configuration says: Git's
                 # own prefixes, which name a hunkless section, no external driver, and no
                 # color, which `color.diff=always` would write around every line.

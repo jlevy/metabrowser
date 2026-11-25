@@ -12,7 +12,8 @@
 
 - **Route:** `GET /api/plugin/diff/comparison`, and a pull request’s
   `/api/plugin/github/pull-comparison`, answer `view=lines&file=PATH&start=N&count=M`,
-  with `side=old` for the old side: up to `DIFF_GAP_LINES` lines of that change’s side
-  from its snapshot, with the side’s `line_count` and `ends_with_newline`, or a `409`
-  whose `code` is `no_side`, `not_text`, `textconv`, `blob_too_large`, or `no_content`
+  or `end=N` for the lines before line N: up to `DIFF_GAP_LINES` lines of that change’s
+  new side from its snapshot, fewer where its lines are long, with the side’s
+  `line_count` and `ends_with_newline`, or a `409` whose `code` is `no_side`,
+  `not_text`, `textconv`, `blob_too_large`, or `no_content`
   ([Context Between Hunks](docs/project/architecture/arch-diff-pipeline.md#context-between-hunks)).

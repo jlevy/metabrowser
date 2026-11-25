@@ -208,15 +208,17 @@ const MOUNT = `async (layout) => {
   const { comparison: recorded, lines } = window.gapInput;
   window.asks = [];
   setGapLoader(async (revision, path, ask) => {
-    window.asks.push(revision + " " + path + " " + ask.start + "+" + ask.count);
+    const at = "start" in ask ? "start=" + ask.start : "end=" + ask.end;
+    window.asks.push(revision + " " + path + " " + at + " count=" + ask.count);
     await new Promise((resolve) => setTimeout(resolve, 30));
+    const start = "start" in ask ? ask.start : Math.max(1, ask.end - ask.count);
+    const end = "start" in ask ? ask.start + ask.count : ask.end;
     return {
       comparison_id: "git:chrome",
       file_id: "f1",
       path,
-      side: "new",
-      start: ask.start,
-      lines: lines.slice(ask.start - 1, ask.start - 1 + ask.count),
+      start,
+      lines: lines.slice(start - 1, end - 1),
       line_count: lines.length,
       ends_with_newline: true,
     };
@@ -831,7 +833,7 @@ try {
   const asks = await chrome.evaluate("window.asks");
   check(
     "each open asks the route once, for its lines",
-    JSON.stringify(asks) === JSON.stringify(["HEAD src/app.py 347+250"]),
+    JSON.stringify(asks) === JSON.stringify(["HEAD src/app.py end=597 count=250"]),
     JSON.stringify(asks),
   );
   process.stderr.write(`${JSON.stringify(record, rounded)}\n`);

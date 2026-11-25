@@ -2,8 +2,9 @@
 
 ``/api/plugin/diff/comparison`` with ``view=lines`` answers a run of one changed file's side,
 read from its snapshot, for the page's fold between hunks (diff-view.js, ``renderGapFold``).
-``diff/side_lines.py`` cuts a side into lines; the route reads the side, bounds the ask, and
-refuses a side it cannot number as the hunks do. ``tests/golden/cli-api-diff-lines.tryscript.md``
+``diff/side_lines.py`` cuts a run of a side's lines, from a start or up to an end; the route
+reads the side, bounds the ask, and refuses a side it cannot number as the hunks do, and the
+patch is written with the context the page counts on. ``tests/golden/cli-api-diff-lines.tryscript.md``
 pins the answers through ``metab --api``; these are the cases a transcript would make long.
 """
 
@@ -20,7 +21,7 @@ import pytest
 from metabrowser import server
 from metabrowser.builtin_plugins.diff import sidekick
 from metabrowser.diff import side_lines as side_lines_module
-from metabrowser.diff.side_lines import side_lines
+from metabrowser.diff.side_lines import side_lines, side_lines_before
 from tests.diff_fixture_repo import git
 from tests.git_pin_harness import pinned_client
 from tests.required_tools import needs_git
@@ -70,6 +71,54 @@ def test_a_start_or_count_below_one_is_refused() -> None:
         side_lines(b"one\n", 0, 1)
     with pytest.raises(ValueError):
         side_lines(b"one\n", 1, 0)
+    with pytest.raises(ValueError):
+        side_lines_before(b"one\n", 0, 1)
+
+
+def test_a_run_before_a_line_is_the_lines_up_to_it_with_where_it_starts() -> None:
+    content = b"one\ntwo\nthree\nfour\n"
+    cut = side_lines_before(content, 4, 2)
+    assert (cut.start, cut.lines, cut.line_count) == (2, ("two", "three"), 4)
+    # From the side's first line where it asks past it, and to its last past the end.
+    assert side_lines_before(content, 3, 10).lines == ("one", "two")
+    tail = side_lines_before(content, 6, 3)
+    assert (tail.start, tail.lines) == (3, ("three", "four"))
+    # Before line 1, and wholly past the end, there is nothing; the start is where it ends.
+    assert (side_lines_before(content, 1, 5).start, side_lines_before(content, 1, 5).lines) == (
+        1,
+        (),
+    )
+    assert (side_lines_before(content, 20, 5).start, side_lines_before(content, 20, 5).lines) == (
+        5,
+        (),
+    )
+
+
+def test_a_run_cut_by_its_byte_bound_keeps_the_lines_nearest_where_it_was_asked_from(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A gap opened upward to a hunk asks for the lines before it, so the lines a short answer
+    # keeps are the ones beside that hunk, and the page's nested bar stands for the rest.
+    monkeypatch.setattr(side_lines_module, "MAX_LINES_ANSWER_BYTES", 10)
+    cut = side_lines_before(b"aaaa\nbbbb\ncccc\ndddd\n", 5, 4)
+    assert (cut.start, cut.lines) == (3, ("cccc", "dddd"))
+    one = side_lines_before(b"b\n" + b"a" * 50 + b"\n", 3, 2)
+    assert (one.start, one.lines) == (2, ("a" * 50,))
+
+
+@pytest.mark.parametrize("line", [b"a\n", b"x" * 39 + b"\n", b"\xe2\x80\x94\r\n"])
+def test_a_run_far_into_a_side_is_the_run_splitting_the_whole_side_would_give(
+    line: bytes,
+) -> None:
+    # The run's start is found by counting newlines in chunks, across the chunks' edges.
+    content = line * 50_000 + b"last"
+    pieces = content.split(b"\n")
+    for start in (1, 2, 8_191, 16_385, 49_999, 50_001):
+        want = tuple(piece.decode("utf-8", "replace") for piece in pieces[start - 1 : start + 2])
+        cut = side_lines(content, start, 3)
+        assert (cut.lines, cut.line_count, cut.ends_with_newline) == (want, 50_001, False)
+        before = side_lines_before(content, start + 3, 3)
+        assert (before.start, before.lines) == (start, want[: 50_002 - start])
 
 
 # ── The route ──────────────────────────────────────────────────────────────
@@ -134,9 +183,8 @@ def repository(tmp_path: Path) -> Path:
 def test_a_run_of_the_new_side_between_hunks(repository: Path) -> None:
     status, body = _lines(file="app.py", start="9", count="3")
     assert status == 200, body
-    assert {key: body[key] for key in ("path", "side", "start", "line_count")} == {
+    assert {key: body[key] for key in ("path", "start", "line_count")} == {
         "path": "app.py",
-        "side": "new",
         "start": 9,
         "line_count": 40,
     }
@@ -155,9 +203,14 @@ def test_the_end_of_a_side_is_where_its_answer_stops(repository: Path) -> None:
 
 
 @needs_git
-def test_the_old_side_is_asked_for_by_name(repository: Path) -> None:
-    status, body = _lines(file="gone.py", start="1", count="5", side="old")
-    assert (status, body["lines"], body["side"]) == (200, ["first", "second"], "old")
+def test_a_run_up_to_a_hunk_is_asked_for_by_its_end(repository: Path) -> None:
+    status, body = _lines(file="app.py", end="27", count="3")
+    assert status == 200, body
+    assert (body["start"], body["lines"]) == (24, ["line 24", "line 25", "line 26"])
+
+
+@needs_git
+def test_a_deleted_file_has_no_new_side_to_read(repository: Path) -> None:
     status, body = _lines(file="gone.py", start="1", count="5")
     assert (status, body["code"]) == (409, "no_side")
     assert body["message"] == "These lines cannot be shown."
@@ -196,7 +249,9 @@ def test_a_side_past_the_read_bound_is_refused(
         ({"file": "app.py", "start": "1", "count": "x"}, "count"),
         ({"file": "app.py", "start": "\u00b2", "count": "5"}, "start"),
         ({"file": "app.py", "start": "1" * 40, "count": "5"}, "start"),
-        ({"file": "app.py", "start": "1", "count": "5", "side": "both"}, "side"),
+        ({"file": "app.py", "count": "5"}, "start or an end"),
+        ({"file": "app.py", "start": "1", "end": "4", "count": "5"}, "not both"),
+        ({"file": "app.py", "end": "0", "count": "5"}, "end"),
     ],
 )
 def test_an_ask_the_route_cannot_read_is_a_400_naming_what(
@@ -233,27 +288,70 @@ def test_a_file_a_textconv_driver_converts_is_refused_in_a_folder(tmp_path: Path
 
 
 @needs_git
-def test_a_store_answers_from_its_own_objects(tmp_path: Path) -> None:
+def test_a_store_answers_from_its_own_objects_and_keeps_each_run_apart(tmp_path: Path) -> None:
+    """A store's answer is kept by its key, so each run, by start, end, and count, is kept
+    apart from the others and from the comparison's document, and asking again for one is
+    that run's body and tag."""
     work = tmp_path / "work"
     _repository(work)
     target = git(work, "rev-parse", "HEAD").decode().strip()
     store = tmp_path / "store.git"
     git(tmp_path, "clone", "-q", "--bare", "--template=", str(work), str(store))
+    asks = [
+        {"start": "29", "count": "3"},
+        {"start": "29", "count": "2"},
+        {"start": "9", "count": "3"},
+        {"end": "32", "count": "3"},
+        {"start": "29", "count": "3"},
+    ]
 
-    async def run() -> tuple[int, dict[str, Any]]:
+    async def run() -> list[tuple[int, str, dict[str, Any]]]:
+        answers: list[tuple[int, str, dict[str, Any]]] = []
         async with pinned_client(store, target) as (client, _subject):
-            response = await client.get(
-                "/api/plugin/diff/comparison",
-                params={
-                    "revision": target,
-                    "view": "lines",
-                    "file": "app.py",
-                    "start": "29",
-                    "count": "3",
-                },
-            )
-            return response.status_code, response.json()
+            for ask in asks:
+                response = await client.get(
+                    "/api/plugin/diff/comparison",
+                    params={"revision": target, "view": "lines", "file": "app.py", **ask},
+                )
+                answers.append(
+                    (response.status_code, response.headers.get("etag", ""), response.json())
+                )
+        return answers
 
-    status, body = asyncio.run(run())
-    assert status == 200, body
-    assert body["lines"] == ["line 29", "line 30, changed", "line 31"]
+    answers = asyncio.run(run())
+    assert all(status == 200 for status, _tag, _body in answers), answers
+    assert [body["lines"] for _status, _tag, body in answers] == [
+        ["line 29", "line 30, changed", "line 31"],
+        ["line 29", "line 30, changed"],
+        ["line 9", "line 10", "line 11"],
+        ["line 29", "line 30, changed", "line 31"],
+        ["line 29", "line 30, changed", "line 31"],
+    ]
+    tags = [tag for _status, tag, _body in answers]
+    assert all(tags) and len(set(tags[:4])) == 4, tags
+    assert tags[4] == tags[0]
+
+
+# ── The context the hunks were written with ────────────────────────────────
+
+
+@needs_git
+@pytest.mark.parametrize("configured", ["1", "5"])
+def test_a_folders_diff_context_does_not_change_the_context_a_comparison_says(
+    repository: Path, configured: str
+) -> None:
+    """The page offers the lines below a last hunk only past a full ``options.context`` of
+    trailing context lines (``hunkGaps`` in diff-view.js), so the patch is written with that
+    context whatever a reader's ``diff.context`` says, or a file would never offer them, or
+    would offer an empty bar."""
+    git(repository, "config", "diff.context", configured)
+    request = Mock(spec=["query_params", "headers"])
+    request.query_params = _Query({"revision": "HEAD", "file": "app.py"})
+    request.headers = {}
+    response = asyncio.run(sidekick.comparison_handler(request))
+    document = json.loads(bytes(response.body))
+    assert document["resolved"]["options"]["context"] == 3
+    (patch,) = document["patches"].values()
+    ranges = [(hunk["new_start"], hunk["new_count"], hunk["lines"][-3:]) for hunk in patch["hunks"]]
+    assert [(start, count) for start, count, _tail in ranges] == [(2, 7), (27, 7)]
+    assert all(line["op"] == "context" for _s, _c, tail in ranges for line in tail)

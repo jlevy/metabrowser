@@ -5,11 +5,16 @@
 // and mount a comparison of three files into a small element tree that records what they
 // build: `src/app.py`, 120 lines, whose commit adds a line at 10 and changes line 80, so its
 // hunks leave lines 1 to 6, 14 to 76, and 84 to the end out; `notes.txt`, whose lines the
-// comparison declines, as it does a file a textconv driver converts; and a binary file. The
-// gap loader stands in for the comparison route's `view=lines`
+// comparison declines, as it does a file a textconv driver converts; a binary file;
+// `wide.json`, whose lines are long enough that the route's byte bound cuts every answer to
+// 4 of them; `tail.py`, whose last change ends three lines from its end, so the bar below it
+// holds nothing; `end.txt`, whose last line has no newline; and `moved.py`, whose answers
+// name another comparison, as a ref that moved since the diff was drawn gives. The gap loader
+// stands in for the comparison route's `view=lines`
 // (tests/golden/cli-api-diff-lines.tryscript.md pins what it answers), answering from the new
-// side's text, failing once with a 503 where a step says so, and declining `notes.txt` with
-// a 409. `DIFF_GAP_LINES` is 25 here, so a long gap opens in steps.
+// side's text, from a start or up to an end, failing once with a 503 where a step says so,
+// and declining `notes.txt` with a 409. `DIFF_GAP_LINES` is 25 here, so a long gap opens in
+// steps.
 //
 // Geometry is a model, so the place a gap keeps can be read: the pane is 600 px tall, a file
 // bar and the toolbar are 30 px, and a row, a hunk's separator, and a fold's bar are 20 px.
@@ -426,6 +431,68 @@ const context = (from, to, lines) =>
     text: lines[from + index - 1],
   }));
 
+/** The new side of a file whose line *changed* is all its commit changes. */
+const lines = (prefix, length, changed) =>
+  Array.from({ length }, (_, index) =>
+    index + 1 === changed ? `${prefix}${index + 1}, changed` : `${prefix}${index + 1}`,
+  );
+const WIDE = lines("row ", 200, 150);
+const TAIL = lines("tail ", 10, 7);
+const END = lines("end ", 20, 5);
+const MOVED = lines("moved ", 30, 15);
+/** Each such file's new side, and whether it ends with a newline. */
+const SIDES = {
+  "src/app.py": { lines: NEW, newline: true },
+  "wide.json": { lines: WIDE, newline: true },
+  "tail.py": { lines: TAIL, newline: true },
+  "end.txt": { lines: END, newline: false },
+  "moved.py": { lines: MOVED, newline: true },
+};
+// The lines one answer for `wide.json` holds, as the route's `MAX_LINES_ANSWER_BYTES` cuts a
+// run of long lines: those nearest the line it was asked from.
+const WIDE_ANSWER_LINES = 4;
+/** A file whose commit changes line *changed* of *after*, and its one hunk. */
+function changedOnce(id, filePath, after, changed) {
+  const first = changed - 3;
+  const last = Math.min(changed + 3, after.length);
+  return {
+    change: {
+      additions: 1,
+      availability: "ready",
+      binary: false,
+      deletions: 1,
+      id,
+      kind: "modified",
+      new: side(filePath, id.repeat(20).slice(0, 40)),
+      old: side(filePath, id.repeat(20).slice(0, 40).replace(/./, "0")),
+    },
+    patch: {
+      hunks: [
+        {
+          heading: "",
+          lines: [
+            ...context(first, changed - 1, after),
+            { op: "del", text: after[changed - 1].replace(", changed", "") },
+            { op: "add", text: after[changed - 1] },
+            ...context(changed + 1, last, after),
+          ],
+          new_count: last - first + 1,
+          new_start: first,
+          old_count: last - first + 1,
+          old_start: first,
+        },
+      ],
+      truncated: false,
+    },
+  };
+}
+const ONCE = [
+  changedOnce("f4", "wide.json", WIDE, 150),
+  changedOnce("f5", "tail.py", TAIL, 7),
+  changedOnce("f6", "end.txt", END, 5),
+  changedOnce("f7", "moved.py", MOVED, 15),
+];
+
 const comparison = {
   manifest: {
     cursor: null,
@@ -460,8 +527,9 @@ const comparison = {
         new: side("logo.png", "5".repeat(40)),
         old: side("logo.png", "6".repeat(40)),
       },
+      ...ONCE.map((once) => once.change),
     ],
-    totals: { additions: 3, deletions: 2, exact: true, files: 3 },
+    totals: { additions: 7, deletions: 6, exact: true, files: 7 },
     truncated: false,
   },
   patches: {
@@ -509,6 +577,7 @@ const comparison = {
       ],
       truncated: false,
     },
+    ...Object.fromEntries(ONCE.map((once) => [once.change.id, once.patch])),
   },
   resolved: { comparison_id: "git:session", options: { context: 3 } },
   schema: "file-diff-v1",
@@ -541,7 +610,8 @@ function row(node) {
     .map((child) => child.textContent || "-");
   const marker = node.find("diff-line-marker")[0]?.textContent ?? "";
   const highlighted = node.find("hljs-string").length > 0 ? " *" : "";
-  return `${numbers.join(" ")} |${marker}${node.find("diff-line-text")[0]?.textContent ?? ""}${highlighted}`;
+  const open = node.find("diff-line-no-newline").length > 0 ? " (no newline)" : "";
+  return `${numbers.join(" ")} |${marker}${node.find("diff-line-text")[0]?.textContent ?? ""}${highlighted}${open}`;
 }
 
 /** A gap's run of rows, as one line: how many, the first's and last's numbers and text. */
@@ -599,7 +669,8 @@ async function main() {
   const asks = [];
   let failNext = false;
   view.setGapLoader(async (revision, filePath, ask) => {
-    asks.push(`${revision} ${filePath} lines ${ask.start}+${ask.count}`);
+    const at = "start" in ask ? `start=${ask.start}` : `end=${ask.end}`;
+    asks.push(`${revision} ${filePath} lines ${at} count=${ask.count}`);
     await new Promise((resolve) => setTimeout(resolve, 0));
     if (filePath === "notes.txt") {
       throw Object.assign(new Error("HTTP 409"), {
@@ -611,15 +682,24 @@ async function main() {
       failNext = false;
       throw Object.assign(new Error("HTTP 503"), { status: 503, payload: null });
     }
+    // A run from its start, or ending before its end or at the side's last line, as the
+    // route cuts one; `wide.json`'s cut short at the end far from where it was asked from.
+    const { lines: all, newline } = SIDES[filePath];
+    const last = "start" in ask ? ask.start + ask.count : Math.min(ask.end, all.length + 1);
+    let start = "start" in ask ? ask.start : Math.max(1, ask.end - ask.count);
+    let run = all.slice(start - 1, last - 1);
+    if (filePath === "wide.json" && run.length > WIDE_ANSWER_LINES) {
+      run = "start" in ask ? run.slice(0, WIDE_ANSWER_LINES) : run.slice(-WIDE_ANSWER_LINES);
+      start = "start" in ask ? start : last - WIDE_ANSWER_LINES;
+    }
     return {
-      comparison_id: "git:session",
+      comparison_id: filePath === "moved.py" ? "git:moved" : "git:session",
       file_id: "f1",
       path: filePath,
-      side: "new",
-      start: ask.start,
-      lines: NEW.slice(ask.start - 1, ask.start - 1 + ask.count),
-      line_count: NEW.length,
-      ends_with_newline: true,
+      start,
+      lines: run,
+      line_count: all.length,
+      ends_with_newline: newline,
     };
   });
   const lexed = [];
@@ -791,8 +871,47 @@ async function main() {
   await diff.choose("diff-show-control", "diff");
 
   await diff.press("notes.txt", "9 unchanged lines");
-  step("A file whose lines the comparison declines draws plain separators, saying why", diff, [
+  step("A file whose lines the comparison declines draws plain separators, saying so", diff, [
     "notes.txt",
+  ]);
+
+  await diff.press("wide.json", "146 unchanged lines");
+  step(
+    "An answer its byte bound cuts short opens the lines nearest the hunk, the rest behind a bar",
+    diff,
+    ["wide.json"],
+  );
+
+  await diff.press("wide.json", "142 unchanged lines");
+  step("Its next step asks once more, up to the lines it drew", diff, ["wide.json"]);
+
+  await diff.press("wide.json", "Hide 8 lines");
+  await diff.press("wide.json", "146 unchanged lines");
+  step("Closed and opened again, it opens to the lines it read, asking for none", diff, [
+    "wide.json",
+  ]);
+
+  await diff.press("wide.json", "Rest of the file");
+  step("Below the last hunk too: the lines nearest the hunk, then a bar for the rest", diff, [
+    "wide.json",
+  ]);
+
+  // The reader reaches the bar below `tail.py`'s hunk from the keyboard.
+  diff.barOf("tail.py", "Rest of the file").focus();
+  await diff.press("tail.py", "Rest of the file");
+  step(
+    "A bar below a hunk that ends the file goes, and the keyboard goes on from the file's bar",
+    diff,
+    ["tail.py"],
+    { focused: document.activeElement?.className ?? null },
+  );
+
+  await diff.press("end.txt", "Rest of the file");
+  step("A file's last line with no newline says so, as the patch's own does", diff, ["end.txt"]);
+
+  await diff.press("moved.py", "11 unchanged lines");
+  step("An answer for another comparison, as a moved ref gives, is declined, saying so", diff, [
+    "moved.py",
   ]);
   diff.handle.dispose();
 

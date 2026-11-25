@@ -13,23 +13,29 @@ separator is the bar every fold of the diff draws (docs/design-system.md, “Fol
 Expanders”), with the separator kept beside its label: above each hunk, for the
 unchanged lines between it and the hunk above or the file’s start, and below the last
 hunk, for the rest of the file, whose end the diff does not know until it asks.
-Opening one asks the comparison’s `view=lines` for up to `DIFF_GAP_LINES` of them,
-nearest the hunk, and draws them as the patch’s own context lines are drawn, both line
-numbers advancing together; a longer gap leaves a bar of the same kind for the rest, at
-the far end of the group, as one step more.
-The bar says how many lines it holds closed and how many it shows open, its steps’ among
-them, and closing it closes its steps.
+Opening one asks the comparison’s `view=lines` once for up to `DIFF_GAP_LINES` of them,
+nearest the hunk, by their end above a hunk and their start below one, and draws them as
+the patch’s own context lines are drawn, both line numbers advancing together; a longer
+gap, or one whose answer the route’s byte bound cut short because its lines are long,
+leaves a bar of the same kind for the rest, at the far end of the group, as one step
+more. The bar says how many lines it holds closed and how many it shows open, its steps’
+among them, and closing it closes its steps.
 What it read is kept while the diff is mounted, so opening it again, or drawing it in
 Split or Current, asks for nothing.
 A gap opened above the pane’s top pushes nothing the reader is looking at.
 Its lines are highlighted as the hunks’ are, within the file’s syntax bound, which
 counts the hunks and every gap highlighted so far.
+A bar below a last hunk that turns out to end the file goes, and a reader who pressed it
+from the keyboard goes on from the file’s bar.
+A last line with no newline says so, as the patch’s own does.
 A load that fails closes the bar saying so, and a press asks again.
-A file whose lines the comparison declines draws its separators as before, under one
-line that says so, and a patch file, which names no snapshot, draws plain separators.
+A file whose lines the comparison declines, or whose answer names another comparison, as
+a ref that moved since the diff was drawn gives, draws its separators as before, under
+one line that says so, and a patch file, which names no snapshot, draws plain
+separators.
 
 This browserless session loads the production `builtin_plugins/diff/diff-view.js` and
-`builtin_plugins/diff/diff-fold.js` and mounts a comparison of three files into an
+`builtin_plugins/diff/diff-fold.js` and mounts a comparison of seven files into an
 element tree with a model of the pane’s geometry; its gap loader stands in for the
 route, whose answers `tests/golden/cli-api-diff-lines.tryscript.md` pins.
 `DIFF_GAP_LINES` is 25 here.
@@ -107,7 +113,7 @@ $ node tests/dom/diff-hunk-gap-session.js
         "> [Rest of the file]"
       ],
       "asks": [
-        "HEAD src/app.py lines 1+6"
+        "HEAD src/app.py lines end=7 count=6"
       ],
       "highlighted": [
         "python: 6 lines"
@@ -139,7 +145,7 @@ $ node tests/dom/diff-hunk-gap-session.js
         "> [Rest of the file]"
       ],
       "asks": [
-        "HEAD src/app.py lines 52+25"
+        "HEAD src/app.py lines end=77 count=25"
       ],
       "rowAtTopBefore": "76 77 | line 77 * at 0 px",
       "rowAtTopAfter": "76 77 | line 77 * at 0 px",
@@ -173,7 +179,7 @@ $ node tests/dom/diff-hunk-gap-session.js
         "> [Rest of the file]"
       ],
       "asks": [
-        "HEAD src/app.py lines 27+25"
+        "HEAD src/app.py lines end=52 count=25"
       ],
       "console": [
         "metabrowser diff: a gap's lines did not load"
@@ -206,7 +212,7 @@ $ node tests/dom/diff-hunk-gap-session.js
         "> [Rest of the file]"
       ],
       "asks": [
-        "HEAD src/app.py lines 27+25"
+        "HEAD src/app.py lines end=52 count=25"
       ],
       "highlighted": [
         "python: 25 lines"
@@ -241,7 +247,7 @@ $ node tests/dom/diff-hunk-gap-session.js
         "> [12 unchanged lines]"
       ],
       "asks": [
-        "HEAD src/app.py lines 84+25"
+        "HEAD src/app.py lines start=84 count=25"
       ],
       "highlighted": []
     },
@@ -358,7 +364,7 @@ $ node tests/dom/diff-hunk-gap-session.js
       "asks": []
     },
     {
-      "step": "A file whose lines the comparison declines draws plain separators, saying why",
+      "step": "A file whose lines the comparison declines draws plain separators, saying so",
       "notes.txt": [
         "says: The unchanged lines of this file cannot be shown.",
         "= @@ -10,7 +10,7 @@",
@@ -372,7 +378,146 @@ $ node tests/dom/diff-hunk-gap-session.js
         "16 16 | note 16"
       ],
       "asks": [
-        "HEAD notes.txt lines 1+9"
+        "HEAD notes.txt lines end=10 count=9"
+      ],
+      "console": [
+        "metabrowser diff: the comparison declines this file's lines"
+      ]
+    },
+    {
+      "step": "An answer its byte bound cuts short opens the lines nearest the hunk, the rest behind a bar",
+      "wide.json": [
+        "v [Hide 4 lines] @@ -147,7 +147,7 @@",
+        "> [142 unchanged lines]",
+        "4 rows: 143 143 | row 143 ... 146 146 | row 146",
+        "147 147 | row 147",
+        "148 148 | row 148",
+        "149 149 | row 149",
+        "150 - |-row 150",
+        "- 150 |+row 150, changed",
+        "151 151 | row 151",
+        "152 152 | row 152",
+        "153 153 | row 153",
+        "> [Rest of the file]"
+      ],
+      "asks": [
+        "HEAD wide.json lines end=147 count=25"
+      ]
+    },
+    {
+      "step": "Its next step asks once more, up to the lines it drew",
+      "wide.json": [
+        "v [Hide 8 lines] @@ -147,7 +147,7 @@",
+        "v [Hide 4 lines]",
+        "> [138 unchanged lines]",
+        "8 rows: 139 139 | row 139 ... 146 146 | row 146",
+        "147 147 | row 147",
+        "148 148 | row 148",
+        "149 149 | row 149",
+        "150 - |-row 150",
+        "- 150 |+row 150, changed",
+        "151 151 | row 151",
+        "152 152 | row 152",
+        "153 153 | row 153",
+        "> [Rest of the file]"
+      ],
+      "asks": [
+        "HEAD wide.json lines end=143 count=25"
+      ]
+    },
+    {
+      "step": "Closed and opened again, it opens to the lines it read, asking for none",
+      "wide.json": [
+        "v [Hide 4 lines] @@ -147,7 +147,7 @@",
+        "> [142 unchanged lines]",
+        "4 rows: 143 143 | row 143 ... 146 146 | row 146",
+        "147 147 | row 147",
+        "148 148 | row 148",
+        "149 149 | row 149",
+        "150 - |-row 150",
+        "- 150 |+row 150, changed",
+        "151 151 | row 151",
+        "152 152 | row 152",
+        "153 153 | row 153",
+        "> [Rest of the file]"
+      ],
+      "asks": []
+    },
+    {
+      "step": "Below the last hunk too: the lines nearest the hunk, then a bar for the rest",
+      "wide.json": [
+        "v [Hide 4 lines] @@ -147,7 +147,7 @@",
+        "> [142 unchanged lines]",
+        "4 rows: 143 143 | row 143 ... 146 146 | row 146",
+        "147 147 | row 147",
+        "148 148 | row 148",
+        "149 149 | row 149",
+        "150 - |-row 150",
+        "- 150 |+row 150, changed",
+        "151 151 | row 151",
+        "152 152 | row 152",
+        "153 153 | row 153",
+        "v [Hide 4 lines]",
+        "4 rows: 154 154 | row 154 ... 157 157 | row 157",
+        "> [43 unchanged lines]"
+      ],
+      "asks": [
+        "HEAD wide.json lines start=154 count=25"
+      ]
+    },
+    {
+      "step": "A bar below a hunk that ends the file goes, and the keyboard goes on from the file's bar",
+      "tail.py": [
+        "> [3 unchanged lines] @@ -4,7 +4,7 @@",
+        "4 4 | tail 4 *",
+        "5 5 | tail 5 *",
+        "6 6 | tail 6 *",
+        "7 - |-tail 7 *",
+        "- 7 |+tail 7, changed *",
+        "8 8 | tail 8 *",
+        "9 9 | tail 9 *",
+        "10 10 | tail 10 *"
+      ],
+      "asks": [
+        "HEAD tail.py lines start=11 count=25"
+      ],
+      "focused": "diff-file-toggle expanded"
+    },
+    {
+      "step": "A file's last line with no newline says so, as the patch's own does",
+      "end.txt": [
+        "> [1 unchanged line] @@ -2,7 +2,7 @@",
+        "2 2 | end 2",
+        "3 3 | end 3",
+        "4 4 | end 4",
+        "5 - |-end 5",
+        "- 5 |+end 5, changed",
+        "6 6 | end 6",
+        "7 7 | end 7",
+        "8 8 | end 8",
+        "v [Hide 12 lines]",
+        "12 rows: 9 9 | end 9 ... 20 20 | end 20 (no newline)"
+      ],
+      "asks": [
+        "HEAD end.txt lines start=9 count=25"
+      ]
+    },
+    {
+      "step": "An answer for another comparison, as a moved ref gives, is declined, saying so",
+      "moved.py": [
+        "says: The unchanged lines of this file cannot be shown.",
+        "= @@ -12,7 +12,7 @@",
+        "12 12 | moved 12 *",
+        "13 13 | moved 13 *",
+        "14 14 | moved 14 *",
+        "15 - |-moved 15 *",
+        "- 15 |+moved 15, changed *",
+        "16 16 | moved 16 *",
+        "17 17 | moved 17 *",
+        "18 18 | moved 18 *"
+      ],
+      "asks": [
+        "HEAD moved.py lines end=12 count=11"
       ],
       "console": [
         "metabrowser diff: the comparison declines this file's lines"

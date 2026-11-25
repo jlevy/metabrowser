@@ -69,7 +69,7 @@ from metabrowser.diff.format import (
     Totals,
     dump_document,
 )
-from metabrowser.diff.side_lines import side_lines
+from metabrowser.diff.side_lines import side_lines, side_lines_before
 from metabrowser.file_type_match import (
     change_in_type_group,
     change_matches_types,
@@ -129,14 +129,12 @@ _TWO_ENDPOINT_POLICIES = frozenset({BasePolicy.direct.value, BasePolicy.merge_ba
 # lines, which the diff view draws where a hunk's gap opens (`_lines_answer`).
 _COMPARISON_VIEWS = frozenset({"", "types", "lines"})
 
-# The sides a `view=lines` request may read.
-_LINE_SIDES = frozenset({"new", "old"})
-
 # The most one `view=lines` answer reads of a side: the bound a pinned file's text view
 # reads one request within. Measured 2026-11-24 on a Mac at a load average near 230, an answer
 # of 1,000 lines from the middle of a 16,763,876-byte side took 832-1,048 ms, nearly all of it
 # Git's read (`phases=git`), beside 2.0-2.5 s for that file's comparison itself; cutting a
-# 16 MiB side into lines took 21 ms, which `asyncio.to_thread` keeps off the event loop.
+# 16 MiB side into lines, and the answer into JSON, run in `asyncio.to_thread`, off the event
+# loop (`_lines_body`; `diff/side_lines.py` measures the cutting).
 MAX_LINES_SIDE_BYTES = TEXT_PREVIEW_REQUEST_MAX_BYTES
 
 # A commit ID in full: SHA-1 or SHA-256. Anything else names what it names now.
@@ -395,9 +393,11 @@ async def comparison_at(
     tab's menu reads, over every listed change whatever ``types``, ``group`` and
     ``file`` say, so the menu does not shrink as the reader narrows.
     ``&view=lines&file=<path>&start=<n>&count=<m>`` answers lines *n* onward of that
-    file's new side, or with ``&side=old`` its old one (``_lines_answer``): the unchanged
-    lines between its hunks, which the diff view asks for when a reader opens a hunk's
-    gap. At most ``DIFF_GAP_LINES`` lines; ``line_count`` says where the side ends.
+    file's new side, and ``&end=<n>&count=<m>`` in place of ``start`` the lines before line
+    *n* (``_lines_answer``): the unchanged lines between its hunks, which the diff view
+    asks for when a reader opens a hunk's gap, downward from a hunk or upward to one. At
+    most ``DIFF_GAP_LINES`` lines, and a short run where the side's lines are long, cut at
+    the end far from the line asked from; ``line_count`` says where the side ends.
     On a pinned revision, ``HEAD`` is that object id.
 
     A request naming two commit IDs on a store sends an entity tag that names the build
@@ -548,9 +548,7 @@ async def comparison_at(
             answer = await _lines_answer(source, resolved, manifest, wanted_file, ask)
             if isinstance(answer, JSONResponse):
                 return answer
-            return await _send_body(
-                request, bytes(JSONResponse(answer).body), answer_key, headers, body_generation
-            )
+            return await _send_body(request, answer, answer_key, headers, body_generation)
         projected: list[FileChange] = []
         hydrate_ids: list[str] = []
         semantic = semantic_extension_tokens(types)
@@ -671,19 +669,20 @@ def _type_tally_answer(
 
 
 def _lines_ask(request: Request) -> tuple[str, str, str] | str:
-    """A ``view=lines`` request's side, start, and count, the count at most
-    ``DIFF_GAP_LINES``, or why the request is refused."""
+    """A ``view=lines`` request's anchor (``start`` or ``end``), the line it names, and its
+    count, the count at most ``DIFF_GAP_LINES``, or why the request is refused."""
 
     if not request.query_params.get("file", ""):
         return "view=lines names a file."
-    side = request.query_params.get("side", "") or "new"
-    if side not in _LINE_SIDES:
-        return "side is new or old."
-    start = _whole(request.query_params.get("start", ""))
+    named = [key for key in ("start", "end") if request.query_params.get(key, "")]
+    if len(named) != 1:
+        return "view=lines names a start or an end, not both."
+    (anchor,) = named
+    line = _whole(request.query_params.get(anchor, ""))
     count = _whole(request.query_params.get("count", ""))
-    if start is None or count is None:
-        return "start and count are whole numbers from 1."
-    return side, str(start), str(min(count, DIFF_GAP_LINES))
+    if line is None or count is None:
+        return f"{anchor} and count are whole numbers from 1."
+    return anchor, str(line), str(min(count, DIFF_GAP_LINES))
 
 
 def _whole(value: str) -> int | None:
@@ -701,27 +700,27 @@ async def _lines_answer(
     manifest: ChangeSetManifest,
     path: str,
     ask: tuple[str, str, str],
-) -> dict[str, object] | JSONResponse:
-    """Lines of one side of the change at *path* (``diff/side_lines.py``), or why they
-    cannot be read.
+) -> bytes | JSONResponse:
+    """Lines of the new side of the change at *path* (``diff/side_lines.py``) as the
+    answer's body, or why they cannot be read.
 
-    A refusal is 409 with a ``code``: the side is absent (``no_side``), is not a file's
-    text (``not_text``: a binary change, a symbolic link, a submodule), is past
-    :data:`MAX_LINES_SIDE_BYTES` (``blob_too_large``), or is diffed through a textconv
-    driver, whose hunks number the conversion's lines (``textconv``). The page shows the
-    hunk's separator for it, as it does for a patch file, which has no side to read.
+    A refusal is 409 with a ``code``: the change has no new side (``no_side``, a deleted
+    file), it is not a file's text (``not_text``: a binary change, a symbolic link, a
+    submodule), it is past :data:`MAX_LINES_SIDE_BYTES` (``blob_too_large``), or it is
+    diffed through a textconv driver, whose hunks number the conversion's lines
+    (``textconv``). The page shows the hunk's separator for it, as it does for a patch
+    file, which has no side to read.
     """
 
-    side, start, count = ask
     change = next((c for c in manifest.files if _change_display_path(c) == path), None)
     if change is None:
         return _error("diff_lines", "This comparison has no entry for that path.", 404, path=path)
-    entry = change.new if side == "new" else change.old
+    entry = change.new
     refused: tuple[str, str] | None = None
     if entry is None:
-        refused = ("no_side", f"this change has no {side} side")
+        refused = ("no_side", "this change has no new side")
     elif change.binary or entry.entry_type is not EntryType.file:
-        refused = ("not_text", f"the {side} side is not a file's text")
+        refused = ("not_text", "the new side is not a file's text")
     elif await source.converts(entry.path):
         refused = ("textconv", "this file is diffed through a textconv driver")
     if refused is None and entry is not None:
@@ -730,20 +729,33 @@ async def _lines_answer(
         except DiffSourceError as exc:
             refused = (exc.code or "no_content", str(exc))
         else:
-            lines = await asyncio.to_thread(side_lines, content, int(start), int(count))
-            return {
-                "comparison_id": resolved.comparison_id,
-                "file_id": change.id,
-                "path": path,
-                "side": side,
-                "start": lines.start,
-                "lines": list(lines.lines),
-                "line_count": lines.line_count,
-                "ends_with_newline": lines.ends_with_newline,
-            }
+            head = {"comparison_id": resolved.comparison_id, "file_id": change.id, "path": path}
+            return await asyncio.to_thread(_lines_body, head, content, ask)
     code, detail = refused or ("no_content", "")
     return _error(
         "diff_lines", "These lines cannot be shown.", 409, path=path, detail=detail, code=code
+    )
+
+
+def _lines_body(head: dict[str, str], content: bytes, ask: tuple[str, str, str]) -> bytes:
+    """The run *ask* names of a side's *content*, as a ``view=lines`` answer's JSON.
+
+    A run is at most ``MAX_LINES_ANSWER_BYTES`` of text but keeps one longer line whole,
+    up to the side's own bound, so this and its cutting run off the event loop.
+    """
+
+    anchor, line, count = ask
+    cut = (side_lines if anchor == "start" else side_lines_before)(content, int(line), int(count))
+    return bytes(
+        JSONResponse(
+            {
+                **head,
+                "start": cut.start,
+                "lines": list(cut.lines),
+                "line_count": cut.line_count,
+                "ends_with_newline": cut.ends_with_newline,
+            }
+        ).body
     )
 
 

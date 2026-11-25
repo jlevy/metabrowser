@@ -36,8 +36,9 @@ export function shellIcon(name) {
  *
  * *label* names the bar in each state: what the closed bar holds, then the inverse
  * ("40 more changed lines", "Hide 40 lines"). *detail*, where a fold has one, follows the
- * label in the face of the rows it stands among, as a hunk's separator does, its ranges
- * between `@@` marks.
+ * label in the bar's own sans face and the plain separator's muted tone, as a hunk's
+ * separator, its ranges between `@@` marks, does where its bar stands (styles.css,
+ * `.diff-fold-detail`).
  * *onToggle* runs after every change of state, a click's or `set`'s, with the new state,
  * and fills or empties the group; a fold drawn open calls it once the caller has the bar,
  * to fill the group (`open` is for that).

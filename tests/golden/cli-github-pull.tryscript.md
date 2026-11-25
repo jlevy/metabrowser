@@ -603,7 +603,6 @@ status: 200
   "comparison_id": "git:9479019c56eedd23",
   "file_id": "f2",
   "path": "src/app.txt",
-  "side": "new",
   "start": 1,
   "lines": [
     "one",

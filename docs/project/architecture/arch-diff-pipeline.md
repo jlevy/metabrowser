@@ -198,21 +198,26 @@ comparison.
 
 ### Context Between Hunks
 
-A hunk carries the context lines Git writes around its change (`options.context`, 3), so
-the unchanged lines between hunks, above the first, and below the last are not in the
-document. The comparison route reads them on demand:
-`&view=lines&file=PATH&start=N&count=M`, with `&side=old` for the old side, answers up
-to `DIFF_GAP_LINES` (`settings.py`) lines of that change’s side from its snapshot, with
-the side’s `line_count` and `ends_with_newline`, so the page learns where the file ends
-below its last hunk.
-`diff/side_lines.py` cuts the side into lines as Git numbers them; the route reads the
-side within `MAX_LINES_SIDE_BYTES` (`builtin_plugins/diff/sidekick.py`), through the
-store’s shared readers or a folder’s `cat-file`, and an answer carries at most
-`MAX_LINES_ANSWER_BYTES` of line text.
+A hunk carries the context lines Git writes around its change, so the unchanged lines
+between hunks, above the first, and below the last are not in the document.
+The patch run passes `CONTEXT_LINES` (`diff/adapters/git.py`) as `--unified`, and the
+comparison says it as `options.context`, so a reader’s `diff.context` cannot move where
+the page expects a last hunk’s trailing context to end.
+The comparison route reads the lines on demand: `&view=lines&file=PATH&start=N&count=M`
+answers up to `DIFF_GAP_LINES` (`settings.py`) lines of that change’s new side from its
+snapshot, and `&end=N` in place of `start` the lines before line N, with the side’s
+`line_count` and `ends_with_newline`, so the page learns where the file ends below its
+last hunk.
+`diff/side_lines.py` cuts the run as Git numbers the side’s lines, finding its
+start by counting newlines rather than splitting the side; the route reads the side
+within `MAX_LINES_SIDE_BYTES` (`builtin_plugins/diff/sidekick.py`), through the store’s
+shared readers or a folder’s `cat-file`, and an answer carries at most
+`MAX_LINES_ANSWER_BYTES` of line text, keeping the lines nearest the line it was asked
+from, and one longer line whole.
 A side the hunks do not number as its bytes, or cannot be read, is refused with 409 and
-a `code`: absent (`no_side`), not a file’s text (`not_text`), past the bound
-(`blob_too_large`), or converted by a textconv driver in a folder (`textconv`), whose
-hunks number the conversion’s lines.
+a `code`: a deleted file’s, which has no new side (`no_side`), not a file’s text
+(`not_text`), past the bound (`blob_too_large`), or converted by a textconv driver in a
+folder (`textconv`), whose hunks number the conversion’s lines.
 `cli-api-diff-lines.tryscript.md` pins the answers.
 
 Every comparison has this view, whatever its source: a commit’s, a branch comparison’s,
@@ -223,11 +228,14 @@ one exists, answers `no_content` until it can read its side, so its separators s
 plain.
 
 In the page, `hunkGaps` in `diff-view.js` places each gap from the hunks’ ranges, and
-`renderGapFold` draws it as the diff’s fold bar (`foldExpander`), opening up to
-`DIFF_GAP_LINES` at a time nearest its hunk, in batches of
+`renderGapFold` draws it as the diff’s fold bar (`foldExpander`), opening in one ask up
+to `DIFF_GAP_LINES` at a time nearest its hunk, or what one answer holds of long lines,
+up to a hunk by `end` and down from one by `start`, in batches of
 `FOLD_MATERIALIZATION_BATCH_ROWS`, with the reader’s place held (`GapSource.keep`) and
 the lines highlighted within the file’s `SYNTAX_HIGHLIGHT_MAX_BYTES`, counted with the
 hunks’ bytes. A file keeps what it read while the diff is mounted.
+An answer must name the comparison the diff drew; one for another, as a ref that moved
+since gives, is declined as a refused file is.
 A code file’s hunks in a guided review step (`mountFilePatch`) and a patch file draw
 plain separators. `cli-ui-diff-hunk-gap.tryscript.md` pins the states, and
 `tests/test_diff_hunk_gap_chrome.py` the bar and the place in Chrome.

@@ -333,7 +333,7 @@ Opening a bar above the line you are reading leaves that line where it is on the
 The lines are read from the pull request’s or the commit’s files when you open the bar,
 and stay open as you switch between **Split**, **Unified**, and **Current**. Where they
 cannot be read, as for a binary file or one Git converts for its diff, the file’s hunk
-bars stay plain, and the file says why.
+bars stay plain, and the file says so.
 A guided review step draws a code file’s hunks with plain bars, as a patch file does.
 
 ### Diff or Current

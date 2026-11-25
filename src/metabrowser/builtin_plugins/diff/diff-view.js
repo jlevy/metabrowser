@@ -75,12 +75,16 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  *   draws rows, and hold the row at the pane's top where it was while they are drawn.
  * @property {number} context The context lines Git wrote around each change, past which a
  *   last hunk's trailing context may not be the end of the file.
+ * @property {string} comparisonId The comparison the diff drew, which every answer names:
+ *   one for another, as a ref that moved since answers, is refused (`gapAnswer`).
  * @property {AbortSignal} signal The mounted view's, which ends its asks and highlighting.
  */
 
 /**
- * @typedef {{start: number, count: number}} GapAsk
- *   The new side's lines from *start*, 1-based, and how many.
+ * @typedef {{start: number, count: number} | {end: number, count: number}} GapAsk
+ *   At most *count* of the new side's lines from *start*, 1-based, for a gap opened downward
+ *   from a hunk, or before *end*, for one opened upward to a hunk, so an answer its byte
+ *   bound cuts short keeps the lines beside the hunk.
  */
 
 /**
@@ -91,6 +95,9 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Map<number, DiffLine>} byNumber Each line read, by its new number.
  * @property {number | null} lineCount The new side's lines in all, once an answer says.
  * @property {Map<string, Promise<void>>} asked Asks on their way, by range.
+ * @property {Map<string, number>} reach Where an open whose answer its byte bound cut short
+ *   stopped, by the end it opened from (`up:<end>` or `down:<start>`): the line past its
+ *   last, so it opens to the same lines again and its nested bar stands for the rest.
  * @property {boolean} refused The route declined this file's lines, so its gaps draw as
  *   plain headers.
  * @property {number} syntaxBytes The bytes of gap lines highlighted so far, which count
@@ -311,6 +318,7 @@ function gapSourceOf(view, revision) {
   const { signal } = view.controller;
   return {
     context,
+    comparisonId: String(view.resolved.comparison_id ?? ""),
     load: (path, ask) => loader(revision, path, ask, { signal }),
     keep(state, change) {
       const anchor = view.pinned === null ? placeOfTopRow(view, view.show) : null;
@@ -1039,6 +1047,7 @@ export function createFileState(change, patch, api, body, unfold = false, gaps =
     gapLines: {
       asked: new Map(),
       byNumber: new Map(),
+      reach: new Map(),
       lineCount: null,
       refused: false,
       syntaxBytes: 0,
@@ -1528,27 +1537,48 @@ function gapLine(number, offset, text, noNewline) {
 }
 
 /**
- * The route's `view=lines` answer to an ask from *start*, or a throw for anything else.
+ * The route's `view=lines` answer to *ask*, or a throw for anything else: a run of at most
+ * its count, from its start, or ending before its end or at the side's last line. An answer
+ * for another comparison than the one drawn, as a ref that moved since it was drawn gives,
+ * would put another commit's lines between these hunks as unchanged; it is refused, as a
+ * declined file is, since asking again gets the same (`refusesGapLines`).
  *
  * @param {unknown} payload
- * @param {number} start
- * @returns {{lines: string[], line_count: number, ends_with_newline: boolean}}
+ * @param {GapAsk} ask
+ * @param {string} comparisonId
+ * @returns {{start: number, lines: string[], line_count: number, ends_with_newline: boolean}}
  */
-function gapAnswer(payload, start) {
+function gapAnswer(payload, ask, comparisonId) {
   const answer = /** @type {Record<string, unknown> | null} */ (
     payload !== null && typeof payload === "object" ? payload : null
   );
   if (
     answer === null ||
-    answer.start !== start ||
+    !Number.isInteger(answer.start) ||
     !Array.isArray(answer.lines) ||
+    answer.lines.length > ask.count ||
     !answer.lines.every((line) => typeof line === "string") ||
     !Number.isInteger(answer.line_count) ||
     typeof answer.ends_with_newline !== "boolean"
   ) {
     throw new Error("The comparison answered with something other than these lines.");
   }
-  return /** @type {{lines: string[], line_count: number, ends_with_newline: boolean}} */ (
+  const start = Number(answer.start);
+  const end = start + answer.lines.length;
+  if (
+    "start" in ask
+      ? start !== ask.start
+      : start < Math.max(1, ask.end - ask.count) ||
+        end !== Math.min(ask.end, Number(answer.line_count) + 1)
+  ) {
+    throw new Error("The comparison answered with something other than these lines.");
+  }
+  if (answer.comparison_id !== comparisonId) {
+    throw Object.assign(new Error("The comparison answered for another comparison."), {
+      refused: true,
+    });
+  }
+  return /** @type {{start: number, lines: string[], line_count: number, ends_with_newline: boolean}} */ (
     /** @type {unknown} */ (answer)
   );
 }
@@ -1577,18 +1607,24 @@ function holdsGapLines(lines, from, to, needsEnd) {
 
 /**
  * Read a gap's lines from *from* to before *to*, or to the side's end, into the file's
- * keep, asking again past an answer that stopped short at its byte bound. One ask a range,
- * however many folds wait for it. The lines are highlighted after they are drawn.
+ * keep, in one ask: from *from* for a gap opened downward (*toward* "down"), and up to *to*
+ * for one opened upward, so an answer its byte bound cuts short holds the lines nearest the
+ * hunk. Where it stops short of the range, before the side's end, the open's reach records
+ * where, and the open draws what came with its nested bar for the rest (`renderGapFold`):
+ * one press is one ask, of at most `MAX_LINES_ANSWER_BYTES` of text (diff/side_lines.py).
+ * One ask a range, however many folds wait for it. The lines are highlighted after they are
+ * drawn.
  *
  * @param {FileViewState} state
  * @param {HunkGap} gap
  * @param {number} from
  * @param {number} to
+ * @param {"up" | "down"} toward
  * @returns {Promise<void>}
  */
-function readGapLines(state, gap, from, to) {
+function readGapLines(state, gap, from, to, toward) {
   const lines = state.gapLines;
-  const key = `${from}-${to}`;
+  const key = `${toward}:${from}-${to}`;
   let asked = lines.asked.get(key);
   if (asked !== undefined) {
     return asked;
@@ -1596,33 +1632,35 @@ function readGapLines(state, gap, from, to) {
   const source = /** @type {GapSource} */ (state.gaps);
   const side = /** @type {{path?: unknown}} */ (state.change.new);
   const path = String(side.path ?? "");
+  /** @type {GapAsk} */
+  const ask = toward === "up" ? { end: to, count: to - from } : { start: from, count: to - from };
   asked = (async () => {
+    const answer = gapAnswer(await source.load(path, ask), ask, source.comparisonId);
+    lines.lineCount = answer.line_count;
     /** @type {DiffLine[]} */
     const fresh = [];
-    let at = from;
-    while (at < to && (lines.lineCount === null || at <= lines.lineCount)) {
-      const answer = gapAnswer(
-        await source.load(path, { start: at, count: Math.min(GAP_LINES, to - at) }),
-        at,
+    for (const [index, text] of answer.lines.entries()) {
+      const number = answer.start + index;
+      if (!lines.byNumber.has(number)) {
+        const record = gapLine(
+          number,
+          gap.offset,
+          text,
+          number === answer.line_count && !answer.ends_with_newline,
+        );
+        lines.byNumber.set(number, record);
+        fresh.push(record);
+      }
+    }
+    if (
+      toward === "up"
+        ? answer.start > from
+        : answer.start + answer.lines.length < Math.min(to, answer.line_count + 1)
+    ) {
+      lines.reach.set(
+        toward === "up" ? `up:${to}` : `down:${from}`,
+        toward === "up" ? answer.start : answer.start + answer.lines.length,
       );
-      lines.lineCount = answer.line_count;
-      for (const [index, text] of answer.lines.entries()) {
-        const number = at + index;
-        if (!lines.byNumber.has(number)) {
-          const record = gapLine(
-            number,
-            gap.offset,
-            text,
-            number === answer.line_count && !answer.ends_with_newline,
-          );
-          lines.byNumber.set(number, record);
-          fresh.push(record);
-        }
-      }
-      if (answer.lines.length === 0) {
-        break;
-      }
-      at += answer.lines.length;
     }
     // After the folds waiting for these lines draw them plain, as a hunk's first paint is.
     setTimeout(() => void highlightGapLines(state, fresh), 0);
@@ -1693,14 +1731,17 @@ async function highlightGapLines(state, records) {
 
 /**
  * Whether a failed ask is the comparison declining these lines, which asking again will not
- * change, rather than a failure a Retry may get past: a refusal of the request itself.
+ * change, rather than a failure a Retry may get past: a refusal of the request itself, or an
+ * answer for another comparison (`gapAnswer`).
  *
  * @param {unknown} error
  */
 function refusesGapLines(error) {
-  const status = /** @type {{status?: unknown} | null} */ (error)?.status;
+  const failed = /** @type {{status?: unknown, refused?: unknown} | null} */ (error);
+  const status = failed?.status;
   return (
-    typeof status === "number" && status >= 400 && status < 500 && ![408, 429].includes(status)
+    failed?.refused === true ||
+    (typeof status === "number" && status >= 400 && status < 500 && ![408, 429].includes(status))
   );
 }
 
@@ -1728,11 +1769,14 @@ function refuseGaps(state) {
  *
  * Closed, it says how many unchanged lines it holds, or, below the last hunk, before an
  * answer has said where the file ends, that it holds the rest of the file. Opening it draws
- * up to `GAP_LINES` of them, asking the comparison first for any the file does not hold
- * yet; a gap longer than that opens the lines nearest its hunk (*toward*: "up" above a hunk,
- * "down" below the last), and a fold of the same kind stands for the rest, at the far end of
- * the group, as one step more. Open, it says how many lines it shows, its open steps' among
- * them. A gap whose lines do not load closes again saying so, and a press asks again.
+ * up to `GAP_LINES` of them, asking the comparison first, once, for any the file does not
+ * hold yet; a gap longer than that, or one whose answer its byte bound cut short, opens the
+ * lines nearest its hunk (*toward*: "up" above a hunk, "down" below the last), and a fold of
+ * the same kind stands for the rest, at the far end of the group, as one step more. Open, it
+ * says how many lines it shows, its open steps' among them. A gap whose lines do not load
+ * closes again saying so, and a press asks again. Every change of its height while the
+ * reader waits, its rows, the box that stood for them, and closing after a failure, is made
+ * where the reader keeps their place (`GapSource.keep`).
  *
  * @param {FileViewState} state
  * @param {HunkGap} gap
@@ -1798,13 +1842,18 @@ function renderGapFold(state, gap, toward, detail, renderRow, parent) {
     parent?.relabel();
   }
 
-  /** The lines this fold draws itself, by the new side's numbers, from what is known. */
+  /**
+   * The lines this fold draws itself, by the new side's numbers, from what is known: up to
+   * `GAP_LINES` nearest its hunk, or as far as an answer cut short reached (`GapLines.reach`).
+   */
   function range() {
     const known = end();
     if (toward === "up" && known !== null) {
-      return { from: Math.max(gap.start, known - GAP_LINES), to: known };
+      const reach = state.gapLines.reach.get(`up:${known}`) ?? gap.start;
+      return { from: Math.max(gap.start, known - GAP_LINES, reach), to: known };
     }
-    const to = gap.start + GAP_LINES;
+    const reach = state.gapLines.reach.get(`down:${gap.start}`) ?? Number.POSITIVE_INFINITY;
+    const to = Math.min(gap.start + GAP_LINES, reach);
     return { from: gap.start, to: known === null ? to : Math.min(known, to) };
   }
 
@@ -1837,30 +1886,38 @@ function renderGapFold(state, gap, toward, detail, renderRow, parent) {
     const box = progressBox(`Loading ${what}`);
     group.append(box);
     const source = /** @type {GapSource} */ (state.gaps);
-    readGapLines(state, gap, from, to).then(
+    readGapLines(state, gap, from, to, toward).then(
       () => {
-        box.remove();
         fold.control.removeAttribute("aria-busy");
         if (fold.expanded() && fold.control.isConnected && !source.signal.aborted) {
+          // Its rows take the box's place inside the change that holds the reader's.
           fill(true);
+        } else {
+          box.remove();
         }
       },
       (error) => {
-        box.remove();
         fold.control.removeAttribute("aria-busy");
         if (source.signal.aborted || isAbortError(error)) {
+          box.remove();
           return;
         }
         if (refusesGapLines(error)) {
           console.warn("metabrowser diff: the comparison declines this file's lines", error);
+          // The file is drawn again, the box with it, where the reader is.
           refuseGaps(state);
+          box.remove();
           return;
         }
         console.warn("metabrowser diff: a gap's lines did not load", error);
         // Closed again, its bar says why, unless the reader closed it meanwhile.
         if (fold.expanded() && fold.control.isConnected) {
-          status.failed = true;
-          fold.set(false);
+          source.keep(state, () => {
+            status.failed = true;
+            fold.set(false);
+          });
+        } else {
+          box.remove();
         }
       },
     );
@@ -1868,7 +1925,7 @@ function renderGapFold(state, gap, toward, detail, renderRow, parent) {
 
   /** @param {boolean} keep Draw its rows where the reader keeps their place (`GapSource.keep`). */
   function fill(keep) {
-    cancel();
+    const source = /** @type {GapSource} */ (state.gaps);
     const { from, to } = range();
     const known = end();
     const stop = known === null ? to : Math.min(to, known);
@@ -1881,12 +1938,24 @@ function renderGapFold(state, gap, toward, detail, renderRow, parent) {
       }
     }
     if (records.length === 0 && toward === "down") {
-      // The file ended at the last hunk after all: there was nothing below it.
-      fold.control.remove();
-      group.remove();
+      // The file ended at the last hunk after all: there was nothing below it. A reader who
+      // pressed the bar from the keyboard goes on from the file's own bar, not the page's top.
+      const leave = () => {
+        if (fold.control.contains(document.activeElement)) {
+          /** @type {HTMLElement | null | undefined} */ (
+            state.body.closest(".diff-file")?.querySelector(".diff-file-toggle")
+          )?.focus();
+        }
+        fold.control.remove();
+        group.remove();
+      };
+      if (keep) {
+        source.keep(state, leave);
+      } else {
+        leave();
+      }
       return;
     }
-    own = records.length;
     const rest =
       toward === "up"
         ? from > gap.start
@@ -1896,6 +1965,9 @@ function renderGapFold(state, gap, toward, detail, renderRow, parent) {
           ? { start: stop, end: known, offset: gap.offset }
           : null;
     const draw = () => {
+      // What it drew before, a loading box among it, goes in the same change.
+      cancel();
+      own = records.length;
       if (rest !== null) {
         step = renderGapFold(state, rest, toward, "", renderRow, view);
         group.append(step.control, step.group);
@@ -1903,7 +1975,7 @@ function renderGapFold(state, gap, toward, detail, renderRow, parent) {
       materializeGapRows(state, key, group, records, renderRow, toward === "down" ? step : null);
     };
     if (keep) {
-      /** @type {GapSource} */ (state.gaps).keep(state, draw);
+      source.keep(state, draw);
     } else {
       draw();
     }

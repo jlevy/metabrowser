@@ -26,11 +26,12 @@ if (!mb) {
 // from, narrowed to one path.
 setChangeLoader((revision, path, options) => fetchComparison(revision, options, path));
 // And the unchanged lines between a file's hunks to the same hook's `view=lines`, which a
-// pull request's comparison route answers as the diff plugin's does.
+// pull request's comparison route answers as the diff plugin's does: a run from its start,
+// or up to its end, for a gap opened upward to a hunk.
 setGapLoader((revision, path, ask, options) =>
   fetchComparison(revision, options, path, {
     view: "lines",
-    start: String(ask.start),
+    ...("start" in ask ? { start: String(ask.start) } : { end: String(ask.end) }),
     count: String(ask.count),
   }),
 );

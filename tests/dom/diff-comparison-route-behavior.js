@@ -80,6 +80,20 @@ async function main() {
     count: "25",
   });
   assert.equal(gap.signal, signal);
+  // A gap opened upward to a hunk asks for the run up to it by its end.
+  await globalThis.gapLoader(
+    rendered.document.__revision,
+    "src/app.py",
+    { end: 40, count: 25 },
+    { signal },
+  );
+  assert.deepEqual(requests.pop().params, {
+    ...requests[0].params,
+    file: "src/app.py",
+    view: "lines",
+    end: "40",
+    count: "25",
+  });
   for (const route of [
     "https://example.org/api/plugin/github/pull-comparison",
     "//example.org/api/plugin/github/pull-comparison",

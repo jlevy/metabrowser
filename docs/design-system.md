@@ -1772,13 +1772,16 @@ The bar stands where the separator stood and keeps it after its label, muted as 
 still say where it is.
 Below the last hunk a bar with no separator reads `Rest of the file` until the diff
 knows where the file ends.
-One open shows at most `DIFF_GAP_LINES` (settings.py) of a gap, the ones nearest its
-hunk, and a bar of the same kind stands for the rest at the far end of the group; the
-open bar counts every line it shows, its steps’ among them (`Hide 50 lines`). While its
-lines load the bar is `aria-busy` beside the app’s delayed spinner; a load that fails
-closes it with `Could not load 38 unchanged lines. Retry`, and a press asks again.
-A file whose lines the comparison declines draws its plain separators under one warning,
-`The unchanged lines of this file cannot be shown.`
+One open shows at most `DIFF_GAP_LINES` (settings.py) of a gap, or of very long lines
+what one answer holds (`MAX_LINES_ANSWER_BYTES`, `diff/side_lines.py`), the ones nearest
+its hunk, and a bar of the same kind stands for the rest at the far end of the group;
+the open bar counts every line it shows, its steps’ among them (`Hide 50 lines`).
+`Rest of the file` below a hunk that turns out to end the file goes when pressed, and
+the keyboard goes on from the file’s bar.
+While its lines load the bar is `aria-busy` beside the app’s delayed spinner; a load
+that fails closes it with `Could not load 38 unchanged lines. Retry`, and a press asks
+again. A file whose lines the comparison declines draws its plain separators under one
+warning, `The unchanged lines of this file cannot be shown.`
 `tests/golden/cli-ui-diff-hunk-gap.tryscript.md` pins each state.
 
 ### Disclosure Motion
