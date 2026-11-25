@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from metabrowser.builtin_plugins.github.pull_rendered_diff import (
-    _rendered_format,  # pyright: ignore[reportPrivateUsage]
+    rendered_format,
 )
 from metabrowser.diff.format import FileChange
 
@@ -49,21 +49,21 @@ def _change(
 
 @pytest.mark.parametrize(("name", "rendered"), _TABLE["names"])
 def test_a_name_renders_as_the_page_reads_it(name: str, rendered: str | None) -> None:
-    assert _rendered_format(_change(None, _side(name))) == rendered
-    assert _rendered_format(_change(_side(name), _side(name))) == rendered
+    assert rendered_format(_change(None, _side(name))) == rendered
+    assert rendered_format(_change(_side(name), _side(name))) == rendered
 
 
 @pytest.mark.parametrize(("old", "new", "rendered"), _TABLE["renames"])
 def test_a_rename_renders_only_within_one_format(old: str, new: str, rendered: str | None) -> None:
-    assert _rendered_format(_change(_side(old), _side(new))) == rendered
+    assert rendered_format(_change(_side(old), _side(new))) == rendered
 
 
 @pytest.mark.parametrize("entry_type", ["symlink", "submodule"])
 def test_only_files_render(entry_type: str) -> None:
-    assert _rendered_format(_change(None, _side("a.json", entry_type))) is None
-    assert _rendered_format(_change(_side("a.json"), _side("a.json", entry_type))) is None
+    assert rendered_format(_change(None, _side("a.json", entry_type))) is None
+    assert rendered_format(_change(_side("a.json"), _side("a.json", entry_type))) is None
 
 
 @pytest.mark.parametrize("availability", ["deferred", "binary", "too_large", "failed"])
 def test_only_a_ready_change_renders(availability: str) -> None:
-    assert _rendered_format(_change(None, _side("a.json"), availability)) is None
+    assert rendered_format(_change(None, _side("a.json"), availability)) is None

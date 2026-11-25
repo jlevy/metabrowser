@@ -607,6 +607,9 @@ function mountTypeFiltered(container, whole, revision, options, ctx, module, kep
   };
 }
 
+// What a diff that could not load says in its place: one warning and its one remedy.
+const LOAD_FAILURE = "Could not load this diff. Reload the page to try again.";
+
 /** @param {HTMLElement} container @param {string} message */
 function renderFailure(container, message) {
   const notice = document.createElement("div");
@@ -618,7 +621,8 @@ function renderFailure(container, message) {
   return { dispose: () => notice.remove() };
 }
 
-mb.registerView("diff", "diff", {
+/** @type {MetabrowserPublicViewSpec} */
+const diffView = {
   render: async (container, ctx) => {
     const signal = ctx.comparisonSignal;
     if (signal?.aborted) {
@@ -636,6 +640,9 @@ mb.registerView("diff", "diff", {
     const group = revision && typeof ctx.group === "string" && ctx.group ? ctx.group : null;
     /** @type {Record<string, string>} */
     const narrowing = group === null ? {} : { group };
+    // One changed file, by its path: the route's one-file answer, which a deferred file's
+    // loader asks for too, drawn as the whole comparison draws that file (`mountRenderedFile`).
+    const file = revision && typeof ctx.file === "string" ? ctx.file : undefined;
     const startedAt = Date.now();
     // Asked for now, so its request overlaps the diff's own instead of following it. Its
     // failure waits for the mount below, and may never reach it: a diff that fails first
@@ -646,7 +653,8 @@ mb.registerView("diff", "diff", {
     // The tree the Diff summary is drawn on, whose display rule the file bars show paths by.
     const summaryTree = changedFilesTree();
     // Asked for beside the comparison too, for a diff of more than one file.
-    const typeFilter = group === null ? typeFilterModule(revision, ctx.summaryTotals) : null;
+    const typeFilter =
+      group === null && file === undefined ? typeFilterModule(revision, ctx.summaryTotals) : null;
     let payload;
     try {
       payload = revision
@@ -654,7 +662,7 @@ mb.registerView("diff", "diff", {
             ? fetchComparison(
                 revision,
                 signal === undefined ? undefined : { signal },
-                undefined,
+                file,
                 narrowing,
               )
             : ctx.raw)
@@ -679,7 +687,7 @@ mb.registerView("diff", "diff", {
       const message =
         typeof failure?.payload?.message === "string" && failure.payload.message
           ? failure.payload.message
-          : "Could not load this diff. Reload the page to try again.";
+          : LOAD_FAILURE;
       console.error(
         "metabrowser diff: view load failed",
         {
@@ -719,7 +727,7 @@ mb.registerView("diff", "diff", {
         },
         error,
       );
-      return renderFailure(container, "Could not load this diff. Reload the page to try again.");
+      return renderFailure(container, LOAD_FAILURE);
     }
     if (signal?.aborted) {
       return null;
@@ -895,8 +903,74 @@ mb.registerView("diff", "diff", {
     const { pinSwitch } = await viewFileModule();
     return pinSwitch.switchTo(selection, wanted);
   },
-});
+};
+mb.registerView("diff", "diff", diffView);
+
+/**
+ * One changed file of a comparison drawn whole by this view's own render, for a page that
+ * shows that file in its own place: a guided review's step draws a Markdown file it cites
+ * whole as the pull request's Docs tab draws it, and a YAML or JSON file as Changes does.
+ * The file is the comparison route's one-file answer (`file=`, which a deferred file's
+ * loader asks for too), drawn with *ctx* as a host passes this view, so it has the bar,
+ * the Rendered | Source chooser, and the toolbar that host's diff would draw; the render
+ * loads the rendered layer (`markdownLayer`) as Changes does, so a page that draws no such
+ * file never loads it.
+ *
+ * *settled* is true once the file is drawn. It is false when it is not: the view's notice
+ * then says why in the file's place, as for a read that failed or a render that threw, or
+ * the handle was disposed first, which leaves nothing. *dispose* ends the read on its way,
+ * or removes what was drawn.
+ *
+ * @param {HTMLElement} container
+ * @param {NonNullable<MetabrowserPublicRenderContext["comparison"]>} comparison
+ * @param {string} path
+ * @param {MetabrowserPublicRenderContext} [ctx]
+ * @returns {{settled: Promise<boolean>, dispose: () => void}}
+ */
+function mountRenderedFile(container, comparison, path, ctx = {}) {
+  const controller = new AbortController();
+  /** @type {{dispose?: () => void} | null} */
+  let mounted = null;
+  const settled = Promise.resolve(
+    diffView.render(container, {
+      ...ctx,
+      comparison,
+      file: path,
+      // The file alone: a one-file diff draws no summary of its own anyway.
+      summary: false,
+      comparisonSignal: controller.signal,
+    }),
+  ).then(
+    (handle) => {
+      const owned = /** @type {{dispose?: () => void, currentFile?: unknown} | null} */ (handle);
+      if (controller.signal.aborted) {
+        owned?.dispose?.();
+        return false;
+      }
+      mounted = owned;
+      // A drawn diff has its file API; a failure's notice, which says why, has none.
+      return typeof owned?.currentFile === "function";
+    },
+    (error) => {
+      if (controller.signal.aborted) {
+        return false;
+      }
+      console.error("metabrowser diff: view load failed", { hook: "diff/file", path }, error);
+      mounted = renderFailure(container, LOAD_FAILURE);
+      return false;
+    },
+  );
+  return {
+    settled,
+    dispose() {
+      controller.abort();
+      mounted?.dispose?.();
+      mounted = null;
+    },
+  };
+}
 
 // What a plugin that requires this one gets from `mb.plugins.load("diff")`: one file's hunks
-// drawn as Changes draws them, for a page that shows part of a change in its own place.
-export { mountFilePatch };
+// drawn as Changes draws them, and one changed file drawn whole as its comparison's diff draws
+// it, for a page that shows part of a change in its own place.
+export { mountFilePatch, mountRenderedFile };

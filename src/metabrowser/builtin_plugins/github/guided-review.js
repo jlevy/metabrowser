@@ -4,22 +4,48 @@
  * @typedef {{op: "add" | "del" | "context", text: string}} Line
  * @typedef {{old_start: number, old_count: number, new_start: number, new_count: number,
  *   heading: string | null, lines: Line[]}} Hunk
- * @typedef {{path: string, state: string, href: string | null, hunks: Hunk[],
- *   truncated: boolean}} Reference
+ * @typedef {"markdown" | "yaml" | "json"} Rendered
+ * @typedef {{path: string, side: "old" | "new" | null, state: string,
+ *   rendered: Rendered | null, href: string | null, hunks: Hunk[], truncated: boolean}}
+ *   Reference *side* is null for a file named alone, whose whole patch *hunks* are, and a
+ *   range's side otherwise. *rendered* is the format of a file named alone that the
+ *   rendered route renders, by that route's own rule (`rendered_format` in
+ *   pull_rendered_diff.py): the page draws it whole, and the route sends no hunks for it.
  * @typedef {(body: HTMLElement, change: Record<string, unknown>,
  *   patch: {hunks: Hunk[], truncated: boolean}) => {dispose: () => void}} DrawPatch
  *   The diff plugin's `mountFilePatch`, bound to the SDK: a file's hunks as Changes draws
  *   them.
  * @typedef {{merge_base: string | null, head: string}} Pins
+ * @typedef {{
+ *   draws(pins: Pins): boolean,
+ *   mount(body: HTMLElement, path: string, format: Rendered, pins: Pins):
+ *     {settled: Promise<boolean>, dispose: () => void},
+ * }} DrawDocument The diff plugin's `mountRenderedFile`, bound by the page to its
+ *   comparison: whether it draws a step read at *pins*, the comparison the step was read
+ *   at, which it does only while that is its own; and one file drawn whole, a Markdown file
+ *   as the Docs tab draws it and a YAML or JSON file as Changes does. *settled* is true once
+ *   the file is drawn, and false when the view's notice says why it is not, or the handle
+ *   was disposed first.
+ * @typedef {{patch: DrawPatch | null, document: DrawDocument | null, pins: Pins}} Drawers
+ *   What draws a step's references, each null when the diff plugin did not load, and the
+ *   comparison the step was read at.
  * @typedef {{guide: Pins, current: Pins, github_newer: boolean,
  *   history: "ahead" | "rewritten" | "unavailable", commit_count: number | null,
  *   commits: {sha: string, subject: string}[], changed_paths: string[] | null,
  *   changed_steps: number[] | null}} Staleness What a stale guide was written for and what
  *   changed since (`_staleness` in guided_review.py). The page says only whether its steps
  *   may not match; the rest is for an agent that brings the guide up to date.
+ * @typedef {{kind: "step", step: number, title: string}} OutlineStep A step in the guide's
+ *   outline, numbered through the groups as `step` counts it.
+ * @typedef {{kind: "group", title: string, note: string | null, children: OutlineStep[]}}
+ *   OutlineGroup A group of the guide's steps, which the reader never lands on alone.
  * @typedef {{state: "ready" | "stale", record_revision: string, step: number,
- *   step_count: number, titles: string[], title: string, note: string, references: Reference[],
- *   stale?: Staleness, assets?: unknown}} Step
+ *   step_count: number, titles: string[], outline: Array<OutlineStep | OutlineGroup>,
+ *   group: number | null, title: string, note: string, references: Reference[],
+ *   comparison: Pins, stale?: Staleness, assets?: unknown}} Step `group` is the index in
+ *   `outline` of the step's group, or null for a step outside one (`_outline` in
+ *   guided_review.py); *comparison* is the one the references were read at, the pull
+ *   request's current one.
  * @typedef {{state: "absent" | "invalid" | "comparison_unavailable" |
  *   "description_truncated" | "step_not_found" | "not_cached", record_revision: string | null,
  *   message?: string, stale?: Staleness}} Refusal
@@ -241,19 +267,33 @@ function proseHost(prose) {
 }
 
 /**
- * One reference as Changes draws a changed file: the diff plugin's card and bar, and its
- * hunks drawn by the diff plugin itself (`mountFilePatch`), each under its header bar with
- * its long changed runs behind fold bars, in the plugin's type, gutter, change fills, and
- * syntax (docs/design-system.md, "Diffs"). A range is one hunk of its own lines; a file
- * named alone is its whole patch.
+ * How a step draws a reference. A file named alone that the rendered route renders, as the
+ * guided route answers it (`rendered`), is a document: the file drawn whole by the diff
+ * view, with its Rendered | Source chooser, while the page's comparison is the one the step
+ * was read at. Any other ready change with lines is its hunks, as Changes draws them: a
+ * range's one hunk, and another file named alone its whole patch. The rest say why there is
+ * nothing to draw.
+ *
+ * @param {Reference} reference @param {Drawers} drawers
+ * @returns {"document" | "patch" | "said"}
+ */
+export function referenceDrawing(reference, drawers) {
+  if (reference.state !== "ready") {
+    return "said";
+  }
+  if (typeof reference.rendered === "string") {
+    return drawers.document?.draws(drawers.pins) === true ? "document" : "said";
+  }
+  return reference.hunks.length === 0 || drawers.patch === null ? "said" : "patch";
+}
+
+/**
+ * The bar the guide draws above a reference it draws itself: the file's path, and its Open
+ * full diff, which goes to the file in Changes.
  *
  * @param {Reference} reference @param {(path: string) => void} open
- * @param {Change} change Whether the file changed after the guide was written.
- * @param {DrawPatch | null} drawPatch Null when the diff plugin did not load.
- * @param {Array<{dispose: () => void}>} drawn Where each drawn patch is kept for disposal.
  */
-function renderReference(reference, open, change, drawPatch, drawn) {
-  const section = element("section", "", "diff-file github-pull-guide-reference");
+function referenceBar(reference, open) {
   const bar = element("div", "", "diff-file-bar github-pull-guide-reference-header");
   const name = element("span", "", "diff-file-toggle");
   name.append(element("span", reference.path, "diff-file-path"));
@@ -278,16 +318,91 @@ function renderReference(reference, open, change, drawPatch, drawn) {
     });
     bar.append(full);
   }
-  section.append(bar);
-  if (reference.state === "ready" && change !== "unchanged") {
-    const said =
-      change === "changed" ? CHANGED_REFERENCE_MESSAGES.ready : UNKNOWN_REFERENCE_MESSAGES.ready;
-    section.append(element("p", said, "github-pull-quiet github-pull-guide-changed"));
+  return bar;
+}
+
+/**
+ * A file a step cites whole that the rendered route renders, drawn by the diff plugin's own
+ * view of it (`mountRenderedFile`): a Markdown file as the Docs tab draws it, and a YAML or
+ * JSON file as Changes does. Either way it is the file's own bar, with its View on branch
+ * and its Rendered | Source chooser, the diff's Diff | Current above it, and its rendered
+ * layer, which keeps its own bounds and says on its chooser why a file it refuses shows
+ * Source. The bar is the file's, so the guide adds none of its own while the file draws, and
+ * a note that the file changed since the guide was written leads it. A file the view could
+ * not draw shows its notice under the guide's own bar, so the reader still sees which file
+ * it is and can open it in Changes.
+ *
+ * @param {Reference} reference @param {Rendered} format @param {HTMLElement | null} note
+ * @param {(path: string) => void} open
+ * @param {DrawDocument} drawDocument @param {Pins} pins
+ * @param {Array<{dispose: () => void}>} drawn Where the drawn view is kept for disposal.
+ */
+function renderDocument(reference, format, note, open, drawDocument, pins, drawn) {
+  const section = element("section", "", "github-pull-guide-reference github-pull-guide-document");
+  const body = element("div", "", "github-pull-guide-document-body");
+  // The diff's own progress, below the view so it never moves the view's first row, shown
+  // only past the loading delay (`mb-delayed-loading`), as Changes shows it.
+  const loading = element(
+    "div",
+    "",
+    "loading mb-delayed-loading github-pull-guide-document-loading",
+  );
+  loading.setAttribute("role", "status");
+  loading.setAttribute("aria-label", `Loading ${reference.path}`);
+  const spinner = element("span", "", "spinner");
+  spinner.setAttribute("aria-hidden", "true");
+  loading.append(spinner);
+  section.append(...(note === null ? [] : [note]), body, loading);
+  const view = drawDocument.mount(body, reference.path, format, pins);
+  drawn.push(view);
+  void view.settled.then((drawnFile) => {
+    loading.remove();
+    if (!drawnFile) {
+      section.prepend(referenceBar(reference, open));
+    }
+  });
+  return section;
+}
+
+/**
+ * One reference as Changes draws a changed file: the diff plugin's card and bar, and its
+ * hunks drawn by the diff plugin itself (`mountFilePatch`), each under its header bar with
+ * its long changed runs behind fold bars, in the plugin's type, gutter, change fills, and
+ * syntax (docs/design-system.md, "Diffs"). A range is one hunk of its own lines; a file
+ * named alone is its whole patch, or, one the rendered route renders, the whole file drawn
+ * by the diff view (`referenceDrawing`).
+ *
+ * @param {Reference} reference @param {(path: string) => void} open
+ * @param {Change} change Whether the file changed after the guide was written.
+ * @param {Drawers} drawers What draws the reference.
+ * @param {Array<{dispose: () => void}>} drawn Where each drawn patch is kept for disposal.
+ */
+function renderReference(reference, open, change, drawers, drawn) {
+  const drawing = referenceDrawing(reference, drawers);
+  const changed =
+    reference.state === "ready" && change !== "unchanged"
+      ? element(
+          "p",
+          change === "changed"
+            ? CHANGED_REFERENCE_MESSAGES.ready
+            : UNKNOWN_REFERENCE_MESSAGES.ready,
+          "github-pull-quiet github-pull-guide-changed",
+        )
+      : null;
+  const format = typeof reference.rendered === "string" ? reference.rendered : null;
+  if (drawing === "document" && drawers.document !== null && format !== null) {
+    return renderDocument(reference, format, changed, open, drawers.document, drawers.pins, drawn);
   }
-  if (reference.state === "ready" && reference.hunks.length === 0) {
+  const section = element("section", "", "diff-file github-pull-guide-reference");
+  section.append(referenceBar(reference, open));
+  if (changed !== null) {
+    section.append(changed);
+  }
+  const drawPatch = drawers.patch;
+  if (reference.state === "ready" && format === null && reference.hunks.length === 0) {
     // A rename, a mode change, or a binary file: a change with no text to show.
     section.append(element("p", "This file has no text changes to show.", "github-pull-quiet"));
-  } else if (reference.state === "ready" && drawPatch !== null) {
+  } else if (drawing === "patch" && drawPatch !== null) {
     const body = element("div", "", "diff-file-body github-pull-guide-excerpt");
     body.setAttribute("role", "group");
     body.setAttribute("aria-label", `Diff excerpt for ${reference.path}`);
@@ -437,6 +552,10 @@ const OVERVIEW = "Overview";
 /** @param {number} at @param {number} count Where the reader is: the overview, or a step of
  * how many. */
 const placeName = (at, count) => (at === 0 ? OVERVIEW : `Step ${at} of ${count}`);
+/** @param {string | null} group @param {number} at @param {number} count A step's place on its
+ * card: its group's title before it, when it has one, as "Decisions · Step 2 of 12". */
+const groupedPlace = (group, at, count) =>
+  group === null ? placeName(at, count) : `${group} · ${placeName(at, count)}`;
 /** @param {number} at @param {string} title A step by name: the overview, or its number and
  * title. */
 const stepName = (at, title) => (at === 0 ? OVERVIEW : `Step ${at}: ${title}`);
@@ -447,6 +566,8 @@ const guideBadge = () =>
  * cites a file changed since the guide was written: the word its warning names. */
 const CHANGED = "changed";
 const changedMark = () => element("span", CHANGED, "github-pull-guide-step-changed");
+/** How many group headings the page has drawn, so each has an id of its own to name its list. */
+let groupHeadings = 0;
 
 /**
  * @param {HTMLElement} host
@@ -457,20 +578,27 @@ const changedMark = () => element("span", CHANGED, "github-pull-guide-step-chang
  *   open: (path: string) => void,
  *   loadStyles: (assets: unknown) => Promise<unknown>,
  *   loadDrawPatch: () => Promise<DrawPatch>,
+ *   loadDrawDocument: () => Promise<DrawDocument>,
  * }} deps *open* goes to a file's Changes address. *loadStyles* loads the stylesheets the
  *   guide is drawn in: KPress's, from the manifest a ready step carries, and the diff
  *   plugin's; the guide waits for them, as a description does. *loadDrawPatch* loads the
- *   diff plugin's file renderer, which draws the excerpts.
+ *   diff plugin's file renderer, which draws the excerpts, and *loadDrawDocument* its view
+ *   of one whole file, which draws a file the rendered route renders; the view loads the
+ *   rendered layer when it draws one, so a guide that cites none never loads it.
  */
 export function mountGuidedReview(host, introduction, number, deps) {
-  const { open, loadStyles, loadDrawPatch } = deps;
+  const { open, loadStyles, loadDrawPatch, loadDrawDocument } = deps;
   /** @type {Promise<unknown> | null} */
   let styles = null;
   /** @type {Promise<DrawPatch | null> | null} */
   let drawer = null;
   /** @type {DrawPatch | null} */
   let drawPatch = null;
-  /** The patches the shown step drew, disposed when another is drawn or the guide ends. */
+  /** @type {Promise<DrawDocument | null> | null} */
+  let documents = null;
+  /** @type {DrawDocument | null} */
+  let drawDocument = null;
+  /** The views the shown step drew, disposed when another is drawn or the guide ends. */
   /** @type {Array<{dispose: () => void}>} */
   let drawn = [];
   const undraw = () => {
@@ -518,17 +646,60 @@ export function mountGuidedReview(host, introduction, number, deps) {
   };
   /** @type {string[]} */
   let titles = [];
+  /** The guide's groups and steps in reading order, as the route answers them.
+   * @type {Array<OutlineStep | OutlineGroup>} */
+  let entries = [];
   /** @type {number[]} */
   let changedSteps = [];
   /** @param {number} at */
   const nameOf = (at) => stepName(at, titles[at - 1] ?? "");
   /**
-   * The step list's rows, built once for each list of titles and updated in place, so the
-   * row a reader activated keeps focus, as the tab bar keeps its links across paints.
+   * The step list's rows, built once for each outline and updated in place, so the row a
+   * reader activated keeps focus, as the tab bar keeps its links across paints. A row's
+   * index is its step's number, the overview's 0.
    *
    * @type {{key: string | null, rows: {link: HTMLButtonElement, mark: HTMLElement}[]}}
    */
   let built = { key: null, rows: [] };
+
+  /** @param {number} index @param {string} title A step's row: its number and its title. */
+  function stepRow(index, title) {
+    const link = document.createElement("button");
+    link.type = "button";
+    link.className = "github-pull-guide-steps-link";
+    link.append(
+      element("span", index === 0 ? "" : String(index), "github-pull-guide-steps-number"),
+      element("span", title, "github-pull-guide-steps-title"),
+    );
+    link.addEventListener("click", () => navigation.go(index));
+    return { link, mark: changedMark() };
+  }
+
+  /** @param {{link: HTMLButtonElement}} row */
+  function listItem({ link }) {
+    const item = element("li", "", "github-pull-guide-steps-item");
+    item.append(link);
+    return item;
+  }
+
+  /**
+   * A group in the step list: its heading, with no number and nothing to press, since the
+   * reader moves between steps alone, above its steps, which keep their numbers. The
+   * heading names the group's list, as a menu's group heading names its group.
+   *
+   * @param {OutlineGroup} group @param {{link: HTMLButtonElement}[]} rows
+   */
+  function groupItem(group, rows) {
+    groupHeadings += 1;
+    const heading = element("div", group.title, "group-heading github-pull-guide-steps-heading");
+    heading.id = `github-pull-guide-group-${groupHeadings}`;
+    const steps = element("ol", "", "github-pull-guide-steps-members");
+    steps.setAttribute("aria-labelledby", heading.id);
+    steps.append(...rows.map(listItem));
+    const item = element("li", "", "github-pull-guide-steps-group");
+    item.append(heading, steps);
+    return item;
+  }
 
   /** @param {number} at */
   function paintOutline(at) {
@@ -538,29 +709,23 @@ export function mountGuidedReview(host, introduction, number, deps) {
     status.textContent = placeName(at, count);
     previous.disabled = at <= 0;
     next.disabled = at >= count;
-    const key = JSON.stringify(titles);
+    const key = JSON.stringify(entries);
     if (built.key !== key) {
-      built = {
-        key,
-        rows: [OVERVIEW, ...titles].map((title, index) => {
-          const link = document.createElement("button");
-          link.type = "button";
-          link.className = "github-pull-guide-steps-link";
-          link.append(
-            element("span", index === 0 ? "" : String(index), "github-pull-guide-steps-number"),
-            element("span", title, "github-pull-guide-steps-title"),
-          );
-          link.addEventListener("click", () => navigation.go(index));
-          return { link, mark: changedMark() };
-        }),
-      };
-      list.replaceChildren(
-        ...built.rows.map(({ link }) => {
-          const item = element("li", "", "github-pull-guide-steps-item");
-          item.append(link);
-          return item;
-        }),
-      );
+      const rows = [stepRow(0, OVERVIEW)];
+      const items = [listItem(rows[0])];
+      for (const entry of entries) {
+        if (entry.kind === "step") {
+          const row = stepRow(entry.step, entry.title);
+          rows.push(row);
+          items.push(listItem(row));
+        } else {
+          const members = entry.children.map((child) => stepRow(child.step, child.title));
+          rows.push(...members);
+          items.push(groupItem(entry, members));
+        }
+      }
+      built = { key, rows };
+      list.replaceChildren(...items);
     }
     for (const [index, { link, mark }] of built.rows.entries()) {
       if (changedSteps.includes(index)) {
@@ -610,8 +775,16 @@ export function mountGuidedReview(host, introduction, number, deps) {
           console.warn("metabrowser github: the diff plugin did not load for the guide", error);
           return null;
         });
-        const [, loaded] = await Promise.all([styles, drawer]);
+        // The same plugin draws a file whole; without it, a file the rendered route renders
+        // says its diff is unavailable, beside its Open full diff. The view loads the rendered
+        // layer only when it draws such a file.
+        documents ??= loadDrawDocument().catch((error) => {
+          console.warn("metabrowser github: the diff plugin did not load for the guide", error);
+          return null;
+        });
+        const [, loaded, documented] = await Promise.all([styles, drawer, documents]);
         drawPatch = loaded;
+        drawDocument = documented;
       }
       return result;
     },
@@ -658,6 +831,7 @@ export function mountGuidedReview(host, introduction, number, deps) {
       showStale(available ? state.stale : null);
       if (!available) {
         titles = [];
+        entries = [];
         changedSteps = [];
         paintOutline(0);
         introduction.hidden = false;
@@ -672,6 +846,7 @@ export function mountGuidedReview(host, introduction, number, deps) {
       }
       notice.hidden = true;
       titles = state.titles;
+      entries = state.outline;
       changedSteps = outdated(state.stale) ? (state.stale.changed_steps ?? []) : [];
       paintOutline(at);
       pager.hidden = false;
@@ -687,9 +862,10 @@ export function mountGuidedReview(host, introduction, number, deps) {
       );
       const stale = state.stale;
       const references = element("div", "", "metabrowser-diff-host github-pull-guide-references");
+      const drawers = { patch: drawPatch, document: drawDocument, pins: state.comparison };
       references.append(
         ...state.references.map((reference) =>
-          renderReference(reference, open, changeOf(stale, reference.path), drawPatch, drawn),
+          renderReference(reference, open, changeOf(stale, reference.path), drawers, drawn),
         ),
       );
       // A step is a card, as Conversation draws a comment, headed as the author's guided
@@ -697,7 +873,12 @@ export function mountGuidedReview(host, introduction, number, deps) {
       const head = element("div", "", "github-pull-card-head github-pull-guide-card-head");
       // The badge leads its label as a page header's state badge leads its line, a gap
       // apart (`.github-pull-guide-card-head`), never a space's width.
-      const place = element("span", placeName(state.step, state.step_count));
+      const entry = state.group === null ? undefined : state.outline[state.group];
+      const group = entry?.kind === "group" ? entry : null;
+      const place = element(
+        "span",
+        groupedPlace(group?.title ?? null, state.step, state.step_count),
+      );
       if (changedSteps.includes(state.step)) {
         place.append(" · ", changedMark());
       }
@@ -708,7 +889,12 @@ export function mountGuidedReview(host, introduction, number, deps) {
         "page-card github-pull-card github-pull-event github-pull-guide-card",
       );
       card.append(head, proseHost(step), references);
-      detail.replaceChildren(card);
+      // A group's note opens the group: it shows above its first step, as typed.
+      const opens = group !== null && group.note !== null && group.children[0]?.step === state.step;
+      detail.replaceChildren(
+        ...(opens ? [element("p", group.note ?? "", "github-pull-guide-group-note")] : []),
+        card,
+      );
     },
   });
   previous.addEventListener("click", () => navigation.move(-1));
