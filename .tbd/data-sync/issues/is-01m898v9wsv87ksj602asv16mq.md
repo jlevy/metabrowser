@@ -3,9 +3,9 @@ type: is
 id: is-01m898v9wsv87ksj602asv16mq
 title: "Address PR #834 review A: reference kinds' cost, schema nulls, and commit links"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 7
+version: 8
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -19,7 +19,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-25T11:53:23.096Z
-updated_at: 2026-11-25T12:13:03.183Z
+updated_at: 2026-11-25T13:15:01.703Z
 started_at: 2026-11-25T12:13:03.182Z
+closed_at: 2026-11-25T13:15:01.702Z
+close_reason: "review A on #834 addressed: A1-A4 fixed in 138c1f8bb, A5 declined; ci-ok passed at fc78dc2b3 (run 45613476262); https://github.com/jlevy/metabrowser/pull/834#issuecomment-7163499407"
+resolution: null
+duplicate_of: null
 ---
 Review A on PR #834 (https://github.com/jlevy/metabrowser/pull/834#pullrequestreview-6057087093), pinned to b8420a70e (base 0303c3ec7): 3 Medium, 2 Low.

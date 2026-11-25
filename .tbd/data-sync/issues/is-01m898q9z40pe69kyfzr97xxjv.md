@@ -3,9 +3,9 @@ type: is
 id: is-01m898q9z40pe69kyfzr97xxjv
 title: "Address PR #838 review A: the stack guide's page, pairs, and coverage"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 12
+version: 13
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -24,7 +24,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-25T11:51:12.098Z
-updated_at: 2026-11-25T12:28:25.671Z
+updated_at: 2026-11-25T13:15:03.569Z
 started_at: 2026-11-25T12:28:25.670Z
+closed_at: 2026-11-25T13:15:03.568Z
+close_reason: "review A on #838 addressed: A1-A10 fixed (ed4b9c780 and the description); ci-ok passed at ed4b9c780 (run 45617633028); https://github.com/jlevy/metabrowser/pull/838#issuecomment-7163500057"
+resolution: null
+duplicate_of: null
 ---
 Review A on PR #838 (https://github.com/jlevy/metabrowser/pull/838#pullrequestreview-6057040965), pinned to 1274e12a7 (base b8420a70e): 3 Medium, 7 Low.
