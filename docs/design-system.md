@@ -1241,11 +1241,12 @@ Every button belongs to one role-specific primitive:
 | --- | --- |
 | Labelled action | `.btn` |
 | Icon-only action | `.icon-btn` |
-| Filter value or filter menu | `.chip` and its variants |
+| Filter value or filter menu | `.chip` and its variants, with `.chip-clear` the quiet reset ([Filter Controls](#filter-controls)) |
 | Exclusive choice among labelled values | `.chip-group[data-select="one"]` |
 | Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
 | Tab | `.tab-btn` |
 | Collapsible section title | `.section-disclosure-trigger` |
+| Lines or content folded in place, which a press shows | [`.fold-expander`](#fold-expanders) |
 | Action among links: a text action, below | The context’s text-action class, on `<a>` and `<button>` alike |
 
 These primitives share the type scale, radii, semantic colors, focus treatment, and
@@ -1255,6 +1256,13 @@ primitive class in the markup and must not recreate the primitive’s border, fi
 typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
+`test_every_plugin_button_carries_a_control_family_class` and
+`test_every_shell_button_carries_a_control_family_class` in
+`tests/test_plugin_design_consistency.py` hold every button the built-in plugins, the
+shell’s modules, and the server’s markup build to one of these, or to an allowlisted
+class with its reason.
+A control that asks for something again takes its word and its widget from
+[Refresh, Retry, and Reload Page](#refresh-retry-and-reload-page).
 
 A **text action** is an action that sits among links in a line of chrome, with no border
 or fill, because a bordered button would read as a different thing from the link beside
@@ -1441,6 +1449,15 @@ has no room for a ring; `_FOCUS_RING_OUTSET` in `tests/test_design_vocabulary.py
 the controls that take it.
 `test_every_focus_ring_is_the_one_ring` fails a stylesheet, a plugin’s included, that
 writes a literal ring.
+
+A button or `summary` that no rule rings draws the same ring:
+`:where(button, summary):focus-visible` in `static/styles.css` states it at zero
+specificity, as [the link base](#links-have-a-base-color) states a link’s color, so a
+family’s own rule wins and a control that sets no ring draws this one, not the user
+agent’s outline in the platform’s accent color outside its box.
+A diff file bar’s label and a rendered diff’s run of unchanged blocks drew the user
+agent’s until 2026-11-24. Links are not included: a link’s ring is its context’s.
+`test_a_control_no_rule_rings_takes_the_one_ring` holds the base.
 
 ### Text Fields
 

@@ -1725,6 +1725,17 @@ body {
   color: var(--link);
 }
 
+/* The one focus ring for a button or summary no rule rings. Like the link base above it
+   has zero specificity, so every family's own `:focus-visible` rule still wins, and it
+   only replaces the user agent's ring, an outline in the platform's accent color outside
+   the box, which a diff file bar's label and a rendered diff's run of unchanged blocks
+   drew (seen in Chrome on 2026-11-24, mb-2t80). A link is not included: its ring is its
+   context's (docs/design-system.md, "Focus Ring"). */
+:where(button, summary):focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
 /* Global scrollbars — every scroll container in the app inherits
    the same minimal style. Containers that sit on a non-default
    surface override --scrollbar-bg locally (e.g. .tree-content sets

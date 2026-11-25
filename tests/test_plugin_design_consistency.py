@@ -1,9 +1,11 @@
-"""Source checks that the built-in plugin views use the shell's primitives.
+"""Source checks that the built-in plugin views, and the shell, use the shell's primitives.
 
 Each check is a scan of builtin_plugins/**/*.js (and charts.py) for a pattern the design
 system (docs/design-system.md) already forbids, so a plugin cannot quietly redraw what the
 shell owns: a button without a control-family class, a hand-formatted number, a failure alert
-outside a .notice, or a log kind whose colour differs between the Log and its chart.
+outside a .notice, or a log kind whose colour differs between the Log and its chart. The
+button scan reads the shell's own modules and the server's markup too, since a shell control
+that skips the families is as far from them as a plugin's.
 
 Each scan is a heuristic over source text, so every allowlist names its reason.
 """
@@ -16,6 +18,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGINS_DIR = REPO_ROOT / "src" / "metabrowser" / "builtin_plugins"
 PLUGIN_JS = tuple(sorted(PLUGINS_DIR.glob("**/*.js")))
+STATIC_DIR = REPO_ROOT / "src" / "metabrowser" / "static"
+# The shell's modules, not the vendored libraries in static/vendor/, and the server's markup.
+SHELL_SOURCES = (*sorted(STATIC_DIR.glob("*.js")), REPO_ROOT / "src" / "metabrowser" / "server.py")
 
 # -- Buttons -------------------------------------------------------------------------------
 
@@ -54,6 +59,17 @@ BUTTON_CLASS_ALLOWLIST = {
     "github-pull-guide-steps-link": "a Guided Review step list row, which goes to its step",
 }
 
+# A shell button whose class is not a primitive, and why that is right. Each is a control of
+# its own surface, documented at its rule in docs/design-system.md, and none redraws a family.
+SHELL_BUTTON_CLASS_ALLOWLIST = {
+    # "Filter Controls": the chip family's quiet reset, its own variant of the chip.
+    "chip-clear": "the filter bar's Clear, the chip family's reset",
+    # "Refresh, Retry, and Reload Page", its one exception: the line is the control.
+    "source-freshness-label": "a mirror's freshness line, whose age refreshes when pressed",
+    # "View Headers": a crumb of the eyebrow's path is a step of a path, not a button's box.
+    "folder-crumb": "a view header's folder crumb",
+}
+
 _QUOTED = re.compile(r"""(["'\x60])((?:\\.|(?!\1).)*)\1""", re.DOTALL)
 _TAG_CLASS = re.compile(r"""class=["']([^"']*)["']""")
 _FACTORY_BUTTON = re.compile(r"""\b(?:h|el)\(\s*["']button["']\s*,""")
@@ -68,6 +84,11 @@ def _tokens(text: str) -> set[str]:
     return found
 
 
+# A helper that gives the element it is handed its family's class, by what it sets: the SDK's
+# menu rows (`renderLinkMenuItem` in static/plugin-sdk-views.js sets `menu-item`).
+_CLASS_HELPERS = {"renderLinkMenuItem": frozenset({"menu-item"})}
+
+
 def _assigned_class(variable: str, window: str) -> set[str]:
     """The class words a created element is given in the statements after its creation."""
     pattern = (
@@ -75,13 +96,20 @@ def _assigned_class(variable: str, window: str) -> set[str]:
         r"([^;]*);"
     )
     assigned = re.search(pattern, window)
-    return _tokens(assigned.group(1)) if assigned else set()
+    if assigned:
+        return _tokens(assigned.group(1))
+    for helper, words in _CLASS_HELPERS.items():
+        if re.search(rf"\b{helper}\(\s*{variable}\s*,", window):
+            return set(words)
+    return set()
 
 
-def _button_class_tokens() -> list[tuple[str, int, set[str]]]:
-    """(file, line, class words) for each button a plugin builds."""
+def _button_class_tokens(
+    paths: tuple[Path, ...] = PLUGIN_JS,
+) -> list[tuple[str, int, set[str]]]:
+    """(file, line, class words) for each button the sources build."""
     out: list[tuple[str, int, set[str]]] = []
-    for path in PLUGIN_JS:
+    for path in paths:
         source = path.read_text()
         where = str(path.relative_to(REPO_ROOT))
 
@@ -92,7 +120,9 @@ def _button_class_tokens() -> list[tuple[str, int, set[str]]]:
         for match in re.finditer(r"<button\b", source):
             tag = source[match.start() : source.find(">", match.start())]
             klass = _TAG_CLASS.search(tag)
-            words = set(klass.group(1).split()) if klass else set()
+            # Words, not whitespace runs: the server's f-string markup puts a `{...}` inside
+            # the attribute, as `class="tab-btn{active}"` does.
+            words = set(re.findall(r"[A-Za-z][\w-]*", klass.group(1))) if klass else set()
             out.append((where, line_of(match.start()), words))
         # h("button", {class: "..."}) and el("button", "...").
         for match in _FACTORY_BUTTON.finditer(source):
@@ -118,6 +148,32 @@ def test_every_plugin_button_carries_a_control_family_class() -> None:
         "a plugin button must carry a control-family primitive (docs/design-system.md, "
         "'Control Families'):\n  " + "\n  ".join(offenders)
     )
+
+
+def test_every_shell_button_carries_a_control_family_class() -> None:
+    """The plugins' rule, for the shell's own modules and the server's markup.
+
+    The scan reads the three forms `_button_class_tokens` knows. A button whose tag is chosen
+    at run time, as the shortcut strip's hint and a commit's changed-file row are, is not
+    read, and so is not listed.
+    """
+
+    buttons = _button_class_tokens(SHELL_SOURCES)
+    assert len(buttons) >= 25, "the scan found too few buttons; its patterns no longer match"
+    allowed = BUTTON_PRIMITIVES | set(SHELL_BUTTON_CLASS_ALLOWLIST)
+    offenders = [
+        f"{where}:{line} builds a button with classes {sorted(words) or 'none'}"
+        for where, line, words in buttons
+        if not words & allowed
+    ]
+    assert not offenders, (
+        "a shell button must carry a control-family primitive (docs/design-system.md, "
+        "'Control Families'), or be named with its reason in SHELL_BUTTON_CLASS_ALLOWLIST:"
+        "\n  " + "\n  ".join(offenders)
+    )
+    # An allowance nothing uses any more is a stale reason: take it out.
+    used = set().union(*(words for _, _, words in buttons))
+    assert not set(SHELL_BUTTON_CLASS_ALLOWLIST) - used, set(SHELL_BUTTON_CLASS_ALLOWLIST) - used
 
 
 # -- Numbers -------------------------------------------------------------------------------
