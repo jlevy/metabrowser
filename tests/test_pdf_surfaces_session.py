@@ -453,6 +453,8 @@ def test_a_preview_is_drawn_only_where_threat_model_t7_admits_it() -> None:
     assert card["state"] == "ready"
     assert card["image"]["src"] == drawn[0]["image"]
     assert card["image"]["loading"] == "lazy"
-    assert card["caption"] == ["report.pdf", "1 page"]
+    assert card["caption"] == ["report.pdf", "1 page", "View on branch"]
+    # The way to the PDF's page is its file bar's own control, a press nearer.
+    assert [control["label"] for control in card["controls"]] == ["View on branch"]
     # Each card asked once, for its side's blob.
     assert by_label["sandbox"]["requests"] == list(cards["sandbox"])
