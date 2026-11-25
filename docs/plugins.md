@@ -642,10 +642,8 @@ A plugin offers helpers to others by exporting them from its `index.js`, which i
 module, as Markdown exports `mountRendered`, `renderSource`, and `drawDiagrams`,
 structured data exports `renderInlineTree` and the tree’s helpers, diff exports
 `mountFilePatch`, which draws one file’s hunks as Changes does and which GitHub’s Guided
-Review draws its excerpts with, and `loadRenderedFile`, which draws one file of a
-comparison as the diff view does, rendered layer included, and which Guided Review draws
-a document a step cites whole with, and GitHub exports `pullStateIcon`, which the
-shell’s ref selector draws a branch’s pull request with.
+Review draws its excerpts with, and GitHub exports `pullStateIcon`, which the shell’s
+ref selector draws a branch’s pull request with.
 A plugin that uses them names the provider in its manifest and asks for its exports:
 
 ```toml
@@ -671,7 +669,10 @@ The namespace is what `import()` answers, so a provider must not export a functi
 `then`: the promise would treat the namespace as a thenable and call it.
 A provider whose helpers are costly to fetch can export a function that loads them, so
 that its `index.js`, which every page showing one of its kinds loads, stays small: the
-agents plugin exports `loadLogRenderers`, which answers its agent-log renderers.
+agents plugin exports `loadLogRenderers`, which answers its agent-log renderers, and the
+diff plugin `loadRenderedFile`, which loads its rendered layer and answers one file of a
+comparison drawn as the diff view draws it, rendered layer included, which GitHub’s
+Guided Review draws a document a step cites whole with.
 
 Discovery refuses a plugin whose `requires` names a plugin that was not discovered or
 was itself refused, and every plugin on a cycle of requirements, since two modules that
