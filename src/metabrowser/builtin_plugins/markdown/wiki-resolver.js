@@ -33,6 +33,8 @@ const IMAGE_EXTENSIONS = new Set([
 ]);
 const AUDIO_EXTENSIONS = new Set([".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav"]);
 const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
+// An embedded PDF is the pdf plugin's card (wiki-enhancer.js); links.js has the same rule.
+const PDF_EXTENSION = ".pdf";
 
 /**
  * @typedef {object} WikiIntent
@@ -45,7 +47,7 @@ const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
 
 /**
  * @typedef {Readonly<{status: "internal", path: string, fragment?: string,
- *   mediaKind?: "markdown" | "image" | "audio" | "video" | "resource"}> |
+ *   mediaKind?: "markdown" | "image" | "audio" | "video" | "pdf" | "resource"}> |
  *   Readonly<{status: "pending" | "missing" | "unsafe" | "unsupported", reason: string}> |
  *   Readonly<{status: "ambiguous", reason: string, candidateCount: number,
  *   candidates: readonly string[]}>} WikiResolution
@@ -60,7 +62,7 @@ const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
  * @typedef {Readonly<{action: "navigate" | "embed", fragment?: string,
  *   exactPath: string, miss: "fallback" | "not-found",
  *   lookup?: string, lookupKind?: "basename" | "suffix",
- *   mediaKind?: "markdown" | "image" | "audio" | "video" | "resource",
+ *   mediaKind?: "markdown" | "image" | "audio" | "video" | "pdf" | "resource",
  *   resolutionIdentity: object}>} WikiLookupPlan
  */
 
@@ -1264,7 +1266,7 @@ function stepSuffixQuery(state, maxPathVisits) {
   return Object.freeze({ done: state.done, pathVisits, summary: state.summary });
 }
 
-/** @param {CandidateSummary} summary @param {"navigate" | "embed"} action @param {string | undefined} fragment @param {"markdown" | "image" | "audio" | "video" | "resource" | undefined} mediaKind */
+/** @param {CandidateSummary} summary @param {"navigate" | "embed"} action @param {string | undefined} fragment @param {"markdown" | "image" | "audio" | "video" | "pdf" | "resource" | undefined} mediaKind */
 function resolutionFromSummary(summary, action, fragment, mediaKind) {
   if (summary.overflow) {
     return unsupported("too-many-candidates");
@@ -1549,9 +1551,9 @@ function basename(path) {
   return separator === -1 ? path : path.slice(separator + 1);
 }
 
-/** @param {string} path @param {"navigate" | "embed"} action @param {string | undefined} fragment @param {"markdown" | "image" | "audio" | "video" | "resource" | undefined=} mediaKind @param {object=} resolutionIdentity */
+/** @param {string} path @param {"navigate" | "embed"} action @param {string | undefined} fragment @param {"markdown" | "image" | "audio" | "video" | "pdf" | "resource" | undefined=} mediaKind @param {object=} resolutionIdentity */
 function internalResult(path, action, fragment, mediaKind, resolutionIdentity) {
-  /** @type {{status: "internal", path: string, fragment?: string, mediaKind?: "markdown" | "image" | "audio" | "video" | "resource"}} */
+  /** @type {{status: "internal", path: string, fragment?: string, mediaKind?: "markdown" | "image" | "audio" | "video" | "pdf" | "resource"}} */
   const result = { status: "internal", path };
   if (fragment) {
     result.fragment = fragment;
@@ -1581,6 +1583,9 @@ function mediaKindForAuthoredPath(path) {
   }
   if (VIDEO_EXTENSIONS.has(extension)) {
     return /** @type {const} */ ("video");
+  }
+  if (extension === PDF_EXTENSION) {
+    return /** @type {const} */ ("pdf");
   }
   return /** @type {const} */ ("resource");
 }

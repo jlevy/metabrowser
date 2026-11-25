@@ -41,7 +41,7 @@
                   "path": { "type": "string" },
                   "query": { "type": "string" },
                   "fragment": { "type": "string" },
-                  "mediaKind": { "enum": ["image", "audio", "video", "resource"] }
+                  "mediaKind": { "enum": ["image", "audio", "video", "pdf", "resource"] }
                 }
               },
               {

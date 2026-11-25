@@ -13,16 +13,30 @@ const MAX_ANNOUNCEMENT_CODE_UNITS = 2048;
 const WIKI_RESOLUTION_IDENTITY = Symbol.for("metabrowser.wiki-resolution-identity");
 
 /**
+ * Draw a PDF the document embeds in place of *template*, for the PDF named *target*, and
+ * return the element that takes its place with the handle that disposes what it drew.
+ *
+ * @typedef {(template: Element, target: Readonly<{path: string}>, name: string) => {element: Element, dispose: () => void}} EmbedPdf
+ */
+/**
+ * @typedef {{element: Element, transclusion: ReturnType<typeof mountWikiTransclusion> | null, pdf: {dispose: () => void} | null}} WikiElementState
+ */
+
+/**
  * Resolve source-derived wiki placeholders after KPress has produced safe DOM.
  *
  * @param {HTMLElement} container
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
  * @param {(element: Element, target: Readonly<{path: string, fragment?: string}>) => void} registerInternal
- * @param {{budget?: ReturnType<typeof createTransclusionBudget>, cancel?: (handle: number) => void, chain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, elements?: ReadonlyArray<Element>, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, signal?: AbortSignal, schedule?: (callback: FrameRequestCallback) => number, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, reconciliationScope?: ReturnType<ReturnType<typeof createMarkdownReconciliationCoordinator>["createScope"]>, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, signal: AbortSignal, rawVersions?: unknown}) => {dispose?: () => void}, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
+ * @param {{budget?: ReturnType<typeof createTransclusionBudget>, cancel?: (handle: number) => void, chain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, elements?: ReadonlyArray<Element>, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, signal?: AbortSignal, schedule?: (callback: FrameRequestCallback) => number, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, reconciliationScope?: ReturnType<ReturnType<typeof createMarkdownReconciliationCoordinator>["createScope"]>, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, signal: AbortSignal, rawVersions?: unknown}) => {dispose?: () => void}, embedPdf?: EmbedPdf, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
+ *   `embedPdf` draws `![[report.pdf]]` as the pdf plugin's card (link-enhancer.js
+ *   `mountPdfEmbed`); without it such an embed is a link to the PDF's view.
  */
 export function enhanceWikiLinks(container, sourcePath, mb, registerInternal, options = {}) {
   const transclusions = new Set();
+  /** @type {Set<{dispose: () => void}>} */
+  const pdfEmbeds = new Set();
   const ownsWorkerClient = !options.workerClient;
   const workerClient = options.workerClient || acquireMarkdownWorkerClient();
   let budget = options.budget || null;
@@ -40,7 +54,7 @@ export function enhanceWikiLinks(container, sourcePath, mb, registerInternal, op
     options.reconciliationScope || reconciliation.createScope(options.signal, sourcePath);
 
   /**
-   * @param {{element: Element, transclusion: ReturnType<typeof mountWikiTransclusion> | null}} state
+   * @param {WikiElementState} state
    * @param {Element} template
    * @param {"navigate" | "embed"} action
    * @param {NonNullable<ReturnType<ReturnType<ReturnType<typeof import("./wiki-resolver.js").createWikiResolutionContext>["begin"]>["step"]>["result"]>} resolved
@@ -54,9 +68,16 @@ export function enhanceWikiLinks(container, sourcePath, mb, registerInternal, op
       transclusions.delete(state.transclusion);
       state.transclusion = null;
     }
+    // A card's slot is a span like the placeholder, so it is never reused for another result.
+    const hadPdf = state.pdf !== null;
+    if (state.pdf) {
+      state.pdf.dispose();
+      pdfEmbeds.delete(state.pdf);
+      state.pdf = null;
+    }
     if (resolved.status !== "internal") {
       let unresolved = state.element;
-      if (unresolved.tagName.toLowerCase() !== template.tagName.toLowerCase()) {
+      if (hadPdf || unresolved.tagName.toLowerCase() !== template.tagName.toLowerCase()) {
         unresolved = createWikiPlaceholder(container, template);
         state.element.replaceWith(unresolved);
       }
@@ -81,6 +102,25 @@ export function enhanceWikiLinks(container, sourcePath, mb, registerInternal, op
       transclusions.add(transclusion);
       state.element = transclusion.element;
       state.transclusion = transclusion;
+      return state;
+    }
+    if (action === "embed" && resolved.mediaKind === "pdf") {
+      const target = Object.freeze({ path: resolved.path });
+      if (!options.embedPdf) {
+        // No card to draw: the embed is a link to the PDF's view, never to `/raw`.
+        const anchor = createNavigationAnchor(container, template, target, mb);
+        anchor.setAttribute("data-metabrowser-link-syntax", "wiki-embed");
+        state.element.replaceWith(anchor);
+        state.element = anchor;
+        registerInternal(anchor, target);
+        return state;
+      }
+      const embed = options.embedPdf(template, target, wikiFileName(template));
+      embed.element.setAttribute("data-metabrowser-link-syntax", "wiki-embed");
+      pdfEmbeds.add(embed);
+      state.element.replaceWith(embed.element);
+      state.element = embed.element;
+      state.pdf = embed;
       return state;
     }
     const replacement =
@@ -109,8 +149,8 @@ export function enhanceWikiLinks(container, sourcePath, mb, registerInternal, op
     }
     /** @type {Parameters<typeof sameResolution>[0]} */
     let previousResolution = null;
-    /** @type {{element: Element, transclusion: ReturnType<typeof mountWikiTransclusion> | null}} */
-    const state = { element, transclusion: null };
+    /** @type {WikiElementState} */
+    const state = { element, transclusion: null, pdf: null };
     scope.wiki({ action, authoredTarget, sourcePath }, (resolved) => {
       if (sameResolution(previousResolution, resolved)) {
         return;
@@ -133,6 +173,10 @@ export function enhanceWikiLinks(container, sourcePath, mb, registerInternal, op
         transclusion.dispose();
       }
       transclusions.clear();
+      for (const embed of pdfEmbeds) {
+        embed.dispose();
+      }
+      pdfEmbeds.clear();
       if (ownsReconciliation) {
         reconciliation.dispose();
       }
@@ -178,11 +222,18 @@ function createNavigationAnchor(container, source, resolved, mb) {
   return anchor;
 }
 
-/** @param {HTMLElement} container @param {Element} source @param {{path: string, fragment?: string, mediaKind?: "markdown" | "image" | "audio" | "video" | "resource"}} resolved */
+/**
+ * An embedded image, audio, or video at its `/raw` address, or a link there for any other
+ * file. A PDF never reaches here: `enhanceElement` draws its card, or links to its view.
+ *
+ * @param {HTMLElement} container @param {Element} source @param {{path: string, fragment?: string, mediaKind?: "markdown" | "image" | "audio" | "video" | "pdf" | "resource"}} resolved
+ */
 function createMediaElement(container, source, resolved) {
   const document = ownerDocument(container);
   const kind =
-    !resolved.mediaKind || resolved.mediaKind === "markdown" ? "resource" : resolved.mediaKind;
+    !resolved.mediaKind || resolved.mediaKind === "markdown" || resolved.mediaKind === "pdf"
+      ? "resource"
+      : resolved.mediaKind;
   const resource = document.createElement(
     kind === "resource" ? "a" : kind === "image" ? "img" : kind,
   );
@@ -326,6 +377,18 @@ function labelFor(element) {
     element.getAttribute("data-mb-wiki-target") ||
     "Wiki link"
   );
+}
+
+/**
+ * The file's name in a wiki embed, as the author wrote it: the target's last segment,
+ * without its heading or block fragment.
+ *
+ * @param {Element} element
+ */
+function wikiFileName(element) {
+  const authored = (element.getAttribute("data-mb-wiki-target") || "").split("#", 1)[0];
+  const trimmed = authored.endsWith("/") ? authored.slice(0, -1) : authored;
+  return trimmed.slice(trimmed.lastIndexOf("/") + 1) || labelFor(element);
 }
 
 /** @param {HTMLElement} container */
