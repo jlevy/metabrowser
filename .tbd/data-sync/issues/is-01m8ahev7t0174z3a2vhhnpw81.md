@@ -5,7 +5,7 @@ title: Lean language support and a repeatable language recipe
 kind: epic
 status: in_progress
 priority: 2
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-25-lean-language-support.md
 labels:
   - linear
@@ -18,9 +18,9 @@ child_order_hints:
   - is-01m8ahf25c2z3g9fcwe16zc5t6
   - is-01m8ahf2kp0t50mnjbyrvmkp2k
 created_at: 2026-11-25T23:43:06.490Z
-updated_at: 2026-11-25T23:52:07.106Z
+updated_at: 2026-11-25T23:52:17.692Z
 extensions:
   linear:
     id: 6f903eec-ab37-494d-8aa0-dde216250a32
-    linked_at: 2026-11-25T23:52:07.105Z
+    linked_at: 2026-11-25T23:52:17.692Z
 ---

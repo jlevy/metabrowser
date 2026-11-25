@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  labels:
+    - linear
+    - Feature
+  priority: 2
+  status: in_progress
+  title: Lean language support and a repeatable language recipe
+bead_id: is-01m8ahev7t0174z3a2vhhnpw81
+external_id: 6f903eec-ab37-494d-8aa0-dde216250a32
+external_key: OS-634
+external_url: https://linear.app/finterm-ai/issue/OS-634/lean-language-support-and-a-repeatable-language-recipe
+remote_updated_at: 2026-11-25T23:52:18.119Z
+state: linked
+synced_at: 2026-11-25T23:52:18.398Z
+type: lk
