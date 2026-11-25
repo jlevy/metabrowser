@@ -342,7 +342,10 @@ async function run() {
       identity.textContent = name;
       return identity;
     },
-    formatAge: () => ({ label: "now", className: "age" }),
+    ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+      label: "now",
+      className: "age",
+    })),
     formatTimestamp: () => "now",
     shortCommit: (sha) => sha.slice(0, 7),
     ensureAsset: async () => {},

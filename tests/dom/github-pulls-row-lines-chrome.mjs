@@ -70,8 +70,13 @@
 // which `ROW_ESTIMATE_PX` is held to.
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+
+// The SDK's age builder over the ages a fake plays (sdk-ref-fixture.js), its source
+// interpolated into a page script, so a page draws the labels the session chose.
+const { agesFrom } = createRequire(import.meta.url)("./sdk-ref-fixture.js");
 
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
@@ -405,7 +410,7 @@ const MOUNT = `async (width, theme, fresh = true) => {
     ...sdk,
     perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
     filterControls: { groupHtml: () => "<div></div>", bind: () => () => {} },
-    formatAge: () => ({ label: "1m", className: "age-min" }),
+    ...(${agesFrom})(document, () => ({ label: "1m", className: "age-min" })),
     formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
     loadChangedFilesTree: () => Promise.resolve(window.MetabrowserChangedFilesTree),
   };

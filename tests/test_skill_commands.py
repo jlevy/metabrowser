@@ -29,7 +29,7 @@ commit, the build the skill is written for:
    ``tests/test_cli_github_checkout_golden.py`` posts its body, :func:`refresh_body`, and
    :func:`refresh_findings` holds every field its filter reads to the answer that test
    pins. Nor do the recipes under "Publish and Confirm a Stack Guide" run there, since
-   that transcript's stand-in has no stack: checks 1 to 3 and 5 hold them, and
+   that transcript's stand-in has no stack: checks 1 to 3, 5, and 9 hold them, and
    ``tests/test_cli_github_stack_golden.py`` pins the answers of the routes they read.
 5. **Names.** A code span of prose that is a field path, such as
    ``.last_refresh.outcome``, or a name with an underscore, such as
@@ -51,9 +51,9 @@ commit, the build the skill is written for:
    browser when no app takes the target, and starts a server outside the sandbox.
 7. **Guide values.** A one-word code span under "Write a Guided Review", "Write a Stack
    Guide", and their subsections, such as ``ready`` or ``side``, is a string
-   ``guided_review.py`` or ``pull_stack.py`` spells, a state a route answers or a value it
-   compares, or a field of the block's models, so a state renamed in prose fails here
-   though check 5 leaves one-word values alone.
+   ``guided_review.py``, ``pull_stack.py``, or ``pull_stacks.py`` spells, a state a route
+   answers or a value it compares, or a field of the block's models, so a state renamed in
+   prose fails here though check 5 leaves one-word values alone.
 8. **The block skeletons.** Each block under "Write the Block", its commit IDs filled
    in, is a guide ``parse_guide`` reads, with a quoted title holding ``: `` and a note
    whose list keeps its lines, so its Markdown renders as a list, the two YAML rules the
@@ -61,11 +61,29 @@ commit, the build the skill is written for:
    in groups, as a longer one does. The block under "Write the Stack’s Block" is a stack
    guide ``parse_stack_guide`` reads, in groups, with the same two YAML rules and a step
    that cites every layer as a ``{pull}``.
+9. **Filters without a golden.** Each ``jq`` filter under "Publish and Confirm a Stack
+   Guide" that reads the list of stacks or a stack's answer runs over the answer
+   ``tests/golden/cli-github-stacks.txt`` or ``cli-github-stack.txt`` pins, a stack of
+   two layers, and prints something and no ``null``, its nulls read as
+   :data:`NULL_STAND_IN`, so a renamed field fails here. Each field path the section's
+   prose names, such as ``.members[-1].number``, is a field of one of the answers it
+   reads, as the stack goldens, ``cli-github-pull-refresh.txt``, and
+   ``cli-github-stack-guide.txt`` pin them. The two range recipes under "From a
+   Pull-Request URL" number the lines of, and test ranges against, an answer of two
+   hunks with a deleted line, which the transcript of check 4 lacks.
+10. **Page addresses.** Each address of a pull request's or a stack's page, such as
+    ``/pull/<n>/files`` or ``/stack/<s>/guided``, names a tab ``PULL_ROUTE_TABS`` or
+    ``STACK_ROUTE_TABS`` in ``view_routes.py`` lists, so a tab renamed or removed fails
+    here.
+11. **Frontmatter.** The skill's ``name``, ``description``, and ``compatibility`` keep to
+    the lengths the Agent Skills specification allows, :data:`FRONTMATTER_BOUNDS`.
 
+The reader ends a logical line with its block. A block of commands, any but a
+skeleton's Markdown or YAML, whose last line a quote or parenthesis leaves open has lost
+one, so it fails here, since no check could read that line.
 ``docs/working-with-agents.md`` repeats the skill's commands for a person, so checks 1,
-2, 3, and 5 read it too. Outside every check: the names of query parameters, page
-addresses such as ``/pull/<n>/files``, package names, and one-word values such as
-``stale`` outside the guided-review sections.
+2, 3, 5, and 10 read it too. Outside every check: the names of query parameters, package
+names, and one-word values such as ``stale`` outside the guided-review sections.
 
 Each check is proven by a mutation of the skill it must fail.
 """
@@ -76,6 +94,7 @@ import ast
 import json
 import re
 import shlex
+import subprocess
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from itertools import pairwise
@@ -85,9 +104,10 @@ from typing import Any, Final
 import pytest
 import typer
 import typer.main
+import yaml
 
 from devtools import tryscript_blocks
-from metabrowser.builtin_plugins.github import guided_review, pull_stack
+from metabrowser.builtin_plugins.github import guided_review, pull_stack, pull_stacks
 from metabrowser.builtin_plugins.github.guided_review import (
     GuideError,
     parse_guide,
@@ -97,6 +117,7 @@ from metabrowser.cli import main as cli_main
 from metabrowser.cli.exit_codes import PRESENT_REFUSED_EXIT_CODE
 from metabrowser.cli.present import DELIVERY_EXIT_CODES
 from metabrowser.errors import CLIError
+from metabrowser.view_routes import PULL_ROUTE_TABS, STACK_ROUTE_TABS
 from tests.golden_harness import run_metab
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
@@ -129,8 +150,13 @@ _POSTED: Final = re.compile(r"\bPOST (/api/[^\s`'\"?),]+)")
 _SPAN: Final = re.compile(r"`([^`]+)`")
 _HEADING: Final = re.compile(r"^#{2,6} (.+)$")
 # A fence opens a block at any indentation, under a list item too, with backticks or
-# tildes; the block ends at a line of the same character at least as long.
-_FENCE: Final = re.compile(r"^\s*(`{3,}|~{3,})")
+# tildes, and its info string names the block's language; the block ends at a line of
+# the same character at least as long.
+_FENCE: Final = re.compile(r"^\s*(`{3,}|~{3,})\s*([^\s`]*)")
+# The languages of a block that holds prose or data, not commands, so an apostrophe in it
+# is a word and not a shell quote, and its last line may leave a quote open: a skeleton's
+# Markdown and YAML. Any other block that ends with a line open has lost a quote.
+_PROSE_FENCES: Final = frozenset({"markdown", "yaml"})
 # A line that the next one continues: a backslash, or an operator that needs more.
 _CONTINUED: Final = re.compile(r"(?:\\|\||&&)\s*$")
 _FORMATS: Final = frozenset({"json", "yaml"})
@@ -151,6 +177,10 @@ GOLDEN_SPELLING: Final = {
     "<n>": "7",
     "<k>": "1",
     "<path>": "src/app.txt",
+    # The range test's side and lines: the new side of the file's one hunk.
+    "<side>": "new",
+    "<start>": "1",
+    "<end>": "2",
     "<tmp>": "tmp",
 }
 
@@ -174,6 +204,94 @@ STACK_SKELETON_SECTION: Final = "Write the Stack’s Block"
 STACK_SKELETON_SPELLING: Final = {
     "<full ID of the stack's base>": "3" * 40,
     "<full ID of the top layer's head>": "4" * 40,
+}
+# The section of the stack guide's recipes, and for each file its filters read, the
+# golden, route, and state of the pinned answer that stands in for it, the first answer to
+# that route in that state: the list of stacks once a refresh succeeds, and stack 70 once
+# both its layers are read, so `.members` holds two layers, bottom up, and its top layer
+# carries the guide. `<n>` there is a layer's number, read as 8, a layer of stack 70 in
+# both goldens, whose stand-ins differ otherwise.
+STACK_CONFIRM_SECTION: Final = "Publish and Confirm a Stack Guide"
+STACK_ANSWERS: Final = {
+    "<tmp>/stacks.json": (
+        REPO_ROOT / "tests" / "golden" / "cli-github-stacks.txt",
+        "/api/plugin/github/stacks",
+        "current",
+    ),
+    "<tmp>/stack.json": (
+        REPO_ROOT / "tests" / "golden" / "cli-github-stack.txt",
+        "/api/plugin/github/stack?number=70",
+        "current",
+    ),
+}
+STACK_LAYER: Final = "8"
+# The other answers whose fields the section's prose names, pinned the same way: a layer's
+# record, and a stack guide's outline that reads as stale, which names its changed steps.
+STACK_PROSE_ANSWERS: Final = (
+    (
+        REPO_ROOT / "tests" / "golden" / "cli-github-pull-refresh.txt",
+        "/api/plugin/github/pull?number=7",
+        "current",
+    ),
+    (
+        REPO_ROOT / "tests" / "golden" / "cli-github-stack-guide.txt",
+        "/api/plugin/github/guided-review?stack=73",
+        "stale",
+    ),
+)
+# What a filter of the section reads for a null of a pinned answer, so a `null` it prints
+# is a field the answer lacks.
+NULL_STAND_IN: Final = "∅"
+# A field path of prose, with a list's items, `[]`, or one of them, `[-1]`.
+_FIELD_PATH: Final = re.compile(r"(?:\.[a-z][a-z0-9_]*(?:\[-?\d*\])?)+")
+_FIELD_STEP: Final = re.compile(r"\.([a-z][a-z0-9_]*)|\[(-?\d*)\]")
+# A page of the app, a pull request's or a stack's, with its tab when it names one, and not
+# a pull request's address on GitHub, `<repo>/pull/<n>`, or a ref, `refs/pull/<n>/head`.
+_PAGE: Final = re.compile(r"(?<![\w/.-])(?<!<repo>)/(pull|stack)/(?:<[a-z]+>|\d+)(?:/([a-z]+))?")
+PAGE_TABS: Final = {"pull": PULL_ROUTE_TABS, "stack": STACK_ROUTE_TABS}
+# The Agent Skills specification's bounds on the frontmatter's fields, in characters
+# (https://agentskills.io/specification), which a strict loader enforces by refusing the
+# skill.
+FRONTMATTER_BOUNDS: Final = {"name": 64, "description": 1024, "compatibility": 500}
+# A file's answer of two hunks, the second with a deleted line, for the two range recipes
+# of "From a Pull-Request URL", and the new side's lines as the first numbers them.
+RANGE_ANSWER: Final = {
+    "patches": {
+        "f1": {
+            "hunks": [
+                {
+                    "old_start": 1,
+                    "old_count": 1,
+                    "new_start": 1,
+                    "new_count": 2,
+                    "lines": [
+                        {"op": "context", "text": "one", "no_newline": False},
+                        {"op": "add", "text": "two", "no_newline": False},
+                    ],
+                },
+                {
+                    "old_start": 9,
+                    "old_count": 3,
+                    "new_start": 10,
+                    "new_count": 2,
+                    "lines": [
+                        {"op": "context", "text": "nine", "no_newline": False},
+                        {"op": "del", "text": "ten", "no_newline": False},
+                        {"op": "context", "text": "eleven", "no_newline": False},
+                    ],
+                },
+            ]
+        }
+    }
+}
+RANGE_NUMBERED: Final = "--\n1   one\n2 + two\n--\n10   nine\n11   eleven\n"
+# What the range test says for a side and lines of that answer: inside one hunk, or not.
+RANGE_VERDICTS: Final = {
+    ("new", 1, 2): "inside",
+    ("new", 10, 11): "inside",
+    ("new", 2, 10): "outside",
+    ("old", 9, 11): "inside",
+    ("old", 11, 12): "outside",
 }
 # A skeleton is the guide's own Markdown inside a four-backtick `markdown` fence, as the
 # format reference shows it, so the `guided-review` fence is part of what an agent copies.
@@ -279,10 +397,18 @@ def _closes(line: str, fence: str) -> bool:
 def code_pieces(text: str) -> list[Code]:
     """Every logical line of a fenced block, and every code span of the prose."""
 
+    return _read(text)[0]
+
+
+def _read(text: str) -> tuple[list[Code], list[Code]]:
+    """What :func:`code_pieces` returns, and each line a block of commands ends open."""
+
     lines, offset = _body(text)
     pieces: list[Code] = []
+    unfinished: list[Code] = []
     section = ""
     fence: str | None = None
+    language = ""
     pending: list[str] = []
     pending_line = 0
     paragraph: list[tuple[int, str]] = []
@@ -298,7 +424,16 @@ def code_pieces(text: str) -> list[Code]:
         number = index + 1 + offset
         if fence is not None:
             if _closes(line, fence):
+                # A logical line ends with its block. Without this, an apostrophe in the
+                # stack skeleton's YAML left a quote open, and every block after it joined
+                # that one unfinished line, so no check read them. A block of commands
+                # that ends with a line open has lost a quote, which no check reads past,
+                # so it is kept for :func:`unfinished_findings`.
+                if pending and language not in _PROSE_FENCES:
+                    joined = " ".join(part.strip().removesuffix("\\") for part in pending)
+                    unfinished.append(Code(pending_line, " ".join(joined.split()), True, section))
                 fence = None
+                pending.clear()
                 continue
             if not pending:
                 pending_line = number
@@ -311,7 +446,7 @@ def code_pieces(text: str) -> list[Code]:
         opened = _FENCE.match(line)
         if opened is not None:
             spans()
-            fence = opened.group(1)
+            fence, language = opened.group(1), opened.group(2)
             continue
         heading = _HEADING.match(line)
         if heading is not None:
@@ -323,7 +458,17 @@ def code_pieces(text: str) -> list[Code]:
         else:
             paragraph.append((number, line))
     spans()
-    return pieces
+    return pieces, unfinished
+
+
+def unfinished_findings(text: str, name: str = "SKILL.md") -> list[str]:
+    """Lines of a block of commands that a quote or parenthesis leaves open at its end."""
+
+    return [
+        f"{name}:{piece.line}: the block ends with this line open, a quote or parenthesis "
+        f"lost: {piece.text!r}"
+        for piece in _read(text)[1]
+    ]
 
 
 def _tokens(text: str) -> list[str]:
@@ -729,11 +874,23 @@ def refresh_findings(text: str, answer: Mapping[str, Any]) -> list[str]:
 
 
 def _has_field(node: Any, path: str) -> bool:
-    for key in path.removeprefix(".").split("."):
-        if not isinstance(node, Mapping) or key not in node:
-            return False
-        node = node[key]
-    return True
+    """Whether *node* holds the field *path*, such as ``.members[-1].number``: each key is
+    present, each ``[i]`` is an item of a list, and each ``[]`` is a list with items that
+    all hold the rest of the path."""
+
+    step = _FIELD_STEP.match(path)
+    if step is None:
+        return not path
+    key, index = step.groups()
+    rest = path[step.end() :]
+    if key is not None:
+        return isinstance(node, Mapping) and key in node and _has_field(node[key], rest)
+    if not isinstance(node, list) or not node:
+        return False
+    if not index:
+        return all(_has_field(item, rest) for item in node)
+    position = int(index)
+    return -len(node) <= position < len(node) and _has_field(node[position], rest)
 
 
 def present_findings(text: str, transcript: str) -> list[str]:
@@ -848,17 +1005,18 @@ def name_findings(text: str, words: frozenset[str], name: str = "SKILL.md") -> l
 
 
 def guide_values() -> frozenset[str]:
-    """Every string ``guided_review.py`` and ``pull_stack.py`` spell, and every field of
-    the block's models.
+    """Every string ``guided_review.py``, ``pull_stack.py``, and ``pull_stacks.py`` spell,
+    and every field of the block's models.
 
-    The strings are the states the guide's route and the stack's answer, the reasons a
-    reference is not ready or a stack cannot be shown, and the values they compare, such
-    as a reference's ``side``; the fields are the keys a block holds below ``collection``.
+    The strings are the states the guide's route, the stack's answer, and the list of
+    stacks answer, the reasons a reference is not ready, a stack cannot be shown, or a
+    refresh of the list ended, and the values they compare, such as a reference's
+    ``side``; the fields are the keys a block holds below ``collection``.
     """
 
     strings = {
         node.value
-        for source in (guided_review.__file__, pull_stack.__file__)
+        for source in (guided_review.__file__, pull_stack.__file__, pull_stacks.__file__)
         for node in ast.walk(ast.parse(Path(source).read_text(encoding="utf-8")))
         if isinstance(node, ast.Constant) and isinstance(node.value, str)
     }
@@ -978,6 +1136,142 @@ def stack_skeleton_findings(text: str) -> list[str]:
     return found
 
 
+def pinned_answer(transcript: str, route: str, state: str) -> Any:
+    """The first answer to ``--api`` *route* in an in-process golden that reads as *state*."""
+
+    for command, _status, stdout in transcript_blocks(transcript):
+        if command.endswith((f"--api {route}", f"--api '{route}'")) and "{" in stdout:
+            answer, _end = json.JSONDecoder().raw_decode(stdout, stdout.index("{"))
+            if answer.get("state") == state:
+                return answer
+    raise AssertionError(f"the transcript has no {state} answer to {route}")
+
+
+def _null_stood_in(node: Any) -> Any:
+    """*node* with each null read as :data:`NULL_STAND_IN`."""
+
+    if node is None:
+        return NULL_STAND_IN
+    if isinstance(node, Mapping):
+        return {key: _null_stood_in(value) for key, value in node.items()}
+    if isinstance(node, list):
+        return [_null_stood_in(item) for item in node]
+    return node
+
+
+def _jq(words: list[str], answer: Any) -> subprocess.CompletedProcess[str]:
+    """``jq`` with *words*, its arguments without the file, reading *answer*."""
+
+    return subprocess.run(
+        ["jq", *words], input=json.dumps(answer), capture_output=True, text=True, check=False
+    )
+
+
+def stack_filter_findings(text: str) -> tuple[list[str], list[str]]:
+    """Filters of :data:`STACK_CONFIRM_SECTION` that fail, print nothing, or print a
+    ``null``, a field the answer lacks, on the answers the stack goldens pin, with ``<n>``
+    read as :data:`STACK_LAYER`, and what each printed.
+    """
+
+    answers = {
+        path: _null_stood_in(pinned_answer(golden.read_text(encoding="utf-8"), route, state))
+        for path, (golden, route, state) in STACK_ANSWERS.items()
+    }
+    found: list[str] = []
+    printed: list[str] = []
+    for piece in code_pieces(text):
+        if not piece.block or piece.section != STACK_CONFIRM_SECTION:
+            continue
+        for words, _read in _segments(_tokens(piece.text)):
+            if words[0] != "jq" or words[-1] not in answers:
+                continue
+            ran = _jq(
+                [word.replace("<n>", STACK_LAYER) for word in words[1:-1]], answers[words[-1]]
+            )
+            printed.append(ran.stdout.strip())
+            if ran.returncode != 0 or not ran.stdout.strip():
+                found.append(
+                    f"SKILL.md:{piece.line}: {' '.join(words)} prints nothing from the pinned "
+                    f"answer: {ran.stderr.strip()}"
+                )
+            elif re.search(r"\bnull\b", ran.stdout):
+                found.append(
+                    f"SKILL.md:{piece.line}: {' '.join(words)} prints null, a field the pinned "
+                    f"answer lacks: {ran.stdout.strip()!r}"
+                )
+    return found, printed
+
+
+def stack_field_findings(text: str) -> tuple[list[str], list[str]]:
+    """Field paths the prose of :data:`STACK_CONFIRM_SECTION` names that no answer the
+    section reads holds, and the paths it names."""
+
+    answers = [
+        pinned_answer(golden.read_text(encoding="utf-8"), route, state)
+        for golden, route, state in (*STACK_ANSWERS.values(), *STACK_PROSE_ANSWERS)
+    ]
+    paths = list(
+        dict.fromkeys(
+            piece.text
+            for piece in code_pieces(text)
+            if not piece.block
+            and piece.section == STACK_CONFIRM_SECTION
+            and _FIELD_PATH.fullmatch(piece.text)
+        )
+    )
+    found = [
+        f"no answer {STACK_CONFIRM_SECTION!r} reads has {path}, which SKILL.md names"
+        for path in paths
+        if not any(_has_field(answer, path) for answer in answers)
+    ]
+    return found, paths
+
+
+def range_recipe(text: str, needle: str) -> list[str]:
+    """The arguments, without the file, of the one ``jq`` recipe of :data:`GOLDEN_SECTION`
+    that holds *needle*."""
+
+    found = [
+        words[1:-1]
+        for piece in code_pieces(text)
+        if piece.block and piece.section == GOLDEN_SECTION and needle in piece.text
+        for words, _read in _segments(_tokens(piece.text))
+        if words[0] == "jq"
+    ]
+    assert len(found) == 1, f"SKILL.md has {len(found)} recipes with {needle!r}"
+    return found[0]
+
+
+def page_findings(text: str, name: str = "SKILL.md") -> tuple[list[str], list[str]]:
+    """Page addresses in *text* whose tab the app's routes lack, and every address."""
+
+    found: list[str] = []
+    pages: list[str] = []
+    for match in _PAGE.finditer(text):
+        kind, tab = match.group(1), match.group(2) or ""
+        pages.append(match.group(0))
+        if tab not in PAGE_TABS[kind]:
+            line = text.count("\n", 0, match.start()) + 1
+            found.append(
+                f"{name}:{line}: {match.group(0)} names a tab the {kind} page lacks; its tabs "
+                f"are {sorted(PAGE_TABS[kind])}"
+            )
+    return found, pages
+
+
+def frontmatter_findings(text: str) -> list[str]:
+    """Fields of the skill's frontmatter longer than :data:`FRONTMATTER_BOUNDS` allows."""
+
+    _lines, end = _body(text)
+    fields = yaml.safe_load("\n".join(text.split("\n")[1 : end - 1]))
+    return [
+        f"the frontmatter's {field} is {len(fields[field])} characters, past the {bound} the "
+        "Agent Skills specification allows"
+        for field, bound in FRONTMATTER_BOUNDS.items()
+        if len(fields[field]) > bound
+    ]
+
+
 # ── The skill as it is ──────────────────────────────────────────────
 
 
@@ -1018,6 +1312,10 @@ RECIPE_ROUTES: Final = frozenset(
         REFRESH_ROUTE,
         "/api/plugin/github/guided-review?number=<n>&step=<k>",
         "/api/plugin/github/guided-review?number=<n>",
+        # The stack guide's, which come after the stack skeleton, so the reader must read
+        # past its YAML.
+        "/api/plugin/github/stack?number=<s>",
+        "/api/plugin/github/guided-review?stack=<s>&step=<k>",
     }
 )
 PROSE_ROUTES: Final = frozenset({"/api/routes", "/api/file?path=<log>", "/api/git/log?limit=<n>"})
@@ -1036,7 +1334,7 @@ def test_the_skill_is_read_as_commands(skill: str, guide: str) -> None:
     named = {_value(command.args, "--api") for command in found if command.whole}
     assert read >= RECIPE_ROUTES and named >= PROSE_ROUTES, (read, named)
     assert any(not command.whole for command in found)
-    assert len(_recipes(skill)) == 8
+    assert len(_recipes(skill)) == 10
     assert len(present_recipes(skill)) == 4
     assert len([c for c in commands(guide, GUIDE.name) if c.whole]) >= 8
 
@@ -1101,6 +1399,58 @@ def test_the_block_skeletons_are_guides_the_page_reads(skill: str) -> None:
 
 def test_the_stack_skeleton_is_a_stack_guide_the_page_reads(skill: str) -> None:
     assert stack_skeleton_findings(skill) == []
+
+
+# The prose field paths of "Publish and Confirm a Stack Guide" that the stack's and the
+# list's answers hold, which check 9 must find there.
+STACK_PROSE_FIELDS: Final = frozenset(
+    {
+        ".guide.number",
+        ".members[-1].number",
+        ".truncated",
+        ".last_refresh.outcome",
+        ".comparison.left",
+        ".comparison.right",
+    }
+)
+
+
+def test_the_stack_filters_read_the_pinned_stack_answers(skill: str) -> None:
+    findings, printed = stack_filter_findings(skill)
+    assert findings == []
+    # The stack layer 8 is in, its layers bottom up, and each changed file with the layers
+    # that change it.
+    layers = "1 8 merged Say more in the guide\n2 10 draft WIP: draft the next page"
+    assert "70" in printed and "docs/draft.md → 10" in printed, printed
+    assert any(output.endswith(layers) for output in printed), printed
+    fields, paths = stack_field_findings(skill)
+    assert fields == [] and set(paths) >= STACK_PROSE_FIELDS, (fields, paths)
+
+
+def test_no_block_of_commands_ends_with_a_line_open(skill: str, guide: str) -> None:
+    assert unfinished_findings(skill) == []
+    assert unfinished_findings(guide, GUIDE.name) == []
+
+
+def test_every_page_address_names_a_tab_of_its_page(skill: str, guide: str) -> None:
+    for text, name in ((skill, SKILL.name), (guide, GUIDE.name)):
+        found, pages = page_findings(text, name)
+        assert found == []
+        assert {page.split("/")[1] for page in pages} == {"pull", "stack"}, pages
+
+
+def test_the_frontmatter_keeps_to_the_specification(skill: str) -> None:
+    assert frontmatter_findings(skill) == []
+
+
+def test_the_range_recipes_number_lines_and_test_ranges(skill: str) -> None:
+    numbering = range_recipe(skill, "reduce .lines[]")
+    assert _jq(numbering, RANGE_ANSWER).stdout == RANGE_NUMBERED
+    test = range_recipe(skill, "--argjson start_line")
+    for (side, start, end), verdict in RANGE_VERDICTS.items():
+        spelled = {"<side>": side, "<start>": str(start), "<end>": str(end)}
+        words = [spelled.get(word, word) for word in test]
+        assert _jq(words, RANGE_ANSWER).stdout == f"{verdict}\n", (side, start, end)
 
 
 # ── Each check fails its mutation ───────────────────────────────────
@@ -1344,6 +1694,68 @@ def test_a_stack_skeleton_the_page_does_not_read_fails(skill: str) -> None:
         skill, STACK_SKELETON_FENCE, f"{STACK_SKELETON_FENCE}```\n{STACK_SKELETON_FENCE}"
     )
     assert stack_skeleton_findings(doubled)[0].startswith("the page refuses the stack skeleton")
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        (".pulls | index", ".pull | index"),
+        (".layers[].number", ".layer[].number"),
+        # Fields that print `null` when renamed, rather than nothing.
+        (".comparison.left, .comparison.right", ".comparison.lft, .comparison.right"),
+        ("[.place, .number, .state, .title]", "[.place, .num, .state, .title]"),
+    ],
+)
+def test_a_stack_filter_the_answer_does_not_hold_fails(skill: str, old: str, new: str) -> None:
+    findings, _printed = stack_filter_findings(_mutated(skill, old, new))
+    assert len(findings) == 1 and new in findings[0], findings
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("`.guide.number`", "`.guide.layer`"),
+        ("`.members[-1].number`", "`.members[-1].id`"),
+        ("`.truncated`", "`.clipped`"),
+        ("`.carrier`", "`.holder`"),
+    ],
+)
+def test_a_stack_field_no_answer_holds_fails(skill: str, old: str, new: str) -> None:
+    findings, _paths = stack_field_findings(_mutated(skill, old, new))
+    assert len(findings) == 1 and new.strip("`") in findings[0], findings
+
+
+def test_a_block_that_loses_a_quote_fails(skill: str) -> None:
+    # The documents recipe, its jq filter's closing quote lost and a flag misspelled: the
+    # flag check cannot see the flag, so this check must see the line.
+    mutated = _mutated(
+        _mutated(skill, ".path)\"' <tmp>/docs.json", '.path)" <tmp>/docs.json'),
+        '&group=type:docs" --format json',
+        '&group=type:docs" --formt json',
+    )
+    findings = unfinished_findings(mutated)
+    assert len(findings) == 1 and "--formt json" in findings[0], findings
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [("`/pull/<n>/checks`", "`/pull/<n>/check`"), ("`/stack/<s>/docs`", "`/stack/<s>/doc`")],
+)
+def test_a_page_tab_the_app_lacks_fails(skill: str, guide: str, old: str, new: str) -> None:
+    for text, name in ((skill, SKILL.name), (guide, GUIDE.name)):
+        found, _pages = page_findings(_mutated(text, old, new), name)
+        assert len(found) == 1 and new.strip("`") in found[0], found
+
+
+def test_a_frontmatter_field_past_its_bound_fails(skill: str) -> None:
+    longer = _mutated(skill, "compatibility: >-\n", "compatibility: >-\n  " + "x" * 500 + "\n")
+    findings = frontmatter_findings(longer)
+    assert len(findings) == 1 and "compatibility is" in findings[0], findings
+
+
+def test_a_range_recipe_that_numbers_deleted_lines_fails(skill: str) -> None:
+    mutated = _mutated(skill, 'if $l.op == "del" then .', 'if $l.op == "add" then .')
+    assert _jq(range_recipe(mutated, "reduce .lines[]"), RANGE_ANSWER).stdout != RANGE_NUMBERED
 
 
 PRESENT: Final = "<invocation> --present <target> --format json\n"

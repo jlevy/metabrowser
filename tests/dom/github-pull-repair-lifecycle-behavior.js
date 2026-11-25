@@ -99,7 +99,10 @@ async function story({ delaySecondMount = false, counts = undefined } = {}) {
         },
       }),
       ...require("./sdk-ref-fixture.js").refHelpers(document),
-      formatAge: () => ({ label: "now", className: "age" }),
+      ...require("./sdk-ref-fixture.js").agesFrom(document, () => ({
+        label: "now",
+        className: "age",
+      })),
       formatTimestamp: () => "now",
       navigation: { href: () => "/view/" },
       sourceKind: () => "git_revision",

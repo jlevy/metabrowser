@@ -48,7 +48,7 @@
 // formatter (docs/design-system.md, "Age").
 //
 // A branch that is the head of a pull request shows it on a second line: its state's
-// icon, its number, and its title, from the listing's `pulls`, which the server reads from
+// icon, its title, and its number, from the listing's `pulls`, which the server reads from
 // what the repository's provider has cached and never fetches. The filter finds a branch
 // by its pull request's number or title too, which the server does, so the list the page
 // shows is the server's. While the provider is still filling its cache the listing says
@@ -1292,8 +1292,9 @@
   }
 
   /**
-   * A row's pull request line: the first pull request's state icon, its number, and its
-   * title, and a count of the others. Browser only.
+   * A row's pull request line: the first pull request's state icon, its title, and its
+   * number, the order every row of a pull request's fields keeps (docs/design-system.md,
+   * "One Order for a Pull Request's Fields"), and a count of the others. Browser only.
    *
    * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
    * @returns {HTMLElement}
@@ -1311,7 +1312,7 @@
     const title = document.createElement("span");
     title.className = "source-ref-selector-pull-title";
     title.append(...window.MetabrowserFormatters.titleNodes(document, first.title));
-    line.append(pullIcon(first.state), number, title);
+    line.append(pullIcon(first.state), title, number);
     if (others > 0) {
       const more = document.createElement("span");
       more.className = "source-ref-selector-pull-more";
@@ -1335,7 +1336,7 @@
     }
     const named = row.pulls
       .slice(1, 1 + PULL_MORE_LIMIT)
-      .map((pull) => `#${pull.number} ${pull.title}`);
+      .map((pull) => `${pull.title} #${pull.number}`);
     const rest = row.pullsTotal - 1 - named.length;
     return `Also ${named.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}`;
   }
@@ -1351,7 +1352,7 @@
    */
   function pullTip(row, cut) {
     /** @type {string[]} */
-    const parts = cut ? [`#${row.pulls[0].number} ${row.pulls[0].title}`] : [];
+    const parts = cut ? [`${row.pulls[0].title} #${row.pulls[0].number}`] : [];
     const others = otherPulls(row);
     if (others !== "") {
       parts.push(others);
@@ -1456,15 +1457,12 @@
     const commit = document.createElement("span");
     commit.className = "git-commit-sha source-ref-selector-commit";
     commit.textContent = row.commit;
-    const age = document.createElement("span");
-    if (row.committedAt !== null) {
-      const shown = window.MetabrowserFormatters.age(row.committedAt);
-      age.className = `source-ref-selector-age ${shown.className}`;
-      age.textContent = shown.label;
-      age.dataset.tipText = window.metabrowser.formatTimestamp(row.committedAt);
-    } else {
-      age.className = "source-ref-selector-age";
-    }
+    const age = window.MetabrowserFormatters.ageLabel(document, row.committedAt, {
+      className: "source-ref-selector-age",
+      ...(row.committedAt === null
+        ? {}
+        : { tip: window.metabrowser.formatTimestamp(row.committedAt) }),
+    });
     main.append(commit, age);
     button.append(main);
     item.append(button);
@@ -1728,7 +1726,7 @@
    * Load the GitHub plugin, which draws a pull request's state, once, and draw the rows
    * again when it has: they were drawn with an empty slot where its icon goes, the slot's
    * own width, so nothing moves. A plugin that cannot load leaves the slots empty, and
-   * each row's accessible text still says the number and title. Browser only.
+   * each row's accessible text still says the title and number. Browser only.
    *
    * @param {MetabrowserSourceRefSelectorParts} parts
    */

@@ -731,6 +731,21 @@ def test_optional_native_stack_state_is_shared_and_owned() -> None:
     }
 
 
+def test_a_pull_requests_absent_field_draws_neither_itself_nor_its_dot() -> None:
+    # stackMemberRow's two layouts (docs/design-system.md, "One Order for a Pull Request's
+    # Fields"), over members with and without a place and an author, drawn so or changed to
+    # so: the session asserts each invariant and says which it held.
+    session = run_session("github-stack-member-row-behavior.js")
+    assert session.pop("drawings") == 2 * session.pop("cases")
+    assert session == {
+        "dotsSitBetweenFields": True,
+        "absentFieldsDrawNothing": True,
+        "fieldsKeepTheOneOrder": True,
+        "changedRowsReadAsDrawn": True,
+        "layoutsAgree": True,
+    }
+
+
 def test_native_stack_navigation_and_cold_page_skeleton_preserve_cached_content() -> None:
     assert run_session("github-pull-stack-mount-behavior.js") == {
         "coldSkeleton": True,

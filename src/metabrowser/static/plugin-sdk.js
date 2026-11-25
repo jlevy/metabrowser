@@ -116,7 +116,7 @@
 // The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
 // partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefMenus,
 // actorIdentity/actorIdentityHtml, counterpartButton/mountCounterpart,
-// ageBucket/ageLabelHtml,
+// ageBucket/ageLabel/ageLabelHtml/retellAge,
 // renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
 // and langForExtension -- and the syntax service, highlightSyntax and
 // isLargeTextPreview, are defined in plugin-sdk-views.js, which is not a startup
@@ -1559,7 +1559,7 @@
 
   // The one age primitive (docs/design-system.md, "Age"): the abbreviation and the
   // freshness class that owns its hue, weight, size, and numerals.
-  /** @param {number} secondsSinceEpoch @param {{style?: "compact" | "relative"}} [options] */
+  /** @param {number} secondsSinceEpoch @param {MetabrowserAgeOptions} [options] */
   function formatAge(secondsSinceEpoch, options) {
     return global.MetabrowserFormatters.age(Number(secondsSinceEpoch) || 0, options);
   }

@@ -577,13 +577,7 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
         == "var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr)"
     )
     # The rows' one gap and the text column's offset, which every indent sums (A8 of review A
-    # on #506). The last line is in the row's content box, from the text column, and its age
-    # has a column of one width at the row's end, so the ages read as a column (mb-lqkb,
-    # mb-pw8t, mb-rb3n).
-    tail = _rule(css, ".github-pulls-row > .github-pulls-tail")
-    assert "padding: 0 0 2px var(--github-pull-row-text-column);" in tail
-    assert "grid-template-columns: minmax(0, 1fr) 5ch;" in tail
-    assert "column-gap: var(--github-pull-row-gap);" in tail
+    # on #506).
     assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")
     assert "  --github-pull-row-gap: var(--tree-icon-gap);\n" in css
     column = (
@@ -596,50 +590,6 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert "font-variant-numeric: var(--tabular-numerals);" in count
     # Pending, the count is as wide as it will be once it lands.
     assert "width: 3ch;" in _rule(css, ".github-pulls-filters .count.tally-pending")
-
-
-def test_a_stack_members_place_follows_its_title() -> None:
-    """A stack member's place in its stack follows its title, with the stack menu's muted dot
-    before it, "title · 14/15", the place bold, then the number, "· #N" (mb-vkhd, mb-pw8t): the
-    stack menu's member line's order, the title, then the place and the number. It led the
-    title, "14/15 · title", from mb-85op until the run took the number too; it was on the muted
-    line before the number, "1/6 · #455 · author", from mb-dzsi until then; and before that its
-    column on the title line, between the title and the age (review E1 on #370), took the
-    title's room. A pull request in no stack has no place and no dot: the title, then the
-    number. github-pull-header-chrome.mjs and github-pulls-stacks-chrome.mjs measure it, and
-    github-pulls-stack-groups-session.js pins the drawn place."""
-
-    panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
-    build = _function(panel, "buildRow")
-    run = build[build.index('h("span", { class: "github-pulls-heading" }, [') :]
-    assert run.index("title,") < run.index("stack,") < run.index("number,")
-    place = panel[panel.index("function paintPlace(") :]
-    place = place[: place.index("\n  }\n")]
-    assert place.index('"github-pull-stack-dot"') < place.index('"github-pull-stack-position"')
-    # The dot is the stack menu's member line's (`.github-pull-stack-dot`), so the two
-    # surfaces read alike.
-    assert 'h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"])' in place
-    # A no-break space before the dot, so no line starts with it.
-    assert '"\\u00a0",\n      h("span", { class: "github-pull-stack-dot"' in place
-    # The number's dot is the same one, the run's separator's.
-    separator = panel[panel.index("  const separator = () =>") :]
-    separator = separator[: separator.index("]);")]
-    assert '"\\u00a0",\n      h("span", { class: "github-pull-stack-dot" }, ["·"]),' in separator
-    assert "element.hidden = caption === null;" in place, "no stack, no place and no dot"
-    css = _github_css()
-    # The dot is the muted token, at the micro marks' size, never a color literal, and the
-    # Pulls column sets no dot of its own.
-    dot = _rule(css, ".github-pull-stack-dot")
-    assert "color: var(--muted);" in dot and "font-size: var(--micro-font-size);" in dot
-    assert "github-pulls-bullet" not in css
-    assert "color: var(--text);" in _rule(css, ".github-pulls-place")
-    assert "display: none;" in _rule(css, ".github-pulls-place[hidden]")
-    # The position is bold, the pull request number's weight, and never breaks.
-    position = _rule(css, ".github-pull-stack-position,\n.github-pull-stack-member-position")
-    assert "font-weight: var(--pull-number-weight);" in position
-    assert "white-space: nowrap;" in position
-    assert ".github-pulls-id" not in css
-    assert ".github-pulls-row > .github-pulls-stack" not in css
 
 
 def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
@@ -658,22 +608,10 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
     assert "[heading, tail, said]," in panel, "the title leads the name"
-    assert 'h("span", { class: "sr-only" }, [rowSaid(row, when.label)])' in panel
     build = _function(panel, "buildRow")
-    # The run's order: the icon, the title, the place, the dot and the number, then the dot and
-    # the author; the last line is the toggle, whose lines come before its chevron, and the age.
-    run = build[build.index('h("span", { class: "github-pulls-heading" }, [') :]
-    run = run[: run.index("]);")]
-    assert [part.strip(" \n,") for part in run.split("[", 1)[1].split("\n") if part.strip()] == [
-        "icon",
-        "title",
-        "stack",
-        "separator()",
-        "number",
-        "separator()",
-        "by",
-    ]
-    assert 'h("span", { class: "github-pulls-by", "aria-hidden": "true" }, [author])' in build
+    # The run's order is the one every row of a pull request's fields has, the builder's
+    # (stack-member-row.js); the last line is the toggle, whose lines come before its chevron,
+    # and the age.
     assert 'h("span", { class: "github-pulls-tail" }, [change, updated])' in build
     toggle = build[build.index('{ class: "github-pulls-change disclosure-toggle collapsed"') :]
     assert toggle.index("changeLine,") < toggle.index('"github-pulls-toggle"'), (
@@ -713,27 +651,12 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
         "height: 1lh;",
     ):
         assert declaration in icon, declaration
-    # The last line is the lines and the chevron, in the text column, and the age in its
-    # column at the row's end, one line height whatever it holds, centered, so the lines
-    # arrive and move no line of the row (mb-rb3n).
-    tail = _rule(css, ".github-pulls-row > .github-pulls-tail")
-    for declaration in (
-        "display: grid;",
-        "grid-template-columns: minmax(0, 1fr) 5ch;",
-        "align-items: center;",
-        "height: var(--github-pulls-change-line);",
-        "padding: 0 0 2px var(--github-pull-row-text-column);",
-        "line-height: var(--github-pulls-change-line);",
-        "white-space: nowrap;",
-    ):
-        assert declaration in tail, declaration
     assert ".github-pulls-heading > .github-pulls-tail" not in css
     assert "--github-pulls-lines-room: 5.6em;" in _rule(css, ".github-pulls-row")
     assert "width: var(--github-pulls-lines-room);" in _rule(css, ".github-pulls-change-pending")
     assert "margin-inline-start: 0.25em;" in _rule(
         css, ".github-pulls-change > .github-pulls-toggle"
     )
-    assert "justify-self: end;" in _rule(css, ".github-pulls-tail > .github-pulls-age")
     # Where the line has no room for the lines, they give way whole to an ellipsis, never
     # broken onto a second line, and the chevron and the age stay.
     line = _rule(css, ".github-pulls-change > .github-pulls-change-line")

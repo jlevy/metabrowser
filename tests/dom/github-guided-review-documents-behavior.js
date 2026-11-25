@@ -15,7 +15,7 @@ const path = require("node:path");
 const { registerHooks } = require("node:module");
 const { pathToFileURL } = require("node:url");
 const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
-const { refHelpers } = require("./sdk-ref-fixture.js");
+const { agesFrom, refHelpers } = require("./sdk-ref-fixture.js");
 
 // The diff view is a recorder: what the plugin's render asks it to draw, and with which
 // options. Everything above it, the plugin's routing, validation, and rendered layer, is the
@@ -354,7 +354,7 @@ async function harness() {
           ensureAsset: async () => {},
           loadKpressAssets: async () => {},
           ...refHelpers(document),
-          formatAge: () => ({ label: "now", className: "age" }),
+          ...agesFrom(document, () => ({ label: "now", className: "age" })),
           formatTimestamp: () => "now",
           navigation: { href: () => "/view/" },
           sourceKind: () => "git_revision",

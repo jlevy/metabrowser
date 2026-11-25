@@ -37,9 +37,14 @@
 // The order of events is the browserless session's, and is not changed here.
 import fs from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import path from "node:path";
 import zlib from "node:zlib";
 import { launchChrome } from "./chrome-session.mjs";
+
+// The SDK's age builder over the ages a fake plays (sdk-ref-fixture.js), its source
+// interpolated into a page script, so a page draws the labels the session chose.
+const { agesFrom } = createRequire(import.meta.url)("./sdk-ref-fixture.js");
 
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
@@ -193,7 +198,7 @@ const MEASURE = `async (arrangement, width, theme) => {
       shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
       formatInteger: mb.formatInteger,
-      formatAge: () => ({ label: "2mo ago", className: "age-old" }),
+      ...(${agesFrom})(document, () => ({ label: "2mo ago", className: "age-old" })),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
