@@ -565,10 +565,15 @@ sentence, the details it read, and the step that fixes it:
   A server whose folder is the events directory or inside it writes none, whatever the
   environment says, and its Details name that reason.
 
-The macOS app runs its servers without `METABROWSER_CONFIG_DIR`,
-`METABROWSER_CACHE_DIR`, or the `XDG_` variables, so when `--present` would open the
-app, a directory one of those names here is a warning that names the directory the app’s
-servers use instead.
+The macOS app runs its servers without `METABROWSER_CACHE_DIR`, `XDG_CONFIG_HOME`, or
+`XDG_CACHE_HOME`, and with a `METABROWSER_CONFIG_DIR` only when the app was itself
+launched with one, by `open --env` or from launchd’s environment, which a terminal’s
+`export` does not reach.
+So when `--present` would open the app, a directory one of those names here is a warning
+that names the directory the app’s servers use without one, since a terminal cannot tell
+what the app was launched with.
+Run from the app’s Check Setup…, a `METABROWSER_CONFIG_DIR` the app was launched with is
+the one its servers use, and no warning.
 
 A `problem` stops `metab` from serving a folder, so it is also listed with the plugin
 problems and makes the exit status 1; a `warning` never changes it.
@@ -909,8 +914,8 @@ metab --recent-clear                # empty the list
 - **Folders that are gone** stay listed until you forget them or open them: the list
   never looks at a listed folder, since a look can raise a macOS privacy prompt or wait
   on a drive that is not there.
-- **`--recent-add`** records `ROOT` without serving it, for a shell that shows something
-  already open.
+- **`--recent-add`** records `ROOT` without serving it, for a shell that records its own
+  opens, as the macOS app records each one.
 - **`METABROWSER_RECORD_RECENT=0`** keeps a `metab` from recording, at a terminal too:
   it serves as usual and leaves the list alone, and `--recent-add` records nothing.
   Set it for a server you start at a terminal for something other than reading, such as

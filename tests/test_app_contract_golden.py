@@ -457,7 +457,7 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         # (`RecentTargets.serverRecords`), and the list is still empty after one.
         run("serve/folder", folder, env={recent_targets.RECORD_ENV: "0"}),
         run("recent-list/empty"),
-        # The app records each open itself, as it shows it (`RecentTargetsMenu.noteOpened`),
+        # The app records each open itself, as it shows it (`RecentTargetsMenu.shown`),
         # naming the folder by its URL's path, which ends in a slash.
         run("recent-add/folder", {"target": f"{served}/"}),
         run("recent-list/after-an-open"),
@@ -556,9 +556,11 @@ def _doctor(sandbox: _Sandbox) -> list[str]:
 
     The second names the app's bundle as the app does, which holds a minimum no
     ``metab`` meets; asks a ``gh`` that no account signed in to; and finds the cache at a
-    relative path, which is a problem. The ``git`` is the stand-in's, and the Git
-    executable ``metab`` keeps for its lifetime is found again before and after, so
-    neither the host's ``git`` reaches these blocks nor the stand-in a later test.
+    relative path, which is a problem. Its ``METABROWSER_CONFIG_DIR``, the sandbox's, is
+    one the app was launched with and passes on, so its configuration check is ok. The
+    ``git`` is the stand-in's, and the Git executable ``metab`` keeps for its lifetime is
+    found again before and after, so neither the host's ``git`` reaches these blocks nor
+    the stand-in a later test.
     """
 
     bundle = sandbox.root / "Metabrowser.app"

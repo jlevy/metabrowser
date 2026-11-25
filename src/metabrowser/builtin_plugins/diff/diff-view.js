@@ -57,6 +57,51 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {DiffViewApi} api
  * @property {ReturnType<typeof buildFileRenderModel>} renderModel
  * @property {{host: HTMLElement, line: ReturnType<typeof buildFileRenderModel>["hunks"][number]["lines"][number], side: "old" | "new"}[]} textHosts
+ * @property {Projection | null} drawn The projection its body draws now, null before the first.
+ * @property {GapSource | null} gaps Where the unchanged lines between hunks come from, or
+ *   null where this diff has none to read, so each hunk's separator is a plain header.
+ * @property {GapLines} gapLines What has been read of them.
+ */
+
+/**
+ * How a file's diff reads the unchanged lines its hunks leave out, and keeps the reader's
+ * place while it draws them: the comparison route's `view=lines`, through the loader the
+ * plugin sets (`setGapLoader`), for a diff whose document came from a comparison. A patch
+ * file names no snapshot, and a Guided Review excerpt draws no gaps, so both have none.
+ *
+ * @typedef {object} GapSource
+ * @property {(path: string, ask: GapAsk) => Promise<unknown>} load
+ * @property {(state: FileViewState, change: () => void) => void} keep Run *change*, which
+ *   draws rows, and hold the row at the pane's top where it was while they are drawn.
+ * @property {number} context The context lines Git wrote around each change, past which a
+ *   last hunk's trailing context may not be the end of the file.
+ * @property {string} comparisonId The comparison the diff drew, which every answer names:
+ *   one for another, as a ref that moved since answers, is refused (`gapAnswer`).
+ * @property {AbortSignal} signal The mounted view's, which ends its asks and highlighting.
+ */
+
+/**
+ * @typedef {{start: number, count: number} | {end: number, count: number}} GapAsk
+ *   At most *count* of the new side's lines from *start*, 1-based, for a gap opened downward
+ *   from a hunk, or before *end*, for one opened upward to a hunk, so an answer its byte
+ *   bound cuts short keeps the lines beside the hunk.
+ */
+
+/**
+ * What a file holds of the unchanged lines its hunks leave out, kept while its diff is
+ * mounted, so a fold drawn again, in another layout or after it closed, asks for nothing.
+ *
+ * @typedef {object} GapLines
+ * @property {Map<number, DiffLine>} byNumber Each line read, by its new number.
+ * @property {number | null} lineCount The new side's lines in all, once an answer says.
+ * @property {Map<string, Promise<void>>} asked Asks on their way, by range.
+ * @property {Map<string, number>} reach Where an open whose answer its byte bound cut short
+ *   stopped, by the end it opened from (`up:<end>` or `down:<start>`): the line past its
+ *   last, so it opens to the same lines again and its nested bar stands for the rest.
+ * @property {boolean} refused The route declined this file's lines, so its gaps draw as
+ *   plain headers.
+ * @property {number} syntaxBytes The bytes of gap lines highlighted so far, which count
+ *   against `SYNTAX_HIGHLIGHT_MAX_BYTES` beside the hunks' own.
  */
 
 /**
@@ -221,6 +266,68 @@ function plainSyntaxApi() {
 /** @param {(revision: string, path: string, options?: {signal?: AbortSignal}) => Promise<Record<string, unknown>>} loader */
 export function setChangeLoader(loader) {
   loadOneChange = loader;
+}
+
+/**
+ * Read a run of one changed file's unchanged lines from a comparison: the route's
+ * `view=lines` answer. Injected by the plugin, as `loadOneChange` is; until it is set, no
+ * diff reads its gaps and every hunk's separator is a plain header.
+ *
+ * @type {((revision: string, path: string, ask: GapAsk, options?: {signal?: AbortSignal}) => Promise<unknown>) | null}
+ */
+let loadGapLines = null;
+
+/** @param {(revision: string, path: string, ask: GapAsk, options?: {signal?: AbortSignal}) => Promise<unknown>} loader */
+export function setGapLoader(loader) {
+  loadGapLines = loader;
+}
+
+/**
+ * The context lines the comparison wrote around each change (`GapSource.context`), where
+ * its files read their gaps, else null.
+ *
+ * @param {MountedDiffState} view
+ * @param {string | undefined} revision
+ * @returns {number | null}
+ */
+function gapContextOf(view, revision) {
+  if (!revision || loadGapLines === null) {
+    return null;
+  }
+  const options = /** @type {{context?: unknown} | undefined} */ (view.resolved.options);
+  const context = Number(options?.context ?? 3);
+  return Number.isInteger(context) && context >= 0 ? context : 3;
+}
+
+/**
+ * Where a mounted comparison's files read their gaps, or null for a diff with no comparison
+ * to read them from (a patch file's) or no loader. Rows a gap draws keep the reader's place
+ * as a layout change does: the row at the pane's top stays where it is on the screen, or a
+ * jump's file stays at the top, while every batch of them is drawn.
+ *
+ * @param {MountedDiffState} view
+ * @param {string | undefined} revision
+ * @returns {GapSource | null}
+ */
+function gapSourceOf(view, revision) {
+  const loader = loadGapLines;
+  const context = gapContextOf(view, revision);
+  if (loader === null || context === null || !revision) {
+    return null;
+  }
+  const { signal } = view.controller;
+  return {
+    context,
+    comparisonId: String(view.resolved.comparison_id ?? ""),
+    load: (path, ask) => loader(revision, path, ask, { signal }),
+    keep(state, change) {
+      const anchor = view.pinned === null ? placeOfTopRow(view, view.show) : null;
+      change();
+      holdPlace(view, anchor);
+      settlePlace(view, anchor, state);
+    },
+    signal,
+  };
 }
 
 // Copy for states that are facts about the change, not steps the
@@ -405,6 +512,9 @@ const SETTINGS = /** @type {Record<string, number>} */ (
 // build still folds sensibly. 0 disables folding.
 const FOLD_THRESHOLD = Number(SETTINGS.DIFF_FOLD_THRESHOLD ?? 40);
 const FOLD_VISIBLE = Number(SETTINGS.DIFF_FOLD_VISIBLE ?? 20);
+// The unchanged lines one open of a hunk's gap shows, the server's `DIFF_GAP_LINES`
+// (settings.py), whose comment holds the measurement.
+const GAP_LINES = Math.max(1, Number(SETTINGS.DIFF_GAP_LINES ?? 1000));
 // The existing measured layout projection batch creates at least three row
 // elements per file. Keeping fold expansion to 100 rows is the stricter of
 // the two projection budgets and gives the browser a task boundary between
@@ -569,14 +679,63 @@ function renderTextHost(state, line, side) {
   return host;
 }
 
-/** @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk */
-function renderHunkHeader(hunk) {
+/**
+ * A hunk's separator as Git writes it, its old and new ranges between `@@` marks and the
+ * heading after them, or in Current the new side's range alone. Git takes the heading
+ * from the old file, so it can be a line the change removed, which Current does not show.
+ *
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
+ * @param {boolean} current
+ */
+function hunkHeaderText(hunk, current) {
+  if (current) {
+    return `@@ +${hunk.newStart},${hunk.newCount} @@`;
+  }
   const heading = hunk.heading ? ` ${hunk.heading}` : "";
-  return el(
-    "div",
-    "diff-hunk-header",
-    `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@${heading}`,
-  );
+  return `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@${heading}`;
+}
+
+/**
+ * The top of hunk *hunkIndex*: where unchanged lines lie between it and the hunk above, or
+ * the file's start, and the diff can read them, the fold bar that opens to them with the
+ * hunk's separator beside its label (`renderGapFold`); otherwise the separator alone. A
+ * last hunk is followed by the bar for the lines after it, where the file may go on.
+ *
+ * @param {HTMLElement} section
+ * @param {FileViewState} state
+ * @param {number} hunkIndex
+ * @param {boolean} current
+ * @param {(line: DiffLine) => HTMLElement} renderGapRow How this projection draws a gap's line.
+ */
+function appendHunkTop(section, state, hunkIndex, current, renderGapRow) {
+  const hunk = state.renderModel.hunks[hunkIndex];
+  const text = hunkHeaderText(hunk, current);
+  const gaps = gapsOf(state);
+  const gap = gaps?.[hunkIndex] ?? null;
+  if (gap === null) {
+    section.append(el("div", "diff-hunk-header", text));
+  } else {
+    const fold = renderGapFold(state, gap, "up", text, renderGapRow, null);
+    section.append(fold.control, fold.group);
+  }
+}
+
+/**
+ * The bar for the lines after the last hunk, at the end of its section, where the file may
+ * go on past it (`hunkGaps`).
+ *
+ * @param {HTMLElement} section
+ * @param {FileViewState} state
+ * @param {number} hunkIndex
+ * @param {(line: DiffLine) => HTMLElement} renderGapRow
+ */
+function appendHunkEnd(section, state, hunkIndex, renderGapRow) {
+  const gaps = gapsOf(state);
+  const gap = gaps !== null && hunkIndex === gaps.length - 2 ? gaps[gaps.length - 1] : null;
+  if (gap !== null) {
+    const fold = renderGapFold(state, gap, "down", "", renderGapRow, null);
+    section.append(fold.control, fold.group);
+  }
 }
 
 /** @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk */
@@ -742,16 +901,12 @@ function appendFoldedRows(section, rows, changedRunOf, renderRow, state, hunkInd
  */
 function renderUnifiedHunk(hunk, state, hunkIndex) {
   const section = el("div", "diff-hunk diff-hunk-unified");
-  section.append(renderHunkHeader(hunk));
+  /** @param {DiffLine} line */
+  const renderLine = (line) => renderUnifiedLine(state, line);
+  appendHunkTop(section, state, hunkIndex, false, renderLine);
   const rows = projectUnifiedHunk(hunk);
-  appendFoldedRows(
-    section,
-    rows,
-    (line) => line.changedRun,
-    (line) => renderUnifiedLine(state, line),
-    state,
-    hunkIndex,
-  );
+  appendFoldedRows(section, rows, (line) => line.changedRun, renderLine, state, hunkIndex);
+  appendHunkEnd(section, state, hunkIndex, renderLine);
   return section;
 }
 
@@ -762,7 +917,10 @@ function renderUnifiedHunk(hunk, state, hunkIndex) {
  */
 function renderSplitHunk(hunk, state, hunkIndex) {
   const section = el("div", "diff-hunk diff-hunk-split");
-  section.append(renderHunkHeader(hunk));
+  /** @param {DiffLine} line An unchanged line, the same on both sides. */
+  const renderGapRow = (line) =>
+    renderSplitLine(state, { changedRun: null, new: line, old: line, refined: false });
+  appendHunkTop(section, state, hunkIndex, false, renderGapRow);
   const rows = projectSplitHunk(hunk);
   appendFoldedRows(
     section,
@@ -772,6 +930,7 @@ function renderSplitHunk(hunk, state, hunkIndex) {
     state,
     hunkIndex,
   );
+  appendHunkEnd(section, state, hunkIndex, renderGapRow);
   return section;
 }
 
@@ -813,22 +972,17 @@ function renderCurrentLine(state, line) {
  * has no heading: Git takes the function-context line it writes after `@@` from the old
  * file, so it can be a line the change removed, which Current does not show. Diff keeps it.
  *
- * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
  * @param {DiffLine[]} rows `projectCurrentHunk`'s.
  * @param {FileViewState} state
  * @param {number} hunkIndex
  */
-function renderCurrentHunk(hunk, rows, state, hunkIndex) {
+function renderCurrentHunk(rows, state, hunkIndex) {
   const section = el("div", "diff-hunk diff-hunk-current");
-  section.append(el("div", "diff-hunk-header", `@@ +${hunk.newStart},${hunk.newCount} @@`));
-  appendFoldedRows(
-    section,
-    rows,
-    (line) => line.changedRun,
-    (line) => renderCurrentLine(state, line),
-    state,
-    hunkIndex,
-  );
+  /** @param {DiffLine} line */
+  const renderLine = (line) => renderCurrentLine(state, line);
+  appendHunkTop(section, state, hunkIndex, true, renderLine);
+  appendFoldedRows(section, rows, (line) => line.changedRun, renderLine, state, hunkIndex);
+  appendHunkEnd(section, state, hunkIndex, renderLine);
   return section;
 }
 
@@ -866,7 +1020,7 @@ function renderCurrentBody(state) {
   for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
     const rows = projectCurrentHunk(hunk);
     if (rows.length > 0) {
-      state.body.append(renderCurrentHunk(hunk, rows, state, hunkIndex));
+      state.body.append(renderCurrentHunk(rows, state, hunkIndex));
     }
   }
 }
@@ -878,16 +1032,27 @@ function renderCurrentBody(state) {
  * @param {DiffViewApi} api
  * @param {HTMLElement} body
  * @param {boolean} [unfold]
+ * @param {GapSource | null} [gaps] Where the lines between its hunks come from, if anywhere.
  * @returns {FileViewState}
  */
-export function createFileState(change, patch, api, body, unfold = false) {
+export function createFileState(change, patch, api, body, unfold = false, gaps = null) {
   const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
   return {
     api,
     body,
     change,
+    drawn: null,
     expandedFolds: new Set(),
     foldTasks: new Map(),
+    gapLines: {
+      asked: new Map(),
+      byNumber: new Map(),
+      reach: new Map(),
+      lineCount: null,
+      refused: false,
+      syntaxBytes: 0,
+    },
+    gaps,
     unfold,
     foldsOpened: new Set(),
     patch,
@@ -920,6 +1085,12 @@ export function renderFileBody(state, layout) {
     () => {
       state.body.replaceChildren();
       state.textHosts = [];
+      state.drawn = layout;
+      if (state.gapLines.refused) {
+        // Its gaps are plain separators now; one line says why the bar the reader pressed
+        // went (docs/design-system-messages.md, "Degrade Gracefully").
+        state.body.append(noticeEl("warning", "diff-gap-refused", GAP_REFUSED_COPY));
+      }
       if (layout === "current") {
         renderCurrentBody(state);
       } else {
@@ -1237,6 +1408,623 @@ function cancelFoldMaterializations(state) {
     clearTimeout(task.timer);
   }
   state.foldTasks.clear();
+}
+
+// ── Gaps: the unchanged lines between hunks ──────────────────────────────────────────────
+
+// What a file whose lines the comparison declines to give says, above its hunks: a gap's
+// bar is then its plain separator (`refuseGaps`).
+const GAP_REFUSED_COPY = "The unchanged lines of this file cannot be shown.";
+
+/**
+ * Where a hunk's hidden lines lie, by the new side's numbers: from *start* to one before
+ * *end*, or to the file's end where *end* is null, which no answer has said yet. *offset* is
+ * what a new number adds for the old one, the change's net lines above the gap, so a gap's
+ * old and new numbers advance together.
+ *
+ * @typedef {{start: number, end: number | null, offset: number}} HunkGap
+ */
+
+/**
+ * The unchanged lines each hunk leaves out above it, and the last one below it. Pure.
+ *
+ * Entry *i* is the gap above hunk *i*, null where it touches the hunk above or the file's
+ * first line; the entry after the last hunk's is the gap below it, from the line after it to
+ * the file's end. A patch says where each hunk starts and not where the file ends, so that
+ * gap is open where *lineCount* is not known and the last hunk ends in a full *context* of
+ * unchanged lines, as Git writes up to that many after a change, and its last line ends
+ * with a newline: a shorter run, or none, ends the file there. A gap whose old and new
+ * spans disagree, which no patch Git writes has, is left out. A count of 0 starts a side
+ * after its line, as a hunk of `-3,0 +4,2` adds two lines after old line 3.
+ *
+ * @param {{oldStart: number, oldCount: number, newStart: number, newCount: number, lines: {op: string, noNewline: boolean}[]}[]} hunks
+ * @param {number} context
+ * @param {number | null} [lineCount] The new side's lines in all, where an answer said.
+ * @returns {(HunkGap | null)[]}
+ */
+export function hunkGaps(hunks, context, lineCount = null) {
+  if (hunks.length === 0) {
+    return [];
+  }
+  /** @type {(HunkGap | null)[]} */
+  const gaps = [];
+  let oldNext = 1;
+  let newNext = 1;
+  for (const hunk of hunks) {
+    const oldFirst = hunk.oldCount > 0 ? hunk.oldStart : hunk.oldStart + 1;
+    const newFirst = hunk.newCount > 0 ? hunk.newStart : hunk.newStart + 1;
+    const span = newFirst - newNext;
+    gaps.push(
+      span > 0 && oldFirst - oldNext === span
+        ? { start: newNext, end: newFirst, offset: oldNext - newNext }
+        : null,
+    );
+    oldNext = oldFirst + hunk.oldCount;
+    newNext = newFirst + hunk.newCount;
+  }
+  const last = hunks[hunks.length - 1];
+  let trailing = 0;
+  for (let index = last.lines.length - 1; index >= 0; index -= 1) {
+    if (last.lines[index].op !== "context") {
+      break;
+    }
+    trailing += 1;
+  }
+  const endsFile = last.lines.at(-1)?.noNewline === true;
+  const open =
+    lineCount === null ? context > 0 && trailing >= context && !endsFile : lineCount >= newNext;
+  gaps.push(
+    open
+      ? {
+          start: newNext,
+          end: lineCount === null ? null : lineCount + 1,
+          offset: oldNext - newNext,
+        }
+      : null,
+  );
+  return gaps;
+}
+
+/**
+ * A file's gaps as it draws them now, or null where its diff draws plain separators: no
+ * source of lines, a refusal, a change with no new file to read them from, or, below the
+ * last hunk, a patch cut short, whose last hunk is not the file's.
+ *
+ * @param {FileViewState} state
+ * @returns {(HunkGap | null)[] | null}
+ */
+function gapsOf(state) {
+  const side = /** @type {{entry_type?: unknown} | undefined} */ (state.change.new);
+  if (
+    state.gaps === null ||
+    state.gapLines.refused ||
+    state.change.binary === true ||
+    side?.entry_type !== "file"
+  ) {
+    return null;
+  }
+  const gaps = hunkGaps(state.renderModel.hunks, state.gaps.context, state.gapLines.lineCount);
+  if (state.patch.truncated && gaps.length > 0) {
+    gaps[gaps.length - 1] = null;
+  }
+  return gaps;
+}
+
+/**
+ * One unchanged line read for a gap, as the patch's own context lines are: both numbers,
+ * the same text on both sides, and no changes inside it.
+ *
+ * @param {number} number Its new number.
+ * @param {number} offset
+ * @param {string} text
+ * @param {boolean} noNewline The file's last line, with no newline after it.
+ * @returns {DiffLine}
+ */
+function gapLine(number, offset, text, noNewline) {
+  return {
+    changedRun: null,
+    intralineRefined: false,
+    newIntralineRanges: [],
+    newNumber: number,
+    newTokens: null,
+    noNewline,
+    oldIntralineRanges: [],
+    oldNumber: number + offset,
+    oldTokens: null,
+    op: "context",
+    text,
+  };
+}
+
+/**
+ * The route's `view=lines` answer to *ask*, or a throw for anything else: a run of at most
+ * its count, from its start, or ending before its end or at the side's last line. An answer
+ * for another comparison than the one drawn, as a ref that moved since it was drawn gives,
+ * would put another commit's lines between these hunks as unchanged; it is refused, as a
+ * declined file is, since asking again gets the same (`refusesGapLines`).
+ *
+ * @param {unknown} payload
+ * @param {GapAsk} ask
+ * @param {string} comparisonId
+ * @returns {{start: number, lines: string[], line_count: number, ends_with_newline: boolean}}
+ */
+function gapAnswer(payload, ask, comparisonId) {
+  const answer = /** @type {Record<string, unknown> | null} */ (
+    payload !== null && typeof payload === "object" ? payload : null
+  );
+  if (
+    answer === null ||
+    !Number.isInteger(answer.start) ||
+    !Array.isArray(answer.lines) ||
+    answer.lines.length > ask.count ||
+    !answer.lines.every((line) => typeof line === "string") ||
+    !Number.isInteger(answer.line_count) ||
+    typeof answer.ends_with_newline !== "boolean"
+  ) {
+    throw new Error("The comparison answered with something other than these lines.");
+  }
+  // Before the run's range: another comparison's file may end before the lines asked for, and
+  // its answer is still a refusal, not a failure a Retry gets past.
+  if (answer.comparison_id !== comparisonId) {
+    throw Object.assign(new Error("The comparison answered for another comparison."), {
+      refused: true,
+    });
+  }
+  const start = Number(answer.start);
+  const end = start + answer.lines.length;
+  if (
+    "start" in ask
+      ? start !== ask.start
+      : start < Math.max(1, ask.end - ask.count) ||
+        end !== Math.min(ask.end, Number(answer.line_count) + 1)
+  ) {
+    throw new Error("The comparison answered with something other than these lines.");
+  }
+  return /** @type {{start: number, lines: string[], line_count: number, ends_with_newline: boolean}} */ (
+    /** @type {unknown} */ (answer)
+  );
+}
+
+/**
+ * Whether a file holds every line from *from* to before *to* that its new side has, and,
+ * where *needsEnd*, knows where that side ends.
+ *
+ * @param {GapLines} lines
+ * @param {number} from
+ * @param {number} to
+ * @param {boolean} needsEnd
+ */
+function holdsGapLines(lines, from, to, needsEnd) {
+  if (needsEnd && lines.lineCount === null) {
+    return false;
+  }
+  const end = lines.lineCount === null ? to : Math.min(to, lines.lineCount + 1);
+  for (let number = from; number < end; number += 1) {
+    if (!lines.byNumber.has(number)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Read a gap's lines from *from* to before *to*, or to the side's end, into the file's
+ * keep, in one ask: from *from* for a gap opened downward (*toward* "down"), and up to *to*
+ * for one opened upward, so an answer its byte bound cuts short holds the lines nearest the
+ * hunk. Where it stops short of the range, before the side's end, the open's reach records
+ * where, and the open draws what came with its nested bar for the rest (`renderGapFold`):
+ * one press is one ask, of at most `MAX_LINES_ANSWER_BYTES` of text (diff/side_lines.py).
+ * One ask a range, however many folds wait for it. The lines are highlighted after they are
+ * drawn.
+ *
+ * @param {FileViewState} state
+ * @param {HunkGap} gap
+ * @param {number} from
+ * @param {number} to
+ * @param {"up" | "down"} toward
+ * @returns {Promise<void>}
+ */
+function readGapLines(state, gap, from, to, toward) {
+  const lines = state.gapLines;
+  const key = `${toward}:${from}-${to}`;
+  let asked = lines.asked.get(key);
+  if (asked !== undefined) {
+    return asked;
+  }
+  const source = /** @type {GapSource} */ (state.gaps);
+  const side = /** @type {{path?: unknown}} */ (state.change.new);
+  const path = String(side.path ?? "");
+  /** @type {GapAsk} */
+  const ask = toward === "up" ? { end: to, count: to - from } : { start: from, count: to - from };
+  asked = (async () => {
+    const answer = gapAnswer(await source.load(path, ask), ask, source.comparisonId);
+    lines.lineCount = answer.line_count;
+    /** @type {DiffLine[]} */
+    const fresh = [];
+    for (const [index, text] of answer.lines.entries()) {
+      const number = answer.start + index;
+      if (!lines.byNumber.has(number)) {
+        const record = gapLine(
+          number,
+          gap.offset,
+          text,
+          number === answer.line_count && !answer.ends_with_newline,
+        );
+        lines.byNumber.set(number, record);
+        fresh.push(record);
+      }
+    }
+    if (
+      toward === "up"
+        ? answer.start > from
+        : answer.start + answer.lines.length < Math.min(to, answer.line_count + 1)
+    ) {
+      lines.reach.set(
+        toward === "up" ? `up:${to}` : `down:${from}`,
+        toward === "up" ? answer.start : answer.start + answer.lines.length,
+      );
+    }
+    // After the folds waiting for these lines draw them plain, as a hunk's first paint is.
+    setTimeout(() => void highlightGapLines(state, fresh), 0);
+  })().finally(() => lines.asked.delete(key));
+  lines.asked.set(key, asked);
+  return asked;
+}
+
+/**
+ * Highlight lines read for a gap as one source, as each hunk side is (`highlightFileSyntax`),
+ * within the same whole-file bound: the hunks' bytes and every gap's highlighted so far
+ * count against `SYNTAX_HIGHLIGHT_MAX_BYTES`. Past it they stay plain, as a file past it
+ * does. The rows drawn of them take their tokens.
+ *
+ * @param {FileViewState} state
+ * @param {DiffLine[]} records
+ */
+async function highlightGapLines(state, records) {
+  const language = state.renderModel.newLanguage;
+  const source = state.gaps;
+  if (records.length === 0 || !language || source === null || source.signal.aborted) {
+    return;
+  }
+  const text = records.map((record) => record.text).join("\n");
+  const bytes = new TextEncoder().encode(text).byteLength;
+  state.renderModel.inputBytes ??= syntaxInputBytes(state.renderModel.hunks);
+  const total = state.renderModel.inputBytes + state.gapLines.syntaxBytes + bytes;
+  if (state.api.isLargeTextPreview({ size: total })) {
+    return;
+  }
+  state.gapLines.syntaxBytes += bytes;
+  try {
+    const tokens = await measureEnhancement(
+      state.api,
+      "diffSyntax:gap",
+      () => state.api.highlightSyntax(text, language, { inputBytes: bytes, signal: source.signal }),
+      { input_bytes: bytes, language, line_count: records.length },
+    );
+    if (
+      tokens === null ||
+      source.signal.aborted ||
+      tokens.length !== records.length ||
+      tokens.some((runs, index) => runs.map((run) => run.text).join("") !== records[index].text)
+    ) {
+      return;
+    }
+    for (const [index, record] of records.entries()) {
+      record.newTokens = tokens[index];
+      record.oldTokens = tokens[index];
+    }
+    const highlighted = new Set(records);
+    for (const { host, line, side } of state.textHosts) {
+      if (highlighted.has(line)) {
+        renderComposedText(
+          host,
+          line.text,
+          sideTokens(line, side),
+          sideIntralineRanges(line, side),
+        );
+      }
+    }
+  } catch (error) {
+    if (!source.signal.aborted) {
+      console.warn("metabrowser diff: a gap's syntax enhancement failed", error);
+    }
+  }
+}
+
+/**
+ * Whether a failed ask is the comparison declining these lines, which asking again will not
+ * change, rather than a failure a Retry may get past: a refusal of the request itself, or an
+ * answer for another comparison (`gapAnswer`).
+ *
+ * @param {unknown} error
+ */
+function refusesGapLines(error) {
+  const failed = /** @type {{status?: unknown, refused?: unknown} | null} */ (error);
+  const status = failed?.status;
+  return (
+    failed?.refused === true ||
+    (typeof status === "number" && status >= 400 && status < 500 && ![408, 429].includes(status))
+  );
+}
+
+/**
+ * The comparison declines this file's lines (a binary or converted file, a side past the
+ * read bound): draw it again with each gap as its plain separator, and one line saying so,
+ * where the reader is.
+ *
+ * @param {FileViewState} state
+ */
+function refuseGaps(state) {
+  if (state.gapLines.refused) {
+    return;
+  }
+  state.gapLines.refused = true;
+  const source = /** @type {GapSource} */ (state.gaps);
+  const drawn = state.drawn;
+  if (drawn !== null && !source.signal.aborted) {
+    source.keep(state, () => renderFileBody(state, drawn));
+  }
+}
+
+/**
+ * A gap's fold (`foldExpander` in diff-fold.js), the bar every fold of the diff draws.
+ *
+ * Closed, it says how many unchanged lines it holds, or, below the last hunk, before an
+ * answer has said where the file ends, that it holds the rest of the file. Opening it draws
+ * up to `GAP_LINES` of them, asking the comparison first, once, for any the file does not
+ * hold yet; a gap longer than that, or one whose answer its byte bound cut short, opens the
+ * lines nearest its hunk (*toward*: "up" above a hunk, "down" below the last), and a fold of
+ * the same kind stands for the rest, at the far end of the group, as one step more. Open, it
+ * says how many lines it shows, its open steps' among them. A gap whose lines do not load
+ * closes again saying so, and a press asks again. Every change of its height while the
+ * reader waits, its rows, the box that stood for them, and closing after a failure, is made
+ * where the reader keeps their place (`GapSource.keep`).
+ *
+ * @param {FileViewState} state
+ * @param {HunkGap} gap
+ * @param {"up" | "down"} toward
+ * @param {string} detail The hunk's separator, beside the label, for a gap above a hunk.
+ * @param {(line: DiffLine) => HTMLElement} renderRow
+ * @param {{relabel: () => void} | null} parent The fold this one is a step of.
+ * @returns {import("./diff-fold.js").FoldExpander & {shown: () => number, cancel: () => void}}
+ */
+function renderGapFold(state, gap, toward, detail, renderRow, parent) {
+  const key = `gap:${gap.start}-${toward === "down" ? "end" : gap.end}`;
+  const count = countFormatter(state.api);
+  const status = { failed: false };
+  /** @type {ReturnType<typeof renderGapFold> | null} */
+  let step = null;
+  let own = 0;
+  const shown = () => own + (step?.expanded() ? step.shown() : 0);
+  const end = () =>
+    gap.end ?? (state.gapLines.lineCount === null ? null : state.gapLines.lineCount + 1);
+
+  /** @param {boolean} expanded */
+  function label(expanded) {
+    const known = end();
+    if (expanded) {
+      const lines = shown() || (known === null ? 0 : Math.min(known - gap.start, GAP_LINES));
+      return lines > 0 ? `Hide ${count(lines)} line${lines === 1 ? "" : "s"}` : "Hide these lines";
+    }
+    if (known === null) {
+      return status.failed ? "Could not load the rest of the file. Retry" : "Rest of the file";
+    }
+    const held = known - gap.start;
+    const lines = `${count(held)} unchanged line${held === 1 ? "" : "s"}`;
+    return status.failed ? `Could not load ${lines}. Retry` : lines;
+  }
+
+  foldSequence += 1;
+  const fold = foldExpander({
+    id: `diff-gap-group-${foldSequence}`,
+    expanded: state.expandedFolds.has(key),
+    label,
+    detail,
+    groupClass: "diff-gap-group",
+    onToggle(expanded) {
+      if (expanded) {
+        state.expandedFolds.add(key);
+        status.failed = false;
+        open(true);
+      } else {
+        state.expandedFolds.delete(key);
+        // Its steps close with it, so it opens again to its first lines.
+        step?.set(false);
+        cancel();
+      }
+      parent?.relabel();
+    },
+  });
+  fold.control.classList.add("diff-gap-control");
+  const { group } = fold;
+  const view = { ...fold, shown, cancel, relabel };
+
+  function relabel() {
+    fold.relabel();
+    parent?.relabel();
+  }
+
+  /**
+   * The lines this fold draws itself, by the new side's numbers, from what is known: up to
+   * `GAP_LINES` nearest its hunk, or as far as an answer cut short reached (`GapLines.reach`).
+   */
+  function range() {
+    const known = end();
+    if (toward === "up" && known !== null) {
+      const reach = state.gapLines.reach.get(`up:${known}`) ?? gap.start;
+      return { from: Math.max(gap.start, known - GAP_LINES, reach), to: known };
+    }
+    const reach = state.gapLines.reach.get(`down:${gap.start}`) ?? Number.POSITIVE_INFINITY;
+    const to = Math.min(gap.start + GAP_LINES, reach);
+    return { from: gap.start, to: known === null ? to : Math.min(known, to) };
+  }
+
+  function cancel() {
+    const task = state.foldTasks.get(key);
+    if (task) {
+      clearTimeout(task.timer);
+      state.foldTasks.delete(key);
+    }
+    step?.cancel();
+    step = null;
+    own = 0;
+    state.textHosts = state.textHosts.filter(({ host }) => !group.contains(host));
+    group.replaceChildren();
+  }
+
+  /**
+   * @param {boolean} keep Whether the reader opened it, so its rows keep their place:
+   *   one drawn open with its file draws inside the redraw that holds it.
+   */
+  function open(keep) {
+    const { from, to } = range();
+    if (holdsGapLines(state.gapLines, from, to, toward === "down")) {
+      fill(keep);
+      return;
+    }
+    fold.control.setAttribute("aria-busy", "true");
+    // Its accessible name, never shown: what it reads, by count where the file's end is known.
+    const what = end() === null ? "the rest of the file" : `${count(to - from)} unchanged lines`;
+    const box = progressBox(`Loading ${what}`);
+    group.append(box);
+    const source = /** @type {GapSource} */ (state.gaps);
+    readGapLines(state, gap, from, to, toward).then(
+      () => {
+        fold.control.removeAttribute("aria-busy");
+        if (fold.expanded() && fold.control.isConnected && !source.signal.aborted) {
+          // Its rows take the box's place inside the change that holds the reader's.
+          fill(true);
+        } else {
+          box.remove();
+        }
+      },
+      (error) => {
+        fold.control.removeAttribute("aria-busy");
+        if (source.signal.aborted || isAbortError(error)) {
+          box.remove();
+          return;
+        }
+        if (refusesGapLines(error)) {
+          console.warn("metabrowser diff: the comparison declines this file's lines", error);
+          // The file is drawn again, the box with it, where the reader is.
+          refuseGaps(state);
+          box.remove();
+          return;
+        }
+        console.warn("metabrowser diff: a gap's lines did not load", error);
+        // Closed again, its bar says why, unless the reader closed it meanwhile.
+        if (fold.expanded() && fold.control.isConnected) {
+          source.keep(state, () => {
+            status.failed = true;
+            fold.set(false);
+          });
+        } else {
+          box.remove();
+        }
+      },
+    );
+  }
+
+  /** @param {boolean} keep Draw its rows where the reader keeps their place (`GapSource.keep`). */
+  function fill(keep) {
+    const source = /** @type {GapSource} */ (state.gaps);
+    const { from, to } = range();
+    const known = end();
+    const stop = known === null ? to : Math.min(to, known);
+    /** @type {DiffLine[]} */
+    const records = [];
+    for (let number = from; number < stop; number += 1) {
+      const record = state.gapLines.byNumber.get(number);
+      if (record !== undefined) {
+        records.push(record);
+      }
+    }
+    if (records.length === 0 && toward === "down") {
+      // The file ended at the last hunk after all: there was nothing below it. A reader who
+      // pressed the bar from the keyboard goes on from the file's own bar, not the page's top.
+      const leave = () => {
+        if (fold.control.contains(document.activeElement)) {
+          /** @type {HTMLElement | null | undefined} */ (
+            state.body.closest(".diff-file")?.querySelector(".diff-file-toggle")
+          )?.focus();
+        }
+        fold.control.remove();
+        group.remove();
+      };
+      if (keep) {
+        source.keep(state, leave);
+      } else {
+        leave();
+      }
+      return;
+    }
+    const rest =
+      toward === "up"
+        ? from > gap.start
+          ? { start: gap.start, end: from, offset: gap.offset }
+          : null
+        : known !== null && stop < known
+          ? { start: stop, end: known, offset: gap.offset }
+          : null;
+    const draw = () => {
+      // What it drew before, a loading box among it, goes in the same change.
+      cancel();
+      own = records.length;
+      if (rest !== null) {
+        step = renderGapFold(state, rest, toward, "", renderRow, view);
+        group.append(step.control, step.group);
+      }
+      materializeGapRows(state, key, group, records, renderRow, toward === "down" ? step : null);
+    };
+    if (keep) {
+      source.keep(state, draw);
+    } else {
+      draw();
+    }
+    relabel();
+  }
+
+  if (fold.expanded()) {
+    open(false);
+  }
+  return view;
+}
+
+/**
+ * Draw a gap's rows into its group in batches of `FOLD_MATERIALIZATION_BATCH_ROWS`, the
+ * first at once and the rest a task each, as an open changed run's are; before the bar of
+ * the next step where it comes after them. Closing, a redraw, and disposal cancel the rest.
+ *
+ * @param {FileViewState} state
+ * @param {string} key
+ * @param {HTMLElement} group
+ * @param {DiffLine[]} records
+ * @param {(line: DiffLine) => HTMLElement} renderRow
+ * @param {{control: HTMLElement} | null} before
+ */
+function materializeGapRows(state, key, group, records, renderRow, before) {
+  let index = 0;
+  const task = { timer: 0 };
+  const appendBatch = () => {
+    if (state.foldTasks.get(key) !== task) {
+      return;
+    }
+    const end = Math.min(index + FOLD_MATERIALIZATION_BATCH_ROWS, records.length);
+    const rows = records.slice(index, end).map(renderRow);
+    if (before === null) {
+      group.append(...rows);
+    } else {
+      before.control.before(...rows);
+    }
+    index = end;
+    if (index >= records.length) {
+      state.foldTasks.delete(key);
+      return;
+    }
+    task.timer = setTimeout(appendBatch, 0);
+  };
+  state.foldTasks.set(key, task);
+  appendBatch();
 }
 
 /**
@@ -1843,7 +2631,7 @@ function drawLayout(view, layout) {
 function reproject(view, anchor) {
   const projection = projectionOf(view);
   for (const file of view.deferred.values()) {
-    reserveFileBody(file, projection);
+    reserveFileBody(file, projection, view);
   }
   view.layoutGeneration += 1;
   const layoutGeneration = view.layoutGeneration;
@@ -2792,16 +3580,56 @@ export function patchRows(patch, layout, change = null) {
 }
 
 /**
+ * The gaps a patch in hand draws bars for (`gapsOf`, before any answer says where the file
+ * ends), or null for a change whose gaps draw as plain headers.
+ *
+ * @param {Record<string, unknown>} patch
+ * @param {Record<string, unknown>} change
+ * @param {number} context
+ * @returns {(HunkGap | null)[] | null}
+ */
+function patchGaps(patch, change, context) {
+  const side = /** @type {{entry_type?: unknown} | undefined} */ (change.new);
+  if (change.binary === true || side?.entry_type !== "file") {
+    return null;
+  }
+  const hunks =
+    /** @type {{old_start?: unknown, old_count?: unknown, new_start?: unknown, new_count?: unknown, lines?: {op?: unknown, no_newline?: unknown}[]}[]} */ (
+      patch.hunks ?? []
+    );
+  const gaps = hunkGaps(
+    hunks.map((hunk) => ({
+      oldStart: Number(hunk.old_start),
+      oldCount: Number(hunk.old_count),
+      newStart: Number(hunk.new_start),
+      newCount: Number(hunk.new_count),
+      lines: (hunk.lines ?? []).map((line) => ({
+        op: String(line.op),
+        noNewline: line.no_newline === true,
+      })),
+    })),
+    context,
+  );
+  if (patch.truncated && gaps.length > 0) {
+    gaps[gaps.length - 1] = null;
+  }
+  return gaps;
+}
+
+/**
  * Count each differently sized row without drawing held lines. Soft-wrapped code can
  * grow after rendering; the single-line chrome has its exact shared CSS metrics. Current
  * leaves out a hunk with no line of the new file, header and all, and a file with no new
  * version, deleted or emptied, draws the one sentence that says so (`currentAbsence`),
- * which its manifest entry, *change*, tells.
+ * which its manifest entry, *change*, tells. Where the diff reads its gaps (*gapContext*), a
+ * hunk with a gap above it draws that gap's fold bar in place of its header, and a last
+ * hunk the file may go on past draws one more below it (`hunkGaps`).
  * @param {Record<string, unknown>} patch
  * @param {Projection} layout
  * @param {Record<string, unknown> | null} [change]
+ * @param {number | null} [gapContext] `GapSource.context`, where the diff reads its gaps.
  */
-export function patchRowCounts(patch, layout, change = null) {
+export function patchRowCounts(patch, layout, change = null, gapContext = null) {
   const rows = { lines: 0, headers: 0, folds: 0, notices: patch.truncated ? 1 : 0 };
   const hunks =
     /** @type {{lines?: {op?: unknown}[], new_start?: unknown, new_count?: unknown}[]} */ (
@@ -2818,11 +3646,19 @@ export function patchRowCounts(patch, layout, change = null) {
     rows.notices += 1;
     return rows;
   }
-  for (const hunk of hunks) {
+  const gaps = gapContext === null || change === null ? null : patchGaps(patch, change, gapContext);
+  for (const [index, hunk] of hunks.entries()) {
     if (layout === "current" && (hunk.lines ?? []).every((line) => line.op === "del")) {
       continue;
     }
-    rows.headers += 1;
+    if (gaps?.[index]) {
+      rows.folds += 1;
+    } else {
+      rows.headers += 1;
+    }
+    if (gaps !== null && index === hunks.length - 1 && gaps[hunks.length]) {
+      rows.folds += 1;
+    }
     let adds = 0;
     let dels = 0;
     const endRun = () => {
@@ -2885,12 +3721,18 @@ function reserveBody(body, rows) {
  * their patch; a file not fetched yet uses the manifest estimate.
  * @param {DeferredFile} file
  * @param {Projection} layout
+ * @param {MountedDiffState} view
  */
-function reserveFileBody(file, layout) {
+function reserveFileBody(file, layout, view) {
   if (file.held !== null) {
     reserveBody(
       file.body,
-      patchRowCounts(file.held.patches[String(file.change.id)], layout, file.change),
+      patchRowCounts(
+        file.held.patches[String(file.change.id)],
+        layout,
+        file.change,
+        gapContextOf(view, file.revision),
+      ),
     );
     return;
   }
@@ -3075,7 +3917,14 @@ function spliceDeferred(file, loaded, view) {
     file.body.append(el("div", "diff-availability", "No content changes."));
     return "none";
   }
-  const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body, view.unfold);
+  const state = createFileState(
+    only,
+    patch,
+    view.api ?? plainSyntaxApi(),
+    file.body,
+    view.unfold,
+    gapSourceOf(view, file.revision),
+  );
   if (!view.awaitingWidth) {
     renderFileBody(state, projectionOf(view));
   }
@@ -3139,7 +3988,7 @@ function queueDeferredHydration(section, body, change, revision, view, held = nu
   });
   view.deferredBySection.set(section, id);
   view.hydration.add(id, view.deferred.size);
-  reserveFileBody(/** @type {DeferredFile} */ (view.deferred.get(id)), projectionOf(view));
+  reserveFileBody(/** @type {DeferredFile} */ (view.deferred.get(id)), projectionOf(view), view);
 }
 
 /** @param {MountedDiffState} view */
@@ -3630,6 +4479,40 @@ function rowOfHost(host) {
 }
 
 /**
+ * Every line a file can draw, in the file's order: each hunk's, after the lines read for the
+ * gap above it, and last those read for the gap below the last hunk.
+ *
+ * @param {FileViewState} state
+ * @returns {Map<DiffLine, number>}
+ */
+function lineOrder(state) {
+  /** @type {Map<DiffLine, number>} */
+  const order = new Map();
+  const gaps = gapsOf(state) ?? [];
+  const read = state.gapLines.byNumber;
+  const numbers = gaps.length === 0 ? [] : [...read.keys()].sort((a, b) => a - b);
+  let next = 0;
+  /** @param {number} end */
+  const readBefore = (end) => {
+    while (next < numbers.length && numbers[next] < end) {
+      order.set(/** @type {DiffLine} */ (read.get(numbers[next])), order.size);
+      next += 1;
+    }
+  };
+  for (const [index, hunk] of state.renderModel.hunks.entries()) {
+    const gap = gaps[index] ?? null;
+    if (gap?.end != null) {
+      readBefore(gap.end);
+    }
+    for (const each of hunk.lines) {
+      order.set(each, order.size);
+    }
+  }
+  readBefore(Number.POSITIVE_INFINITY);
+  return order;
+}
+
+/**
  * The row that draws *line* now, or, where a fold keeps it out of the page, the row of the
  * nearest line before it that is drawn, else after it. Null when the file draws no line.
  *
@@ -3641,12 +4524,7 @@ function rowOfLine(state, line) {
   if (!drawsLines(state)) {
     return null;
   }
-  const order = new Map();
-  for (const hunk of state.renderModel.hunks) {
-    for (const each of hunk.lines) {
-      order.set(each, order.size);
-    }
-  }
+  const order = lineOrder(state);
   const at = order.get(line) ?? 0;
   /** @type {{host: HTMLElement, index: number} | null} */
   let before = null;
@@ -3688,11 +4566,28 @@ function holdPlace(view, anchor = null) {
       row !== null && anchor.row !== undefined
         ? row.getBoundingClientRect().top - anchor.row.top
         : anchor.section.getBoundingClientRect().top - anchor.top;
-    if (pane !== null && Math.abs(moved) >= 0.5) {
+    if (pane !== null && Math.abs(moved) >= HOLD_PLACE_MIN_PX) {
       pane.scrollTop += moved;
     }
   }
 }
+
+// The least drift `holdPlace` puts back: no finer than the step the pane's scroll position
+// takes, so a correction never leaves a drift it would correct again. A move under the step
+// is made as a whole step, past the row, and Chrome's own anchoring, which keeps a row's
+// rounded place, then holds it there. Chrome's step is a device pixel: set to 1146.25,
+// 1146.5, and 1146.75, an element's scrollTop read back 1146, 1147, and 1147 at a device
+// pixel ratio of 1, which the Chrome tier forces (tests/dom/chrome-session.mjs), and 1146.5,
+// 1146.5, and 1147 at 2 (headless Chrome, 2026-11-25). At 1, opening a hunk gap above the
+// pane's top (tests/dom/diff-hunk-gap-chrome.mjs) with half a pixel here, a drift of 0.5 px
+// moved the pane from 1146 to 1147, and the row at the pane's top ended 1 px above where it
+// was, 1.1-1.5 px while the gap's group grew; with a whole pixel it ended where it was and
+// stayed within 0.48 px of it at every frame. It is not `1 / devicePixelRatio`, which in
+// Chrome at 2 would put back a drift of half a pixel this leaves: WebKit's step is
+// unmeasured, and on any scroller coarser than a device pixel that would bring the overshoot
+// back. A drift it leaves is under a pixel, and each call measures it from the place first
+// kept, so it does not grow.
+const HOLD_PLACE_MIN_PX = 1;
 
 /**
  * Keep holding a Diff | Current choice's row while its file's open folds draw their rows,
@@ -3702,9 +4597,11 @@ function holdPlace(view, anchor = null) {
  *
  * @param {MountedDiffState} view
  * @param {Place | null} anchor
+ * @param {FileViewState | null} [drawing] The file whose rows are being drawn, where it is
+ *   not the kept row's: a gap opened in a file above the pane's top (`gapSourceOf`).
  */
-function settlePlace(view, anchor) {
-  const state = anchor?.row?.state ?? null;
+function settlePlace(view, anchor, drawing = null) {
+  const state = drawing ?? anchor?.row?.state ?? null;
   const pane = scrollerOf(view);
   if (anchor === null || state === null || pane === null || state.foldTasks.size === 0) {
     return;
@@ -4015,7 +4912,14 @@ function renderFileSection(change, patch, context, view, draw) {
     queueDeferredHydration(section, body, change, context.revision ?? "", view, held);
     return section;
   }
-  const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body, view.unfold);
+  const state = createFileState(
+    change,
+    patch,
+    view.api ?? plainSyntaxApi(),
+    body,
+    view.unfold,
+    gapSourceOf(view, context.revision),
+  );
   view.files.push(state);
   if (!view.awaitingWidth) {
     renderFileBody(state, projectionOf(view));

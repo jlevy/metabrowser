@@ -182,7 +182,7 @@ final class FolderSession: ManagedServer {
     /// spawns, unless one is starting, running, or stopping, and returns once that start
     /// is ready or has failed. Without an accepted runtime the windows say so, and the
     /// start waits for `resume()`. The app records the open as it shows it
-    /// (`RecentTargetsMenu.noteOpened`), and the server records nothing.
+    /// (`RecentTargetsMenu.shown`), and the server records nothing.
     func startServer() async {
         settle(await server.start())
     }

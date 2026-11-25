@@ -222,8 +222,8 @@ def test_one_run_prints_what_the_two_runs_print(
 def test_a_folders_diff_settings_reach_the_one_run_as_they_reached_the_two(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Prefixes, an external driver and color, which the patch runs pin away, and the
-    context, the algorithm, and an order file, which a folder's runs honor. A textconv driver
+    """Prefixes, an external driver, color, and the context, which the patch runs pin away,
+    and the algorithm and an order file, which a folder's runs honor. A textconv driver
     is the one setting the one run does not honor (``test_a_textconv_driver_...``)."""
     root = tmp_path / "configured"
     root.mkdir()

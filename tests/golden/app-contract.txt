@@ -885,7 +885,7 @@ exit: 1
     {
       "id": "config",
       "title": "<text>",
-      "state": "warning",
+      "state": "ok",
       "summary": "<text>",
       "details": [
         {
@@ -899,17 +899,9 @@ exit: 1
         {
           "name": "<text>",
           "value": "<text>"
-        },
-        {
-          "name": "<text>",
-          "value": "<text>"
         }
       ],
-      "remedy": {
-        "text": "<text>",
-        "command": null,
-        "url": null
-      }
+      "remedy": null
     },
     {
       "id": "cache",

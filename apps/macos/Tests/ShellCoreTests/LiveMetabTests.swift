@@ -8,19 +8,18 @@ import Testing
 ///     METABROWSER_SHELL_TEST_METAB=$PWD/../../.venv/bin/metab swift test --filter LiveMetab
 nonisolated private let liveMetab = ProcessInfo.processInfo.environment["METABROWSER_SHELL_TEST_METAB"]
 
-/// The environment the app gives a `metab`, with a configuration directory of the test's
-/// own: a test's folder must not enter the list of whoever runs the suite, as it would
-/// through the default directory. The directory is one `metab` makes inside
-/// `configuration`, private to the user, which a temporary directory is not. Whatever the
-/// suite was started with, `RecentTargets.recordVariable` is unset, as for an app started
-/// without it.
+/// The environment the app gives a `metab` when it was started with a configuration
+/// directory of the test's own, which it passes on (`ChildEnvironment`), as the hand
+/// checks start a development build: a test's folder must not enter the list of whoever
+/// runs the suite, as it would through the default directory. The directory is one
+/// `metab` makes inside `configuration`, private to the user, which a temporary directory
+/// is not. Whatever the suite was started with, `RecentTargets.recordVariable` is unset,
+/// as for an app started without it.
 nonisolated private func liveEnvironment(configuration: URL, toolDirectories: [String] = []) -> [String: String] {
-    let directory = configuration.appending(path: "metabrowser").path(percentEncoded: false)
-    var environment = ChildEnvironment.build(
-        inherited: ProcessInfo.processInfo.environment, toolDirectories: toolDirectories)
-    environment["METABROWSER_CONFIG_DIR"] = directory
-    environment.removeValue(forKey: RecentTargets.recordVariable)
-    return environment
+    var inherited = ProcessInfo.processInfo.environment
+    inherited["METABROWSER_CONFIG_DIR"] = configuration.appending(path: "metabrowser").path(percentEncoded: false)
+    inherited.removeValue(forKey: RecentTargets.recordVariable)
+    return ChildEnvironment.build(inherited: inherited, toolDirectories: toolDirectories)
 }
 
 /// Serialized: `metab` picks its port by probing and binds it later, so two servers
@@ -152,6 +151,9 @@ struct LiveMetabTests {
         let targets = await listed()
         #expect(targets.map(\.mode) == [.folder])
         #expect(targets.map(\.root) == [FileChecks.canonicalPath(root.path(percentEncoded: false))])
+        // It is in the configuration directory the app was started with and passed on.
+        #expect(FileManager.default.fileExists(
+            atPath: configuration.appending(path: "metabrowser/recent-targets.yml").path(percentEncoded: false)))
 
         // An app started with recording off, as `make run` starts a development build,
         // passes it on, and its own call then records nothing.

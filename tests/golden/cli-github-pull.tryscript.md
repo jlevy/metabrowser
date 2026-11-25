@@ -586,6 +586,34 @@ status: 200
 ? 0
 ```
 
+## Test: a pull request’s unchanged lines
+
+`view=lines` passes through too, so a separator in a pull request’s diff opens to the
+lines around its hunk from the same comparison
+(tests/golden/cli-api-diff-lines.tryscript.md).
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&file=src/app.txt&view=lines&start=1&count=5'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&file=src/app.txt&view=lines&start=1&count=5
+status: 200
+{
+  "comparison_id": "git:9479019c56eedd23",
+  "file_id": "f2",
+  "path": "src/app.txt",
+  "start": 1,
+  "lines": [
+    "one",
+    "two"
+  ],
+  "line_count": 2,
+  "ends_with_newline": true
+}
+? 0
+```
+
 ## Test: a merged pull request compares from its base.sha
 
 ```console

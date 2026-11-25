@@ -1317,6 +1317,7 @@ async function main() {
     anchorRow,
     composeTextRuns,
     currentAbsence,
+    hunkGaps,
     mountDiffSummary,
     mountDiffView: mountDiffViewImpl,
     mountFilePatch,
@@ -1446,6 +1447,101 @@ async function main() {
     ]),
   );
 
+  // The unchanged lines a file's hunks leave out (`hunkGaps`): above each hunk, by the new
+  // side's numbers, with what an old number adds, and below the last, which is open until an
+  // answer says where the file ends. A hunk's line records need only their op here.
+  const span = (oldStart, oldCount, newStart, newCount, ...ops) => ({
+    oldStart,
+    oldCount,
+    newStart,
+    newCount,
+    lines: ops.map((op) => ({ op, noNewline: false })),
+  });
+  const twoHunks = [
+    span(2, 7, 2, 7, ...Array(3).fill("context"), "del", "add", ...Array(3).fill("context")),
+    span(27, 7, 27, 8, ...Array(3).fill("context"), "add", ...Array(4).fill("context")),
+  ];
+  check(
+    "a file's gaps lie before, between, and after its hunks, at the new side's numbers",
+    JSON.stringify(hunkGaps(twoHunks, 3)) ===
+      JSON.stringify([
+        { start: 1, end: 2, offset: 0 },
+        { start: 9, end: 27, offset: 0 },
+        { start: 35, end: null, offset: -1 },
+      ]),
+    JSON.stringify(hunkGaps(twoHunks, 3)),
+  );
+  check(
+    "an answer that says where the file ends closes the last gap there, or leaves none",
+    JSON.stringify(hunkGaps(twoHunks, 3, 40).at(-1)) ===
+      JSON.stringify({ start: 35, end: 41, offset: -1 }) &&
+      hunkGaps(twoHunks, 3, 34).at(-1) === null,
+  );
+  check(
+    "a hunk at the file's first line has no gap above it",
+    hunkGaps([span(1, 4, 1, 4, "del", "add", "context", "context", "context")], 3)[0] === null,
+  );
+  check(
+    "a last hunk ending in fewer context lines than Git writes ends the file",
+    hunkGaps([span(10, 4, 10, 4, ...Array(3).fill("context"), "add")], 3).at(-1) === null &&
+      hunkGaps([span(10, 3, 10, 4, ...Array(3).fill("context"), "add", "context")], 3).at(-1) ===
+        null,
+  );
+  const endsUnended = span(
+    10,
+    6,
+    10,
+    7,
+    ...Array(3).fill("context"),
+    "add",
+    ...Array(3).fill("context"),
+  );
+  endsUnended.lines.at(-1).noNewline = true;
+  check(
+    "a last line with no newline after it ends the file, so no gap follows it",
+    hunkGaps([endsUnended], 3).at(-1) === null,
+  );
+  check(
+    "a side with no lines in a hunk starts after the line it names",
+    JSON.stringify(hunkGaps([span(3, 0, 4, 2, "add", "add")], 0)[0]) ===
+      JSON.stringify({ start: 1, end: 4, offset: 0 }),
+    JSON.stringify(hunkGaps([span(3, 0, 4, 2, "add", "add")], 0)),
+  );
+  check(
+    "gaps whose old and new spans disagree are left out, and no hunks have no gaps",
+    hunkGaps([span(5, 1, 9, 1, "context")], 3)[0] === null && hunkGaps([], 3).length === 0,
+  );
+  // A held patch, where its diff reads gaps, counts each gap's bar in place of its hunk's
+  // header, and the bar below its last hunk.
+  const gapPatch = {
+    hunks: [
+      {
+        ...opsHunk(...Array(3).fill("context"), "add", ...Array(3).fill("context")),
+        old_start: 1,
+        old_count: 6,
+        new_start: 1,
+        new_count: 7,
+      },
+      {
+        ...opsHunk(...Array(3).fill("context"), "add", ...Array(3).fill("context")),
+        old_start: 20,
+        old_count: 6,
+        new_start: 21,
+        new_count: 7,
+      },
+    ],
+  };
+  const textChange = { new: { entry_type: "file" } };
+  check(
+    "a held patch whose diff reads gaps counts their bars as folds in place of headers",
+    JSON.stringify(patchRowCounts(gapPatch, "unified", textChange, 3)) ===
+      JSON.stringify({ lines: 14, headers: 1, folds: 2, notices: 0 }) &&
+      JSON.stringify(patchRowCounts(gapPatch, "unified", textChange)) ===
+        JSON.stringify({ lines: 14, headers: 2, folds: 0, notices: 0 }) &&
+      JSON.stringify(patchRowCounts(gapPatch, "unified", { binary: true, ...textChange }, 3)) ===
+        JSON.stringify({ lines: 14, headers: 2, folds: 0, notices: 0 }),
+    JSON.stringify(patchRowCounts(gapPatch, "unified", textChange, 3)),
+  );
   // The row a Diff | Current choice keeps: rows 20 px tall from 5 px, in a pane from 100 to
   // 700 px, so row 4 (85 to 105 px) is at its top.
   const rowsOf = (count, kept = () => true) => {
