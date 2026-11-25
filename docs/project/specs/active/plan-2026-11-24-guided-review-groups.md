@@ -4,9 +4,10 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Phases 1 and 2 in progress under epic `mb-bxff`, on #807 and #806. Phase 3,
-the stack rollup, is superseded by
-[Whole-Stack Review](plan-2026-11-24-stack-review.md).
+**Status:** Phases 1 and 2 are built under epic `mb-bxff` (#807 and #806, merged
+2026-11-25). Phase 3, the stack rollup, is superseded by
+[Whole-Stack Review](plan-2026-11-24-stack-review.md); its design is kept below as this
+plan first recorded it.
 
 ## Overview
 
@@ -171,6 +172,11 @@ It does not retell the design, and it cites the lines or the document where the 
 is recorded at length.
 A decision with an obvious reason needs no rationale line.
 
+**Addendum, 2026-11-25.** [Whole-Stack Review](plan-2026-11-24-stack-review.md)’s phase
+0 refines this recommendation: a guide has one step for each area of change and one for
+each concern with something to say, a concern of two steps or more is a group, and a
+concern of one step stays a step of its own, so no group holds a single step.
+
 ## Phase 2: Rendered Documents in Steps (`mb-qgz1`)
 
 ### What Changes
@@ -223,14 +229,61 @@ Superseded by [Whole-Stack Review](plan-2026-11-24-stack-review.md), on the owne
 decisions of 2026-11-24 (`mb-ri96` and its sibling beads).
 
 This plan recommended a rollup the route derives from the stack’s layers, one group for
-each layer holding that layer’s own outline (approach C). It is rejected: a rollup of
-layer guides has no overview of the stack, inherits every layer’s detail, and needs a
-tree deeper than the record’s one level of groups.
+each layer holding that layer’s own outline
+([approach C](#the-superseded-rollup-design)). It is rejected: a rollup of layer guides
+has no overview of the stack, inherits every layer’s detail, and needs a tree deeper
+than the record’s one level of groups.
 A stack’s guide is instead one collection of its own, written for the whole stack and
 resolved against the stack’s combined comparison.
 
 What phases 1 and 2 lay down serves it unchanged: the outline tree, the flat step
 numbers, and whole documents drawn as Docs draws them.
+
+### The Superseded Rollup Design
+
+The design as this plan recorded it on 2026-11-24, before the owner’s decisions replaced
+it, kept as written.
+
+A stack’s layers each carry their own guide, pinned to their own comparison.
+A reviewer of the whole stack wants to walk them as one.
+
+#### Approaches Considered
+
+| Approach | How | For | Against |
+| --- | --- | --- | --- |
+| A. One hand-written guide on the top layer | The top layer’s guide cites the stack’s cumulative diff | Works today | Duplicates every layer’s guide and drifts from them; references lose which layer changed a line; `MAX_ITEMS` caps it |
+| B. Nested by reference | A record’s entry includes another pull request’s guide, as `{include: {pull: 765}}` | One source of truth per layer | A new reference kind, cross-PR reads inside one record, and an author must keep the list of layers current by hand |
+| C. A derived rollup | The route builds the rollup from the stack the plugin already knows, one group per layer, each the layer’s own outline | No new record, no drift, each layer stale or current on its own pins | Needs a stack-level preface for decisions that span layers |
+
+**Recommended: C, with an optional preface.** The route answers a rollup for a stack’s
+top pull request: its `outline` has one node per layer, in stack order, whose children
+are that layer’s own outline (its groups and steps), and steps are numbered flat across
+the whole rollup. Each step resolves its references against its own layer’s comparison
+and is stale against its own layer’s pins.
+Decisions that span the stack go in an optional **Stack** group in the bottom layer’s
+guide, which the rollup shows first.
+B stays possible later as an additive field if a rollup needs layers the stack does not
+list.
+
+#### What Phases 1 and 2 Lay Down
+
+- **The outline is a tree**, so a rollup is one more level of the same nodes.
+- **Steps are numbered flat** and navigation reads only step numbers, so the pager and
+  `createGuideNavigation` work over a rollup unchanged.
+- **A step answer carries what resolves it**: its references and their states, so a
+  rollup’s step can come from another layer’s route answer.
+  Phase 3 adds the step’s pull request number to each node.
+- **Staleness is per guide** (`stale` on each answer), so per layer in a rollup.
+- **Groups have no comparison of their own today.** If B is ever needed, a group gains
+  an optional `comparison`, which is additive.
+
+#### Open Questions for Phase 3
+
+- Where the rollup lives: the top layer’s Guided Review tab with a stack toggle, or a
+  page of its own for the stack.
+- Whether a layer without a guide shows as one step that cites its whole diff, or is
+  skipped with a note.
+- How the rollup’s step addresses read in a URL (a flat number, or a layer and a step).
 
 ## Implementation Plan
 

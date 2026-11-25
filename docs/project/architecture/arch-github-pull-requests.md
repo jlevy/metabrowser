@@ -1027,10 +1027,16 @@ the other side when it lies inside the range or touches either end of it.
 A note is Markdown, rendered as the description is: each answer with a step carries its
 note’s render as `note_html`, and the step that opens a group with a note carries that
 note’s as `group_note_html`, each produced by the description’s own path (`render_text`
-in `pull_markdown.py`: KPress in its sanitized mode, then `harden`, in the Markdown
+in `pull_text_render.py`: KPress in its sanitized mode, then `harden`, in the Markdown
 child under its deadline) and kept with the guide’s parse for the record revision within
 `_MAX_KEPT_NOTE_CHARS` (`_rendered_note` in `guided_review.py`). A refused render
-answers null, and the page shows the note as typed, saying nothing.
+answers null, with the refusal’s code beside it as the pull-markdown route answers a
+text’s (`note_refusal`, `group_note_refusal`), and is not kept: the child keeps the
+refusals that are the note’s doing, and renders on the next read after a busy or
+unavailable renderer.
+The page shows a refused note as typed, with the line a description’s refusal says
+(`textRefusalNote` in `pull-page.js`), and keeps no answer whose renderer was busy or
+could not start, so the step is read again.
 The page inserts a render through the description’s allowlist (`inertProse` in
 `pull-page.js`), and draws no Mermaid diagram from a note.
 Titles and diff lines are inserted as text, in the design system’s existing parts: each
