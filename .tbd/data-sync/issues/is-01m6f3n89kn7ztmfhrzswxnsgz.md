@@ -5,7 +5,11 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: in_progress
 priority: 1
-version: 129
+version: 130
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/768
+    at: 2026-11-25T02:23:34.665Z
 delegate: codex@spud10
 labels:
   - linear
@@ -106,7 +110,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-25T01:49:28.277Z
+updated_at: 2026-11-25T02:23:34.679Z
 started_at: 2026-11-07T05:39:51.585Z
 extensions:
   linear:

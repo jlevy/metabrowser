@@ -5,8 +5,60 @@ title: "General diff rendering: source-agnostic comparison model, renderer, and 
 kind: epic
 status: in_progress
 priority: 2
-version: 67
+version: 68
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/811
+    at: 2026-11-25T02:23:17.078Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/732
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/734
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/736
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/738
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/742
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/743
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/744
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/749
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/751
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/753
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/759
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/765
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/766
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/771
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/777
+    at: 2026-11-25T02:23:17.179Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/780
+    at: 2026-11-25T02:23:17.179Z
 labels:
   - diff
   - linear
@@ -71,7 +123,7 @@ child_order_hints:
   - is-01m85cqzk2aa0xjsg7j6jzqrms
   - is-01m85g2mmqswsg6ph8txz0fg44
 created_at: 2026-07-18T01:38:43.961Z
-updated_at: 2026-11-25T02:17:03.921Z
+updated_at: 2026-11-25T02:23:17.179Z
 extensions:
   linear:
     id: 0390e452-459b-479d-8bc2-d469e35c1dd5

@@ -5,8 +5,12 @@ title: Plugin sources and out-of-process plugin environments
 kind: epic
 status: in_progress
 priority: 1
-version: 23
+version: 24
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/380
+    at: 2026-11-25T02:23:25.076Z
 labels:
   - linear
   - Feature
@@ -29,7 +33,7 @@ child_order_hints:
   - is-01m78fwdh6mt5frdg94thadjkh
   - is-01m78gmwnk00rz776w8w8k7g9j
 created_at: 2026-11-12T18:20:18.805Z
-updated_at: 2026-11-25T02:17:14.359Z
+updated_at: 2026-11-25T02:23:25.121Z
 extensions:
   linear:
     id: 2c899caa-16c3-454c-acd8-d66b8a42baf7
