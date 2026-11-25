@@ -188,11 +188,15 @@ fenced YAML block to the GitHub PR description.
 Give the agent the PR description and the diff from its merge base to its head.
 Ask it to choose the code to review in dependency or execution order.
 Each step should explain why the reviewer is looking there and what to verify.
+Keep a guide short: about eight steps or fewer, one for each area of the change, each
+citing what a reviewer must read rather than every changed file, which Changes already
+lists. The [agent skill](../skills/metabrowser/SKILL.md) has the full recipe.
 
 The description is the guide’s overview.
 Guided Review opens with it, rendered as Conversation renders it and without the block,
-so write it to be read first: what the change does and why, then how its parts fit
-together. The block itself has no prose of its own.
+so write it to be read first: a few lines on what is true once the change lands, then
+why, then how its parts fit together.
+The block itself has no prose of its own.
 
 The block is a collection (`metabrowser.collection:Collection/v1`), a general format for
 ordered annotated items that guided reviews are the first use of
