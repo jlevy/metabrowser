@@ -12,10 +12,10 @@
   from a first row, **Whole stack**
   ([The Stack Page](docs/project/architecture/arch-github-pull-requests.md#the-stack-page)).
 
-- **Plugin routes:** `GET /api/plugin/github/stack` answers a stack’s members, the
-  members its top lacks, its comparison’s address, and each file’s layers, and
-  `GET /api/plugin/github/stack-comparison` that comparison as a diff document.
-  `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of `number` and admit
-  the stack’s current pair and its last earlier pairs, which are kept in
-  `sources/<slug>/pulls/stack-<n>.snapshots.json`. Each pending member of the `stack`
+- **Plugin routes:** `GET /api/plugin/github/stack` answers a stack’s members, each with
+  its `author` and `avatar`, the members its top lacks, its comparison’s address, and
+  each file’s layers, and `GET /api/plugin/github/stack-comparison` that comparison as a
+  diff document. `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of
+  `number` and admit the stack’s current pair and its last earlier pairs, which are kept
+  in `sources/<slug>/pulls/stack-<n>.snapshots.json`. Each pending member of the `stack`
   answer says whether its fetch was running before its record was read (`fetching`).

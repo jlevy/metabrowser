@@ -2,7 +2,7 @@
 // stack route's recorded answers (tests/fixtures/github-stack-responses.json). First its
 // header: the rows its first paint draws from the stack the Pulls tab knows, before the stack's
 // answer, are the rows the answer settles in, and what it passes the diff view draws the Diff
-// summary collapsed and Docs and Changes with no layer marks, as a pull request's page does.
+// summary collapsed and Docs and Changes as a pull request's page does.
 // Then Guided Review:
 // the front page mounts the stack's guide and reads its first step at the comparison it draws;
 // a step's file opens in the stack's Changes and another pull request's file in that pull

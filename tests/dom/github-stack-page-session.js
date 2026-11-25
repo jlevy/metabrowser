@@ -620,15 +620,16 @@ async function main() {
   // The header from the page's first paint, when the Pulls tab knows the stack and its lists
   // titled and stated its members, through each answer, and for a stack the Pulls tab does
   // not know. Its rows stay those of the first paint; only the status line comes and goes.
-  // The stacks route read 8's author with its title, so 8's member row ends in it, and holds
-  // none for 10, whose row ends in its number.
+  // A member's author is the answer's once it names one, its record's, and before that the
+  // stacks route's: that route read 8's author with its title and holds none for 10, so at
+  // first paint 8's row ends in its author and 10's in its number, and the answer names 10's.
   const known = {
     number: 70,
     base_ref: current.base_ref,
     open: true,
     pulls: current.members.map((member) => member.number),
     titles: current.members.map((member) => member.title),
-    authors: current.members.map((member) => (member.number === 8 ? "octo" : null)),
+    authors: current.members.map((member) => (member.number === 8 ? "maintainer" : null)),
     avatars: current.members.map(() => null),
   };
   // The Pulls tab's lists read 8, merged.

@@ -437,23 +437,22 @@ try {
         JSON.stringify({ row, menu: menuRows[0] }),
       );
       const menu = menuRows.find((each) => each.number === row.number) ?? null;
-      // The author the menu names for the member, bold, after the number, ending the row; a
-      // member whose author the Pulls tab has not read, as the menu has none, has none.
+      // Every member's author, bold, after the number, ending the row: its record's, from the
+      // stack's answer, which a member the Pulls tab's lists have not read (merged 8, which
+      // the Open list leaves out) has too. The stand-in's pull requests are all the
+      // maintainer's. Where the menu names an author, it is the same one.
       check(
-        `${row.text}: its author is the menu's, and ends the row after its number, bold`,
+        `${row.text}: its author ends the row after its number, bold, as the menu's does`,
         menu !== null &&
-          (row.author?.name ?? null) === menu.author &&
-          (row.author === null ||
-            (Number(row.author.weight) >= 600 && row.author.after_number && row.author.at_end)),
+          row.author?.name === "maintainer" &&
+          (menu.author === null || menu.author === row.author.name) &&
+          Number(row.author.weight) >= 600 &&
+          row.author.after_number &&
+          row.author.at_end,
         JSON.stringify({ row: row.author, menu }),
       );
       check(`${row.text}: no member is the page`, !row.current);
     }
-    check(
-      "a member's author is shown",
-      page.members.some((row) => row.author !== null),
-      JSON.stringify(page.members.map((row) => row.author)),
-    );
     check("the Diff summary is closed", page.summary_open === "false", String(page.summary_open));
     check(
       "View on GitHub opens the whole stack",

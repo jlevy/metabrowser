@@ -97,7 +97,7 @@ export const STACK_TABS = Object.freeze([
 ]);
 
 /**
- * @typedef {{number: number, place: number, title: string | null, state: "open" | "draft" | "merged" | "closed" | null, base: string | null, head: string | null, in_top: boolean | null, pending: boolean, fetching?: boolean}} StackMember
+ * @typedef {{number: number, place: number, title: string | null, state: "open" | "draft" | "merged" | "closed" | null, author: string | null, avatar: string | null, base: string | null, head: string | null, in_top: boolean | null, pending: boolean, fetching?: boolean}} StackMember
  * @typedef {{left: string, right: string, key: string, route: string, image_route: string, rendered_route: string}} StackComparison
  * @typedef {{path: string, layers: Array<{number: number, place: number, path: string}>}} StackFile
  * @typedef {{
@@ -854,10 +854,14 @@ export function knownStack(index, number) {
  * The members as the header lists them, top first, each a member row's line
  * (stack-member-row.js): the stack's answer's once it names them, and before that the
  * stack the Pulls tab knows (*known*), titled and stated as its lists last read them
- * (*listed*), so the list the answer lands on is the list the first paint drew. Each
- * member's author is the one the stack menu draws, the stacks route's
- * (`stackMemberAuthor`), read from the repository's cached list with the member's title,
- * and none where that list does not hold the member. Null while neither names a member.
+ * (*listed*), so the list the answer lands on is the list the first paint drew. Null while
+ * neither names a member.
+ *
+ * A member's author is the answer's, its record's or else its cached list row's
+ * (pull_stack.py), and before the answer the one the stack menu draws, the stacks route's
+ * (`stackMemberAuthor`), read from the same cached list. The answer's falls back to the
+ * stacks route's too, so an answer never takes away an author the first paint drew; neither
+ * names one for a member with no record and no cached row.
  *
  * @param {StackEnvelope | null} envelope
  * @param {NativeStack | null} known
@@ -881,7 +885,9 @@ export function memberLines(envelope, known, listed) {
       place: stackPosition(member.place - 1, members.length),
       title: member.title ?? knownTitle(member.number) ?? listed(member.number)?.title ?? null,
       state: member.state ?? listed(member.number)?.state ?? null,
-      author: author(member.number),
+      author: member.author
+        ? { login: member.author, avatar: member.avatar ?? null }
+        : author(member.number),
     }));
   }
   if (known === null || known.pulls.length === 0) {

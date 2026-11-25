@@ -6,9 +6,9 @@ drawings it asks for, in ``tests/dom/github-stack-page-session.js`` and
 ``tests/dom/github-stack-guide-mount-session.js``. What only a browser can tell is held here
 (docs/design-system.md, "The Stack Page"): that the header's rows are a pull request's, in
 its order, with the members as one card between the title and the merge line; that a member
-row is one line laid out as the stack menu's member row is, its number at the line's end and
-no member marked current, since none is the page; that the Diff summary is closed and the
-combined diff has no layer marks; that View on GitHub opens the whole stack; that the tabs
+row is one line laid out as the stack menu's member row is, its number and then its author
+at the line's end, and no member marked current, since none is the page; that the Diff
+summary is closed; that View on GitHub opens the whole stack; that the tabs
 are a pull request's without Files; and that nothing on the page moves from its first paint,
 opening the page or its Docs and Changes, while the delayed loading block, on this page and
 on a pull request's, stays where it shows.

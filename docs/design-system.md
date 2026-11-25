@@ -3946,8 +3946,8 @@ classes.
 ```text
  [Layers] Stack  #70                              ( [GitHub] View on GitHub | v )
  +--------------------------------------------------------------+
- | [state] WIP: draft the next page                    2/2 · #10 |
- | [state] Say more in the guide                       1/2 · #8  |
+ | [state] WIP: draft the next page       2/2 · #10 · maintainer |
+ | [state] Say more in the guide           1/2 · #8 · maintainer |
  +--------------------------------------------------------------+
  wip -> main
  This stack has changed since its comparison was drawn.  Show the new comparison
@@ -3978,6 +3978,9 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   author rows stand on a pull request’s page, each ending as the menu’s does, “2/4 ·
   #455 · jlevy”, the author the shell’s actor identity with a 16 px avatar; no row is
   the page, so none takes the current-row mark.
+  A member’s author is the one the stack’s answer gives it (`author` and `avatar` on
+  each member of `GET stack`), its record’s or else its cached list row’s, and before
+  the answer the one the stack menu draws, the stacks route’s `authors` and `avatars`.
 - **Branches:** kept. The merge the stack makes, the top member’s head → the stack’s
   base, in the shell’s merge refs, held a line tall until the stack’s answer names the
   head.
@@ -4020,12 +4023,11 @@ answer lands moving nothing under the title.
 `tests/dom/github-stack-page-session.js` runs the header’s rows, from first paint to
 settled, and the drawings the page asks for against the stack route’s recorded answers;
 `tests/dom/github-stack-guide-mount-session.js` mounts the page and holds that the rows
-of its first paint are its settled rows, that the Diff summary is closed, and that no
-drawing asks for layer marks.
+of its first paint are its settled rows and that the Diff summary is closed.
 `tests/test_github_stack_page_chrome.py` measures in headless Chrome that the header’s
-rows are a pull request’s, in its order; that a member row is the stack menu’s; that
-View on GitHub opens the whole stack; and that nothing on the page moves from its first
-paint, opening the page or its tabs.
+rows are a pull request’s, in its order; that a member row is the stack menu’s, its
+author after its number at the row’s end; that View on GitHub opens the whole stack; and
+that nothing on the page moves from its first paint, opening the page or its tabs.
 
 ### Stack Groups in the Pulls Tab
 
