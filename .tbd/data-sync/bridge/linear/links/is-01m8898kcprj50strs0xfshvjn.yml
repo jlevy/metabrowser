@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:03acf3a003582a56597b6c10970e84842ebd51417d355ab1b3310bbceaabe9d7
+  labels:
+    - linear
+    - Bug
+  priority: 1
+  status: open
+  title: "Security hardening: close the threat model's open findings"
+bead_id: is-01m8898kcprj50strs0xfshvjn
+external_id: dbe32518-a918-4662-8481-6c14d83fce00
+external_key: OS-630
+external_url: https://linear.app/finterm-ai/issue/OS-630/security-hardening-close-the-threat-models-open-findings
+remote_updated_at: 2026-11-25T02:43:22.516Z
+state: linked
+synced_at: 2026-11-25T02:43:22.753Z
+type: lk
