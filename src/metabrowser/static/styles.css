@@ -3038,9 +3038,39 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 .source-ref-selector[hidden] {
   display: none;
 }
+/* A checkout's row says which view the page shows (docs/design-system.md, "The Ref
+   Selector"): "Working tree" or "Revision" in the row's ink, a muted dot, then the ref.
+   A revision ends the row with its way back, a .btn at the row's end, which goes under
+   the rest when the pane is too narrow for both, so the ref is never cut to make room. */
 .source-ref-selector {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
   padding: var(--nav-toolbar-gap) var(--pane-header-padding-x) 0;
+}
+.source-ref-selector-view,
+.source-ref-selector-sep {
+  flex: none;
+  white-space: nowrap;
+}
+.source-ref-selector-sep {
+  color: var(--muted);
+}
+.source-ref-selector-back {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.source-ref-selector-back[hidden] {
+  display: none;
+}
+.source-ref-selector-back-arrow {
+  color: var(--muted);
+  line-height: 1;
 }
 .source-ref-selector-button {
   display: inline-flex;
@@ -3100,9 +3130,15 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   left: 0;
   right: 0;
 }
+/* The served choice, the working tree or one ref, is marked as a Pulls row and a stack's
+   member are marked current: the highlight's tint and its 2px bar inset at the left edge,
+   hovered or not, with the medium weight. The weight alone did not tell the two lists
+   apart in a screenshot (mb-cxpq). */
 .source-ref-selector-row[aria-current="true"],
 .source-ref-selector-working-tree[aria-current="true"] {
   font-weight: var(--weight-medium);
+  background: var(--highlight-bg);
+  box-shadow: inset 2px 0 0 var(--highlight-bar);
 }
 /* A row is the ref's own line and, under it, the pull request its branch heads. The ref's line
    is a row with none, as tall as before; the list places each row by its own height

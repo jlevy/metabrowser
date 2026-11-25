@@ -163,11 +163,14 @@ function paintOf(model) {
   if (model.removed) {
     return { removed: true };
   }
+  // A checkout's revision ends its row with a button back to the working tree.
+  const back = model.back ? { back: "[← Working tree]" } : {};
   if (!model.open) {
-    return { button: model.button, open: false, ...stale };
+    return { button: model.button, ...back, open: false, ...stale };
   }
   return {
     button: model.button,
+    ...back,
     open: true,
     // What the filter box says, once the server has pull requests for it to find.
     ...(model.pullRequests?.state === "ready" ? { filter: model.filterLabel } : {}),

@@ -46,6 +46,7 @@ from metabrowser.checkout_revisions import (
     CheckoutGitUnsupportedError,
     open_on_ref,
 )
+from metabrowser.commit_ids import short_commit
 from metabrowser.git import repo as git_repo
 from metabrowser.git.process import (
     GIT_NO_CONFIGURED_FORMAT_ARGS,
@@ -356,6 +357,61 @@ def test_the_checked_out_branch_is_its_commit_and_the_working_tree_is_a_separate
     live = served.get("/api/file", params={"path": "README.md"}).json()
     assert live["content"] == EDITED_README
     assert _pin(served, working_tree=True)["changed"] is False
+
+
+_SELECTOR_ROW = re.compile(r'<div class="source-ref-selector" id="source-ref-selector".*?</div>')
+
+
+def _selector_row(client: TestClient) -> str:
+    """The revision row the server draws at first paint, before the selector mounts."""
+
+    found = _SELECTOR_ROW.search(client.get("/view/").text)
+    assert found is not None
+    return found.group(0)
+
+
+def test_the_row_tells_the_working_tree_from_the_checked_out_branchs_revision(
+    served: TestClient, checkout: Path
+) -> None:
+    """The working tree and its branch's own revision never read the same (mb-cxpq).
+
+    Both name the branch topic, so the row says which view it is in words first, and a
+    revision has a button back to the working tree; the working tree has none, since it is
+    where the button goes. ``tests/golden/cli-ui-source-ref-selector.tryscript.md`` pins
+    what the mounted selector then paints from the same attributes.
+    """
+
+    tree = _selector_row(served)
+    assert ' data-view="working-tree" data-working-branch="topic">' in tree
+    assert (
+        '<span class="source-ref-selector-label"><span class="source-ref-selector-view">'
+        'Working tree</span><span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
+        '<span class="git-ref git-ref-local"><span class="git-ref-label">topic</span></span>'
+        "</span>"
+    ) in tree
+    assert "source-ref-selector-back" not in tree
+    _pin(served, ref="refs/heads/topic")
+    revision = _selector_row(served)
+    assert ' data-view="revision">' in revision and "data-working-" not in revision
+    assert (
+        '<span class="source-ref-selector-view">Revision</span>'
+        '<span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
+        '<span class="git-ref git-ref-local"><span class="git-ref-label">topic</span></span>'
+    ) in revision
+    assert (
+        '<button type="button" class="btn source-ref-selector-back"'
+        ' aria-label="Back to the working tree"'
+    ) in revision
+    _pin(served, working_tree=True)
+    assert _selector_row(served) == tree
+    # A detached HEAD's working tree names its commit, in the commit-ID face.
+    git(checkout, "checkout", "-q", "--detach", "topic")
+    detached = _selector_row(served)
+    assert f' data-view="working-tree" data-working-commit="{SECOND}">' in detached
+    assert (
+        'Working tree</span><span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
+        f'<span class="git-commit-sha">{short_commit(SECOND)}</span></span>'
+    ) in detached
 
 
 def test_a_tag_a_remote_branch_and_a_commit_are_shown_and_a_miss_fetches_nothing(

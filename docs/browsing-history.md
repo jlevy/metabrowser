@@ -112,8 +112,9 @@ branch moves on, the foot offers its new commit with **Switch**.
 
 A folder that is a repository’s root opens on **Working tree**, the files on disk with
 whatever you have edited, staged, or not yet added.
-Click the checked-out branch’s chip for its actions.
-A checkout without a branch shows **Working tree** in the row.
+The row under the Files tab says so, then names the branch the files are on, as in
+“Working tree · main”, or the commit when `HEAD` is detached.
+Click the branch’s chip for its actions.
 Click the chevron in that row or press `W` to browse the other branches and tags.
 
 - **Working tree** is the first row, and the only one that shows your live files.
@@ -142,10 +143,12 @@ Click the chevron in that row or press `W` to browse the other branches and tags
   Another remote’s branches, and a tag only your checkout has, are read from the
   checkout.
 - Choosing a branch or tag shows its last commit, read from the repository’s Git
-  objects. The revision row then names it, and the navigation header, still the folder’s
-  name, names its full commit when you hover over it.
-  This includes the checked-out branch: choosing it shows what is committed, without
-  your uncommitted changes, and **Working tree** is the way back to them.
+  objects. The row then says “Revision” before its name and ends with a **Working tree**
+  button, and the navigation header, still the folder’s name, names its full commit when
+  you hover over it. This includes the checked-out branch: choosing it shows what is
+  committed, without your uncommitted changes, so its row reads “Revision · main” where
+  the working tree’s read “Working tree · main”.
+  The row’s **Working tree** button, or the list’s first row, is the way back to them.
 
 Nothing is checked out, fetched, or written.
 Your working tree, your index, and `HEAD` stay exactly as they are, so it is safe with

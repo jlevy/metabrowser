@@ -301,12 +301,15 @@ async function runCheckout() {
   const steps = [];
   const recording = recordedCheckout;
   const onReadme = { view: recording.views.readme };
-  const options = (shown) => ({ shown, checkout: true });
+  // The page names the branch its working tree is on, as server.py writes it on the row
+  // (`data-working-branch`): the fixture checkout's HEAD is on topic.
+  const options = (shown) => ({ shown, checkout: true, workingBranch: "topic" });
 
-  // The folder opens on its working tree, showing README.md.
+  // The folder opens on its working tree, showing README.md: the row says so in words,
+  // then names the branch the files on disk are on.
   let page = createPage(onReadme);
   let selector = selectorRuntime.createSelector(page.deps, options(null));
-  steps.push(page.observe("the button names the working tree"));
+  steps.push(page.observe("the button names the working tree and the branch it is on"));
 
   const opening = selector.open();
   await page.answer(recording.branches);
@@ -338,7 +341,9 @@ async function runCheckout() {
   const onRevisionReadme = { view: recording.views.readme_revision };
   page = createPage(onRevisionReadme);
   selector = selectorRuntime.createSelector(page.deps, options(shownOf(recording.switch_branch)));
-  steps.push(page.observe("the button names the branch shown"));
+  steps.push(
+    page.observe("the button names the branch shown, a revision, and offers the way back"),
+  );
   const reopened = selector.open();
   await page.answer(recording.branches_on_revision);
   await reopened;
@@ -351,11 +356,15 @@ async function runCheckout() {
   steps.push(page.observe("the checked-out branch opens its commit, not the working tree"));
   selector.dispose();
 
+  // The checked-out branch's own revision reads differently from its working tree: the
+  // row says "Revision", and its button goes back, as the list's Working tree row does
+  // (both call `chooseWorkingTree`).
   page = createPage(onRevisionReadme);
   selector = selectorRuntime.createSelector(
     page.deps,
     options(shownOf(recording.switch_checked_out)),
   );
+  steps.push(page.observe("the checked-out branch's revision is not its working tree"));
   const toTree = selector.chooseWorkingTree();
   steps.push(page.observe("the working tree is asked for by name, not by a ref"));
   await page.answer(recording.switch_working_tree);
@@ -425,16 +434,22 @@ async function runCheckout() {
   selector.dispose();
 
   const pin = recording.switch_branch.body.status.pin;
+  // The working tree on a branch, at a detached HEAD, and with a HEAD the server could not
+  // read; then each kind of revision, which offers the way back.
   const labels = [
-    null,
-    { pin, ref: "refs/heads/feature" },
-    { pin, ref: "refs/remotes/origin/feature" },
-    { pin, ref: "refs/tags/v1" },
-    { pin, ref: null },
-  ].map((shown) => {
-    const model = selectorRuntime.describe({ ...emptyState(), shown, checkout: true });
+    [null, { workingBranch: "topic" }],
+    [null, { workingCommit: pin }],
+    [null, {}],
+    [{ pin, ref: "refs/heads/feature" }, {}],
+    [{ pin, ref: "refs/remotes/origin/feature" }, {}],
+    [{ pin, ref: "refs/tags/v1" }, {}],
+    [{ pin, ref: null }, {}],
+  ].map(([shown, head]) => {
+    const model = selectorRuntime.describe({ ...emptyState(), ...head, shown, checkout: true });
     const chip = model.selectedRef === null ? "" : ` (${model.selectedRef.kind} chip)`;
-    return `${model.button}${chip}`;
+    const id = model.commitId === null ? "" : " (commit-ID face)";
+    const back = model.back ? " [← Working tree]" : "";
+    return `${model.button}${chip}${id}${back} | ${model.viewTip}`;
   });
 
   // What each kind of page names on its data requests, so a tab left behind is refused:

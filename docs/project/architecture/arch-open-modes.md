@@ -237,8 +237,11 @@ are deferred.
   nothing is fetched into the checkout.
 - **The checked-out branch, chosen as a ref, is a revision.** It shows the branch’s last
   commit. The working tree is a separate choice, and it is what a folder opens on.
-- **The page says which view it shows.** The chooser reads “Working tree” or names the
-  ref, and a revision’s name carries `@<ref>`, as a mirror’s does.
+- **The page says which view it shows.** The row the chooser opens from reads “Working
+  tree” and the branch or commit `HEAD` is on, or “Revision” and the chosen ref with a
+  button back to the working tree
+  ([The Ref Selector](../../design-system.md#the-ref-selector)), and a revision’s name
+  carries `@<ref>`, as a mirror’s does.
 - **The view is the Files tab’s.** The chooser leads the Files tab’s toolbar, and the
   other tabs do not follow it: Pulls never depended on it, and Commits is the checkout’s
   history whichever view Files shows, read from the folder

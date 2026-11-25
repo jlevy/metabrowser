@@ -216,7 +216,8 @@ from metabrowser.recent import (
     recent_result_from_projection,
 )
 from metabrowser.repository_context import (
-    checked_out_branch,
+    CheckedOutHead,
+    checked_out_head,
     discover_repository_context,
     is_checkout_root,
 )
@@ -1642,15 +1643,47 @@ def _source_ref_chip_html(name: str, kind: str) -> str:
     )
 
 
+def _source_ref_view_html(word: str) -> str:
+    """The word a checkout's revision row starts with, then the dot before its ref."""
+
+    return (
+        f'<span class="source-ref-selector-view">{word}</span>'
+        # The spaces are the text's alone: as a flex item's edges they collapse, and
+        # the label's gap sets the room.
+        '<span class="source-ref-selector-sep" aria-hidden="true"> · </span>'
+    )
+
+
 def _source_ref_label_html(
-    pin: GitRevisionSubject | None, *, checkout: bool, working_branch: str | None
+    pin: GitRevisionSubject | None, *, checkout: bool, working_head: CheckedOutHead | None
 ) -> str:
-    """The selected source before the chooser mounts, in the same faces and dimensions."""
+    """The selected source before the chooser mounts, in the same faces and dimensions.
+
+    A checkout's row says which of its two views the page shows, in words, before the ref:
+    "Working tree" and the branch, or the commit a detached ``HEAD`` is at, that the files
+    on disk are on, or "Revision" and the ref that was chosen
+    (``static/source-ref-selector.js``, ``describe``).
+    """
 
     if pin is None:
-        if working_branch is not None:
-            return _source_ref_chip_html(working_branch, "local")
-        return "Working tree" if checkout else "Revision"
+        if not checkout:
+            return "Revision"
+        if working_head is None:
+            return "Working tree"
+        on = (
+            _source_ref_chip_html(working_head.branch, "local")
+            if working_head.branch is not None
+            else f'<span class="git-commit-sha">{html_escape(short_commit(working_head.revision))}</span>'
+        )
+        return _source_ref_view_html("Working tree") + on
+    if checkout:
+        return _source_ref_view_html("Revision") + _source_ref_revision_html(pin, checkout=True)
+    return _source_ref_revision_html(pin, checkout=False)
+
+
+def _source_ref_revision_html(pin: GitRevisionSubject, *, checkout: bool) -> str:
+    """The ref a revision's page was drawn for: its chip, a pull request, or a bare commit."""
+
     if checkout:
         from metabrowser.checkout_revisions import checkout_ref_name
 
@@ -1896,33 +1929,48 @@ async def index(
         if git_pin or (origin_store is not None and origin_store.fetchable)
         else ""
     )
-    # The selector is its own Files row, above the filter bar. Reserve both the label
-    # and its chooser button at first paint. Working tree files are still live on disk,
-    # even when the chip names the branch that the checkout is on.
+    # The selector is its own Files row, above the filter bar. Reserve the label, its
+    # chooser button, and a revision's way back at first paint. A checkout's row says
+    # which view the page shows: the working tree, the live files on disk, named with the
+    # branch or commit they are on, or a revision chosen from the list, with a button back
+    # to the working tree (docs/design-system.md, "The Ref Selector").
     source_ref_selector = ""
     if checkout is not None or (git_pin and mirror is not None):
-        working_branch = None
+        working_head: CheckedOutHead | None = None
+        view_attrs = ""
+        back = ""
         if checkout is not None and pin is None:
-            working_branch = (
-                tip_context["branch"]
+            working_head = (
+                CheckedOutHead(tip_context["branch"], tip_context["revision"])
                 if tip_context is not None
-                else await asyncio.to_thread(checked_out_branch, checkout.root)
+                else await asyncio.to_thread(checked_out_head, checkout.root)
             )
-        branch_attr = (
-            f' data-working-branch="{html_escape(working_branch, quote=True)}"'
-            if working_branch is not None
-            else ""
-        )
+            view_attrs = ' data-view="working-tree"'
+            if working_head is not None and working_head.branch is not None:
+                view_attrs += (
+                    f' data-working-branch="{html_escape(working_head.branch, quote=True)}"'
+                )
+            elif working_head is not None:
+                view_attrs += f' data-working-commit="{working_head.revision}"'
+        elif checkout is not None:
+            view_attrs = ' data-view="revision"'
+            back = (
+                '<button type="button" class="btn source-ref-selector-back"'
+                ' aria-label="Back to the working tree"'
+                ' data-tip-text="Back to the working tree, the files on disk">'
+                '<span class="source-ref-selector-back-arrow" aria-hidden="true">←</span>'
+                "Working tree</button>"
+            )
         label = _source_ref_label_html(
-            pin, checkout=checkout is not None, working_branch=working_branch
+            pin, checkout=checkout is not None, working_head=working_head
         )
         source_ref_selector = (
-            f'<div class="source-ref-selector" id="source-ref-selector"{branch_attr}>'
+            f'<div class="source-ref-selector" id="source-ref-selector"{view_attrs}>'
             '<span class="source-ref-selector-button">'
             f'<span class="source-ref-selector-label">{label}</span>'
             '<button type="button" class="icon-btn source-ref-selector-toggle disclosure-toggle"'
             ' aria-label="Switch branch or tag" aria-haspopup="dialog" aria-expanded="false"'
-            ' data-tip-text="Switch branch or tag"></button></span></div>'
+            f' data-tip-text="Switch branch or tag"></button></span>{back}</div>'
         )
     # The Pulls tab follows a hosted mirror or a GitHub checkout, including a
     # checkout's revisions and subdirectories. It costs a plain folder nothing,

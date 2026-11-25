@@ -278,7 +278,10 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
     checkout = run_session("source-ref-selector-session.js")["checkout"]
     by_name = {step["step"]: step for step in checkout["steps"]}
     recording = read_recording(CHECKOUT_RECORDING)
-    assert by_name["the button names the working tree"]["paint"]["button"] == "Working tree"
+    # The row says it shows the working tree, and which branch the files on disk are on.
+    opened = by_name["the button names the working tree and the branch it is on"]["paint"]
+    assert opened["button"] == "Working tree · Branch: topic"
+    assert "back" not in opened
     listed = by_name["the working tree is listed above the branches, and is what is served"]
     assert listed["paint"]["workingTree"] == (
         "Working tree: /sandbox/checkout (kept whole: checkout) [current]"
@@ -295,6 +298,12 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
     ]
     shown = by_name["the branch shown is current, and the working tree no longer is"]["paint"]
     assert shown["workingTree"] == "Working tree: /sandbox/checkout (kept whole: checkout)"
+    # A revision says so, and offers the way back in its row.
+    assert (shown["button"], shown["back"]) == ("Revision · Branch: feature", "[← Working tree]")
+    # The checked-out branch's own revision does not read as its working tree (mb-cxpq).
+    checked_out = by_name["the checked-out branch's revision is not its working tree"]["paint"]
+    assert checked_out["button"] == "Revision · Branch: topic"
+    assert checked_out["button"] != opened["button"] and checked_out["back"]
     # The folder's own name is kept whole at the end of its path, whichever separator
     # joined it, and the home directory, `~`, is not cut at all.
     assert checkout["folders"] == {
@@ -336,12 +345,19 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
     )
     mirror = by_name["a mirror's selector asks for no working tree and offers no reload"]
     assert mirror["requests"] == [] and "stale" not in mirror["paint"]
+    short = short_commit(recording["switch_branch"]["body"]["status"]["pin"])
+    revision = "A committed revision, read from Git. The files on disk are unchanged."
+    back = "[← Working tree]"
     assert checkout["labels"] == [
-        "Working tree",
-        "Branch: feature (local chip)",
-        "Remote branch: origin/feature (remote chip)",
-        "Tag: v1 (tag chip)",
-        f"Commit: {short_commit(recording['switch_branch']['body']['status']['pin'])}",
+        "Working tree · Branch: topic (local chip)"
+        " | The files on disk, live. The checkout is on topic.",
+        f"Working tree · {short} (commit-ID face)"
+        f" | The files on disk, live. HEAD is detached at {short}.",
+        "Working tree | The files on disk, live.",
+        f"Revision · Branch: feature (local chip) {back} | {revision}",
+        f"Revision · Remote branch: origin/feature (remote chip) {back} | {revision}",
+        f"Revision · Tag: v1 (tag chip) {back} | {revision}",
+        f"Revision · Commit: {short} (commit-ID face) {back} | {revision}",
     ]
     pin = recording["switch_branch"]["body"]["status"]["pin"]
     refused = "refused when another is served: true; while its own is: false"

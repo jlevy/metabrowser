@@ -4068,6 +4068,9 @@ declare global {
     checkout?: boolean;
     /** The branch whose live checkout is shown, when HEAD names a branch. */
     workingBranch?: string;
+    /** The commit a detached HEAD is at, when the working tree is shown and HEAD names
+     * no branch. */
+    workingCommit?: string;
     /** What the server came to serve instead of this page: a commit, "" for the working
      * tree, or null while the page is current. A checkout's page only. */
     stale?: string | null;
@@ -4078,7 +4081,19 @@ declare global {
   /** What the ref selector shows for one state. */
   type MetabrowserSourceRefSelectorModel = {
     selectedRef: { name: string; label: string; kind: string; ref?: string } | null;
+    /** What the row says, as text: a checkout's view word, a dot, and the ref. */
     button: string;
+    /** Which of a checkout's two views the page shows; null on a mirror's. */
+    view: "working-tree" | "revision" | null;
+    /** "Working tree" or "Revision", which a checkout's row starts with; null on a mirror's. */
+    viewLabel: string | null;
+    /** The view word's tooltip. */
+    viewTip: string | null;
+    /** The ref the row names after its view word, as text: "Branch: main", or "" for
+     * a working tree whose HEAD could not be read. */
+    refText: string;
+    /** Whether the row offers its button back to the working tree: a checkout's revision. */
+    back: boolean;
     /** The served pull request's number, "#7", when the page is a pull request's head. */
     pullNumber: string | null;
     /** The served commit's ID, set in the commit-ID face, when the page is a bare commit's. */
@@ -4156,6 +4171,8 @@ declare global {
     root: HTMLElement;
     toggle: HTMLButtonElement;
     label: HTMLElement;
+    /** A checkout's revision's button back to the working tree. */
+    back: HTMLButtonElement;
     stale: HTMLElement;
     staleText: HTMLElement;
     reload: HTMLButtonElement;
@@ -4225,7 +4242,12 @@ declare global {
     FILTER_DELAY_MS: number;
     createSelector(
       deps: MetabrowserSourceRefSelectorDependencies,
-      options?: { shown?: MetabrowserSourcePage | null; checkout?: boolean },
+      options?: {
+        shown?: MetabrowserSourcePage | null;
+        checkout?: boolean;
+        workingBranch?: string;
+        workingCommit?: string;
+      },
     ): MetabrowserSourceRefSelector;
     describe(state: MetabrowserSourceRefSelectorState): MetabrowserSourceRefSelectorModel;
     mount(element: HTMLElement): MetabrowserSourceRefSelectorMount;

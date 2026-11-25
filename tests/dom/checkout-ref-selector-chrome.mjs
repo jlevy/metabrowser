@@ -20,7 +20,8 @@
 //      for data, and reads the offer to reload that the selector then makes, and where
 //      it sits: at the pane's foot, under the tree and the Files toolbar's band;
 //   5. reloads, which lands on the working tree through the server's translation of the
-//      revision's address, and chooses the Working tree row from a revision again;
+//      revision's address, and chooses the Working tree row from a revision again, and
+//      later the row's own button back from the checked-out branch's revision;
 //   6. goes Back onto the revision's address while the working tree is served;
 //   7. browses a revision's page, a file and its history, and reads how every data
 //      request of each page was answered: none of a current page's is refused, and the
@@ -274,6 +275,15 @@ const PAGE = `(() => {
     checkout: window.METABROWSER_SOURCE_CHECKOUT ?? null,
     pin: window.METABROWSER_SOURCE_PIN ?? null,
     button: toggle?.parentElement.querySelector(".source-ref-selector-label")?.textContent.trim() ?? null,
+    // Which view the row says the page shows, and its button back to the working tree:
+    // its words and whether it shows, in the Files row beside the chooser.
+    view: document.getElementById("source-ref-selector")?.dataset.view ?? null,
+    back: (() => {
+      const back = document.querySelector("#source-ref-selector .source-ref-selector-back");
+      return back && back.checkVisibility()
+        ? { text: back.textContent, name: back.getAttribute("aria-label"), btn: back.matches(".btn") }
+        : null;
+    })(),
     inFilesRow:
       toggle?.closest("#nav-files-ref")?.previousElementSibling.matches(".nav-tab-bar") === true &&
       toggle.closest("#nav-files-ref").nextElementSibling.id === "nav-filter-bar",
@@ -714,6 +724,11 @@ try {
   await openPanel();
   await switchBy(rowNamed("topic"));
   result.checkedOutBranch = await chrome.evaluate(PAGE);
+  // The row's own way back, one click from the checked-out branch's revision (mb-cxpq).
+  result.toWorkingTreeByButton = await switchBy(
+    `document.querySelector("#source-ref-selector .source-ref-selector-back")`,
+  );
+  result.backByButton = await chrome.evaluate(PAGE);
   await openPanel();
   await switchBy(rowNamed("feature"));
   takeDataRequests();

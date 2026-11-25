@@ -6374,18 +6374,40 @@ revisions.
   folder’s name stays whole.
 
 - **The served choice is marked one way.** A ref’s row and the working-tree row both
-  carry `aria-current` and the medium weight when they are what the server shows, and
-  exactly one of them does.
-  The checked-out branch is not that row unless it was chosen: it says “checked out” in
-  the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
+  carry `aria-current` when they are what the server shows, and exactly one of them
+  does. It is drawn as a Pulls row and a stack’s member are drawn current: the medium
+  weight, `--highlight-bg`, and the 2px `--highlight-bar` inset at its left edge,
+  hovered or not. The weight alone left the list on the working tree and the list on a
+  revision looking the same (2026-11-25). The checked-out branch is not that row unless
+  it was chosen: it says “checked out” in the `.source-ref-selector-badge` a mirror’s
+  default branch says “default” in.
 
-- **The revision row identifies the checkout’s source.** With live files, the chip names
-  the checked-out branch and opens its actions.
-  A checkout without a branch shows **Working tree** in the row.
-  The chooser’s **Working tree** entry is current in both cases.
-  On a pinned revision the row names the selected ref or commit.
-  The main heading’s note says “committed revision of” the folder.
-  The Info button’s menu describes the pinned source beside its local path.
+- **A checkout’s row says which view the page shows, in words, before the ref.** A
+  checkout has two views, the working tree and a revision, and the checked-out branch
+  names both: its live files, and its last commit chosen from the list.
+  So the ref alone cannot say which one the page is, and the row starts with the view’s
+  word (`.source-ref-selector-view`), a muted dot (`.source-ref-selector-sep`), and then
+  the ref. The owner found choosing **Working tree** changed nothing on screen when the
+  row named only the branch, on the working tree and on the branch’s revision alike
+  (2026-11-25). On a revision, the main heading’s note also says “committed revision of”
+  the folder, and the Info button’s menu describes the pinned source beside its local
+  path.
+  - **Working tree · `main`**: the live files, with the branch `HEAD` is on as its chip,
+    which opens its actions.
+    A detached `HEAD` names its commit, in the commit-ID face; a `HEAD` the server
+    cannot read leaves the word alone.
+    The word’s tooltip says the files are live on disk and which branch or commit they
+    are on. The chooser’s **Working tree** entry is current.
+  - **Revision · `feature`**: one commit chosen from the list, read-only, whichever ref
+    it came from, the checked-out branch included.
+    The row ends with a `.btn`, `.source-ref-selector-back`, “← Working tree”, named
+    “Back to the working tree”, which asks for the working tree as the chooser’s entry
+    does: one click back from any revision.
+    The word’s tooltip says the files on disk are unchanged.
+  - The words are the view’s, not the ref’s: a mirror has only revisions, so its row
+    names the ref alone and has no way back.
+  - Where the pane is too narrow for the row, the button goes under it, at its end, and
+    the chip is cut before the words are.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
   freshness row a mirror offers its reload in, with one `.btn`, “Reload page”
@@ -6395,8 +6417,8 @@ revisions.
   A checkout’s Commits tab is answered whichever revision is served (`SourcePinGuard` in
   `source_routes.py`). It appears only after another tab has switched the server.
 
-- **The revision row keeps its box from first paint.** The server draws the row before
-  the chooser module loads.
+- **The revision row keeps its box from first paint.** The server draws the row, its
+  view’s word and a revision’s button back included, before the chooser module loads.
   The module adopts the chevron button, preserving focus that reaches it early
   ([Regions Keep Their Boxes](#regions-keep-their-boxes)). Changes to filters or tallies
   leave the open chooser’s query, scroll position, and focus in place.
