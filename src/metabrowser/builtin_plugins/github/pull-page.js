@@ -4798,9 +4798,9 @@ export function mountPullPage(container, ctx, mb) {
   let detailsOpen = null;
   header.append(stateRow);
   // The status line: what the page has to say beyond the note, a failure and its remedy, a
-  // message, and the offers, one of the header's metadata lines, under the row of ages and as
-  // tall as it, there only while it has something to say. Its controls are text actions, a
-  // line tall (mb-2u08).
+  // message, and the offers, one of the header's metadata lines, a line tall as the author's
+  // row is, there only while it has something to say. Its controls are text actions, a line
+  // tall (mb-2u08). The row of ages is a stack chip's height (mb-646g).
   const status = h("div", { class: "github-pull-status page-header-line" });
   /** Commits of the conversation are being read from GitHub for the record shown. */
   let timelineBusy = false;

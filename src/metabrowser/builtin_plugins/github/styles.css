@@ -577,7 +577,7 @@
     calc((var(--github-label-l) + var(--github-label-lighten-by)) * 1%)
   );
 }
-/* One of the header's metadata lines, under the row of ages and as tall as it, there only
+/* One of the header's metadata lines, a line tall as the author's row is, there only
    while it has something to say beyond the note: a failure and its remedy, a message, an
    offer. So those, and only those, move the tab bar as the line comes and goes; a rate
    limit's hold, which begins and lifts by itself, is said in the note's place and moves
