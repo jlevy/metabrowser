@@ -157,12 +157,13 @@ def fresh_markdown_child() -> Generator[None]:
     A test that runs the serve path in-process marks the process as serving pages, which
     starts the child ahead of documents; the next test begins as a one-shot command.
 
-    A test whose event loop closed while the worker still had a child, or a start, on it
-    fails: it skipped the close the server's lifespan always makes
-    (``ProjectionWorker.aclose``). ``asyncio.run`` then cancels a start still spawning
-    together with the task connecting its pipes, and on CPython 3.12 and 3.13 that start
-    never finishes, so the run never returns (mb-4g7f); a child that did start outlives
-    its loop, which logs that the loop handling it is closed.
+    A test whose event loop ended while the worker was still starting a child fails: it
+    skipped the close the server's lifespan always makes (``ProjectionWorker.aclose``),
+    which cancels the start on its own. ``asyncio.run`` cancels it together with the task
+    connecting its pipes instead, and on CPython 3.12 and 3.13 a start cancelled while it
+    spawns never finishes, so the run never returns (mb-4g7f). A run that escaped the hang
+    leaves the start cancelled, which this reads. A child that was ready when its loop
+    ended is only stopped here, as before.
     """
 
     from metabrowser.diff import markdown_projection_worker as worker_module
@@ -176,20 +177,24 @@ def fresh_markdown_child() -> Generator[None]:
     if shared.cache_info().currsize:
         worker = shared()
         loop = worker._loop  # pyright: ignore[reportPrivateUsage]
-        stranded = (
+        # The worker's own close and stop forget their start, so a start still kept was
+        # ended, if at all, by its loop's end.
+        start = worker._starting  # pyright: ignore[reportPrivateUsage]
+        cut_off = (
             loop is not None
             and loop.is_closed()
-            and (worker._process is not None or worker._starting is not None)  # pyright: ignore[reportPrivateUsage]
+            and start is not None
+            and (not start.done() or start.cancelled())
         )
         # Its event loop may be closed by now; stopping kills the child by its process.
         with contextlib.suppress(RuntimeError):
             worker.stop()
         shared.cache_clear()
-        if stranded:
+        if cut_off:
             pytest.fail(
-                "The event loop that used the shared Markdown child worker closed with its"
-                " child, or a start, still on it: end that loop with"
-                " `await shared_worker().aclose()`, as the server's lifespan does",
+                "The event loop that used the shared Markdown child worker ended while it"
+                " was starting a child: end that loop with `await shared_worker().aclose()`,"
+                " as the server's lifespan does",
                 pytrace=False,
             )
 
