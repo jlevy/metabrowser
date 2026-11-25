@@ -228,6 +228,8 @@ group holds steps only, so groups do not nest, and a group without steps is refu
 a guide without steps is.
 Steps outside a group may sit between groups, and every step is numbered in reading
 order, through the groups.
+A group’s note is for orientation, so the page shows it once, above the group’s first
+step.
 
 Use the changed path shown in Changes, the `old` or `new` side, and an inclusive line
 range within one diff hunk.
@@ -238,10 +240,14 @@ it replaced. A step’s excerpts share one size budget (`MAX_EXCERPT_BYTES` in
 `guided_review.py`); an excerpt past it says it is too large to show.
 A `path` alone shows the file’s whole diff, as Changes draws it: its hunk bars, and its
 long runs folded behind bars you expand.
-A `path` alone of a Markdown, YAML, or JSON file shows the document as Docs draws it
-instead: rendered, with its **Rendered** and **Source** choice and **Diff** and
-**Current**. Docs lists it among the pull request’s other documents.
-A step’s whole files share a budget of their own (`MAX_STEP_PATCH_BYTES` in
+A `path` alone of a Markdown file shows it as Docs draws it instead: rendered, with its
+**Rendered** and **Source** choice and **Diff** and **Current**, every fold open, on
+whichever of **Diff** and **Current** Docs shows.
+A `path` alone of a YAML or JSON file shows it as Changes draws it: rendered too, with
+the same choices, on whichever Changes shows.
+Either is drawn from the file’s own reads, so its rendered view has the bounds it has in
+Docs and Changes, and it takes nothing from the step’s budget for whole files.
+A step’s other whole files share that budget (`MAX_STEP_PATCH_BYTES` in
 `guided_review.py`); a file past it says its diff is too large to show in the step, and
 **Open full diff** shows it in Changes.
 A binary change or a rename without a text diff says it has no text changes to show.
@@ -273,10 +279,11 @@ To bring the guide current, update its pins and ranges in the PR description.
 
 A guide the page cannot read says why in place of the steps: invalid YAML, a second
 block, another contract, a field that fails the schema (with its place below
-`collection`, such as `items.0.references.0`), or pins whose `merge_base` is not an
-ancestor of their `head`. Its block then stays in the description, so its author sees
-what they wrote. The same answer is the `guided-review` route’s, which this prints from
-the cached pull request:
+`collection`, such as `items.0.references.0`), more steps and groups than `MAX_ITEMS`
+allows, or pins whose `merge_base` is not an ancestor of their `head`. Its block then
+stays in the description, so its author sees what they wrote.
+The same answer is the `guided-review` route’s, which this prints from the cached pull
+request:
 
 ```shell
 metab <pull request URL> --api '/api/plugin/github/guided-review?number=<n>'

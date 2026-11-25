@@ -441,17 +441,20 @@ is the format’s full reference, with its limits.
 A guide does more than explain the change.
 It is the reviewer’s agenda, so give each of these concerns a step, or a run of steps,
 of its own, in this order, and title each step so the list reads as that agenda.
-When the guide has more than about six steps, or covers several of these concerns, put
-each concern’s steps in a group named as below, so the page’s step list shows the agenda
-as headings:
+A guide of more than about six steps puts each concern’s steps in a group named as
+below, so the page’s step list shows the agenda as headings; a guide of about six steps
+or fewer stays flat, even when it covers several concerns, since its step titles name
+them:
 
 1. **Decisions.** Two kinds of step, in this order:
    - **Key decisions.** The few choices everything else follows from: a data shape, a
      contract, a boundary, a trade-off you chose against an alternative.
      Say what was decided, what it rules out, and cite the lines that embody it, each in
      a line or two. A reviewer who disagrees here should stop before reading the rest.
-   - **Rationale.** For each key decision, why: what else was considered and the fact
-     that decided it, a measurement, a constraint, a requirement, or a precedent.
+   - **Rationale.** One step after the key decisions, with a line or two for each: what
+     else was considered and the fact that decided it, a measurement, a constraint, a
+     requirement, or a precedent.
+     Split it only when it would run long.
 2. **Documents.** One step per spec, plan, architecture document, or user guide the
    change adds or rewrites, cited whole, with a note on what each now promises.
 3. **Changes.** One step per area of change, in dependency or execution order (the
@@ -480,10 +483,9 @@ as headings:
    tracker IDs, follow-up plans, and open questions that need more planning before
    anyone builds them. Cite the plan the change adds or updates.
 
-**Keep the rationale concise.** Give each decision’s why in a sentence or two: the
-alternative rejected and the fact that decided it.
-Do not retell the design; cite the lines or the document where the decision is recorded
-at length. A decision whose reason is obvious needs no rationale line.
+**Keep the rationale concise.** Do not retell the design; cite the lines or the document
+where each decision is recorded at length.
+A decision whose reason is obvious needs no rationale line.
 
 Every step cites at least one file this pull request changes: a step without a reference
 makes the page refuse the whole guide, and a reference to an unchanged file answers
@@ -493,12 +495,13 @@ unchanged, cite the changed file closest to it, and say in the note what the ste
 about.
 
 Groups are optional, and a guide without them reads as it always has.
-A short guide stays flat: about six steps or fewer, its titles name the concerns.
 A smaller change merges concerns, so one step can be both the key decision and the only
 area, and merges or leaves out their groups, but keep the testing step and its three-way
 split on every pull request, and the open questions whenever there is anything to say.
-A group needs no note: give it one only when its steps share something a reader should
-know first, and never repeat the description.
+A group needs no note.
+A note is for orientation, and the page shows it once, before the group’s first step, so
+give one only when the group’s steps share something a reader should know first, and
+never repeat the description.
 
 The page shows each title and note as written, line breaks kept and Markdown printed
 literally, so write them as plain text.
@@ -594,6 +597,8 @@ collection:
   and needs no quotes; a folded block, `>-`, joins them into one.
 - A step’s whole files share one size budget, and a file past it answers
   `patch_too_large`: split the step, or cite the file’s ranges instead.
+  A whole Markdown, YAML, or JSON file the page draws rendered answers its format as
+  `rendered` and takes nothing from that budget.
   `MAX_REFERENCES` caps a step’s references, so split a step that needs more.
   `MAX_ITEMS` caps the steps and groups together; past it, cite what a reviewer must
   read.

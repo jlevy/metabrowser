@@ -824,6 +824,25 @@ async function run() {
       headings.every((heading) => heading.tag !== "button" && heading.events.size === 0),
       "a group's heading is no control",
     );
+    // Each group's list is named by the heading above it, as a menu's group heading names its
+    // group, by an id of its own (A7 of review A on #807).
+    const members = view.container.querySelectorAll(".github-pull-guide-steps-members");
+    const namedBy = members.map((list) => {
+      const peers = list.parentNode.children;
+      const heading = peers[peers.indexOf(list) - 1];
+      return heading?.classes.has("github-pull-guide-steps-heading") &&
+        typeof heading.id === "string" &&
+        heading.id !== "" &&
+        list.getAttribute("aria-labelledby") === heading.id
+        ? heading.id
+        : null;
+    });
+    assert.ok(
+      members.length === 2 &&
+        namedBy.every((id) => id !== null) &&
+        new Set(namedBy).size === members.length,
+      "each group's list is named by its own heading",
+    );
     const buttons = view.links();
     view.press("Next step");
     await settle();

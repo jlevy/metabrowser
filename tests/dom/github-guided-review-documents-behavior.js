@@ -1,11 +1,14 @@
 // Guided Review's documents on the production pull page, guide, and diff plugin: a file a
-// step names alone, of a format the diff view renders, is the diff plugin's own view of it
-// (`loadRenderedFile` in builtin_plugins/diff/index.js), read from the comparison route's
-// one-file answer and drawn with the options the Docs tab draws with; a range, and a whole
-// file of another format, are hunks drawn by `mountFilePatch`, as before. Moving to another
-// step disposes the views a step drew, a read still on its way is aborted, and its late
-// answer draws nothing. The diff view itself (diff-view.js) is a recorder here: its drawing
-// is its own sessions' and the Chrome check's (tests/test_github_guided_review_chrome.py).
+// step names alone that the guided route answers `rendered` (a file the rendered route
+// renders, by its own rule) is the diff plugin's own view of it (`mountRenderedFile` in
+// builtin_plugins/diff/index.js), read from the comparison route's one-file answer: a
+// Markdown file drawn with the options the Docs tab draws with, and a YAML or JSON file with
+// the options Changes draws with. A range, and a whole file the route answers with its
+// hunks, are drawn by `mountFilePatch`, as before. Moving to another step disposes the
+// views a step drew, a read still on its way is aborted, and its late answer draws nothing.
+// A document the view could not draw keeps the guide's bar for it above the view's notice.
+// The diff view itself (diff-view.js) is a recorder here: its drawing is its own sessions'
+// and the Chrome check's (tests/test_github_guided_review_chrome.py).
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -17,8 +20,13 @@ const { refHelpers } = require("./sdk-ref-fixture.js");
 // The diff view is a recorder: what the plugin's render asks it to draw, and with which
 // options. Everything above it, the plugin's routing, validation, and rendered layer, is the
 // production plugin's.
+// Which of the diff plugin's on-demand modules a session has loaded, by file name.
+const loadedModules = new Set();
 registerHooks({
   load(url, context, nextLoad) {
+    if (url.includes("/builtin_plugins/diff/")) {
+      loadedModules.add(url.slice(url.lastIndexOf("/") + 1));
+    }
     if (url.endsWith("/builtin_plugins/diff/diff-view.js")) {
       return {
         format: "module",
@@ -93,19 +101,24 @@ const HUNKS = [
   },
 ];
 
-/** A reference as the guided route answers it: a file named alone unless *range* says. */
-function reference(filePath, { range = false, state = "ready" } = {}) {
+/**
+ * A reference as the guided route answers it: a file named alone unless *range* says, its
+ * hunks unless the route answers the format it renders in (*rendered*), which has none.
+ */
+function reference(filePath, { range = false, state = "ready", rendered = null } = {}) {
   return {
     path: filePath,
     side: range ? "new" : null,
     start_line: range ? 1 : null,
     end_line: range ? 2 : null,
     state,
+    rendered,
     href: state === "path_not_changed" ? null : `/pull/7/files/${filePath}`,
-    hunks: state === "ready" ? HUNKS : [],
+    hunks: state === "ready" && rendered === null ? HUNKS : [],
     truncated: false,
   };
 }
+const markdown = (filePath) => reference(filePath, { rendered: "markdown" });
 
 function step(body, number, references, extra = {}) {
   return {
@@ -133,9 +146,15 @@ async function harness() {
   /** What the diff view was asked to draw: each view and each patch, and whether disposed. */
   const views = [];
   const patches = [];
+  /** Files whose view throws as it mounts, and files whose one-file read fails. */
+  const failing = new Set();
+  const refused = new Set();
   globalThis.diffViewRecorder = {
     mountDiffView(container, document_, _api, options) {
       const [file] = document_.manifest.files;
+      if (failing.has(file.new.path)) {
+        throw new Error(`the view of ${file.new.path} threw`);
+      }
       const drawn = {
         path: file.new.path,
         id: file.id,
@@ -149,6 +168,7 @@ async function harness() {
       rootNode.textContent = file.new.path;
       container.append(rootNode);
       return {
+        currentFile: () => null,
         dispose() {
           drawn.disposed = true;
           rootNode.remove();
@@ -203,6 +223,9 @@ async function harness() {
         diffView = view;
       },
       sourceKind: () => "git_revision",
+      // The File type menu a page with Changes has, so a diff of more than one file would
+      // load its filter.
+      filterControls: { typeMenu: {} },
       loadChangedFilesTree: async () =>
         require("./changed-files-tree-fixture.js").changedFilesTree(),
       async fetchPluginData(plugin, hook, params, options) {
@@ -216,6 +239,9 @@ async function harness() {
         }
         if (hook === "pull-rendered-diff") {
           return { version: "markdown-diff-v1", status: "unsupported", blocks: [] };
+        }
+        if (refused.has(params.file)) {
+          throw Object.assign(new Error("the comparison route failed"), { status: 503 });
         }
         const answer = oneFile(params.file, `id-${params.file}`);
         if (hold.has(params.file)) {
@@ -278,8 +304,11 @@ async function harness() {
     requests,
     reads,
     hold,
+    failing,
+    refused,
     /** Answer the one-file read held for *filePath*. */
     release(filePath) {
+      hold.delete(filePath);
       held.get(filePath)();
     },
     /** Mount page 7 on *tab*, as the shell does at its address. */
@@ -322,6 +351,10 @@ async function harness() {
             .find((node) => node.tag === "button" && node.getAttribute("aria-label") === label)
             .events.get("click")();
         },
+        /** How many documents show their progress mark. */
+        loading() {
+          return container.querySelectorAll(".github-pull-guide-document-loading").length;
+        },
         /** Each reference of the step on screen, as it is drawn. */
         drawn() {
           return container
@@ -333,7 +366,17 @@ async function harness() {
               const said = note ? ` (${note.textContent})` : "";
               if (section.classes.has("github-pull-guide-document")) {
                 const view = section.querySelector(".diff-root");
-                return `${view?.textContent ?? "a document still loading"}: document${said}`;
+                const failure = section.querySelector(".diff-notice");
+                if (view !== null) {
+                  return `${view.textContent}: document${said}`;
+                }
+                if (failure !== null) {
+                  const bar = section.querySelector(".github-pull-guide-reference-header");
+                  const name = bar?.querySelector(".diff-file-path")?.textContent ?? "no name";
+                  const full = bar?.querySelector(".diff-file-view")?.href;
+                  return `${name}: document says ${failure.textContent} (its bar opens ${full ?? "nothing"})${said}`;
+                }
+                return `a document still loading${said}`;
               }
               const name = section.querySelector(".diff-file-path").textContent;
               return section.querySelector(".diff-line") !== null
@@ -367,25 +410,69 @@ function described(options) {
     .join(", ");
 }
 
+/**
+ * What a tab's own view has that a step's document has not, and the other way round, after
+ * checking that every choice both make is the same: what a mount is handed (its layer, its
+ * loaders) is its own.
+ */
+function compared(tab, drawn) {
+  const only = (from, to) =>
+    Object.keys(from.options)
+      .filter((key) => !(key in to.options))
+      .sort()
+      .join(", ") || "nothing";
+  for (const key of Object.keys(drawn.options)) {
+    const value = drawn.options[key];
+    if (key in tab.options && typeof value !== "function" && typeof value !== "object") {
+      assert.equal(value, tab.options[key], `${key} differs from the tab's`);
+    }
+  }
+  assert.equal(drawn.options.markdownViews, tab.options.markdownViews, "one rendered layer");
+  return [only(tab, drawn), only(drawn, tab)];
+}
+
+/** Mount the guide, answer its overview with *answer*, and open its first step. */
+async function opened(world, body, answer) {
+  const view = world.mount("guided", body);
+  await settle();
+  world.reads.at(-1).answer(answer);
+  await settle();
+  view.press("Next step");
+  await settle();
+  return view;
+}
+
 async function run() {
   const steps = [];
   const world = await harness();
   const body = envelope();
+  const pins = comparisonOf(body);
 
-  // Step 1: a Markdown and a YAML file named alone are documents, read from the comparison
-  // route one file at a time; a range of the same Markdown file, a Python file named alone,
-  // and a file past the step's budget draw as they did.
+  // A step that cites no file the rendered route renders never loads the rendered layer.
   {
+    const view = await opened(world, body, step(body, 1, [reference("src/app.py")]));
+    steps.push(
+      `a step of patches alone: ${view.drawn()}; the rendered layer loaded ${loadedModules.has("diff-markdown.js")}`,
+    );
+    view.handle.dispose();
+  }
+
+  // Step 1: a Markdown and a YAML file the route answers `rendered` are documents, read from
+  // the comparison route one file at a time; a range of the same Markdown file, a Python file
+  // named alone, and a file past the step's budget draw as they did.
+  {
+    const firstPatch = world.patches.length;
     const view = world.mount("guided", body);
     await settle();
+    world.requests.length = 0;
     world.reads
       .at(-1)
       .answer(
         step(body, 1, [
-          reference("docs/guide.md"),
+          markdown("docs/guide.md"),
           reference("docs/guide.md", { range: true }),
           reference("src/app.py"),
-          reference("config/settings.yaml"),
+          reference("config/settings.yaml", { rendered: "yaml" }),
           reference("notes.md", { state: "patch_too_large" }),
         ]),
       );
@@ -394,6 +481,19 @@ async function run() {
     await settle();
     steps.push(`step 1 draws: ${view.drawn()}`);
     steps.push(`its one-file reads: ${fileReads(world.requests)}`);
+    // They load the rendered layer, and not the File type filter, which only a diff of more
+    // than one file draws, so they ask for no type counts either.
+    steps.push(
+      `its documents load the rendered layer ${loadedModules.has("diff-markdown.js")}, the File type filter ${loadedModules.has("diff-type-filter.js")}`,
+    );
+    steps.push(
+      `its documents' other reads: ${
+        world.requests
+          .filter((asked) => asked.params.file === undefined)
+          .map((asked) => `${asked.hook} ${JSON.stringify(asked.params)}`)
+          .join(", ") || "none"
+      }`,
+    );
     const comparisonRoute = new URL(body.comparison_route, "http://localhost").searchParams;
     for (const request of world.requests.filter((asked) => asked.params.file !== undefined)) {
       assert.equal(request.hook, "pull-comparison", "a document is read from the comparison");
@@ -401,10 +501,12 @@ async function run() {
       assert.equal(request.params.right, comparisonRoute.get("right"));
       assert.equal(request.params.store, comparisonRoute.get("store"));
     }
-    const [guide] = world.views;
+    const guide = world.views.find((drawn) => drawn.path === "docs/guide.md");
+    const settings = world.views.find((drawn) => drawn.path === "config/settings.yaml");
     assert.equal(guide.files, 1, "a document's view holds its one file");
-    steps.push(`a document's view is drawn with: ${described(guide.options)}`);
-    // Its Rendered answer is asked by the manifest ID the one-file answer carries.
+    steps.push(`a Markdown document's view is drawn with: ${described(guide.options)}`);
+    steps.push(`a YAML document's view is drawn with: ${described(settings.options)}`);
+    // Its Rendered is asked by the manifest ID the one-file answer carries.
     world.requests.length = 0;
     await guide.options.renderMarkdown(guide.id, new AbortController().signal);
     steps.push(
@@ -415,12 +517,14 @@ async function run() {
     // moving on again before it answers aborts it, and its late answer draws nothing.
     world.hold.add("docs/second.md");
     world.requests.length = 0;
+    const before = world.views.length;
+    const drawnPatches = world.patches.slice(firstPatch);
     view.press("Next step");
     await settle();
-    world.reads.at(-1).answer(step(body, 2, [reference("docs/second.md")]));
+    world.reads.at(-1).answer(step(body, 2, [markdown("docs/second.md")]));
     await settle();
     steps.push(
-      `step 2 disposes step 1's: ${world.views.filter((drawn) => drawn.disposed).length} of ${world.views.length} documents, ${world.patches.filter((drawn) => drawn.disposed).length} of ${world.patches.length} patches`,
+      `step 2 disposes step 1's: ${world.views.filter((drawn) => drawn.disposed).length} of ${before} documents, ${drawnPatches.filter((drawn) => drawn.disposed).length} of ${drawnPatches.length} patches`,
     );
     steps.push(`step 2 draws, its read on its way: ${view.drawn()}`);
     const waiting = world.requests.find((asked) => asked.params.file === "docs/second.md");
@@ -437,39 +541,78 @@ async function run() {
     view.handle.dispose();
   }
 
-  // A step read at another comparison than the page's draws its document's patch, and so
-  // does a step whose comparison names no rendered route.
+  // A document's progress mark shows while its read is on its way, and goes once it draws.
   {
-    const view = world.mount("guided", body);
+    world.hold.add("docs/held.md");
+    const view = await opened(world, body, step(body, 1, [markdown("docs/held.md")]));
+    const held = view.loading();
+    world.release("docs/held.md");
     await settle();
-    world.reads.at(-1).answer(
-      step(body, 1, [reference("docs/guide.md")], {
-        comparison: { merge_base: "c".repeat(40), head: "d".repeat(40) },
-      }),
+    steps.push(
+      `a held document: progress marks ${held} while its read is held, ${view.loading()} once drawn; ${view.drawn()}`,
     );
-    await settle();
-    view.press("Next step");
-    await settle();
-    steps.push(`a step read at another comparison: ${view.drawn()}`);
     view.handle.dispose();
+  }
+
+  // The page draws a document only at the comparison the step was read at: a step read at
+  // another merge base, or at another head, says the file's diff is unavailable instead. A
+  // comparison that names no rendered route still draws it, without the rendered layer.
+  {
+    for (const [label, comparison] of [
+      ["another merge base", { merge_base: "c".repeat(40), head: pins.head }],
+      ["another head", { merge_base: pins.merge_base, head: "d".repeat(40) }],
+    ]) {
+      const view = await opened(
+        world,
+        body,
+        step(body, 1, [markdown("docs/guide.md")], { comparison }),
+      );
+      steps.push(`a step read at ${label}: ${view.drawn()}`);
+      view.handle.dispose();
+    }
     const plain = envelope({ rendered: false });
-    const without = world.mount("guided", plain);
-    await settle();
-    world.reads.at(-1).answer(step(plain, 1, [reference("docs/guide.md")]));
-    await settle();
-    without.press("Next step");
-    await settle();
-    steps.push(`a comparison with no rendered route: ${without.drawn()}`);
+    const without = await opened(world, plain, step(plain, 1, [markdown("docs/guide.md")]));
+    const drawn = world.views.at(-1);
+    steps.push(
+      `a comparison with no rendered route: ${without.drawn()}, its rendered layer ${"markdownViews" in drawn.options ? "drawn" : "absent"}`,
+    );
     without.handle.dispose();
+  }
+
+  // A document whose view could not draw it keeps the guide's bar for it, with its name and
+  // its Open full diff, above the view's notice: a view that threw as it mounted, and a
+  // one-file read that failed, which the view's render says in its place.
+  {
+    world.failing.add("docs/threw.md");
+    world.refused.add("docs/refused.md");
+    // The console's errors, which both failures log: kept, so they do not read as a fault.
+    const logged = [];
+    const consoleError = console.error;
+    console.error = (...args) => logged.push(args);
+    try {
+      const view = await opened(
+        world,
+        body,
+        step(body, 1, [markdown("docs/threw.md"), markdown("docs/refused.md")]),
+      );
+      steps.push(`documents that could not be drawn: ${view.drawn()}`);
+      steps.push(`their failures are logged: ${logged.length}`);
+      const notices = view.container.querySelectorAll(".diff-notice");
+      view.handle.dispose();
+      steps.push(
+        `the page ends: ${notices.filter((notice) => notice.parentNode !== null).length} of ${notices.length} notices left`,
+      );
+    } finally {
+      console.error = consoleError;
+    }
   }
 
   // A stale guide's document that changed since says so above the document's own view.
   {
-    const view = world.mount("guided", body);
-    await settle();
-    const pins = comparisonOf(body);
-    world.reads.at(-1).answer(
-      step(body, 1, [reference("docs/guide.md")], {
+    const view = await opened(
+      world,
+      body,
+      step(body, 1, [markdown("docs/guide.md")], {
         state: "stale",
         stale: {
           guide: { merge_base: pins.merge_base, head: "e".repeat(40) },
@@ -483,9 +626,6 @@ async function run() {
         },
       }),
     );
-    await settle();
-    view.press("Next step");
-    await settle();
     steps.push(`a changed document of a stale guide: ${view.drawn()}`);
     // Leaving the page disposes the document's view.
     const last = world.views.at(-1);
@@ -493,30 +633,26 @@ async function run() {
     steps.push(`the page ends: its document disposed ${last.disposed}`);
   }
 
-  // The Docs tab draws its documents with the same options, so a step's document opens as
-  // Docs opens it: what Docs has that a step's document has not is Docs' own.
+  // The Docs tab draws its documents with the options a step's Markdown document has, and
+  // Changes its files with those a step's YAML document has: what the tab has that the step
+  // has not is the tab's own.
   {
-    const docs = world.mount("docs", body);
-    await settle();
-    const tab = world.views.at(-1);
-    const guided = world.views[0];
-    assert.equal(tab.files > 0, true);
-    const only = (from, to) =>
-      Object.keys(from.options)
-        .filter((key) => !(key in to.options))
-        .sort()
-        .join(", ") || "nothing";
-    // Every choice is the same; what a mount is handed (its layer, its loaders) is its own.
-    for (const key of Object.keys(guided.options)) {
-      const value = guided.options[key];
-      if (key in tab.options && typeof value !== "function" && typeof value !== "object") {
-        assert.equal(value, tab.options[key], `${key} differs from Docs'`);
-      }
+    const markdownDocument = world.views.find((drawn) => drawn.path === "docs/guide.md");
+    const yamlDocument = world.views.find((drawn) => drawn.path === "config/settings.yaml");
+    for (const [tab, name, drawn] of [
+      ["docs", "Docs", markdownDocument],
+      ["files", "Changes", yamlDocument],
+    ]) {
+      const shown = world.mount(tab, body);
+      await settle();
+      const own = world.views.at(-1);
+      assert.equal(own.files > 0, true);
+      assert.notEqual(own, drawn);
+      const [tabOnly, drawnOnly] = compared(own, drawn);
+      steps.push(`${name} has, and a step's ${drawn.path} has not: ${tabOnly}`);
+      steps.push(`a step's ${drawn.path} has, and ${name} has not: ${drawnOnly}`);
+      shown.handle.dispose();
     }
-    assert.equal(guided.options.markdownViews, tab.options.markdownViews, "one rendered layer");
-    steps.push(`Docs has, and a step's document has not: ${only(tab, guided)}`);
-    steps.push(`a step's document has, and Docs has not: ${only(guided, tab)}`);
-    docs.handle.dispose();
   }
   return steps;
 }

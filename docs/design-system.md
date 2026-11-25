@@ -3097,7 +3097,7 @@ reader does with it.
 | Way on and back | Worded buttons below a step that name the step they go to | `.github-pull-guide-pager` |
 | Step | A page card, as Conversation draws a comment: the badge and the place, the title and note at the description’s inset, then its excerpts | `.github-pull-guide-card`, `.github-pull-text` |
 | Excerpt | The diff plugin’s own drawing, as in Changes: hunk bars, rows, and fold bars that expand | `mountFilePatch` in the diff plugin |
-| Document | A Markdown, YAML, or JSON file a step cites whole, as Docs draws it: the file bar, the rendered layer and its Rendered and Source choice, and Diff and Current | `loadRenderedFile` in the diff plugin, `DOCS_DRAWING`, `.github-pull-guide-document` |
+| Document | A Markdown file a step cites whole, as Docs draws it, and a YAML or JSON file, as Changes draws it: the file bar, the rendered layer and its Rendered and Source choice, and Diff and Current; one that could not be drawn, the guide’s bar for it above the view’s notice | `mountRenderedFile` in the diff plugin, `DOCS_DRAWING`, `CHANGES_DRAWING`, `.github-pull-guide-document` |
 | Out of date | One warning notice above the guide and its one remedy, or a quiet line when no file it cites changed; a step that cites a changed file is marked “changed” in the list and on its card, in muted text | `OUTDATED`, `CHANGED`, `.github-pull-guide-stale`, `.github-pull-guide-step-changed` |
 
 A new part of the guide takes its words from these constants and its look from an

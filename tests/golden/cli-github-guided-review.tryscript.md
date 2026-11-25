@@ -66,6 +66,7 @@ status: 200
       "start_line": 1,
       "end_line": 2,
       "state": "ready",
+      "rendered": null,
       "href": "/pull/7/files/src/app.txt",
       "hunks": [
         {
@@ -264,6 +265,7 @@ status: 200
       "start_line": 1,
       "end_line": 1,
       "state": "ready",
+      "rendered": null,
       "href": "/pull/7/files/docs/new.md",
       "hunks": [
         {
@@ -290,6 +292,7 @@ status: 200
       "start_line": null,
       "end_line": null,
       "state": "ready",
+      "rendered": null,
       "href": "/pull/7/files/src/app.txt",
       "hunks": [
         {
@@ -322,6 +325,7 @@ status: 200
       "start_line": null,
       "end_line": null,
       "state": "path_not_changed",
+      "rendered": null,
       "href": null,
       "hunks": [],
       "truncated": false
@@ -332,6 +336,7 @@ status: 200
       "start_line": 2,
       "end_line": 4,
       "state": "range_unavailable",
+      "rendered": null,
       "href": "/pull/7/files/src/app.txt",
       "hunks": [],
       "truncated": false
@@ -543,6 +548,7 @@ status: 200
       "start_line": 1,
       "end_line": 2,
       "state": "path_not_changed",
+      "rendered": null,
       "href": null,
       "hunks": [],
       "truncated": false
@@ -926,6 +932,33 @@ null
 ? 0
 ```
 
+A longer guide whose two groups each hold two steps numbers them 1 to 4 through the
+groups, not by entry: the second group’s steps are 3 and 4, and step 3’s group is 1.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 longer
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=3' --format json > longer.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.state, .step_count, .outline, .step, .group, .title' longer.json
+"ready"
+4
+[{"kind":"group","title":"The count","note":null,"children":[{"kind":"step","step":1,"title":"Start with the count"},{"kind":"step","step":2,"title":"Compare the old count"}]},{"kind":"group","title":"The docs","note":null,"children":[{"kind":"step","step":3,"title":"Read the new guide"},{"kind":"step","step":4,"title":"Read each file whole"}]}]
+3
+1
+"Read the new guide"
+? 0
+```
+
 A group without steps is refused, as a guide without steps is, and so is a group inside
 a group: each says where, below `collection`.
 
@@ -966,6 +999,67 @@ status: 200
   "state": "invalid",
   "message": "The guided-review block does not satisfy the v1 SoftSchema at items.0.items.0."
 }
+? 0
+```
+
+A guide whose steps and groups together pass `MAX_ITEMS` is refused in words that say
+so, even when each of its lists is within its own bound, as here: two groups whose steps
+pass it together.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 past-max-items
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "cdb594bebd68f182cd784b6b04e867d5a08cd44cfa280ac815fb67ae6941c1e1",
+  "state": "invalid",
+  "message": "This guide has more than 40 steps and groups."
+}
+? 0
+```
+
+# Documents
+
+A file a step cites whole that the rendered route renders, by that route’s own rule on
+both sides of the change, answers `rendered`, its format, and no hunks.
+The page draws it whole from the comparison route’s one-file answer and the rendered
+route, within their own bounds, so the guided route reads no patch for it and charges it
+nothing against the step’s budget for whole files (`MAX_STEP_PATCH_BYTES`). In a
+documents build, pull request 7 also adds `config/settings.yaml` and `docs/large.md`, a
+Markdown file whose whole patch charges past that budget, and its guide ends on a step
+that cites them whole: each answers `ready`, and `src/app.txt`, cited whole after them,
+still has the whole budget for its patch.
+Every other reference answers `rendered` null, as the steps above do.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" documents --guided-large-document > documents.log 2>&1 || (cat documents.log >&2 && exit 1)
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/documents/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=3' --format json > documents.json
+selection: pull_request
+pin: 12b02e42ead211903e888a8862ac6d47784204c5 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.state, .title, (.references[] | [.path, .side, .state, .rendered, (.hunks | length)])' documents.json
+"ready"
+"Read the new guide whole"
+["docs/new.md",null,"ready","markdown",0]
+["config/settings.yaml",null,"ready","yaml",0]
+["docs/large.md",null,"ready","markdown",0]
+["src/app.txt",null,"ready",null,1]
 ? 0
 ```
 

@@ -17,9 +17,10 @@ and where a list's markers fall against the bordered box around them are paint t
 measured here: a marker on or past a border is what the first out-of-date notice drew (mb-u46w).
 
 A step's rendered document is the diff view's own drawing of a file over the server's
-projection, so ``tests/dom/github-guided-review-documents-chrome.mjs`` compares it with the
-Docs tab's drawing of the same file, on a stand-in whose pull request 7's guide ends on a step
-that cites a Markdown file whole (``--guided-documents``).
+projection, so ``tests/dom/github-guided-review-documents-chrome.mjs`` compares a Markdown
+document with the Docs tab's drawing of the same file, and a YAML document with the Changes
+tab's, on a stand-in whose pull request 7's guide ends on a step that cites both whole
+(``--guided-documents``).
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node process

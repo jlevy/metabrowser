@@ -152,7 +152,7 @@ _MAX_WAITING = 4
 
 def _fallback(
     status: Status = "unsupported",
-    rendered: _Rendered = "markdown",
+    rendered: Rendered = "markdown",
     reason: MarkdownRefusal | None = None,
 ) -> dict[str, Any]:
     """The route's refusal, in the format the file would have answered (review A10)."""
@@ -236,11 +236,16 @@ def _path(side: EntrySide) -> GitPath:
     return GitPath(tuple(raw.split(b"/")))
 
 
-type _Rendered = Literal["markdown"] | Format
+type Rendered = Literal["markdown"] | Format
 
 
-def _rendered_format(change: FileChange) -> _Rendered | None:
-    """The format both sides of a ready file render as, or ``None``."""
+def rendered_format(change: FileChange) -> Rendered | None:
+    """The format both sides of a ready file render as, or ``None``.
+
+    The guided-review route asks it too, of each file a step cites whole, so a step draws
+    with the rendered layer exactly the files this route renders (``_step_references`` in
+    ``guided_review.py``).
+    """
 
     if change.availability is not Availability.ready or change.binary:
         return None
@@ -255,13 +260,13 @@ def _rendered_format(change: FileChange) -> _Rendered | None:
         for ext in (blob_logical_ext(_path(side)) for side in sides)
     }
     found = formats.pop() if len(formats) == 1 else None
-    return cast("_Rendered | None", found)
+    return cast("Rendered | None", found)
 
 
 def _projectable(change: FileChange) -> bool:
     """A Markdown file the projection reads a patch for."""
 
-    return _rendered_format(change) == "markdown"
+    return rendered_format(change) == "markdown"
 
 
 def _lines_of(patch: FilePatch) -> int:
@@ -343,7 +348,7 @@ async def _project(
     if resolved.left.id != snapshot.base or resolved.right.id != snapshot.head:
         return _fallback()
     change = next((entry for entry in manifest.files if entry.id == file_id), None)
-    rendered = None if change is None else _rendered_format(change)
+    rendered = None if change is None else rendered_format(change)
     if change is None or rendered is None:
         return _fallback()
 

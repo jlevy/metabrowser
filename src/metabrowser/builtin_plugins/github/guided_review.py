@@ -56,6 +56,8 @@ from metabrowser.git.process import (
 from metabrowser.view_routes import format_pull_href
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from markdown_it.token import Token
     from pydantic import GetJsonSchemaHandler
     from pydantic.json_schema import JsonSchemaValue
@@ -80,7 +82,7 @@ _MARKDOWN = MarkdownIt("commonmark").disable("inline")
 # Each item hydrates at most as many paths as the measured first paint of Changes
 # (INITIAL_PULL_FILES in sidekick.py), in one run of the diff source. A ranged reference
 # renders its lines (MAX_EXCERPT_BYTES), and a path alone its file's whole patch
-# (MAX_STEP_PATCH_BYTES).
+# (MAX_STEP_PATCH_BYTES), or, for a file the rendered route renders, nothing at all.
 MAX_REFERENCES = 8
 # Every entry of a collection's items counts: an item at the top, a group, and each item in a
 # group, so a group holds at most MAX_ITEMS - 1 items. A group is a title and an optional
@@ -133,7 +135,9 @@ MAX_EXCERPT_BYTES = MAX_BODY_BYTES
 # its own where Changes serializes them. So this bounds the drawing just under the largest
 # step measured to draw within about 200 ms here, the 1,956,140 bytes of charge. A file past
 # what is left says its diff is too large to show in the step, beside its Open full diff
-# link.
+# link. A file the rendered route renders (Markdown, YAML, JSON) cited whole charges
+# nothing here: the page draws it from its own reads, which that route's bounds and the
+# comparison route's one-file read bound, as Docs and Changes draw it (_step_references).
 MAX_STEP_PATCH_BYTES: Final = 1_950_000
 
 # A stale guide's answer names the commits after the guide's head, newest first, and counts
@@ -358,9 +362,9 @@ def _collection(fence: Token) -> Collection:
         "status": _CONTRACT.status,
     }:
         raise GuideError("The guided-review block needs the enforced Collection/v1 contract.")
-    outside = _outside_shape(document["collection"])
-    if outside is not None:
-        raise GuideError(_schema_refusal(outside))
+    refusal = _outside_shape(document["collection"])
+    if refusal is not None:
+        raise GuideError(refusal)
     result = validate_artifact(Path("guided-review"), contract=_CONTRACT, document=document)
     if not result.ok:
         raise GuideError(_schema_refusal(result.structural.errors[0].get("path")))
@@ -371,8 +375,15 @@ def _collection(fence: Token) -> Collection:
         raise GuideError(f"Invalid guided-review reference at {location}.") from exc
 
 
-def _outside_shape(collection: object) -> list[str | int] | None:
-    """Where *collection* leaves the shape the v1 schema closes, or ``None`` within it.
+# The refusal of a guide past MAX_ITEMS. No one list's bound states the total, so the
+# compiled schema admits such a block, and a refusal in the schema's name would send an
+# author who checks the block against it nowhere (A6 of review A on #807).
+_TOO_MANY: Final = f"This guide has more than {MAX_ITEMS} steps and groups."
+
+
+def _outside_shape(collection: object) -> str | None:
+    """The refusal of *collection* where it leaves the shape the v1 schema closes, or
+    ``None`` within it.
 
     The shape is each object a mapping of its declared keys and each list within its
     bound. softschema's refusal of undeclared keys is quadratic in their number: it writes
@@ -388,37 +399,40 @@ def _outside_shape(collection: object) -> list[str | int] | None:
 
     An entry is a group or an item as :func:`_entry_kind` tells them apart, as the schema
     does. One bound is the models' alone, since no one list states it: MAX_ITEMS counts a
-    group's items with the entries, and a block past it is refused at `items` as soon as a
-    group's items pass it.
+    group's items with the entries. A block past it is refused in plain words, as soon as
+    the count passes it, so a group's long list is never walked; a list past its own
+    bound, the entries' or a group's, passes the total too.
     """
     if not _closed(collection, Collection):
-        return []
+        return _schema_refusal([])
     if "comparison" in collection and not _closed(collection["comparison"], CollectionComparison):
-        return ["comparison"]
+        return _schema_refusal(["comparison"])
     if "items" not in collection:
         return None
     entries = collection["items"]
-    if not isinstance(entries, list) or len(entries) > MAX_ITEMS:
-        return ["items"]
+    if not isinstance(entries, list):
+        return _schema_refusal(["items"])
     counted = len(entries)
+    if counted > MAX_ITEMS:
+        return _TOO_MANY
     for at, entry in enumerate(entries):
         if _entry_kind(entry) == "item":
             outside = _outside_item(entry, ["items", at])
         elif not _closed(entry, CollectionGroup):
-            return ["items", at]
+            return _schema_refusal(["items", at])
         else:
             items = entry["items"]
-            if not isinstance(items, list) or len(items) > MAX_ITEMS - 1:
-                return ["items", at, "items"]
+            if not isinstance(items, list):
+                return _schema_refusal(["items", at, "items"])
             counted += len(items)
             if counted > MAX_ITEMS:
-                return ["items"]
+                return _TOO_MANY
             places = (
                 _outside_item(item, ["items", at, "items", to]) for to, item in enumerate(items)
             )
             outside = next((place for place in places if place is not None), None)
         if outside is not None:
-            return outside
+            return _schema_refusal(outside)
     return None
 
 
@@ -623,22 +637,34 @@ def _references(
     *,
     truncated: bool,
     too_large: frozenset[str] = frozenset(),
+    documents: Mapping[str, str] | None = None,
 ) -> list[dict[str, object]]:
-    """Each reference of a step as the page draws it, its excerpt or its file's patch.
+    """Each reference of a step as the page draws it: its excerpt, its file's patch, or
+    the format the page draws the whole file in.
 
     *too_large* are the changes whose patches the diff source left out for their size,
-    alone or beside the step's other files.
+    alone or beside the step's other files. *documents* are the files the step cites whole
+    that the rendered route renders, each with its format: such a reference answers
+    `rendered`, the format, and no hunks, since the page draws that file whole from the
+    comparison route's one-file answer and the rendered route, within their own bounds,
+    so it charges nothing to the step's budget for whole files. Every other reference
+    answers `rendered` null.
     """
     output: list[dict[str, object]] = []
     remaining = MAX_EXCERPT_BYTES
     whole = MAX_STEP_PATCH_BYTES
+    formats = documents or {}
     for reference in references:
         change = changes.get(reference.path)
         href = None
         hunks: list[dict[str, object]] = []
         cut = False
+        rendered = formats.get(reference.path) if reference.side is None else None
         if change is None:
             state = "manifest_truncated" if truncated else "path_not_changed"
+        elif rendered is not None:
+            href = format_pull_href(number, "files", reference.path)
+            state = "ready"
         else:
             href = format_pull_href(number, "files", reference.path)
             patch = patches.get(change.id)
@@ -661,6 +687,7 @@ def _references(
             {
                 **reference.model_dump(),
                 "state": state,
+                "rendered": rendered,
                 "href": href,
                 "hunks": hunks,
                 "truncated": cut,
@@ -678,7 +705,15 @@ async def _step_references(
     rebase, or a force push, whether or not the store still has the commits it was written
     for: a reference that still resolves shows what the pull request changes now, and one
     that does not says so in its place.
+
+    A file the step cites whole that the rendered route renders, by that route's own rule
+    on the manifest's change, both its sides (`rendered_format`), is not read here: the
+    page draws it whole as the diff view does, from that file's own reads.
     """
+    # The rendered route's module, imported with the step's read rather than this module:
+    # the description's render imports this module, and never needs the projections.
+    from metabrowser.builtin_plugins.github.pull_rendered_diff import rendered_format
+
     base, head = comparison.base, comparison.head
     # The record's own comparison is the pull request's kept manifest (pull_manifest.py),
     # the one Changes reads.
@@ -689,12 +724,21 @@ async def _step_references(
         for change in manifest.files
         if (side := change.new or change.old) is not None and side.path_b64 is None
     }
+    documents = {
+        ref.path: rendered
+        for ref in step.references
+        if ref.side is None
+        and (change := changes.get(ref.path)) is not None
+        and (rendered := rendered_format(change)) is not None
+    }
     ranged = {ref.path for ref in step.references if ref.side is not None}
     wanted: dict[str, None] = {}
     skipped: set[str] = set()
     for ref in step.references:
         change = changes.get(ref.path)
         if change is None or change.availability is not Availability.ready:
+            continue
+        if ref.side is None and ref.path in documents:
             continue
         # A file whose changed lines alone charge past a step's whole files is never drawn
         # whole, so it is not read for that: every row charges at least 80 bytes.
@@ -722,6 +766,7 @@ async def _step_references(
         patches,
         truncated=manifest.truncated,
         too_large=too_large,
+        documents=documents,
     )
 
 

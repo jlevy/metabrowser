@@ -4,25 +4,31 @@
  * @typedef {{op: "add" | "del" | "context", text: string}} Line
  * @typedef {{old_start: number, old_count: number, new_start: number, new_count: number,
  *   heading: string | null, lines: Line[]}} Hunk
- * @typedef {{path: string, side: "old" | "new" | null, state: string, href: string | null,
- *   hunks: Hunk[], truncated: boolean}} Reference *side* is null for a file named alone,
- *   whose whole patch *hunks* are, and a range's side otherwise.
+ * @typedef {"markdown" | "yaml" | "json"} Rendered
+ * @typedef {{path: string, side: "old" | "new" | null, state: string,
+ *   rendered: Rendered | null, href: string | null, hunks: Hunk[], truncated: boolean}}
+ *   Reference *side* is null for a file named alone, whose whole patch *hunks* are, and a
+ *   range's side otherwise. *rendered* is the format of a file named alone that the
+ *   rendered route renders, by that route's own rule (`rendered_format` in
+ *   pull_rendered_diff.py): the page draws it whole, and the route sends no hunks for it.
  * @typedef {(body: HTMLElement, change: Record<string, unknown>,
  *   patch: {hunks: Hunk[], truncated: boolean}) => {dispose: () => void}} DrawPatch
  *   The diff plugin's `mountFilePatch`, bound to the SDK: a file's hunks as Changes draws
  *   them.
  * @typedef {{merge_base: string | null, head: string}} Pins
  * @typedef {{
- *   renders(path: string, pins: Pins): boolean,
- *   mount(body: HTMLElement, path: string, pins: Pins): {settled: Promise<void>,
- *     dispose: () => void},
- * }} DrawDocument The diff plugin's `loadRenderedFile`, bound by the page to its comparison
- *   and to the Docs tab's drawing: whether a file at *path* renders, and that file drawn
- *   whole as Docs draws it. *pins* are the comparison a step was read at; a page whose
- *   comparison is another renders nothing.
+ *   draws(pins: Pins): boolean,
+ *   mount(body: HTMLElement, path: string, format: Rendered, pins: Pins):
+ *     {settled: Promise<boolean>, dispose: () => void},
+ * }} DrawDocument The diff plugin's `mountRenderedFile`, bound by the page to its
+ *   comparison: whether it draws a step read at *pins*, the comparison the step was read
+ *   at, which it does only while that is its own; and one file drawn whole, a Markdown file
+ *   as the Docs tab draws it and a YAML or JSON file as Changes does. *settled* is true once
+ *   the file is drawn, and false when the view's notice says why it is not, or the handle
+ *   was disposed first.
  * @typedef {{patch: DrawPatch | null, document: DrawDocument | null, pins: Pins}} Drawers
- *   What draws a step's references, each null when the diff plugin or its rendered layer
- *   did not load, and the comparison the step was read at.
+ *   What draws a step's references, each null when the diff plugin did not load, and the
+ *   comparison the step was read at.
  * @typedef {{guide: Pins, current: Pins, github_newer: boolean,
  *   history: "ahead" | "rewritten" | "unavailable", commit_count: number | null,
  *   commits: {sha: string, subject: string}[], changed_paths: string[] | null,
@@ -261,88 +267,33 @@ function proseHost(prose) {
 }
 
 /**
- * How a step draws a reference. A file named alone of a format the diff view renders
- * (Markdown, YAML, JSON) is a document, drawn whole as the Docs tab draws it, with its
- * Rendered | Source chooser. Any other ready change with lines is its hunks, as Changes draws
- * them: a range's one hunk, and another file named alone its whole patch. The rest say why
- * there is nothing to draw.
+ * How a step draws a reference. A file named alone that the rendered route renders, as the
+ * guided route answers it (`rendered`), is a document: the file drawn whole by the diff
+ * view, with its Rendered | Source chooser, while the page's comparison is the one the step
+ * was read at. Any other ready change with lines is its hunks, as Changes draws them: a
+ * range's one hunk, and another file named alone its whole patch. The rest say why there is
+ * nothing to draw.
  *
  * @param {Reference} reference @param {Drawers} drawers
  * @returns {"document" | "patch" | "said"}
  */
 export function referenceDrawing(reference, drawers) {
-  if (reference.state !== "ready" || reference.hunks.length === 0) {
+  if (reference.state !== "ready") {
     return "said";
   }
-  if (reference.side === null && drawers.document?.renders(reference.path, drawers.pins) === true) {
-    return "document";
+  if (typeof reference.rendered === "string") {
+    return drawers.document?.draws(drawers.pins) === true ? "document" : "said";
   }
-  return drawers.patch === null ? "said" : "patch";
+  return reference.hunks.length === 0 || drawers.patch === null ? "said" : "patch";
 }
 
 /**
- * A document a step cites whole, drawn by the diff plugin's own view of it, as the Docs tab
- * draws it (`loadRenderedFile`): the file's own bar, with its View on branch and its
- * Rendered | Source chooser, the diff's Diff | Current above it, and its rendered layer,
- * which keeps its own bounds and says on its chooser why a file it refuses shows Source. The
- * bar is the file's, so the guide adds none of its own, and a note that the file changed
- * since the guide was written leads it.
- *
- * @param {Reference} reference @param {HTMLElement | null} note
- * @param {DrawDocument} drawDocument @param {Pins} pins
- * @param {Array<{dispose: () => void}>} drawn Where the drawn view is kept for disposal.
- */
-function renderDocument(reference, note, drawDocument, pins, drawn) {
-  const section = element("section", "", "github-pull-guide-reference github-pull-guide-document");
-  const body = element("div", "", "github-pull-guide-document-body");
-  // The diff's own progress, below the view so it never moves the view's first row, shown
-  // only past the loading delay (`mb-delayed-loading`), as Changes shows it.
-  const loading = element(
-    "div",
-    "",
-    "loading mb-delayed-loading github-pull-guide-document-loading",
-  );
-  loading.setAttribute("role", "status");
-  loading.setAttribute("aria-label", `Loading ${reference.path}`);
-  const spinner = element("span", "", "spinner");
-  spinner.setAttribute("aria-hidden", "true");
-  loading.append(spinner);
-  section.append(...(note === null ? [] : [note]), body, loading);
-  const view = drawDocument.mount(body, reference.path, pins);
-  drawn.push(view);
-  void view.settled.then(() => loading.remove());
-  return section;
-}
-
-/**
- * One reference as Changes draws a changed file: the diff plugin's card and bar, and its
- * hunks drawn by the diff plugin itself (`mountFilePatch`), each under its header bar with
- * its long changed runs behind fold bars, in the plugin's type, gutter, change fills, and
- * syntax (docs/design-system.md, "Diffs"). A range is one hunk of its own lines; a file
- * named alone is its whole patch, or, of a format the diff view renders, the whole document
- * as Docs draws it (`referenceDrawing`).
+ * The bar the guide draws above a reference it draws itself: the file's path, and its Open
+ * full diff, which goes to the file in Changes.
  *
  * @param {Reference} reference @param {(path: string) => void} open
- * @param {Change} change Whether the file changed after the guide was written.
- * @param {Drawers} drawers What draws the reference.
- * @param {Array<{dispose: () => void}>} drawn Where each drawn patch is kept for disposal.
  */
-function renderReference(reference, open, change, drawers, drawn) {
-  const drawing = referenceDrawing(reference, drawers);
-  const changed =
-    reference.state === "ready" && change !== "unchanged"
-      ? element(
-          "p",
-          change === "changed"
-            ? CHANGED_REFERENCE_MESSAGES.ready
-            : UNKNOWN_REFERENCE_MESSAGES.ready,
-          "github-pull-quiet github-pull-guide-changed",
-        )
-      : null;
-  if (drawing === "document" && drawers.document !== null) {
-    return renderDocument(reference, changed, drawers.document, drawers.pins, drawn);
-  }
-  const section = element("section", "", "diff-file github-pull-guide-reference");
+function referenceBar(reference, open) {
   const bar = element("div", "", "diff-file-bar github-pull-guide-reference-header");
   const name = element("span", "", "diff-file-toggle");
   name.append(element("span", reference.path, "diff-file-path"));
@@ -367,12 +318,88 @@ function renderReference(reference, open, change, drawers, drawn) {
     });
     bar.append(full);
   }
-  section.append(bar);
+  return bar;
+}
+
+/**
+ * A file a step cites whole that the rendered route renders, drawn by the diff plugin's own
+ * view of it (`mountRenderedFile`): a Markdown file as the Docs tab draws it, and a YAML or
+ * JSON file as Changes does. Either way it is the file's own bar, with its View on branch
+ * and its Rendered | Source chooser, the diff's Diff | Current above it, and its rendered
+ * layer, which keeps its own bounds and says on its chooser why a file it refuses shows
+ * Source. The bar is the file's, so the guide adds none of its own while the file draws, and
+ * a note that the file changed since the guide was written leads it. A file the view could
+ * not draw shows its notice under the guide's own bar, so the reader still sees which file
+ * it is and can open it in Changes.
+ *
+ * @param {Reference} reference @param {Rendered} format @param {HTMLElement | null} note
+ * @param {(path: string) => void} open
+ * @param {DrawDocument} drawDocument @param {Pins} pins
+ * @param {Array<{dispose: () => void}>} drawn Where the drawn view is kept for disposal.
+ */
+function renderDocument(reference, format, note, open, drawDocument, pins, drawn) {
+  const section = element("section", "", "github-pull-guide-reference github-pull-guide-document");
+  const body = element("div", "", "github-pull-guide-document-body");
+  // The diff's own progress, below the view so it never moves the view's first row, shown
+  // only past the loading delay (`mb-delayed-loading`), as Changes shows it.
+  const loading = element(
+    "div",
+    "",
+    "loading mb-delayed-loading github-pull-guide-document-loading",
+  );
+  loading.setAttribute("role", "status");
+  loading.setAttribute("aria-label", `Loading ${reference.path}`);
+  const spinner = element("span", "", "spinner");
+  spinner.setAttribute("aria-hidden", "true");
+  loading.append(spinner);
+  section.append(...(note === null ? [] : [note]), body, loading);
+  const view = drawDocument.mount(body, reference.path, format, pins);
+  drawn.push(view);
+  void view.settled.then((drawnFile) => {
+    loading.remove();
+    if (!drawnFile) {
+      section.prepend(referenceBar(reference, open));
+    }
+  });
+  return section;
+}
+
+/**
+ * One reference as Changes draws a changed file: the diff plugin's card and bar, and its
+ * hunks drawn by the diff plugin itself (`mountFilePatch`), each under its header bar with
+ * its long changed runs behind fold bars, in the plugin's type, gutter, change fills, and
+ * syntax (docs/design-system.md, "Diffs"). A range is one hunk of its own lines; a file
+ * named alone is its whole patch, or, one the rendered route renders, the whole file drawn
+ * by the diff view (`referenceDrawing`).
+ *
+ * @param {Reference} reference @param {(path: string) => void} open
+ * @param {Change} change Whether the file changed after the guide was written.
+ * @param {Drawers} drawers What draws the reference.
+ * @param {Array<{dispose: () => void}>} drawn Where each drawn patch is kept for disposal.
+ */
+function renderReference(reference, open, change, drawers, drawn) {
+  const drawing = referenceDrawing(reference, drawers);
+  const changed =
+    reference.state === "ready" && change !== "unchanged"
+      ? element(
+          "p",
+          change === "changed"
+            ? CHANGED_REFERENCE_MESSAGES.ready
+            : UNKNOWN_REFERENCE_MESSAGES.ready,
+          "github-pull-quiet github-pull-guide-changed",
+        )
+      : null;
+  const format = typeof reference.rendered === "string" ? reference.rendered : null;
+  if (drawing === "document" && drawers.document !== null && format !== null) {
+    return renderDocument(reference, format, changed, open, drawers.document, drawers.pins, drawn);
+  }
+  const section = element("section", "", "diff-file github-pull-guide-reference");
+  section.append(referenceBar(reference, open));
   if (changed !== null) {
     section.append(changed);
   }
   const drawPatch = drawers.patch;
-  if (reference.state === "ready" && reference.hunks.length === 0) {
+  if (reference.state === "ready" && format === null && reference.hunks.length === 0) {
     // A rename, a mode change, or a binary file: a change with no text to show.
     section.append(element("p", "This file has no text changes to show.", "github-pull-quiet"));
   } else if (drawing === "patch" && drawPatch !== null) {
@@ -551,12 +578,13 @@ let groupHeadings = 0;
  *   open: (path: string) => void,
  *   loadStyles: (assets: unknown) => Promise<unknown>,
  *   loadDrawPatch: () => Promise<DrawPatch>,
- *   loadDrawDocument: () => Promise<DrawDocument | null>,
+ *   loadDrawDocument: () => Promise<DrawDocument>,
  * }} deps *open* goes to a file's Changes address. *loadStyles* loads the stylesheets the
  *   guide is drawn in: KPress's, from the manifest a ready step carries, and the diff
  *   plugin's; the guide waits for them, as a description does. *loadDrawPatch* loads the
  *   diff plugin's file renderer, which draws the excerpts, and *loadDrawDocument* its view
- *   of one whole document, the first time a step cites a whole file.
+ *   of one whole file, which draws a file the rendered route renders; the view loads the
+ *   rendered layer when it draws one, so a guide that cites none never loads it.
  */
 export function mountGuidedReview(host, introduction, number, deps) {
   const { open, loadStyles, loadDrawPatch, loadDrawDocument } = deps;
@@ -747,20 +775,13 @@ export function mountGuidedReview(host, introduction, number, deps) {
           console.warn("metabrowser github: the diff plugin did not load for the guide", error);
           return null;
         });
-        // The first step to cite a whole file loads the diff plugin's rendered layer; without
-        // it, a document shows its patch.
-        const { references } = /** @type {Step} */ (result);
-        if (
-          references.some((reference) => reference.side === null && reference.state === "ready")
-        ) {
-          documents ??= loadDrawDocument().catch((error) => {
-            console.warn(
-              "metabrowser github: rendered documents did not load for the guide",
-              error,
-            );
-            return null;
-          });
-        }
+        // The same plugin draws a file whole; without it, a file the rendered route renders
+        // says its diff is unavailable, beside its Open full diff. The view loads the rendered
+        // layer only when it draws such a file.
+        documents ??= loadDrawDocument().catch((error) => {
+          console.warn("metabrowser github: the diff plugin did not load for the guide", error);
+          return null;
+        });
         const [, loaded, documented] = await Promise.all([styles, drawer, documents]);
         drawPatch = loaded;
         drawDocument = documented;

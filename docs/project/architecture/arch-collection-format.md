@@ -55,6 +55,9 @@ collection:
   [Contracts](../specs/active/plan-2026-11-14-object-data-model-and-views.md#contracts)
   counts only a field removed, renamed, or retyped as a break, which widening an entry
   to a group or an item is not.
+  The cost is that a release before groups refuses a grouped record at `items.N`, so its
+  reader needs a release with groups; a `Collection/v2` would not help that reader,
+  whose release refuses v2 as well.
 - **A reference** is a `path`, optionally with a `side` and an inclusive line range.
   A carrier decides what a path names and how a range resolves: in a guided review it is
   a changed file and a range of its diff.

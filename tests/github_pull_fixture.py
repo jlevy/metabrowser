@@ -41,8 +41,8 @@ the QA runbook's pull-request page walkthrough does::
     github_pull_fixture.py <directory> --serve <number> <port>
 
 With ``--guided`` the descriptions of 7 and 8 carry guides, and 9's two blocks;
-``--describe`` then writes one of ``GUIDE_VARIANTS`` into a cached description, pinned as
-the guide already there is::
+``--describe`` then writes one of ``GUIDE_VARIANTS`` or ``BUILT_VARIANTS`` into a cached
+description, pinned as the guide already there is::
 
     github_pull_fixture.py <directory> --describe <number> <variant>
 """
@@ -60,7 +60,7 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Generator, Mapping
+from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -269,8 +269,12 @@ def _commit(
     return (stream + "\n").encode()
 
 
-def build_origin(directory: Path) -> Origin:
-    """The origin; every pull-request ref is written the way GitHub writes it."""
+def build_origin(directory: Path, *, more: Mapping[str, str] | None = None) -> Origin:
+    """The origin; every pull-request ref is written the way GitHub writes it.
+
+    *more* are files pull request 7's head adds besides its own, for a guide that cites them
+    (:func:`build_home` with *documents*); every other build leaves the recipe as it is.
+    """
 
     origin = directory / "github-pull-origin.git"
     env = git_env(directory)
@@ -296,7 +300,7 @@ def build_origin(directory: Path) -> Origin:
                 "refs/pull/7/head",
                 4,
                 "count to two",
-                {"src/app.txt": "one\ntwo\n", "docs/new.md": "# New\n"},
+                {"src/app.txt": "one\ntwo\n", "docs/new.md": "# New\n", **(more or {})},
                 parent=3,
             ),
             _commit(
@@ -1313,13 +1317,21 @@ def _patched(target: object, name: str, value: object) -> Generator[None]:
 
 
 def build_home(
-    directory: Path, *, files: bool = False, guided: bool = False, documents: bool = False
+    directory: Path,
+    *,
+    files: bool = False,
+    guided: bool = False,
+    documents: bool = False,
+    large: bool = False,
 ) -> None:
     """Cache the mirror and pull requests 7 to 10 through the production CLI path.
 
     With *files*, :func:`build_file_lists` adds lists of changed files.
     With *guided*, the fake GitHub serves guides against known fixture comparisons; with
-    *documents* too, pull request 7's guide ends on a step that cites a Markdown file whole.
+    *documents* too, pull request 7 also adds a YAML file, and its guide ends on a step that
+    cites it and a Markdown file whole. With *large* as well, it adds a Markdown file whose
+    whole patch charges past a step's budget for whole files, which that step cites too
+    (:data:`_DOCUMENT_FILES`).
 
     The seams are the in-process goldens' own: the origin URL, the Git floor (the
     machine's Git may be below it), the clock, and a fake ``gh`` first on ``PATH``.
@@ -1333,10 +1345,12 @@ def build_home(
     from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
     from metabrowser.git.process import detect_git_version
 
-    origin = build_origin(directory)
+    kept = ("config/settings.yaml", "docs/large.md") if large else ("config/settings.yaml",)
+    more = {path: _DOCUMENT_FILES[path] for path in kept} if documents else None
+    origin = build_origin(directory, more=more)
     answers = scenario(origin)
     if guided:
-        _add_guides(origin, answers, documents=documents)
+        _add_guides(origin, answers, documents=kept if documents else ())
     environment = install_fake_gh(directory, answers)
     version, _raw = detect_git_version()
     local = origin.url
@@ -1419,9 +1433,27 @@ def _in_group(step: str) -> str:
     return "".join(f"    {line}\n" for line in step.splitlines())
 
 
+# Two more steps over the stand-in's changes, so each group of a longer guide can hold two:
+# the count's old side, and each changed file whole.
+_OLD_COUNT_STEP = """\
+    - title: Compare the old count
+      note: Check what the count replaced.
+      references:
+        - {path: src/app.txt, side: old, start_line: 1, end_line: 1}
+"""
+_WHOLE_STEP = """\
+    - title: Read each file whole
+      note: Check the two changes together.
+      references:
+        - {path: src/app.txt}
+        - {path: docs/new.md}
+"""
+
+
 # The guides `--describe` writes into a cached description: the stand-in guide's steps each
-# in a group, the first with a note; groups mixed with a step; and two blocks the page
-# refuses, an empty group and a group inside a group.
+# in a group, the first with a note; groups mixed with a step; a longer guide, two groups
+# of two steps each, which tells numbering through the groups from numbering by entry; and
+# two blocks the page refuses, an empty group and a group inside a group.
 GUIDE_VARIANTS: Final[dict[str, str]] = {
     "grouped": (
         "    - title: The count\n"
@@ -1434,6 +1466,11 @@ GUIDE_VARIANTS: Final[dict[str, str]] = {
         "      note: Read the value before its explanation.\n"
         "      items:\n" + _in_group(_COUNT_STEP) + _DOCS_STEP
     ),
+    "longer": (
+        "    - title: The count\n"
+        "      items:\n" + _in_group(_COUNT_STEP + _OLD_COUNT_STEP) + "    - title: The docs\n"
+        "      items:\n" + _in_group(_DOCS_STEP + _WHOLE_STEP)
+    ),
     "empty-group": "    - title: The count\n      items: []\n" + _DOCS_STEP,
     "nested-group": (
         "    - title: The count\n"
@@ -1444,25 +1481,59 @@ GUIDE_VARIANTS: Final[dict[str, str]] = {
 }
 
 
+def _past_max_items() -> str:
+    """Two groups whose steps pass MAX_ITEMS together, though each list is within its own
+    bound, so only the total refuses the guide."""
+    from metabrowser.builtin_plugins.github.guided_review import MAX_ITEMS
+
+    group = _in_group(_COUNT_STEP) * (MAX_ITEMS // 2)
+    return "".join(f"    - title: Part {part}\n      items:\n{group}" for part in (1, 2))
+
+
+# The guides `--describe` builds from the format's bounds as it writes one, so they follow
+# the constants: a guide past MAX_ITEMS.
+BUILT_VARIANTS: Final[dict[str, Callable[[], str]]] = {"past-max-items": _past_max_items}
+
+
 def grouped_guide_body(origin: Origin) -> str:
     """The stand-in guide of :func:`guide_body` with each of its steps in a group."""
     return _guide_body(origin["base"], origin["fork_head"], GUIDE_VARIANTS["grouped"])
 
 
-# A step whose one reference names a Markdown file whole, which the guide draws as Docs does.
-_DOCUMENT_STEP = """    - title: Read the new guide whole
-      note: Check that it reads as a document.
-      references:
-        - {path: docs/new.md}
-"""
+# The files a documents build adds to pull request 7's head: a YAML file, which a step that
+# cites it whole draws as Changes does, and a Markdown file whose whole patch charges past
+# MAX_STEP_PATCH_BYTES in guided_review.py, though the file is inside the rendered route's
+# read bound, as test_guided_review_route.py checks.
+_DOCUMENT_FILES: Final[dict[str, str]] = {
+    "config/settings.yaml": "count: 2\nname: demo\n",
+    "docs/large.md": "# Large\n\n"
+    + "".join(
+        f"Paragraph {n} of a document a step cites whole, past the step's budget for whole files.\n\n"
+        for n in range(1, 3001)
+    ),
+}
 
 
-def _add_guides(origin: Origin, answers: dict[str, Any], *, documents: bool = False) -> None:
+def _document_step(paths: tuple[str, ...]) -> str:
+    """A step that names docs/new.md and each of *paths* whole: files the rendered route
+    renders, which the guide draws whole, and, with docs/large.md, src/app.txt after it,
+    whose patch still has the step's whole budget."""
+    cited = ("docs/new.md", *paths, *(("src/app.txt",) if "docs/large.md" in paths else ()))
+    return (
+        "    - title: Read the new guide whole\n"
+        "      note: Check that it reads as a document.\n"
+        "      references:\n" + "".join(f"        - {{path: {path}}}\n" for path in cited)
+    )
+
+
+def _add_guides(origin: Origin, answers: dict[str, Any], *, documents: tuple[str, ...]) -> None:
     fence = guide_body(origin)
     api = answers["api"]
     if documents:
         head, close, tail = fence.rpartition("```")
-        api["repos/octo/demo/pulls/7"]["body"]["body"] = head + _DOCUMENT_STEP + close + tail
+        api["repos/octo/demo/pulls/7"]["body"]["body"] = (
+            head + _document_step(documents) + close + tail
+        )
     else:
         api["repos/octo/demo/pulls/7"]["body"]["body"] = fence
     api["repos/octo/demo/pulls/8"]["body"]["body"] = fence
@@ -1470,11 +1541,11 @@ def _add_guides(origin: Origin, answers: dict[str, Any], *, documents: bool = Fa
 
 
 def describe(directory: Path, number: int, variant: str) -> None:
-    """Write the guide *variant* of :data:`GUIDE_VARIANTS` into the cached description of
-    pull request *number* in the home :func:`build_home` wrote with ``--guided``, pinned as
-    the guide already there is, as a fetch of the edited description would leave it. The
-    pins are read as :func:`_guide_body` writes them, so a variant the page refuses can follow
-    another."""
+    """Write the guide *variant* of :data:`GUIDE_VARIANTS` or :data:`BUILT_VARIANTS` into the
+    cached description of pull request *number* in the home :func:`build_home` wrote with
+    ``--guided``, pinned as the guide already there is, as a fetch of the edited description
+    would leave it. The pins are read as :func:`_guide_body` writes them, so a variant the
+    page refuses can follow another."""
 
     from metabrowser.builtin_plugins.github.pull_record import (
         PullRecord,
@@ -1489,7 +1560,8 @@ def describe(directory: Path, number: int, variant: str) -> None:
         r'^    merge_base: "([0-9a-f]{40})"\n    head: "([0-9a-f]{40})"$', record.pull.body, re.M
     )
     assert pins is not None, f"pull request {number} has no guide to rewrite"
-    body = _guide_body(pins[1], pins[2], GUIDE_VARIANTS[variant])
+    items = GUIDE_VARIANTS[variant] if variant in GUIDE_VARIANTS else BUILT_VARIANTS[variant]()
+    body = _guide_body(pins[1], pins[2], items)
     pull = record.pull.model_copy(update={"body": body})
     write_pull_record(home, _source_slug(), record.model_copy(update={"pull": pull}))
 
@@ -1728,17 +1800,26 @@ if __name__ == "__main__":
         build_home(Path(sys.argv[1]).resolve(), files=True)
     elif len(sys.argv) == 3 and sys.argv[2] == "--guided":
         build_home(Path(sys.argv[1]).resolve(), guided=True)
-    elif len(sys.argv) == 3 and sys.argv[2] == "--guided-documents":
-        build_home(Path(sys.argv[1]).resolve(), guided=True, documents=True)
-    elif len(sys.argv) == 5 and sys.argv[2] == "--describe" and sys.argv[4] in GUIDE_VARIANTS:
+    elif len(sys.argv) == 3 and sys.argv[2] in ("--guided-documents", "--guided-large-document"):
+        build_home(
+            Path(sys.argv[1]).resolve(),
+            guided=True,
+            documents=True,
+            large=sys.argv[2] == "--guided-large-document",
+        )
+    elif (
+        len(sys.argv) == 5
+        and sys.argv[2] == "--describe"
+        and sys.argv[4] in {*GUIDE_VARIANTS, *BUILT_VARIANTS}
+    ):
         describe(Path(sys.argv[1]).resolve(), int(sys.argv[3]), sys.argv[4])
     elif len(sys.argv) == 2:
         build_home(Path(sys.argv[1]).resolve())
     else:
         raise SystemExit(
             "usage: github_pull_fixture.py <directory> "
-            "[--files | --guided | --guided-documents | --checkout "
+            "[--files | --guided | --guided-documents | --guided-large-document | --checkout "
             "| --serve <number> <port> [--exit-on-eof] "
-            f"| --describe <number> {{{','.join(GUIDE_VARIANTS)}}}] "
+            f"| --describe <number> {{{','.join([*GUIDE_VARIANTS, *BUILT_VARIANTS])}}}] "
             "or --files-refresh <metab arguments>"
         )
