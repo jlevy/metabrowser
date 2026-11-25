@@ -5,17 +5,20 @@
 // fails when the recording drifts: stack 70 pending before its members' records, then
 // current; 71, whose top lacks 7, which has another comparison; and 72, not linear.
 //
-// It runs the production builtin_plugins/github/stack-page.js: the tab a route shows, what
-// a new answer does to the comparison drawn (`comparisonAction`), each file's layer marks,
-// the line about members the top lacks, and the controller (`createStackController`) over a
+// It runs the production builtin_plugins/github/stack-page.js: the tab a route shows, the
+// header's rows from its first paint to the answer (`stackHeader`), what the page passes the
+// diff view for its Diff summary and its Docs and Changes, what a new answer does to the
+// comparison drawn (`comparisonAction`), the line about members the top lacks, and the
+// controller (`createStackController`) over a
 // scripted poll, over a read that fails and then finds its answer current, over a cold
 // stack of more members than the server fetches at once, one of whose fetches fails, over
 // a read asked for while one is on its way, over a fetch that ends once the stack is no
 // longer linear, and over an answer read as a fetch ended before its record. Then the
-// body's state machine (`bodyPlan` and its events) and the notices above it
-// (`statusNotices`) over a reader who opens a file while the stack moves. What is left to
-// the glue (`mountStackPage`) is the drawing: its header, tabs, buttons, and the diff views
-// it mounts.
+// body's state machine (`bodyPlan` and its events), the column it is set in
+// (`bodyInColumn`), and the notices above it (`statusNotices`) over a reader who opens a
+// file while the stack moves. What is left to
+// the glue (`mountStackPage`) is the drawing, which github-stack-guide-mount-session.js
+// mounts.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -477,6 +480,9 @@ function bodySession(page, pending, current, lacking, notLinear) {
       ...(action.text ? { text: action.text } : {}),
       ...(action.retry ? { retry: true } : {}),
       drawn: body.drawn === current.comparison ? "current" : body.drawn ? "other" : null,
+      // The body's column, a pull request's (`bodyInColumn`): the reading column but for a
+      // drawn Docs or Changes.
+      column: page.bodyInColumn(body, tab) ? "reading" : "full pane",
       notices: page
         .statusNotices(envelope, body.drawn?.key ?? null, null, failed)
         .map((notice) => `${notice.text}${notice.action ? ` [${notice.action}]` : ""}`),
@@ -533,7 +539,7 @@ function bodySession(page, pending, current, lacking, notLinear) {
 
   // With nothing drawn yet, the body says why.
   body = page.NO_BODY;
-  tab = "files";
+  tab = "changes";
   failed = [10];
   answer("nothing drawn, a member's fetch failed", pending);
   failed = [];
@@ -569,6 +575,7 @@ function guidedSession(page, pending, current, lacking, notLinear) {
       tab,
       do: planned.action.do === "mount" ? `mount ${planned.action.tab}` : planned.action.do,
       drawn: body.drawn === current.comparison ? "current" : body.drawn ? "other" : null,
+      column: page.bodyInColumn(body, tab) ? "reading" : "full pane",
     });
   };
   step("before any answer", null);
@@ -615,10 +622,83 @@ async function main() {
     ["drawn, the stack now absent", page.comparisonAction(current.comparison.key, notLinear)],
   ];
 
-  const href = (number, file) => `/pull/${number}/files/${file}`;
-  const marks = Object.fromEntries(
-    ["docs/draft.md", "README.md"].map((file) => [file, page.layerMarks(current, file, href)]),
-  );
+  // The header from the page's first paint, when the Pulls tab knows the stack and its lists
+  // titled and stated its members, through each answer, and for a stack the Pulls tab does
+  // not know. Its rows stay those of the first paint; only the status line comes and goes.
+  // A member's author is the answer's once it names one, its record's, and before that the
+  // stacks route's: that route read 8's author with its title and holds none for 10, so at
+  // first paint 8's row ends in its author and 10's in its number, and the answer names 10's.
+  const known = {
+    number: 70,
+    base_ref: current.base_ref,
+    open: true,
+    pulls: current.members.map((member) => member.number),
+    titles: current.members.map((member) => member.title),
+    authors: current.members.map((member) => (member.number === 8 ? "maintainer" : null)),
+    avatars: current.members.map(() => null),
+  };
+  // The Pulls tab's lists read 8, merged.
+  const listed = (number) => (number === 8 ? { state: "merged", title: null } : null);
+  const unlisted = () => null;
+  const headerAt = (envelope, from, drawn, failedNow = []) => {
+    const model = page.stackHeader(
+      70,
+      envelope,
+      from,
+      from === null ? unlisted : listed,
+      page.statusNotices(
+        envelope,
+        drawn ? (envelope?.comparison?.key ?? null) : null,
+        null,
+        failedNow,
+      ),
+      drawn,
+    );
+    return {
+      cold: model.cold,
+      rows: model.rows.join(", "),
+      members:
+        model.members?.map(
+          (member) =>
+            `${member.state ?? "(unknown)"} ${member.title ?? "(untitled)"} ${member.place} · #${member.number}${member.author === null ? "" : ` · ${member.author.login}`}`,
+        ) ?? null,
+      merge: model.merge === null ? null : `${model.merge.head} → ${model.merge.base}`,
+      status: model.status.map((notice) => notice.text),
+      comparison: model.comparison,
+    };
+  };
+  const header = {
+    first_paint: headerAt(null, known, false),
+    pending: headerAt(pending, known, false),
+    current: headerAt(current, known, true),
+    lacking: headerAt(lacking, known, true),
+    unknown_first_paint: headerAt(null, null, false),
+    unknown_not_linear: headerAt(notLinear, null, false),
+  };
+
+  // What the page passes the diff view: for the header's Diff summary, the comparison read
+  // and where a file opens, so it starts collapsed, as every Diff summary does; for Docs and Changes,
+  // a pull request's drawings, with no summary of their own and the first screen's hold.
+  const signal = new AbortController().signal;
+  const opens = () => {};
+  const shapeOf = (ctx) =>
+    Object.fromEntries(
+      Object.entries(ctx)
+        .filter(([name]) => !["comparisonSignal", "raw"].includes(name))
+        .map(([name, value]) => [name, typeof value === "function" ? "function" : value]),
+    );
+  const drawing = {
+    summary: shapeOf(page.summaryDrawing({}, opens)),
+    docs: shapeOf(page.diffDrawing("docs", current.comparison, { signal, onDocument: opens })),
+    changes: shapeOf(
+      page.diffDrawing("changes", current.comparison, {
+        signal,
+        raw: {},
+        types: null,
+        onTypes: opens,
+      }),
+    ),
+  };
 
   const said = {
     lacking: page.lackingText(lacking),
@@ -652,7 +732,8 @@ async function main() {
         tabs,
         guided,
         comparison,
-        marks,
+        header,
+        drawing,
         said,
         delays,
         sent,

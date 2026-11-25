@@ -88,7 +88,10 @@ function createShell(
       shell.host = host;
       return {
         setShown: (shown) => log.push(`view told: ${shown ? "shown" : "hidden"}`),
-        setCurrent: (number) => log.push(`view told: current ${number}`),
+        setCurrent: (number, _file, options) =>
+          log.push(
+            `view told: current ${number}${options?.stack ? `, Stack #${options.stack}'s page` : ""}`,
+          ),
         setFilter: (state) => log.push(`view told: filter ${state}`),
         move: (delta, how) => {
           log.push(`view told: move ${delta}${how?.repeat ? " repeating" : ""}`);
@@ -148,7 +151,11 @@ function createShell(
     scrollRoot: () => ({}),
     pageFor: (number) => shell.pages?.get(number) ?? null,
     openPull(route) {
-      log.push(`opened pull request ${route.number}`);
+      log.push(
+        route.stack
+          ? `opened Stack #${route.number}'s page`
+          : `opened pull request ${route.number}`,
+      );
       return Promise.resolve({ status: "opened" });
     },
     schedulePrefetch(callback) {
@@ -187,6 +194,8 @@ async function run() {
     ["/pulls", "?state=merged"],
     ["/pull/7", ""],
     ["/pull/7/files", ""],
+    ["/stack/70", ""],
+    ["/stack/70/changes", ""],
     ["/view/README.md", ""],
     ["/commit/abc", ""],
   ]) {
@@ -256,6 +265,12 @@ async function run() {
   page.shell.address = new URL("/pull/8", "http://x");
   host.routeChanged();
   log.push({ "another pull request: the row follows": page.take() });
+  // A native stack's page names no one pull request: the list marks its Whole stack row.
+  page.shell.address = new URL("/stack/70/changes", "http://x");
+  host.routeChanged();
+  log.push({ "a stack's page: its Whole stack row is the current row": page.take() });
+  void page.shell.host.open({ number: 70, tab: "", stack: true });
+  log.push({ "the Whole stack row's open is the shell's": page.take() });
   page.shell.address = new URL("/pulls?state=open", "http://x");
   host.routeChanged();
   log.push({ "the list's address: its filter": page.take() });
@@ -1063,6 +1078,17 @@ function twoTreesPage() {
     "data-tree-id": "Stack #286",
   });
   const stackItem = make("li", { role: "none" }, [stackRow]);
+  // Its Whole stack row, the last under it: a row link to the stack's own page.
+  const wholeRow = make("a", {
+    class: "github-pulls-row github-pulls-whole-row",
+    role: "treeitem",
+    "aria-level": "2",
+    tabindex: "-1",
+    href: "/stack/286",
+    "data-stack": "286",
+    "data-tree-id": "Whole stack of #286",
+  });
+  const wholeItem = make("li", { role: "none" }, [wholeRow]);
   document.body.append(
     make("div", { id: "tree-pane" }, [make("div", { id: "tree-content" }, [filesTab, pullsTab])]),
     make("div", { id: "preview-pane" }),
@@ -1128,7 +1154,7 @@ function twoTreesPage() {
         }
       },
       openPullRequest(route) {
-        shell.address = `/pull/${route.number}${route.tab ? `/${route.tab}` : ""}${route.file ? `/${route.file}` : ""}`;
+        shell.address = `/${route.stack ? "stack" : "pull"}/${route.number}${route.tab ? `/${route.tab}` : ""}${route.file ? `/${route.file}` : ""}`;
         log.push(`the shell opened ${shell.address}, ${route.replace ? "replacing" : "pushing"}`);
         return Promise.resolve({ status: "opened" });
       },
@@ -1224,11 +1250,11 @@ function twoTreesPage() {
             },
             activateAnchor() {
               const row = document.activeElement;
-              void ctx.pullsNav.open({
-                number: Number(row.dataset.number),
-                tab: "",
-                replace: false,
-              });
+              void ctx.pullsNav.open(
+                row.classList.contains("github-pulls-whole-row")
+                  ? { number: Number(row.dataset.stack), tab: "", stack: true, replace: false }
+                  : { number: Number(row.dataset.number), tab: "", replace: false },
+              );
               return true;
             },
             dispose() {},
@@ -1296,13 +1322,16 @@ function twoTreesPage() {
     changedFiles,
     copyRef,
     stackRow,
-    /** Put a stack's row in the list, or take it out. @param {boolean} shown */
+    wholeRow,
+    /** Put a stack's row and its Whole stack row in the list, or take them out. @param {boolean} shown */
     showStack(shown) {
-      if (shown) {
-        pullsList.append(stackItem);
-      } else {
-        pullsList.children.splice(pullsList.children.indexOf(stackItem), 1);
-        stackItem.parentElement = null;
+      for (const item of [stackItem, wholeItem]) {
+        if (shown) {
+          pullsList.append(item);
+        } else {
+          pullsList.children.splice(pullsList.children.indexOf(item), 1);
+          item.parentElement = null;
+        }
       }
     },
     shell,
@@ -1416,6 +1445,21 @@ async function twoTreesStory() {
       [true, "opened Stack #286"],
     ],
     "Space on a stack's row is the stack's, not a pull request's",
+  );
+  // Space on its Whole stack row opens the stack's page, as Enter does: the row has no files.
+  page.wholeRow.focus();
+  story["Space on a stack's Whole stack row opens the stack's page"] = page.press(" ");
+  story["holding Space on it opens nothing more"] = page.press(" ", { repeat: true });
+  assert.deepEqual(
+    [
+      story["Space on a stack's Whole stack row opens the stack's page"],
+      story["holding Space on it opens nothing more"],
+    ].map((action) => [action.handled, action.did.length]),
+    [
+      [true, 1],
+      [true, 0],
+    ],
+    "Space on a Whole stack row opens the stack's page once",
   );
   page.showStack(false);
   firstPull.focus();

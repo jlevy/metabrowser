@@ -74,6 +74,7 @@ import {
   withListedState,
 } from "./pull-state.js";
 import { briefLine, createSummaryBrief, PULL_FILES_SUMMARY_ROUTE } from "./pull-summary-brief.js";
+import { stackMemberRow } from "./stack-member-row.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -235,7 +236,7 @@ function keepPullSize(route, size) {
  * @param {unknown} raw
  * @returns {number | null}
  */
-function manifestFiles(raw) {
+export function manifestFiles(raw) {
   const files = /** @type {{manifest?: {totals?: {files?: unknown}}} | null} */ (raw)?.manifest
     ?.totals?.files;
   return typeof files === "number" && Number.isInteger(files) && files >= 0 ? files : null;
@@ -4183,6 +4184,38 @@ export function avatarUrl(value) {
     : null;
 }
 
+/**
+ * An age on a pull request's page or a stack's, from the one primitive, `mb.formatAge`, so
+ * it draws in its freshness ink (docs/design-system.md, "File Age"), with the exact time in
+ * its tooltip and its time in `data-age-at`, from which the page tells it again as time
+ * passes. `also` is a time the row leaves out because its age reads the same as this one;
+ * its exact time joins this tooltip, so leaving the age out loses nothing.
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @param {string} iso
+ * @param {{label: string, iso: string} | null} [also]
+ * @returns {HTMLElement}
+ */
+export function pullAge(mb, iso, also = null) {
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) {
+    return h("span", {}, [iso]);
+  }
+  /** @param {number} ms */
+  const exact = (ms) => mb.formatTimestamp(ms / 1000);
+  const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
+  const alsoAt = also === null ? Number.NaN : Date.parse(also.iso);
+  const tip =
+    also !== null && Number.isFinite(alsoAt)
+      ? `${exact(at)} · ${also.label} ${exact(alsoAt)}`
+      : exact(at);
+  return h(
+    "span",
+    { class: `github-pull-age ${className}`, "data-tip-text": tip, "data-age-at": String(at) },
+    [label],
+  );
+}
+
 /** An actor, as the shell draws every person (docs/design-system.md, "Actor Identity"): the
  * SDK's identity, the avatar's box and then the bold name, with GitHub's avatar in the box
  * where the record carries one that passes `avatarUrl`. The image is decorative beside the
@@ -4420,10 +4453,8 @@ export function createStackMenu(initial, number, deps) {
   /** @type {HTMLElement[]} */
   const links = [];
   /**
-   * Each member's line, and what it last drew, so a repaint that changes nothing changes no
-   * node: `text`, `state`, and `author` are the title, the state, and the author shown, `state`
-   * and `author` undefined before any.
-   * @type {Map<number, {link: HTMLElement, icon: HTMLElement, position: HTMLElement, title: HTMLElement, copy: HTMLElement, by: HTMLElement, shown: {text: string | null, state: import("./pull-state.js").PullState | null | undefined, author: string | undefined}}>}
+   * Each member's row (`stackMemberRow`), which changes only what a repaint changes.
+   * @type {Map<number, import("./stack-member-row.js").StackMemberRow>}
    */
   const rows = new Map();
   // The members under the heading that names them and the menu: the host's group
@@ -4461,7 +4492,11 @@ export function createStackMenu(initial, number, deps) {
     return whole;
   }
 
-  /** Each drawn member's state icon, place, and title, from the stack and `deps.state`. */
+  /**
+   * Each drawn member's line, from the stack, `deps.state`, and its author
+   * (`stackMemberAuthor`): its title, or the page's own for its pull request, its place,
+   * its state, and its author where the menu has an identity to draw it with.
+   */
   function updateMembers() {
     for (let at = 0; at < stack.pulls.length; at += 1) {
       const target = stack.pulls[at];
@@ -4469,51 +4504,16 @@ export function createStackMenu(initial, number, deps) {
       if (!row) {
         continue;
       }
-      const title =
-        stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`);
-      if (row.shown.text !== title) {
-        row.title.replaceChildren(...deps.titleNodes(title));
-        // The whole title, which the shell shows only while the line cuts it short
-        // (docs/design-system.md, "Tooltips Add Information").
-        row.link.setAttribute("data-tip-text", title);
-        row.shown.text = title;
-      }
-      const place = stackPosition(at, stack.pulls.length);
-      if (row.position.textContent !== place) {
-        row.position.textContent = place;
-      }
-      const state = deps.state?.(target) ?? null;
-      if (row.shown.state !== state) {
-        // Named, as a Pulls row's icon is, since nothing else on the line says the state; an
-        // unknown state keeps the icon's slot, empty.
-        row.icon =
-          state === null
-            ? h("span", { class: "github-pull-state-icon", "aria-hidden": "true" })
-            : pullStateIcon(state);
-        row.link.replaceChildren(row.icon, row.copy);
-        row.shown.state = state;
-      }
-      const author =
-        deps.identity === undefined
-          ? null
-          : stackMemberAuthor(stack, at, target === number ? (deps.author?.() ?? null) : null);
-      const said = author === null ? "" : `${author.login}\n${author.avatar ?? ""}`;
-      if (row.shown.author !== said) {
-        // After the number, a muted dot and the author, as a Pulls row's run has them
-        // (mb-x0z1); nothing, not even the space before them, where the author is not known.
-        row.by.replaceChildren(
-          ...(author === null || deps.identity === undefined
-            ? []
-            : [
-                " ",
-                h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
-                " ",
-                deps.identity(author.login, author.avatar),
-              ]),
-        );
-        row.by.hidden = author === null;
-        row.shown.author = said;
-      }
+      row.show({
+        number: target,
+        place: stackPosition(at, stack.pulls.length),
+        title: stack.titles?.[at] || (target === number ? currentTitle : null),
+        state: deps.state?.(target) ?? null,
+        author:
+          deps.identity === undefined
+            ? null
+            : stackMemberAuthor(stack, at, target === number ? (deps.author?.() ?? null) : null),
+      });
     }
   }
 
@@ -4548,37 +4548,12 @@ export function createStackMenu(initial, number, deps) {
         if (target === number) {
           link.setAttribute("aria-current", "page");
         }
-        // The state icon, then the title, and at the line's end the place, a muted dot, the
-        // number, and another dot and the author, "14/15 · #N · jlevy", in a Pulls row's order,
-        // the title, the place, the number, and the author (mb-1kzu, mb-pw8t, mb-x0z1): the
-        // place, the dot, and the number never give way, the author gives way only past its
-        // share of the line, and the title is cut short before them.
-        const title = h("span", { class: "github-pull-stack-member-title" });
-        const position = h("strong", { class: "github-pull-stack-member-position" });
-        const dot = h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]);
-        const shown = h("span", { class: "github-pull-stack-member-number" }, [`#${target}`]);
-        const by = h("span", { class: "github-pull-stack-member-by", hidden: "" });
-        const copy = h("span", { class: "github-pull-stack-member-copy" }, [
-          title,
-          " ",
-          position,
-          " ",
-          dot,
-          " ",
-          shown,
-          by,
-        ]);
-        const icon = h("span", { class: "github-pull-state-icon", "aria-hidden": "true" });
-        link.append(icon, copy);
-        row = {
-          link,
-          icon,
-          position,
-          title,
-          copy,
-          by,
-          shown: { text: null, state: undefined, author: undefined },
-        };
+        // The member row the stack's page draws too (stack-member-row.js): the state icon, the
+        // title, and at the line's end the place, the number, and the author, "14/15 · #N ·
+        // jlevy" (mb-1kzu, mb-pw8t, mb-x0z1); the place, the dot, and the number never give
+        // way, the author gives way only past its share of the line, and the title is cut
+        // short before them.
+        row = stackMemberRow(link, deps.titleNodes, deps.identity);
         rows.set(target, row);
       }
       links.push(row.link);
@@ -4765,13 +4740,16 @@ export function createStackMenu(initial, number, deps) {
  * `signal` aborts, as the page's disposal aborts it. Returns one handle per link, in
  * order, or none on a host without the surface.
  *
+ * A stack's page gives its tabs the same keys, with its own word for whose tab it is.
+ *
  * @param {MetabrowserPublicPluginShortcutsApi | undefined} shortcuts
  * @param {ReadonlyArray<{id: string, link: HTMLElement}>} tabLinks
  * @param {(tab: string) => void} setTab
  * @param {AbortSignal} signal
+ * @param {string} [owner] Whose tabs they are, in Help's words.
  * @returns {MetabrowserPublicPluginShortcutHandle[]}
  */
-export function attachTabKeys(shortcuts, tabLinks, setTab, signal) {
+export function attachTabKeys(shortcuts, tabLinks, setTab, signal, owner = "pull request") {
   if (typeof shortcuts?.attach !== "function") {
     return [];
   }
@@ -4785,7 +4763,7 @@ export function attachTabKeys(shortcuts, tabLinks, setTab, signal) {
         activate: () => setTab(id),
         copy: {
           action: tab.label,
-          description: `Show the pull request’s ${tab.label} tab.`,
+          description: `Show the ${owner}’s ${tab.label} tab.`,
           hint: tab.label,
         },
         group: "view-tabs",
@@ -5247,33 +5225,13 @@ export function mountPullPage(container, ctx, mb) {
         )
       : null;
 
-  /** An exact time, as an age's tooltip and a rate limit's lift give it. @param {number} ms */
-  const exact = (ms) => mb.formatTimestamp(ms / 1000);
   /**
-   * An age, from the one primitive, with the exact time in its tooltip. `also` is a time
-   * the row leaves out because its age reads the same as this one; its exact time joins
-   * this tooltip, so leaving the age out loses nothing.
+   * An age, the one this page and a stack's page draw (`pullAge`).
    *
    * @param {string} iso
    * @param {{label: string, iso: string} | null} [also]
    */
-  const age = (iso, also = null) => {
-    const at = Date.parse(iso);
-    if (!Number.isFinite(at)) {
-      return h("span", {}, [iso]);
-    }
-    const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-    const alsoAt = also === null ? Number.NaN : Date.parse(also.iso);
-    const tip =
-      also !== null && Number.isFinite(alsoAt)
-        ? `${exact(at)} · ${also.label} ${exact(alsoAt)}`
-        : exact(at);
-    return h(
-      "span",
-      { class: `github-pull-age ${className}`, "data-tip-text": tip, "data-age-at": String(at) },
-      [label],
-    );
-  };
+  const age = (iso, also = null) => pullAge(mb, iso, also);
 
   /**
    * Tell the ages in a kept node again, as of now: a section kept across paints keeps its

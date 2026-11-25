@@ -112,7 +112,17 @@ to the previous one toward the base; on Windows and Linux, where those keys are 
 browser’s, use the menu.
 Without the extension, or when GitHub cannot answer, pull requests read as usual and the
 list stays flat, unless stacks are cached.
-Metabrowser reads stacks and never changes them.
+
+**Whole stack**, the menu’s first row, and the last row under each open stack in the
+Pulls tab, opens the stack’s own page, laid out as a pull request’s page for the whole
+stack: its members under the title, top first, each as the menu lists it; the top
+member’s head branch → the stack’s base; the files changed and the Diff summary of the
+stack’s combined change; and **Docs** and **Changes** of that change, with **Guided
+Review** first when the stack has a guide.
+**View on GitHub** there opens the stack on github.com.
+While that page is open, the stack’s **Whole stack** row in the Pulls tab is marked as
+the current row, as a pull request’s row is on its page; J and K stop on it and open the
+page, as they open a pull request’s. Metabrowser reads stacks and never changes them.
 
 ## The Pull Request Page
 
@@ -347,7 +357,7 @@ another fence, as in the example above, is not a guide even where the tab appear
 A native stack can have a guide of its own: one guided review of the whole stack, read
 against the stack’s comparison, from its bottom layer’s merge base to its top layer’s
 head. The stack’s page, which **Whole stack** in the stack menu opens, then leads with a
-**Guided Review** tab and opens on it; without a guide it opens on Files.
+**Guided Review** tab and opens on it; without a guide it opens on Changes.
 
 To publish one, add one top-level `stack-review` block, in the format above, to a
 layer’s description, usually the top layer’s, beside that layer’s own `guided-review`
@@ -362,11 +372,12 @@ guide opens on its first step, and its first steps orient the reader.
 On that layer’s page, Conversation leaves the block out and shows a card that says it
 has a stack guide and opens the page of each stack the layer belongs to.
 A step’s files open in the stack’s Changes, and a step can cite each layer as
-`{pull: <n>}`. The guide is read at the comparison the page shows, as Files, Docs, and
-Changes are. While a layer is being fetched, or the stack cannot be shown as one
-comparison, the guide on screen stays, and a step you have not read yet says why in its
-place; when the stack moves, the page offers its new comparison, and the guide is read
-again there, out of date where a layer moved past its pins, when you take it.
+`{pull: <n>}`. The guide is read at the comparison the page shows, as the Diff summary,
+Docs, and Changes are.
+While a layer is being fetched, or the stack cannot be shown as one comparison, the
+guide on screen stays, and a step you have not read yet says why in its place; when the
+stack moves, the page offers its new comparison, and the guide is read again there, out
+of date where a layer moved past its pins, when you take it.
 Until you take it, a step written for the new comparison, as one is once the guide’s
 layer moved and its author pinned it again, says the stack has moved, and the guide’s
 steps stay. The same answer is the `guided-review` route’s, by stack, at the current

@@ -25,11 +25,11 @@ PULLS_ROUTE = "/pulls"
 # so a link to a guided review's Conversation names it (pull-page.js, `shownTab`).
 PULL_ROUTE_TABS = ("", "conversation", "docs", "files", "guided", "checks")
 # A native stack's page: `/stack/<n>` is its front page, Guided Review when a member's
-# description carries the stack's guide and Files otherwise; Changes names one file as
-# `/stack/<n>/changes/<path>`, since Files is a tab of its own here (stack-page.js,
-# `shownTab`).
+# description carries the stack's guide and Changes otherwise; Changes names one file as
+# `/stack/<n>/changes/<path>` (stack-page.js, `shownTab`). Its files are the header's Diff
+# summary, as on a pull request's page, so it has no Files tab.
 STACK_ROUTE_PREFIX = "/stack/"
-STACK_ROUTE_TABS = ("", "guided", "files", "docs", "changes")
+STACK_ROUTE_TABS = ("", "guided", "docs", "changes")
 # A pull-request number as the GitHub URL reducer admits one.
 _PULL_NUMBER = re.compile(r"^[1-9][0-9]{0,9}$")
 _VIEW_ROUTE_PREFIX_BYTES = VIEW_ROUTE_PREFIX.encode()
@@ -308,7 +308,7 @@ class StackRoute(NamedTuple):
 
 
 def format_stack_href(number: int, tab: str = "", file: str = "") -> str:
-    """Return the address of a stack's front page, Guided Review, Files, Docs, or Changes tab.
+    """Return the address of a stack's front page, Guided Review, Docs, or Changes tab.
 
     A file of its comparison has an address under ``/stack/<n>/changes/`` with each segment
     percent-encoded, as a pull request's has under ``/pull/<n>/files/``.
