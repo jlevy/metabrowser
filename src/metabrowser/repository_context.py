@@ -7,7 +7,7 @@ import os
 import re
 import stat
 from pathlib import Path
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 from urllib.parse import urlsplit
 
 # Keep first-paint repository discovery bounded even for corrupt metadata.
@@ -80,13 +80,27 @@ def discover_repository_context(served_root: Path) -> RepositoryContext | None:
     )
 
 
-def checked_out_branch(root: Path) -> str | None:
-    """Read the checkout's current committed branch without running Git."""
+class CheckedOutHead(NamedTuple):
+    """Where a checkout's ``HEAD`` is: its branch, ``None`` when detached, and its commit."""
+
+    branch: str | None
+    revision: str
+
+
+def checked_out_head(root: Path) -> CheckedOutHead | None:
+    """Read the checkout's ``HEAD`` without running Git, or ``None`` when it names no commit.
+
+    The working tree's revision row names it: the branch the files on disk are on, or the
+    commit a detached ``HEAD`` is at (``static/source-ref-selector.js``).
+    """
     git_dir = resolve_git_dir(root)
     if git_dir is None:
         return None
     head = _read_head(git_dir, resolve_common_dir(git_dir))
-    return head[0] if head else None
+    if head is None:
+        return None
+    branch, revision = head
+    return CheckedOutHead(branch=branch, revision=revision.lower())
 
 
 def is_checkout_root(root: Path) -> bool:

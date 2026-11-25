@@ -565,10 +565,15 @@ sentence, the details it read, and the step that fixes it:
   A server whose folder is the events directory or inside it writes none, whatever the
   environment says, and its Details name that reason.
 
-The macOS app runs its servers without `METABROWSER_CONFIG_DIR`,
-`METABROWSER_CACHE_DIR`, or the `XDG_` variables, so when `--present` would open the
-app, a directory one of those names here is a warning that names the directory the app’s
-servers use instead.
+The macOS app runs its servers without `METABROWSER_CACHE_DIR`, `XDG_CONFIG_HOME`, or
+`XDG_CACHE_HOME`, and with a `METABROWSER_CONFIG_DIR` only when the app was itself
+launched with one, by `open --env` or from launchd’s environment, which a terminal’s
+`export` does not reach.
+So when `--present` would open the app, a directory one of those names here is a warning
+that names the directory the app’s servers use without one, since a terminal cannot tell
+what the app was launched with.
+Run from the app’s Check Setup…, a `METABROWSER_CONFIG_DIR` the app was launched with is
+the one its servers use, and no warning.
 
 A `problem` stops `metab` from serving a folder, so it is also listed with the plugin
 problems and makes the exit status 1; a `warning` never changes it.
@@ -882,14 +887,19 @@ metab ~/src/project --recent-forget # remove one entry
 metab --recent-clear                # empty the list
 ```
 
-- **What is recorded:** every time `metab` serves, it records what it serves just before
-  it prints `Serving`: a folder by its path with symbolic links resolved, or a
-  repository by its address.
-  `metab FILE` records the file’s folder, with the file as the entry’s `target`, where
-  the open pointed, and a GitHub URL records its repository, whichever pull request,
-  branch, or file it named.
+- **What is recorded:** when you serve something, `metab` records it just before it
+  prints `Serving`: a folder by its path with symbolic links resolved, or a repository
+  by its address. `metab FILE` records the file’s folder, with the file as the entry’s
+  `target`, where the open pointed, and a GitHub URL records its repository, whichever
+  pull request, branch, or file it named.
   The data modes (`--api`, `--show`, `--walk`, `--diff`, `--check-api`, and
   `--no-serve`) record nothing.
+- **Who records:** a serve records only when you opened it to read: run at a terminal,
+  or told to with `METABROWSER_RECORD_RECENT=1`. A serve that an agent, a test, a
+  script, or a tool starts reads no terminal, so it records nothing and your list holds
+  only your own opens.
+  `--present` tells the server it starts for a browser to record when it would record
+  itself. The macOS app records each folder you open itself, with `--recent-add`.
 - **Each entry’s mode:** `folder` for your own files as they are on disk, or `mirror`
   for Metabrowser’s cached copy of a repository.
   `--recent --json` also gives each entry’s `git`, true for a folder that held a `.git`
@@ -904,13 +914,13 @@ metab --recent-clear                # empty the list
 - **Folders that are gone** stay listed until you forget them or open them: the list
   never looks at a listed folder, since a look can raise a macOS privacy prompt or wait
   on a drive that is not there.
-- **`--recent-add`** records `ROOT` without serving it, for a shell that shows something
-  already open.
-- **`METABROWSER_RECORD_RECENT=0`** keeps a `metab` from recording: it serves as usual
-  and leaves the list alone, and `--recent-add` records nothing.
-  Set it for a server nobody opened to read, such as a benchmark’s or a script’s.
-  `--remote` sets it for the server it starts on the far host, so a remote serve enters
-  no list on either machine.
+- **`--recent-add`** records `ROOT` without serving it, for a shell that records its own
+  opens, as the macOS app records each one.
+- **`METABROWSER_RECORD_RECENT=0`** keeps a `metab` from recording, at a terminal too:
+  it serves as usual and leaves the list alone, and `--recent-add` records nothing.
+  Set it for a server you start at a terminal for something other than reading, such as
+  a benchmark. `--remote` sets it for the server it starts on the far host, so a remote
+  serve enters no list on either machine.
 
 The list is `recent-targets.yml` in the [configuration directory](#storage-locations),
 readable only by you.
@@ -1020,7 +1030,7 @@ Every variable is read from the process environment, so export it in the shell t
 | `METABROWSER_CACHE_DIR`, `METABROWSER_CONFIG_DIR` | [Storage locations](#storage-locations) |
 | `METABROWSER_ALLOWED_HOSTS` | Comma-separated host names the server accepts besides the one it binds, for reaching it by another trusted name; see the [security policy](../SECURITY.md) |
 | `METABROWSER_PLUGINS_DIRS` | Plugin directories, separated by `:`, loaded before any `--plugins-dir` |
-| `METABROWSER_RECORD_RECENT` | `0` keeps a serve, and `--recent-add`, from recording a [recent target](#recent-targets) |
+| `METABROWSER_RECORD_RECENT` | `1` makes a serve record its root as a [recent target](#recent-targets) without a terminal; `0` keeps a serve, and `--recent-add`, from recording; unset, a serve records only at a terminal |
 | `METABROWSER_ORIGIN_STORE` | `0` keeps a repository folder, served or opened with `--api`, `--show`, or `--ref`, from keeping a store of its origin’s branches and tags, so the folder lists its own remote-tracking branches and nothing is fetched for it; a refresh asked of it is refused, as a folder’s with no store is. A reader’s comparison of a pull request still makes the store, which fetches from the origin |
 | `METABROWSER_LOG_LEVEL` | Log verbosity, as `--log-level`, which overrides it |
 | `METABROWSER_REQUEST_LOG` | `verbose` logs every request with its arrival and completion times |

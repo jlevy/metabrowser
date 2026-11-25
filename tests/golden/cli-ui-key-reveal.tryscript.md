@@ -395,7 +395,7 @@ $ node tests/dom/key-reveal-session.js
       "did": ["opened the group menu","chose type in the group menu"]
     },
     {
-      "step": "with focus outside the open menu, T is Quick Search",
+      "step": "with focus outside the open menu, T is Quick Search, which closes it",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
@@ -417,7 +417,7 @@ $ node tests/dom/key-reveal-session.js
       },
       "focus": "combobox",
       "trigger": "By file type",
-      "did": ["opened the group menu"]
+      "did": ["opened the group menu","closed the group menu"]
     },
     {
       "step": "N chooses No grouping",
