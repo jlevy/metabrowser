@@ -63,7 +63,9 @@ status: 200
   "title": "Start with the count",
   "note": "Check that the original value is preserved.",
   "note_html": "\n<div><div><p>Check that the original value is preserved.</p></div></div>",
+  "note_refusal": null,
   "group_note_html": null,
+  "group_note_refusal": null,
   "references": [
     {
       "kind": "file",
@@ -269,7 +271,9 @@ status: 200
   "title": "Read the new guide",
   "note": "Check the new docs against the behavior.",
   "note_html": "\n<div><div><p>Check the new docs against the behavior.</p></div></div>",
+  "note_refusal": null,
   "group_note_html": null,
+  "group_note_refusal": null,
   "references": [
     {
       "kind": "file",
@@ -574,7 +578,9 @@ status: 200
   "title": "Start with the count",
   "note": "Check that the original value is preserved.",
   "note_html": "\n<div><div><p>Check that the original value is preserved.</p></div></div>",
+  "note_refusal": null,
   "group_note_html": null,
+  "group_note_refusal": null,
   "references": [
     {
       "kind": "file",
@@ -1136,6 +1142,43 @@ $ jq -c '.group, .group_note_html, .note_html' notes.json
 0
 null
 "\n<div><div><p>Check what the count replaced.</p></div></div>"
+? 0
+```
+
+A note whose render is refused answers why beside its null `note_html`: `note_refusal`
+is the code the pull-markdown route answers a text’s refusal with, and
+`group_note_refusal` says the same of a group’s note.
+The page shows the note as typed with the line a description’s refusal says, and keeps
+no answer whose renderer was busy or could not start, so that step is read again
+(`cli-ui-github-guided-review.tryscript.md`). In 7’s guide with a slow note, the first
+step’s note is 100 unpaired `[` before 60 KiB of `%`, which KPress takes seconds to
+render, so a deadline shortened to 250 ms through its environment variable refuses it on
+any machine.
+The server says on standard error which note it refused, and after how long;
+the step reads as before, with its excerpt.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 slow-note
+? 0
+```
+
+```console
+$ METABROWSER_INERT_RENDER_DEADLINE_MS=250 METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=1' --format json > notes.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+[..] metabrowser.diff.markdown_projection_worker | Refused rendering 'pull-7-guided-review-note.md' (sha256:6d547e03b6bb237dc4ebdb452e24980c5a74749b35eef82755adf7ab51270c30) after [..] s: render_deadline
+? 0
+```
+
+```console
+$ jq -c '.state, .note_html, .note_refusal, (.note | length), .group_note_refusal, [.references[].state]' notes.json
+"ready"
+null
+"render_deadline"
+61540
+null
+["ready"]
 ? 0
 ```
 

@@ -1054,10 +1054,14 @@ async def stack_comparison_handler(request: Request) -> Response:
                 invalidate_stack_manifest, published, number, stack_key(published, pair)
             )
         except (OSError, PrivateStorageError):
+            # As `pull_comparison_handler` answers: the diff shows `message`, and what
+            # happened and what fixes it stay in `detail`, for `metab --api` and agents.
             return JSONResponse(
                 {
                     "error": "object_corrupt",
-                    "message": "An object does not match its ID, and its cached comparison could not be discarded. Clear the affected repository cache before retrying.",
+                    "message": "This repository’s saved copy is damaged, so these changes cannot be shown.",
+                    "detail": "An object does not match its ID, and its cached comparison could "
+                    "not be discarded. Clear the affected repository cache before retrying.",
                 },
                 status_code=409,
                 headers=_NO_STORE,

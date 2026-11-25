@@ -8,8 +8,10 @@
 // It runs the production builtin_plugins/github/stack-page.js: the tab a route shows, what
 // a new answer does to the comparison drawn (`comparisonAction`), each file's layer marks,
 // the line about members the top lacks, and the controller (`createStackController`) over a
-// scripted poll, printing each request it sends and each model it renders. What the page
-// draws from them, its header, tabs, and the diff views, is the glue's (`mountStackPage`).
+// scripted poll, printing each request it sends and each model it renders, and over a read
+// that fails and then finds its answer current, and the order the header lists the members
+// in (`topFirst`). What the page draws from them, its header, tabs, and the diff views, is
+// the glue's (`mountStackPage`).
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -141,8 +143,48 @@ async function main() {
   }
   controller.dispose();
 
+  // A read that fails while an answer is drawn, then one that finds that answer current.
+  const failing = [
+    { status: 200, etag: '"current"', body: current },
+    { status: 503, etag: null, body: { error: "the route's own words" } },
+    { status: 304, etag: '"current"', body: null },
+  ];
+  const recovery = [];
+  /** @type {Array<() => void>} */
+  const later = [];
+  const recovering = page.createStackController(
+    {
+      async request(method) {
+        return method === "POST"
+          ? { status: 202, etag: null, body: {} }
+          : (failing.shift() ?? { status: 304, etag: null, body: null });
+      },
+      schedule(callback) {
+        later.push(callback);
+        return later.length;
+      },
+      cancel() {},
+      now: () => now,
+      isVisible: () => true,
+      render(model) {
+        recovery.push({ state: model.envelope?.state ?? null, error: model.error });
+      },
+    },
+    { number: 70 },
+  );
+  await recovering.start();
+  await settle();
+  for (let poll = 0; poll < 2; poll += 1) {
+    later.shift()?.();
+    await settle();
+  }
+  recovering.dispose();
+
+  // The header lists the members top first, as every stack menu does.
+  const order = page.topFirst(lacking).map((member) => member.number);
+
   process.stdout.write(
-    `${JSON.stringify({ tabs, comparison, marks, said, delays, sent, rendered }, null, 2)}\n`,
+    `${JSON.stringify({ tabs, comparison, marks, said, delays, sent, rendered, recovery, order }, null, 2)}\n`,
   );
 }
 

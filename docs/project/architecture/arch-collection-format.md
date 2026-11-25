@@ -135,9 +135,10 @@ The record is a `guided-review` fence in a pull request’s description; `compar
 required, its `merge_base` must be an ancestor of its `head`, and its head a commit; a
 path is a changed file and a range lies in one hunk of its diff; excerpts are bounded by
 `MAX_EXCERPT_BYTES` and `MAX_STEP_PATCH_BYTES`; a note renders as the description does,
-through the same inert render (`render_text` in `pull_markdown.py`), and shows as typed
-when that render is refused; the record is stale when the pull request’s comparison
-moves. A pull request is read from its cached record or else its row in the list of pull
+through the same inert render (`render_text` in `pull_text_render.py`), and shows as
+typed, with the line that says why, when that render is refused; the record is stale
+when the pull request’s comparison moves.
+A pull request is read from its cached record or else its row in the list of pull
 requests, and placed in its stack from the stack snapshot; a pull request’s file is read
 at that pull request’s current comparison, as a path is at the guide’s; and a commit is
 read from the store.

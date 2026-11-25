@@ -16,9 +16,10 @@
 // opens the file in that layer's own Changes (`/pull/<n>/files/<path>`).
 //
 // The page reads the stack route on a poll, as a pull request's page reads its own, and
-// asks `pull-refresh` once for each member it names as pending at that member's head. While
-// it is open it sends the top member's automatic ask, which keeps the repository's list
-// probed so that the catalog keeps reporting every member's head
+// asks `pull-refresh` once for each member it names as pending at that member's head, a
+// member with no record as the reader's own open of it (`refreshAsks`). While it is open
+// it sends the top member's automatic ask, which keeps the repository's list probed so
+// that the catalog keeps reporting every member's head
 // (docs/project/specs/active/plan-2026-11-24-stack-review.md, "Staying Current"). A
 // comparison that changes while the reader reads is offered, not swapped in.
 //
@@ -27,6 +28,7 @@
 
 import { CHANGES_DRAWING, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
 import { h, isPlainClick } from "./pull-page.js";
+import { stackLabel, stackMenuOrder, stackPosition } from "./pull-stacks.js";
 import { pullStateIcon } from "./pull-state.js";
 
 export const STACK_ROUTE = "/api/plugin/github/stack";
@@ -36,6 +38,9 @@ const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
 // no cadence of its own.
 export const PENDING_POLL_MS = 1000;
 export const HIDDEN_POLL_MS = 30000;
+// What the page says while the stack route cannot be read. The poll keeps asking, so it offers
+// no remedy, and the last answer read stays drawn beneath it.
+export const UNREADABLE = "Could not read this stack.";
 
 /** The tabs, in the order the bar shows them; their ids are the route's segments. */
 export const STACK_TABS = Object.freeze([
@@ -103,9 +108,15 @@ export function comparisonAction(shownKey, envelope) {
  * the head its record has (none, for a member with no record). *asked* holds what was
  * asked; the answer is what to ask now, each with its key to add.
  *
+ * A member with no record is asked as the reader's own open of it (`retry`), as a pull
+ * request's page asks for one opened by a direct link: an automatic ask refreshes only a
+ * record the server holds, and answers `not_cached` for one it does not, so a stack opened
+ * cold stayed pending. A member whose record a newer head has passed is asked
+ * automatically, which the catalog's newer row makes due at once.
+ *
  * @param {StackEnvelope | null} envelope
  * @param {ReadonlySet<string>} asked
- * @returns {Array<{number: number, key: string}>}
+ * @returns {Array<{number: number, key: string, retry: boolean}>}
  */
 export function refreshAsks(envelope, asked) {
   if (envelope === null || envelope.state === "absent") {
@@ -113,7 +124,11 @@ export function refreshAsks(envelope, asked) {
   }
   return envelope.members
     .filter((member) => member.pending)
-    .map((member) => ({ number: member.number, key: `${member.number}:${member.head ?? ""}` }))
+    .map((member) => ({
+      number: member.number,
+      key: `${member.number}:${member.head ?? ""}`,
+      retry: member.head === null,
+    }))
     .filter((ask) => !asked.has(ask.key));
 }
 
@@ -135,8 +150,8 @@ export function layerMarks(envelope, path, href) {
   return file.layers.map((layer) => ({
     number: layer.number,
     path: layer.path,
-    text: `${layer.place}/${count}`,
-    label: `Layer ${layer.place} of ${count}, #${layer.number}: this file's changes there`,
+    text: stackPosition(layer.place - 1, count),
+    label: `Layer ${layer.place} of ${count}, #${layer.number}: this file’s changes there`,
     href: href(layer.number, layer.path),
   }));
 }
@@ -158,19 +173,20 @@ export function lackingText(envelope) {
     named.length === 1
       ? named[0]
       : `${named.slice(0, -1).join(", ")}${named.length > 2 ? "," : ""} and ${named.at(-1)}`;
-  const which = named.length === 1 ? "its changes" : "each one's changes";
+  const which = named.length === 1 ? "its changes" : "each one’s changes";
   return `The top of this stack does not contain ${list}, so this view leaves out ${which}. Open ${named.length === 1 ? "it" : "each"} to see them.`;
 }
 
 /** @type {Readonly<Record<string, string>>} */
 const ABSENT = Object.freeze({
   not_github: "This server does not serve a GitHub repository.",
-  not_stacked: "No stack with this number is cached for this repository.",
-  no_store: "This repository's commits are not fetched yet. Open one of its pull requests first.",
+  not_stacked:
+    "No stack with this number is known for this repository yet. Open the Pulls tab to look for it.",
+  no_store: "This repository’s commits are not fetched yet. Open one of its pull requests first.",
   not_linear:
-    "The bottom pull request's base is not in the top one's history, so this stack has no single comparison. Open each pull request for its changes.",
+    "This stack’s changes cannot be shown together. Open each pull request for its changes.",
   commits_unavailable:
-    "This stack's commits are not all in the local store yet. Open its pull requests to fetch them.",
+    "Some of this stack’s commits are not fetched yet. Open its pull requests to fetch them.",
 });
 
 /**
@@ -235,11 +251,11 @@ export function createStackController(deps, options) {
   let timer = null;
   let disposed = false;
 
-  /** @param {number} number @param {string | null} held */
-  async function ask(number, held) {
+  /** @param {number} number @param {string | null} held @param {boolean} retry */
+  async function ask(number, held, retry) {
     try {
       await deps.request("POST", REFRESH_ROUTE, {
-        body: { number, ...(held === null ? {} : { held }) },
+        body: { number, ...(retry ? { retry: true } : {}), ...(held === null ? {} : { held }) },
       });
     } catch {
       // The next poll says what came of it; an ask that did not reach the server is asked
@@ -250,7 +266,7 @@ export function createStackController(deps, options) {
   function askWhatIsDue() {
     for (const due of refreshAsks(envelope, asked)) {
       asked.add(due.key);
-      void ask(due.number, null);
+      void ask(due.number, null, due.retry);
     }
     const probe = envelope?.probe ?? null;
     if (
@@ -259,7 +275,7 @@ export function createStackController(deps, options) {
       (probedAt === null || deps.now() - probedAt >= probe.every_s * 1000)
     ) {
       probedAt = deps.now();
-      void ask(probe.number, probe.held);
+      void ask(probe.number, probe.held, false);
     }
   }
 
@@ -277,13 +293,17 @@ export function createStackController(deps, options) {
       if (response.status === 200 && isStackEnvelope(response.body)) {
         envelope = response.body;
         etag = response.etag;
+        error = null;
         changed = true;
+      } else if (response.status === 304) {
+        // The answer held is the current one again, so a failure said before is over.
         if (error !== null) {
           error = null;
+          changed = true;
         }
-      } else if (response.status !== 304) {
-        const said = /** @type {{error?: unknown} | null} */ (response.body)?.error;
-        error = typeof said === "string" ? said : "The stack could not be read.";
+      } else if (error === null) {
+        // The route's own `error` is for `metab --api`, never the page's sentence.
+        error = UNREADABLE;
         changed = true;
       }
     } catch {
@@ -291,7 +311,7 @@ export function createStackController(deps, options) {
         return;
       }
       if (error === null) {
-        error = "The stack could not be read.";
+        error = UNREADABLE;
         changed = true;
       }
     }
@@ -320,6 +340,26 @@ export function createStackController(deps, options) {
       }
     },
   });
+}
+
+/**
+ * The members in the one order every surface lists a stack's in, the top first
+ * (`stackMenuOrder`).
+ *
+ * @param {StackEnvelope | null} envelope
+ * @returns {StackMember[]}
+ */
+export function topFirst(envelope) {
+  const members = envelope?.members ?? [];
+  const byNumber = new Map(members.map((member) => [member.number, member]));
+  const stack = {
+    number: envelope?.number ?? 0,
+    base_ref: envelope?.base_ref ?? "",
+    open: envelope?.open ?? false,
+    pulls: members.map((member) => member.number),
+    titles: members.map((member) => member.title),
+  };
+  return stackMenuOrder(stack).flatMap((number) => byNumber.get(number) ?? []);
 }
 
 /**
@@ -475,17 +515,19 @@ export function mountStackPage(container, ctx, mb) {
 
   function paintHeader() {
     const title = h("h1", { class: "page-heading github-pull-title" }, [
-      `Stack #${number}`,
+      stackLabel(number),
       ...(envelope?.base_ref
         ? [h("span", { class: "github-pull-stack-page-base" }, [` into ${envelope.base_ref}`])]
         : []),
     ]);
     const count = envelope?.members.length ?? 0;
     const members = h("ol", { class: "github-pull-stack-page-members", reversed: "" });
-    for (const member of [...(envelope?.members ?? [])].reverse()) {
+    for (const member of topFirst(envelope)) {
       members.append(
         h("li", { class: "github-pull-stack-page-member" }, [
-          h("span", { class: "github-pull-stack-position" }, [`${member.place}/${count}`]),
+          h("span", { class: "github-pull-stack-position" }, [
+            stackPosition(member.place - 1, count),
+          ]),
           ...(member.state === null ? [] : [pullStateIcon(member.state)]),
           link(
             { number: member.number, tab: "" },
@@ -549,8 +591,18 @@ export function mountStackPage(container, ctx, mb) {
     const action = comparisonAction(drawn?.key ?? null, envelope);
     const nodes = [];
     if (message !== null) {
+      // A failed read keeps the last answer drawn, so it is a warning; with none, an error.
+      const severity = envelope === null ? "error" : "warning";
       nodes.push(
-        h("div", { class: "notice github-pull-notice", "data-severity": "error" }, [message]),
+        h(
+          "div",
+          {
+            class: "notice github-pull-notice",
+            "data-severity": severity,
+            role: severity === "error" ? "alert" : "status",
+          },
+          [message],
+        ),
       );
     }
     if (action === "offer") {
@@ -663,7 +715,7 @@ export function mountStackPage(container, ctx, mb) {
     } catch (failure) {
       if (owns()) {
         console.error("metabrowser github: the stack's diff could not load", failure);
-        host.textContent = "The stack's changes could not load. Reload the page to try again.";
+        host.textContent = "Could not load this stack’s changes. Reload the page to try again.";
       }
     }
   }

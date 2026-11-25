@@ -3,8 +3,8 @@ import ShellCore
 
 /// The app icon's mark at the title bar's trailing end: a link to the project on GitHub
 /// (`ProjectLinks.repository`), which a click opens in the default browser. AppKit keeps
-/// a trailing accessory at the window's trailing edge in the title bar's row, with or
-/// without a tab bar below it and in full screen (`TitleBarMarkLayout`).
+/// a trailing accessory at the window's trailing edge in the title bar's row, in full
+/// screen too (`TitleBarMarkLayout`).
 final class TitleBarMarkController: NSTitlebarAccessoryViewController {
     private let button = TitleBarMarkButton()
 

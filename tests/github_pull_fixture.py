@@ -1465,6 +1465,17 @@ _MARKDOWN_STEP = """\
         - {path: src/app.txt, side: new, start_line: 1, end_line: 2}
 """
 
+# The count's step with a note KPress takes seconds to render, 100 unpaired `[` before
+# 60 KiB of `%` (SLOW in tests/test_inert_render_deadline.py), which a deadline shortened
+# through METABROWSER_INERT_RENDER_DEADLINE_MS refuses on any machine.
+_SLOW_NOTE_STEP = f"""\
+    - title: Start with the count
+      note: |-
+        {"[" * 100 + "%" * (60 * 1024)}
+      references:
+        - {{path: src/app.txt, side: new, start_line: 1, end_line: 2}}
+"""
+
 
 # References the format refuses, each in a step of its own: a range in another pull
 # request's file, a commit beside a path, a commit beside a pull request, and a commit
@@ -1480,9 +1491,9 @@ _REFUSED_REFERENCES: Final[dict[str, str]] = {
 # The guides `--describe` writes into a cached description: the stand-in guide's steps each
 # in a group, the first with a note; groups mixed with a step; a longer guide, two groups
 # of two steps each, which tells numbering through the groups from numbering by entry;
-# notes in Markdown, a group's of two steps and the first step's; and blocks the page
-# refuses: an empty group, a group inside a group, and each reference of
-# `_REFUSED_REFERENCES` after the count's step.
+# notes in Markdown, a group's of two steps and the first step's; a note too slow to
+# render; and blocks the page refuses: an empty group, a group inside a group, and each
+# reference of `_REFUSED_REFERENCES` after the count's step.
 GUIDE_VARIANTS: Final[dict[str, str]] = {
     "grouped": (
         "    - title: The count\n"
@@ -1505,6 +1516,7 @@ GUIDE_VARIANTS: Final[dict[str, str]] = {
         "      note: Read the `count` before *its* explanation.\n"
         "      items:\n" + _in_group(_MARKDOWN_STEP + _OLD_COUNT_STEP) + _DOCS_STEP
     ),
+    "slow-note": _SLOW_NOTE_STEP + _DOCS_STEP,
     "empty-group": "    - title: The count\n      items: []\n" + _DOCS_STEP,
     "nested-group": (
         "    - title: The count\n"

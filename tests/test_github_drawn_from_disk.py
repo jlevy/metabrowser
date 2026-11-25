@@ -1,18 +1,21 @@
-"""Every element the pull-request page and the Pulls tab draw answers from disk (mb-g8oe).
+"""Every element the pull-request page, the stack page, and the Pulls tab draw answers from
+disk (mb-g8oe).
 
 What Metabrowser draws is cached on disk and painted from it first. This module holds
 that true route by route. A module fixture writes one cache home through the production
 writers, with the stand-in origin of ``tests/github_pull_fixture.py`` and a fake ``gh``
-replaying its scrubbed responses: pull request 7's record, with its head fetched and its
-comparison manifest prepared; the catalog; 7's and 106's changed-files lists; a native
-stack of 7 and 106; the label set; 7's Conversation timeline; and 8's lightweight core,
-with no record. Then every test takes the network away: a ``gh`` that fails every command
-is first on ``PATH``, the mirror's remote is an address nothing answers, every process is
-recorded, a Git transport command (:data:`NETWORK_VERBS`) refused on the spot, and every
-socket that would leave the machine is refused and recorded. Each test reads that warm
-disk with the process caches ``tests/conftest.py`` drops between tests dropped, and the
-comparison cache, which :func:`offline` drops; the plugin's own memos of parsed files
-stay, which a route that reads again only answers faster. The pages are a mirror's: a
+replaying its scrubbed responses: pull requests 7's and 10's records, with their heads
+fetched and their comparison manifests prepared; the catalog; 7's and 106's changed-files
+lists; two native stacks, one of 7 and 106 and one of 10 alone, whose page was read once,
+which kept its combined comparison's manifest; the label set; 7's Conversation timeline;
+and 8's lightweight core, with no record. Then every test takes the network away: a
+``gh`` that fails every command is first on ``PATH``, the mirror's remote is an address
+nothing answers, every process is recorded, a Git transport command
+(:data:`NETWORK_VERBS`) refused on the spot, and every socket that would leave the machine
+is refused and recorded. Each test reads that warm disk with the process caches
+``tests/conftest.py`` drops between tests dropped, and the comparison cache and the stack
+page's ancestry answers, which :func:`offline` drops; the plugin's own memos of parsed
+files stay, which a route that reads again only answers faster. The pages are a mirror's: a
 checkout's server reaches the same routes through ``checkout.py``.
 
 :data:`ELEMENTS` is the inventory: what a reader sees, the route that answers it through
@@ -36,7 +39,7 @@ import socket
 import subprocess
 import sys
 import tomllib
-from collections import Counter
+from collections import Counter, OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -47,7 +50,7 @@ import pytest
 from metabrowser import http_caching
 from metabrowser.builtin_plugins.diff import sidekick as diff_sidekick
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
-from metabrowser.builtin_plugins.github import pull_list, pulls
+from metabrowser.builtin_plugins.github import pull_list, pull_stack, pulls
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_list_refresh import refresh_pull_list
 from metabrowser.cache.urls import GitSource
@@ -91,6 +94,10 @@ _REFUSED: Final = (
 AVATAR: Final = "https://avatars.githubusercontent.com/u/9919?v=4"
 KEPT_AVATAR: Final = "https://avatars.githubusercontent.com/u/9919?s=40"
 STACK: Final = 70
+# A stack of 10 alone: every member has a record, so its page shows its combined comparison,
+# where 70 waits for 106, which has none.
+LONE_STACK: Final = 71
+LONE_PULL: Final = 10
 CORE_PULL: Final = 8
 # What the comparison of 7 holds: Files changed, and its Diff summary's totals.
 CHANGED: Final = ("docs/new.md", "src/app.txt")
@@ -198,6 +205,8 @@ class Built:
     rendered_route: str
     size_route: str
     core_body: str | None
+    # The combined comparison's address, as the lone stack's page answer names it.
+    stack_comparison_route: str
 
     @property
     def timeline_request(self) -> Path:
@@ -221,15 +230,20 @@ def _post(directory: Path, route: str, body: dict[str, Any]) -> Invocation:
     return result
 
 
-def _stack_page(path: str, members: list[int]) -> dict[str, Any]:
-    stack = {
-        "number": STACK,
-        "url": f"https://api.github.com/repos/octo/demo/stacks/{STACK}",
-        "base": {"ref": "topic"},
-        "open": True,
-        "pull_requests": [{"number": number} for number in members],
-    }
-    return ok(path, [stack])
+def _stack_page(path: str, stacks: dict[int, list[int]]) -> dict[str, Any]:
+    return ok(
+        path,
+        [
+            {
+                "number": number,
+                "url": f"https://api.github.com/repos/octo/demo/stacks/{number}",
+                "base": {"ref": "topic"},
+                "open": True,
+                "pull_requests": [{"number": member} for member in members],
+            }
+            for number, members in stacks.items()
+        ],
+    )
 
 
 def _timeline_page(origin: Origin, record: dict[str, Any]) -> dict[str, Any]:
@@ -310,6 +324,8 @@ def _offline(patch: pytest.MonkeyPatch, root: Path) -> Spawns:
     _refuse_sockets(patch, spawns)
     # A fresh process holds no comparison; a manifest it reads comes from the bank on disk.
     patch.setattr(diff_sidekick, "_COMPARISONS", ComparisonCache())
+    # Nor any ancestry answer: a stack's page asks the store again in a fresh process.
+    patch.setattr(pull_stack, "_ANCESTRIES", OrderedDict())
     return spawns
 
 
@@ -322,7 +338,7 @@ def _build(root: Path, origin: Origin) -> Built:
     api["repos/octo/demo/pulls/7"]["body"]["body"] = guide_body(origin)
     answers["stack_version"] = "0.1.0"
     stacks = "repos/octo/demo/stacks?per_page=100&page=1"
-    api[stacks] = _stack_page(stacks, [7, TREE_PULL])
+    api[stacks] = _stack_page(stacks, {STACK: [7, TREE_PULL], LONE_STACK: [LONE_PULL]})
     entry = pull_bodies(origin)[CORE_PULL]["pull"]
     core = graph_core_data(entry)
     core["repository"]["p0"] = core["repository"].pop("pull")
@@ -330,8 +346,9 @@ def _build(root: Path, origin: Origin) -> Built:
     api[cores] = ok(cores, {"data": core})
     with pytest.MonkeyPatch.context() as patch:
         _online(patch, root, origin, answers)
-        fetched = run_metab([f"{CANONICAL}/pull/7", "--no-serve"])
-        assert fetched.exit_code == 0, fetched.stderr
+        for number in (7, LONE_PULL):
+            fetched = run_metab([f"{CANONICAL}/pull/{number}", "--no-serve"])
+            assert fetched.exit_code == 0, fetched.stderr
         repository = ListedRepository(
             root / "home", origin_identity(CANONICAL).slug, "octo", "demo"
         )
@@ -339,6 +356,10 @@ def _build(root: Path, origin: Origin) -> Built:
         _post(root, f"{ROUTES}/pull-files-refresh", {"number": 7})
         _post(root, f"{ROUTES}/pull-files-refresh", {"number": TREE_PULL})
         _post(root, f"{ROUTES}/stacks-refresh", {})
+        # The lone stack's page, read once as a reader opening it would, lists its combined
+        # comparison and keeps that manifest beside the store.
+        lone = run_metab([CANONICAL, "--api", f"{ROUTES}/stack?number={LONE_STACK}"]).payload()
+        assert lone["state"] == "current", lone
         _post(root, f"{ROUTES}/labels-refresh", {})
         envelope = run_metab([CANONICAL, "--api", f"{ROUTES}/pull?number=7"]).payload()
         timeline = "graphql:timeline:7:start"
@@ -366,6 +387,7 @@ def _build(root: Path, origin: Origin) -> Built:
         rendered_route=envelope["rendered_route"],
         size_route=envelope["size_route"],
         core_body=entry.get("body"),
+        stack_comparison_route=lone["comparison"]["route"],
     )
     built.timeline_request.write_text(json.dumps(ask), encoding="utf-8")
     return built
@@ -481,7 +503,8 @@ def _stacks(_built: Built, result: Invocation) -> None:
     snapshot = answer(result)
     assert snapshot["state"] in {"current", "stale"} and snapshot["complete"] is True
     assert [(stack["number"], stack["pulls"]) for stack in snapshot["stacks"]] == [
-        (STACK, [7, TREE_PULL])
+        (STACK, [7, TREE_PULL]),
+        (LONE_STACK, [LONE_PULL]),
     ]
 
 
@@ -583,6 +606,30 @@ def _rendered(_built: Built, result: Invocation) -> None:
     assert rendered["status"] == "ready" and rendered["blocks"]
 
 
+def _stack_waiting(_built: Built, result: Invocation) -> None:
+    page = answer(result)
+    assert (page["state"], page["pending"], page["comparison"]) == ("pending", [TREE_PULL], None)
+    seven, tree = page["members"]
+    assert (seven["number"], seven["state"], seven["pending"]) == (7, "open", False)
+    assert seven["title"] and seven["head"]
+    assert (tree["number"], tree["head"], tree["pending"]) == (TREE_PULL, None, True)
+
+
+def _stack_header(built: Built, result: Invocation) -> None:
+    page = answer(result)
+    assert (page["state"], page["pending"], page["lacking"]) == ("current", [], [])
+    assert page["comparison"]["route"] == built.stack_comparison_route
+    assert page["totals"]["files"] == len(page["files"]) > 0
+    for file in page["files"]:
+        assert file["layers"] == [{"number": LONE_PULL, "place": 1, "path": file["path"]}]
+
+
+def _stack_changes(_built: Built, result: Invocation) -> None:
+    comparison = answer(result)
+    files = comparison["manifest"]["files"]
+    assert files and len(comparison["patches"]) == len(files)
+
+
 _APP: Final = GitPath.from_display("src/app.txt").to_wire()
 # The comparison route reads the manifest from the bank, checks the store answers for both
 # commits and their merge base, and prints the first files' hunks in one diff run.
@@ -661,6 +708,31 @@ ELEMENTS: Final[tuple[Drawn, ...]] = (
         # The pair's merge base alone: the refresh that listed the files from the store
         # measured the size and kept it beside the store, where this reads it.
         frozenset({"merge-base"}),
+    ),
+    Drawn(
+        "Members while one is pending",
+        "Stack page",
+        "stack",
+        _fixed(f"number={STACK}"),
+        _stack_waiting,
+    ),
+    Drawn(
+        "Members, totals, and each file's layers",
+        "Stack page",
+        "stack",
+        _fixed(f"number={LONE_STACK}"),
+        _stack_header,
+        # Whether the top's history holds the bottom's merge base, and both commits checked
+        # in the store before the kept manifest of the combined comparison is read.
+        frozenset({"merge-base", "rev-parse"}),
+    ),
+    Drawn(
+        "Files, Docs, and Changes",
+        "Stack page",
+        "stack-comparison",
+        lambda built: built.stack_comparison_route,
+        _stack_changes,
+        _COMPARES,
     ),
 )
 

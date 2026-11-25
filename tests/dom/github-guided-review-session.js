@@ -145,6 +145,26 @@ async function main() {
   assert.equal(states.at(-1), "step 2: step 2 of 3");
   assert.deepEqual(calls.slice(-4), [1, 2, 2, 2]);
 
+  // An answer whose note, or its group's, a busy renderer or one that could not start
+  // refused is not kept, so its step is read again when the reader returns to it and the
+  // note renders once the renderer can; a note refused for its own sake, past the deadline,
+  // keeps its answer, since the server would refuse it again at once.
+  guide.show("seventh", false);
+  await respond(answer("seventh", 2, { note_refusal: "renderer_busy" }));
+  guide.go(1);
+  await respond(answer("seventh", 1));
+  guide.go(2);
+  assert.equal(states.at(-1), "step 2: loading");
+  await respond(answer("seventh", 2, { group_note_refusal: "renderer_unavailable" }));
+  guide.go(1);
+  guide.go(2);
+  assert.equal(states.at(-1), "step 2: loading");
+  await respond(answer("seventh", 2, { note_refusal: "render_deadline" }));
+  guide.go(1);
+  guide.go(2);
+  assert.equal(states.at(-1), "step 2: step 2 of 3");
+  assert.deepEqual(calls.slice(-4), [2, 1, 2, 2]);
+
   // Disposal drops the read on its way, and its late answer paints nothing.
   guide.show("fifth", false);
   const count = states.length;

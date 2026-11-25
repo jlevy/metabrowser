@@ -126,7 +126,32 @@ const cited = (fields) => ({
   ...fields,
 });
 
-function host() {
+/** Step 1 of a guide whose two steps are in one group with a note, which step 1 opens: its
+ * title is markup, and *more* adds to or replaces the route's fields. */
+function grouped(more = {}) {
+  const title = "Step <b>1</b>";
+  return {
+    ...step(1, 1),
+    title,
+    outline: [
+      {
+        kind: "group",
+        title: "Decisions",
+        note: "Read *these*.",
+        children: [
+          { kind: "step", step: 1, title },
+          { kind: "step", step: 2, title: "Step 2" },
+        ],
+      },
+    ],
+    group: 0,
+    ...more,
+  };
+}
+
+/** The page's host. Without *allowlist*, the inert allowlist does not load, as when its
+ * script fails: `window.MetabrowserInertHtml` is never set. */
+function host({ allowlist = true } = {}) {
   const timers = new Map();
   /** Each read of the guide: its step, its signal, and the answer or failure that ends it. */
   const reads = [];
@@ -181,21 +206,23 @@ function host() {
     // The allowlist's stand-in: each text it is handed comes back as one element holding the
     // HTML as text, so a test reads where the page put it. The rebuild itself is the
     // allowlist's, pinned by tests/dom/inert-html-session.js.
-    MetabrowserInertHtml: {
-      sanitizeHtml(html, base) {
-        sanitized.push({ html, base });
-        const node = document.createElement("span");
-        node.className = "inert-rebuilt";
-        node.textContent = html;
-        return [node];
-      },
-      kpressProse(nodes) {
-        const prose = document.createElement("div");
-        prose.className = "kpress-prose";
-        prose.append(...nodes);
-        return prose;
-      },
-    },
+    MetabrowserInertHtml: !allowlist
+      ? undefined
+      : {
+          sanitizeHtml(html, base) {
+            sanitized.push({ html, base });
+            const node = document.createElement("span");
+            node.className = "inert-rebuilt";
+            node.textContent = html;
+            return [node];
+          },
+          kpressProse(nodes) {
+            const prose = document.createElement("div");
+            prose.className = "kpress-prose";
+            prose.append(...nodes);
+            return prose;
+          },
+        },
   };
   globalThis.DOMParser = class {
     parseFromString() {
@@ -1007,30 +1034,18 @@ async function run() {
   // hands that HTML to the description's allowlist, against the pull request's page, and sets
   // what it builds in the step's prose after the title, which stays text. A group's note on its
   // first step is drawn the same way, in a KPress article above the card. A note whose render
-  // was refused shows as typed, holding no element (step 1 above), with nothing said.
+  // was refused shows as typed, holding no element (step 1 above), with the line that says why
+  // when the route says why (below).
   {
     const rendered = host();
     const view = rendered.mount(page, "guided", envelope(1));
     await settle();
-    const title = "Step <b>1</b>";
-    rendered.pending()[0].answer({
-      ...step(1, 1),
-      title,
-      outline: [
-        {
-          kind: "group",
-          title: "Decisions",
-          note: "Read *these*.",
-          children: [
-            { kind: "step", step: 1, title },
-            { kind: "step", step: 2, title: "Step 2" },
-          ],
-        },
-      ],
-      group: 0,
-      note_html: "<p>Check <b>this</b> first.</p>",
-      group_note_html: "<p>Read <em>these</em>.</p>",
-    });
+    rendered.pending()[0].answer(
+      grouped({
+        note_html: "<p>Check <b>this</b> first.</p>",
+        group_note_html: "<p>Read <em>these</em>.</p>",
+      }),
+    );
     await settle();
     // The overview's description is the allowlist's too; only the step's texts count here.
     rendered.sanitized.length = 0;
@@ -1064,6 +1079,87 @@ async function run() {
         .join(", ")}`,
     );
     view.handle.dispose();
+  }
+
+  // A note whose render was refused shows as typed, with the line a description's refusal
+  // says under it, in a warning: for a note too slow to render, that it took too long; for a
+  // group's note whose renderer was busy, that a reload may render it. Neither names the code.
+  // An answer with a busy renderer's refusal is not kept, so the step the overview read is
+  // read again when the reader moves to it.
+  {
+    const refused = host();
+    const view = refused.mount(page, "guided", envelope(1));
+    await settle();
+    const answer = grouped({
+      note_refusal: "render_deadline",
+      group_note_refusal: "renderer_busy",
+    });
+    refused.pending()[0].answer(answer);
+    await settle();
+    view.press("Next step");
+    await settle();
+    refused.pending()[0].answer(answer);
+    await settle();
+    const card = view.container.querySelector(".github-pull-guide-card");
+    const commentary = card.querySelector(".github-pull-guide-commentary");
+    assert.ok(
+      commentary.children.every((child) => typeof child === "string"),
+      "a refused note holds text and no element",
+    );
+    const detail = view.container.querySelector(".github-pull-guide-step");
+    const lines = detail.querySelectorAll(".github-pull-guide-note-refused");
+    for (const line of lines) {
+      assert.equal(line.getAttribute("role"), "status");
+      assert.ok(!/render_|renderer_/.test(line.textContent), "the line names no code");
+    }
+    const typed = detail.querySelector(".github-pull-guide-group-note-typed");
+    assert.equal(
+      detail.children.indexOf(typed) + 1,
+      detail.children.indexOf(lines[0]),
+      "the group's line follows its note",
+    );
+    assert.ok(
+      card.querySelector(".github-pull-text").children.includes(lines[1]),
+      "the step's line is in the card's text, after the note",
+    );
+    steps.push(
+      `refused notes: asked ${asked(refused.reads)}; group's note ${typed.textContent} | ${said(lines[0])}; step's note ${commentary.textContent} | ${said(lines[1])}; allowlist asked ${refused.sanitized.filter(({ html }) => html !== "rendered").length}`,
+    );
+    view.handle.dispose();
+  }
+
+  // Without the allowlist, which failed to load, a note the route rendered shows as typed, a
+  // step's and its group's alike, as a description's text shows plain; nothing is said beside
+  // it, since the render came, and the console says why.
+  {
+    const warned = [];
+    const warn = console.warn;
+    console.warn = (...args) => warned.push(String(args[0]));
+    try {
+      const bare = host({ allowlist: false });
+      const view = bare.mount(page, "guided", envelope(1));
+      await settle();
+      bare.pending()[0].answer(
+        grouped({
+          note_html: "<p>Check <b>this</b> first.</p>",
+          group_note_html: "<p>Read <em>these</em>.</p>",
+        }),
+      );
+      await settle();
+      view.press("Next step");
+      await settle();
+      const detail = view.container.querySelector(".github-pull-guide-step");
+      const commentary = detail.querySelector(".github-pull-guide-commentary");
+      const typed = detail.querySelector(".github-pull-guide-group-note-typed");
+      assert.equal(detail.querySelector(".github-pull-guide-note-refused"), null);
+      assert.equal(detail.querySelector(".inert-rebuilt"), null);
+      steps.push(
+        `no allowlist: step's note ${commentary?.textContent ?? "not typed"}; group's note ${typed?.textContent ?? "not typed"}; console ${warned.filter((line) => line.includes("guide's notes")).join(", ")}`,
+      );
+      view.handle.dispose();
+    } finally {
+      console.warn = warn;
+    }
   }
 
   // A core preview resolves the front page from its description, as the record will: a

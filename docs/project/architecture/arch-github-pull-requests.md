@@ -890,10 +890,10 @@ What a reader sees for each failure name, and what to do, is in
 
 ## Drawn From Disk
 
-Everything a mirror’s pull request page and Pulls tab draw from GitHub’s data is read
-from a file beside the source or the store, so a server started on an existing cache
-answers it before anything asks GitHub, and a page paints it before it starts a refresh.
-`tests/test_github_drawn_from_disk.py` holds the inventory.
+Everything a mirror’s pull request page, stack page, and Pulls tab draw from GitHub’s
+data is read from a file beside the source or the store, so a server started on an
+existing cache answers it before anything asks GitHub, and a page paints it before it
+starts a refresh. `tests/test_github_drawn_from_disk.py` holds the inventory.
 `ELEMENTS` names each drawn element, its route, and the Git commands the route runs in
 the local store, and runs each through `metab --api` over a cache home with `gh`
 failing, the remote unreachable, every Git transport command refused, and every socket
@@ -913,6 +913,9 @@ sides off the event loop; and `pull-markdown` renders the record’s text throug
 which keeps the render for the process.
 `guided-review` reads the description and comparison manifest, then hydrates only the
 files whose excerpts the selected step needs.
+`stack` asks the store whether the top’s head holds the bottom’s merge base, then reads
+the stack’s kept manifest, and `stack-comparison` serves that manifest as
+`pull-comparison` serves a pull request’s.
 
 What a surface draws that does not answer from disk is in `GAPS`, a strict expected
 failure:
@@ -1001,8 +1004,10 @@ measurements that set them:
   Docs with `DOCS_DRAWING` and Changes with `CHANGES_DRAWING` (`diff-drawing.js`, which
   `pull-page.js` shares), and puts each file’s layers on its row and bar through the
   diff view’s `fileMarks`. It polls `stack`, asks `pull-refresh` once for each pending
-  member at its head, sends the top member’s automatic ask the answer’s `probe` names,
-  and offers a new comparison rather than swapping it in.
+  member at its head, a member with no record as the reader’s own open of it (`retry`),
+  since an automatic ask refreshes only a record the server holds, sends the top
+  member’s automatic ask the answer’s `probe` names, and offers a new comparison rather
+  than swapping it in.
 
 ### Guided Review
 
@@ -1059,10 +1064,16 @@ the other side when it lies inside the range or touches either end of it.
 A note is Markdown, rendered as the description is: each answer with a step carries its
 note’s render as `note_html`, and the step that opens a group with a note carries that
 note’s as `group_note_html`, each produced by the description’s own path (`render_text`
-in `pull_markdown.py`: KPress in its sanitized mode, then `harden`, in the Markdown
+in `pull_text_render.py`: KPress in its sanitized mode, then `harden`, in the Markdown
 child under its deadline) and kept with the guide’s parse for the record revision within
 `_MAX_KEPT_NOTE_CHARS` (`_rendered_note` in `guided_review.py`). A refused render
-answers null, and the page shows the note as typed, saying nothing.
+answers null, with the refusal’s code beside it as the pull-markdown route answers a
+text’s (`note_refusal`, `group_note_refusal`), and is not kept: the child keeps the
+refusals that are the note’s doing, and renders on the next read after a busy or
+unavailable renderer.
+The page shows a refused note as typed, with the line a description’s refusal says
+(`textRefusalNote` in `pull-page.js`), and keeps no answer whose renderer was busy or
+could not start, so the step is read again.
 The page inserts a render through the description’s allowlist (`inertProse` in
 `pull-page.js`), and draws no Mermaid diagram from a note.
 Titles and diff lines are inserted as text, in the design system’s existing parts: each

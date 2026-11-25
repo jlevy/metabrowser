@@ -29,7 +29,7 @@ Two things with similar names are not this list:
 The words are those of [Open Modes](arch-open-modes.md#vocabulary).
 
 - **Target:** what `metab TARGET` is given: a folder, a file, or a URL.
-- **Root:** what one server serves, and what one app window or tab group belongs to: a
+- **Root:** what one server serves, and what the app windows that show it belong to: a
   folder, or a repository’s address.
   A folder’s root is its **open root**, the folder a serve of the path named serves.
 - **Mode:** how a root was opened, `folder` or `mirror`. It is fixed while the root is
@@ -70,8 +70,8 @@ pointed when that was not the root:
   that repository (`SessionRoot.repository`). Another Git source, such as a `file://`
   clone URL, is its normalized address.
 - **The key** is `mode` and `root` together, which is the app’s `SessionRoot` key, so
-  one entry is one window or tab group, and reopening an entry that is open brings its
-  window forward.
+  one entry is one open root, however many windows show it, and reopening an entry that
+  is open brings its window forward.
 - **No credential is ever stored.** A root comes from the grammar that refuses a URL
   with a password or token, never from the argument as typed.
 - **A root with a control character or a line separator is not recorded.** A terminal

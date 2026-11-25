@@ -12,7 +12,7 @@ What the app adds is what a browser tab cannot give:
 - a window per folder or GitHub repository, each with its own server, which the app
   starts and stops;
 - a Dock icon, and folders opened from Finder with Open With or dropped on the icon;
-- native menus, tabs across folders, recent items, and the last session restored;
+- native menus, recent items, and the last session restored;
 - the item’s page on github.com a click away, with one GitHub sign-in for every window.
 
 ## Opening Folders and Files
@@ -105,7 +105,7 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   GitHub URL for a pull request, commit, file, or folder.
   A space or a letter outside ASCII in the path is sent encoded, as a browser sends it,
   so a file named `Design Notes.md` opens as it does with `metab URL`. Open checks the
-  URL with `metab`. The panel shows progress until the repository window or tab opens.
+  URL with `metab`. The panel shows progress until the repository window opens.
   If Metabrowser is still finding or checking its server runtime, the panel waits for
   it. If the URL check fails, no server runtime is available, or Metabrowser cannot open
   the repository window, the panel keeps your text and shows the reason under the field.
@@ -113,16 +113,9 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 - **Always the mirror:** a link opens Metabrowser’s own copy of the repository, its
   mirror in `metab`’s cache, never a checkout of it that you have open
   ([Open Modes](project/architecture/arch-open-modes.md)).
-- **Beside your checkout:** when the mirror has no window yet but a window shows a
-  checkout of the same GitHub repository, the mirror opens as a new tab of that window
-  instead of a window of its own, whatever Settings says about new folders.
-  A checkout belongs to the repository its `origin` names on github.com, not to the
-  repository its folder is named after, and a folder inside a checkout belongs to it
-  too. If several open windows show checkouts of the repository, the tab joins the one
-  you used most recently.
-  The checkout’s own tab keeps showing your working tree.
-  A checkout whose window is minimized, or whose server has not started yet, is passed
-  over, and the mirror opens as any new folder does.
+- **A window of its own:** the mirror opens in a new window, as every folder does, also
+  while a window shows a checkout of the same repository, which keeps showing your
+  working tree.
 - **External links ask before a first clone.** A link sent by Terminal or another app
   asks before it clones a repository the cache does not hold.
   The dialog names the repository and says that Metabrowser will read it and its pull
@@ -142,7 +135,7 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   Each link also refreshes the repository from GitHub, so what it shows is current.
   The window’s server keeps running, so this takes a moment, not a restart; when a link
   names another branch or commit than the window shows, the window switches to it, and
-  its other tabs offer to reload on it.
+  its other windows offer to reload on it.
   A start under way, such as a first clone, finishes first, and the newest link sent
   meanwhile opens then.
   Without a window, a new one opens, and its server clones the repository, or uses the
@@ -184,7 +177,7 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   another message or question.
 - **Not restored:** a repository’s window does not come back with the last session.
 
-## Windows and Tabs
+## Windows
 
 - **Titles:** each window is titled with its folder’s short name, or its full name while
   another open folder has the same short name.
@@ -213,13 +206,14 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   window, and Escape to close the panel.
   Command-Delete clears what you typed; with nothing typed, it closes the selected open
   folder.
-- **Tabs or windows:** Settings > General > Open folders in decides where a newly opened
-  folder goes: as System Settings > Desktop & Dock > “Prefer tabs when opening
-  documents” says (the default), as a tab of the front window, or in a window of its
-  own. Window > Merge All Windows, Move Tab to New Window, and dragging a tab combine
-  folders either way.
+- **A window per folder:** every folder opens in a window of its own, from File > Open
+  Folder…, Open URL…, Open Recent, the Dock, Finder, `metab --present`, or the folder
+  chooser, and a window never becomes a tab of another.
+  Window > Merge All Windows and the tab bar are not offered, and System Settings >
+  Desktop & Dock > “Prefer tabs when opening documents” does not apply.
+  A folder already open brings its window forward instead.
 - **Links:** a link to the same server stays in the window, and Command-click opens it
-  in a new tab of that folder’s window.
+  in a new window of the same folder, which shares its server.
   A clicked link to another site opens in your default browser; a page cannot open one
   by itself. The page’s View on GitHub button is the exception: it opens the item’s page
   on github.com in a popover ([View on GitHub](#view-on-github)).
@@ -234,10 +228,11 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   When no app on your Mac opens that kind of file, Open saves a copy in Downloads
   instead, under a new name if the name is taken, and offers Show in Finder; the first
   time, macOS asks whether Metabrowser may use Downloads.
-- **Background tabs:** the tab each window shows keeps its page, and so do the three
-  background tabs shown most recently, a folder open in the background counting as one.
-  Any other background tab gives up its page to save memory and reloads it when shown,
-  at the top of the page and without its Back and Forward history.
+- **Folders in the background:** each window keeps its page, minimized or not, and so do
+  the three background folders shown most recently.
+  Any other folder open in the background gives up its page to save memory and reloads
+  it when a window shows it again, at the top of the page and without its Back and
+  Forward history.
 
 The menus add what a browser would: File > Restart Server, Open in Default Browser,
 Reveal Server Log (each folder has its own log), and Print; View > Back, Forward, Reload
@@ -295,7 +290,7 @@ the window, without leaving Metabrowser’s page.
 ### Signing In to GitHub
 
 Sign in to github.com once, in any window’s popover, and you stay signed in in every
-window and tab, and after you quit and reopen the app.
+window, and after you quit and reopen the app.
 The popover keeps what github.com stores, its sign-in cookies, cache, and other site
 data, in one store of the app’s own, which every site the app shows in its own web views
 shares, as a browser profile does; macOS keeps it under `~/Library/WebKit` in the app’s
@@ -339,27 +334,31 @@ you open, up to the list’s length.
 ## The Last Session
 
 The app saves its folder windows as you work and once more at quit: each window’s frame,
-tabs, and shown tab, and each tab’s folder and page.
-It keeps the file in its folder under `~/Library/Application Support`.
+folder, and page. It keeps the file in its folder under `~/Library/Application Support`.
 
-At the next launch the windows and tabs come back, and only each window’s shown tab
-loads its page. The servers start one at a time, the front tab’s first.
+At the next launch the windows come back.
+The servers start one at a time, the front window’s first.
 
+- **From an earlier version:** a window that an earlier version saved with several
+  folders in its tabs comes back as a window per folder.
+  The folder it showed comes back at its frame and in front, and loads its page; each of
+  the others loads its page when you bring its window forward.
 - **Privacy prompts:** a folder in a location macOS protects (Desktop, Documents,
   Downloads, iCloud Drive and other cloud storage, another volume, or a folder holding
-  one, such as your home folder) starts only when you select its tab, so a launch raises
-  no prompt for a folder nobody is looking at.
+  one, such as your home folder) starts only when you bring its window forward, so a
+  launch raises no prompt for a folder nobody is looking at.
 - **A moved folder:** a saved folder that now leads somewhere else through a symbolic
-  link waits for its tab, then opens where the link leads.
+  link waits until you bring its window forward, then opens where the link leads.
 - **Folders in the background** come back in the background, and each starts its server
   when a window shows it.
   If no window was open, the one you looked at last opens in a window of its own.
-- **The budget:** a launch rebuilds at most the front 20 windows and 50 tabs.
+- **The budget:** a launch rebuilds at most the front 20 windows and 50 pages, a folder
+  in the background counting as one.
 - **Turning it off:** clear Settings > General > “Reopen the last session’s folders when
   Metabrowser opens”. The session is still saved.
 
-A restore brings back windows, tabs, frames, and pages, but not full screen, Spaces,
-minimized windows, or each tab’s Back and Forward history.
+A restore brings back windows, frames, and pages, but not full screen, Spaces, minimized
+windows, or each window’s Back and Forward history.
 
 ## Settings
 
@@ -367,8 +366,7 @@ minimized windows, or each tab’s Back and Forward history.
 showed last, General at first.
 Each tab sizes the window to fit, keeping its top edge in place.
 
-- **General:** where a newly opened folder goes ([Windows and Tabs](#windows-and-tabs)),
-  and whether the [last session](#the-last-session) reopens.
+- **General:** whether the [last session](#the-last-session) reopens.
 - **Runtime:** the selected `metab`, its path, how the app found it, and the `git` and
   `gh` it hands each server, with **Refresh** and **Choose metab…**
   ([Choosing a metab](#choosing-a-metab)). **Places looked** lists the last runtime
@@ -469,13 +467,12 @@ The app moves nothing itself.
 
 ## Known Limitations
 
-- The tab bar has no new-tab button: a new tab comes from File > Open Folder… or Open
-  URL… with Settings set to tabs, or from Merge All Windows.
 - The View on GitHub popover cannot be resized: it takes most of the window each time it
   opens, so a larger window gives a larger popover.
 - Text typed in the View on GitHub popover and not sent is lost when its window or its
   folder closes, when its window switches to another folder while another window shows
-  this one, or when its tab or background folder gives up its page to save memory.
+  this one, or when its folder, open in the background, gives up its page to save
+  memory.
 - A restarted server comes back on a new port, and local storage is per origin, so what
   a page kept there starts fresh, as with the CLI.
 - Open on a pinned revision or a GitHub repository opens a read-only copy: to change the
@@ -490,7 +487,7 @@ The app moves nothing itself.
   then opens it from the cache.
   A repository opened while another repository’s first clone runs starts once that clone
   ends, and so do a link into a repository that is already open and File > Restart
-  Server in one of its windows: its other tabs keep working meanwhile, and the window
+  Server in one of its windows: its other windows keep working meanwhile, and the window
   the link brought forward, or the one you chose Restart Server in, says it waits.
 - A folder opens as the folder named, even inside a Git repository, and File > Open URL…
   opens the repository’s mirror without offering a checkout of it that you have open.

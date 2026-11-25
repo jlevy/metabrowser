@@ -911,7 +911,23 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/stack",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/stack-change",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/stack-comparison",
       "methods": [
         "GET",
         "HEAD"
@@ -1175,6 +1191,14 @@ status: 200
       "kind": "browser"
     },
     {
+      "path": "/stack/{rest:path}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "browser"
+    },
+    {
       "path": "/view/{path:path}",
       "methods": [
         "GET",
@@ -1199,7 +1223,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 100
+  "count": 103
 }
 ? 0
 ```

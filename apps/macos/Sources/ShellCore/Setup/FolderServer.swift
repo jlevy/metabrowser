@@ -2,7 +2,7 @@
 /// spawns.
 ///
 /// Every way a server starts goes through here: a folder's first start, a restored
-/// folder's start when its turn or its tab comes, Retry, Restart Server, and the restart
+/// folder's start when its turn comes or its window is brought forward, Retry, Restart Server, and the restart
 /// an upgrade offers. Each asks `accepted` twice: before it stops anything, and again at
 /// the last moment before the child spawns, after the launch gate and any earlier
 /// child's termination (`ServerSupervisor.mayLaunch`), beside a restore's `rootCheck`.
@@ -30,15 +30,15 @@ public final class FolderServer {
 
     public let supervisor: ServerSupervisor
     /// The runtime the server last spawned a child from; nil until a child is first
-    /// created, as for a restored folder still waiting for its turn or its tab, or one whose
-    /// child could not be created. Set when the supervisor reports the child created
+    /// created, as for a restored folder still waiting for its turn or to be brought forward,
+    /// or one whose child could not be created. Set when the supervisor reports the child created
     /// (`ServerSupervisor.onSpawn`).
     public private(set) var startedRuntime: Runtime?
     /// What waits for an accepted runtime.
     public private(set) var held: Request?
     /// For a restored folder, the check at the moment of spawning (`RestoreRun`): a
-    /// background one's root admitted again, and, once one of its tabs is selected, which
-    /// starts it as the user's choice, that its saved path still names its own folder.
+    /// background one's root admitted again, and, once a window showing it is brought
+    /// forward, which starts it as the user's choice, that its saved path still names its own folder.
     public var rootCheck: (() -> Bool)?
     private let accepted: () -> RuntimeSetup?
     private let spec: (RuntimeSetup) -> LaunchSpec

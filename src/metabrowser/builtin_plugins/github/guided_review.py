@@ -46,12 +46,13 @@ from metabrowser.builtin_plugins.github.pull_route import (
     image_route,
     rendered_route,
 )
+from metabrowser.builtin_plugins.github.pull_text_render import render_text
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource, display_path
 from metabrowser.diff.format import Availability, Hunk, LineOp, LineRecord
-from metabrowser.diff.markdown_projection_worker import InertRenderRefused
+from metabrowser.diff.markdown_projection_worker import InertRenderRefused, RefusalCode
 from metabrowser.git.process import (
     GIT_NO_DRIVER_ARGS,
     GitCommandError,
@@ -175,7 +176,7 @@ _MAX_STALE_PATH_BYTES: Final = 4096
 # The rendered notes kept with a guide's parse (`_Read.notes`), in characters of HTML, so a
 # step read again, after a reload or from another page, takes its note from here and not
 # from the Markdown child. A note is a text of the description, so a guide's notes total at
-# most MAX_BODY_BYTES; measured through the child (`render_text` in pull_markdown.py) at a
+# most MAX_BODY_BYTES; measured through the child (`render_text` in pull_text_render.py) at a
 # load average near 386 on 10 cores (2026-11-24), a note's inert HTML was 1.0 to 1.2 times
 # its text for the four notes of tests/fixtures/guided-review/, and, for 64 KiB of one
 # construct, 2.8 times for emphasis, 13 for links, and 27 for images, the largest found. So
@@ -186,6 +187,10 @@ _MAX_STALE_PATH_BYTES: Final = 4096
 _MAX_KEPT_NOTE_CHARS: Final = 4 * MAX_BODY_BYTES
 # What a guide's note is called where it renders (`render_text`): its log name and its key.
 _NOTE_PART: Final = "guided-review-note"
+
+# Why a note's render did not come, as the pull-markdown route answers a text's: the Markdown
+# child's refusal, or KPress's failure.
+type NoteRefusal = RefusalCode | Literal["render_failed"]
 
 type Prose = Annotated[str, Field(min_length=1)]
 type LineNumber = Annotated[int, Field(ge=1)]
@@ -928,6 +933,8 @@ async def _read_files(
     """
     # The rendered route's module, imported with the step's read rather than this module:
     # the description's render imports this module, and never needs the projections.
+    # Importing it after pull_markdown.py took 164 to 364 ms over three runs (2026-11-25,
+    # load average near 212 on 10 cores). No test holds this boundary yet (mb-iqlb).
     from metabrowser.builtin_plugins.github.pull_rendered_diff import rendered_format
 
     manifest = compared.manifest
@@ -1314,32 +1321,44 @@ def _head_moved(store: PublishedSource, record: PullRecord) -> bool:
     ).head_moved
 
 
-async def _rendered_note(read: _Read, note: str, number: int, link_base: str) -> str | None:
-    """*note* as inert HTML, rendered as the description is, or ``None`` when its render is
-    refused or fails, and the page shows the note as typed.
+# What a step's answer waits for its notes, measured 2026-11-25 at a load average of 224 to
+# 240 on 10 cores, on step 1 of the `markdown` guide in tests/github_pull_fixture.py, its
+# note and its group's, two renders, each sample with a fresh child: 17 to 31 ms with the
+# child started and idle, as on a served page, which starts it with its first pull read
+# (`start_for_pages`); 21 to 124 ms with four 8 KiB texts asked just before it, as a pull
+# page asks for its description and comments; 0.37 to 1.30 s behind four 64 KiB texts,
+# the record's bound for one; and 0.49 to 1.33 s for a one-shot `--api` call, whose first
+# render starts the child. A step read again takes its notes from `_Read.notes` and waits
+# for none. The child's deadline and admission limit bound the rest
+# (`_MAX_RENDERS` in markdown_projection_worker.py).
+async def _rendered_note(
+    read: _Read, note: str, number: int, link_base: str
+) -> tuple[str | None, NoteRefusal | None]:
+    """*note* as inert HTML, rendered as the description is, or ``None`` and why when its
+    render is refused or fails: the code the pull-markdown route answers a text's refusal
+    with. The page then shows the note as typed, with the line a description's refusal
+    says (`textRefusalNote` in pull-page.js).
 
-    The render is the description's own path (`render_text` in pull_markdown.py): KPress in
-    its sanitized mode, then the inert allowlist against the pull request's page, in the
-    Markdown child under its deadline, which keeps a refusal by the note's text. A render is
-    kept with *read* while :data:`_MAX_KEPT_NOTE_CHARS` holds it.
+    The render is the description's own path (`render_text` in pull_text_render.py): KPress
+    in its sanitized mode, then the inert allowlist against the pull request's page, in the
+    Markdown child under its deadline. A render is kept with *read* while
+    :data:`_MAX_KEPT_NOTE_CHARS` holds it, and a refusal is not: the child keeps one that is
+    the note's doing, its deadline or a renderer that exited on it, by the note's text, and
+    answers it again at once, and one that is not, a busy renderer or one that could not
+    start, renders when the step is read again.
     """
     kept = read.notes.get(note)
     if kept is not None:
-        return kept
-    # pull_markdown imports this module, for the description's introduction.
-    from metabrowser.builtin_plugins.github.pull_markdown import render_text
-
+        return kept, None
     try:
         html = await render_text(note, number=number, part=_NOTE_PART, link_base=link_base)
-    except (
-        InertRenderRefused,
-        kpress_adapter.KPressInvalidRequestError,
-        kpress_adapter.KPressRenderError,
-    ):
-        return None
+    except InertRenderRefused as refused:
+        return None, refused.code
+    except (kpress_adapter.KPressInvalidRequestError, kpress_adapter.KPressRenderError):
+        return None, "render_failed"
     if sum(map(len, read.notes.values())) + len(html) <= _MAX_KEPT_NOTE_CHARS:
         read.notes[note] = html
-    return html
+    return html, None
 
 
 def _outline(guide: Collection) -> tuple[list[dict[str, object]], list[int | None]]:
@@ -1455,9 +1474,11 @@ async def guided_review(
         else None
     )
     link_base = record.pull.html_url
-    note_html = await _rendered_note(read, step.note, number, link_base)
-    group_note_html = (
-        None if group_note is None else await _rendered_note(read, group_note, number, link_base)
+    note_html, note_refusal = await _rendered_note(read, step.note, number, link_base)
+    group_note_html, group_note_refusal = (
+        (None, None)
+        if group_note is None
+        else await _rendered_note(read, group_note, number, link_base)
     )
     return {
         **identity,
@@ -1477,9 +1498,15 @@ async def guided_review(
         # The note as inert HTML, rendered as the description is, or null when its render was
         # refused, and the page shows `note` as typed. A title stays plain text.
         "note_html": note_html,
+        # Why the note's render was refused, as the pull-markdown route answers a text's
+        # `code`, or null: the page says it under the typed note, and keeps no answer whose
+        # renderer was busy or could not start, so the step is read again.
+        "note_refusal": note_refusal,
         # The note of the group this step opens, rendered so, or null when the step opens no
         # group with a note or its render was refused; the outline has the note as written.
         "group_note_html": group_note_html,
+        # Why that render was refused, as `note_refusal` says it.
+        "group_note_refusal": group_note_refusal,
         "references": references,
         # The page sets the guide's prose in a KPress article, as it sets a description, and
         # may show this tab before any description has loaded KPress's stylesheets.

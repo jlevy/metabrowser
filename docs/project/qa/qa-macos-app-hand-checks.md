@@ -30,7 +30,7 @@ folder="$(mktemp -d)"
    Within `SupervisorPolicy.healthDeadline` and then `shutdownGrace` (a stopped process
    holds SIGTERM until SIGKILL ends it), the window says “The server stopped answering”
    and offers Retry, and Retry serves the folder again.
-   Done with a Command-click, the new tab shows the clicked page after Retry, not the
+   Done with a Command-click, the new window shows the clicked page after Retry, not the
    folder’s first page.
    With the server answering,
    `printf 'a\n' > "$folder/a.md"; printf 'b\n' > "$folder/b.md"` and
@@ -54,7 +54,7 @@ folder="$(mktemp -d)"
    metab… and `/tmp/metab` then uses it, saying it runs because you chose it.
    `rm /tmp/metab` and forget the saved runtime again afterward.
 
-## Files, Tabs, Recents, and Restore
+## Files, Windows, Recents, and Restore
 
 Set `APP` to the development build and make some folders:
 
@@ -90,40 +90,53 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    relaunch that restores `a` and `b`, both menus and `metab --recent` list them in the
    order they had before the quit.
    `defaults read io.github.jlevy.metabrowser.dev` shows no `recentFolders` key.
-3. **Tabs.** With Settings > General > Open folders in set to Tabs, opening `c` and `d`
-   adds them as tabs of the front window; set to Windows, opening `e` gives it a window,
-   and Window > Merge All Windows then merges every folder into one window.
-   With the setting on System Settings and Desktop & Dock > “Prefer tabs when opening
-   documents” at Always, a new folder opens as a tab.
-4. **Discarded pages.** With `a` to `e` as tabs of one window, select each in turn: once
-   more tabs are in the background than `TabDiscardPolicy.defaultLiveBackgroundTabs`,
-   the app log says “discarding the page of background tab” for the tab shown longest
-   ago, and `ps -axo pid,command | grep -c '[W]ebContent'` drops by one.
-   Selecting that tab reloads its page, with no “Starting” text, at the top of the page
-   and with no Back or Forward history, since a discarded tab keeps only its address.
-5. **Restore.** Make one window with tabs `a` and `b`, `b` selected, and a second window
-   with `c`, and quit. `session.json` in `~/Library/Application Support/Metabrowser/` now
-   lists them; the next launch logs “restoring 2 window(s): 3 server(s) to start”, the
-   windows and tabs come back, and `grep -h 'started pid' "$LOGS"/{a,b,c}-*.log` with
-   its timestamps shows `b` started first, then `c`, then `a`, each after the one before
-   it was ready.
-6. **Protected locations.** Add `~/Documents/mb-check` as a background tab, quit, and
-   launch again: that tab says Metabrowser opens it when you select it, and
-   `pgrep -fl 'Documents/mb-check'` finds no server until you select the tab.
+3. **A window per folder.** Opening `c` and `d` gives each a window of its own.
+   With System Settings > Desktop & Dock > “Prefer tabs when opening documents” at
+   Always, opening `e` gives it a window of its own too.
+   The Window menu has no Merge All Windows, Show All Tabs, or Move Tab to New Window,
+   the View menu no Show Tab Bar, and Settings > General no Open folders in.
+   After `defaults write io.github.jlevy.metabrowser.dev newFolderPlacement tabs`, as an
+   earlier build saved it, a relaunch and opening `f` still give `f` a window of its
+   own. Run `defaults delete io.github.jlevy.metabrowser.dev newFolderPlacement`
+   afterward.
+4. **Discarded pages.** In `a`’s window, use the Switch Folder panel to choose `b`, `c`,
+   `d`, and `e` in turn, so the folders left behind stay open in the background: once
+   more folders are in the background than
+   `PageDiscardPolicy.defaultLiveBackgroundPages`, the app log says “discarding the
+   background page of” the folder shown longest ago, and
+   `ps -axo pid,command | grep -c '[W]ebContent'` drops by one.
+   Switching back to that folder reloads its page, with no “Starting” text, at the top
+   of the page and with no Back or Forward history, since a discarded page keeps only
+   its address. A minimized window keeps its page however many folders are in the
+   background.
+5. **Restore.** With windows for `a`, `b`, and `c`, `b`’s in front and `a`’s at the
+   back, quit. `session.json` in `~/Library/Application Support/Metabrowser/` now lists
+   them; the next launch logs “restoring 3 window(s)” with 3 servers to start, the
+   windows come back, and `grep -h 'started pid' "$LOGS"/{a,b,c}-*.log` with its
+   timestamps shows `b` started first, then `c`, then `a`, each after the one before it
+   was ready. **From an earlier build:** quit, then replace the file with one window of
+   tabs, as an earlier build saved it:
+   `printf '{"windows":[{"tabs":[{"root":"/private/tmp/mb-check/a"},{"root":"/private/tmp/mb-check/b"}],"selected":1}]}' > "$HOME/Library/Application Support/Metabrowser/session.json"`.
+   The next launch opens a window for `a` and one for `b`, `b`’s in front with its page
+   loaded, and `a`’s page loads when its window is brought forward.
+6. **Protected locations.** Open `~/Documents/mb-check` in a window behind the others,
+   quit, and launch again: its window says Metabrowser opens it when you bring it
+   forward, and `pgrep -fl 'Documents/mb-check'` finds no server until you do.
    Once Documents access is granted, no prompt appears either way.
    To see that the restore raises none, the person at the Mac first resets that grant
    (`tccutil reset SystemPolicyDocumentsFolder io.github.jlevy.metabrowser.dev`) and
-   then checks that the prompt waits for the tab’s selection: the waiting tab still
-   shows the folder’s name and icon, and whether reading those can prompt is untested.
-7. **A folder replaced by a link.** With `d` as a background tab of `a`’s window and `e`
-   not open, quit, then
+   then checks that the prompt waits until the window is brought forward: the waiting
+   window still shows the folder’s name and icon, and whether reading those can prompt
+   is untested.
+7. **A folder replaced by a link.** With `d` in a window behind `a`’s and `e` not open,
+   quit, then
    `mv /tmp/mb-check/d /tmp/mb-check/d-old; ln -s /tmp/mb-check/e /tmp/mb-check/d`, and
-   launch: `d`’s tab says Metabrowser opens it when you select it.
-   Select it: the app log says it “now leads to /private/tmp/mb-check/e”, the tab shows
-   `e`, and `open -a "$APP" /tmp/mb-check/e` and `open -a "$APP" /tmp/mb-check/d` bring
-   that tab forward, while `pgrep -fl 'metab /private/tmp/mb-check/[de]'` lists one
-   server, for `e`. Put `d` back with
-   `rm /tmp/mb-check/d; mv /tmp/mb-check/d-old /tmp/mb-check/d`.
+   launch: `d`’s window says Metabrowser opens it when you bring it forward.
+   Bring it forward: the app log says it “now leads to /private/tmp/mb-check/e”, the
+   window shows `e`, and `open -a "$APP" /tmp/mb-check/e` and
+   `open -a "$APP" /tmp/mb-check/d` bring that window forward, while
+   `pgrep -fl 'metab /private/tmp/mb-check/[de]'` lists one server, for `e`. Put `d`
+   back with `rm /tmp/mb-check/d; mv /tmp/mb-check/d-old /tmp/mb-check/d`.
 8. **Off, and empty.** With Settings > General > “Reopen the last session’s folders when
    Metabrowser opens” off, a launch restores nothing.
    With it on, closing every window before quitting restores nothing.
@@ -219,16 +232,15 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
 11. **A `metab` without `--present`.** Choose a `metab` built before `--present`, such
     as one from a checkout of `main` before #540: Settings calls it too old, “built
     before --recent”, the newest flag the app needs, before any link is sent.
-12. **Not restored.** Merge a folder window and the repository’s window into one tab
-    group with the repository’s tab shown, quit, and launch: the group comes back in its
-    place among the windows, showing the folder’s tab, without the repository’s.
+12. **Not restored.** With a folder window and the repository’s window open, quit and
+    launch: the folder’s window comes back, without the repository’s.
 13. **The same link twice during a first clone.** Send the link of a repository the
     cache does not hold, choose Clone and Open, and send the same link again while it
     clones: no second question, and once the clone ends the window shows the link, and
     the repository’s log has one `started pid` line since the first.
 14. **A link into an open repository during another’s clone.** With `$REPO`’s window
     ready, start a first clone of another repository as in check 7, then send
-    `$REPO/pull/517`: `$REPO`’s other tabs keep working, the window the link brought
+    `$REPO/pull/517`: `$REPO`’s other windows keep working, the window the link brought
     forward says it waits for another repository’s start, and once the clone ends it
     starts again and shows the pull request.
 15. **A branch the copy lacks.** Push a new branch to a repository you own whose window
@@ -244,7 +256,7 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
 17. **Restart Server during another’s clone.** With `$REPO`’s window opened from
     `$REPO/pull/517` and moved on to one of its files, start a first clone of another
     repository as in check 7, then choose File > Restart Server in that window: it says
-    it waits for another repository’s start, and `$REPO`’s other tabs keep working.
+    it waits for another repository’s start, and `$REPO`’s other windows keep working.
     Send `$REPO/pull/517` again: the window still says it waits, and once the clone ends
     it shows the pull request, not the file.
     Then, during a third repository’s first clone, choose Restart Server again and send
@@ -399,8 +411,8 @@ Start signed out: choose Metabrowser > Clear Website Data…, All Websites, and 
    than `keptAfterClosing`, and open it: the comment is still there.
 3. **The header and the menus.** With the popover open, Command-[ and Command-] go back
    and forward in it, Command-R reloads it, and Command-+ zooms it; Command-0 returns it
-   to actual size. The page behind keeps its own zoom, and a new tab opens at the page’s
-   remembered zoom, not the popover’s. File > Print and Edit > Find are dimmed.
+   to actual size. The page behind keeps its own zoom, and a new window opens at the
+   page’s remembered zoom, not the popover’s. File > Print and Edit > Find are dimmed.
    The header’s Copy Link puts the shown github.com address on the clipboard; Open in
    Browser opens it in the default browser and closes the popover.
 4. **Links, downloads, and drops.** In the popover, a link in the README to another site
@@ -420,16 +432,14 @@ Start signed out: choose Metabrowser > Clear Website Data…, All Websites, and 
    A github.com link in a Markdown page, which is not the button, opens in the default
    browser.
 6. **Sign in once.** In the popover, sign in to github.com with a password and the
-   two-factor code. Open a second folder of a repository on github.com as a tab, and a
-   third in a window of its own (Settings > General > Open folders in), and click View
-   on GitHub in each: both are signed in.
+   two-factor code. Open a second folder of a repository on github.com, and click View on
+   GitHub in its window: it is signed in.
    Quit Metabrowser, open it again, open `README.md`, and click View on GitHub: still
    signed in. The default browser’s own sign-in did not change.
    Note whether a passkey or a security key is offered and works, and what an
    organization’s single sign-on does; neither is checked yet.
-7. **Switching and closing folders.** With Settings > General > Open folders in set to
-   Windows, open a second checkout of a repository on github.com, so two such folders
-   are open, and show the first in a window.
+7. **Switching and closing folders.** Open a second checkout of a repository on
+   github.com, so two such folders are open, and show the first in a window.
    With the popover open, press Shift-Command-O and choose the second folder: the window
    shows it, and no popover is left over it.
    Click View on GitHub there, go to a pull request in the popover, and type a comment
@@ -458,9 +468,8 @@ LONG=/tmp/mb-check/projects/2026/clients/northwind/archive/quarterly-reports
 mkdir -p "$LONG"
 ```
 
-Set Settings > General > Open folders in to Windows and close every window.
-Open `$LONG` and close its window, then `c` and close its window, then `d` and close its
-window, so all three are recent and none is open.
+Close every window. Open `$LONG` and close its window, then `c` and close its window,
+then `d` and close its window, so all three are recent and none is open.
 Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`, so each has a
 window of its own. Each step starts where the one before it ends.
 
@@ -497,14 +506,13 @@ window of its own. Each step starts where the one before it ends.
 4. **A folder another window shows.** Choosing `b` in `a`’s chooser brings `b`’s window
    forward and keeps `a` in its window.
    Choosing `b` again leaves one window for `b`.
-5. **A recent folder.** Set Settings > General > Open folders in to Tabs.
-   Choose `c` in `a`’s chooser.
+5. **A recent folder.** Choose `c` in `a`’s chooser.
    A separate window opens on `c`, and `a` keeps its window.
 6. **A background folder.** In `c`’s window, open the Switch Folder panel and choose
    `d`, so `c` is open in the background.
    Choose `c` in `d`’s title menu.
    A separate window shows `c`’s page where you left it, with the same server.
-   The original window still shows `d`. Set the setting back to Windows.
+   The original window still shows `d`.
 7. **Option-Return.** In `a`’s window, select `a` in the Switch Folder panel and press
    Option-Return. Command-W closes the second window, and `a` stays open in its first.
 8. **Close Background Folders.** In `c`’s window use the Switch Folder panel to choose
@@ -516,19 +524,16 @@ window of its own. Each step starts where the one before it ends.
    Folder closes the window and stops `d`’s server.
    In `b`’s window, use the Switch Folder panel to reopen `d`. File > Close Folder then
    restores `b` in that window and stops `d`’s server.
-10. **Close Folder across windows and tabs.** Set Settings > General > Open folders in
-    to Tabs, choose `a` with Option-Return in the Switch Folder panel over `b`’s window,
-    which adds a tab of `a` to it, and select `b`’s tab again, so `a`’s tab is hidden;
-    set the setting back to Windows, and choose `a` with Option-Return in the panel over
-    `a`’s window for a second window on it.
-    With no folder in the background, File > Close Folder in `a`’s first window closes
-    both of `a`’s windows and its hidden tab, leaves `b`’s window with only `b`’s tab,
-    and stops `a`’s server.
-    Open `a` again and give it a second window and a hidden tab the same way, then open
-    `c` and use the panel to choose `d`, so `c` is in the background.
-    File > Close Folder in `a`’s first window now shows `c` in one of the windows that
-    showed `a`, closes the others and the hidden tab, and stops `a`’s server; no window
-    shows `a`. Then close every window but `b`’s, and open `a` again.
+10. **Close Folder across windows.** Choose `a` with Option-Return in the Switch Folder
+    panel over `a`’s window for a second window on it, and a third the same way, then
+    minimize the third. With no folder in the background, File > Close Folder in `a`’s
+    first window closes all three of `a`’s windows, leaves `b`’s window showing `b`, and
+    stops `a`’s server. Open `a` again and give it a second window and a minimized third
+    the same way, then open `c` and use the panel to choose `d`, so `c` is in the
+    background. File > Close Folder in `a`’s first window now shows `c` in one of the
+    windows that showed `a`, a window on screen before the minimized one, closes the
+    others, and stops `a`’s server; no window shows `a`. Then close every window but
+    `b`’s, and open `a` again.
 11. **Switch Folder…, there and back.** In `a`’s window, choose `c` from the Switch
     Folder panel, so `a` is in the background.
     Shift-Command-O opens the panel over the window, centered a little below its title,
@@ -643,9 +648,9 @@ responder.
 What each action does is unit-tested (`PageReloadTests`), but not which object
 AppKit sends it to: asking AppKit (`NSApp.target(forAction:to:from:)`) needs a key
 window, which a test process gets only by taking the focus from whoever is using the
-Mac. Nor is when AppKit releases a window’s controller, since no test target builds the
-app’s windows. With the folders and the app log from Files, Tabs, Recents, and Restore,
-after its check 1, so that `a`’s window shows `deep.md`, opened after `notes.md`:
+Mac. Nor is when AppKit releases a window’s controller, which no test watches.
+With the folders and the app log from Files, Windows, Recents, and Restore, after its
+check 1, so that `a`’s window shows `deep.md`, opened after `notes.md`:
 
 1. **Back, Forward, and Reload.** View > Back
    (Command-[) shows `notes.md`, View > Forward (Command-]) shows `deep.md` again, and
@@ -660,14 +665,14 @@ after its check 1, so that `a`’s window shows `deep.md`, opened after `notes.m
    `deep.md`.
 4. **The window as first responder.** Stop `a`’s server without ending it (`kill -STOP`
    the pid `pgrep -f 'metab /private/tmp/mb-check/a'` prints), then Command-click a link
-   in the page. The new tab, whose page never loads, so its window stays first responder,
-   says “The server stopped answering” within `SupervisorPolicy.healthDeadline` and then
+   in the page. The new window, whose page never loads, so it stays first responder, says
+   “The server stopped answering” within `SupervisorPolicy.healthDeadline` and then
    `shutdownGrace`. View > Reload Page is enabled there, and Command-R does what Retry
-   does: the server starts again, and the tab shows the clicked page.
-5. **Closing.** Close the new tab (Command-W):
+   does: the server starts again, and the window shows the clicked page.
+5. **Closing.** Close the new window (Command-W):
    `pgrep -fl 'metab /private/tmp/mb-check/a'` still lists `a`’s server, which the other
-   tab shows. Close that tab too, and within `SupervisorPolicy.shutdownGrace` it lists
-   none. Restore, check 5, covers what a quit saves.
+   window shows. Close that window too, and within `SupervisorPolicy.shutdownGrace` it
+   lists none. Restore, check 5, covers what a quit saves.
 
 ## Presenting From metab
 

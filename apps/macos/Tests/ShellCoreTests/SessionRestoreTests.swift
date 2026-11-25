@@ -51,7 +51,7 @@ import Testing
 
 @Suite struct RestoreQueueTests {
     private func window(_ roots: [String], selected: Int = 0) -> SavedWindow {
-        SavedWindow(tabs: roots.map { SavedTab(root: $0, page: nil) }, selected: selected, frame: nil)
+        SavedWindow(pages: roots.map { SavedPage(root: $0, page: nil) }, selected: selected, frame: nil)
     }
 
     private func drain(_ queue: inout RestoreQueue) -> [String] {
@@ -108,7 +108,7 @@ import Testing
         #expect(drain(&queue) == ["/d", "/b", "/c"])
     }
 
-    /// A background root whose launch was refused at the last check waits for its tab, and
+    /// A background root whose launch was refused at the last check waits for its window, and
     /// starts once that is selected.
     @Test func aRootRefusedAtLaunchWaitsForItsTab() {
         let session = SavedSession(windows: [window(["/front", "/b"])])
@@ -136,15 +136,15 @@ import Testing
 }
 
 @Suite struct SavedSessionTests {
-    private func tab(_ root: String, _ page: PageAddress? = nil) -> SavedTab { SavedTab(root: root, page: page) }
+    private func savedPage(_ root: String, _ page: PageAddress? = nil) -> SavedPage { SavedPage(root: root, page: page) }
 
     @Test func admissionDropsWhatCannotBeShownAndClampsTheSelection() {
         let session = SavedSession(windows: [
             SavedWindow(
-                tabs: [tab("/gone"), tab("/bad/../x"), tab("/here", .view(of: "a.md")), tab("/docs")],
+                pages: [savedPage("/gone"), savedPage("/bad/../x"), savedPage("/here", .view(of: "a.md")), savedPage("/docs")],
                 selected: 7, frame: "f"),
-            SavedWindow(tabs: [tab("/gone")], selected: 0, frame: nil),
-            SavedWindow(tabs: [], selected: 0, frame: nil),
+            SavedWindow(pages: [savedPage("/gone")], selected: 0, frame: nil),
+            SavedWindow(pages: [], selected: 0, frame: nil),
         ])
         let admitted = session.admitted { root in
             switch root {
@@ -155,31 +155,31 @@ import Testing
             }
         }
         #expect(admitted.session == SavedSession(windows: [
-            SavedWindow(tabs: [tab("/here", .view(of: "a.md")), tab("/docs")], selected: 1, frame: "f"),
+            SavedWindow(pages: [savedPage("/here", .view(of: "a.md")), savedPage("/docs")], selected: 1, frame: "f"),
         ]))
         #expect(admitted.deferred == ["/docs"])
     }
 
     @Test func theSelectionFollowsItsTabWhenEarlierTabsAreDropped() {
         let session = SavedSession(windows: [
-            SavedWindow(tabs: [tab("/gone"), tab("/a"), tab("/b")], selected: 2, frame: nil),
+            SavedWindow(pages: [savedPage("/gone"), savedPage("/a"), savedPage("/b")], selected: 2, frame: nil),
         ])
         let admitted = session.admitted { $0 == "/gone" ? .gone : .open($0) }
         #expect(admitted.session.windows.first?.selected == 1)
     }
 
     /// Aliases of one folder become one root, so they share one session and one server,
-    /// and each root is resolved once however many tabs name it.
+    /// and each root is resolved once however many pages name it.
     @Test func aliasesOfOneFolderBecomeOneRootResolvedOnce() {
         let session = SavedSession(windows: [
-            SavedWindow(tabs: [tab("/link"), tab("/wrk/app"), tab("/link")], selected: 0, frame: nil),
+            SavedWindow(pages: [savedPage("/link"), savedPage("/wrk/app"), savedPage("/link")], selected: 0, frame: nil),
         ])
         var resolved: [String] = []
         let admitted = session.admitted { root in
             resolved.append(root)
             return .open("/wrk/app")
         }
-        #expect(admitted.session.windows[0].tabs.map(\.root) == ["/wrk/app", "/wrk/app", "/wrk/app"])
+        #expect(admitted.session.windows[0].pages.map(\.root) == ["/wrk/app", "/wrk/app", "/wrk/app"])
         #expect(resolved == ["/link", "/wrk/app"])
         var queue = RestoreQueue(admitted.session, isProtected: admitted.deferred.contains)
         #expect(queue.next() == "/wrk/app")
@@ -187,10 +187,10 @@ import Testing
     }
 
     /// The defect B1 and C1 describe, end to end through the queue: a background root that
-    /// now resolves into a protected location waits for its tab.
+    /// now resolves into a protected location waits for its window.
     @Test func aBackgroundRootThatResolvesIntoAProtectedLocationWaits() {
         let session = SavedSession(windows: [
-            SavedWindow(tabs: [tab("/wrk/app"), tab("/proj")], selected: 0, frame: nil),
+            SavedWindow(pages: [savedPage("/wrk/app"), savedPage("/proj")], selected: 0, frame: nil),
         ])
         let admitted = session.admitted { $0 == "/proj" ? .deferred("/proj") : .open($0) }
         var queue = RestoreQueue(admitted.session, isProtected: admitted.deferred.contains)
@@ -201,23 +201,23 @@ import Testing
 
     @Test func aSessionPastTheBudgetKeepsItsFrontWindowsAndEachWindowsShownTab() {
         let window = { (count: Int, selected: Int) in
-            SavedWindow(tabs: (0..<count).map { self.tab("/r\($0)") }, selected: selected, frame: nil)
+            SavedWindow(pages: (0..<count).map { self.savedPage("/r\($0)") }, selected: selected, frame: nil)
         }
-        let budget = RestoreBudget(windows: 2, tabs: 5)
+        let budget = RestoreBudget(windows: 2, pages: 5)
         let session = SavedSession(windows: [window(3, 0), window(4, 3), window(1, 0)])
         let kept = session.limited(to: budget)
         #expect(kept.windows.count == 2)
         #expect(kept.windows[0] == window(3, 0))
-        // Two tabs are left for the second window: its first, and the one it shows.
-        #expect(kept.windows[1].tabs.map(\.root) == ["/r0", "/r3"])
+        // Two pages are left for the second window: its first, and the one it shows.
+        #expect(kept.windows[1].pages.map(\.root) == ["/r0", "/r3"])
         #expect(kept.windows[1].selected == 1)
-        #expect(session.limited(to: RestoreBudget(windows: 9, tabs: 9)) == session)
+        #expect(session.limited(to: RestoreBudget(windows: 9, pages: 9)) == session)
     }
 
     /// Review B3's input: ten thousand windows in a file well under the byte limit. Only the
     /// budget's worth reach admission, window creation, or the queue.
     @Test func aHostileSessionBuildsOnlyTheBudget() throws {
-        let session = SavedSession(windows: Array(repeating: SavedWindow(tabs: [tab("/")], selected: 0, frame: nil), count: 10_000))
+        let session = SavedSession(windows: Array(repeating: SavedWindow(pages: [savedPage("/")], selected: 0, frame: nil), count: 10_000))
         #expect(try JSONEncoder().encode(session).count < SessionStore.byteLimit)
         var admissions = 0
         let admitted = session.limited(to: .standard).admitted { root in
@@ -226,15 +226,15 @@ import Testing
         }
         #expect(admitted.session.windows.count == RestoreBudget.standard.windows)
         #expect(admissions == 1)
-        let tabs = SavedSession(windows: [SavedWindow(tabs: (0..<10_000).map { tab("/r\($0)") }, selected: 0, frame: nil)])
-        #expect(tabs.limited(to: .standard).windows[0].tabs.count == RestoreBudget.standard.tabs)
+        let pages = SavedSession(windows: [SavedWindow(pages: (0..<10_000).map { savedPage("/r\($0)") }, selected: 0, frame: nil)])
+        #expect(pages.limited(to: .standard).windows[0].pages.count == RestoreBudget.standard.pages)
     }
 }
 
 @Suite struct SessionStoreTests {
     private let session = SavedSession(windows: [
         SavedWindow(
-            tabs: [SavedTab(root: "/Homes/me/notes", page: .view(of: "plan.md")), SavedTab(root: "/opt/x", page: nil)],
+            pages: [SavedPage(root: "/Homes/me/notes", page: .view(of: "plan.md")), SavedPage(root: "/opt/x", page: nil)],
             selected: 1, frame: "0 0 1200 820 0 0 1512 949 "),
     ])
 
@@ -288,7 +288,7 @@ import Testing
         // Large enough that a write takes many system calls, so a torn file would show.
         let large = SavedSession(windows: (0..<200).map { index in
             SavedWindow(
-                tabs: [SavedTab(root: "/Homes/me/project-\(index)", page: .view(of: "notes/\(index).md"))],
+                pages: [SavedPage(root: "/Homes/me/project-\(index)", page: .view(of: "notes/\(index).md"))],
                 selected: 0, frame: "0 0 1200 820 0 0 1512 949 ")
         })
         try SessionStore(directory: directory).save(small)

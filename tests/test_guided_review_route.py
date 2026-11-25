@@ -20,11 +20,13 @@ from typing import Any, cast
 
 import pytest
 
+from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github import (
     guided_review,
     pull_manifest,
     pull_markdown,
     pull_rendered_diff,
+    pull_text_render,
 )
 from metabrowser.builtin_plugins.github.guided_review import parse_guide
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
@@ -43,7 +45,7 @@ from metabrowser.builtin_plugins.github.pull_stacks import (
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.diff import markdown_projection_worker as worker_module
 from metabrowser.diff.adapters.base import DiffSourceError
-from metabrowser.diff.markdown_projection_worker import InertRenderRefused
+from metabrowser.diff.markdown_projection_worker import InertRenderRefused, RefusalCode
 from metabrowser.git.process import GitError, GitLocation, GitOutputCutError, RepositoryStoreTarget
 from tests.diff_fixture_repo import git
 from tests.github_pull_fixture import (
@@ -86,12 +88,12 @@ def notes(monkeypatch: pytest.MonkeyPatch) -> _NoteChild:
     of something else need not start: those notes are a stand-in's. The tests of the render
     itself put the real child back (`_real_child`)."""
     child = _NoteChild()
-    monkeypatch.setattr(pull_markdown, "shared_worker", lambda: child)
+    monkeypatch.setattr(pull_text_render, "shared_worker", lambda: child)
     return child
 
 
 def _real_child(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(pull_markdown, "shared_worker", worker_module.shared_worker)
+    monkeypatch.setattr(pull_text_render, "shared_worker", worker_module.shared_worker)
 
 
 def _cache(stand: _Stand, body: str) -> PullRecord:
@@ -457,22 +459,50 @@ def test_a_note_past_the_kept_renders_renders_again(
     assert len(notes.asked) == 2
 
 
-def test_a_refused_render_answers_the_note_alone(stand: _Stand, notes: _NoteChild) -> None:
-    """A note whose render is refused is answered as written, with no HTML, and the step
-    reads as before: the page shows the note as typed. A refusal is not kept here, so the
-    next read asks again, and the child answers from the refusal it keeps."""
+@pytest.mark.parametrize(
+    "code", ["render_deadline", "renderer_exited", "renderer_busy", "renderer_unavailable"]
+)
+def test_a_refused_render_answers_the_note_and_why(
+    stand: _Stand, notes: _NoteChild, code: RefusalCode
+) -> None:
+    """A note whose render is refused is answered as written, with no HTML and the code the
+    pull-markdown route answers the refusal with, and the step reads as before: the page
+    shows the note as typed, with the line a description's refusal says. A refusal is not
+    kept here, so the next read asks again, and the child answers from the refusal it keeps
+    or, for a busy renderer or one that could not start, renders."""
     _cache(stand, markdown_guide_body(stand.origin))
-    notes.refusal = InertRenderRefused("render_deadline")
+    notes.refusal = InertRenderRefused(code)
     answer = _ask(stand)
-    assert (answer["state"], answer["note_html"], answer["group_note_html"]) == (
-        "ready",
-        None,
-        None,
-    )
+    assert (
+        answer["state"],
+        answer["note_html"],
+        answer["note_refusal"],
+        answer["group_note_html"],
+        answer["group_note_refusal"],
+    ) == ("ready", None, code, None, code)
     assert answer["note"].startswith("Check that the **original** value")
     assert [ref["state"] for ref in answer["references"]] == ["ready"]
     _ask(stand)
     assert len(notes.asked) == 4
+    notes.refusal = None
+    again = _ask(stand)
+    assert (again["note_refusal"], again["group_note_refusal"]) == (None, None)
+    assert again["note_html"] == f"<p>{html.escape(again['note'])}</p>"
+
+
+def test_a_note_kpress_cannot_render_answers_render_failed(
+    stand: _Stand, notes: _NoteChild, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """KPress's own failure is answered as the pull-markdown route answers it, ``render_failed``."""
+    _cache(stand, guide_body(stand.origin))
+
+    async def failing(_request: Any) -> dict[str, Any]:
+        raise kpress_adapter.KPressRenderError("no")
+
+    monkeypatch.setattr(notes, "render_inert", failing)
+    answer = _ask(stand)
+    assert (answer["note_html"], answer["note_refusal"]) == (None, "render_failed")
+    assert (answer["group_note_html"], answer["group_note_refusal"]) == (None, None)
 
 
 def test_the_published_guides_notes_render_inert(
@@ -517,7 +547,12 @@ def test_a_note_past_the_render_deadline_shows_as_typed(
     assert slow in body
     _cache(stand, body)
     answer = _ask(stand)
-    assert (answer["state"], answer["note"], answer["note_html"]) == ("ready", slow, None)
+    assert (answer["state"], answer["note"], answer["note_html"], answer["note_refusal"]) == (
+        "ready",
+        slow,
+        None,
+        "render_deadline",
+    )
 
 
 def test_a_step_past_the_guide_and_an_uncached_pull_request(stand: _Stand) -> None:
@@ -924,7 +959,7 @@ def rendered(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
             texts.append(request.source_text)
             return {"html": "<p>rendered</p>"}
 
-    monkeypatch.setattr(pull_markdown, "shared_worker", Child)
+    monkeypatch.setattr(pull_text_render, "shared_worker", Child)
     monkeypatch.setattr(pull_markdown.kpress_adapter, "document_stylesheets", dict)
     guided_review._READS.clear()
     yield texts
