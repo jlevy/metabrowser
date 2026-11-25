@@ -1,11 +1,13 @@
 # Diff Pipeline
 
 **Status:** Implemented: the patch-file and Git revision sources, the apply oracle,
-manifest-first hydration on the server and in the page, the comparison caches, and the
-rendered projections of Markdown, YAML, and JSON on a pull request’s Changes.
-Planned: working-tree and index sources, in the
+manifest-first hydration on the server and in the page, the comparison caches, the
+rendered projections of Markdown, YAML, and JSON on a pull request’s Changes, and the
+unchanged lines between a comparison’s hunks, read on demand
+([Context Between Hunks](#context-between-hunks)). Planned: working-tree and index
+sources, in the
 [Git status plan](../specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md);
-anchoring a patch file to a repository; and context expansion, in the
+and anchoring a patch file to a repository, in the
 [general diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md).
 
 [File Diff Format v1](file-diff-format/file-diff-format.md) defines what a comparison
@@ -193,6 +195,42 @@ Syntax tokens, intraline ranges, and split-row pairings are browser enrichments 
 from the line records (`diff-syntax.js`, `diff-intraline.js`, `diff-render-model.js`),
 not format fields, so a palette, algorithm, or layout change cannot invalidate a
 comparison.
+
+### Context Between Hunks
+
+A hunk carries the context lines Git writes around its change (`options.context`, 3), so
+the unchanged lines between hunks, above the first, and below the last are not in the
+document. The comparison route reads them on demand:
+`&view=lines&file=PATH&start=N&count=M`, with `&side=old` for the old side, answers up
+to `DIFF_GAP_LINES` (`settings.py`) lines of that change’s side from its snapshot, with
+the side’s `line_count` and `ends_with_newline`, so the page learns where the file ends
+below its last hunk.
+`diff/side_lines.py` cuts the side into lines as Git numbers them; the route reads the
+side within `MAX_LINES_SIDE_BYTES` (`builtin_plugins/diff/sidekick.py`), through the
+store’s shared readers or a folder’s `cat-file`, and an answer carries at most
+`MAX_LINES_ANSWER_BYTES` of line text.
+A side the hunks do not number as its bytes, or cannot be read, is refused with 409 and
+a `code`: absent (`no_side`), not a file’s text (`not_text`), past the bound
+(`blob_too_large`), or converted by a textconv driver in a folder (`textconv`), whose
+hunks number the conversion’s lines.
+`cli-api-diff-lines.tryscript.md` pins the answers.
+
+Every comparison has this view, whatever its source: a commit’s, a branch comparison’s,
+a pull request’s through its own route (`comparison_at` serves both), and a checkout’s,
+all of which compare commits.
+A patch file names no snapshot and has none, and a working-tree or index source, once
+one exists, answers `no_content` until it can read its side, so its separators stay
+plain.
+
+In the page, `hunkGaps` in `diff-view.js` places each gap from the hunks’ ranges, and
+`renderGapFold` draws it as the diff’s fold bar (`foldExpander`), opening up to
+`DIFF_GAP_LINES` at a time nearest its hunk, in batches of
+`FOLD_MATERIALIZATION_BATCH_ROWS`, with the reader’s place held (`GapSource.keep`) and
+the lines highlighted within the file’s `SYNTAX_HIGHLIGHT_MAX_BYTES`, counted with the
+hunks’ bytes. A file keeps what it read while the diff is mounted.
+A code file’s hunks in a guided review step (`mountFilePatch`) and a patch file draw
+plain separators. `cli-ui-diff-hunk-gap.tryscript.md` pins the states, and
+`tests/test_diff_hunk_gap_chrome.py` the bar and the place in Chrome.
 
 ## Caches
 

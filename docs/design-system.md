@@ -1753,13 +1753,33 @@ it.
 
 Every fold of a diff is one **fold bar**, made by one factory, `foldExpander` in the
 diff plugin’s `diff-fold.js`: a code file’s long run of changed lines
-(`86 more changed lines`) and a rendered Markdown file’s run of unchanged blocks
+(`86 more changed lines`), the unchanged lines between a code file’s hunks
+(`63 unchanged lines`), and a rendered Markdown file’s run of unchanged blocks
 (`6 unchanged blocks`) draw the same bar, open and close alike, and differ only in what
 the group they open holds.
 Opening a Markdown fold sets the blocks it holds exactly as the unchanged blocks around
 them. A new kind of fold in a diff calls the factory rather than drawing a bar of its
 own. `tests/test_diff_markdown_fold_chrome.py` holds in Chrome that the two bars compute
-alike at rest and under the pointer.
+alike at rest and under the pointer, and `tests/test_diff_hunk_gap_chrome.py` that a
+gap’s bar computes as a changed run’s does under the keyboard’s ring too, that its
+separator ends in an ellipsis at a narrow width while its label stays whole, and that a
+gap opening above the pane leaves the reader’s row where it is at every frame.
+
+A hunk’s `@@` separator is such a bar where the diff can read the file’s lines, which a
+comparison can and a patch file cannot.
+The bar stands where the separator stood and keeps it, in the code face, after its label
+(`63 unchanged lines @@ -76,7 +77,7 @@ def main():`), so the hunk’s ranges and heading
+still say where it is.
+Below the last hunk a bar with no separator reads `Rest of the file` until the diff
+knows where the file ends.
+One open shows at most `DIFF_GAP_LINES` (settings.py) of a gap, the ones nearest its
+hunk, and a bar of the same kind stands for the rest at the far end of the group; the
+open bar counts every line it shows, its steps’ among them (`Hide 50 lines`). While its
+lines load the bar is `aria-busy` beside the app’s delayed spinner; a load that fails
+closes it with `Could not load 38 unchanged lines. Retry`, and a press asks again.
+A file whose lines the comparison declines draws its plain separators under one warning,
+`The unchanged lines of this file cannot be shown.`
+`tests/golden/cli-ui-diff-hunk-gap.tryscript.md` pins each state.
 
 ### Disclosure Motion
 

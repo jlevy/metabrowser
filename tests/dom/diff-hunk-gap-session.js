@@ -78,7 +78,13 @@ const PANE_PX = 600;
 const BAR_PX = 30;
 const ROW_PX = 20;
 /** What draws as one row of the model. */
-const ROWS = ["diff-line", "diff-split-row", "diff-hunk-header", "diff-availability", "fold-expander"];
+const ROWS = [
+  "diff-line",
+  "diff-split-row",
+  "diff-hunk-header",
+  "diff-availability",
+  "fold-expander",
+];
 
 class PageElement {
   constructor(tag) {
@@ -569,10 +575,7 @@ function body(section) {
     } else if (node.classList.contains("diff-availability")) {
       flush();
       shown.push(`says: ${node.textContent}`);
-    } else if (
-      node.classList.contains("diff-line") ||
-      node.classList.contains("diff-split-row")
-    ) {
+    } else if (node.classList.contains("diff-line") || node.classList.contains("diff-split-row")) {
       if (node.parentElement.classList.contains("diff-gap-group")) {
         pending.push(node);
       } else {
@@ -635,7 +638,10 @@ async function main() {
       isLargeTextPreview: (data) => Number(data.size) > LEXED_BYTES,
       langForPath: (filePath) => (filePath.endsWith(".py") ? "python" : ""),
       ensureAsset: async () => {},
-      prefs: { get: (key, fallback) => (key === "diff.layout" ? "unified" : fallback), set: () => true },
+      prefs: {
+        get: (key, fallback) => (key === "diff.layout" ? "unified" : fallback),
+        set: () => true,
+      },
       filterControls: {
         groupHtml: (spec) => spec,
         bind(root, handlers) {
@@ -690,7 +696,9 @@ async function main() {
           .concat(root.querySelectorAll(".diff-split-row"))
           .filter((each) => each.getBoundingClientRect().bottom > 0)
           .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-        return rows.length === 0 ? null : `${row(rows[0])} at ${rows[0].getBoundingClientRect().top} px`;
+        return rows.length === 0
+          ? null
+          : `${row(rows[0])} at ${rows[0].getBoundingClientRect().top} px`;
       },
       /** The pane scrolled so the first row that reads *needle* is *top* px down it. */
       scrollRowTo(needle, top) {
@@ -738,11 +746,16 @@ async function main() {
   diff.scrollRowTo("line 77", 0);
   const before = diff.rowAtTop();
   await diff.press("src/app.py", "63 unchanged lines");
-  step("The gap between the hunks opens its 25 lines nearest the hunk below", diff, ["src/app.py"], {
-    rowAtTopBefore: before,
-    rowAtTopAfter: diff.rowAtTop(),
-    highlighted: lexed.splice(0),
-  });
+  step(
+    "The gap between the hunks opens its 25 lines nearest the hunk below",
+    diff,
+    ["src/app.py"],
+    {
+      rowAtTopBefore: before,
+      rowAtTopAfter: diff.rowAtTop(),
+      highlighted: lexed.splice(0),
+    },
+  );
 
   failNext = true;
   await diff.press("src/app.py", "38 unchanged lines");
@@ -754,9 +767,12 @@ async function main() {
   });
 
   await diff.press("src/app.py", "Rest of the file");
-  step("Below the last hunk: the rest of the file, whose end the answer says", diff, [
-    "src/app.py",
-  ], { highlighted: lexed.splice(0) });
+  step(
+    "Below the last hunk: the rest of the file, whose end the answer says",
+    diff,
+    ["src/app.py"],
+    { highlighted: lexed.splice(0) },
+  );
 
   await diff.press("src/app.py", "Hide 50 lines");
   step("Closing a gap closes its steps too", diff, ["src/app.py"]);
