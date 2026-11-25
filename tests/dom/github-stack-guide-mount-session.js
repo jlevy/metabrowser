@@ -335,6 +335,20 @@ async function run() {
   // its outside link is marked.
   reads[0].answer(step(revision(1), 1, pinsOf(drawnFirst)));
   await settle();
+  // Its step list has no overview, and no step is in a group, so each row starts on a group
+  // heading's edge with its number, in a column one digit wide (mb-420k).
+  const list = container.querySelector(".github-pull-guide-steps");
+  const isElement = (node) => typeof node !== "string";
+  report.list = {
+    rows: list.children.filter(isElement).map((item) =>
+      item.children
+        .find(isElement)
+        .children.filter(isElement)
+        .map((part) => `${[...part.classes].join(".")}: ${part.textContent}`)
+        .join(", "),
+    ),
+    style: list.getAttribute("style"),
+  };
   assert.deepEqual(
     documents.map(({ path: file, right }) => `${file}@${right}`),
     [`docs/draft.md@${drawnFirst.right}`],

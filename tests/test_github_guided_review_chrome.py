@@ -22,6 +22,13 @@ measures them, at a desktop width and a phone's, and that another pull request's
 from that pull request's own routes on the real server, on a stand-in whose pull request 7's
 guide cites every kind of reference (``--describe 7 kinds``).
 
+Where each row of the step list starts is paint too, so
+``tests/dom/github-guided-review-outline-chrome.mjs`` measures it, in the light and the dark
+scheme at a desktop width and a phone's, on a stand-in whose 7 has a guide with no group, 8
+a group and then a step outside it (``--describe 8 mixed``), and 9 ten steps in no group
+(``--describe 9 ten-steps``): a row outside any group, the overview's among them, starts on
+the edge a group's heading starts on, and a group's steps keep their column under it.
+
 A step's rendered document is the diff view's own drawing of a file over the server's
 projection, so ``tests/dom/github-guided-review-documents-chrome.mjs`` compares a Markdown
 document with the Docs tab's drawing of the same file, and a YAML document with the Changes
@@ -39,6 +46,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -59,6 +67,7 @@ FIXTURE = Path(__file__).resolve().parent / "github_pull_fixture.py"
 SESSION = Path(__file__).resolve().parent / "dom" / "github-guided-review-chrome.mjs"
 DOCUMENTS = Path(__file__).resolve().parent / "dom" / "github-guided-review-documents-chrome.mjs"
 KINDS = Path(__file__).resolve().parent / "dom" / "github-guided-review-kinds-chrome.mjs"
+OUTLINE = Path(__file__).resolve().parent / "dom" / "github-guided-review-outline-chrome.mjs"
 # Building the stand-in's home runs the production CLI four times through a fake gh; it took
 # about 5 s at a load average near 20 (2026-11-20).
 _BUILD_BUDGET_S = 60.0
@@ -81,9 +90,9 @@ def _session(
     chrome_profile: Path,
     mode: str,
     session: Path,
-    describe: tuple[str, str] = ("8", "grouped"),
+    describe: Sequence[tuple[str, str]] = (("8", "grouped"),),
 ) -> str:
-    """Build the stand-in in fixture *mode*, write the guide *describe* names into a pull
+    """Build the stand-in in fixture *mode*, write each guide *describe* names into its pull
     request's description, serve pull request 7, and run *session* on it."""
     chrome = require_chrome()
     node = require_node()
@@ -92,8 +101,8 @@ def _session(
     env["METABROWSER_LOG_LEVEL"] = "WARNING"
     stand_in = tmp_path / "stand-in"
     stand_in.mkdir()
-    # A guide is rewritten after the build, whichever mode built it: by default 8's, in groups.
-    for build in ([mode], ["--describe", *describe]):
+    # Guides are rewritten after the build, whichever mode built it: by default 8's, in groups.
+    for build in ([mode], *(["--describe", *each] for each in describe)):
         built = subprocess.run(
             [sys.executable, str(FIXTURE), str(stand_in), *build],
             capture_output=True,
@@ -152,6 +161,18 @@ def test_guided_review_documents_in_chrome(tmp_path: Path, chrome_profile: Path)
 
 
 def test_guided_review_reference_rows_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
-    stdout = _session(tmp_path, chrome_profile, "--guided", KINDS, describe=("7", "kinds"))
+    stdout = _session(tmp_path, chrome_profile, "--guided", KINDS, describe=(("7", "kinds"),))
     passed = re.fullmatch(r"guided review references in Chrome: (\d+) checks passed\n", stdout)
+    assert passed is not None and int(passed.group(1)) > 0, stdout
+
+
+def test_guided_review_outline_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
+    stdout = _session(
+        tmp_path,
+        chrome_profile,
+        "--guided",
+        OUTLINE,
+        describe=(("8", "mixed"), ("9", "ten-steps")),
+    )
+    passed = re.fullmatch(r"guided review outline in Chrome: (\d+) checks passed\n", stdout)
     assert passed is not None and int(passed.group(1)) > 0, stdout
