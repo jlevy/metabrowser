@@ -5,7 +5,11 @@ title: "Stack page: every file a stack changes, with Docs and Changes over the c
 kind: feature
 status: in_progress
 priority: 1
-version: 2
+version: 3
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/829
+    at: 2026-11-25T08:12:52.233Z
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,6 +17,6 @@ parent_id: is-01m8806zrnxn9jwj89hffd2yv7
 hold: null
 hold_until: null
 created_at: 2026-11-25T02:03:58.294Z
-updated_at: 2026-11-25T04:05:24.097Z
+updated_at: 2026-11-25T08:12:52.236Z
 started_at: 2026-11-25T04:05:24.094Z
 ---
