@@ -901,11 +901,6 @@ type MetabrowserPullRouteRuntime = Readonly<{
       open: (route: MetabrowserPullRoute) => Promise<{ status: string }>,
     ): Promise<Handle | null | undefined>;
     mountList(claim: number): Promise<Handle | null | undefined>;
-    mountStack?(
-      claim: number,
-      route: Readonly<{ number: number; tab: string }>,
-      open: (route: MetabrowserPullRoute) => Promise<{ status: string }>,
-    ): Promise<Handle | null | undefined>;
     pathname(): string;
     pushHref(href: string): void;
     replaceHref(href: string): void;
@@ -959,7 +954,9 @@ type MetabrowserPullRouteRuntime = Readonly<{
   onPageChange(listener: () => void): () => void;
   parsePull(pathname: string): Readonly<{ number: number; tab: string; file: string }> | null;
   parsePulls(pathname: string, search?: string): Readonly<{ state: string }> | null;
-  parseStack(pathname: string): Readonly<{ number: number; tab: string; file: string }> | null;
+  parseStack(
+    pathname: string,
+  ): Readonly<{ number: number; tab: string; file: string; stack: true }> | null;
   pullHistoryAction(
     pathname: string,
     shown: number | "list" | `stack:${number}` | null,

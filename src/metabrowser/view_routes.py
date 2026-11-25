@@ -24,9 +24,9 @@ PULLS_ROUTE = "/pulls"
 # Conversation otherwise. Every tab also has its own address, Conversation's among them,
 # so a link to a guided review's Conversation names it (pull-page.js, `shownTab`).
 PULL_ROUTE_TABS = ("", "conversation", "docs", "files", "guided", "checks")
-# A native stack's page: `/stack/<n>` is its front page, Files until phase 3 of the stack
-# review plan gives a stack a guide; Changes names one file as `/stack/<n>/changes/<path>`,
-# since Files is a tab of its own here (stack-page.js, `shownTab`).
+# A native stack's page: `/stack/<n>` is its front page, Files while no stack has a Guided
+# Review; Changes names one file as `/stack/<n>/changes/<path>`, since Files is a tab of its
+# own here (stack-page.js, `shownTab`).
 STACK_ROUTE_PREFIX = "/stack/"
 STACK_ROUTE_TABS = ("", "files", "docs", "changes")
 # A pull-request number as the GitHub URL reducer admits one.

@@ -68,8 +68,8 @@ export const STACK_TABS = Object.freeze([
  */
 
 /**
- * The tab a route shows: its own, or the front page's. The front page is Guided Review for
- * a stack with a guide, from phase 3 of the plan; until then it is Files.
+ * The tab a route shows: its own, or the front page's, Files, since the page draws no
+ * stack's Guided Review yet.
  *
  * @param {string} tab The route's tab, "" for the front page.
  * @param {StackEnvelope | null} _envelope

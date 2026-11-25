@@ -119,13 +119,15 @@
 
   /**
    * Parse a native stack's page route, or null when the location is not one. `file` is the
-   * file of its comparison that Changes names, or "" for the page.
+   * file of its comparison that Changes names, or "" for the page. `stack` says the number
+   * is a stack's, so the host's `show` opens the stack's page for it.
    *
    * @param {string} pathname
-   * @returns {Readonly<{number: number, tab: string, file: string}> | null}
+   * @returns {Readonly<{number: number, tab: string, file: string, stack: true}> | null}
    */
   function parseStack(pathname) {
-    return parseTabbed(pathname, STACK_PREFIX, STACK_TABS, "changes");
+    const route = parseTabbed(pathname, STACK_PREFIX, STACK_TABS, "changes");
+    return route === null ? null : Object.freeze({ ...route, stack: /** @type {const} */ (true) });
   }
 
   /**
@@ -271,8 +273,9 @@
    * request's files without moving the address on every key.
    *
    * A native stack's page (`/stack/<n>`) is held the same way, by its own key, and mounted
-   * by *mountStack*; its `open` takes `{stack: true}` for another of its tabs and a plain
-   * route for a member's page.
+   * by *mount* with a route that says `stack: true`, as `show` and `open` take one; its
+   * `open` takes `{stack: true}` for another of its tabs and a plain route for a member's
+   * page.
    *
    * @template {{land?: (route: {tab: string, file?: string}) => void, setTab?: (tab: string) => void, showFile?: (path: string) => unknown, flush?: () => void, ready?: Promise<void>, cancelPending?: () => void, dispose?: () => void}} Handle
    * @param {{
@@ -280,15 +283,10 @@
    *   isCurrent: (claim: number) => boolean,
    *   mount: (
    *     claim: number,
-   *     route: Readonly<{number: number, tab: string, reader?: unknown}>,
-   *     open: (route: {number: number, tab: string, file?: string, reader?: unknown, replace?: boolean}) => Promise<{status: string}>,
-   *   ) => Promise<Handle | null | undefined>,
-   *   mountList: (claim: number) => Promise<Handle | null | undefined>,
-   *   mountStack?: (
-   *     claim: number,
-   *     route: Readonly<{number: number, tab: string}>,
+   *     route: Readonly<{number: number, tab: string, reader?: unknown, stack?: boolean}>,
    *     open: (route: {number: number, tab: string, file?: string, stack?: boolean, reader?: unknown, replace?: boolean}) => Promise<{status: string}>,
    *   ) => Promise<Handle | null | undefined>,
+   *   mountList: (claim: number) => Promise<Handle | null | undefined>,
    *   pathname: () => string,
    *   pushHref: (href: string) => void,
    *   replaceHref: (href: string) => void,
@@ -420,13 +418,16 @@
 
     /**
      * Show a route's page, or switch its tab, or go to its file, when that page is already
-     * shown.
+     * shown. A route that says `stack: true`, as `parseStack`'s does, is a stack's page.
      *
-     * @param {Readonly<{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown}>} route
+     * @param {Readonly<{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, stack?: boolean}>} route
      * @param {{restore?: boolean}} [how]
      * @returns {Promise<{status: "opened" | "cancelled"}>}
      */
     async function show(route, how = {}) {
+      if (route.stack === true) {
+        return showStack(route, how);
+      }
       return showAt(route.number, route, (claim) => deps.mount(claim, route, open), how, "files");
     }
 
@@ -438,14 +439,11 @@
      * @returns {Promise<{status: "opened" | "cancelled"}>}
      */
     async function showStack(route, how = {}) {
-      const mount = deps.mountStack;
-      if (typeof mount !== "function") {
-        return { status: "cancelled" };
-      }
+      const stack = Object.freeze({ ...route, stack: true });
       return showAt(
         stackKey(route.number),
         route,
-        (claim) => mount(claim, route, open),
+        (claim) => deps.mount(claim, stack, open),
         how,
         "changes",
       );

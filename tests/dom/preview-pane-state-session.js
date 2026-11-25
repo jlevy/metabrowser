@@ -414,7 +414,6 @@ const shellSource = [
   appDeclaration(/^var previewPane = [^\n]*;$/m, "preview pane"),
   appDeclaration(/^var PULL_ROUTE_PREFIX = [^\n]*;$/m, "pull-request route prefix"),
   appDeclaration(/^var PULLS_ROUTE = [^\n]*;$/m, "pull-request list route"),
-  appDeclaration(/^var STACK_ROUTE_PREFIX = [^\n]*;$/m, "stack route prefix"),
   // The host is created on demand, when an address under /pull/ is opened; none of
   // these states opens one, so the pane's claim finds no page to dispose.
   appDeclaration(/^var pullPageHost = null;$/m, "pull-request page host"),

@@ -1,7 +1,7 @@
 """A native stack's page: its members, its combined comparison, and which layers change a file.
 
 A stack is one change delivered in layers, and its page shows the whole of it as one
-comparison (docs/project/specs/active/plan-2026-11-24-stack-review.md, "Phase 1"):
+comparison (docs/project/architecture/arch-github-pull-requests.md, "The Stack Page"):
 
 - **Old side:** the bottom member's merge base, its record's ``comparison.base``.
 - **New side:** the top member's head.
@@ -187,7 +187,8 @@ class StackEnvelope(TypedDict):
     totals: StackTotals | None
     truncated: bool
     files: list[FileLayersWire]
-    # The member whose description carries the stack's guide; phase 3 reads it.
+    # The member whose description carries the stack's guide: None, as nothing reads a
+    # stack's guide yet.
     guide: int | None
     # What View on GitHub opens: the top member's page, which GitHub draws with its stack.
     github_url: str | None
