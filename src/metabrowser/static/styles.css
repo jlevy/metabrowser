@@ -2028,6 +2028,14 @@ body {
 .metabrowser-kpress-host .kpress details[open] > summary::after {
   transform: rotate(90deg);
 }
+/* Forced colors force every author background to Canvas, which would mask the chevron
+   out of sight, so it is drawn in the mode's text ink; a system color is not forced. */
+@media (forced-colors: active) {
+  .section-disclosure-trigger::after,
+  .metabrowser-kpress-host .kpress details > summary::after {
+    background-color: CanvasText;
+  }
+}
 /* ── Disclosure toggles — a toggle never selects text ────────────
    Every control that shows or hides content carries .disclosure-toggle: a tree row
    that owns a child group, a section or fold trigger, a diff file bar, an expandable
@@ -2082,8 +2090,15 @@ summary {
   font-weight: var(--count-numeral-weight);
 }
 /* ── Fold expander — a run of content withheld until asked for ───
-   The tree's disclosure vocabulary on a full-width row: the registry's chevron, at row
-   height, hovering with the shared token like every other clickable row. */
+   A full-width row at row height, hovering with the shared token like every other
+   clickable row, that leads with the expand/contract pair KPress's table of contents
+   draws: Lucide chevrons-up-down while closed, chevrons-down-up while open
+   (docs/design-system.md, "Fold Expanders"). It is not the registry's chevron, which
+   turns for a row's disclosure: a fold opens lines in place, above and below its bar.
+   The primitive draws the glyph, so a fold's markup holds only its words; the state is
+   a button's aria-expanded or a native summary's details[open]. The glyph is the
+   chevron's size and weight, muted at rest and in the text's ink under the pointer or
+   the focus ring, and it swaps at once: only the group a fold opens travels. */
 .fold-expander {
   display: flex;
   align-items: center;
@@ -2101,12 +2116,37 @@ summary {
   text-align: left;
   cursor: pointer;
 }
+.fold-expander::before {
+  flex: none;
+  width: var(--toggle-chevron-size);
+  height: var(--toggle-chevron-size);
+  background-color: currentcolor;
+  content: "";
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.fold-expander[aria-expanded="true"]::before,
+details[open] > summary.fold-expander::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 20 5-5 5 5'/%3E%3Cpath d='m7 4 5 5 5-5'/%3E%3C/svg%3E");
+}
 .fold-expander:hover {
   background: var(--hover-bg);
+}
+.fold-expander:is(:hover, :focus-visible)::before {
+  background-color: var(--text);
 }
 .fold-expander:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
+}
+/* The glyph is a mask over its background, which forced colors force to Canvas, the
+   bar's own ground, so there it is drawn in the mode's text ink, which is not forced. */
+@media (forced-colors: active) {
+  .fold-expander::before,
+  .fold-expander:is(:hover, :focus-visible)::before {
+    background-color: CanvasText;
+  }
 }
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
@@ -3038,9 +3078,39 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 .source-ref-selector[hidden] {
   display: none;
 }
+/* A checkout's row says which view the page shows (docs/design-system.md, "The Ref
+   Selector"): "Working tree" or "Revision" in the row's ink, a muted dot, then the ref.
+   A revision ends the row with its way back, a .btn at the row's end, which goes under
+   the rest when the pane is too narrow for both, so the ref is never cut to make room. */
 .source-ref-selector {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
   padding: var(--nav-toolbar-gap) var(--pane-header-padding-x) 0;
+}
+.source-ref-selector-view,
+.source-ref-selector-sep {
+  flex: none;
+  white-space: nowrap;
+}
+.source-ref-selector-sep {
+  color: var(--muted);
+}
+.source-ref-selector-back {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.source-ref-selector-back[hidden] {
+  display: none;
+}
+.source-ref-selector-back-arrow {
+  color: var(--muted);
+  line-height: 1;
 }
 .source-ref-selector-button {
   display: inline-flex;
@@ -3100,9 +3170,22 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   left: 0;
   right: 0;
 }
+/* The served choice, the working tree or one ref, is marked as a Pulls row and a stack's
+   member are marked current: the highlight's tint and its 2px bar inset at the left edge,
+   hovered or not, with the medium weight. The weight alone did not tell the two lists
+   apart in a screenshot (mb-cxpq). */
 .source-ref-selector-row[aria-current="true"],
 .source-ref-selector-working-tree[aria-current="true"] {
   font-weight: var(--weight-medium);
+  background: var(--highlight-bg);
+  box-shadow: inset 2px 0 0 var(--highlight-bar);
+}
+/* The highlight replaces the hover tint `.menu-item:focus-visible` shows focus with, so
+   focus on the current row draws the one ring instead, inside its box. */
+.source-ref-selector-row[aria-current="true"]:focus-visible,
+.source-ref-selector-working-tree[aria-current="true"]:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* A row is the ref's own line and, under it, the pull request its branch heads. The ref's line
    is a row with none, as tall as before; the list places each row by its own height
@@ -3201,6 +3284,12 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
 }
 .source-ref-selector-error {
   color: var(--status-error-text);
+}
+/* Why the back button's switch failed, on a line of its own under the row and in line with
+   its words; the list's error line is padded as the list's rows are. */
+.source-ref-selector-back-error {
+  flex-basis: 100%;
+  padding: 0;
 }
 /* What a checkout's list says of the store its origin's refs are read from: a note, and
    a warning's colour when the origin could not be fetched. */
@@ -5800,6 +5889,12 @@ a.tab-btn {
     center / contain no-repeat;
   vertical-align: -0.2em;
   width: 1.1em;
+}
+/* A mask over a background forced colors force to Canvas, as the fold's is (above). */
+@media (forced-colors: active) {
+  .mb-image-fallback::before {
+    background-color: CanvasText;
+  }
 }
 .kpress-prose a:hover > .mb-image-fallback {
   background: var(--hover-bg);

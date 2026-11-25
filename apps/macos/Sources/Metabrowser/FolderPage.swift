@@ -122,7 +122,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         webView.uiDelegate = self
         webView.onFileDrop = { urls in
             guard let app = NSApp.delegate as? AppDelegate else { return false }
-            urls.forEach { app.request($0) }
+            urls.forEach { app.request($0, as: .opened) }
             return true
         }
     }

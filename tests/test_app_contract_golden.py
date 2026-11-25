@@ -292,8 +292,6 @@ class _Sandbox:
         (self.served / "sub dir").mkdir(parents=True)
         (self.served / "README.md").write_text("# Served\n", encoding="utf-8")
         (self.served / ESCAPED_FILE).write_text("# Notes\n", encoding="utf-8")
-        self.other = tmp_path / "other"
-        self.other.mkdir()
         self.support = tmp_path / "support"
         self.support.mkdir()
         # Where a mirror is cloned, and two caches the sources route is asked about.
@@ -455,15 +453,14 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         run("version"),
         run("unknown-option", status=2),
         run("plugins"),
-        # File > Open Recent, around the servers that fill it.
+        # File > Open Recent. Every server the app starts is told not to record
+        # (`RecentTargets.serverRecords`), and the list is still empty after one.
+        run("serve/folder", folder, env={recent_targets.RECORD_ENV: "0"}),
         run("recent-list/empty"),
-        run("serve/folder", folder),
+        # The app records each open itself, as it shows it (`RecentTargetsMenu.shown`),
+        # naming the folder by its URL's path, which ends in a slash.
+        run("recent-add/folder", {"target": f"{served}/"}),
         run("recent-list/after-an-open"),
-        run(
-            "serve/not-an-open",
-            {"root": str(sandbox.other), "port": FOLDER_PORT},
-            env={recent_targets.RECORD_ENV: "0"},
-        ),
         run("recent-add/repository", {"target": "https://github.com/Octo/Demo/pull/12"}),
         # A checkout is recorded as one, so a menu can draw its mark without a look at it.
         run("recent-add/checkout", {"target": str(sandbox.checkout)}),
@@ -559,9 +556,11 @@ def _doctor(sandbox: _Sandbox) -> list[str]:
 
     The second names the app's bundle as the app does, which holds a minimum no
     ``metab`` meets; asks a ``gh`` that no account signed in to; and finds the cache at a
-    relative path, which is a problem. The ``git`` is the stand-in's, and the Git
-    executable ``metab`` keeps for its lifetime is found again before and after, so
-    neither the host's ``git`` reaches these blocks nor the stand-in a later test.
+    relative path, which is a problem. Its ``METABROWSER_CONFIG_DIR``, the sandbox's, is
+    one the app was launched with and passes on, so its configuration check is ok. The
+    ``git`` is the stand-in's, and the Git executable ``metab`` keeps for its lifetime is
+    found again before and after, so neither the host's ``git`` reaches these blocks nor
+    the stand-in a later test.
     """
 
     bundle = sandbox.root / "Metabrowser.app"

@@ -45,7 +45,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       ],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
@@ -73,7 +73,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       ],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
@@ -104,7 +104,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       "requests": [],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
@@ -137,7 +137,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       ],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
         "lists": [
@@ -165,7 +165,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       ],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
@@ -196,7 +196,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       "requests": [],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
@@ -230,7 +230,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       ],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
@@ -263,7 +263,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       ],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
@@ -294,7 +294,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       "requests": [],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
@@ -328,7 +328,8 @@ $ node tests/dom/source-ref-selector-origin-session.js
       "requests": [],
       "filterPending": false,
       "paint": {
-        "button": "Remote branch: origin/trunk",
+        "button": "Revision · Remote branch: origin/trunk",
+        "back": "[← Working tree]",
         "open": false
       }
     },
@@ -340,7 +341,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       ],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
@@ -370,7 +371,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       ],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
@@ -399,7 +400,7 @@ $ node tests/dom/source-ref-selector-origin-session.js
       ],
       "filterPending": false,
       "paint": {
-        "button": "Working tree",
+        "button": "Working tree · Branch: trunk",
         "open": true,
         "pullRequests": "none cached",
         "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",

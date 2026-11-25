@@ -325,9 +325,17 @@ you open, up to the list’s length.
   until you choose it; choosing it says the folder is gone, and removes it.
 - **Clear Menu** empties the list, for `metab` too.
 - **Only an open changes the order:** File > Open Folder…, Open URL…, Open Recent, a
-  drop, Open With, a GitHub link, or `metab` in Terminal.
-  The windows the app brings back at launch, and a server it restarts, leave the list as
-  it was.
+  drop, Open With, a GitHub link, a folder chosen in the folder chooser or Switch
+  Folder…, or `metab` in Terminal.
+  Each open moves its folder to the top once, as it opens, even if its server then
+  fails. The windows the app brings back at launch, and a server it restarts, leave the
+  list as it was.
+- **Only your opens are listed.** A `metab` that an agent, a test, or a tool runs has no
+  terminal, so the folders it serves stay out of the list.
+  A folder an agent shows you with `metab --present` is listed, since the app cannot
+  tell it from one you opened.
+  A development build that `make macos-run` starts lists nothing it opens, since agents
+  start the app that way for their checks.
 - **The Dock icon’s menu** lists the same items while the app is running, as the app
   last read them; it reads them again each time the menu is opened, for the next time.
 
@@ -477,11 +485,16 @@ The app moves nothing itself.
   a page kept there starts fresh, as with the CLI.
 - Open on a pinned revision or a GitHub repository opens a read-only copy: to change the
   file, open it from a folder on your Mac.
-- The app does not pass state-location variables (`XDG_CACHE_HOME`,
-  `METABROWSER_CACHE_DIR`, and the rest) to its servers, so they always use the default
-  cache and configuration locations.
-  A `metab` in Terminal that one of those variables points elsewhere keeps recent
-  targets of its own, which File > Open Recent does not show.
+- The app does not pass the cache’s location variables (`XDG_CACHE_HOME`,
+  `METABROWSER_CACHE_DIR`) or `XDG_CONFIG_HOME` to its servers, so they always use the
+  default cache. It does pass on a `METABROWSER_CONFIG_DIR` it was launched with, as in
+  `open --env METABROWSER_CONFIG_DIR=/path/to/config -a Metabrowser`, so that launch
+  keeps its recent targets and `config.yml` there.
+  Launched from Finder or the Dock, it uses the default configuration directory, unless
+  launchd’s own environment sets one (`launchctl setenv`); a terminal’s `export` does
+  not reach it. A `metab` in Terminal that `METABROWSER_CONFIG_DIR` or `XDG_CONFIG_HOME`
+  points elsewhere keeps recent targets of its own, which File > Open Recent does not
+  show.
 - A repository that another `metab`, in Terminal say, is cloning at the same moment does
   not open until that clone ends: the window’s start is given up on meanwhile, and Retry
   then opens it from the cache.

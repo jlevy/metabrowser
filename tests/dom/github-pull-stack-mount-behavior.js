@@ -568,17 +568,31 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     icon: null,
     currentTitle: "Current",
     titleNodes: api.titleNodes,
+    menus: api.menus,
     onOpen() {},
   });
   const menuHost = new Element("main");
   menuHost.append(standalone.element);
-  const key = (name, target = null) =>
-    standalone.element.events.get("keydown")({
+  // A key the menu leaves goes on to the document's listeners, as a keydown bubbles: Escape
+  // closes the open menu there (docs/design-system.md, "Every Menu Closes Alike").
+  const key = (name, target = null) => {
+    let stopped = false;
+    const event = {
       key: name,
       target,
-      preventDefault() {},
-      stopPropagation() {},
-    });
+      defaultPrevented: false,
+      preventDefault() {
+        event.defaultPrevented = true;
+      },
+      stopPropagation() {
+        stopped = true;
+      },
+    };
+    standalone.element.events.get("keydown")(event);
+    for (const listener of stopped ? [] : [...(documentEvents.get("keydown") ?? [])]) {
+      listener(event);
+    }
+  };
   // A key held with Command, Control, or Option is the browser's: Command-R reloads,
   // Command-Left goes back, and Command-Down scrolls to the end. The menu opens and moves
   // only on unmodified keys.
@@ -734,6 +748,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     currentTitle: "Current",
     titleNodes: api.titleNodes,
     named: true,
+    menus: api.menus,
     onOpen() {},
   });
   assert.equal(named.element.children[0].textContent, "90 2/3");

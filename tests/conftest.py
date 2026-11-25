@@ -41,6 +41,13 @@ os.environ["METABROWSER_PLUGINS_DIRS"] = ""
 # module- or session-scoped fixture that starts before any test's exists, in the list of
 # whoever runs the suite. A test of the record itself turns it back on.
 os.environ["METABROWSER_RECORD_RECENT"] = "0"
+# Nor does anything a test runs read or write the configuration directory of whoever runs
+# the suite, where the recent targets live beside `config.yml`: a forget or a clear would
+# change that list whatever the variable above says. Each test gets a directory of its own
+# (`_isolated_configuration`); a fixture that starts before one exists gets the run's.
+os.environ["METABROWSER_CONFIG_DIR"] = os.path.join(
+    os.path.realpath(tempfile.gettempdir()), f"metabrowser-test-config-{os.getpid()}"
+)
 # Nor does any server a test starts write an event log (metabrowser.event_log) into the
 # state directory of whoever runs the suite; and a read of the log, as `/api/event-log`
 # does, reads an empty directory of the suite's own. A test of the log opens one itself.

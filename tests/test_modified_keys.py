@@ -81,11 +81,13 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             via=("onKeyDown",),
             checks=("tests/dom/filter-controls-behavior.js", _SESSION),
         ),
+    ),
+    "static/menus.js": (
         Listener(
-            "Escape closing an open menu",
-            'ev.key !== "Escape" || ev.altKey || ev.ctrlKey || ev.metaKey',
-            via=("onDocumentEscape",),
-            checks=(_SESSION,),
+            "Escape closing the menu opened last, every menu's",
+            "!(key.defaultPrevented || key.altKey || key.ctrlKey || key.metaKey)",
+            via=("onEscape",),
+            checks=("tests/dom/menu-dismissal-session.js", _SESSION),
         ),
     ),
     "static/overlay-layer.js": (
@@ -98,7 +100,7 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
     ),
     "static/source-ref-selector.js": (
         Listener(
-            "the open list's Escape and Tab trap, which keeps Option-Tab",
+            "the open list's Tab trap, which keeps Option-Tab",
             'parts.panel.hidden || event.ctrlKey || event.metaKey || (event.altKey && event.key !== "Tab")',
             checks=("tests/dom/source-ref-selector-keys-session.js",),
         ),
@@ -109,21 +111,6 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
         ),
     ),
     "static/app.js": (
-        Listener(
-            "Escape closing the settings menu",
-            'e.key === "Escape" && !(e.altKey || e.ctrlKey || e.metaKey) && isOpen()',
-            cancels=False,
-            unmounted=(
-                "app.js is a legacy module no session loads whole, and this listener cancels "
-                "no key, which the test checks, so a chord always reaches the browser; the "
-                "guard only keeps Command-Escape from closing the menu"
-            ),
-        ),
-        Listener(
-            "Escape closing the root details disclosure",
-            _GUARD,
-            checks=("tests/dom/root-kind-mark-chrome.mjs",),
-        ),
         Listener(
             "the reader's key ending a tooltip's focus repair, which only notes it",
             None,
@@ -146,7 +133,7 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             unmounted="the gutter's own guard, which this PR did not change",
         ),
         Listener(
-            "the ref menu's navigation and Escape; Tab and Option-Tab leave it",
+            "the ref menu's navigation; Tab and Option-Tab leave it",
             _GUARD,
             checks=("tests/dom/checkout-ref-selector-chrome.mjs",),
         ),
@@ -161,7 +148,7 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             checks=("tests/dom/counterpart-session.js",),
         ),
         Listener(
-            "the View on GitHub menu's arrows, Home, End, and Escape, and Tab and Option-Tab "
+            "the View on GitHub menu's arrows, Home, and End, and Tab and Option-Tab "
             "closing it, which cancel nothing",
             _GUARD,
             checks=("tests/dom/counterpart-session.js",),
@@ -203,7 +190,7 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
     "builtin_plugins/github/pulls-panel.js": (Listener("the reader's last input time", None),),
     "builtin_plugins/table/table-view.js": (
         Listener(
-            "a table's rows and cells, a column menu's Escape, and Escape in a record",
+            "a table's rows and cells, and Escape in a record",
             _GUARD,
             via=("onKeyDown",),
             checks=("tests/dom/table-view-session.js",),
@@ -214,11 +201,6 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
         Listener(
             "the stack menu's trigger and rows",
             _GUARD,
-            checks=("tests/dom/github-pull-stack-mount-behavior.js",),
-        ),
-        Listener(
-            "Escape closing the open stack menu",
-            'root.open && event.key === "Escape" && !(event.altKey || event.ctrlKey || event.metaKey)',
             checks=("tests/dom/github-pull-stack-mount-behavior.js",),
         ),
         Listener("the files pane's scroll keeper, which only notes a key", None),

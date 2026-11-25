@@ -619,10 +619,11 @@ Applications.
   repository root, and a file with no such folder opens its open root
   ([Open Modes](arch-open-modes.md#what-keys-on-the-root)).
 - **Recents.** File > Open Recent, and the folder chooser’s Recent section, list
-  `metab`’s [recent targets](arch-recent-targets.md#the-macos-app), which every server
-  records as it starts, so the app decides nothing about the list and keeps none of its
-  own. The Dock menu lists the same targets (`applicationDockMenu`), and a restored
-  folder’s server, like any restart, is told not to record.
+  `metab`’s [recent targets](arch-recent-targets.md#the-macos-app).
+  The app keeps none of its own: it records each open once, as `showOpened` shows it,
+  with `metab ROOT --recent-add`, and tells every server it starts not to record, so a
+  restored folder, a restart, and a server nobody opened leave the list as it was.
+  The Dock menu lists the same targets (`applicationDockMenu`).
 
 ### Session Restore
 
