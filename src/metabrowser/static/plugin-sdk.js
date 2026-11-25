@@ -68,13 +68,10 @@
 //                                          commit prefix in span.title-prefix, then the rest
 //     shortCommit(commit)                — a commit ID as every line names one, for an
 //                                          element of class git-commit-sha
-//     countPartsNodes(parts)             — a count summary's nodes, its numbers bold, its
-//                                          marks muted, and its status counts, "21 A",
-//                                          bold in their statuses' ink: the shell's one
+//     countPartsNodes(parts)             — a count summary's nodes: the shell's one
 //                                          painter of them
 //     changeLine(change, options?)       — a brief change line, "10 A, 5 D, 4 M · +1,234
-//                                          −567", from statuses and line totals; with
-//                                          {omitZeroTotals: true}, a zero total left out
+//                                          −567", from statuses and line totals
 //     changeLineNodes(line, options?)    — its nodes, the shell's one component for it
 //     countClass(count)                   — shared file-count emphasis class
 //     sizeClass(bytes)                    — shared byte-count emphasis class
@@ -1591,11 +1588,7 @@
     return global.MetabrowserFormatters.countPartsNodes(global.document, parts);
   }
 
-  /**
-   * @param {MetabrowserChangeLineInput} change
-   * @param {MetabrowserChangeLineBuildOptions} [options]
-   * @returns {MetabrowserChangeLine}
-   */
+  /** @param {MetabrowserChangeLineInput} change @param {MetabrowserChangeLineBuildOptions} [options] */
   function changeLine(change, options) {
     const formatters = global.MetabrowserFormatters;
     return formatters.changeLine(change, formatters.formatInteger, options);

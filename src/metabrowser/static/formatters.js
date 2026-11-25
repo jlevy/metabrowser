@@ -45,9 +45,8 @@
     return (Number(value) || 0) >= COUNT_LARGE_THRESHOLD ? "count-large" : "";
   }
 
-  // Age tiers, coarsest first, as [suffix, milliseconds, class].
-  // One table so every age anywhere abbreviates and colours the same:
-  // an age is an age, whether it belongs to a file or a commit.
+  // Age tiers, coarsest first, as [suffix, milliseconds, class]: one table, so every age
+  // abbreviates and colours the same.
   /** @type {ReadonlyArray<readonly [string, number, string]>} */
   const AGE_TIERS = Object.freeze([
     ["y", 365 * 24 * 60 * 60 * 1000, "age-old"],
@@ -90,11 +89,9 @@
     return age(epochSeconds).className;
   }
 
-  // How much of a commit ID a line shows wherever it names a commit, in the commit-ID
-  // face, `.git-commit-sha` (docs/design-system.md, "Short Commit IDs"): seven characters,
-  // as GitHub shows them, cut from the full ID. The server's copy, which draws the heading
-  // and the button, is `SHORT_COMMIT_CHARS` in commit_ids.py; tests/test_short_commit.py
-  // holds them equal.
+  // How much of a commit ID a line shows, as many characters as GitHub shows
+  // (docs/design-system.md, "Short Commit IDs"). The server's copy is `SHORT_COMMIT_CHARS`
+  // in commit_ids.py; tests/test_short_commit.py holds them equal.
   const SHORT_COMMIT_CHARS = 7;
 
   /** A commit ID as a line names it. @param {string} commit @returns {string} */
@@ -102,11 +99,9 @@
     return String(commit).slice(0, SHORT_COMMIT_CHARS);
   }
 
-  // A title's conventional-commit prefix, "feat(ledger):", is drawn regular and the rest at
-  // the title's weight (docs/design-system.md, "Titles"): a type of lowercase letters, an
-  // optional scope of anything but parentheses, an optional "!", and the colon, at most 32
-  // code points (mb-htmy), then whitespace and more of the title. The match is linear: each
-  // part is a run of one class, which the first character outside it ends.
+  // A title's conventional-commit prefix, "feat(ledger):", at most 32 code points (mb-htmy;
+  // docs/design-system.md, "Titles"). The match is linear: each part is a run of one class,
+  // which the first character outside it ends.
   const TITLE_PREFIX = /^[a-z]+(?:\([^()]+\))?!?:(?=\s+\S)/u;
   const TITLE_PREFIX_MAX_CHARS = 32;
   /** The one class that sets a prefix's weight (static/styles.css). */
@@ -305,19 +300,12 @@
   const CHANGE_LINE_STATUSES_CLASS = "change-line-statuses";
   const CHANGE_LINE_STATS_CLASS = "change-line-stats";
   const CHANGE_LINE_NONE_CLASS = "change-line-none";
-  // What a line that leaves out its zero totals shows for a change of no lines, in the
-  // totals' place, muted (mb-efum).
   const NO_LINES = "0 lines";
-  /** @type {ReadonlyArray<"additions" | "deletions">} */
-  const LINE_TOTALS = Object.freeze(["additions", "deletions"]);
 
   /**
    * A brief change line, each count written with *formatCount* and an unknown one as "?":
    * `text` as it reads, and `label` in words, "10 added, 5 deleted, 4 modified; 1,234 lines
-   * added, 567 deleted". With *options.omitZeroTotals*, a line total of zero is left out,
-   * "+1,234" for a change that only adds lines and "−567" for one that only deletes them,
-   * and a change of no lines at all shows "0 lines", said "no lines changed"; totals that
-   * are both nonzero, or not known, are shown as without it (mb-efum).
+   * added, 567 deleted". *options.omitZeroTotals* leaves out a total of zero (mb-efum).
    * @param {MetabrowserChangeLineInput} change
    * @param {(count: number) => string} formatCount
    * @param {MetabrowserChangeLineBuildOptions} [options]
@@ -336,25 +324,21 @@
     const deleted = written(change.deletions);
     const additions = `+${added}`;
     const deletions = `${MINUS}${deleted}`;
-    const shownTotals = LINE_TOTALS.filter(
-      (side) => options.omitZeroTotals !== true || change[side] !== 0,
+    const shownTotals = /** @type {const} */ (["additions", "deletions"]).filter(
+      (side) => !options.omitZeroTotals || change[side] !== 0,
     );
-    const totals =
-      shownTotals.length === 0
-        ? NO_LINES
-        : shownTotals.map((side) => (side === "additions" ? additions : deletions)).join(" ");
+    const shown = { additions, deletions };
+    const totals = shownTotals.map((side) => shown[side]).join(" ") || NO_LINES;
     const text = statuses === "" ? totals : `${statuses} · ${totals}`;
-    const addedWords = `${added} ${change.additions === 1 ? "line" : "lines"} added`;
     const lines =
       change.additions === null && change.deletions === null
         ? "line counts unknown"
-        : shownTotals.length === 0
-          ? "no lines changed"
-          : shownTotals.length === 2
-            ? `${addedWords}, ${deleted} deleted`
-            : shownTotals[0] === "additions"
-              ? addedWords
-              : `${deleted} ${change.deletions === 1 ? "line" : "lines"} deleted`;
+        : shownTotals
+            .map(
+              (side, at) =>
+                `${written(change[side])}${at ? "" : change[side] === 1 ? " line" : " lines"} ${side === "additions" ? "added" : "deleted"}`,
+            )
+            .join(", ") || "no lines changed";
     const words = change.statuses
       .map((entry) => `${written(entry.count)} ${entry.word}`)
       .join(", ");
@@ -364,8 +348,7 @@
 
   /**
    * One `span.change-line`: its statuses and the dot after them as one item, so a wrap
-   * breaks after the dot, then the line totals it shows, or "0 lines" in
-   * `span.change-line-none` where it shows none. *options.spoken* is said in the dot's place.
+   * breaks after the dot, then its line totals. *options.spoken* is said in the dot's place.
    * @param {MetabrowserChangeLine} line
    * @param {MetabrowserChangeLineOptions} [options]
    * @returns {Paint}
@@ -391,14 +374,12 @@
     }
     children.push({
       className: CHANGE_LINE_STATS_CLASS,
-      children:
-        line.shownTotals.length === 0
-          ? [{ className: CHANGE_LINE_NONE_CLASS, text: NO_LINES }]
-          : line.shownTotals.map((side) =>
-              side === "additions"
-                ? { className: "diff-stat-add", text: line.additions }
-                : { className: "diff-stat-del", text: line.deletions },
-            ),
+      children: line.shownTotals.length
+        ? line.shownTotals.map((side) => ({
+            className: side === "additions" ? "diff-stat-add" : "diff-stat-del",
+            text: line[side],
+          }))
+        : [{ className: CHANGE_LINE_NONE_CLASS, text: NO_LINES }],
     });
     return { className: CHANGE_LINE_CLASS, children };
   }
