@@ -5,8 +5,8 @@ title: "Step 4: changed files in a row, expandable like a folder"
 kind: feature
 status: closed
 priority: 1
-version: 17
-spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
+version: 18
+spec_path: docs/project/specs/done/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
 dependencies:
@@ -22,7 +22,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:40:35.668Z
-updated_at: 2026-11-14T18:46:25.914Z
+updated_at: 2026-11-25T02:36:25.268Z
 started_at: 2026-11-03T06:46:31.128Z
 closed_at: 2026-11-14T18:46:25.913Z
 close_reason: "Step 4 merged in #287 (with #297) on 2026-11-04: changed-file trees, /pull/<n>/files/<path>, and the keyboard file walk are on main; follow-ups mb-egnj and mb-w5rc move to mb-8rpp."

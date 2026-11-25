@@ -5,11 +5,12 @@ title: "lint-check exited 2 once on #771's release-pin commit and passed on two 
 kind: bug
 status: open
 priority: 3
-version: 2
+version: 3
 labels: []
 dependencies: []
+parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 created_at: 2026-11-24T07:24:59.189Z
-updated_at: 2026-11-24T07:29:53.809Z
+updated_at: 2026-11-25T02:32:55.914Z
 ---
 On 2026-11-24 ~07:20 UTC in the task-list-boxes worktree, make -o install lint-check exited 2 right after devtools.check_goldens passed, with output sent to /dev/null. Two reruns minutes later, one with the change committed and one with it only staged, exited 0. No time-dependent rule in check_supply_chain; the 08:00Z exemption date is not checked against now. Mechanism unknown: candidates are a network-dependent step or a shared cache (flowmark --check, biome, npx). Next time capture the output; if it recurs, find which of the lint-check steps exits 2.
 

@@ -5,13 +5,13 @@ title: Strong-tier pass owed on reviews run on Opus while Fable credits were exh
 kind: task
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies: []
 parent_id: is-01m6f39t9zax1nbajkkasya6st
 created_at: 2026-11-03T04:51:15.969Z
-updated_at: 2026-11-03T20:17:10.243Z
+updated_at: 2026-11-25T02:36:25.268Z
 closed_at: 2026-11-03T20:17:10.243Z
 close_reason: "Completed by forward commits in the PR-support stack; independent reviews, rechecks and dispositions are published on the owning PRs. Final integration ea771741211193a387c1771e04df29b5a9698100 passed make verify (4712 Python, 9 expected skips, 373 transcripts), 8 public live tests, installed-wheel Chrome (22 actions, 25 unchanged checkout/Git fingerprints), and all 171 CI jobs across 19 current-head runs on 14 PRs. Final clean review: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . No PR merged."
 resolution: null

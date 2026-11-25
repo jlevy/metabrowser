@@ -5,10 +5,12 @@ title: "Pin drawnRows' tree-row branch in the Diff | Current session (review B2 
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
+spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels: []
 dependencies: []
+parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-11-24T18:08:14.090Z
-updated_at: 2026-11-24T18:08:14.090Z
+updated_at: 2026-11-25T02:34:57.399Z
 ---
 Review B on #765 (B2, suggestion): the tree-row branch of drawnRows (diff-view.js ~3299-3317), new in A3's fix, is covered by neither tests/dom/diff-current-session.js nor the Chrome check. The reviewer's scratch step on config/app.yaml's tree showed the removed $/1 row giving its place to $/2 at 20 px and context row $/4 holding at 0 px through Current and back while the bar moved 80 px. Add that step to the session and re-record cli-ui-diff-current.

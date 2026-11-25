@@ -5,7 +5,7 @@ title: Branch chooser and ref selection
 kind: epic
 status: open
 priority: 2
-version: 17
+version: 18
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/559
@@ -19,6 +19,9 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/651
     at: 2026-11-20T19:14:51.790Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/789
+    at: 2026-11-25T02:25:14.813Z
 labels:
   - linear
   - Feature
@@ -37,7 +40,7 @@ child_order_hints:
   - is-01m84gfp9fy5szwbh6mwhy8fhq
   - is-01m87g6fesscezy68hjttcqyvj
 created_at: 2026-11-20T17:06:34.659Z
-updated_at: 2026-11-24T19:23:20.396Z
+updated_at: 2026-11-25T02:25:14.842Z
 extensions:
   linear:
     id: e6f489b4-f2f3-4437-9129-fb08702ab54a

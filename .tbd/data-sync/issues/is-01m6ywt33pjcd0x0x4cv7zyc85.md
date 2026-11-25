@@ -5,13 +5,13 @@ title: Coordinate duplicate missing GitHub CLI notices across Pulls and PR detai
 kind: bug
 status: open
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies: []
 parent_id: is-01m6f39t9zax1nbajkkasya6st
 created_at: 2026-11-09T00:54:54.321Z
-updated_at: 2026-11-14T18:44:19.257Z
+updated_at: 2026-11-25T02:36:25.268Z
 ---
 With a process-local PATH that contained Git but no GitHub CLI, the built-in browser opened public pallets/markupsafe PR #507 from its warm cache on source equivalent to a53907948f348345ea0c6cbafbfe138c6513ba70. Cached Conversation, actual Changes patches and Checks were usable. The setup guidance linked to cli.github.com and showed `gh auth login --hostname github.com`. With both the Pulls sidebar and PR detail visible, each pane displayed its own visible Install GitHub CLI link for the same `gh_missing` cause. The clipped live region is separate from the two visible notices.
 

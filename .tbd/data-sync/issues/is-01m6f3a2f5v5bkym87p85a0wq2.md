@@ -5,8 +5,8 @@ title: "Step 6: Files changed on a checkout, from an overlay of the served check
 kind: feature
 status: closed
 priority: 1
-version: 10
-spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
+version: 11
+spec_path: docs/project/specs/done/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies: []
 parent_id: is-01m6f39t9zax1nbajkkasya6st
@@ -14,7 +14,7 @@ child_order_hints:
   - is-01m6f3add4akft3c0x2p54f5v2
   - is-01m6f3adv181gkevbha1epsyj1
 created_at: 2026-11-02T21:40:38.500Z
-updated_at: 2026-11-03T20:17:10.221Z
+updated_at: 2026-11-25T02:36:25.268Z
 closed_at: 2026-11-03T20:17:10.221Z
 close_reason: "Completed by forward commits in the PR-support stack; independent reviews, rechecks and dispositions are published on the owning PRs. Final integration ea771741211193a387c1771e04df29b5a9698100 passed make verify (4712 Python, 9 expected skips, 373 transcripts), 8 public live tests, installed-wheel Chrome (22 actions, 25 unchanged checkout/Git fingerprints), and all 171 CI jobs across 19 current-head runs on 14 PRs. Final clean review: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . No PR merged."
 resolution: null

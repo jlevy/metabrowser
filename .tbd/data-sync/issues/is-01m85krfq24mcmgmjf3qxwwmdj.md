@@ -5,10 +5,12 @@ title: "Rendered diff: a table loses .kpress-table-wrap because withoutRenderWra
 kind: bug
 status: open
 priority: 2
-version: 1
+version: 2
+spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels: []
 dependencies: []
+parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-11-24T01:47:07.361Z
-updated_at: 2026-11-24T01:47:07.361Z
+updated_at: 2026-11-25T02:34:01.114Z
 ---
 withoutRenderWrappers in src/metabrowser/static/inert-html.js unwraps a block's only <div>. A table's KPress wrapper is such a div, so the rendered diff's table never gets .kpress-table-wrap: the code that adds it only does so when the parent is not the prose. A table in a diff therefore lacks the Document view's table wrapper and its spacing and overflow. Likely fix: do not unwrap a DIV whose only element child is a TABLE. Found while measuring mb-6d1s (#780).

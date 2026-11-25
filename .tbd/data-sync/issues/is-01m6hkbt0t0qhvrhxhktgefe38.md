@@ -5,8 +5,8 @@ title: Load PR catalog progressively with accurate repository totals and lazy de
 kind: feature
 status: closed
 priority: 1
-version: 27
-spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
+version: 28
+spec_path: docs/project/specs/done/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -34,7 +34,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-03T20:59:41.464Z
-updated_at: 2026-11-14T18:45:38.074Z
+updated_at: 2026-11-25T02:36:25.268Z
 started_at: 2026-11-03T21:00:05.436Z
 closed_at: 2026-11-14T18:45:38.073Z
 close_reason: "The progressive catalog with exact totals, Open/Closed/All with Open default, lazy details and aligned PR tabs merged in #289, #291 and #292 on 2026-11-04 (Fetch more later replaced by scroll paging, #311 and #410); follow-up mb-xl14 moves to mb-8rpp."

@@ -5,10 +5,12 @@ title: "CI: measure keeping wheels in the setup-uv cache (prune-cache: false)"
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
+spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 labels: []
 dependencies: []
+parent_id: is-01m7wysgm9rg3fdch55nst1wrn
 created_at: 2026-11-23T08:48:15.684Z
-updated_at: 2026-11-23T08:48:15.684Z
+updated_at: 2026-11-25T02:25:48.879Z
 ---
 Follow-up to mb-lo7l (PR #750). setup-uv restores a pruned cache, so every CI job downloads ~100 MB of wheels from PyPI (nodejs-wheel-binaries 57.9 MiB, basedpyright, ruff, ...); run 45134271894 spent 2 m 45 s there instead of ~2 s. Measure prune-cache: false across the jobs: cache size, restore time, and uv sync time, against today's. Adopt it if restore is reliably faster than download; record the numbers beside the setting.

@@ -5,7 +5,7 @@ title: "Treemap: deeper nesting, containment fix, compact map on Overview"
 kind: feature
 status: open
 priority: 2
-version: 47
+version: 48
 spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 refs:
   - kind: pr
@@ -32,6 +32,15 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/764
     at: 2026-11-23T20:35:15.807Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/767
+    at: 2026-11-25T02:25:08.613Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/769
+    at: 2026-11-25T02:25:08.739Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/772
+    at: 2026-11-25T02:25:08.739Z
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -72,7 +81,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-23T01:05:37.128Z
-updated_at: 2026-11-25T02:15:45.837Z
+updated_at: 2026-11-25T02:25:08.739Z
 started_at: 2026-11-23T01:05:57.669Z
 closed_at: null
 close_reason: null
