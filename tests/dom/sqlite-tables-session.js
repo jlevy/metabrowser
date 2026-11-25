@@ -113,6 +113,10 @@ function shownOverview(container) {
   for (const element of walk(container)) {
     if (element.localName === "section") {
       const heading = [...walk(element)].find((node) => node.localName === "h2");
+      const table = [...walk(element)].find((node) => node.localName === "table");
+      // Each table is named by its heading for assistive technology.
+      assert.ok(heading.getAttribute("id"));
+      assert.equal(table.getAttribute("aria-labelledby"), heading.getAttribute("id"));
       out[heading.textContent] = [...walk(element)]
         .filter((node) => node.localName === "tr")
         .map((row) => {

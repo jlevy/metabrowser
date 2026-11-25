@@ -15,6 +15,8 @@ what a request answers into the protocol's descriptors, cells, keys, and cursors
   ``WITHOUT ROWID`` table's by its primary key. A view's and a virtual table's rows have
   no key and are named by their position in the object's own order. A key whose token
   would pass ``TABLE_TOKEN_MAX_CHARS`` is named by its position in key order instead.
+  An object with no key and more rows than its numbering affords reads only in its own
+  order, ascending.
 - **Types.** A field's type comes from its declared type, as SQLite gives it an
   affinity, with ``BOOL``, ``DATE``, ``DATETIME``/``TIMESTAMP``, and ``JSON`` named; a
   value whose stored type its affinity would not hold is ``{value, stored}``.
@@ -23,8 +25,10 @@ what a request answers into the protocol's descriptors, cells, keys, and cursors
   that, only the key and fields an index leads with, and the rest say why in
   ``sort_note``.
 - **Counts** are exact up to :data:`~metabrowser.builtin_plugins.sqlite.reader.COUNT_CAP`
-  and otherwise a lower bound, read apart from the page with no wait; when that read
-  fails, the page sends the catalog's estimate alone.
+  and otherwise a lower bound, read on a query's first page apart from the page with no
+  wait. An unfiltered page sends the object's estimate beside it; a filtered one does
+  not. A filtered scan that ends its window before the page fills says how many rows it
+  read (``examined``) and continues past them.
 - **References** are the declared foreign keys, resolved for a page in one batch; a
   value no row of the referenced table holds is a reference drawn as missing.
 - **Values.** A text or blob past the inline bound is previewed through ``blobopen`` in

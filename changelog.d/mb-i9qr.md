@@ -9,6 +9,10 @@
   Declared foreign keys are references with hover cards, a value naming a missing row is
   marked missing, and a record counts the rows that reference it.
   A count past its cap is a lower bound, and on a large table only indexed fields sort.
+  A filter or search on a large table reads a bounded window of rows at a time and says
+  how many it read, continuing past them whether or not any matched.
+  Virtual tables, and views that read them, are read only in a trusted folder; an R-tree
+  is listed but not read.
   A new Schema view shows each object’s DDL, indexes, triggers, and foreign keys.
   Reading never changes the database or the files beside it.
 

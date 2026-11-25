@@ -52,7 +52,7 @@ from metabrowser.source import (
     resolve_content_container,
     resolve_session_identity,
 )
-from metabrowser.sqlite_access import SqliteAccessError
+from metabrowser.sqlite_access import HEADER_BYTES, SqliteAccessError, is_database_header
 from metabrowser.sqlite_readers import BLOB_MAX_BYTES, request_deadline
 
 
@@ -72,6 +72,12 @@ async def _resolve(path: str) -> tuple[ContentRef, str] | JSONResponse:
             if child is None or not child[1] or "/" in child[1]:
                 return _error(path, "not_found", "Not found", 404)
             ref, inner = child
+            # A path inside a file names a table only where the file is a database, as
+            # the table routes decide by its kind: the header settles it, read alone, so
+            # no other file's bytes go to a reader.
+            head = await read_content_window(ref, max_bytes=HEADER_BYTES)
+            if not is_database_header(head.data):
+                return _error(path, "not_found", "Not found", 404)
     except ContentReadError as exc:
         return _error(path, exc.code, str(exc), exc.http_status)
     return ref, inner

@@ -5132,6 +5132,12 @@ def _container_kinds() -> dict[str, dict[str, str]]:
     return out
 
 
+def container_kind_ids() -> frozenset[str]:
+    """Ids of the kinds whose files are containers, for a module outside the server that
+    resolves a container child, as the Git content routes do for a revision's blobs."""
+    return frozenset(_container_kinds())
+
+
 def _container_exts() -> dict[str, dict[str, str]]:
     """Extension -> container info, for the tree's row affordance.
 

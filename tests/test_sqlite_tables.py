@@ -429,6 +429,10 @@ def test_schema_route(client: TestClient) -> None:
     ]
     info = client.get("/api/plugin/sqlite/info", params={"path": "app.db/users"}).json()
     assert info["access"]["state"] == "current"
+    # A path inside a file that is no database names nothing, as at the table routes.
+    for route in ("info", "schema"):
+        inside = client.get(f"/api/plugin/sqlite/{route}", params={"path": "fake.db/x"})
+        assert inside.status_code == 404, inside.json()
 
 
 def test_virtual_tables_are_read_only_where_trusted(client: TestClient) -> None:

@@ -353,7 +353,7 @@ async def _blob_container_kind(subject: GitRevisionSubject, entry: GitTreeEntry)
     """The container kind a blob is by its magic number, such as a SQLite database's
     whatever its name, or None for a blob no container kind claims."""
 
-    from metabrowser.server import _container_kinds
+    from metabrowser.server import container_kind_ids
 
     head, _size = await subject.tree_source.read_blob_window(
         entry.oid, offset=0, max_bytes=SNIFF_PREFIX_BYTES
@@ -361,7 +361,7 @@ async def _blob_container_kind(subject: GitRevisionSubject, entry: GitTreeEntry)
     if classify_prefix(head) is not ContentClass.BINARY:
         return None
     kind = plugin_magic_kind(head)
-    return kind if kind in _container_kinds() else None
+    return kind if kind in container_kind_ids() else None
 
 
 def plugin_magic_kind(prefix: bytes) -> str:

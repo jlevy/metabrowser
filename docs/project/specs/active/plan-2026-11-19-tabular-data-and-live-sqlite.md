@@ -757,8 +757,17 @@ and virtual tables not marked innocuous inside views and triggers, `DEFENSIVE` a
 `cell_size_check` guard against a corrupt file, the authorizer admits only reads, a read
 fires no triggers, and the budget, deadline, and kill stop an expensive view or
 recursive query. Virtual tables are listed but never queried under the untrusted profile
-(repository mirrors), where immutable content is read through `immutable=1`. Text is
-rendered as text, never as HTML.
+or on a pin, where immutable content is read through `immutable=1`: each request takes
+the virtual tables, and every table whose name has a shadow table’s shape, from
+`sqlite_schema` in its own transaction, which connects no module, and its authorizer
+refuses their reads in any statement or view, and the schema pragmas naming them, at
+prepare time, so a module’s query code never runs on the file’s content.
+What remains is the module’s connect: SQLite computes a view’s column names with no
+authorizer, so listing the objects, or describing or reading a view that names a virtual
+table, connects that table, and its module reads its configuration (FTS5’s
+`<table>_config`, R-tree the size of its root node) before the view is refused.
+Python’s `sqlite3` does not expose `sqlite3_drop_modules`, the one call that would stop
+it. Text is rendered as text, never as HTML.
 
 The SQLite access phase gets two dedicated reviews: a security review, and a correctness
 review of `sqlite_access.py` and the reader processes against the access table and the
@@ -1113,34 +1122,64 @@ As built, where this plan left a choice open:
 - **Keys.** A rowid table without an integer primary key is keyed by a hidden `rowid`
   field (`_rowid_` or `oid` when a column takes the name); a table whose columns take
   all three is keyless.
-  A key too long for a token is named by its position in key order, found by a count; a
-  cursor too long is the positional one, carrying the rows served.
+  An `INTEGER PRIMARY KEY DESC` column, which has an index of its own, is no rowid
+  alias. A key or sort value is read whole only up to `TABLE_TOKEN_MAX_CHARS` bytes, what
+  a token can carry, so no page carries one longer across the pipe; a longer key is
+  named by its position in key order, which the reader counts with the page, and a
+  cursor that cannot name its row is the positional one, carrying the rows served.
   A keyless object is ordered by `row_number() OVER ()` whenever a page sorts, filters,
-  searches, or reads descending, and read by `OFFSET` otherwise.
+  searches, or reads descending, and read by `OFFSET` otherwise; past
+  `SORT_UNINDEXED_MAX_ROWS` rows those are refused by name, as an unindexed sort is.
+- **Filtered scans** read a window of rows a request, sized by `SCAN_WINDOW_OPCODES`
+  over the measured opcodes a row costs.
+  The window’s last row is found by `OFFSET` and the matches are read up to it; a page
+  not full by then is `complete: false` with the rows it read (`examined`) and a cursor
+  past the window, matches or not, so a sparse search always moves on and reaches its
+  last row.
+- **Answers** are cut to fewer rows past `ANSWER_BYTES`, half the 32 MiB a worker’s
+  answer may be, so a crafted page continues rather than being refused.
 - **Cursors** are `[sort, order, region, value, key, served]`; every row knows its
   region from its sort value’s type, so a positional cursor continues into the right
   one.
 - **Sortability** is decided per object by a capped count up to
   `SORT_UNINDEXED_MAX_ROWS` at describe time; past it the key, the first column of a
   `WITHOUT ROWID` key, and every column that leads a full (not partial) index sort.
+  A column whose collation the writing application defined neither sorts nor filters,
+  and a `WITHOUT ROWID` table keyed by one, which SQLite cannot plan a read of, is
+  refused by name.
 - **Counts** read as `sum` over at most `COUNT_CAP` + 1 rows: with a filter or search it
   counts matches and skipped values among the rows read, so a sparse filter on a huge
   table is a lower bound rather than a scan.
+  Only a query’s first page reads its count.
+  A filtered page sends no estimate; an object’s estimate is the count `describe` read
+  where it read every row, else `sqlite_stat1`’s or the largest rowid, dropped past the
+  rows the file’s pages can hold.
+- **The catalog** holds each table’s key and foreign keys, read once a generation, so a
+  page’s references and a record’s back-references describe no other object.
   A match in a select list is a `CASE WHEN` condition, since only a condition
   short-circuits past a value over the length limit.
 - **Values.** A text read only in part is `{text, bytes}`, its size in bytes, since its
   length in characters is unknown; a blob is `{blob: true, length, hex}` (`blob_cell`).
-  A JSON column’s text is `{json, preview}` only when it parses and fits the preview.
+  A JSON column’s text is `{json, preview}` only when it parses as strict JSON (no `NaN`
+  or `Infinity`) and is shown whole.
   A `BOOLEAN` value other than 0 or 1 is shown as stored, and an order filter (`lt`,
   `le`, `gt`, `ge`) compares only values of its own kind, since SQLite orders every text
   after every number.
 - **References** are resolved in SQL, joining the page’s values to the target table, so
-  the target column’s affinity and collation decide a match; a missing target is
-  `{ref: {key: null, missing: true}}`, which the table view draws as its value marked
-  missing. A reference’s label is the referencing value.
+  the target column’s affinity and collation decide a match; a record’s back-reference
+  counts and `ref=` match the same way, the target’s columns on the left.
+  A missing target is `{ref: {key: null, missing: true}}`, which the table view draws as
+  its value marked missing.
+  A reference’s label is the referencing value.
+  A target with no key the catalog could read leaves its values plain.
 - **The authorizer** also admits `data_version`, which FTS5 reads on every query, and
-  the functions `sum`, `substr`, `like`, and `row_number`. Virtual tables are read where
-  the folder is trusted and never on a pin.
+  the functions `sum`, `like`, and `row_number`. Virtual tables are read where the
+  folder is trusted and never on a pin or under the untrusted profile, where every
+  request refuses, in the authorizer, any read of a virtual table or of a table that may
+  be its shadow table, in its own statements and inside views, and the schema pragmas
+  that describe one (see Security).
+  An R-tree is read nowhere: its module prepares write statements when it connects, and
+  the authorizer admits reads only.
 
 ### Phase 6: Live Tables
 

@@ -12,17 +12,25 @@ follows; this module owns the SQL.
 Requests, each one short read through :func:`sqlite_access.read`:
 
 - ``sqlite_catalog``: the database's tables, views, and virtual tables with an estimate
-  of each one's rows, its ``application_id``, and its encoding.
-- ``sqlite_describe``: one object's columns, key, foreign keys in both directions,
-  indexes, triggers, DDL, and whether it holds more rows than an unindexed sort may
+  of each one's rows, each table's key and foreign keys, its ``application_id``, and
+  its encoding.
+- ``sqlite_describe``: one object's columns, key, foreign keys, indexes, triggers, DDL,
+  the collations it lacks, and whether it holds more rows than an unindexed sort may
   read.
-- ``sqlite_rows``: one page in a query's order, keyset paged by region (below), the
-  references its cells hold resolved in one batch, and the query's capped count, read
-  apart with no wait.
+- ``sqlite_rows``: one page in a query's order, keyset paged by region (below) and,
+  when filtered, a window of rows at a time (`_window_scan`), the references its cells
+  hold resolved in one batch, and on a query's first page its capped count, read apart
+  with no wait.
+- ``sqlite_positions``: the positions in key order of rows whose key was read whole but
+  is too long for a token.
 - ``sqlite_record``: one row in full, previewed past the record bound, with the rows of
   other tables that reference it counted.
 - ``sqlite_ddl``: every object's DDL and every table's foreign keys, for the Schema
   view.
+
+Every request carries ``virtual_ok``; where it is false (a pin, the untrusted profile),
+the read refuses virtual tables and their shadow tables before its first statement
+(`_guest_denied`).
 
 **Values.** ``SQLITE_LIMIT_LENGTH`` fails a whole statement, not one value, so no
 statement here reads a value it has not sized: a value is read as

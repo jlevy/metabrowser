@@ -90,6 +90,9 @@ function mountFetched(container, rootClass, fetch, draw, fail) {
   };
 }
 
+/** Headings drawn so far, so each overview heading's id is unique on the page. */
+let overviewHeadings = 0;
+
 /**
  * Draw the overview *model* into *root*, its links opening through *sdk*.
  *
@@ -106,8 +109,13 @@ export function drawOverview(root, model, sdk) {
   for (const group of model.groups) {
     const block = element("section", "sqlite-overview-section");
     block.dataset.group = group.group;
-    block.append(element("h2", "data-label sqlite-heading", group.title));
+    const heading = element("h2", "data-label sqlite-heading", group.title);
+    // The heading names the table for assistive technology, as a caption would.
+    overviewHeadings += 1;
+    heading.setAttribute("id", `sqlite-overview-${overviewHeadings}`);
+    block.append(heading);
     const table = element("table", "data-grid sqlite-overview-table");
+    table.setAttribute("aria-labelledby", `sqlite-overview-${overviewHeadings}`);
     const body = element("tbody");
     for (const row of group.rows) {
       const line = element("tr");
