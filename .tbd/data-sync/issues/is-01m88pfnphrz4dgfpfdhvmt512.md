@@ -3,9 +3,9 @@ type: is
 id: is-01m88pfnphrz4dgfpfdhvmt512
 title: File-view menus do not close on an outside click or a second press
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/835
@@ -17,7 +17,11 @@ parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-25T06:32:27.585Z
-updated_at: 2026-11-25T09:17:13.776Z
+updated_at: 2026-11-25T10:36:52.142Z
 started_at: 2026-11-25T06:34:39.465Z
+closed_at: 2026-11-25T10:36:52.141Z
+close_reason: "Merged in #835: every menu closes on an outside press, a second press, Escape or focus leaving, through one helper"
+resolution: null
+duplicate_of: null
 ---
 Reported by the user: some menus in the file view, such as the grouping menu and the filter menus, stay open when they click outside them, while others, such as the branch menu, close. Every menu should behave the same: it closes on a click outside it, on a second press of the button that opened it, and on Escape, with focus returning to that button. Done when all of the shell's and built-in plugins' menus share one behavior from one component or helper, the design system says so, and a check fails a menu that does not use it, with browserless sessions and a Chrome check pinning outside click, second press, and Escape for each menu.
