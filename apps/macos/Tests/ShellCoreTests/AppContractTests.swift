@@ -346,7 +346,6 @@ nonisolated enum ContractGolden {
         #expect(try block("identity/under-home").environment == ["HOME": ContractGolden.sandbox])
         #expect(try identity("identity/under-home") == .identity(.localFolder(served, home: ContractGolden.sandbox)))
 
-        // A checkout names its GitHub repository as a link's dry run names the link's.
         guard case .identity(let checkout) = try identity("identity/checkout") else {
             Issue.record("a checkout's identity was not read")
             return
@@ -355,13 +354,6 @@ nonisolated enum ContractGolden {
         #expect(checkout.kind == .git)
         #expect(checkout.kindLabel == FolderIdentity.localFolder(served, git: true).kindLabel)
         #expect(RootMark(checkout.kind) == .gitCheckout)
-        #expect(checkout.repository == demo)
-        guard case .plan(let plan) = PresentDryRun.answer(try block("present-dry-run/repository").result) else {
-            Issue.record("a repository link was not resolved")
-            return
-        }
-        #expect(CheckoutWindow.same(try #require(checkout.repository), plan.repository))
-        #expect(checkout.repository == plan.repository)
 
         guard case .identity(let mirror) = try identity("identity/mirror") else {
             Issue.record("a mirror's identity was not read")

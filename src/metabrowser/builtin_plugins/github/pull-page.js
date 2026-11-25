@@ -1859,7 +1859,19 @@ export function refusedTextNote(status, body) {
   if (status === 200 || body === null || typeof body.code !== "string") {
     return null;
   }
-  switch (body.code) {
+  return textRefusalNote(body.code);
+}
+
+/**
+ * What a text's notice says for the refusal *code* the Markdown route answers, or null for
+ * a code with nothing a reader needs (`refusedTextNote`). Guided Review says the same under
+ * a note whose render was refused (`note_refusal` in guided_review.py).
+ *
+ * @param {string} code
+ * @returns {string | null}
+ */
+export function textRefusalNote(code) {
+  switch (code) {
     case "render_deadline":
       return "This text took too long to render, so it is shown as written.";
     case "renderer_exited":
@@ -8333,6 +8345,8 @@ export function mountPullPage(container, ctx, mb) {
             }
             return (html) => inertProse(inert, html);
           },
+          // A refused note says why in a description's words.
+          refusalNote: textRefusalNote,
         });
         mount.view.show(shown.recordRevision, shown.newCommits !== null);
       },

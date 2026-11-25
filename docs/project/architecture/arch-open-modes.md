@@ -30,7 +30,7 @@ safe. The mechanisms are in the documents it links: how a view is held and switc
 ## Vocabulary
 
 - **Target:** what the reader names to open: a folder, a file, or a URL.
-- **Root:** what one server serves, and what one app window or tab group belongs to: a
+- **Root:** what one server serves, and what the app windows that show it belong to: a
   folder, or a repository’s address.
   It is called the **open root** where it must be told apart from the path the reader
   named.
@@ -594,7 +594,7 @@ named.
 | --- | --- | --- |
 | A recent target, in the list `metab` keeps | Its recorded mode and its root | When it was last opened. A folder’s root is its open root, and a mirror’s is its credential-free address |
 | `SessionRoot`, the app’s key for one server and its windows | A folder’s path, or a repository’s URL | Nothing else: a page can switch its view while the server runs, so a key that held the view would stop naming the session |
-| A saved tab, in the app’s `session.json` | Its root | The page the tab showed |
+| A saved window, in the app’s `session.json` | Its root | The page the window showed |
 
 - **No record holds a view.** A recent folder reopens on its working tree, and a mirror
   on its default branch until recent targets record what a mirror was opened at.
@@ -637,9 +637,9 @@ opened by URL, a GitHub link sent to the app or a URL entered in Open URL… amo
   or a commit opens at its page, and a branch, folder, or file switches the window to
   the revision the URL selects, so it never shows another revision silently
   (`POST /api/source/link`). A link sent to the app does the same.
-  If it has none but a window shows a checkout of the same repository, the mirror’s
-  window opens as a tab of that one, by the owner’s word on 2026-11-18: the mirror still
-  serves the URL, and the checkout keeps its own tab
+  If it has none, the mirror opens in a window of its own, as every folder does, also
+  while a window shows a checkout of the same repository, by the owner’s word on
+  2026-11-24, which replaced a tab of the checkout’s window
   ([GitHub Links](arch-macos-app.md#github-links)).
 - **Open Recent** lists the recent targets `metab` keeps, repositories opened by URL
   among them, and reopens each in the mode it records.
@@ -703,7 +703,7 @@ the design that carries it out.
 | Pulls and View on GitHub stay on a revision view, and it links to the commit viewed | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | View on branch and Browse code go to the pull request’s head as a revision view; the working-tree copy is a separate, labelled action | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | Open URL… opens the mirror, always, offers a known checkout, and never silently shows another revision | 2026-11-18 | [The File Menu](#the-file-menu) |
-| A URL’s new mirror window joins an open checkout’s window of the same repository as a tab | 2026-11-18 | [The File Menu](#the-file-menu) |
+| Every folder and mirror opens in a window of its own, and no app window takes tabs, replacing 2026-11-18’s mirror window as a tab of an open checkout’s | 2026-11-24 | [The File Menu](#the-file-menu) |
 | The indicator sits with the root’s name; the cloud alone is the fallback; folder mode uses a folder icon | 2026-11-18 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github) |
 | Each kind of root has an icon of its own, a cloud mirror, a local Git checkout, and a local folder, drawn the same in the page and the macOS app, and none reads as an ordinary folder’s icon | 2026-11-20 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github), [Source Kinds](../../design-system-icons.md#source-kinds) |
 | The GitHub control is separate from the indicator, for github.com repositories only | 2026-11-18 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github) |

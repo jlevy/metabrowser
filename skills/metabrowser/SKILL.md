@@ -445,8 +445,10 @@ Keep it short:
 - Open the description with three to five lines on the end state, what is true once the
   change lands. That is the guide’s orientation, which the tab shows first, and no step
   repeats it.
-- Write about eight steps or fewer, one for each area of the change, never one for each
-  file or commit.
+- Write one step for each area of the change, never one for each file or commit, and a
+  step for each concern below that has something to say.
+  Leave out a concern with nothing to say rather than write a step to fill it, except
+  testing, which every guide has.
 - Cite what a reviewer must read, not every file the change touches.
 - Write each note in one to three sentences: what is true now, and what to check.
 - A layer of a stack says its place in one line of the description, naming the layers
@@ -455,10 +457,12 @@ Keep it short:
 
 Give each of these concerns a step, or a run of steps, of its own, in this order, and
 title each step so the list reads as the agenda.
-A guide of more than about six steps puts each concern’s steps in a group named as
-below, so the page’s step list shows the agenda as headings; a guide of about six steps
-or fewer stays flat, even when it covers several concerns, since its step titles name
-them:
+In a guide of more than about six steps, a concern with two steps or more is a group
+named as below, so the page’s step list shows the agenda as headings, and a concern with
+one step stays a step of its own, outside any group, whose title names the concern, such
+as “Testing: …”: a group of one step only repeats its title.
+A guide of about six steps or fewer stays flat, even when it covers several concerns,
+since its step titles name them:
 
 1. **Decisions.** Two kinds of step, in this order:
    - **Key decisions.** The few choices everything else follows from: a data shape, a
@@ -481,8 +485,9 @@ them:
    Say plainly that a person should decide or check it, and cite the code in doubt.
    Leave this out only when there is truly nothing; never hide a doubt in another step’s
    note.
-5. **Testing.** Keep three things apart, each its own step or line, never merged into
-   one claim, and cite the tests and goldens the change adds or changes:
+5. **Testing.** Keep three things apart, each its own sentence or paragraph of one
+   step’s note, or a step of its own when it runs long, never merged into one claim, and
+   cite the tests and goldens the change adds or changes:
    - what automated checks cover: those tests and goldens, what each pins, and CI at the
      head. CI is still running when you first publish, so say so, and update the note
      when it ends; editing the description does not move the head, so the guide stays
@@ -558,7 +563,8 @@ collection:
 ```
 ````
 
-A longer guide gathers its steps in groups, shown here with a step or two in each:
+A longer guide gathers each concern of two steps or more in a group, shown here with two
+steps in each; a concern of one step stays a step of its own between the groups:
 
 ````markdown
 ```guided-review
@@ -583,6 +589,10 @@ collection:
             - {path: docs/cache-plan.md}
     - title: Testing
       items:
+        - title: "Testing, automated and by the agent: what is covered"
+          note: The cache tests pin the snapshot, and CI passed at this head. The agent timed a cold fetch at 90 ms.
+          references:
+            - {path: tests/test_cache.py}
         - title: "Testing, by a person: what still needs a human"
           note: |-
             Tick off:

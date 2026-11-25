@@ -152,7 +152,7 @@ The skill’s later changes belong to the plans that make them:
 
 | Section of the skill | Change | Plan |
 | --- | --- | --- |
-| **Write a Guided Review**: what a guide covers, and the refresh recipe | Concise guides: a summary of the end state opening the description, about eight steps or fewer, notes of one to three sentences, no every-file rule, a stacked layer’s place in one line (`mb-mxcm`) | [Whole-Stack Review](plan-2026-11-24-stack-review.md#phase-0-concise-guides-mb-mxcm-mb-kkib) |
+| **Write a Guided Review**: what a guide covers, and the refresh recipe | Concise guides: a summary of the end state opening the description, one step for each area of change and for each concern with something to say, no group of one step, notes of one to three sentences, no every-file rule, a stacked layer’s place in one line (`mb-mxcm`) | [Whole-Stack Review](plan-2026-11-24-stack-review.md#phase-0-concise-guides-mb-mxcm-mb-kkib) |
 | **Write a Guided Review**: the paragraph on plain text | Notes are Markdown, rendered inert; titles stay plain (`mb-kkib`) | The same phase |
 | **Write a Guided Review**: the groups and the rationale step | On #807 (`mb-szxu`) | [Guided Review Groups](plan-2026-11-24-guided-review-groups.md) |
 | **Write the Block**: the reference rules | A pull request, a file as a pull request changes it, and a commit (`mb-9dmv`) | [Whole-Stack Review](plan-2026-11-24-stack-review.md#phase-2-reference-kinds-mb-9dmv) |

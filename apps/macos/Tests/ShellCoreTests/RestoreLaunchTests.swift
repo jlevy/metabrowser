@@ -83,7 +83,7 @@ import Testing
         #expect(!subject.launchWasRefused)
         await subject.stop()
 
-        // A selected tab clears the check: it starts as the user's choice.
+        // A selected window clears the check: it starts as the user's choice.
         subject.mayLaunch = { Issue.record("a cleared check was asked"); return false }
         subject.mayLaunch = nil
         await subject.start()

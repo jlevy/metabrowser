@@ -94,7 +94,7 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
     // MARK: - The store and the web view
 
     /// Every popover's web view is built on the one persistent store, never a fresh or an
-    /// ephemeral one, so a sign-in holds in every tab and window and after a relaunch.
+    /// ephemeral one, so a sign-in holds in every window and after a relaunch.
     @Test func everyWebPaneSharesOnePersistentStore() {
         let first = WebConfiguration.makeWebPane().websiteDataStore
         let second = WebConfiguration.makeWebPane().websiteDataStore

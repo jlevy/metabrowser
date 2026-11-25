@@ -19,7 +19,7 @@ import Testing
         next.request(b)
         // Quitting before Retry saves the request, not the old view's page.
         #expect(next.saved(showing: a) == b)
-        // Discarding the tab remembers the old page and keeps the request.
+        // Discarding the page remembers the old one and keeps the request.
         next.remember(shown: a)
         #expect(next.saved(showing: nil) == b)
         #expect(next.take() == b)

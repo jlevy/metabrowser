@@ -114,10 +114,11 @@ The record is a `guided-review` fence in a pull request’s description; `compar
 required, its `merge_base` must be an ancestor of its `head`, and its head a commit; a
 path is a changed file and a range lies in one hunk of its diff; excerpts are bounded by
 `MAX_EXCERPT_BYTES` and `MAX_STEP_PATCH_BYTES`; a note renders as the description does,
-through the same inert render (`render_text` in `pull_markdown.py`), and shows as typed
-when that render is refused; the record is stale when the pull request’s comparison
-moves. The `guided-review` route answers it, and the pull page’s Guided Review tab draws
-it ([GitHub Pull Requests](arch-github-pull-requests.md#guided-review),
+through the same inert render (`render_text` in `pull_text_render.py`), and shows as
+typed, with the line that says why, when that render is refused; the record is stale
+when the pull request’s comparison moves.
+The `guided-review` route answers it, and the pull page’s Guided Review tab draws it
+([GitHub Pull Requests](arch-github-pull-requests.md#guided-review),
 [Reviewing Pull Requests](../../reviewing-pull-requests.md#guided-review)).
 
 The fence names the carrier, not the format, so the same record could be written

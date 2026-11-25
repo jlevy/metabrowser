@@ -354,9 +354,8 @@ class IdentityEnvelope(RootIdentity):
     on github.com. A folder belongs to the repository its checkout's ``origin`` names,
     found by :func:`~metabrowser.repository_context.discover_repository_context`, which
     walks up from a folder below the checkout's root, so a subfolder's window belongs to
-    it too. A mirror belongs to the repository it mirrors. The macOS app reads it to put
-    a link's mirror beside an open checkout of the same repository. It is a name to
-    compare, not a promise: a checkout's ``.git/config`` can name any repository.
+    it too. A mirror belongs to the repository it mirrors. It is a name to compare, not a
+    promise: a checkout's ``.git/config`` can name any repository.
     """
 
     kind_tip: str

@@ -192,9 +192,12 @@ fenced YAML block to the GitHub PR description.
 Give the agent the PR description and the diff from its merge base to its head.
 Ask it to choose the code to review in dependency or execution order.
 Each step should explain why the reviewer is looking there and what to verify.
-Keep a guide short: about eight steps or fewer, one for each area of the change, each
-citing what a reviewer must read rather than every changed file, which Changes already
-lists. The [agent skill](../skills/metabrowser/SKILL.md) has the full recipe.
+Keep a guide short: one step for each area of the change and one for each concern that
+has something to say, such as the key decisions, open questions, and testing, each note
+one to three sentences and citing what a reviewer must read rather than every changed
+file, which Changes already lists.
+A group gathers two steps or more; a concern of one step stays a step of its own.
+The [agent skill](../skills/metabrowser/SKILL.md) has the full recipe.
 
 The description is the guide’s overview.
 Guided Review opens with it, rendered as Conversation renders it and without the block,
@@ -209,10 +212,14 @@ review it holds the comparison it was written against and ordered `items`, each 
 with a `title`, a `note` saying what to verify, and its `references`, or a group of
 steps with a `title`, an optional `note`, and its own `items`. A title is plain text,
 shown as typed. A note is Markdown, rendered as the description is, inert, in every
-guide: raw HTML is cut to the same safe subset, a link resolves against the pull request
-on GitHub, a single line break joins two lines into one paragraph, and a blank line
-starts the next. A Mermaid block in a note shows as code.
-A note whose render takes too long, or fails, shows as typed, with its line breaks kept.
+guide: raw HTML is cut to the same safe subset, a single line break joins two lines into
+one paragraph, and a blank line starts the next.
+A Mermaid block in a note shows as code.
+Write a link in a note as a full URL: a relative one resolves against the pull request’s
+page on GitHub, not the repository, so `docs/plan.md` leads nowhere.
+A note whose render takes too long, or fails, shows as typed, with its line breaks kept
+and the line a description’s refusal says under it; when the renderer was only busy,
+returning to the step or reloading the page renders it.
 
 ````markdown
 ```guided-review

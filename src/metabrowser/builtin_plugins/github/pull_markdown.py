@@ -13,7 +13,8 @@ KPress's stylesheets, which set the text as they set a Markdown file. That manif
 same for every text, and it is the only part of KPress's render envelope that reaches
 the page: the render's own asset list names scripts KPress adds for what a text contains,
 and a comment must not choose what the page loads. A guide's notes are texts of the
-description too, and the guided-review route renders each through :func:`render_text`.
+description too, and the guided-review route renders each as a description is rendered,
+through ``render_text`` in pull_text_render.py.
 
 A text's author is untrusted, and what KPress spends on a text depends on what it
 contains, so the render and the hardening run in the server's Markdown child under its
@@ -41,7 +42,6 @@ before this, the full record's fetch through gh and the page's next poll, and th
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import re
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Final
@@ -50,12 +50,8 @@ from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github.guided_review import guide_introduction
 from metabrowser.builtin_plugins.github.pull_record import PullRecord
 from metabrowser.builtin_plugins.github.pull_route import PullView, cached_pull_record
-from metabrowser.diff.markdown_projection_worker import (
-    InertRender,
-    InertRenderRefused,
-    shared_worker,
-    text_identity,
-)
+from metabrowser.builtin_plugins.github.pull_text_render import render_text
+from metabrowser.diff.markdown_projection_worker import InertRenderRefused
 
 if TYPE_CHECKING:
     from metabrowser.builtin_plugins.github.served_pull import PullCorePreview
@@ -161,40 +157,4 @@ async def render_part(
     }
 
 
-async def render_text(text: str, *, number: int, part: str, link_base: str) -> str:
-    """*text*, a text of pull request *number*, as inert HTML: KPress in its sanitized mode,
-    then :func:`~metabrowser.inert_html.harden` against *link_base*, the pull request's page,
-    in the Markdown child under its deadline.
-
-    *part* names the text: a part :data:`PART_PATTERN` matches, or a guide's note, which
-    renders as the description does (``guided_review.py``). Raises
-    :class:`InertRenderRefused`, and KPress's ``KPressInvalidRequestError`` and
-    ``KPressRenderError``.
-    """
-    # KPress caches a render by this key, and the Markdown child joins a request to one in
-    # flight with the same key (`InertRender.flight_key`). A render is of the part's text
-    # and the page its links resolve against alone, so the key is those and not when the
-    # text was read: a page that asks again, a reload, a refresh that left the text as it
-    # was, and the record that follows a core preview with its description unchanged all
-    # reuse one render (mb-d59o).
-    key = hashlib.sha256(f"{part}\0{link_base}\0{text}".encode()).hexdigest()[:16]
-    # KPress's sanitized mode keeps what a document may load; in the page it must not, so
-    # the child reduces the HTML to the allowlist against the pull request's page.
-    rendered = await shared_worker().render_inert(
-        InertRender(
-            source_text=text,
-            source_path=f"pull-{number}-{part.replace('/', '-')}.md",
-            identity=text_identity(text),
-            kind="markdown",
-            view="document",
-            ext=".md",
-            mtime_hash=key,
-            size=len(text.encode()),
-            include_toc="off",
-            link_base=link_base,
-        )
-    )
-    return str(rendered["html"])
-
-
-__all__ = ["PART_PATTERN", "part_text", "render_part", "render_text"]
+__all__ = ["PART_PATTERN", "part_text", "render_part"]

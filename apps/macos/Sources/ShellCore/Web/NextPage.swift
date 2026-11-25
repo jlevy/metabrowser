@@ -1,7 +1,7 @@
 /// Which page a folder window loads next, and which it saves for the next launch.
 ///
-/// A requested page (a file opened in the window, or a restored tab's page) is kept
-/// apart from the page the window last showed, which a server restart or a discarded tab
+/// A requested page (a file opened in the window, or a restored window's page) is kept
+/// apart from the page the window last showed, which a server restart or a discarded page
 /// remembers from the old web view. The request wins until it is loaded: the old view
 /// still holds the page shown before, and remembering it must not undo a newer request.
 public nonisolated struct NextPage: Equatable, Sendable {

@@ -84,8 +84,8 @@ what a reference may point at and, later, how much of its comparison a collectio
   stack’s pair is refused today.
 - **Guided reviews.** One `guided-review` block for each description, resolved against
   the pull request’s current comparison (`_step_references` in `guided_review.py`) and
-  stale when its pins are not that comparison (`_staleness`). Groups and the outline are
-  on #807, and whole documents drawn as Docs draws them on #806.
+  stale when its pins are not that comparison (`_staleness`). Groups and the outline
+  (#807) and whole documents drawn as Docs draws them (#806) are built.
 
 ### Why the Plain Two-Commit Diff Is Wrong
 
@@ -136,7 +136,10 @@ Review** of `skills/metabrowser/SKILL.md`:
 - “Every changed file belongs to some step” goes.
   It forces a file inventory, which the Changes tab already is.
   A guide cites what a reviewer must read.
-- About eight steps or fewer, one for each area, never one for each file or commit.
+- One step for each area of the change, never one for each file or commit, and a step
+  for each concern that has something to say; a concern with nothing to say is left out,
+  except testing. In a grouped guide a concern of two steps or more is a group, and a
+  concern of one step stays a step of its own, so no group holds a single step.
 - A note is one to three sentences: what is true now, and what to check.
 - A stacked layer states its place in one line and points at its neighbors or the stack
   guide, without explaining the stack again.
@@ -150,11 +153,15 @@ included.
 
 - A step’s note and a group’s note render as a pull request’s description does: KPress
   in its sanitized trust mode, then `harden` in `inert_html.py`, in the server’s
-  Markdown child under its deadline (`pull_markdown.py`). Raw HTML is cleaned, never
+  Markdown child under its deadline (`pull_text_render.py`). Raw HTML is cleaned, never
   trusted, and nothing in a note chooses what the page loads.
 - The route answers the rendered note beside its source, so a step is still one read,
   and the render is kept with the parse for the record’s revision.
-- A note whose render is refused shows as plain text, as a description does.
+- A note whose render is refused shows as plain text with the line that says why, as a
+  description does (`textRefusalNote` in `pull-page.js`): the route answers the
+  refusal’s code beside the null render (`note_refusal`, `group_note_refusal`), and the
+  page keeps no answer whose renderer was busy or could not start, so the step is read
+  again.
 - Titles stay plain text.
 - It stays `Collection/v1`: no field is removed, renamed, or retyped.
   A note written as plain text reads the same unless it used Markdown syntax, which now
@@ -496,9 +503,9 @@ The owner’s constraints frame the rest:
 - The stack page’s default is the consolidated diff of every file the stack changes,
   cached, and recomputed whenever a member moves, with a Docs view over it.
 
-Approach C of the groups plan, a rollup derived from each layer’s guide, is rejected: it
-has no overview, inherits each layer’s detail, and needs a tree deeper than the record’s
-one level of groups.
+[Approach C of the groups plan](plan-2026-11-24-guided-review-groups.md#the-superseded-rollup-design),
+a rollup derived from each layer’s guide, is rejected: it has no overview, inherits each
+layer’s detail, and needs a tree deeper than the record’s one level of groups.
 
 ## Implementation Plan
 
@@ -507,7 +514,7 @@ Each phase is a layer of one stack and usable alone.
 | Phase | Beads | Changes | Reuses |
 | --- | --- | --- | --- |
 | 0 | `mb-mxcm` | The skill’s concision edits for per-pull-request guides | `tests/test_skill_commands.py` |
-| 0 | `mb-kkib` | Notes rendered inert by the route, drawn by the page; the skill and the user guide | `pull_markdown.py`, `inert_html.py` |
+| 0 | `mb-kkib` | Notes rendered inert by the route, drawn by the page; the skill and the user guide | `pull_text_render.py`, `inert_html.py` |
 | 1 | `mb-vad1` | The `stack` and `stack-comparison` routes; stack admission in `pull_snapshot.py`; the kept stack manifest; the page with Files, Docs, and Changes; the entry points; layer chips; the line about members the top lacks; parity rows, goldens, the route table, and the map | The diff view, `group=type:docs`, Diff or Current, the changed-files tree, `mb-qn7e`’s windowed drawing |
 | 2 | `mb-9dmv` | `{pull}`, `{pull, path}`, and `{commit}` in the models and the compiled schema, the route’s answer, the step’s rows, and the format reference | `_step_references` and the models in `guided_review.py` |
 | 3 | `mb-ri96` | The `stack-review` block; `guided-review?stack=`; the Guided Review tab on the stack’s page; the skill’s **Write a Stack Guide** | #807’s groups and outline, #806’s whole documents |

@@ -2083,6 +2083,11 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* The line that says why a typed group note's render did not come sits under the note, as a
+   description's sits under its plain text, and stands apart from the card as the note does. */
+.github-pull-guide-step > .github-pull-guide-note-refused {
+  margin-block: 0 0.75rem;
+}
 /* A changed step's mark is metadata, at its row's or its card head's size ("Type Scale"). */
 .github-pull-guide-step-changed {
   color: var(--muted);

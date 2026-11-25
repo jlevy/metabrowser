@@ -1019,7 +1019,7 @@ def test_a_core_description_and_its_record_share_one_render(
 
     from types import SimpleNamespace
 
-    from metabrowser.builtin_plugins.github import pull_markdown
+    from metabrowser.builtin_plugins.github import pull_markdown, pull_text_render
 
     fixtures = Path(__file__).parent / "fixtures" / "github-pull-page-responses.json"
     recorded = json.loads(fixtures.read_text(encoding="utf-8"))
@@ -1032,7 +1032,7 @@ def test_a_core_description_and_its_record_share_one_render(
             return {"html": "<p>rendered</p>"}
 
     cached: list[Any] = ["not_cached", record]
-    monkeypatch.setattr(pull_markdown, "shared_worker", Child)
+    monkeypatch.setattr(pull_text_render, "shared_worker", Child)
     monkeypatch.setattr(pull_markdown.kpress_adapter, "document_stylesheets", dict)
     monkeypatch.setattr(
         pull_markdown, "cached_pull_record", lambda *_: (cached.pop(0), None, "f" * 64)

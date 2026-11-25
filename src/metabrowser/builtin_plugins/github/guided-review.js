@@ -42,17 +42,23 @@
  * @typedef {{state: "ready" | "stale", record_revision: string, step: number,
  *   step_count: number, titles: string[], outline: Array<OutlineStep | OutlineGroup>,
  *   group: number | null, title: string, note: string, note_html: string | null,
- *   group_note_html: string | null, references: Reference[], comparison: Pins,
+ *   note_refusal?: string | null, group_note_html: string | null,
+ *   group_note_refusal?: string | null, references: Reference[], comparison: Pins,
  *   stale?: Staleness, assets?: unknown}} Step `group` is the index in `outline` of the
  *   step's group, or null for a step outside one (`_outline` in guided_review.py);
  *   *note_html* is the note's Markdown rendered inert, as the description's is, and
  *   *group_note_html* the note of the group the step opens, each null when its render was
- *   refused or there is none; *comparison* is the one the references were read at, the pull
+ *   refused or there is none, and *note_refusal* and *group_note_refusal* the code each
+ *   refusal was answered with, as the Markdown route answers a text's (`_rendered_note` in
+ *   guided_review.py); *comparison* is the one the references were read at, the pull
  *   request's current one.
  * @typedef {(html: string) => HTMLElement} DrawProse The page's insertion of a text's
  *   rendered Markdown (`inertProse` in pull-page.js): the server's inert HTML rebuilt from
  *   static/inert-html.js's allowlist into a `.kpress-prose` element, its links made absolute
  *   against the pull request and marked as a description's are.
+ * @typedef {(code: string) => string | null} RefusalNote What the page says under a text
+ *   whose render was refused with *code* (`textRefusalNote` in pull-page.js), or null when
+ *   the code needs no word to the reader.
  * @typedef {{state: "absent" | "invalid" | "comparison_unavailable" |
  *   "description_truncated" | "step_not_found" | "not_cached", record_revision: string | null,
  *   message?: string, stale?: Staleness}} Refusal
@@ -63,10 +69,23 @@
  */
 
 /**
+ * Whether *step*'s note, or its group's, was refused by a renderer that was busy or could
+ * not start, which the step's next read can render (`_rendered_note` in guided_review.py).
+ *
+ * @param {Step} step
+ */
+const renderRetried = (step) =>
+  [step.note_refusal, step.group_note_refusal].some(
+    (code) => code === "renderer_busy" || code === "renderer_unavailable",
+  );
+
+/**
  * The guide's place and its reads. Step 0 is the overview, the description the page
  * draws itself; steps 1 to `step_count` are the guide's. The overview shows the answer
  * for step 1, whose step titles list the guide, so the first step the reader moves to is
- * already in hand. Answers with a step are kept for the record revision they were read for.
+ * already in hand. Answers with a step are kept for the record revision they were read for,
+ * except one whose note's renderer was busy or could not start: that step is read again when
+ * the reader returns to it, so its note renders once the renderer can, as a reload would.
  * A step whose read was refused or failed keeps the guide's steps, from the last answer that
  * had them, so the reader can still move, and is read again when the reader returns to it.
  *
@@ -119,7 +138,9 @@ export function createGuideNavigation(deps) {
         return;
       }
       if ("step" in result) {
-        answers.set(Math.max(selected, 1), result);
+        if (!renderRetried(result)) {
+          answers.set(Math.max(selected, 1), result);
+        }
         count = result.step_count;
       }
       deps.render(result, selected, count);
@@ -263,26 +284,48 @@ function element(tag, content = "", className = "") {
  * @param {string} [className] The host's place: by default a text in a card, as the page
  *   sets a description's, whose inset and edge margins are `.github-pull-text`'s
  *   (styles.css).
+ * @param {HTMLElement | null} [refused] The line under the text that says why its render
+ *   did not come, which follows the article, as a description's follows its plain text.
  */
-function proseHost(prose, className = "github-pull-text github-pull-guide-prose") {
+function proseHost(prose, className = "github-pull-text github-pull-guide-prose", refused = null) {
   const article = element("article", "", "kpress kpress-inert");
   article.append(prose);
   const host = element("div", "", "metabrowser-kpress-host");
   host.append(article);
   const text = element("div", "", `${className} chrome-prose`);
-  text.append(host);
+  text.append(host, ...(refused === null ? [] : [refused]));
   return text;
 }
 
 /**
- * A step's title and note as the page shows them, in KPress's prose element: the title as
- * text, and the note as the route's inert render of its Markdown, inserted as the page
- * inserts a description's (*drawProse*), or, when the render was refused or the allowlist
- * did not load, as typed, with nothing said.
+ * The line under a typed note that says why its render did not come, as the page says it
+ * under a description's plain text (`refusalNotice` in pull-page.js), or null when the
+ * note was not refused or its refusal needs no word.
  *
- * @param {Step} state @param {DrawProse | null} drawProse
+ * @param {string | null | undefined} code @param {RefusalNote} refusalNote
  */
-function stepProse(state, drawProse) {
+function refusalLine(code, refusalNote) {
+  const said = typeof code === "string" ? refusalNote(code) : null;
+  if (said === null) {
+    return null;
+  }
+  const line = element("div", said, "notice github-pull-notice github-pull-guide-note-refused");
+  line.dataset.severity = "warning";
+  line.setAttribute("role", "status");
+  return line;
+}
+
+/**
+ * A step's title and note as the page shows them, in KPress's prose element in a KPress
+ * article: the title as text, and the note as the route's inert render of its Markdown,
+ * inserted as the page inserts a description's (*drawProse*), or, when the render was
+ * refused or the allowlist did not load, as typed. A refused note has the line a
+ * description's refusal has under it; a note typed because the allowlist did not load has
+ * none, as a description's has none.
+ *
+ * @param {Step} state @param {DrawProse | null} drawProse @param {RefusalNote} refusalNote
+ */
+function stepProse(state, drawProse, refusalNote) {
   const html = state.note_html;
   const prose = typeof html === "string" && drawProse !== null ? drawProse(html) : null;
   const shown = prose ?? element("div", "", "kpress-prose");
@@ -290,19 +333,30 @@ function stepProse(state, drawProse) {
     shown.append(element("p", state.note, "github-pull-guide-commentary"));
   }
   shown.prepend(element("h2", state.title, "github-pull-guide-title"));
-  return shown;
+  return proseHost(shown, undefined, refusalLine(state.note_refusal, refusalNote));
 }
 
 /**
  * The note of the group a step opens, above the step's card: rendered as a step's note is,
- * in a KPress article at the card text's inset, or as typed when its render did not come.
+ * in a KPress article at the card text's inset, or as typed when its render did not come,
+ * with the line that says why when it was refused.
  *
- * @param {string} note @param {string | null} html @param {DrawProse | null} drawProse
+ * @param {string} note @param {Step} state @param {DrawProse | null} drawProse
+ * @param {RefusalNote} refusalNote
+ * @returns {HTMLElement[]}
  */
-function groupNote(note, html, drawProse) {
-  return typeof html === "string" && drawProse !== null
-    ? proseHost(drawProse(html), "github-pull-text github-pull-guide-group-note")
-    : element("p", note, "github-pull-guide-group-note github-pull-guide-group-note-typed");
+function groupNote(note, state, drawProse, refusalNote) {
+  const html = state.group_note_html;
+  if (typeof html === "string" && drawProse !== null) {
+    return [proseHost(drawProse(html), "github-pull-text github-pull-guide-group-note")];
+  }
+  const typed = element(
+    "p",
+    note,
+    "github-pull-guide-group-note github-pull-guide-group-note-typed",
+  );
+  const refused = refusalLine(state.group_note_refusal, refusalNote);
+  return refused === null ? [typed] : [typed, refused];
 }
 
 /**
@@ -619,16 +673,18 @@ let groupHeadings = 0;
  *   loadDrawPatch: () => Promise<DrawPatch>,
  *   loadDrawDocument: () => Promise<DrawDocument>,
  *   loadDrawProse: () => Promise<DrawProse>,
+ *   refusalNote: RefusalNote,
  * }} deps *open* goes to a file's Changes address. *loadStyles* loads the stylesheets the
  *   guide is drawn in: KPress's, from the manifest a ready step carries, and the diff
  *   plugin's; the guide waits for them, as a description does. *loadDrawPatch* loads the
  *   diff plugin's file renderer, which draws the excerpts, and *loadDrawDocument* its view
  *   of one whole file, which draws a file the rendered route renders; the view loads the
  *   rendered layer when it draws one, so a guide that cites none never loads it.
- *   *loadDrawProse* loads the allowlist a note's rendered Markdown is inserted through.
+ *   *loadDrawProse* loads the allowlist a note's rendered Markdown is inserted through, and
+ *   *refusalNote* says why a note's render was refused, in a description's words.
  */
 export function mountGuidedReview(host, introduction, number, deps) {
-  const { open, loadStyles, loadDrawPatch, loadDrawDocument, loadDrawProse } = deps;
+  const { open, loadStyles, loadDrawPatch, loadDrawDocument, loadDrawProse, refusalNote } = deps;
   /** @type {Promise<unknown> | null} */
   let styles = null;
   /** @type {Promise<DrawPatch | null> | null} */
@@ -911,7 +967,7 @@ export function mountGuidedReview(host, introduction, number, deps) {
         detail.replaceChildren();
         return;
       }
-      const step = stepProse(state, drawProse);
+      const step = stepProse(state, drawProse, refusalNote);
       const stale = state.stale;
       const references = element("div", "", "metabrowser-diff-host github-pull-guide-references");
       const drawers = { patch: drawPatch, document: drawDocument, pins: state.comparison };
@@ -940,11 +996,11 @@ export function mountGuidedReview(host, introduction, number, deps) {
         "",
         "page-card github-pull-card github-pull-event github-pull-guide-card",
       );
-      card.append(head, proseHost(step), references);
+      card.append(head, step, references);
       // A group's note opens the group: it shows above its first step.
       const opens = group !== null && group.note !== null && group.children[0]?.step === state.step;
       detail.replaceChildren(
-        ...(opens ? [groupNote(group.note ?? "", state.group_note_html, drawProse)] : []),
+        ...(opens ? groupNote(group.note ?? "", state, drawProse, refusalNote) : []),
         card,
       );
     },

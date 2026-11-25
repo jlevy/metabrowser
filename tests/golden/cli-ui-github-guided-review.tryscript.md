@@ -14,6 +14,9 @@ A head GitHub reports past the cached record asks for the step again, and the se
 answers a stale guide with its step, so a stale guide’s steps still move.
 A step whose read is refused or fails keeps the guide’s steps, so the reader can still
 move, and it is read again when chosen again, the one on screen too.
+An answer whose note a busy renderer, or one that could not start, refused is not kept,
+so its step is read again when chosen again; a note refused past the deadline keeps its
+answer.
 
 ```console
 $ node tests/dom/github-guided-review-session.js
@@ -32,6 +35,10 @@ $ node tests/dom/github-guided-review-session.js
     1,
     1,
     2,
+    2,
+    2,
+    2,
+    1,
     2,
     2,
     2
@@ -70,6 +77,17 @@ $ node tests/dom/github-guided-review-session.js
     "step 2: error",
     "step 1: step 1 of 3",
     "step 2: loading",
+    "step 2: step 2 of 3",
+    "step 2: loading",
+    "step 2: step 2 of 3",
+    "step 1: loading",
+    "step 1: step 1 of 3",
+    "step 2: loading",
+    "step 2: step 2 of 3",
+    "step 1: step 1 of 3",
+    "step 2: loading",
+    "step 2: step 2 of 3",
+    "step 1: step 1 of 3",
     "step 2: step 2 of 3",
     "step 2: loading"
   ]
@@ -114,6 +132,10 @@ above its first step alone, and the list keeps its buttons and its changed marks
 reader moves. A note the route rendered, a step’s or its group’s, is handed to the
 description’s allowlist against the pull request’s page, and what it builds is set in
 the step’s prose after the title, or, for a group, in a KPress article above the card.
+A note whose render was refused shows as typed with the line a description’s refusal
+says under it, in a warning, and a step whose group’s note met a busy renderer is read
+again when the reader moves to it.
+Without the allowlist, a rendered note shows as typed, with nothing said beside it.
 A core preview opens a guided pull request on its guide, which waits for the record, and
 the record’s arrival reads the guide without changing tab.
 On a guided front page, Guided Review’s link and key go to the page already shown, and
@@ -160,6 +182,8 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "step 4: Guided Review | Testing · Step 4 of 4 · changed; Overview | [Decisions] | 1 Step 1 | 2 Step 2 changed | 3 Step 3 | [Testing] | > 4 Step 4 changed",
   "asked: step 1, step 2, step 3, step 4",
   "a rendered note: title Step <b>1</b>; blocks span.inert-rebuilt: <p>Check <b>this</b> first.</p>; group's note <p>Read <em>these</em>.</p>; allowlist asked <p>Check <b>this</b> first.</p> at https://github.com/octo/demo/pull/7, <p>Read <em>these</em>.</p> at https://github.com/octo/demo/pull/7",
+  "refused notes: asked step 1, step 1; group's note Read *these*. | warning: This text could not be rendered, so it is shown as written. Reload the page to try again.; step's note Check <b>this</b> first.\nThen that. | warning: This text took too long to render, so it is shown as written.; allowlist asked 0",
+  "no allowlist: step's note Check <b>this</b> first.\nThen that.; group's note Read *these*.; console metabrowser github: the guide's notes will show as typed",
   "a preview's front page: guide mounted; says The guide needs the full pull request.; asked nothing",
   "its record arrives: guide mounted; asked step 1",
   "the guided front page: Guided Review links /pull/7, Conversation /pull/7/conversation; its key opens nothing",
