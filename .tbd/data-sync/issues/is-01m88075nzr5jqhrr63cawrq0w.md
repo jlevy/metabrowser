@@ -3,9 +3,9 @@ type: is
 id: is-01m88075nzr5jqhrr63cawrq0w
 title: Guided review steps draw whole-file documents through the diff view's rendered layer and chooser
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m8806zrnxn9jwj89hffd2yv7
 hold: null
 hold_until: null
 created_at: 2026-11-25T00:03:20.371Z
-updated_at: 2026-11-25T02:36:05.303Z
+updated_at: 2026-11-25T06:36:11.740Z
 started_at: 2026-11-25T00:12:07.035Z
+closed_at: 2026-11-25T06:36:11.737Z
+close_reason: "Merged in #806 (main 1f23640)"
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes
