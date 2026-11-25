@@ -299,7 +299,11 @@ const STALE_AT = `(() => {
   const box = stale.getBoundingClientRect();
   const tree = document.getElementById("tree-content").getBoundingClientRect();
   const pane = document.querySelector(".tree-pane").getBoundingClientRect();
+  // Reload page is two words, and its label stays on one line beside the sentence.
+  const label = document.createRange();
+  label.selectNodeContents(stale.querySelector(".source-ref-selector-reload"));
   return {
+    buttonLines: label.getClientRects().length,
     after: stale.previousElementSibling?.id ?? null,
     inToolbarOrBand: stale.closest("[data-nav-toolbar], .nav-metadata-band") !== null,
     shown: stale.checkVisibility() && box.height > 0,

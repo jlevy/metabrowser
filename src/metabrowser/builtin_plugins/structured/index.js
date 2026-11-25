@@ -63,7 +63,7 @@ function renderTree(container, ctx) {
       }
       console.warn("structured data load failed", err);
       container.innerHTML =
-        '<div class="notice" data-severity="error" role="alert">Could not load structured data. Refresh the page to try again.</div>';
+        '<div class="notice" data-severity="error" role="alert">Could not load structured data. Reload the page to try again.</div>';
       return;
     }
     if (!container.isConnected) {

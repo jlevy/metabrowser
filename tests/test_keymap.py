@@ -290,7 +290,7 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
         for _ in re.finditer(r"\bshortcuts\.attach\(", path.read_text(encoding="utf-8"))
     )
     # The pull request page attaches its tabs' letters and numbers its header's controls,
-    # and the Pulls panel numbers its state chips and its Reload: numbers, so no letter.
+    # and the Pulls panel numbers its state chips and its Refresh: numbers, so no letter.
     assert calls == [
         "diff/diff-type-filter.js",
         "diff/diff-view.js",

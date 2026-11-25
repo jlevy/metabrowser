@@ -768,7 +768,7 @@ export function pageNotes(page) {
     const examined = typeof page.examined === "number" ? formatCount(page.examined) : "some";
     notes.push(`These are the matches among the first ${examined} rows.`);
   } else if (page.reason === "cursor_expired") {
-    notes.push("This table changed while it was being read; reload it to continue.");
+    notes.push("This table changed while it was being read; reload the page to continue.");
   }
   if (page.skipped) {
     notes.push(

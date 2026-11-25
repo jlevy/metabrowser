@@ -33,7 +33,7 @@ This guide sits beside the [design system](design-system.md), whose
 | --- | --- | --- | --- |
 | Empty state | What is absent | “No files were modified during the selected time range.” | `.preview-empty`, `.recent-empty`, `.git-panel-empty`; no severity |
 | Loading | What is coming | “Loading charts…” | Inline text, only once [Motion](design-system.md#motion) allows any |
-| Notice or warning | The content is partial, stale, or degraded, and fine as far as it goes | “Recent files may be out of date. Change the filter or refresh to try again.” | `.notice[data-severity="warning"]`, `role="status"` |
+| Notice or warning | The content is partial, stale, or degraded, and fine as far as it goes | “Recent files may be out of date. Reload the page to try again.” | `.notice[data-severity="warning"]`, `role="status"` |
 | Error | Something could not be done at all | “Could not load this folder. Collapse and reopen it to try again.” | `.notice[data-severity="error"]`, `.nav-error`, or the preview pane’s `.preview-error`, `role="alert"` |
 | Refusal | Metabrowser declines by design, and the content is safe | “This document took too long to render, so its source is shown.” | A warning, since nothing failed |
 | Confirmation | An action finished | “Link copied” | Brief status text, `role="status"` |
@@ -49,11 +49,19 @@ reach GitHub.” Name things by the words the reader already uses here: files, f
 branches, tags, commits, pull requests, the checkout, GitHub.
 
 **At most one remedy, and only a real one.** A remedy is something the reader can do now
-that has a fair chance of working: reload, try again, open another tab, ask the author.
-Prefer a control in the message to a sentence about one, as
+that has a fair chance of working: reload the page, try again, open another tab, ask the
+author. Prefer a control in the message to a sentence about one, as
 [State Progress Once](design-system.md#state-progress-once) requires of a notice that
 content is missing. When nothing the reader does would help, give no remedy rather than
 invent one.
+
+**The words for asking again are the design system’s.**
+[Refresh, Retry, and Reload Page](design-system.md#refresh-retry-and-reload-page) says
+what each means, for a control’s label and for the sentence alike.
+A failure that offers a control says what failed and then shows Retry.
+A sentence that sends the reader to the browser says “Reload the page to try again.”,
+never a bare “reload” or “refresh”, and one that points at a Refresh on screen names it
+by its label.
 
 **A cause only when it changes what the reader does.** “Could not reach GitHub” already
 implies the remedy; “GitHub refused the request because the token’s scopes lack
