@@ -19,17 +19,18 @@ and `="external"`), and both links open the counterpart in a new tab.
 
 `menu` walks it: a click on the chevron opens the menu with focus on Copy Link; the
 arrow keys, Home, and End move focus and wrap, and take the key’s default; another key
-does nothing; Escape closes the menu, gives focus back to the chevron, and stops there;
-the arrow keys on the chevron open the menu at its first or last item; Tab closes it and
-leaves focus to the browser’s own move; a second click on the chevron and a click on
-Open in Browser close it and give focus back to the chevron; and a press outside the
-button closes it while one on an item does not.
+does nothing; Escape goes on to the document, where the shell’s menu closing takes it,
+closes the menu, and gives focus back to the chevron (docs/design-system.md, “Every Menu
+Closes Alike”); the arrow keys on the chevron open the menu at its first or last item;
+Tab closes it and leaves focus to the browser’s own move; a second click on the chevron
+and a click on Open in Browser close it and give focus back to the chevron; and a press
+outside the button closes it while one on an item does not.
 A chord held with Command, Control, or Option is the browser’s: it neither opens the
 menu nor moves in it, and Option-Tab, with which Safari moves focus, closes it as Tab
 does.
 Focus that leaves the button for a frame, which sends the document no press, closes
 the menu once it lands; focus that goes nowhere leaves the menu to a press.
-The button holds its one listener on the document only while the menu is open.
+The menu’s closing listens on the document only while the menu is open.
 
 `copy` is Copy Link with a clipboard that takes the link, one that refuses it, and none:
 the menu closes, focus goes back to the chevron, and the status line under the button
@@ -259,7 +260,7 @@ $ node tests/dom/counterpart-session.js
       "focus": "the chevron",
       "outsideListeners": 0,
       "prevented": true,
-      "stopped": true
+      "stopped": false
     },
     {
       "step": "ArrowDown on the chevron",
@@ -277,7 +278,7 @@ $ node tests/dom/counterpart-session.js
       "focus": "the chevron",
       "outsideListeners": 0,
       "prevented": true,
-      "stopped": true
+      "stopped": false
     },
     {
       "step": "ArrowUp on the chevron",

@@ -94,20 +94,28 @@ class Element extends FakeElement {
   }
 }
 
+// The document's listeners by type, bubbling, and those it captures, which hear an event
+// before its target does (a menu's outside press, docs/design-system.md, "Every Menu Closes
+// Alike").
 const documentListeners = new Map();
+const documentCaptures = new Map();
+/** @param {boolean | {capture?: boolean} | undefined} options */
+const capturing = (options) => (typeof options === "boolean" ? options : Boolean(options?.capture));
 const documentStandIn = {
   createElement: (tag) => new Element(tag),
   body: new Element("body"),
   activeElement: null,
   // A step hides and shows the page as a browser's visibilitychange does.
   visibilityState: "visible",
-  addEventListener(type, listener) {
-    documentListeners.set(type, [...(documentListeners.get(type) ?? []), listener]);
+  addEventListener(type, listener, options) {
+    const listeners = capturing(options) ? documentCaptures : documentListeners;
+    listeners.set(type, [...(listeners.get(type) ?? []), listener]);
   },
-  removeEventListener(type, listener) {
-    documentListeners.set(
+  removeEventListener(type, listener, options) {
+    const listeners = capturing(options) ? documentCaptures : documentListeners;
+    listeners.set(
       type,
-      (documentListeners.get(type) ?? []).filter((item) => item !== listener),
+      (listeners.get(type) ?? []).filter((item) => item !== listener),
     );
   },
 };
@@ -145,9 +153,13 @@ function findAll(node, test) {
 
 const hasClass = (name) => (element) => element.classes.has(name);
 
-/** Dispatch *type* at *target*, bubbling to every ancestor's listeners. */
+/**
+ * Dispatch *type* at *target*: the document's capturing listeners, then the target's and
+ * every ancestor's, then the document's own, unless one stops it.
+ */
 function dispatch(target, type, init = {}) {
   let prevented = false;
+  let stopped = false;
   const event = {
     type,
     target,
@@ -157,14 +169,26 @@ function dispatch(target, type, init = {}) {
     metaKey: false,
     altKey: false,
     ...init,
+    get defaultPrevented() {
+      return prevented;
+    },
     preventDefault() {
       prevented = true;
     },
+    stopPropagation() {
+      stopped = true;
+    },
   };
-  for (let node = target; node; node = node.parentNode) {
+  for (const listener of [...(documentCaptures.get(type) ?? [])]) {
+    listener(event);
+  }
+  for (let node = target; node && !stopped; node = node.parentNode) {
     for (const listener of node.handlers?.get(type) ?? []) {
       listener(event);
     }
+  }
+  for (const listener of stopped ? [] : [...(documentListeners.get(type) ?? [])]) {
+    listener(event);
   }
   return { prevented, event };
 }
@@ -284,6 +308,8 @@ function keyOf(route, params) {
 }
 
 const sdk = {
+  // The shell's menu closing, production filter-controls.js in the SDK's sandbox.
+  menus: require("./sdk-sandbox.js").createSdkSandbox().metabrowser.menus,
   escapeHtml: (value) => String(value).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`),
   tooltip: {
     show: (html, anchor) => tooltips.push({ show: html, anchor: anchor.className }),
@@ -624,13 +650,13 @@ async function wholeTable() {
   key(documentStandIn.activeElement, "ArrowLeft");
   key(documentStandIn.activeElement, "ArrowLeft");
 
-  // A header's menu is a dialog: the focus leaving it closes it, and Escape returns the
-  // focus to its button.
+  // A header's menu is a dialog: the focus arriving outside it closes it, and Escape
+  // returns the focus to its button.
   click(headerButton(view, "name", "table-head-menu"));
   const dialog = find(view.container, hasClass("table-menu"));
-  dispatch(find(dialog, hasClass("menu-item")), "focusout", {
-    relatedTarget: find(view.container, hasClass("table-search")),
-  });
+  const searchBox = find(view.container, hasClass("table-search"));
+  searchBox.focus();
+  dispatch(searchBox, "focusin");
   const closedOnLeave = find(view.container, hasClass("table-menu")) === null;
   click(headerButton(view, "name", "table-head-menu"));
   key(documentStandIn.activeElement, "Escape");
@@ -944,9 +970,11 @@ async function liveTable() {
   await ready(view);
   step("live: a table read, its file watched with the generation it read", liveShown(view));
 
-  // A filter half typed in the qty header's menu, not sent.
+  // A filter half typed in the qty header's menu, not sent, the focus in its field.
   click(headerButton(view, "qty", "table-head-menu"));
-  find(find(view.container, hasClass("table-menu")), hasClass("table-filter-value")).value = "4";
+  const typed = find(find(view.container, hasClass("table-menu")), hasClass("table-filter-value"));
+  typed.focus();
+  typed.value = "4";
   fileChanges("G2", 3);
   tick(100);
   await settle();

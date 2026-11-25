@@ -81,6 +81,10 @@ const SDK = [
   "view-state.js",
   "navigation.js",
   "plugin-sdk.js",
+  // `metabrowser.menus`, the closing every menu has, which the stack menu and the
+  // views' menus use, and the shell tool it forwards to.
+  "filter-controls.js",
+  "menus.js",
   "plugin-sdk-views.js",
 ];
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>pull header</title>
@@ -427,6 +431,7 @@ const MEASURE = `async (name, change, tab, width) => {
         titleNodes: mb.titleNodes,
         shortCommit: mb.shortCommit,
         onOpen() {},
+        menus: mb.menus,
       }),
     );
     const column = header.querySelector(".github-pull-stacks");
@@ -492,7 +497,7 @@ const MEASURE = `async (name, change, tab, width) => {
     const probe = page.createStackMenu(
       { number: 286, pulls: [body.number - 1, body.number, body.number + 1] },
       body.number,
-      { link: () => document.createElement("a"), icon: null, currentTitle: "", titleNodes: mb.titleNodes, onOpen() {} },
+      { link: () => document.createElement("a"), icon: null, currentTitle: "", titleNodes: mb.titleNodes, onOpen() {}, menus: mb.menus },
     );
     const holder = document.createElement("div");
     holder.className = "github-pull-stacks";
@@ -2758,7 +2763,7 @@ async function main() {
           );
           const chipHeight = shape.branchChipHeights[0];
           check(
-            theme + ": branch chips and labels have the same outer height, below the state badge",
+            `${theme}: branch chips and labels have the same outer height, below the state badge`,
             shape.branchChipHeights.length === 2 &&
               shape.branchChipHeights.every((height) => height === chipHeight) &&
               shape.labels.every((chip) => chip.height === chipHeight) &&

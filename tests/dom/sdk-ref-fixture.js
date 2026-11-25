@@ -28,6 +28,7 @@ function refHelpers(document) {
     changeSizeLineNodes: sandbox.metabrowser.changeSizeLineNodes,
     changeSizeLineHtml: sandbox.metabrowser.changeSizeLineHtml,
     formatSize: sandbox.metabrowser.formatSize,
+    menus: sandbox.metabrowser.menus,
     loadChangedFilesTree: () => Promise.resolve(tree),
   };
 }

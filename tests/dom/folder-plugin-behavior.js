@@ -348,6 +348,7 @@ for (const relative of [
   "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin-sdk.js",
   "src/metabrowser/static/filter-controls.js",
+  "src/metabrowser/static/menus.js",
 ]) {
   const source = fs.readFileSync(path.join(repoRoot, relative), "utf8");
   vm.runInContext(source, sandbox, { filename: relative });

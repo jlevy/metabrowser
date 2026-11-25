@@ -225,6 +225,7 @@ const CELL_PAD_PX = 20;
  *   tooltip?: Window["metabrowser"]["tooltip"],
  *   escapeHtml: Window["metabrowser"]["escapeHtml"],
  *   watchFile?: Window["metabrowser"]["watchFile"],
+ *   menus: MetabrowserMenus,
  * }} TableSdk
  */
 /**
@@ -415,12 +416,16 @@ export function mountTable(container, ctx, host = {}) {
   container.replaceChildren(root);
   /** The open menu, and the control that opened it. @type {{menu: HTMLElement, opener: HTMLElement} | null} */
   let openMenu = null;
-  /**
-   * Whether the last press was on the open menu's opener: its click toggles the menu, so
-   * the focus leaving for it does not close the menu first. WebKit does not focus a button
-   * a press lands on, so there the focus leaves for nothing.
-   */
-  let pressOnOpener = false;
+  // The Columns and header menus close as every menu does (docs/design-system.md, "Every
+  // Menu Closes Alike"): a press, focus, or the window leaving the menu and its opener, or
+  // Escape, which gives focus back to the opener; its opener's click toggles it.
+  const dismissal = sdk.menus.dismissible({
+    name: "table-menu",
+    trigger: () => openMenu?.opener ?? null,
+    inside: (node) => Boolean(openMenu?.menu.contains(node)),
+    isOpen: () => openMenu !== null,
+    close: () => closeMenu(false),
+  });
 
   // ── The address ──────────────────────────────────────────────
 
@@ -1826,11 +1831,6 @@ export function mountTable(container, ctx, host = {}) {
     if (event.altKey || event.ctrlKey || event.metaKey) {
       return;
     }
-    if (openMenu && event.key === "Escape") {
-      closeMenu(true);
-      event.preventDefault();
-      return;
-    }
     const target = /** @type {Node | null} */ (event.target);
     if (target && event.key === "Escape" && !recordPane.hidden && recordPane.contains(target)) {
       // Escape in the record goes back to the table, as its Back link does.
@@ -2204,21 +2204,12 @@ export function mountTable(container, ctx, host = {}) {
    */
   function showMenu(menu, opener) {
     openMenu = { menu, opener };
-    pressOnOpener = false;
     opener.setAttribute("aria-expanded", "true");
     // Focusable itself, so a press on its text keeps the focus in it; it closes when the
     // focus leaves it for anything but its opener, as Tab past its last control does.
     menu.setAttribute("tabindex", "-1");
-    menu.addEventListener("focusout", (event) => {
-      const to = /** @type {Node | null} */ (/** @type {FocusEvent} */ (event).relatedTarget);
-      if (pressOnOpener) {
-        return;
-      }
-      if (openMenu?.menu === menu && !(to && (menu.contains(to) || opener.contains(to)))) {
-        closeMenu(false);
-      }
-    });
     root.append(menu);
+    dismissal.opened();
     const anchor = opener.getBoundingClientRect?.();
     const frameBox = root.getBoundingClientRect?.();
     if (anchor && frameBox) {
@@ -2238,7 +2229,7 @@ export function mountTable(container, ctx, host = {}) {
     }
     const { menu, opener } = openMenu;
     openMenu = null;
-    pressOnOpener = false;
+    dismissal.closed();
     opener.setAttribute("aria-expanded", "false");
     menu.remove();
     if (restore && opener.isConnected) {
@@ -2246,16 +2237,8 @@ export function mountTable(container, ctx, host = {}) {
     }
   }
 
-  /** @param {PointerEvent} event */
-  function onPointerDown(event) {
+  function onPointerDown() {
     releasePlace();
-    pressOnOpener = Boolean(openMenu?.opener.contains(/** @type {Node} */ (event.target)));
-    if (openMenu) {
-      const target = /** @type {Node} */ (event.target);
-      if (!openMenu.menu.contains(target) && !openMenu.opener.contains(target)) {
-        closeMenu(false);
-      }
-    }
   }
 
   // ── The record ───────────────────────────────────────────────
@@ -2976,6 +2959,7 @@ export function mountTable(container, ctx, host = {}) {
       hideCard();
       sdk.tooltip?.hide(root);
       closeMenu(false);
+      dismissal.dispose();
       win.removeEventListener("popstate", onPopState);
       win.removeEventListener("beforeprint", onBeforePrint);
       win.removeEventListener("afterprint", onAfterPrint);
