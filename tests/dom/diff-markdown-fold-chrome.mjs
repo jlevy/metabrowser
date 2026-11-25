@@ -1,26 +1,31 @@
 // A rendered Markdown diff's fold of unchanged blocks, laid out by headless Chrome: the
-// production `appendBlocks` and `sanitizeBlock` (builtin_plugins/diff/diff-markdown.js)
-// build the server's projection into the article a pull request's Changes mounts, under
-// the shell's, the diff plugin's, and KPress's stylesheets.
+// production `createMarkdownViews` (builtin_plugins/diff/diff-markdown.js) mounts the
+// route's Concise answer into the article a pull request's Changes mounts, under the
+// shell's, the diff plugin's, and KPress's stylesheets, beside a code file's fold bar as
+// diff-view.js builds it (`foldExpander` in diff-fold.js).
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
 //     KPRESS_STATIC=/dir/with/kpress/css/and/fonts FOLD_INPUT=/path/to/input.json \
 //     [FOLD_SHOTS=/dir/for/screenshots] node tests/dom/diff-markdown-fold-chrome.mjs
 //
-// tests/test_diff_markdown_fold_chrome.py writes FOLD_INPUT ({sheets, blocks, quoted}), copies
-// KPress's stylesheets and faces out of the installed package, owns the profile, and runs
-// this in a process group of its own. FOLD_SHOTS, when set, receives a screenshot of the
-// comparison closed and open.
+// tests/test_diff_markdown_fold_chrome.py writes FOLD_INPUT ({sheets, answer, quoted,
+// docMaxChars}), copies KPress's stylesheets and faces out of the installed package, owns
+// the profile, and runs this in a process group of its own. FOLD_SHOTS, when set,
+// receives a screenshot of the comparison closed and open.
 //
-// The fold is a `<details>` inside the comparison's `article.kpress`, so KPress's own
-// document disclosure styling reached it. A fold is a place in the document, not a box in
-// it: closed, it is one quiet line between the blocks around it; open, the blocks it held
-// stand where they stood, laid out as the blocks around them are, and nothing else moves.
-// Its label brightens to the text colour under the pointer, as the shell's document
-// disclosures do. A document's own `<details>` keeps KPress's box.
+// Every fold of a diff draws as one bar: a rendered Markdown file's run of unchanged
+// blocks is the bar a code file's long run of changed lines is, the same element, classes,
+// and computed style, at rest and under the pointer, across the file's width. The bar is a
+// `button` inside the comparison's `article.kpress`, so KPress's document stylesheets
+// reach it, and only a browser computes that cascade. Closed, the bar stands between the
+// blocks around it and the space on each side of it is those blocks' margins; open, the
+// blocks it held stand after it in the face, measure, and spacing of the blocks around
+// them, the bar does not move, and everything after it moves by one amount; closed again,
+// the layout is as it was. A KPress document beside the diff keeps its own `<details>` in
+// KPress's box and ring: the fold bar's rules are the diff's alone.
 //
 // Last, a comparison of a quote holding inline code and of a code block (FOLD_INPUT's
-// `quoted` blocks) is mounted beside a document holding the same blocks: in the light and
+// `quoted` blocks) is drawn beside a document holding the same blocks: in the light and
 // the dark theme, its quote and code draw as the document's do, in the app's tokens. The
 // comparison's article sits outside `.metabrowser-kpress-host`, so a token bridge keyed on
 // that host left it in KPress's own palette.
@@ -50,16 +55,22 @@ const near = (a, b) => Math.abs(a - b) <= TOLERANCE_PX;
 
 // KPress's tokens and the shell's sheet load with the shell, then the diff plugin's.
 // KPress's document stylesheets load last, the order in which the diff's rules must
-// still win; in the app they may also load before the diff plugin's.
+// still win; in the app they may also load before the diff plugin's. The chooser is the
+// shell's filter controls and the bars' chevron the shell's icon, both reached through
+// `window.metabrowser` as the plugin SDK gives them.
 const PAGE = `<!doctype html><html style="--doc-max-chars: ${INPUT.docMaxChars}"><head><meta charset="utf-8"><title>diff fold</title>
 <link rel="stylesheet" href="/kpress/css/style-tokens.css">
 <link rel="stylesheet" href="/static/styles.css">
 <link rel="stylesheet" href="/diff/styles.css">
 ${INPUT.sheets.map((sheet) => `<link rel="stylesheet" href="/kpress/${sheet}">`).join("\n")}
+<script src="/static/icons.js"></script>
+<script>window.metabrowser = { icons: window.MetabrowserIcons };</script>
+<script src="/static/filter-controls.js"></script>
 <script src="/static/inert-html.js"></script>
 <script type="module">
-import { appendBlocks, sanitizeBlock } from "/diff/diff-markdown.js";
-window.diffFold = { appendBlocks, sanitizeBlock };
+import { blockRow, createMarkdownViews, renderedFormat, sanitizeBlock } from "/diff/diff-markdown.js";
+import { foldExpander } from "/diff/diff-fold.js";
+window.diffFold = { blockRow, createMarkdownViews, renderedFormat, sanitizeBlock, foldExpander };
 </script>
 </head><body><div id="preview-pane" class="preview-pane" style="width: 900px"></div></body></html>`;
 
@@ -92,33 +103,68 @@ function serve() {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
-// In the page: mount the comparison as diff-markdown.js mounts it, in a pull request's
-// diff host, beside a document with a `<details>` of its own.
-const MOUNT = `(blocks) => {
-  const inert = window.MetabrowserInertHtml;
-  const { appendBlocks, sanitizeBlock } = window.diffFold;
+// In the page: mount the Concise answer as a pull request's Changes mounts a Markdown
+// file, through the views, and below it a code file whose hunk holds a fold bar built as
+// diff-view.js builds one, beside a document with a `<details>` of its own. Resolves with
+// the comparison's fold bars once it is drawn.
+const MOUNT = `async (answer) => {
+  const { createMarkdownViews, renderedFormat, foldExpander } = window.diffFold;
   const el = (tag, className, children = []) => {
     const node = document.createElement(tag);
     if (className) node.className = className;
     node.append(...children);
     return node;
   };
-  const scratch = document.implementation.createHTMLDocument("");
-  const template = document.createElement("template");
-  const content = document.createDocumentFragment();
-  appendBlocks(content, blocks, (html) =>
-    sanitizeBlock(html, inert, template, scratch, () => false),
-  );
-  const rendered = el("article", "kpress kpress-inert diff-markdown", [content]);
+  const host = el("div", "github-pull-diff metabrowser-diff-host");
+  const section = el("section", "diff-file");
+  const end = el("div", "diff-file-end");
+  const bar = el("div", "diff-file-bar", [el("button", "diff-file-toggle"), end]);
+  const source = el("div", "diff-file-body");
+  source.id = "diff-file-guide";
+  section.append(bar, source);
+  const code = foldExpander({
+    id: "diff-fold-group-code",
+    expanded: false,
+    label: (open) => (open ? "Hide 40 lines" : "40 more changed lines"),
+    onToggle: () => {},
+  });
+  const hunk = el("div", "diff-hunk diff-hunk-unified", [code.control, code.group]);
+  const codeFile = el("section", "diff-file diff-file-code", [el("div", "diff-file-body", [hunk])]);
+  host.append(section, codeFile);
   const own = el("details", "", [el("summary", "", ["A document's own details"]), el("p", "", ["Inside."])]);
   const documentArticle = el("article", "kpress kpress-doc kpress-inert", [
     el("div", "kpress-doc-layout", [el("div", "kpress-prose", [own])]),
   ]);
   document.getElementById("preview-pane").replaceChildren(
-    el("div", "github-pull-diff metabrowser-diff-host", [el("section", "diff-file", [rendered])]),
+    host,
     el("div", "metabrowser-kpress-host", [documentArticle]),
   );
-  return document.querySelectorAll("details.diff-markdown-context").length;
+  const views = createMarkdownViews({
+    controls: window.metabrowser.filterControls,
+    load: async () => structuredClone(answer),
+    ensureInert: async () => window.MetabrowserInertHtml,
+    loadStyles: async () => {},
+    mutate: (change) => change(),
+    opens: "concise",
+    holdMs: 0,
+  });
+  views.add({
+    section, bar, end, source, id: "docs/guide.md",
+    format: renderedFormat({ new: { entry_type: "file", path: "docs/guide.md" } }),
+  });
+  views.observe(host, null);
+  const article = section.querySelector("article.diff-markdown");
+  for (let frame = 0; frame < 600 && !article.querySelector(".diff-markdown-block"); frame += 1) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+  window.diffFoldViews = views;
+  return [...article.querySelectorAll(".fold-expander")].map((node) => ({
+    tag: node.tagName,
+    className: node.className,
+    expanded: node.getAttribute("aria-expanded"),
+    controls: node.getAttribute("aria-controls"),
+    group: document.getElementById(node.getAttribute("aria-controls"))?.className ?? null,
+  }));
 }`;
 
 // Read geometry at two card widths under the same preview pane, so a column based on
@@ -147,19 +193,76 @@ const RENDERED_GEOMETRY = `(width) => {
   return result;
 }`;
 
-// In the page: the fold, its summary, every block row, and the document's own details,
-// with box edges unrounded.
+// What a fold bar computes, to hold a Markdown file's against a code file's.
+const BAR_STYLE = [
+  "display",
+  "box-sizing",
+  "height",
+  "min-height",
+  "padding-top",
+  "padding-right",
+  "padding-bottom",
+  "padding-left",
+  "margin-top",
+  "margin-bottom",
+  "border-top-width",
+  "border-top-style",
+  "border-top-color",
+  "border-bottom-width",
+  "border-bottom-style",
+  "border-bottom-color",
+  "border-left-width",
+  "border-right-width",
+  "border-radius",
+  "background-color",
+  "background-image",
+  "box-shadow",
+  "color",
+  "font-family",
+  "font-size",
+  "font-weight",
+  "font-style",
+  "line-height",
+  "letter-spacing",
+  "text-align",
+  "text-transform",
+  "gap",
+  "align-items",
+  "cursor",
+  "user-select",
+];
+
+// In the page: both bars, their files, and their groups, every block row of the
+// comparison, and the document's own details, with box edges unrounded.
 const READ = `() => {
+  const names = ${JSON.stringify(BAR_STYLE)};
   const box = (node) => {
     const rect = node.getBoundingClientRect();
     const style = getComputedStyle(node);
     return {
-      top: rect.top, bottom: rect.bottom, left: rect.left,
-      width: rect.width, height: rect.height,
+      top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width,
+      height: rect.height, padding: style.padding, margin: style.margin,
       border: ["top", "right", "bottom", "left"]
         .map((side) => style.getPropertyValue("border-" + side + "-width")).join(" "),
-      background: style.backgroundColor + " " + style.backgroundImage,
-      padding: style.padding, margin: style.margin, boxShadow: style.boxShadow,
+    };
+  };
+  const bar = (node) => {
+    const file = node.closest(".diff-file");
+    const fileRect = file.getBoundingClientRect();
+    const style = getComputedStyle(node);
+    const chevron = node.querySelector(".diff-fold-chevron").getBoundingClientRect();
+    const label = node.querySelector(".diff-fold-label").getBoundingClientRect();
+    return {
+      ...box(node),
+      style: Object.fromEntries(names.map((name) => [name, style.getPropertyValue(name)])),
+      text: node.textContent,
+      expanded: node.getAttribute("aria-expanded"),
+      startInFile: node.getBoundingClientRect().left - fileRect.left - file.clientLeft,
+      fileWidth: file.clientWidth,
+      chevronStart: chevron.left - node.getBoundingClientRect().left,
+      chevronWidth: chevron.width,
+      labelStart: label.left - node.getBoundingClientRect().left,
+      labelMiddle: (label.top + label.bottom) / 2 - node.getBoundingClientRect().top,
     };
   };
   const face = (row) => {
@@ -167,97 +270,86 @@ const READ = `() => {
     return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight, style.color,
       style.fontFeatureSettings, style.fontVariant, style.letterSpacing, style.margin].join(" | ");
   };
-  const fold = document.querySelector("details.diff-markdown-context");
-  const summary = fold.querySelector(":scope > summary");
-  const rows = [...document.querySelectorAll(".diff-markdown .diff-markdown-block")]
-    .filter((row) => row.parentElement !== fold || fold.open)
-    .map((row) => ({
-      text: row.textContent.trim(),
-      folded: row.parentElement === fold,
-      // Whether the row comes before the fold in the document, or is in it or after it.
-      first: !!(row.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING),
-      box: box(row),
-      face: face(row),
-      textLeft: row.querySelector(".kpress-prose > *").getBoundingClientRect().left,
-      // Its block's margins, which pass through the row to collapse with its neighbours'.
-      marginTop: parseFloat(getComputedStyle(row.querySelector(".kpress-prose > *")).marginTop),
-      marginBottom: parseFloat(getComputedStyle(row.querySelector(".kpress-prose > *")).marginBottom),
-    }));
+  const article = document.querySelector("article.diff-markdown");
+  const control = article.querySelector(".fold-expander");
+  const group = document.getElementById(control.getAttribute("aria-controls"));
+  const rows = [...article.querySelectorAll(".diff-markdown-block")].map((row) => ({
+    text: row.textContent.trim(),
+    folded: group.contains(row),
+    // Whether the row comes before the bar in the document, or is in its group or after it.
+    first: !!(row.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING),
+    box: box(row),
+    face: face(row),
+    // Its block's margins, which pass through the row to collapse with its neighbours'.
+    marginTop: parseFloat(getComputedStyle(row.querySelector(".kpress-prose > *")).marginTop),
+    marginBottom: parseFloat(getComputedStyle(row.querySelector(".kpress-prose > *")).marginBottom),
+  }));
   return {
-    open: fold.open,
-    children: fold.children.length,
-    fold: box(fold),
-    summary: { ...box(summary), userSelect: getComputedStyle(summary).userSelect,
-      text: summary.textContent,
-      contentLeft: summary.getBoundingClientRect().left
-        + parseFloat(getComputedStyle(summary).paddingLeft) },
+    bar: bar(control),
+    code: bar(document.querySelector(".diff-file-code .fold-expander")),
+    group: { ...box(group), children: group.children.length, className: group.className },
     rows,
     own: box(document.querySelector(".kpress-doc details")),
   };
 }`;
 
-// Wait for an open or a close to finish: the fold keeps its height for five frames.
+// Wait for an open or a close to finish: the group keeps its height for five frames.
 const SETTLE = `new Promise((resolve) => {
-  const fold = document.querySelector("details.diff-markdown-context");
+  const control = document.querySelector("article.diff-markdown .fold-expander");
+  const group = document.getElementById(control.getAttribute("aria-controls"));
   let last = -1;
   let still = 0;
   const frame = () => {
-    const height = fold.getBoundingClientRect().height;
+    const height = group.getBoundingClientRect().height;
     still = height === last ? still + 1 : 0;
     last = height;
     if (still >= 5) resolve(height); else requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 })`;
-const CLICK = `document.querySelector("details.diff-markdown-context > summary").click()`;
+const CLICK = `document.querySelector("article.diff-markdown .fold-expander").click()`;
 
-// The summary's colour once its colour transition is over (it keeps one value for five
-// frames), with the text token resolved where the summary is and the summary's centre.
-const COLOR = `new Promise((resolve) => {
-  const summary = document.querySelector("details.diff-markdown-context > summary");
-  const probe = document.createElement("span");
-  probe.style.color = "var(--text)";
-  summary.parentElement.append(probe);
-  const text = getComputedStyle(probe).color;
-  probe.remove();
-  const rect = summary.getBoundingClientRect();
+// A bar's background once its transition is over (one value for five frames), and its
+// centre, to put the pointer on.
+const BACKGROUND = (/** @type {string} */ selector) => `new Promise((resolve) => {
+  const node = document.querySelector(${JSON.stringify(selector)});
+  const rect = node.getBoundingClientRect();
   let last = "";
   let still = 0;
   const frame = () => {
-    const color = getComputedStyle(summary).color;
-    still = color === last ? still + 1 : 0;
-    last = color;
+    const background = getComputedStyle(node).backgroundColor;
+    still = background === last ? still + 1 : 0;
+    last = background;
     if (still >= 5) {
-      resolve({ color, text, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+      resolve({ background, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
     } else {
       requestAnimationFrame(frame);
     }
   };
   requestAnimationFrame(frame);
 })`;
-// The summaries whose keyboard ring the session reads, and how many presses of Tab it allows
-// to reach both from the page's start: a handful do on this small page, so the bound only
-// stops a page that lost one.
-const RINGED = {
-  fold: "details.diff-markdown-context > summary",
-  own: ".kpress-doc details > summary",
-};
+const MARKDOWN_BAR = "article.diff-markdown .fold-expander";
+const CODE_BAR = ".diff-file-code .fold-expander";
+// The controls whose keyboard ring the session reads, both bars and a document's own
+// summary, and how many presses of Tab it allows to reach them all from the page's start:
+// a handful do on this small page, so the bound only stops a page that lost one.
+const RINGED = { fold: MARKDOWN_BAR, code: CODE_BAR, own: ".kpress-doc details > summary" };
 const TAB_STEPS = 20;
-// In the page, once the keyboard has focused the summary *selector* names: the ring it
+// In the page, once the keyboard has focused the control *selector* names: the ring it
 // draws, beside the shell's ring tokens resolved where it is; null while focus is elsewhere.
 const RING = `(selector) => {
-  const summary = document.querySelector(selector);
-  if (document.activeElement !== summary) return null;
+  const control = document.querySelector(selector);
+  if (document.activeElement !== control) return null;
   const probe = document.createElement("span");
   probe.style.outline = "var(--focus-ring-width) solid var(--focus-ring-color)";
   probe.style.outlineOffset = "var(--focus-ring-offset)";
-  summary.append(probe);
+  control.append(probe);
   const token = getComputedStyle(probe);
   const ring = { width: token.outlineWidth, color: token.outlineColor, offset: token.outlineOffset };
   probe.remove();
-  const style = getComputedStyle(summary);
+  const style = getComputedStyle(control);
   return {
-    visible: summary.matches(":focus-visible"),
+    visible: control.matches(":focus-visible"),
     ring,
     drawn: {
       style: style.outlineStyle,
@@ -267,11 +359,12 @@ const RING = `(selector) => {
     },
   };
 }`;
-// In the page: a comparison of a quote and a code block, mounted as the fold's is, beside a
-// document holding the same blocks.
+// In the page: a comparison of a quote and a code block, its rows built as the views
+// build them, beside a document holding the same blocks.
 const MOUNT_QUOTED = `(blocks) => {
+  window.diffFoldViews?.dispose();
   const inert = window.MetabrowserInertHtml;
-  const { appendBlocks, sanitizeBlock } = window.diffFold;
+  const { blockRow, sanitizeBlock } = window.diffFold;
   const el = (tag, className, children = []) => {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -281,9 +374,8 @@ const MOUNT_QUOTED = `(blocks) => {
   const scratch = document.implementation.createHTMLDocument("");
   const template = document.createElement("template");
   const content = document.createDocumentFragment();
-  appendBlocks(content, blocks, (html) =>
-    sanitizeBlock(html, inert, template, scratch, () => false),
-  );
+  const build = (html) => sanitizeBlock(html, inert, template, scratch, () => false);
+  content.append(...blocks.map((block) => blockRow(block, build)));
   const rendered = el("article", "kpress kpress-inert diff-markdown", [content]);
   const quote = el("blockquote", "", [
     el("p", "", ["Quoted text with ", el("code", "", ["inline code"]), "."]),
@@ -369,6 +461,9 @@ const shot = async (name) => {
   fs.mkdirSync(SHOTS, { recursive: true });
   fs.writeFileSync(path.join(SHOTS, `${name}.png`), Buffer.from(data, "base64"));
 };
+/** @param {{x: number, y: number}} at */
+const point = (at) =>
+  chrome?.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y });
 try {
   chrome = await launchChrome(/** @type {string} */ (process.env.CHROME_BIN), {
     profiles: /** @type {string} */ (process.env.CHROME_PROFILES),
@@ -378,10 +473,18 @@ try {
   await chrome.send("Page.enable");
   await chrome.send("Page.navigate", { url: `http://127.0.0.1:${port}/` });
   await chrome.waitFor(
-    "document.readyState === 'complete' && !!window.MetabrowserInertHtml && !!window.diffFold",
+    "document.readyState === 'complete' && !!window.MetabrowserInertHtml && !!window.diffFold && !!window.metabrowser.filterControls",
   );
-  const folds = await chrome.evaluate(`(${MOUNT})(${JSON.stringify(INPUT.blocks)})`);
-  check("the comparison has one fold", folds === 1, `${folds}`);
+  const bars = await chrome.evaluate(`(${MOUNT})(${JSON.stringify(INPUT.answer)})`);
+  check(
+    "the comparison draws one fold, as the diff's fold bar and the group it controls",
+    bars.length === 1 &&
+      bars[0].tag === "BUTTON" &&
+      bars[0].className === "fold-expander diff-fold-control disclosure-toggle" &&
+      bars[0].expanded === "false" &&
+      bars[0].group === "diff-fold-group diff-markdown-fold diff-fold-collapsed",
+    JSON.stringify(bars),
+  );
   await chrome.evaluate("document.fonts.ready.then(() => true)");
   const wide = await chrome.evaluate(`(${RENDERED_GEOMETRY})(1000)`);
   const narrow = await chrome.evaluate(`(${RENDERED_GEOMETRY})(360)`);
@@ -418,20 +521,20 @@ try {
   await chrome.evaluate(CLICK);
   await chrome.evaluate(SETTLE);
   const reclosed = await chrome.evaluate(`(${READ})()`);
-  // The pointer has not entered the page yet; then it rests on the summary.
-  const resting = await chrome.evaluate(COLOR);
-  await chrome.send("Input.dispatchMouseEvent", {
-    type: "mouseMoved",
-    x: resting.x,
-    y: resting.y,
-  });
-  const hovered = await chrome.evaluate(COLOR);
-  // The keyboard walks the page from its start to the fold's summary, then to the
-  // document's own, so `:focus-visible` holds on each as it does for a reader.
+  // The pointer has not entered the page yet; then it rests on each bar.
+  const resting = await chrome.evaluate(BACKGROUND(MARKDOWN_BAR));
+  const codeResting = await chrome.evaluate(BACKGROUND(CODE_BAR));
+  await point(resting);
+  const hovered = await chrome.evaluate(BACKGROUND(MARKDOWN_BAR));
+  await point(codeResting);
+  const codeHovered = await chrome.evaluate(BACKGROUND(CODE_BAR));
+  // The keyboard walks the page from its start to the Markdown fold's bar, then to the code
+  // fold's, then to the document's own summary, so `:focus-visible` holds on each as it
+  // does for a reader.
   await chrome.evaluate("(document.activeElement?.blur(), true)");
   /** @type {Record<string, any>} */
   const rings = {};
-  for (let step = 0; step < TAB_STEPS && !(rings.fold && rings.own); step += 1) {
+  for (let step = 0; step < TAB_STEPS && !(rings.fold && rings.code && rings.own); step += 1) {
     for (const type of ["keyDown", "keyUp"]) {
       await chrome.send("Input.dispatchKeyEvent", {
         type,
@@ -453,32 +556,38 @@ try {
     quoted[theme] = await chrome.evaluate(QUOTED);
   }
   process.stderr.write(
-    `${JSON.stringify({ closed, opened, reclosed, resting, hovered, rings, quoted }, rounded)}\n`,
+    `${JSON.stringify({ closed, opened, reclosed, resting, hovered, codeResting, codeHovered, rings, quoted }, rounded)}\n`,
   );
 
   // The fold draws the shell's one ring (docs/design-system.md, "Focus Ring"). KPress's
-  // document sheet rings a summary inside `article.kpress` 3px wide and 2px outside its box,
-  // above the shell's zero-specificity base, so the diff's sheet states the ring for the
-  // fold; the document's own summary keeps KPress's ring, which shows that rule is live.
+  // document sheet rings a `summary` inside `article.kpress` 3px wide and 2px outside its
+  // box; the fold's bar is a `button` there, which it does not ring, so the bar keeps the
+  // shell's ring, as the code fold's bar outside the article does. A document's own summary
+  // keeps KPress's ring, which shows that rule is live and that no fold rule reaches it.
   for (const [part, label] of [
-    ["fold", "the fold's summary"],
-    ["own", "a document's own summary"],
+    ["fold", "the Markdown fold's bar"],
+    ["code", "a code fold's bar"],
   ]) {
     check(
       `Tab reaches ${label}, which matches :focus-visible`,
       rings[part]?.visible === true,
       JSON.stringify(rings[part] ?? null),
     );
+    const drawn = rings[part]?.drawn;
+    const oneRing = rings[part]?.ring;
+    check(
+      `the focused ${label.replace(/^a |^the /, "")} draws the shell's one ring`,
+      drawn?.style === "solid" &&
+        drawn.width === oneRing.width &&
+        drawn.color === oneRing.color &&
+        drawn.offset === oneRing.offset,
+      JSON.stringify(rings[part] ?? null),
+    );
   }
-  const foldRing = rings.fold?.drawn;
-  const oneRing = rings.fold?.ring;
   check(
-    "the focused fold draws the shell's one ring, not KPress's",
-    foldRing?.style === "solid" &&
-      foldRing.width === oneRing.width &&
-      foldRing.color === oneRing.color &&
-      foldRing.offset === oneRing.offset,
-    JSON.stringify(rings.fold ?? null),
+    "Tab reaches a document's own summary, which matches :focus-visible",
+    rings.own?.visible === true,
+    JSON.stringify(rings.own ?? null),
   );
   check(
     "a document's own focused summary keeps KPress's ring",
@@ -488,78 +597,91 @@ try {
     JSON.stringify(rings.own ?? null),
   );
 
-  // Closed: one quiet line, the summary, between the blocks around it.
-  check("closed, the fold holds only its summary", closed.children === 1, `${closed.children}`);
-  // The rows before the fold, then the rows after it.
-  const after = closed.rows.findIndex((row) => !row.first);
-  const before = after - 1;
-  check("the fold has unchanged blocks on each side", before >= 0 && after > 0, `${after}`);
-  // A block's margins pass through its row (styles.css), and the fold has none of its own,
-  // so the space on each side of it is the margin of the block there.
-  check(
-    "closed, the space above the fold is the margin of the block before it",
-    near(closed.fold.top - closed.rows[before].box.bottom, closed.rows[before].marginBottom),
-    `${closed.fold.top - closed.rows[before].box.bottom} against ${closed.rows[before].marginBottom}`,
-  );
-  check(
-    "closed, the space below the fold is the margin of the block after it",
-    near(closed.rows[after].box.top - closed.fold.bottom, closed.rows[after].marginTop),
-    `${closed.rows[after].box.top - closed.fold.bottom} against ${closed.rows[after].marginTop}`,
-  );
-  check(
-    "closed, the summary is the fold's whole box",
-    near(closed.summary.top, closed.fold.top) && near(closed.summary.bottom, closed.fold.bottom),
-    `${closed.summary.top}-${closed.summary.bottom} in ${closed.fold.top}-${closed.fold.bottom}`,
-  );
-  const block = closed.rows[0].box;
+  // One bar for every fold: the Markdown file's computes as the code file's does.
   for (const [state, measured] of [
     ["closed", closed],
     ["open", opened],
   ]) {
-    for (const [part, part_box] of [
-      ["fold", measured.fold],
-      ["summary", measured.summary],
-    ]) {
-      const label = `${state}, the ${part}`;
-      check(`${label} has no border`, part_box.border === "0px 0px 0px 0px", part_box.border);
+    for (const [name, value] of Object.entries(measured.code.style)) {
       check(
-        `${label} has no background`,
-        part_box.background === "rgba(0, 0, 0, 0) none",
-        part_box.background,
+        `${state}, the Markdown fold bar's ${name} is a code fold bar's`,
+        measured.bar.style[name] === value,
+        `${measured.bar.style[name]} against ${value}`,
       );
-      check(`${label} has no shadow`, part_box.boxShadow === "none", part_box.boxShadow);
-      check(`${label} has no margin`, part_box.margin === "0px", part_box.margin);
+    }
+    for (const part of [
+      "startInFile",
+      "chevronStart",
+      "chevronWidth",
+      "labelStart",
+      "labelMiddle",
+      "height",
+    ]) {
+      check(
+        `${state}, the Markdown fold bar's ${part} is a code fold bar's`,
+        near(measured.bar[part], measured.code[part]),
+        `${measured.bar[part]} against ${measured.code[part]}`,
+      );
     }
     check(
-      `${state}, the fold has no padding`,
-      measured.fold.padding === "0px",
-      measured.fold.padding,
+      `${state}, the fold bar spans its file, as a code fold bar does`,
+      near(measured.bar.startInFile, 0) &&
+        near(measured.bar.width, measured.bar.fileWidth) &&
+        near(measured.code.width, measured.code.fileWidth),
+      `${measured.bar.startInFile}+${measured.bar.width} of ${measured.bar.fileWidth}; ` +
+        `code ${measured.code.width} of ${measured.code.fileWidth}`,
     );
     check(
-      `${state}, the fold spans the blocks' width`,
-      near(measured.fold.left, block.left) && near(measured.fold.width, block.width),
-      `${measured.fold.left}+${measured.fold.width} against ${block.left}+${block.width}`,
+      `${state}, the fold bar leads with the shell's chevron`,
+      measured.bar.chevronWidth > 0,
+      `${measured.bar.chevronWidth}`,
     );
     check(
-      `${state}, the summary's label starts on the blocks' text edge`,
-      near(measured.summary.contentLeft, measured.rows[0].textLeft),
-      `${measured.summary.contentLeft} against ${measured.rows[0].textLeft}`,
-    );
-    check(
-      `${state}, the summary never selects text`,
-      measured.summary.userSelect === "none",
-      measured.summary.userSelect,
+      `${state}, the fold bar never selects text`,
+      measured.bar.style["user-select"] === "none",
+      measured.bar.style["user-select"],
     );
   }
+  check(
+    "under the pointer, the Markdown fold bar takes the code fold bar's hover",
+    hovered.background === codeHovered.background &&
+      resting.background === codeResting.background &&
+      hovered.background !== resting.background,
+    `${resting.background} -> ${hovered.background}, code ${codeResting.background} -> ${codeHovered.background}`,
+  );
 
-  // Open: the hidden blocks, in place, laid out as the unchanged blocks around them.
+  // Closed: the bar between the blocks around it, its group empty and of no height.
+  check(
+    "closed, the group holds nothing and has no height",
+    closed.group.children === 0 && closed.group.height === 0,
+    `${closed.group.children} rows, ${closed.group.height}px`,
+  );
+  const after = closed.rows.findIndex((row) => !row.first);
+  const before = after - 1;
+  check("the fold has unchanged blocks on each side", before >= 1 && after > 0, `${after}`);
+  // A block's margins pass through its row (styles.css), and the bar has none of its own,
+  // so the space on each side of it is the margin of the block there.
+  check(
+    "closed, the space above the bar is the margin of the block before it",
+    near(closed.bar.top - closed.rows[before].box.bottom, closed.rows[before].marginBottom),
+    `${closed.bar.top - closed.rows[before].box.bottom} against ${closed.rows[before].marginBottom}`,
+  );
+  check(
+    "closed, the space below the bar is the margin of the block after it",
+    near(closed.rows[after].box.top - closed.bar.bottom, closed.rows[after].marginTop),
+    `${closed.rows[after].box.top - closed.bar.bottom} against ${closed.rows[after].marginTop}`,
+  );
+
+  // Open: the hidden blocks after the bar, laid out as the unchanged blocks around them.
   const inserted = opened.rows.filter((row) => row.folded);
   check(
-    "open, the fold holds the blocks its summary counts",
+    "open, the group holds the blocks the bar counted",
     inserted.length > 0 &&
-      inserted.length === opened.children - 1 &&
-      closed.summary.text === `${inserted.length} unchanged blocks`,
-    `${inserted.length} blocks, "${closed.summary.text}"`,
+      inserted.length === opened.group.children &&
+      closed.bar.text === `${inserted.length} unchanged blocks` &&
+      opened.bar.text === `Hide ${inserted.length} blocks` &&
+      opened.bar.expanded === "true",
+    `${inserted.length} blocks, "${closed.bar.text}", "${opened.bar.text}"`,
   );
   const neighbour = opened.rows[before];
   for (const row of inserted) {
@@ -586,12 +708,12 @@ try {
   }
   check(
     "open, the space above the first hidden block is its margin",
-    inserted.length > 0 && near(inserted[0].box.top - opened.summary.bottom, inserted[0].marginTop),
-    `${inserted[0]?.box.top - opened.summary.bottom} against ${inserted[0]?.marginTop}`,
+    inserted.length > 0 && near(inserted[0].box.top - opened.bar.bottom, inserted[0].marginTop),
+    `${inserted[0]?.box.top - opened.bar.bottom} against ${inserted[0]?.marginTop}`,
   );
   // The two unchanged blocks right before the fold, spaced as the document spaces them.
   const spacing = opened.rows[before].box.top - opened.rows[before - 1].box.bottom;
-  check("the fold has two unchanged blocks before it", before >= 1 && spacing > 0, `${spacing}`);
+  check("the blocks before the fold are spaced", spacing > 0, `${spacing}`);
   for (let index = 1; index < inserted.length; index += 1) {
     const gap = inserted[index].box.top - inserted[index - 1].box.bottom;
     check(
@@ -601,8 +723,8 @@ try {
     );
   }
   // The block after the fold, as far from the last block the fold holds as the blocks
-  // before the fold are from each other: a disclosure's content clipped by `overflow:
-  // hidden`, KPress's, kept that block's margin inside the fold and doubled the space.
+  // before the fold are from each other: a group clipped by `overflow: hidden`, the code
+  // fold's, kept that block's margin inside the group and doubled the space.
   const next = opened.rows.find((row) => !row.folded && !row.first);
   check(
     "open, the block after the fold is as far from the fold's last block as the blocks before the fold are",
@@ -612,48 +734,35 @@ try {
     `${next?.box.top - inserted.at(-1)?.box.bottom} against ${spacing}`,
   );
   check(
-    "open, the fold ends where its last block ends",
-    inserted.length > 0 && near(opened.fold.bottom, inserted.at(-1).box.bottom),
-    `${opened.fold.bottom} against ${inserted.at(-1)?.box.bottom}`,
+    "open, the group ends where its last block ends",
+    inserted.length > 0 && near(opened.group.bottom, inserted.at(-1).box.bottom),
+    `${opened.group.bottom} against ${inserted.at(-1)?.box.bottom}`,
   );
   check(
-    "open, the summary does not move",
-    near(opened.summary.top, closed.summary.top) &&
-      near(opened.summary.height, closed.summary.height),
-    `${opened.summary.top}/${opened.summary.height} against ${closed.summary.top}/${closed.summary.height}`,
+    "open, the bar does not move",
+    near(opened.bar.top, closed.bar.top) && near(opened.bar.height, closed.bar.height),
+    `${opened.bar.top}/${opened.bar.height} against ${closed.bar.top}/${closed.bar.height}`,
   );
-  const grown = opened.fold.height - closed.fold.height;
   const shownOpen = opened.rows.filter((row) => !row.folded);
+  const moved = shownOpen[after].box.top - closed.rows[after].box.top;
+  check("open, the blocks after the fold move down", moved > 0, `${moved}`);
   closed.rows.forEach((row, index) => {
-    const moved = shownOpen[index].box.top - row.box.top;
-    const expected = index < after ? 0 : grown;
+    const by = shownOpen[index].box.top - row.box.top;
+    const expected = index < after ? 0 : moved;
     check(
-      `open, "${row.text}" moves by as much as the fold grows, and no more`,
-      near(moved, expected),
-      `moved ${moved}, the fold grew ${expected}`,
+      `open, "${row.text}" moves by ${index < after ? "nothing" : "what the fold adds"}`,
+      near(by, expected),
+      `moved ${by}, expected ${expected}`,
     );
   });
 
   // Closing restores the closed layout.
   const layout = (/** @type {any} */ read) =>
-    JSON.stringify({ fold: read.fold, summary: read.summary, rows: read.rows, own: read.own });
-  check("closed again, the fold is closed", reclosed.open === false);
+    JSON.stringify({ bar: read.bar, group: read.group, rows: read.rows, own: read.own });
+  check("closed again, the bar is closed", reclosed.bar.expanded === "false");
   check("closed again, every box is where it was", layout(reclosed) === layout(closed));
 
-  // Under the pointer the label brightens from muted to the text colour, as the shell's
-  // document disclosures do; KPress's own hover colour does not reach it.
-  check(
-    "the summary's label is muted at rest",
-    resting.color !== resting.text,
-    `${resting.color} against text ${resting.text}`,
-  );
-  check(
-    "under the pointer, the summary's label takes the text colour",
-    hovered.color === hovered.text,
-    `${hovered.color} against text ${hovered.text}`,
-  );
-
-  // A document's own details keeps KPress's box: the fold's rule is the diff's alone.
+  // A document's own details keeps KPress's box: the fold bar's rules are the diff's alone.
   check(
     "a document's own details keeps its border",
     closed.own.border === "1px 1px 1px 1px",

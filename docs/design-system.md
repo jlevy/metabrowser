@@ -975,10 +975,11 @@ has the before and after).
   removed version leaves when the removed blocks are hidden.
   `h2 + h3` is not: joining it would restate KPress’s margin, so an h3 straight after an
   h2 keeps the space it has after a paragraph, a little more than the document’s.
-- **The fold of unchanged blocks** is a `<details>` whose rows are its content.
-  They undo the padding KPress gives a disclosure’s content, and the fold clips its
-  content with `overflow: clip` where KPress uses `hidden`, which would start a
-  formatting context and keep the last block’s margin inside the open fold.
+- **The fold of unchanged blocks** is the diff’s [fold bar](#fold-expanders) and the
+  group it opens, whose rows are its content.
+  The group clips its content with `overflow: clip` where a code file’s fold uses
+  `hidden`, which would start a formatting context and keep the last block’s margin
+  inside the open fold.
 - **A table** is the one block the rule does not reach yet.
   `withoutRenderWrappers` in `static/inert-html.js` unwraps the `<div>` KPress keeps
   around a table when it is the block’s only element, so the diff’s table has no
@@ -1421,10 +1422,12 @@ A consumer may repaint the group from its state on every change, and `bind` puts
 back on the chosen chip, so the arrow keys keep working.
 A diff’s toolbar has a Diff | Current chooser beside Split | Unified, one choice for the
 whole diff ([Diff Toolbar](#diff-toolbar)). Every changed file of a rendered format has
-a Rendered | Source chooser, whatever its size and whatever the server answers.
-Where only Source can be shown, Rendered keeps its place, dimmed and `aria-disabled`,
-and its tooltip and accessible name say why: a disabled button takes no pointer and no
-focus, so nothing could say it.
+a chooser of its views, whatever its size and whatever the server answers: Full |
+Concise | Source for Markdown, where Full is every block and Concise the changes with
+their unchanged runs folded, and Rendered | Source for YAML and JSON, whose tree has no
+runs to fold. Where only Source can be shown, each rendered view keeps its place, dimmed
+and `aria-disabled`, and its tooltip and accessible name say why: a disabled button
+takes no pointer and no focus, so nothing could say it.
 
 `test_a_toggle_cannot_fork_the_family` fails when a stylesheet or a source states a
 toggle’s ARIA outside this family, and
@@ -1478,8 +1481,9 @@ the base.
 
 Any rule that rings a control wins over the base, and that includes KPress’s document
 sheet, which rings a `summary` inside `article.kpress` with a wider ring outside the
-box. A control the app draws inside a KPress article therefore states the one ring
-itself, as a rendered diff’s run of unchanged blocks does in the diff plugin’s sheet;
+box. A `summary` the app draws inside a KPress article therefore states the one ring
+itself. A rendered diff’s run of unchanged blocks draws the diff’s fold bar there, a
+`button`, which KPress does not ring, so it keeps the base’s;
 `tests/test_diff_markdown_fold_chrome.py` reads that ring with KPress’s sheets loaded.
 
 ### Text Fields
@@ -1747,13 +1751,15 @@ its container. It is one primitive, `.fold-expander` in `static/styles.css`, on 
 or a native `summary`. `test_section_headings_and_fold_expanders_are_primitives` holds
 it.
 
-One fold is not a row: a rendered Markdown diff’s fold of unchanged blocks (“6 unchanged
-blocks”) is a line in the document, with no borders, that expands in place in the
-rendered document. It has no box, fill, or rules, closed or open; its chevron starts on
-the blocks’ text edge; its label brightens from muted to `--text` under the pointer, as
-a document’s own disclosures in the shell do; and opening it sets the blocks it holds
-exactly as the unchanged blocks around them.
-`tests/test_diff_markdown_fold_chrome.py` measures it in Chrome.
+Every fold of a diff is one **fold bar**, made by one factory, `foldExpander` in the
+diff plugin’s `diff-fold.js`: a code file’s long run of changed lines
+(`86 more changed lines`) and a rendered Markdown file’s run of unchanged blocks
+(`6 unchanged blocks`) draw the same bar, open and close alike, and differ only in what
+the group they open holds.
+Opening a Markdown fold sets the blocks it holds exactly as the unchanged blocks around
+them. A new kind of fold in a diff calls the factory rather than drawing a bar of its
+own. `tests/test_diff_markdown_fold_chrome.py` holds in Chrome that the two bars compute
+alike at rest and under the pointer.
 
 ### Disclosure Motion
 
@@ -2630,8 +2636,9 @@ pair and any note.
 The stat pair and notes are not in the disclosure trigger but describe
 it (`aria-describedby`), so the copy control can sit between them and the name.
 The View file or View on branch control follows that group, and the bar ends with a
-file’s **Rendered** | **Source** chooser alone, so the chooser is at the far end of
-every bar that has one, on Docs and Changes alike.
+file’s chooser of its views alone (**Full** | **Concise** | **Source** for Markdown,
+**Rendered** | **Source** for YAML and JSON), so the chooser is at the far end of every
+bar that has one, on Docs and Changes alike.
 **Diff** | **Current** chooses for the whole diff, so it is in the diff’s
 [toolbar](#diff-toolbar), not on a bar.
 
@@ -2656,9 +2663,9 @@ copy control and, with wide stats, its note under View file.
 
 The whole bar is one activation surface, the folder-row rule applied to a section
 header: clicking anywhere toggles, with only the copy control, the View file or View on
-branch control, and the Rendered | Source chooser opting out.
+branch control, and the chooser of views opting out.
 On a pull request’s Docs and Changes, a changed Markdown file’s bar carries that
-chooser, a joined chip pair, and before it a small spinner that keeps its place in the
+chooser, a joined chip group, and before it a small spinner that keeps its place in the
 bar and appears only after the loading-state delay while the rendered view is on its
 way. A file that falls back permanently to Source loses the chooser and the spinner, and
 its bar lays out as any other file’s. Where the main UI can show the file the change
@@ -3874,8 +3881,8 @@ rather than restate them.
   a known meaning: `H`, Home’s first letter, is commit History.
   Shift-0 is `0`, as Shift with any digit is.
 - **No key on an ancillary item.** Copying a path, a revision, or a hash; a per-row or
-  per-file affordance, such as a changed file’s View on branch or its Rendered | Source
-  chooser, of which a page has many; and a control that shows only on hover take no key.
+  per-file affordance, such as a changed file’s View on branch or its chooser of views,
+  of which a page has many; and a control that shows only on hover take no key.
   Each stays reachable by pointer and Tab.
   A key goes on a major tab or a major button, and a rare one, such as the Metabrowser
   menu, print, Retry, or Reload page, goes without.

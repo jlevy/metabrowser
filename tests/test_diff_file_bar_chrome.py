@@ -1,4 +1,4 @@
-"""A diff's file bars, laid out by headless Chrome at widths from 1,063 px down to 159 px.
+"""A diff's file bars, laid out by headless Chrome at widths from 1,063 px down to 171 px.
 
 Where a bar's parts go as it narrows is layout: which part gives way, which moves to the
 next line, and whether anything ends past the bar's edge. No browserless DOM computes it,
@@ -37,7 +37,7 @@ LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 
-def test_a_diff_file_bar_cuts_off_nothing_from_1063_to_159_px_in_chrome(
+def test_a_diff_file_bar_cuts_off_nothing_from_1063_to_171_px_in_chrome(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
     chrome = require_chrome()

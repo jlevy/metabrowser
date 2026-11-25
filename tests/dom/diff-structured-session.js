@@ -283,10 +283,14 @@ const element = (tag) => new PageElement(tag);
 page.createElement = element;
 globalThis.document = page;
 
+// The views' observer of files near the viewport; the other, of chunks of rendered
+// Markdown not drawn yet, looks above as well as below, and no tree file has one.
 let observer;
 globalThis.IntersectionObserver = class {
   constructor(notify, options) {
-    observer = this;
+    if (options.rootMargin.startsWith("0px ")) {
+      observer = this;
+    }
     this.notify = notify;
     this.options = options;
     this.observed = [];

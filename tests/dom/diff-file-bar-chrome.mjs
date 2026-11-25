@@ -1,4 +1,4 @@
-// A diff's file bars laid out by headless Chrome at bar widths from 1,063 px down to 159 px,
+// A diff's file bars laid out by headless Chrome at bar widths from 1,063 px down to 171 px,
 // under the shell's and the diff plugin's stylesheets and KPress's faces.
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
@@ -9,7 +9,7 @@
 // installed package, owns the profile, and runs this in a process group of its own.
 //
 // Each bar is the markup `renderFileBar` (builtin_plugins/diff/diff-view.js) builds, with
-// the shell's icons, and for a bar with a Rendered | Source chooser the markup
+// the shell's icons, and for a bar with a Full | Concise | Source chooser the markup
 // diff-markdown.js's `add` puts at its end, through the production chip group
 // (static/filter-controls.js). tests/dom/diff-view-behavior.js and
 // tests/dom/diff-view-file-session.js hold the production bar to this structure: the
@@ -38,8 +38,10 @@ const KPRESS = path.resolve(/** @type {string} */ (process.env.KPRESS_STATIC));
 const SHOTS = process.env.BAR_SHOTS;
 // Layout puts box edges on 1/64 px; half a pixel separates what text rendering rounds.
 const TOLERANCE_PX = 0.5;
-// The widths the review measured (A1), and the narrowest a bar can be with nothing cut.
-const BAR_WIDTHS = [1063, 499, 399, 299, 199, 159];
+// The widths the review measured (A1), and the narrowest a bar can be with nothing cut,
+// which a Markdown file's Full | Concise | Source chooser sets: 150.8 px in Chrome, inside
+// the bar's 10 px pads (159 px held the two-chip Rendered | Source it replaced).
+const BAR_WIDTHS = [1063, 499, 399, 299, 199, 171];
 const failures = [];
 let checks = 0;
 const check = (label, ok, detail = "") => {
@@ -153,11 +155,12 @@ const MOUNT = `(bars) => {
         label: "Markdown diff format",
         layout: "joined",
         options: [
-          { label: "Rendered", value: "rendered" },
+          { label: "Full", value: "full" },
+          { label: "Concise", value: "concise" },
           { label: "Source", value: "source" },
         ],
         select: "one",
-        value: "rendered",
+        value: "concise",
       });
       bar.classList.add("diff-file-bar-markdown");
       end.append(progress, control);

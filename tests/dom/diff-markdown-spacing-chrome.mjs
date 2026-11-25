@@ -1,5 +1,5 @@
 // The space between a rendered Markdown diff's blocks, laid out by headless Chrome beside
-// the Document view of the same text: the production `appendBlocks` and `sanitizeBlock`
+// the Document view of the same text: the production `blockRow` and `sanitizeBlock`
 // (builtin_plugins/diff/diff-markdown.js) build the server's projection into the article a
 // pull request's Changes and Docs mount, under the shell's, the Markdown plugin's, the
 // pull request page's, the diff plugin's, and KPress's stylesheets, and KPress's render of
@@ -65,8 +65,8 @@ const PAGE = `<!doctype html><html style="--doc-max-chars: ${INPUT.docMaxChars}"
 ${INPUT.sheets.map((/** @type {string} */ sheet) => `<link rel="stylesheet" href="/kpress/${sheet}">`).join("\n")}
 <script src="/static/inert-html.js"></script>
 <script type="module">
-import { appendBlocks, sanitizeBlock } from "/plugins/diff/diff-markdown.js";
-window.diffSpacing = { appendBlocks, sanitizeBlock };
+import { blockRow, sanitizeBlock } from "/plugins/diff/diff-markdown.js";
+window.diffSpacing = { blockRow, sanitizeBlock };
 </script>
 </head><body><div id="preview-pane" class="preview-pane" style="display: grid; grid-template-columns: repeat(2, ${FRAME_PX}px); align-items: start"></div></body></html>`;
 
@@ -103,7 +103,7 @@ function serve() {
 // removed blocks hidden as Current hides them (`hidden` on the row) beside the old version's.
 const MOUNT = `(blocks, documents, frame) => {
   const inert = window.MetabrowserInertHtml;
-  const { appendBlocks, sanitizeBlock } = window.diffSpacing;
+  const { blockRow, sanitizeBlock } = window.diffSpacing;
   const base = "https://github.com/octo/demo/blob/main/docs/guide.md";
   const el = (tag, className, children = []) => {
     const node = document.createElement(tag);
@@ -131,7 +131,8 @@ const MOUNT = `(blocks, documents, frame) => {
   const template = document.createElement("template");
   const comparison = () => {
     const content = document.createDocumentFragment();
-    appendBlocks(content, blocks, (html) => sanitizeBlock(html, inert, template, scratch, () => false), true);
+    const build = (html) => sanitizeBlock(html, inert, template, scratch, () => false);
+    content.append(...blocks.map((block) => blockRow(block, build)));
     const article = el("article", "kpress kpress-inert diff-markdown", [content]);
     const diff = el("div", "github-pull-diff metabrowser-diff-host", [
       el("div", "diff-root", [el("section", "diff-file", [article])]),

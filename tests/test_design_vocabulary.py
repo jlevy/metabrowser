@@ -352,7 +352,7 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     # The bar is a centered row of boxes: the name's group, the toggle with the copy control
     # right after it and the change's stats; the View file or View on branch control, a box
     # at the path's size, which centering puts on its baseline; and the group at its end, a
-    # file's Rendered | Source chooser behind its progress mark (`add` in diff-markdown.js).
+    # file's Full | Concise | Source chooser behind its progress mark (`add` in diff-markdown.js).
     # Each group is a centered row of boxes too.
     lead = box(
         "diff-file-lead",
@@ -1698,10 +1698,6 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ): "the stand-in for a badge: an image the page does not load",
     ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
     ("agents/agent-log.css", ".log-event-kind"): "a badge",
-    (
-        "diff/styles.css",
-        ".metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary",
-    ): "a fold's control",
     ("github/styles.css", ".github-pull-labels"): "a row of label chips",
     ("github/styles.css", ".github-pull-label"): "a label chip",
     ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",
@@ -2003,8 +1999,17 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     plugins = REPO_ROOT / BUILTIN_PLUGINS
     overview = (plugins / "folder/overview.js").read_text(encoding="utf-8")
     assert '"section-heading folder-overview-panel-heading"' in overview
-    diff = (plugins / "diff/diff-view.js").read_text(encoding="utf-8")
-    assert '"fold-expander diff-fold-control disclosure-toggle"' in diff
+    # One fold bar for every fold of a diff: a code file's run of changed lines and a
+    # rendered Markdown file's run of unchanged blocks (docs/design-system.md, "Fold
+    # Expanders").
+    fold_bar = (plugins / "diff/diff-fold.js").read_text(encoding="utf-8")
+    assert '"fold-expander diff-fold-control disclosure-toggle"' in fold_bar
+    for user in ("diff/diff-view.js", "diff/diff-markdown.js"):
+        source = (plugins / user).read_text(encoding="utf-8")
+        assert re.search(
+            r'import \{[^}]*\bfoldExpander\b[^}]*\} from "\./diff-fold\.js";', source
+        ), user
+        assert "fold-expander" not in source, f"{user} builds a fold bar of its own"
     page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
     headings = re.findall(r'h\("h2", \{([^}]+)\}', page)
     assert headings and len(headings) == page.count('h("h2",')
@@ -2090,18 +2095,15 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "folder/overview.js": (
         '"folder-overview-panel-toggle section-disclosure-trigger disclosure-toggle"',
     ),
+    "diff/diff-fold.js": ('"fold-expander diff-fold-control disclosure-toggle"',),
     "diff/diff-view.js": (
-        '"fold-expander diff-fold-control disclosure-toggle"',
         '"diff-file-bar disclosure-toggle"',
         '"diff-summary diff-summary-toggle disclosure-toggle collapsed"',
     ),
     "diff/diff-summary.js": (
         '"changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"',
     ),
-    "diff/diff-markdown.js": (
-        'heading.className = "disclosure-toggle"',
-        'summary.className = "disclosure-toggle"',
-    ),
+    "diff/diff-markdown.js": ('heading.className = "disclosure-toggle"',),
     "github/pulls-panel.js": (
         '"github-pulls-change disclosure-toggle collapsed"',
         '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
@@ -2152,8 +2154,10 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "markdown/rendered.js": (
         ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),
     ),
-    "diff/diff-view.js": (
+    "diff/diff-fold.js": (
         ('shellIcon("toggle")', '"fold-expander diff-fold-control disclosure-toggle"'),
+    ),
+    "diff/diff-view.js": (
         ('shellIcon("toggle")', '"diff-file-bar disclosure-toggle"'),
         ('shellIcon("toggle")', '"diff-summary diff-summary-toggle disclosure-toggle collapsed"'),
     ),
@@ -2165,7 +2169,6 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "diff/diff-markdown.js": (
         ('createElement("summary")', 'heading.className = "disclosure-toggle"'),
-        ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
     ),
     "github/pulls-panel.js": (
         ("[chevron()]", '"github-pulls-change disclosure-toggle collapsed"'),
@@ -2366,14 +2369,14 @@ def test_an_unmarked_chevron_beside_a_marked_toggle_fails() -> None:
     new chevron button built just after a diff fold's passed.
     """
 
-    key = "diff/diff-view.js"
+    key = "diff/diff-fold.js"
     text = (REPO_ROOT / BUILTIN_PLUGINS / key).read_text(encoding="utf-8")
-    anchor = (
-        '  const control = el("button", "fold-expander diff-fold-control disclosure-toggle");\n'
-    )
+    anchor = '  control.className = "fold-expander diff-fold-control disclosure-toggle";\n'
     assert anchor in text
     beside = anchor + (
-        '  const more = el("button", "diff-fold-more");\n  more.innerHTML = shellIcon("toggle");\n'
+        '  const more = document.createElement("button");\n'
+        '  more.className = "diff-fold-more";\n'
+        '  more.innerHTML = shellIcon("toggle");\n'
     )
     assert _toggle_source_problems(key, text) == []
     assert _toggle_source_problems(key, text.replace(anchor, beside))

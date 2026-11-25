@@ -158,6 +158,9 @@ and draws rows only near the viewport:
 - **The mount** draws rows for the ready files within the pane and one screen more
   (`firstScreenBudget`). Later ready files are bars that reserve their height from
   `patchRows` until they are drawn.
+  A file with a rendered view is held wherever it is, and its Source rows are drawn only
+  while its rendered view shows Source and once the file is reached (`bodyWanted`), so a
+  long document behind its rendered view costs nothing to load.
 - **`createHydrationScheduler`** asks for one deferred file at a time, from the top of
   the viewport through `HYDRATION_AHEAD_PX` below it, and draws at most one file per
   frame. A file jump goes first and cancels other requests, and a burst of jumps waits
@@ -232,12 +235,13 @@ A refusal is never kept, since a fetch can answer it.
 ## Rendered Projections
 
 A pull request’s Changes shows a changed file the file view draws from data rather than
-as text, Markdown, YAML, or JSON, as **Rendered** by default, with **Source** for the
-exact diff. Rendered is the file view’s own rendering with each change marked in one
+as text, Markdown, YAML, or JSON, rendered by default, with **Source** for the exact
+diff. A rendered view is the file view’s own rendering with each change marked in one
 change gutter: Markdown’s blocks, with its front matter as the Document view’s
-Frontmatter disclosure, and YAML’s and JSON’s tree.
-`GET /api/plugin/github/pull-rendered-diff` answers one file’s projection, by the format
-of its extension, and `builtin_plugins/diff/diff-markdown.js` mounts it.
+Frontmatter disclosure, in **Full** or **Concise** ([Markdown Views](#markdown-views)),
+and YAML’s and JSON’s tree, in **Rendered**. `GET /api/plugin/github/pull-rendered-diff`
+answers one file’s projection, by the format of its extension, and
+`builtin_plugins/diff/diff-markdown.js` mounts it.
 Both projections run in one long-lived child process
 (`diff/markdown_projection_worker.py`), so a projection never holds the server’s GIL;
 the module records the measurement.
@@ -253,7 +257,7 @@ KPress’s own render.
 Changed words are marked by a bounded word diff.
 
 - **Fallback:** a side nested past what MarkdownIt keeps is refused with that `reason`,
-  and the file shows Source with its Rendered chip unavailable and saying why.
+  and the file shows Source with its rendered chips unavailable and saying why.
   The budgets beside `MARKDOWN_DIFF_MAX_BYTES`, each with its measurement, bound a
   projection in a thread, which nothing can stop, only for Markdown without raw HTML. No
   count over the input bounds what the sanitizer makes of raw HTML, which rebuilds each
@@ -340,8 +344,55 @@ Changed words are marked by a bounded word diff.
   projection that finds such a render holding the child runs in a thread instead, and
   one waiting for the child goes before every waiting render.
 - **Paint:** a file on screen waits for its projection for the app’s loading-state delay
-  with Source hidden; past it, Source paints first and Rendered replaces it when it
-  arrives. Conversation prefetches the projections of the first screen’s files.
+  with Source hidden; past it, Source paints first and the rendered view replaces it
+  when it arrives. Conversation prefetches the projections of the first screen’s files.
+  The diff draws a file’s Source rows only while they show (`onSource`), so Source
+  hidden behind the rendered view is never drawn.
+
+### Markdown Views
+
+A Markdown file has two rendered views of one projection.
+**Full** draws every block; **Concise** draws each change with `CONTEXT_BLOCKS`
+unchanged blocks on either side and folds the runs between.
+`diff/markdown_views.py` is the one place that says which runs fold (`fold_runs`), and
+the route answers either view from the projection it keeps
+(`builtin_plugins/github/pull_rendered_diff.py`, `view=full|concise|prefer-full`).
+Changes asks for Concise and Docs for `prefer-full`, which the route answers in Full
+within `FULL_MAX_BLOCKS` and `FULL_MAX_BYTES` (`prefers_full`) and in Concise past
+either, saying which in the answer’s `view`.
+
+- **Folds:** a Concise answer lists its folds, each with where it starts, its blocks,
+  its source lines, and the anchors of the headings it holds.
+  A fold that spans `INLINE_FOLD_MAX_LINES` source lines or more is withheld: its blocks
+  are left out, and the page asks for them with `blocks=I-J` when the reader opens it or
+  follows a link to one of its headings, so a long document with a few edits answers in
+  the size of its edits.
+  The file’s progress mark shows while they are asked for, and a fold whose blocks do
+  not load closes again with its bar saying so; a press asks again.
+  A shorter fold comes with the answer and opens at once.
+  The route assembles every answer, a range included, from the encoded blocks it keeps,
+  so a fetched block is the bytes the projection made and passes the same sanitizer and
+  hardening on the page as the rest.
+- **One fold bar:** the page draws each fold with `foldExpander`
+  (`builtin_plugins/diff/diff-fold.js`), the bar a code file’s long changed run folds
+  behind, so both open and close alike
+  ([Fold Expanders](../../design-system.md#fold-expanders)).
+- **Windowing:** `diff-markdown.js` draws a file whole within `WHOLE_UNITS` and
+  `WHOLE_BYTES`, the Full bounds, and past either a chunk at a time (`CHUNK_UNITS`,
+  `CHUNK_BYTES`): the first chunk with its answer, and each later one, kept until then
+  as a spacer of estimated height (`BLOCK_PX`, `BYTE_PX`, `FOLD_PX`), when the reader
+  comes within `LOOKAHEAD` of it.
+  A link to a heading draws every chunk through the one that holds it before it scrolls,
+  so the rows above the target stand at their own heights; `beforeprint` draws the rest.
+  Find in page and Select All reach only the chunks drawn, as the
+  [large-content rules](../../large-content-rendering.md) record.
+- **The reader’s place:** a Markdown file’s rows, to the diff’s place-keeping
+  (`drawnRows` in `diff-view.js`), are its blocks in the page’s order, those inside an
+  open fold among them, so the block at the pane’s top is the place wherever it is.
+  A view drawn anew, Full for Concise or Concise for Full, draws the chunk that holds
+  that block first (`drawBlock`), so the block keeps its place rather than its chunk’s
+  first block; `tests/dom/diff-current-chrome.mjs` reads it in Chrome deep in a long
+  document and inside a long open fold.
 
 ### YAML and JSON
 

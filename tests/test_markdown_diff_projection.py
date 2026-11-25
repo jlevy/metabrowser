@@ -275,6 +275,8 @@ def test_frontmatter_lists_keys_as_kpress_does_with_each_change_marked() -> None
             "side": "new",
             "html": result["blocks"][0]["html"],
             "source_only": False,
+            # The lines of the file the heading spans, its front matter counted.
+            "lines": [7, 8],
         }
     ]
     assert result.get("frontmatter") == {
@@ -1666,6 +1668,7 @@ def test_an_edited_note_marks_its_words() -> None:
             "side": "old",
             "html": f'<ol start="2">\n<li><p>The second note. {_GONE}</p>\n</li>\n</ol>',
             "source_only": False,
+            "lines": [6, 7],
         },
         {
             "kind": "added",
@@ -1673,6 +1676,7 @@ def test_an_edited_note_marks_its_words() -> None:
             "html": f'<ol start="2">\n<li><p>The second<ins>, longer</ins> note. {_BACK}</p>'
             "\n</li>\n</ol>",
             "source_only": False,
+            "lines": [6, 7],
         },
     ]
 
@@ -1690,10 +1694,11 @@ def test_an_added_or_removed_note_shows_with_its_reference(added: bool) -> None:
             "side": "new" if added else "old",
             "html": html,
             "source_only": False,
+            "lines": lines,
         }
-        for html in (
-            f"<p>More.<sup>{reference}</sup></p>",
-            f'<ol start="3">\n<li><p>A third note. {back}</p>\n</li>\n</ol>',
+        for html, lines in (
+            (f"<p>More.<sup>{reference}</sup></p>", [8, 9]),
+            (f'<ol start="3">\n<li><p>A third note. {back}</p>\n</li>\n</ol>', [10, 11]),
         )
     ]
     assert result["source_only"] is False
@@ -1962,6 +1967,7 @@ def test_raw_html_projects_only_where_a_deadline_stops_it(monkeypatch: pytest.Mo
             "html": "<div><b><b><b></b></b></b></div><div><b><b><b>x</b></b></b></div>"
             "<div><b><b><b>x</b></b></b></div><b><b><b>\n</b></b></b>",
             "source_only": True,
+            "lines": [0, 1],
         }
     ]
     # Markdown renders balanced elements, which the parser rebuilds none of, and a comment

@@ -81,7 +81,16 @@ OVER_BUDGET: Final[dict[str, Excepted]] = {}
 HARNESS: Final = "tests/golden_harness.py"
 UPDATE_ENV: Final = "GOLDEN_UPDATE"
 # The harness function a module calls decides which Makefile list must name it.
-_LIST_FOR: Final = {"check_recording": "GOLDEN_RECORDERS", "check_golden": "GOLDEN_DRIVERS"}
+# `check_recording_text` is `check_recording` for a recording its caller renders itself,
+# so it records as that one does.
+_LIST_FOR: Final = {
+    "check_recording": "GOLDEN_RECORDERS",
+    "check_recording_text": "GOLDEN_RECORDERS",
+    "check_golden": "GOLDEN_DRIVERS",
+}
+_RECORDERS: Final = frozenset(
+    name for name, rule in _LIST_FOR.items() if rule == "GOLDEN_RECORDERS"
+)
 # The harness's own switch. A module that asks it rewrites something by itself, which
 # no list can order and no check can see.
 _UPDATING: Final = "updating"
@@ -148,7 +157,7 @@ def harness_use(source: str) -> HarnessUse:
         if name not in _LIST_FOR:
             continue
         functions.add(name)
-        if name == "check_recording" and node.args:
+        if name in _RECORDERS and node.args:
             first = node.args[0]
             if isinstance(first, ast.Constant) and isinstance(first.value, str):
                 recordings.add(first.value)
@@ -243,10 +252,14 @@ def registration_findings(root: Path) -> list[str]:
                     "`make golden-update` would leave what it writes stale"
                 )
     for name, modules in listed.items():
-        function = next(key for key, value in _LIST_FOR.items() if value == name)
+        functions = sorted(key for key, value in _LIST_FOR.items() if value == name)
         for module in modules:
-            if (root / module).is_file() and function not in uses.get(module, _NO_USE).functions:
-                findings.append(f"Makefile: {name} names {module}, which does not call {function}")
+            if (root / module).is_file() and not set(functions) & uses.get(
+                module, _NO_USE
+            ).functions:
+                findings.append(
+                    f"Makefile: {name} names {module}, which does not call {' or '.join(functions)}"
+                )
 
     named = {literal for module in listed["GOLDEN_DRIVERS"] for literal in _literals(uses, module)}
     for path in sorted((root / "tests" / "golden").glob("*.txt")):

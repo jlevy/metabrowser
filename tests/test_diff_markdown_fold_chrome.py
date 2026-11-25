@@ -1,20 +1,25 @@
 """A rendered Markdown diff's fold of unchanged blocks, laid out by headless Chrome.
 
-A fold is a place in the document, not a box in it: closed, it is one quiet line between
-the blocks around it, with no border, background, or margin; open, the blocks it held
-stand in place, in the face, measure, and spacing of the unchanged blocks around them,
-and nothing else moves; closed again, the layout is as it was. The fold is a
-``<details>`` inside the comparison's ``article.kpress``, so KPress's document disclosure
-box reached it, and only a browser computes that cascade and the boxes it draws. So
-``tests/dom/diff-markdown-fold-chrome.mjs`` builds the server's projection of a document
-with a long unchanged run through the production ``appendBlocks`` and ``sanitizeBlock``
-and measures it. A document's own ``<details>`` keeps KPress's box beside it.
+Every fold of a diff draws as one bar (docs/design-system.md, "Fold Expanders"): a
+rendered Markdown file's run of unchanged blocks folds behind the bar a code file's long
+run of changed lines does, the same element and classes (``foldExpander`` in
+``builtin_plugins/diff/diff-fold.js``), so it must also compute the same, at rest and
+under the pointer, across its file's width. Closed, the bar stands between the blocks
+around it; open, the blocks it held stand after it in the face, measure, and spacing of
+the unchanged blocks around them, the bar does not move, and everything after it moves by
+one amount; closed again, the layout is as it was. The bar is a ``button`` inside the
+comparison's ``article.kpress``, so KPress's document stylesheets reach it, and only a
+browser computes that cascade and the boxes it draws. So
+``tests/dom/diff-markdown-fold-chrome.mjs`` mounts the route's Concise answer for a
+document with a long unchanged run through the production ``createMarkdownViews``, beside
+a code file's fold bar, and measures both.
 
-Before the fold's rule in ``builtin_plugins/diff/styles.css``, it drew KPress's 1px
-border and 12px block margins, and opening it drew a rule under its summary, moving the
-blocks after it 1px further than the blocks it inserted.
+Before the group of a Markdown fold clipped with ``overflow: clip``, the code fold's
+``overflow: hidden`` started a formatting context there and kept the last block's margin
+inside the open group, adding it to the next block's: 24 px from the last block the fold
+holds to the paragraph after it, where the document has 12.
 
-The session then mounts a comparison of a quote holding inline code and of a code block
+The session then draws a comparison of a quote holding inline code and of a code block
 beside a document holding the same blocks, and holds, in the light and the dark theme,
 that the comparison's quote rule, quoted text, and code edges, corners, padding, and
 colors are the document's, in the app's border and muted tokens. The comparison's
@@ -35,6 +40,10 @@ from pathlib import Path
 
 import pytest
 
+from metabrowser.builtin_plugins.github.pull_rendered_diff import (
+    _kept,  # pyright: ignore[reportPrivateUsage]
+    _view_answer,  # pyright: ignore[reportPrivateUsage]
+)
 from metabrowser.diff.markdown_projection import project_markdown_diff
 from metabrowser.settings import DOC_MAX_CHARS_DEFAULT
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
@@ -52,7 +61,7 @@ LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 # An edit at each end of a run of ten unchanged paragraphs, so the run keeps two blocks
-# beside each edit and folds the six between them.
+# beside each edit and folds the six between them, short enough to come with the answer.
 _OLD = (
     b"# Guide\n\nThe old opening line.\n\n"
     + b"".join(b"Unchanged paragraph %d.\n\n" % index for index in range(10))
@@ -65,7 +74,7 @@ _QUOTED_OLD = b"> Quoted text with `inline code`.\n\n```\nmake test\n```\n\nThe 
 _QUOTED_NEW = _QUOTED_OLD.replace(b"old line", b"new line")
 
 
-def test_a_fold_expands_in_place_without_a_box_in_chrome(
+def test_a_markdown_fold_is_the_diffs_fold_bar_in_chrome(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
     chrome = require_chrome()
@@ -76,6 +85,8 @@ def test_a_fold_expands_in_place_without_a_box_in_chrome(
         )
     )
     assert projection["status"] == "ready"
+    answer = json.loads(_view_answer(_kept(projection), "concise"))
+    assert [(fold["count"], "withheld" in fold) for fold in answer["folds"]] == [(6, False)]
     quoted = dict(
         project_markdown_diff(
             old=_QUOTED_OLD,
@@ -90,7 +101,7 @@ def test_a_fold_expands_in_place_without_a_box_in_chrome(
         json.dumps(
             {
                 "sheets": sheets,
-                "blocks": projection["blocks"],
+                "answer": answer,
                 "quoted": quoted["blocks"],
                 "docMaxChars": DOC_MAX_CHARS_DEFAULT,
             }

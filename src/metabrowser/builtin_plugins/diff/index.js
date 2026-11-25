@@ -109,12 +109,18 @@ function markdownLayer(comparison) {
       console.error("metabrowser diff: Markdown view unavailable", error);
       return null;
     }),
-    /** @param {string} fileId @param {AbortSignal} [signal] @param {boolean} [ahead] */
-    load: (fileId, signal, ahead = false) =>
+    /**
+     * @param {string} fileId
+     * @param {AbortSignal} [signal]
+     * @param {import("./diff-markdown.js").RenderedAsk & {ahead?: boolean}} [ask] A Markdown
+     *   file's view or blocks (`GET github/pull-rendered-diff`), and whether this asks
+     *   ahead of the reader.
+     */
+    load: (fileId, signal, { ahead = false, ...ask } = {}) =>
       mb.fetchPluginData(
         plugin,
         hook,
-        { ...params, file: fileId, ...(ahead ? { prefetch: "1" } : {}) },
+        { ...params, file: fileId, ...ask, ...(ahead ? { prefetch: "1" } : {}) },
         signal === undefined ? undefined : { signal },
       ),
   };
@@ -156,7 +162,8 @@ async function prefetchMarkdown(markdown, payload, signal) {
       return;
     }
     try {
-      await markdown.load(fileId, signal, true);
+      // The smaller answer: the server keeps the projection either view is drawn from.
+      await markdown.load(fileId, signal, { ahead: true, view: "concise" });
     } catch {
       return;
     }
@@ -741,7 +748,7 @@ mb.registerView("diff", "diff", {
         ? {}
         : {
             markdownViews,
-            renderMarkdown: (fileId, signal) => markdown.load(fileId, signal),
+            renderMarkdown: (fileId, signal, ask) => markdown.load(fileId, signal, ask),
             markdownTargets: markdownViews.markdownTargets(
               ctx.comparison?.image_route,
               headLinksOpen(ctx.comparison),

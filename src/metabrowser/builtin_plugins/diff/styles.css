@@ -39,7 +39,7 @@
      control's pad: at rest the stats end 44 px before View file's text and start 28 px
      after the name's, past Copy path's slot, so they read with the name. And the least
      the name's group keeps before View file moves to the next line, on a bar without a
-     Rendered | Source chooser (`.diff-file-lead`): the rest of the group beside the name
+     view chooser (`.diff-file-lead`): the rest of the group beside the name
      took 106 px with stats of +1 -0 and 174 px with +12,345 -12,345, so stats that wide
      never run under View file. Measured in headless Chrome, design-rule-measurements.md
      "Diff File Bar Widths". */
@@ -292,13 +292,13 @@
 /* The bar's parts. It leads with the group that names the file: the
    disclosure, the copy control right after the name, and the change's stats
    and notes. The View file control follows it, and the bar ends with a file's
-   Rendered | Source chooser, at its far end. The name's group and the end group
+   view chooser, at its far end. The name's group and the end group
    are each one flex item, so nothing parts the copy control or the stats from
    the name, and the end group moves whole. The end group's start margin takes
    the bar's free space, which stays part of the bar's one activation surface.
 
    Where the parts do not fit one line, the bar wraps them in order, and the
-   name's group keeps the first. A bar with a Rendered | Source chooser
+   name's group keeps the first. A bar with a view chooser
    (`.diff-file-bar-markdown`) wraps before its name is cut at all: the group
    takes its whole width when laid out, so View file and then the end group move
    to the next line first. Any other bar cuts a long path short on one line, the
@@ -735,7 +735,7 @@
   white-space: nowrap;
 }
 
-/* Where a bar with a Rendered | Source chooser wraps (`.diff-file-lead`), the chooser's
+/* Where a bar with a view chooser wraps (`.diff-file-lead`), the chooser's
    group takes a line after the name's, at the bar's end (`.diff-file-end`). Where that
    group alone is wider than the bar, it wraps too, each of its lines at the bar's end, so
    no control is cut off. */
@@ -1014,57 +1014,16 @@
   }
 }
 
-/* A fold of unchanged blocks is a place in the document, not a box in it: one quiet line
-   that opens to the blocks it holds, set as the blocks around them are. It is a
-   `<details>` inside the comparison's `article.kpress`, so KPress's document disclosure box
-   (a border, a block margin, and a rule under an open summary) is undone here, and the
-   face it sets is given back to the article, so the blocks the fold holds inherit what
-   their neighbours do. KPress's stylesheets may load before or after this one (a pull
-   request's description or an earlier Markdown document loads them first; a direct
-   visit to Changes loads them after), so these selectors outrank KPress's in either
-   order, its hover colour included. Context rows also carry `.diff-markdown-context`,
-   hence `details`. The label's chevron starts on the blocks' text edge, past their
-   change gutter, and the label brightens to the text colour under the pointer, as the
-   shell's document disclosures do (docs/design-system.md, "Fold Expanders").
-   tests/test_diff_markdown_fold_chrome.py measures it closed, open, and hovered. */
-.metabrowser-diff-host .diff-markdown details.diff-markdown-context {
-  border: 0;
-  margin: 0;
-  padding: 0;
-  background: none;
-  color: inherit;
-  font-family: inherit;
-  font-feature-settings: inherit;
-}
-
-/* KPress clips a disclosure's content while it opens and closes, with `overflow: hidden`,
-   which also starts a formatting context there and so kept the last block's margin
-   inside an open fold, adding it to the next block's: 24 px from the last block the fold
-   holds to the paragraph after it, where the document has 12. `clip` clips the same and
-   starts none, so that margin collapses with the next block's as the document's does. */
-.metabrowser-diff-host .diff-markdown details.diff-markdown-context::details-content {
+/* A run of unchanged blocks folds behind the diff's fold bar (diff-fold.js), the bar a
+   code file's long run of changed lines folds behind, so it draws, opens, and closes as
+   that one does (docs/design-system.md, "Fold Expanders"). Its group holds blocks of the
+   document, so it clips with `clip` rather than the group's `hidden`: `hidden` also starts
+   a formatting context, which kept the last block's margin inside an open fold, adding it
+   to the next block's (24 px from the last block the fold holds to the paragraph after
+   it, where the document has 12). `clip` clips the same and starts none, so that margin
+   collapses with the next block's as the document's does. The bar is a `button` inside
+   the comparison's `article.kpress`; tests/test_diff_markdown_fold_chrome.py holds that it
+   computes as a code file's bar does, closed, open, and hovered. */
+.metabrowser-diff-host .diff-markdown .diff-markdown-fold {
   overflow: clip;
-}
-
-.metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary {
-  cursor: pointer;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  padding-block: 4px;
-  padding-inline: var(--diff-rendered-inset);
-}
-
-.metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary:hover {
-  color: var(--text);
-}
-
-/* The one ring, stated here because the fold sits in `article.kpress`: KPress's document
-   sheet rings a `summary` there 3px wide and 2px outside the box, at a specificity the
-   shell's zero-specificity base does not reach (docs/design-system.md, "Focus Ring").
-   tests/test_diff_markdown_fold_chrome.py reads the ring with KPress's sheets loaded. */
-.metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
 }

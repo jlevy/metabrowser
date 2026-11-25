@@ -46,6 +46,14 @@ class FakeClassList {
     this._write(set);
   }
 
+  remove(...names) {
+    const set = this._set();
+    for (const name of names) {
+      set.delete(name);
+    }
+    this._write(set);
+  }
+
   toggle(name, force) {
     const set = this._set();
     const want = force === undefined ? !set.has(name) : force;
@@ -868,6 +876,136 @@ async function headLinkChecks(mountDiffView, byName) {
       return [...this.walk()].filter((node) => node !== this && wanted(node));
     }
   }
+  // A rendered file's Source is drawn only while it shows and once it is reached: on a pull
+  // request's Docs, a 17,177-line document's Source, drawn at load behind its rendered view,
+  // was 72,000 nodes and 4 s of main-thread work (mb-qzgs). Here a 2,000-line Markdown file
+  // drawn as Docs draws it, every fold open.
+  async function heldSourceChecks(viewFile) {
+    const book = structuredClone(byName.get("added-text-file"));
+    const lines = Array.from({ length: 2000 }, (_, index) => ({
+      op: "add",
+      text: `Line ${index}.`,
+    }));
+    book.manifest.files[0].additions = lines.length;
+    book.patches.f1.hunks = [
+      { lines, new_count: lines.length, new_start: 1, old_count: 0, old_start: 0 },
+    ];
+    const turns = async (count = 40) => {
+      for (let turn = 0; turn < count; turn += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    };
+    /**
+     * Mount the book, with *answer* for its rendered view, and report each observer's
+     * sections as *near* or not: the diff's own hydration lookahead (240 px) apart from the
+     * rendered views'.
+     */
+    const mount = async ({ answer, holdMs, near }) => {
+      const first = observers.length;
+      const host = new MarkupElement("div");
+      const handle = mountDiffView(
+        host,
+        book,
+        {
+          filterControls: { groupHtml: () => "", bind: () => () => {} },
+          ensureAsset: async () => {},
+        },
+        {
+          viewFile,
+          markdownViews,
+          renderMarkdown: answer,
+          markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
+          markdownHoldMs: holdMs,
+          unfold: true,
+        },
+      );
+      const hydration = observers
+        .slice(first)
+        .find((observer) => observer.options.rootMargin === "0px 0px 240px 0px");
+      const report = (observer, isIntersecting) =>
+        observer.callback(
+          [...observer.targets].map((target) => ({ target, isIntersecting })),
+          observer,
+        );
+      for (const observer of observers.slice(first)) {
+        report(observer, observer === hydration ? near.hydration : near.rendered);
+      }
+      await turns();
+      const [body] = host.find("diff-file-body");
+      return {
+        handle,
+        body,
+        rows: () => host.find("diff-line").length,
+        nodes: () => [...host.walk()].length,
+        reach: async () => {
+          report(hydration, true);
+          await turns();
+        },
+      };
+    };
+    const pending = () => new Promise(() => {});
+
+    // Far from the screen, its rendered view not asked for yet: Source shows, and keeps its
+    // place, but is not drawn until it is reached.
+    const far = await mount({
+      answer: pending,
+      holdMs: 0,
+      near: { hydration: false, rendered: false },
+    });
+    check(
+      "a far rendered file shows Source and draws none of its rows before they are reached",
+      far.body.hidden !== true && far.rows() === 0 && far.nodes() < 100,
+      JSON.stringify({ hidden: far.body.hidden, rows: far.rows(), nodes: far.nodes() }),
+    );
+    await far.reach();
+    check(
+      "a far rendered file's Source is drawn once it is reached",
+      far.rows() > 1000,
+      String(far.rows()),
+    );
+    far.handle.dispose();
+
+    // On the first screen, waiting for its rendered view: Source is hidden while it waits,
+    // so none of it is drawn, though it is reached.
+    const waiting = await mount({
+      answer: pending,
+      holdMs: 60_000,
+      near: { hydration: true, rendered: true },
+    });
+    check(
+      "a rendered file waiting for its rendered view draws none of its hidden Source",
+      waiting.body.hidden === true && waiting.rows() === 0 && waiting.nodes() < 100,
+      JSON.stringify({ hidden: waiting.body.hidden, rows: waiting.rows(), nodes: waiting.nodes() }),
+    );
+    waiting.handle.dispose();
+
+    // Its rendered view answered: Source stays undrawn.
+    const answered = await mount({
+      answer: async () => structuredClone(recording.answers.f1["view=prefer-full"]),
+      holdMs: 60_000,
+      near: { hydration: true, rendered: true },
+    });
+    check(
+      "a rendered file whose rendered view is shown never draws its Source",
+      answered.body.hidden === true && answered.rows() === 0,
+      JSON.stringify({ hidden: answered.body.hidden, rows: answered.rows() }),
+    );
+    answered.handle.dispose();
+
+    // Past the loading delay with no answer, the first screen shows Source, drawn there.
+    const late = await mount({
+      answer: pending,
+      holdMs: 0,
+      near: { hydration: true, rendered: true },
+    });
+    check(
+      "a first-screen file past its loading delay shows Source and draws it",
+      late.body.hidden !== true && late.rows() > 1000,
+      JSON.stringify({ hidden: late.body.hidden, rows: late.rows() }),
+    );
+    late.handle.dispose();
+  }
+
   const markupText = (value) => {
     const node = new MarkupElement("#text");
     node.textContent = String(value);
@@ -917,8 +1055,9 @@ async function headLinkChecks(mountDiffView, byName) {
   };
   const observers = [];
   global.IntersectionObserver = class IntersectionObserver {
-    constructor(callback) {
+    constructor(callback, options = {}) {
       this.callback = callback;
+      this.options = options;
       this.targets = new Set();
       observers.push(this);
     }
@@ -994,7 +1133,7 @@ async function headLinkChecks(mountDiffView, byName) {
         markdownViews,
         renderMarkdown: async (fileId) => {
           requested.push(fileId);
-          return structuredClone(recording.answers.f1);
+          return structuredClone(recording.answers.f1["view=concise"]);
         },
         markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
         markdownHoldMs: 0,
@@ -1048,8 +1187,8 @@ async function headLinkChecks(mountDiffView, byName) {
     check("disposal lets the page's pin-change news go", pinChanged === null);
 
     // A Markdown file whose changes did not load has the chooser too: Source is chosen,
-    // Rendered is unavailable for the reason the file's body gives, and no projection is
-    // asked for it (mb-rm40).
+    // Full and Concise are unavailable for the reason the file's body gives, and no
+    // projection is asked for it (mb-rm40).
     const unread = structuredClone(byName.get("added-text-file"));
     unread.manifest.files[0].availability = "too_large";
     unread.patches = {};
@@ -1097,16 +1236,21 @@ async function headLinkChecks(mountDiffView, byName) {
       .filter((node) => node.className === "diff-availability")
       .map((node) => node.textContent);
     check(
-      "a Markdown file whose changes did not load keeps its chooser, Rendered unavailable for the reason its body gives",
+      "a Markdown file whose changes did not load keeps its chooser, its views unavailable for the reason its body gives",
       chooser?.value === "source" &&
-        chooser.options[0].value === "rendered" &&
-        chooser.options[0].tip === "This change is too large to show inline." &&
-        chooser.options[1].tip === undefined &&
+        JSON.stringify(chooser.options.map((option) => option.value)) ===
+          JSON.stringify(["full", "concise", "source"]) &&
+        chooser.options
+          .slice(0, 2)
+          .every((option) => option.tip === "This change is too large to show inline.") &&
+        chooser.options[2].tip === undefined &&
         said.includes("This change is too large to show inline.") &&
         requested.length === asked,
       JSON.stringify({ choosers, said, requested }),
     );
     unreadHandle.dispose();
+
+    await heldSourceChecks(viewFile);
   } finally {
     global.document = saved.document;
     global.window = saved.window;
