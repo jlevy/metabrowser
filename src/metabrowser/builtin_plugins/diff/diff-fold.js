@@ -1,0 +1,91 @@
+// The diff's fold expander: the blue bar that stands for a run of rows withheld from a
+// file and opens to them (docs/design-system.md, "Fold Expanders"). A code file's long
+// changed run (diff-view.js) and a rendered Markdown file's run of unchanged blocks
+// (diff-markdown.js) are folds of one kind, so both draw this bar and open and close
+// alike: the bar comes first, the group it controls follows it, and the group grows from
+// nothing when it opens. The bar owns its state; what the group holds is its caller's,
+// which fills the group when it opens and empties it when it closes.
+
+/**
+ * The shell's icon of that name, or nothing outside the shell.
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+function shellIcon(name) {
+  const shell = /** @type {{metabrowser?: {icons?: Record<string, string>}}} */ (
+    /** @type {unknown} */ (globalThis)
+  );
+  return shell.metabrowser?.icons?.[name] ?? "";
+}
+
+/**
+ * @typedef {object} FoldExpander
+ * @property {HTMLButtonElement} control The bar, which goes right before *group*.
+ * @property {HTMLElement} group What the bar shows and hides.
+ * @property {() => boolean} expanded
+ * @property {(next: boolean) => void} set Open or close it, as a click does, and say so.
+ */
+
+/**
+ * A fold's bar and the group it controls, open when *expanded*.
+ *
+ * *label* names the bar in each state: what the closed bar holds, then the inverse
+ * ("40 more changed lines", "Hide 40 lines"). *onToggle* runs after every change of state,
+ * a click's or `set`'s, with the new state, and fills or empties the group; a fold drawn
+ * open calls it once the caller has the bar, to fill the group (`open` is for that).
+ *
+ * @param {{
+ *   id: string,
+ *   expanded: boolean,
+ *   label: (expanded: boolean) => string,
+ *   onToggle: (expanded: boolean) => void,
+ *   groupClass?: string,
+ * }} options
+ * @returns {FoldExpander}
+ */
+export function foldExpander({ id, expanded, label, onToggle, groupClass = "" }) {
+  let open = expanded;
+  const group = document.createElement("div");
+  group.className = `diff-fold-group${groupClass ? ` ${groupClass}` : ""}`;
+  group.id = id;
+  const control = document.createElement("button");
+  control.className = "fold-expander diff-fold-control disclosure-toggle";
+  control.type = "button";
+  control.setAttribute("aria-controls", id);
+  const chevron = document.createElement("span");
+  chevron.className = "diff-fold-chevron";
+  const icon = shellIcon("toggle");
+  if (icon !== "") {
+    chevron.innerHTML = icon;
+  }
+  const text = document.createElement("span");
+  text.className = "diff-fold-label";
+  control.append(chevron, text);
+
+  function draw() {
+    control.setAttribute("aria-expanded", String(open));
+    control.classList.toggle("expanded", open);
+    group.classList.toggle("diff-fold-collapsed", !open);
+    text.textContent = label(open);
+  }
+
+  /** @param {boolean} next */
+  function set(next) {
+    if (next === open) {
+      return;
+    }
+    open = next;
+    draw();
+    onToggle(open);
+  }
+
+  control.addEventListener("click", (event) => {
+    // The bar above owns clicks on the file section; a fold is its own control and must
+    // not also collapse the whole file.
+    event.stopPropagation();
+    set(!open);
+  });
+  draw();
+  return { control, group, expanded: () => open, set };
+}

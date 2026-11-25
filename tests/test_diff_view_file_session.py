@@ -297,6 +297,8 @@ def test_only_a_pinned_page_asks_for_the_view_file_module() -> None:
     folder, asked, pinned = steps[0], steps[1], steps[2]
     assert folder["step"] == "a served folder's page has no controls"
     assert folder["modules"] == [
+        # The diff's fold bar, which rendered Markdown's folds share (diff-fold.js).
+        "diff-fold.js",
         "diff-intraline.js",
         "diff-model.js",
         "diff-render-model.js",

@@ -20,12 +20,15 @@
 // The comparison mounted is the conformance corpus's added Markdown file, which the plugin
 // validates; only the routes the session's own recording names decide anything here.
 //
-// Each step prints the requests the page made, and for each file whose state the step
-// changed: its chooser (`*` marks the chosen format, and a Rendered that cannot be chosen
-// says `unavailable` and why, as its tooltip and its accessible name do), what its body
-// shows (`rendered`, `source`, or `nothing` while it waits within the loading delay),
-// whether its progress mark is counting down to visible, and the rendered rows: each
-// block's kind and text, and a fold as `[N unchanged blocks]`, open or closed.
+// Each step prints the requests the page made, each a file and what it asked of the
+// route, and for each file whose state the step changed: its chooser (`*` marks the chosen
+// format, and a rendered view that cannot be chosen says `unavailable` and why, as its
+// tooltip and its accessible name do), what its body shows (`rendered`, `source`, or
+// `nothing` while it waits within the loading delay), whether its progress mark is
+// counting down to visible, and the rendered rows: each block's kind and text, a fold's bar
+// as `[N unchanged blocks]`, open with its rows under it or closed, and the place a chunk
+// not drawn yet keeps as `[blocks I-J not drawn: N px]`. A long file's rows are shortened
+// to their first and last few.
 
 const fs = require("node:fs");
 const { registerHooks } = require("node:module");
@@ -113,6 +116,7 @@ class PageElement {
     this.attributes = new Map();
     this.listeners = new Map();
     this.dataset = {};
+    this.style = {};
     this.hidden = false;
     this.open = false;
     this.text = "";
@@ -178,6 +182,34 @@ class PageElement {
 
   after(...nodes) {
     this.#insert(1, nodes);
+  }
+
+  replaceWith(...nodes) {
+    const parent = this.parentElement;
+    const siblings = parent.childNodes;
+    const at = siblings.indexOf(this);
+    const placed = nodes.flatMap((node) =>
+      node.tagName === "#FRAGMENT" ? node.childNodes : [node],
+    );
+    for (const node of placed) {
+      node.parentElement = parent;
+    }
+    siblings.splice(at, 1, ...placed);
+    this.parentElement = null;
+  }
+
+  closest(selector) {
+    assert(selector === "a[href]", `the session finds only links, not ${selector}`);
+    for (let node = this; node !== null; node = node.parentElement) {
+      if (node.tagName === "A" && node.getAttribute("href") !== null) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  scrollIntoView(options) {
+    scrolled.push({ id: this.getAttribute("id"), ...options });
   }
 
   before(...nodes) {
@@ -340,10 +372,11 @@ function pinChanged(served) {
   }
 }
 
-let observer;
+// The page's observers, in the order it makes them: the files' lookahead, then the chunks'.
+const observers = [];
 globalThis.IntersectionObserver = class {
   constructor(notify, options) {
-    observer = this;
+    observers.push(this);
     this.notify = notify;
     this.options = options;
     this.observed = [];
@@ -353,10 +386,16 @@ globalThis.IntersectionObserver = class {
     this.observed.push(target);
   }
 
+  unobserve(target) {
+    this.observed = this.observed.filter((each) => each !== target);
+  }
+
   disconnect() {
     this.observed = [];
   }
 };
+/** What the page scrolled into view, in order. */
+const scrolled = [];
 
 // ── The clock and the server ────────────────────────────────────────────────
 
@@ -394,12 +433,23 @@ async function settle() {
   }
 }
 
-function answer(fileId, how = "recorded") {
-  const index = waiting.findIndex((request) => request.fileId === fileId);
-  assert(index >= 0, `no request waits for ${fileId}`);
+/** A request as a step prints it: the file, and what it asks of the route. */
+function asked(fileId, ask) {
+  const query = new URLSearchParams(ask ?? {}).toString();
+  return query === "" ? fileId : `${fileId} ${query}`;
+}
+
+function answer(key, how = "recorded") {
+  const index = waiting.findIndex((request) => request.key === key);
+  assert(index >= 0, `no request waits for ${key}`);
   const [request] = waiting.splice(index, 1);
   if (how === "recorded") {
-    request.resolve(structuredClone(recorded.answers[fileId]));
+    // A refusal answers every view alike; a ready file answers each as the route does.
+    const kept = recorded.answers[request.fileId];
+    const query = request.key.slice(request.fileId.length + 1);
+    const found = kept.status !== undefined ? kept : kept[query];
+    assert(found !== undefined, `the recording has no answer for ${key}`);
+    request.resolve(structuredClone(found));
   } else if (how === "busy") {
     request.reject(Object.assign(new Error("rendered_diff_busy"), { status: 429 }));
   } else {
@@ -409,22 +459,47 @@ function answer(fileId, how = "recorded") {
 
 // ── What a step prints ──────────────────────────────────────────────────────
 
-function rows(article) {
+function rows(article, depth = "") {
   const shown = [];
   for (const node of article.childNodes) {
-    if (node.tagName === "DETAILS") {
-      const [summary, ...inner] = node.childNodes;
-      shown.push(`[${summary.textContent}${node.open ? ", open" : ""}]`);
-      for (const row of inner) {
-        shown.push(`  ${row_(row)}`);
-      }
+    if (node.classList.contains("fold-expander")) {
+      // The diff's fold bar (diff-fold.js), which names the group it opens.
+      assert(
+        node.getAttribute("aria-controls") ===
+          node.parentElement.childNodes[node.parentElement.childNodes.indexOf(node) + 1].id,
+        "a fold's bar controls the group after it",
+      );
+      const open = node.getAttribute("aria-expanded") === "true";
+      const busy = node.getAttribute("aria-busy") === "true" ? ", loading" : "";
+      shown.push(`${depth}[${node.textContent}${open ? ", open" : ""}${busy}]`);
+    } else if (node.classList.contains("diff-fold-group")) {
+      // A closed fold holds no rows, and an open one shows its rows once it has them.
+      const control =
+        node.parentElement.childNodes[node.parentElement.childNodes.indexOf(node) - 1];
+      const waiting = control.getAttribute("aria-busy") === "true";
+      assert(
+        node.classList.contains("diff-fold-collapsed")
+          ? node.childNodes.length === 0
+          : (node.childNodes.length === 0) === waiting,
+        "a closed fold holds no rows, and an open one shows its rows",
+      );
+      shown.push(...rows(node, `${depth}  `));
+    } else if (node.classList.contains("diff-markdown-spacer")) {
+      shown.push(`${depth}[blocks ${node.dataset.span} not drawn: ${node.style.height}]`);
     } else if (node.className.includes("diff-markdown-frontmatter")) {
       shown.push(...frontmatter(node));
     } else {
-      shown.push(row_(node));
+      shown.push(`${depth}${row_(node)}`);
     }
   }
   return shown;
+}
+
+/** A long file's rows, shortened to their first and last few. */
+function shortened(all) {
+  return all.length <= 48
+    ? all
+    : [...all.slice(0, 4), `... ${all.length - 8} rows ...`, ...all.slice(-4)];
 }
 
 // Front matter is the Document view's Frontmatter disclosure: its summary, whether it is
@@ -483,6 +558,7 @@ function serialize(nodes) {
 }
 
 function describe(file) {
+  const views = file.format === "markdown" ? ["Full", "Concise"] : ["Rendered"];
   const chips = file.control.children.map((chip) => {
     const chosen = chip.getAttribute("aria-checked") === "true" ? "*" : "";
     // A chip is never `disabled`, which would take the pointer and focus from it: one that
@@ -493,10 +569,13 @@ function describe(file) {
       assert(why === undefined, `${file.name}: a chip that can be chosen explains itself`);
       return `${chosen}${chip.textContent}`;
     }
-    assert(chip.textContent === "Rendered" && chosen === "", `${file.name}: only Rendered goes`);
+    assert(
+      views.includes(chip.textContent) && chosen === "",
+      `${file.name}: only a rendered view goes`,
+    );
     assert(typeof why === "string" && why !== "", `${file.name}: nothing says why`);
     assert(
-      chip.getAttribute("aria-label") === `Rendered, unavailable. ${why}`,
+      chip.getAttribute("aria-label") === `${chip.textContent}, unavailable. ${why}`,
       `${file.name}: the chip's name does not say what its tooltip says`,
     );
     return `${chip.textContent} (unavailable: ${why})`;
@@ -505,7 +584,7 @@ function describe(file) {
   // Every file of a rendered format keeps its chooser, its progress mark's place, and the
   // bar layout that makes room for them, whatever the server answered.
   assert(
-    chips.length === 2 &&
+    chips.length === views.length + 1 &&
       !file.control.hidden &&
       !file.progress.hidden &&
       file.bar.classList.contains("diff-file-bar-markdown"),
@@ -518,7 +597,7 @@ function describe(file) {
     chooser: chips.join(" | "),
     shows,
     ...(file.progress.classList.contains("mb-delayed-loading") ? { progress: "counting" } : {}),
-    ...(file.rendered.childNodes.length > 0 ? { rows: rows(file.rendered) } : {}),
+    ...(file.rendered.childNodes.length > 0 ? { rows: shortened(rows(file.rendered)) } : {}),
   };
 }
 
@@ -635,13 +714,14 @@ async function main() {
         return () => unbinds.push("unbound");
       },
     },
-    load(fileId, signal) {
-      requests.push(fileId);
+    load(fileId, signal, ask) {
+      const key = asked(fileId, ask);
+      requests.push(key);
       return new Promise((resolve, reject) => {
-        const request = { fileId, resolve, reject };
+        const request = { fileId, key, resolve, reject };
         waiting.push(request);
         signal.addEventListener("abort", () => {
-          requests.push(`abort ${fileId}`);
+          requests.push(`abort ${key}`);
           reject(new DOMException("aborted", "AbortError"));
         });
       });
@@ -688,6 +768,7 @@ async function main() {
     return {
       name: `${entry.id} ${(entry.new ?? entry.old).path}`,
       id: entry.id,
+      format: markdown.renderedFormat(entry),
       section,
       bar,
       source,
@@ -703,13 +784,75 @@ async function main() {
     await settle();
   };
   const near = (...ids) =>
-    observer.notify(ids.map((id) => ({ target: byId[id].section, isIntersecting: true })));
+    observers[0].notify(ids.map((id) => ({ target: byId[id].section, isIntersecting: true })));
+  // The reader comes near a chunk not drawn yet.
+  const nearChunk = (file) => {
+    const spacers = observers[1].observed.filter((spacer) => file.rendered.contains(spacer));
+    observers[1].notify(spacers.map((target) => ({ target, isIntersecting: true })));
+  };
+  /** A fold's bar in *file*, by the start of its label. */
+  const bar = (file, label) => {
+    const find = (parent) => {
+      for (const node of parent.children) {
+        if (node.classList.contains("fold-expander") && node.textContent.startsWith(label)) {
+          return node;
+        }
+        const inner = find(node);
+        if (inner !== null) {
+          return inner;
+        }
+      }
+      return null;
+    };
+    const found = find(file.rendered);
+    assert(found !== null, `${file.name}: no fold reads ${label}`);
+    return found;
+  };
+  const click = async (node) => {
+    let prevented = false;
+    node.listeners.get("click")({
+      target: node,
+      stopPropagation() {},
+      preventDefault() {
+        prevented = true;
+      },
+    });
+    await settle();
+    return prevented;
+  };
+  /** Follow a link in *file*'s rendered body whose text is *text*. */
+  const follow = async (file, text) => {
+    const find = (parent) => {
+      for (const node of parent.children) {
+        if (node.tagName === "A" && node.textContent === text) {
+          return node;
+        }
+        const inner = find(node);
+        if (inner !== null) {
+          return inner;
+        }
+      }
+      return null;
+    };
+    const link = find(file.rendered);
+    assert(link !== null, `${file.name}: no link reads ${text}`);
+    let prevented = false;
+    file.rendered.listeners.get("click")({
+      target: link,
+      preventDefault() {
+        prevented = true;
+      },
+    });
+    await settle();
+    return prevented;
+  };
 
   views.observe(root, null);
   steps.push({
     step: "the page asks for the first screen's projections ahead of Changes",
     asks: ahead,
-    lookahead: observer.options.rootMargin,
+    lookahead: observers[0].options.rootMargin,
+    chunks: observers[1].options.rootMargin,
   });
   step(
     "mount: a Markdown file waits for Rendered with Source hidden; " +
@@ -717,7 +860,7 @@ async function main() {
     files,
   );
 
-  observer.notify(
+  observers[0].notify(
     files.map((file) => ({
       target: file.section,
       isIntersecting: ["f1", "f2"].includes(file.id),
@@ -726,7 +869,7 @@ async function main() {
   await settle();
   step("the first screen asks for its first file; a file away from it shows Source", files);
 
-  answer("f1");
+  answer("f1 view=concise");
   await settle();
   step("an answer within the loading delay paints Rendered first", files);
 
@@ -734,16 +877,16 @@ async function main() {
   await settle();
   step("past the loading delay a waiting file shows Source", files);
 
-  answer("f2");
+  answer("f2 view=concise");
   await settle();
   step("a file Rendered cannot show stays in Source, and its chooser says why", files);
 
-  await choose(byId.f2, "rendered");
-  step("choosing an unavailable Rendered changes nothing and asks for nothing", files);
+  await choose(byId.f2, "concise");
+  step("choosing an unavailable view changes nothing and asks for nothing", files);
 
   near("f3");
   await settle();
-  answer("f3", "busy");
+  answer("f3 view=concise", "busy");
   await settle();
   step("a busy server keeps Rendered and asks again after a wait", files);
 
@@ -751,7 +894,7 @@ async function main() {
   await settle();
   step("the wait is over", files);
 
-  answer("f3");
+  answer("f3 view=concise");
   await settle();
   near("f4");
   await settle();
@@ -761,28 +904,29 @@ async function main() {
     files,
   );
 
-  answer("f4");
+  answer("f4 view=concise");
   await settle();
   step("the answer is kept, not shown", files);
 
-  await choose(byId.f4, "rendered");
-  step("choosing Rendered again shows the kept answer without asking", files);
+  await choose(byId.f4, "concise");
+  step("choosing Concise again shows the kept answer without asking", files);
 
-  const details = byId.f1.rendered.childNodes.find((node) => node.tagName === "DETAILS");
-  details.open = true;
-  details.listeners.get("toggle")();
-  step("opening a fold builds its blocks", [byId.f1]);
+  await click(bar(byId.f1, "5 unchanged blocks"));
+  step("opening a fold draws its blocks, which the answer holds", [byId.f1]);
 
   await choose(byId.f1, "source");
-  await choose(byId.f1, "rendered");
+  await choose(byId.f1, "concise");
   near("f1");
-  step("switching formats asks for nothing", [byId.f1]);
+  step("switching formats asks for nothing, and an open fold stays open", [byId.f1]);
+
+  await choose(byId.f1, "full");
+  step("Full draws every block, and asks for nothing when the answer holds them", [byId.f1]);
 
   near("f6", "f7");
   await settle();
-  answer("f6");
+  answer("f6 view=concise");
   await settle();
-  answer("f7");
+  answer("f7 view=concise");
   await settle();
   step(
     "front matter that did not change is closed above the body's change, " +
@@ -792,13 +936,54 @@ async function main() {
 
   near("f8", "f9");
   await settle();
-  answer("f8");
+  answer("f8 view=concise");
   await settle();
   step(
     "a file past the route's read bound says it is too large; " +
       "no projection is asked for a file whose changes did not load",
     [byId.f8, byId.f9],
   );
+
+  near("f10");
+  await settle();
+  answer("f10 view=concise");
+  await settle();
+  step("Concise folds a short run with its blocks and withholds the long runs' blocks", [byId.f10]);
+
+  await click(bar(byId.f10, "2 unchanged blocks"));
+  step("opening the short run's fold asks for nothing", [byId.f10]);
+
+  const followed = await follow(byId.f10, "the deep part");
+  steps.push({
+    step: "a link to a heading a withheld fold holds waits for it",
+    prevented: followed,
+  });
+  step("its fold opens and asks for its blocks", [byId.f10]);
+
+  answer("f10 blocks=13-15");
+  await settle();
+  step("its blocks are drawn, and the page goes to the heading", [byId.f10]);
+  steps.push({ step: "scrolled into view", scrolled: scrolled.splice(0) });
+
+  await choose(byId.f10, "full");
+  step("Full asks for the blocks still withheld, showing Concise meanwhile", [byId.f10]);
+
+  answer("f10 view=full");
+  await settle();
+  step("Full draws every block once they arrive", [byId.f10]);
+
+  await choose(byId.f10, "concise");
+  step("back to Concise, asking nothing, the folds the reader opened still open", [byId.f10]);
+
+  near("f11");
+  await settle();
+  answer("f11 view=concise");
+  await settle();
+  step("a long document draws its first chunk and keeps the place of the rest", [byId.f11]);
+
+  nearChunk(byId.f11);
+  await settle();
+  step("coming near the place draws the chunk there", [byId.f11]);
 
   // Another tab switched the server's pin: a link to a file of the head would open that
   // path at the other pin, so every one drawn becomes plain text, and so does any drawn

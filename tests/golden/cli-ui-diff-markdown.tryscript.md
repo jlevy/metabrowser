@@ -8,9 +8,9 @@ patterns:
 ---
 # Golden Test: Rendered Markdown in a Pull Request’s Changes
 
-A pull request’s Changes opens each changed Markdown file in **Rendered** when the
-server can map its Git hunks to the document, and every changed Markdown file has the
-**Rendered** | **Source** chooser, whatever its size and whatever the server answers.
+A pull request’s Changes opens each changed Markdown file in **Concise** when the server
+can map its Git hunks to the document, and every changed Markdown file has the **Full**
+| **Concise** | **Source** chooser, whatever its size and whatever the server answers.
 The comparison names the route that answers a file’s rendered redline,
 `GET github/pull-rendered-diff`, and the route its images load from,
 `GET github/pull-image`; the diff plugin spells neither.
@@ -18,21 +18,21 @@ Before the reader opens Changes, the page asks for the projections of the Markdo
 among the first eight, at most four, so the first screen finds them computed.
 
 Every Markdown file waits for its rendered view with Source hidden for the app’s loading
-delay, 50 ms, so an answer within it paints Rendered first and never replaces Source in
-view; past it, Source shows and Rendered replaces it when it arrives.
+delay, 50 ms, so an answer within it paints its rendering first and never replaces
+Source in view; past it, Source shows and the rendering replaces it when it arrives.
 A file is asked for when it comes within a viewport of the screen, one request at a
 time, and its progress mark counts down to visible only while its request waits.
-A busy server is transient: the file keeps Rendered and asks again after 100 ms,
+A busy server is transient: the file keeps its view and asks again after 100 ms,
 doubling to 1.6 s. A file the server refuses shows Source and keeps its chooser, with
-Rendered unavailable: the chip says why, as its tooltip and in its accessible name, in
-the words of the reason the refusal names or, where it names none, of its status.
-Choosing it changes nothing and asks for nothing.
-A file whose changes did not load has the chooser too, with Rendered unavailable for the
-reason its Source body gives, and no projection is asked for it.
-A failed request leaves the file in Source with Rendered to choose, which asks again.
+Full and Concise unavailable: each chip says why, as its tooltip and in its accessible
+name, in the words of the reason the refusal names or, where it names none, of its
+status. Choosing one changes nothing and asks for nothing.
+A file whose changes did not load has the chooser too, with Full and Concise unavailable
+for the reason its Source body gives, and no projection is asked for it.
+A failed request leaves the file in Source with its views to choose, which asks again.
 None of these writes anything in the body: nothing but the rendered body is drawn beside
 Source. An answer that arrives after the reader chose Source is kept, and choosing
-Rendered again shows it without asking.
+Concise again shows it without asking.
 
 Front matter is the Document view’s Frontmatter disclosure, keys sorted as it sorts
 them: open, with each changed key removed and added, when the front matter changed;
@@ -45,7 +45,15 @@ view does, except that the `<details>` in an added row is open.
 A block whose source changed in a way its render does not show, here an HTML comment, is
 drawn like any other and never folds, and nothing is drawn to say that Source shows
 more: each row is its label and its content, and the session fails on anything else.
-Long runs of unchanged blocks fold, and a fold builds its blocks when it opens.
+Concise folds each long run of unchanged blocks behind the diff’s own fold bar, which
+builds its blocks when it opens.
+A fold of fewer than 100 source lines comes with the answer, so opening it asks for
+nothing; a longer fold’s blocks are withheld, and asked for (`blocks=`) when it opens or
+a link goes to a heading inside it, which the page goes to once they are drawn.
+Full draws every block, asking for the withheld ones first and showing Concise
+meanwhile; switching back asks for nothing, and the folds the reader opened stay open.
+A long document is drawn a chunk at a time: a chunk not drawn yet keeps the place of its
+estimated height, and is drawn when the reader comes near it.
 An image of the head keeps its address on the image route.
 A link to a file of the head keeps its `/view/` address only while the page shows the
 head, which is where that address opens the file; the server’s answer is the same for
@@ -58,21 +66,23 @@ server’s side from `tests/fixtures/diff-markdown-responses.json`: what the pro
 projection answers for these documents, bound to a pull request’s head, with Python’s
 HTML parse of every block, from which the session builds the template a page parses a
 block into. `tests/test_diff_markdown_session.py` fails when the recording drifts.
-The route itself is pinned by `tests/golden/cli-github-pull-rendered.txt`. The shared
-chip family, the stylesheet loader, and the diff’s layout are stand-ins, the page is an
-element tree that records what the production code builds, and time is a clock the
-session advances by hand.
-The plugin mounts the pull request’s comparison on each page the shell renders and hands
-the diff its rule for which addresses open there, which this session draws with.
+The route itself is pinned by `tests/golden/cli-github-pull-rendered.txt`, and its views
+by `tests/golden/cli-github-pull-rendered-views.txt`. The shared chip family, the
+stylesheet loader, and the diff’s layout are stand-ins, the page is an element tree that
+records what the production code builds, and time is a clock the session advances by
+hand. The plugin mounts the pull request’s comparison on each page the shell renders and
+hands the diff its rule for which addresses open there, which this session draws with.
 
 `links.pages` says whether a link to a file of the head opens on each page: pinned at
 the comparison’s head, pinned at its merge base, beside a checkout at the head, which
 has no pin, and pinned at the head once another tab changed the pin.
 `links.opens` says which addresses in a rendered block open something on the page pinned
 at the head. Each step lists the requests the page made and each file whose state it
-changed: its chooser (`*` chosen, and `unavailable` with the reason for a Rendered that
+changed: its chooser (`*` chosen, and `unavailable` with the reason for a view that
 cannot be chosen), what its body shows (`nothing` while it waits within the loading
-delay), `progress` while its mark counts down, and its rendered rows.
+delay), `progress` while its mark counts down, and its rendered rows, a fold as its bar
+and a chunk not drawn yet as the place it keeps, a long file’s rows shortened to their
+first and last four.
 The session fails if a file’s chooser is ever gone.
 
 ```console
@@ -105,75 +115,92 @@ $ node tests/dom/diff-markdown-session.js
         "f3",
         "f4"
       ],
-      "lookahead": "0px 0px 100% 0px"
+      "lookahead": "0px 0px 100% 0px",
+      "chunks": "100% 0px 100% 0px"
     },
     {
       "step": "mount: a Markdown file waits for Rendered with Source hidden; one whose changes did not load shows Source",
       "requests": [],
       "files": {
         "f1 docs/guide.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "nothing"
         },
         "f2 docs/renamed.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "nothing"
         },
         "f3 docs/deep.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "nothing"
         },
         "f4 README.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "nothing"
         },
         "f6 docs/notes.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "nothing"
         },
         "f7 docs/plain.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "nothing"
         },
         "f8 docs/huge.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "nothing"
         },
         "f9 docs/unread.md": {
-          "chooser": "Rendered (unavailable: This change is too large to show inline.) | *Source",
+          "chooser": "Full (unavailable: This change is too large to show inline.) | Concise (unavailable: This change is too large to show inline.) | *Source",
           "shows": "source"
+        },
+        "f10 docs/long.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "nothing"
+        },
+        "f11 docs/book.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "nothing"
         }
       }
     },
     {
       "step": "the first screen asks for its first file; a file away from it shows Source",
       "requests": [
-        "f1"
+        "f1 view=concise"
       ],
       "files": {
         "f1 docs/guide.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "nothing",
           "progress": "counting"
         },
         "f3 docs/deep.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "source"
         },
         "f4 README.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "source"
         },
         "f6 docs/notes.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "source"
         },
         "f7 docs/plain.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "source"
         },
         "f8 docs/huge.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
+          "shows": "source"
+        },
+        "f10 docs/long.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "source"
+        },
+        "f11 docs/book.md": {
+          "chooser": "Full | *Concise | Source",
           "shows": "source"
         }
       }
@@ -181,11 +208,11 @@ $ node tests/dom/diff-markdown-session.js
     {
       "step": "an answer within the loading delay paints Rendered first",
       "requests": [
-        "f2"
+        "f2 view=concise"
       ],
       "files": {
         "f1 docs/guide.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "rendered",
           "rows": [
             "[Frontmatter, open]",
@@ -205,7 +232,7 @@ $ node tests/dom/diff-markdown-session.js
           ]
         },
         "f2 docs/renamed.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "nothing",
           "progress": "counting"
         }
@@ -216,7 +243,7 @@ $ node tests/dom/diff-markdown-session.js
       "requests": [],
       "files": {
         "f2 docs/renamed.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "source",
           "progress": "counting"
         }
@@ -227,31 +254,31 @@ $ node tests/dom/diff-markdown-session.js
       "requests": [],
       "files": {
         "f2 docs/renamed.md": {
-          "chooser": "Rendered (unavailable: This file's content did not change.) | *Source",
+          "chooser": "Full (unavailable: This file's content did not change.) | Concise (unavailable: This file's content did not change.) | *Source",
           "shows": "source"
         }
       }
     },
     {
-      "step": "choosing an unavailable Rendered changes nothing and asks for nothing",
+      "step": "choosing an unavailable view changes nothing and asks for nothing",
       "requests": [],
       "files": {}
     },
     {
       "step": "a busy server keeps Rendered and asks again after a wait",
       "requests": [
-        "f3"
+        "f3 view=concise"
       ],
       "files": {}
     },
     {
       "step": "the wait is over",
       "requests": [
-        "f3"
+        "f3 view=concise"
       ],
       "files": {
         "f3 docs/deep.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "source",
           "progress": "counting"
         }
@@ -260,15 +287,15 @@ $ node tests/dom/diff-markdown-session.js
     {
       "step": "a file nested too deeply shows Source and says why; Source chosen while a request runs",
       "requests": [
-        "f4"
+        "f4 view=concise"
       ],
       "files": {
         "f3 docs/deep.md": {
-          "chooser": "Rendered (unavailable: This file is nested too deeply to show rendered.) | *Source",
+          "chooser": "Full (unavailable: This file is nested too deeply to show rendered.) | Concise (unavailable: This file is nested too deeply to show rendered.) | *Source",
           "shows": "source"
         },
         "f4 README.md": {
-          "chooser": "Rendered | *Source",
+          "chooser": "Full | Concise | *Source",
           "shows": "source"
         }
       }
@@ -276,25 +303,14 @@ $ node tests/dom/diff-markdown-session.js
     {
       "step": "the answer is kept, not shown",
       "requests": [],
-      "files": {
-        "f4 README.md": {
-          "chooser": "Rendered | *Source",
-          "shows": "source",
-          "rows": [
-            "added: <p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"64\"></p>",
-            "added: <h1 id=\"user-content-16979ee89c3406b5dab20e21-new-demo\">Demo</h1>",
-            "added: <p>Welcome.<br>Press <kbd>Ctrl</kbd> to begin.</p>",
-            "added: <details open=\"\"> <summary>More</summary> <p>The <strong>details</strong>.</p> </details>"
-          ]
-        }
-      }
+      "files": {}
     },
     {
-      "step": "choosing Rendered again shows the kept answer without asking",
+      "step": "choosing Concise again shows the kept answer without asking",
       "requests": [],
       "files": {
         "f4 README.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "rendered",
           "rows": [
             "added: <p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"64\"></p>",
@@ -306,11 +322,11 @@ $ node tests/dom/diff-markdown-session.js
       }
     },
     {
-      "step": "opening a fold builds its blocks",
+      "step": "opening a fold draws its blocks, which the answer holds",
       "requests": [],
       "files": {
         "f1 docs/guide.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "rendered",
           "rows": [
             "[Frontmatter, open]",
@@ -322,7 +338,7 @@ $ node tests/dom/diff-markdown-session.js
             "added: <p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>",
             "context: <p>Unchanged paragraph 0.</p>",
             "context: <p>Unchanged paragraph 1.</p>",
-            "[5 unchanged blocks, open]",
+            "[Hide 5 blocks, open]",
             "  context: <p>Unchanged paragraph 2.</p>",
             "  context: <p>Unchanged paragraph 3.</p>",
             "  context: <p>Unchanged paragraph 4.</p>",
@@ -337,19 +353,49 @@ $ node tests/dom/diff-markdown-session.js
       }
     },
     {
-      "step": "switching formats asks for nothing",
+      "step": "switching formats asks for nothing, and an open fold stays open",
       "requests": [],
       "files": {}
     },
     {
+      "step": "Full draws every block, and asks for nothing when the answer holds them",
+      "requests": [],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "*Full | Concise | Source",
+          "shows": "rendered",
+          "rows": [
+            "[Frontmatter, open]",
+            "  removed: owner = docs",
+            "  added: owner = platform",
+            "  context: title = Guide",
+            "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
+            "removed: <p>Read the <span>setup notes</span> first.</p>",
+            "added: <p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>",
+            "context: <p>Unchanged paragraph 0.</p>",
+            "context: <p>Unchanged paragraph 1.</p>",
+            "context: <p>Unchanged paragraph 2.</p>",
+            "context: <p>Unchanged paragraph 3.</p>",
+            "context: <p>Unchanged paragraph 4.</p>",
+            "context: <p>Unchanged paragraph 5.</p>",
+            "context: <p>Unchanged paragraph 6.</p>",
+            "context: <p>Unchanged paragraph 7.</p>",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "removed: <p>The <del>old</del> closing line.</p>",
+            "added: <p>The <ins>new</ins> closing line.</p>"
+          ]
+        }
+      }
+    },
+    {
       "step": "front matter that did not change is closed above the body's change, and front matter removed is one removed row",
       "requests": [
-        "f6",
-        "f7"
+        "f6 view=concise",
+        "f7 view=concise"
       ],
       "files": {
         "f6 docs/notes.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "rendered",
           "rows": [
             "[Frontmatter]",
@@ -360,7 +406,7 @@ $ node tests/dom/diff-markdown-session.js
           ]
         },
         "f7 docs/plain.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "Full | *Concise | Source",
           "shows": "rendered",
           "rows": [
             "[Frontmatter, open, removed]",
@@ -375,12 +421,347 @@ $ node tests/dom/diff-markdown-session.js
     {
       "step": "a file past the route's read bound says it is too large; no projection is asked for a file whose changes did not load",
       "requests": [
-        "f8"
+        "f8 view=concise"
       ],
       "files": {
         "f8 docs/huge.md": {
-          "chooser": "Rendered (unavailable: This file is too large to show rendered.) | *Source",
+          "chooser": "Full (unavailable: This file is too large to show rendered.) | Concise (unavailable: This file is too large to show rendered.) | *Source",
           "shows": "source"
+        }
+      }
+    },
+    {
+      "step": "Concise folds a short run with its blocks and withholds the long runs' blocks",
+      "requests": [
+        "f10 view=concise"
+      ],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "rows": [
+            "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
+            "removed: <p>See <span>the deep part</span> <del>now</del>.</p>",
+            "added: <p>See <a href=\"#user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">the deep part</a> <ins>today</ins>.</p>",
+            "context: <p>Paragraph 0.</p>",
+            "context: <p>Paragraph 1.</p>",
+            "[2 unchanged blocks]",
+            "context: <p>Paragraph 4.</p>",
+            "context: <p>Paragraph 5.</p>",
+            "removed: <p>Middle <del>old</del>.</p>",
+            "added: <p>Middle <ins>new</ins>.</p>",
+            "context: <p>Intro A.</p>",
+            "context: <p>Intro B.</p>",
+            "[2 unchanged blocks]",
+            "context: <p>Outro A.</p>",
+            "context: <p>Outro B.</p>",
+            "removed: <p>Later <del>old</del>.</p>",
+            "added: <p>Later <ins>new</ins>.</p>",
+            "context: <p>Note A.</p>",
+            "context: <p>Note B.</p>",
+            "[2 unchanged blocks]",
+            "context: <p>Coda A.</p>",
+            "context: <p>Coda B.</p>",
+            "removed: <p>The <del>old</del> end.</p>",
+            "added: <p>The <ins>new</ins> end.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "opening the short run's fold asks for nothing",
+      "requests": [],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "rows": [
+            "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
+            "removed: <p>See <span>the deep part</span> <del>now</del>.</p>",
+            "added: <p>See <a href=\"#user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">the deep part</a> <ins>today</ins>.</p>",
+            "context: <p>Paragraph 0.</p>",
+            "context: <p>Paragraph 1.</p>",
+            "[Hide 2 blocks, open]",
+            "  context: <p>Paragraph 2.</p>",
+            "  context: <p>Paragraph 3.</p>",
+            "context: <p>Paragraph 4.</p>",
+            "context: <p>Paragraph 5.</p>",
+            "removed: <p>Middle <del>old</del>.</p>",
+            "added: <p>Middle <ins>new</ins>.</p>",
+            "context: <p>Intro A.</p>",
+            "context: <p>Intro B.</p>",
+            "[2 unchanged blocks]",
+            "context: <p>Outro A.</p>",
+            "context: <p>Outro B.</p>",
+            "removed: <p>Later <del>old</del>.</p>",
+            "added: <p>Later <ins>new</ins>.</p>",
+            "context: <p>Note A.</p>",
+            "context: <p>Note B.</p>",
+            "[2 unchanged blocks]",
+            "context: <p>Coda A.</p>",
+            "context: <p>Coda B.</p>",
+            "removed: <p>The <del>old</del> end.</p>",
+            "added: <p>The <ins>new</ins> end.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "a link to a heading a withheld fold holds waits for it",
+      "prevented": true
+    },
+    {
+      "step": "its fold opens and asks for its blocks",
+      "requests": [
+        "f10 blocks=13-15"
+      ],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "rows": [
+            "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
+            "removed: <p>See <span>the deep part</span> <del>now</del>.</p>",
+            "added: <p>See <a href=\"#user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">the deep part</a> <ins>today</ins>.</p>",
+            "context: <p>Paragraph 0.</p>",
+            "context: <p>Paragraph 1.</p>",
+            "[Hide 2 blocks, open]",
+            "  context: <p>Paragraph 2.</p>",
+            "  context: <p>Paragraph 3.</p>",
+            "context: <p>Paragraph 4.</p>",
+            "context: <p>Paragraph 5.</p>",
+            "removed: <p>Middle <del>old</del>.</p>",
+            "added: <p>Middle <ins>new</ins>.</p>",
+            "context: <p>Intro A.</p>",
+            "context: <p>Intro B.</p>",
+            "[Hide 2 blocks, open, loading]",
+            "context: <p>Outro A.</p>",
+            "context: <p>Outro B.</p>",
+            "removed: <p>Later <del>old</del>.</p>",
+            "added: <p>Later <ins>new</ins>.</p>",
+            "context: <p>Note A.</p>",
+            "context: <p>Note B.</p>",
+            "[2 unchanged blocks]",
+            "context: <p>Coda A.</p>",
+            "context: <p>Coda B.</p>",
+            "removed: <p>The <del>old</del> end.</p>",
+            "added: <p>The <ins>new</ins> end.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "its blocks are drawn, and the page goes to the heading",
+      "requests": [],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "rows": [
+            "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
+            "removed: <p>See <span>the deep part</span> <del>now</del>.</p>",
+            "added: <p>See <a href=\"#user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">the deep part</a> <ins>today</ins>.</p>",
+            "context: <p>Paragraph 0.</p>",
+            "context: <p>Paragraph 1.</p>",
+            "[Hide 2 blocks, open]",
+            "  context: <p>Paragraph 2.</p>",
+            "  context: <p>Paragraph 3.</p>",
+            "context: <p>Paragraph 4.</p>",
+            "context: <p>Paragraph 5.</p>",
+            "removed: <p>Middle <del>old</del>.</p>",
+            "added: <p>Middle <ins>new</ins>.</p>",
+            "context: <p>Intro A.</p>",
+            "context: <p>Intro B.</p>",
+            "[Hide 2 blocks, open]",
+            "  context: <h2 id=\"user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">Deep heading</h2>",
+            "  context: <p>Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line.</p>",
+            "context: <p>Outro A.</p>",
+            "context: <p>Outro B.</p>",
+            "removed: <p>Later <del>old</del>.</p>",
+            "added: <p>Later <ins>new</ins>.</p>",
+            "context: <p>Note A.</p>",
+            "context: <p>Note B.</p>",
+            "[2 unchanged blocks]",
+            "context: <p>Coda A.</p>",
+            "context: <p>Coda B.</p>",
+            "removed: <p>The <del>old</del> end.</p>",
+            "added: <p>The <ins>new</ins> end.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "scrolled into view",
+      "scrolled": [
+        {
+          "id": "user-content-25ebc7ae7b51d35c4452a791-new-deep-heading",
+          "block": "start"
+        }
+      ]
+    },
+    {
+      "step": "Full asks for the blocks still withheld, showing Concise meanwhile",
+      "requests": [
+        "f10 view=full"
+      ],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "*Full | Concise | Source",
+          "shows": "rendered",
+          "progress": "counting",
+          "rows": [
+            "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
+            "removed: <p>See <span>the deep part</span> <del>now</del>.</p>",
+            "added: <p>See <a href=\"#user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">the deep part</a> <ins>today</ins>.</p>",
+            "context: <p>Paragraph 0.</p>",
+            "context: <p>Paragraph 1.</p>",
+            "[Hide 2 blocks, open]",
+            "  context: <p>Paragraph 2.</p>",
+            "  context: <p>Paragraph 3.</p>",
+            "context: <p>Paragraph 4.</p>",
+            "context: <p>Paragraph 5.</p>",
+            "removed: <p>Middle <del>old</del>.</p>",
+            "added: <p>Middle <ins>new</ins>.</p>",
+            "context: <p>Intro A.</p>",
+            "context: <p>Intro B.</p>",
+            "[Hide 2 blocks, open]",
+            "  context: <h2 id=\"user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">Deep heading</h2>",
+            "  context: <p>Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line.</p>",
+            "context: <p>Outro A.</p>",
+            "context: <p>Outro B.</p>",
+            "removed: <p>Later <del>old</del>.</p>",
+            "added: <p>Later <ins>new</ins>.</p>",
+            "context: <p>Note A.</p>",
+            "context: <p>Note B.</p>",
+            "[2 unchanged blocks]",
+            "context: <p>Coda A.</p>",
+            "context: <p>Coda B.</p>",
+            "removed: <p>The <del>old</del> end.</p>",
+            "added: <p>The <ins>new</ins> end.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "Full draws every block once they arrive",
+      "requests": [],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "*Full | Concise | Source",
+          "shows": "rendered",
+          "rows": [
+            "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
+            "removed: <p>See <span>the deep part</span> <del>now</del>.</p>",
+            "added: <p>See <a href=\"#user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">the deep part</a> <ins>today</ins>.</p>",
+            "context: <p>Paragraph 0.</p>",
+            "context: <p>Paragraph 1.</p>",
+            "context: <p>Paragraph 2.</p>",
+            "context: <p>Paragraph 3.</p>",
+            "context: <p>Paragraph 4.</p>",
+            "context: <p>Paragraph 5.</p>",
+            "removed: <p>Middle <del>old</del>.</p>",
+            "added: <p>Middle <ins>new</ins>.</p>",
+            "context: <p>Intro A.</p>",
+            "context: <p>Intro B.</p>",
+            "context: <h2 id=\"user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">Deep heading</h2>",
+            "context: <p>Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line.</p>",
+            "context: <p>Outro A.</p>",
+            "context: <p>Outro B.</p>",
+            "removed: <p>Later <del>old</del>.</p>",
+            "added: <p>Later <ins>new</ins>.</p>",
+            "context: <p>Note A.</p>",
+            "context: <p>Note B.</p>",
+            "context: <h2 id=\"user-content-25ebc7ae7b51d35c4452a791-new-appendix\">Appendix</h2>",
+            "context: <p>Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row. Row.</p>",
+            "context: <p>Coda A.</p>",
+            "context: <p>Coda B.</p>",
+            "removed: <p>The <del>old</del> end.</p>",
+            "added: <p>The <ins>new</ins> end.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "back to Concise, asking nothing, the folds the reader opened still open",
+      "requests": [],
+      "files": {
+        "f10 docs/long.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "rows": [
+            "context: <h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>",
+            "removed: <p>See <span>the deep part</span> <del>now</del>.</p>",
+            "added: <p>See <a href=\"#user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">the deep part</a> <ins>today</ins>.</p>",
+            "context: <p>Paragraph 0.</p>",
+            "context: <p>Paragraph 1.</p>",
+            "[Hide 2 blocks, open]",
+            "  context: <p>Paragraph 2.</p>",
+            "  context: <p>Paragraph 3.</p>",
+            "context: <p>Paragraph 4.</p>",
+            "context: <p>Paragraph 5.</p>",
+            "removed: <p>Middle <del>old</del>.</p>",
+            "added: <p>Middle <ins>new</ins>.</p>",
+            "context: <p>Intro A.</p>",
+            "context: <p>Intro B.</p>",
+            "[Hide 2 blocks, open]",
+            "  context: <h2 id=\"user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">Deep heading</h2>",
+            "  context: <p>Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line. Line.</p>",
+            "context: <p>Outro A.</p>",
+            "context: <p>Outro B.</p>",
+            "removed: <p>Later <del>old</del>.</p>",
+            "added: <p>Later <ins>new</ins>.</p>",
+            "context: <p>Note A.</p>",
+            "context: <p>Note B.</p>",
+            "[2 unchanged blocks]",
+            "context: <p>Coda A.</p>",
+            "context: <p>Coda B.</p>",
+            "removed: <p>The <del>old</del> end.</p>",
+            "added: <p>The <ins>new</ins> end.</p>"
+          ]
+        }
+      }
+    },
+    {
+      "step": "a long document draws its first chunk and keeps the place of the rest",
+      "requests": [
+        "f11 view=concise"
+      ],
+      "files": {
+        "f11 docs/book.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "rows": [
+            "added: <p>Page 0.</p>",
+            "added: <p>Page 1.</p>",
+            "added: <p>Page 2.</p>",
+            "added: <p>Page 3.</p>",
+            "... 93 rows ...",
+            "added: <p>Page 97.</p>",
+            "added: <p>Page 98.</p>",
+            "added: <p>Page 99.</p>",
+            "[blocks 100-120 not drawn: 842px]"
+          ]
+        }
+      }
+    },
+    {
+      "step": "coming near the place draws the chunk there",
+      "requests": [],
+      "files": {
+        "f11 docs/book.md": {
+          "chooser": "Full | *Concise | Source",
+          "shows": "rendered",
+          "rows": [
+            "added: <p>Page 0.</p>",
+            "added: <p>Page 1.</p>",
+            "added: <p>Page 2.</p>",
+            "added: <p>Page 3.</p>",
+            "... 112 rows ...",
+            "added: <p>Page 116.</p>",
+            "added: <p>Page 117.</p>",
+            "added: <p>Page 118.</p>",
+            "added: <p>Page 119.</p>"
+          ]
         }
       }
     },
@@ -389,7 +770,7 @@ $ node tests/dom/diff-markdown-session.js
       "requests": [],
       "files": {
         "f1 docs/guide.md": {
-          "chooser": "*Rendered | Source",
+          "chooser": "*Full | Concise | Source",
           "shows": "rendered",
           "rows": [
             "[Frontmatter, open]",
@@ -401,12 +782,11 @@ $ node tests/dom/diff-markdown-session.js
             "added: <p>Read the <a>first setup notes</a> first.</p>",
             "context: <p>Unchanged paragraph 0.</p>",
             "context: <p>Unchanged paragraph 1.</p>",
-            "[5 unchanged blocks, open]",
-            "  context: <p>Unchanged paragraph 2.</p>",
-            "  context: <p>Unchanged paragraph 3.</p>",
-            "  context: <p>Unchanged paragraph 4.</p>",
-            "  context: <p>Unchanged paragraph 5.</p>",
-            "  context: <p>Unchanged paragraph 6.</p>",
+            "context: <p>Unchanged paragraph 2.</p>",
+            "context: <p>Unchanged paragraph 3.</p>",
+            "context: <p>Unchanged paragraph 4.</p>",
+            "context: <p>Unchanged paragraph 5.</p>",
+            "context: <p>Unchanged paragraph 6.</p>",
             "context: <p>Unchanged paragraph 7.</p>",
             "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",

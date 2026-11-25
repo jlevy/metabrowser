@@ -42,6 +42,7 @@ class Element {
     this.attributes = new Map();
     this.listeners = new Map();
     this.dataset = {};
+    this.style = {};
     this.classList = new ClassList();
     this.hidden = false;
     this.textContent = "";
@@ -75,6 +76,17 @@ class Element {
   replaceChildren(...children) {
     this.children = [];
     this.append(...children);
+  }
+
+  // A fragment (`createDocumentFragment`, an element with no tag) puts its children in
+  // its place.
+  replaceWith(...nodes) {
+    const siblings = this.parent.children;
+    const placed = nodes.flatMap((node) => (node.tagName === "" ? node.children : [node]));
+    for (const node of placed) {
+      node.parent = this.parent;
+    }
+    siblings.splice(siblings.indexOf(this), 1, ...placed);
   }
 
   setAttribute(name, value) {
@@ -158,10 +170,16 @@ globalThis.document = {
   implementation: { createHTMLDocument: () => ({ createElement: make }) },
 };
 
+// The latest views' observers: of files near the viewport, and of chunks not drawn yet.
 let observer;
+let chunkObserver;
 globalThis.IntersectionObserver = class {
   constructor(notify, options) {
-    observer = this;
+    if (options.rootMargin.startsWith("0px ")) {
+      observer = this;
+    } else {
+      chunkObserver = this;
+    }
     this.notify = notify;
     this.options = options;
     this.observed = new Set();
@@ -169,6 +187,10 @@ globalThis.IntersectionObserver = class {
 
   observe(target) {
     this.observed.add(target);
+  }
+
+  unobserve(target) {
+    this.observed.delete(target);
   }
 
   disconnect() {
@@ -214,8 +236,14 @@ function texts(node) {
 
 async function main() {
   const {
-    appendBlocks,
+    blockOf,
+    blockRow,
+    chunkUnits,
     createMarkdownViews,
+    estimatedHeight,
+    foldBlocks,
+    projectionModel,
+    viewUnits,
     firstScreenRendered,
     kpressStylesheets,
     markdownTargets,
@@ -441,61 +469,122 @@ async function main() {
     ["1", "3", "5", "6"],
   );
 
-  // Long unchanged runs fold, a folded run is built only when it opens, and a context
-  // block whose source says more never folds.
+  // A block's row: its change's label for a screen reader, then what the block draws. A
+  // block whose source says more than its render shows draws nothing more to say so.
   const built = [];
   const build = (html) => {
     built.push(html);
     return make("div");
   };
-  const context = (n) => ({ kind: "context", html: `<p id="user-content-x-${n}">${n}</p>` });
-  const fragment = make("div");
-  const folds = appendBlocks(
-    fragment,
-    [
-      ...[0, 1, 2, 3, 4, 5, 6, 7].map(context),
-      { kind: "context", html: "<p>flagged</p>", source_only: true },
-      { kind: "added", html: "<p>new</p>", source_only: true },
-    ],
-    build,
-  );
-  const details = fragment.children.find((child) => child.tagName === "DETAILS");
-  assert.equal(details.children[0].textContent, "4 unchanged blocks");
-  assert.equal(details.children.length, 1, "a closed fold holds only its summary");
-  assert.deepEqual(
-    built,
-    [0, 1, 6, 7].map((n) => context(n).html).concat(["<p>flagged</p>", "<p>new</p>"]),
-  );
-  const flagged = fragment.children.at(-1);
+  const flagged = blockRow({ kind: "added", html: "<p>new</p>", source_only: true }, build);
+  assert.equal(flagged.className, "diff-markdown-block diff-markdown-added");
   assert.ok(texts(flagged).includes("Added: "));
   assert.equal(
     flagged.children.length,
     2,
     "a block whose source says more draws its label and its content, and no note",
   );
-  assert.ok(!texts(flagged).some((text) => /Source/.test(text)));
-  assert.deepEqual(
-    [...folds.keys()],
-    [2, 3, 4, 5].map((n) => `user-content-x-${n}`),
-  );
-  folds.get("user-content-x-3")();
-  assert.equal(details.open, true);
-  assert.equal(details.children.length, 5, "opening a fold builds its blocks once");
-  details.listeners.get("toggle")();
-  assert.equal(details.children.length, 5);
+  const unchanged = blockRow({ kind: "context", html: "<p>same</p>", source_only: false }, build);
+  assert.equal(unchanged.children.length, 1, "an unchanged block has no label");
+  assert.deepEqual(built, ["<p>new</p>", "<p>same</p>"]);
 
-  // Unfolded, as a pull request's Docs tab draws its documents, the same run is drawn
-  // whole: no fold, every block built, and nothing for a fragment link to open.
-  built.length = 0;
-  const whole = make("div");
-  const none = appendBlocks(whole, [0, 1, 2, 3, 4, 5, 6, 7].map(context), build, true);
-  assert.ok(!whole.children.some((child) => child.tagName === "DETAILS"), "an unfolded run");
-  assert.equal(whole.children.length, 8);
+  // A projection as the page holds it: a Concise answer leaves out a withheld fold's
+  // blocks, which the model holds as missing until they are asked for. Full draws every
+  // block, and Concise each block outside a fold and each fold, which stands for its blocks.
+  const context = (n) => ({ kind: "context", html: `<p id="user-content-x-${n}">${n}</p>` });
+  const concise = {
+    version: "markdown-diff-v1",
+    status: "ready",
+    source_only: false,
+    view: "concise",
+    count: 12,
+    folds: [
+      { at: 2, count: 4, lines: 7 },
+      { at: 8, count: 2, lines: 140, withheld: true, ids: ["user-content-x-9"] },
+    ],
+    blocks: [0, 1, 2, 3, 4, 5, 6, 7, 10, 11].map(context),
+  };
+  const read = projectionModel(concise);
+  assert.equal(read.view, "concise");
   assert.deepEqual(
-    built,
-    [0, 1, 2, 3, 4, 5, 6, 7].map((n) => context(n).html),
+    read.model.blocks.map((block) => block?.html.match(/>(\d+)</)[1] ?? null),
+    ["0", "1", "2", "3", "4", "5", "6", "7", null, null, "10", "11"],
+    "a withheld fold's blocks are missing, the rest in their places",
   );
-  assert.equal(none.size, 0);
+  const shape = (units) =>
+    units.map((unit) =>
+      unit.kind === "block" ? unit.index : `fold ${unit.fold.at}+${unit.fold.count}`,
+    );
+  assert.deepEqual(shape(viewUnits(read.model, "concise")), [
+    0,
+    1,
+    "fold 2+4",
+    6,
+    7,
+    "fold 8+2",
+    10,
+    11,
+  ]);
+  assert.deepEqual(shape(viewUnits(read.model, "full")), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  assert.equal(blockOf(read.model, "user-content-x-3"), 3, "a heading's block");
+  assert.equal(blockOf(read.model, "user-content-x-9"), 8, "a withheld one's fold");
+  assert.equal(blockOf(read.model, "user-content-x-99"), -1);
+  // An answer whose blocks do not fill what it says it holds is not drawn.
+  for (const broken of [
+    { ...concise, count: 13 },
+    { ...concise, blocks: concise.blocks.slice(1) },
+    { ...concise, view: "whole" },
+    {
+      ...concise,
+      folds: [
+        { at: 2, count: 4, lines: 7 },
+        { at: 4, count: 2, lines: 3 },
+      ],
+    },
+    { ...concise, folds: [{ at: 11, count: 2, lines: 3 }] },
+  ]) {
+    assert.equal(projectionModel(broken), null, JSON.stringify(broken.folds));
+  }
+  // Full's answer holds every block, its folds listed but none withheld.
+  const full = projectionModel({
+    ...concise,
+    view: "full",
+    folds: concise.folds.map(({ at, count, lines }) => ({ at, count, lines })),
+    blocks: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(context),
+  });
+  assert.ok(full.model.blocks.every((block) => block !== undefined));
+  // A withheld fold's blocks, as `blocks=` answers them, and only for that fold.
+  const fold = concise.folds[1];
+  const range = {
+    version: "markdown-diff-v1",
+    status: "ready",
+    at: 8,
+    blocks: [8, 9].map(context),
+  };
+  assert.deepEqual(foldBlocks(range, fold), range.blocks);
+  assert.equal(foldBlocks({ ...range, at: 7 }, fold), null);
+  assert.equal(foldBlocks({ ...range, blocks: [context(8)] }, fold), null);
+  // A long run is drawn a chunk at a time: a hundred units, or 128 KiB of HTML, a chunk.
+  const many = Array.from({ length: 250 }, (_, index) => ({ kind: "block", index }));
+  assert.deepEqual(
+    chunkUnits(many, () => 10).map((chunk) => chunk.length),
+    [100, 100, 50],
+  );
+  assert.deepEqual(
+    chunkUnits(many.slice(0, 7), () => 50 * 1024).map((chunk) => chunk.length),
+    [3, 3, 1],
+  );
+  assert.equal(
+    estimatedHeight(
+      [
+        { kind: "block", index: 0 },
+        { kind: "fold", fold },
+      ],
+      () => 100,
+    ),
+    109,
+    "a block's place from its bytes, and a fold's bar",
+  );
 
   const calls = [];
   let assets = 0;
@@ -570,11 +659,15 @@ async function main() {
       state,
       control,
       toggle,
+      // A Markdown file opens in Concise, as Changes opens one.
       get renderedChoice() {
-        return control.children[0];
+        return control.children.find((chip) => chip.dataset.chipValue === "concise");
+      },
+      get fullChoice() {
+        return control.children.find((chip) => chip.dataset.chipValue === "full");
       },
       get sourceChoice() {
-        return control.children[1];
+        return control.children.find((chip) => chip.dataset.chipValue === "source");
       },
     };
   }
@@ -592,6 +685,11 @@ async function main() {
   assert.equal(a.progress.hidden, false);
   view.observe(root, null);
   assert.equal(observer.options.rootMargin, "0px 0px 100% 0px", "a viewport of lookahead");
+  assert.equal(
+    chunkObserver.options.rootMargin,
+    "100% 0px 100% 0px",
+    "a chunk is drawn a viewport before the reader reaches it, from above or below",
+  );
   assert.equal(calls.length, 0);
   assert.equal(a.renderedChoice.attributes.get("aria-checked"), "true");
   const arrival = (file) => ({ target: file.section, isIntersecting: true });
@@ -621,6 +719,9 @@ async function main() {
     version: "markdown-diff-v1",
     status: "ready",
     source_only: true,
+    view: "concise",
+    count: 1,
+    folds: [],
     blocks: [
       { kind: "added", side: "new", html: "<p>Edited <ins>word</ins></p>", source_only: false },
     ],
@@ -715,9 +816,12 @@ async function main() {
   assert.equal(c.renderedChoice.dataset.tipText, why, "as its tooltip");
   assert.equal(
     c.renderedChoice.attributes.get("aria-label"),
-    `Rendered, unavailable. ${why}`,
+    `Concise, unavailable. ${why}`,
     "and in its accessible name",
   );
+  assert.equal(c.fullChoice.attributes.get("aria-disabled"), "true", "Full goes too");
+  assert.equal(c.fullChoice.dataset.tipText, why);
+  assert.equal(c.fullChoice.attributes.get("aria-label"), `Full, unavailable. ${why}`);
   assert.equal(c.sourceChoice.dataset.tipText, undefined);
   assert.equal(c.sourceChoice.attributes.get("aria-disabled"), undefined);
   assert.equal(document.activeElement, c.sourceChoice, "focus follows the format shown");
@@ -772,6 +876,7 @@ async function main() {
   view.dispose();
   assert.equal(calls[5].signal.aborted, true, "disposal stops the request in flight");
   assert.equal(observer.observed.size, 0);
+  assert.equal(chunkObserver.observed.size, 0, "disposal stops watching chunks");
   assert.equal(sharedChange, undefined);
   assert.equal(time.pending, 0, "disposal cancels every timer");
   calls[5].resolve(ready);
@@ -871,6 +976,9 @@ async function main() {
     version: "markdown-diff-v1",
     status: "ready",
     source_only: false,
+    view: "concise",
+    count: 3,
+    folds: [],
     frontmatter: {
       change: "modified",
       entries: [
@@ -905,6 +1013,9 @@ async function main() {
     version: "markdown-diff-v1",
     status: "ready",
     source_only: false,
+    view: "concise",
+    count: 2,
+    folds: [],
     frontmatter: {
       change: "removed",
       entries: [{ key: "title", text: "Notes", change: "removed" }],

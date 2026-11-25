@@ -2,218 +2,441 @@
   "image_route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef",
   "manifest": [
-    {
-      "id": "f1",
-      "availability": "ready",
-      "old": {
-        "entry_type": "file",
-        "path": "docs/guide.md"
-      },
-      "new": {
-        "entry_type": "file",
-        "path": "docs/guide.md"
-      }
-    },
-    {
-      "id": "f5",
-      "availability": "ready",
-      "old": {
-        "entry_type": "file",
-        "path": "src/app.py"
-      },
-      "new": {
-        "entry_type": "file",
-        "path": "src/app.py"
-      }
-    },
-    {
-      "id": "f2",
-      "availability": "ready",
-      "old": {
-        "entry_type": "file",
-        "path": "docs/renamed.md"
-      },
-      "new": {
-        "entry_type": "file",
-        "path": "docs/renamed.md"
-      }
-    },
-    {
-      "id": "f3",
-      "availability": "ready",
-      "old": null,
-      "new": {
-        "entry_type": "file",
-        "path": "docs/deep.md"
-      }
-    },
-    {
-      "id": "f4",
-      "availability": "ready",
-      "old": null,
-      "new": {
-        "entry_type": "file",
-        "path": "README.md"
-      }
-    },
-    {
-      "id": "f6",
-      "availability": "ready",
-      "old": {
-        "entry_type": "file",
-        "path": "docs/notes.md"
-      },
-      "new": {
-        "entry_type": "file",
-        "path": "docs/notes.md"
-      }
-    },
-    {
-      "id": "f7",
-      "availability": "ready",
-      "old": {
-        "entry_type": "file",
-        "path": "docs/plain.md"
-      },
-      "new": {
-        "entry_type": "file",
-        "path": "docs/plain.md"
-      }
-    },
-    {
-      "id": "f8",
-      "availability": "ready",
-      "old": {
-        "entry_type": "file",
-        "path": "docs/huge.md"
-      },
-      "new": {
-        "entry_type": "file",
-        "path": "docs/huge.md"
-      }
-    },
-    {
-      "id": "f9",
-      "availability": "too_large",
-      "old": {
-        "entry_type": "file",
-        "path": "docs/unread.md"
-      },
-      "new": {
-        "entry_type": "file",
-        "path": "docs/unread.md"
-      }
-    }
+    {"id": "f1", "availability": "ready", "old": {"entry_type": "file", "path": "docs/guide.md"}, "new": {"entry_type": "file", "path": "docs/guide.md"}},
+    {"id": "f5", "availability": "ready", "old": {"entry_type": "file", "path": "src/app.py"}, "new": {"entry_type": "file", "path": "src/app.py"}},
+    {"id": "f2", "availability": "ready", "old": {"entry_type": "file", "path": "docs/renamed.md"}, "new": {"entry_type": "file", "path": "docs/renamed.md"}},
+    {"id": "f3", "availability": "ready", "old": null, "new": {"entry_type": "file", "path": "docs/deep.md"}},
+    {"id": "f4", "availability": "ready", "old": null, "new": {"entry_type": "file", "path": "README.md"}},
+    {"id": "f6", "availability": "ready", "old": {"entry_type": "file", "path": "docs/notes.md"}, "new": {"entry_type": "file", "path": "docs/notes.md"}},
+    {"id": "f7", "availability": "ready", "old": {"entry_type": "file", "path": "docs/plain.md"}, "new": {"entry_type": "file", "path": "docs/plain.md"}},
+    {"id": "f8", "availability": "ready", "old": {"entry_type": "file", "path": "docs/huge.md"}, "new": {"entry_type": "file", "path": "docs/huge.md"}},
+    {"id": "f9", "availability": "too_large", "old": {"entry_type": "file", "path": "docs/unread.md"}, "new": {"entry_type": "file", "path": "docs/unread.md"}},
+    {"id": "f10", "availability": "ready", "old": {"entry_type": "file", "path": "docs/long.md"}, "new": {"entry_type": "file", "path": "docs/long.md"}},
+    {"id": "f11", "availability": "ready", "old": null, "new": {"entry_type": "file", "path": "docs/book.md"}}
   ],
   "answers": {
+    "f4": {
+      "view=concise": {
+        "version": "markdown-diff-v1",
+        "status": "ready",
+        "blocks": [
+          {"kind": "added", "side": "new", "html": "<p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"64\"></p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<h1 id=\"user-content-16979ee89c3406b5dab20e21-new-demo\">Demo</h1>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Welcome.<br>Press <kbd>Ctrl</kbd> to begin.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<details open>\n<summary>More</summary>\n<p>The <strong>details</strong>.</p>\n</details>", "source_only": false}
+        ],
+        "source_only": false,
+        "view": "concise",
+        "count": 4,
+        "folds": []
+      }
+    },
+    "f6": {
+      "view=concise": {
+        "version": "markdown-diff-v1",
+        "status": "ready",
+        "blocks": [
+          {"kind": "context", "side": "new", "html": "<h1 id=\"user-content-53205693cc2502516bbe3652-new-notes\">Notes</h1>", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<p>The <del>old</del> body.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>The <ins>new</ins> body.</p>", "source_only": false}
+        ],
+        "source_only": false,
+        "frontmatter": {
+          "change": "context",
+          "entries": [
+            {
+              "key": "title",
+              "change": "context",
+              "text": "Notes"
+            }
+          ]
+        },
+        "view": "concise",
+        "count": 3,
+        "folds": []
+      }
+    },
+    "f7": {
+      "view=concise": {
+        "version": "markdown-diff-v1",
+        "status": "ready",
+        "blocks": [
+          {"kind": "context", "side": "new", "html": "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Text.</p>", "source_only": false}
+        ],
+        "source_only": false,
+        "frontmatter": {
+          "change": "removed",
+          "entries": [
+            {
+              "key": "draft",
+              "change": "removed",
+              "text": "True"
+            },
+            {
+              "key": "title",
+              "change": "removed",
+              "text": "Plain"
+            }
+          ]
+        },
+        "view": "concise",
+        "count": 2,
+        "folds": []
+      }
+    },
+    "f11": {
+      "view=concise": {
+        "version": "markdown-diff-v1",
+        "status": "ready",
+        "blocks": [
+          {"kind": "added", "side": "new", "html": "<p>Page 0.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 1.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 2.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 3.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 4.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 5.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 6.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 7.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 8.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 9.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 10.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 11.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 12.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 13.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 14.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 15.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 16.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 17.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 18.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 19.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 20.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 21.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 22.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 23.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 24.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 25.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 26.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 27.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 28.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 29.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 30.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 31.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 32.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 33.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 34.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 35.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 36.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 37.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 38.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 39.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 40.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 41.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 42.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 43.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 44.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 45.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 46.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 47.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 48.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 49.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 50.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 51.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 52.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 53.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 54.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 55.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 56.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 57.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 58.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 59.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 60.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 61.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 62.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 63.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 64.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 65.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 66.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 67.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 68.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 69.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 70.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 71.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 72.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 73.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 74.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 75.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 76.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 77.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 78.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 79.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 80.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 81.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 82.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 83.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 84.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 85.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 86.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 87.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 88.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 89.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 90.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 91.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 92.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 93.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 94.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 95.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 96.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 97.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 98.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 99.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 100.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 101.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 102.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 103.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 104.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 105.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 106.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 107.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 108.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 109.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 110.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 111.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 112.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 113.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 114.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 115.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 116.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 117.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 118.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Page 119.</p>", "source_only": false}
+        ],
+        "source_only": false,
+        "view": "concise",
+        "count": 120,
+        "folds": []
+      }
+    },
     "f1": {
-      "version": "markdown-diff-v1",
-      "status": "ready",
-      "blocks": [
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
-          "source_only": true
+      "view=concise": {
+        "version": "markdown-diff-v1",
+        "status": "ready",
+        "blocks": [
+          {"kind": "context", "side": "new", "html": "<h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>", "source_only": true},
+          {"kind": "removed", "side": "old", "html": "<p>Read the <span>setup notes</span> first.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 0.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 1.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 2.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 3.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 4.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 5.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 6.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 7.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<p>The <del>old</del> closing line.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>The <ins>new</ins> closing line.</p>", "source_only": false}
+        ],
+        "source_only": true,
+        "frontmatter": {
+          "change": "modified",
+          "entries": [
+            {
+              "key": "owner",
+              "change": "removed",
+              "text": "docs"
+            },
+            {
+              "key": "owner",
+              "change": "added",
+              "text": "platform"
+            },
+            {
+              "key": "title",
+              "change": "context",
+              "text": "Guide"
+            }
+          ]
         },
-        {
-          "kind": "removed",
-          "side": "old",
-          "html": "<p>Read the <span>setup notes</span> first.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "added",
-          "side": "new",
-          "html": "<p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<p>Unchanged paragraph 0.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<p>Unchanged paragraph 1.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<p>Unchanged paragraph 2.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<p>Unchanged paragraph 3.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<p>Unchanged paragraph 4.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<p>Unchanged paragraph 5.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<p>Unchanged paragraph 6.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<p>Unchanged paragraph 7.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
-          "source_only": false
-        },
-        {
-          "kind": "removed",
-          "side": "old",
-          "html": "<p>The <del>old</del> closing line.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "added",
-          "side": "new",
-          "html": "<p>The <ins>new</ins> closing line.</p>",
-          "source_only": false
-        }
-      ],
-      "source_only": true,
-      "frontmatter": {
-        "change": "modified",
-        "entries": [
+        "view": "concise",
+        "count": 14,
+        "folds": [
           {
-            "key": "owner",
-            "change": "removed",
-            "text": "docs"
-          },
-          {
-            "key": "owner",
-            "change": "added",
-            "text": "platform"
-          },
-          {
-            "key": "title",
-            "change": "context",
-            "text": "Guide"
+            "at": 5,
+            "count": 5,
+            "lines": 9
           }
+        ]
+      },
+      "view=prefer-full": {
+        "version": "markdown-diff-v1",
+        "status": "ready",
+        "blocks": [
+          {"kind": "context", "side": "new", "html": "<h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>", "source_only": true},
+          {"kind": "removed", "side": "old", "html": "<p>Read the <span>setup notes</span> first.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 0.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 1.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 2.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 3.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 4.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 5.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 6.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Unchanged paragraph 7.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<p>The <del>old</del> closing line.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>The <ins>new</ins> closing line.</p>", "source_only": false}
+        ],
+        "source_only": true,
+        "frontmatter": {
+          "change": "modified",
+          "entries": [
+            {
+              "key": "owner",
+              "change": "removed",
+              "text": "docs"
+            },
+            {
+              "key": "owner",
+              "change": "added",
+              "text": "platform"
+            },
+            {
+              "key": "title",
+              "change": "context",
+              "text": "Guide"
+            }
+          ]
+        },
+        "view": "full",
+        "count": 14,
+        "folds": [
+          {
+            "at": 5,
+            "count": 5,
+            "lines": 9
+          }
+        ]
+      }
+    },
+    "f10": {
+      "view=concise": {
+        "version": "markdown-diff-v1",
+        "status": "ready",
+        "blocks": [
+          {"kind": "context", "side": "new", "html": "<h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<p>See <span>the deep part</span> <del>now</del>.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>See <a href=\"#user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">the deep part</a> <ins>today</ins>.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 0.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 1.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 2.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 3.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 4.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 5.</p>", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<p>Middle <del>old</del>.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Middle <ins>new</ins>.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Intro A.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Intro B.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Outro A.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Outro B.</p>", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<p>Later <del>old</del>.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Later <ins>new</ins>.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Note A.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Note B.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Coda A.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Coda B.</p>", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<p>The <del>old</del> end.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>The <ins>new</ins> end.</p>", "source_only": false}
+        ],
+        "source_only": false,
+        "view": "concise",
+        "count": 27,
+        "folds": [
+          {
+            "at": 5,
+            "count": 2,
+            "lines": 3
+          },
+          {
+            "at": 13,
+            "count": 2,
+            "lines": 112,
+            "withheld": true,
+            "ids": [
+              "user-content-25ebc7ae7b51d35c4452a791-new-deep-heading"
+            ]
+          },
+          {
+            "at": 21,
+            "count": 2,
+            "lines": 112,
+            "withheld": true,
+            "ids": [
+              "user-content-25ebc7ae7b51d35c4452a791-new-appendix"
+            ]
+          }
+        ]
+      },
+      "view=full": {
+        "version": "markdown-diff-v1",
+        "status": "ready",
+        "blocks": [
+          {"kind": "context", "side": "new", "html": "<h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<p>See <span>the deep part</span> <del>now</del>.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>See <a href=\"#user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">the deep part</a> <ins>today</ins>.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 0.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 1.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 2.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 3.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 4.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Paragraph 5.</p>", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<p>Middle <del>old</del>.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Middle <ins>new</ins>.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Intro A.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Intro B.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<h2 id=\"user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">Deep heading</h2>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Line.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Outro A.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Outro B.</p>", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<p>Later <del>old</del>.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>Later <ins>new</ins>.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Note A.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Note B.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<h2 id=\"user-content-25ebc7ae7b51d35c4452a791-new-appendix\">Appendix</h2>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Row.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Coda A.</p>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Coda B.</p>", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<p>The <del>old</del> end.</p>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<p>The <ins>new</ins> end.</p>", "source_only": false}
+        ],
+        "source_only": false,
+        "view": "full",
+        "count": 27,
+        "folds": [
+          {
+            "at": 5,
+            "count": 2,
+            "lines": 3
+          },
+          {
+            "at": 13,
+            "count": 2,
+            "lines": 112
+          },
+          {
+            "at": 21,
+            "count": 2,
+            "lines": 112
+          }
+        ]
+      },
+      "blocks=13-15": {
+        "version": "markdown-diff-v1",
+        "status": "ready",
+        "at": 13,
+        "blocks": [
+          {"kind": "context", "side": "new", "html": "<h2 id=\"user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">Deep heading</h2>", "source_only": false},
+          {"kind": "context", "side": "new", "html": "<p>Line.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.</p>", "source_only": false}
         ]
       }
     },
@@ -231,106 +454,6 @@
       "source_only": false,
       "reason": "nesting"
     },
-    "f4": {
-      "version": "markdown-diff-v1",
-      "status": "ready",
-      "blocks": [
-        {
-          "kind": "added",
-          "side": "new",
-          "html": "<p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"64\"></p>",
-          "source_only": false
-        },
-        {
-          "kind": "added",
-          "side": "new",
-          "html": "<h1 id=\"user-content-16979ee89c3406b5dab20e21-new-demo\">Demo</h1>",
-          "source_only": false
-        },
-        {
-          "kind": "added",
-          "side": "new",
-          "html": "<p>Welcome.<br>Press <kbd>Ctrl</kbd> to begin.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "added",
-          "side": "new",
-          "html": "<details open>\n<summary>More</summary>\n<p>The <strong>details</strong>.</p>\n</details>",
-          "source_only": false
-        }
-      ],
-      "source_only": false
-    },
-    "f6": {
-      "version": "markdown-diff-v1",
-      "status": "ready",
-      "blocks": [
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<h1 id=\"user-content-53205693cc2502516bbe3652-new-notes\">Notes</h1>",
-          "source_only": false
-        },
-        {
-          "kind": "removed",
-          "side": "old",
-          "html": "<p>The <del>old</del> body.</p>",
-          "source_only": false
-        },
-        {
-          "kind": "added",
-          "side": "new",
-          "html": "<p>The <ins>new</ins> body.</p>",
-          "source_only": false
-        }
-      ],
-      "source_only": false,
-      "frontmatter": {
-        "change": "context",
-        "entries": [
-          {
-            "key": "title",
-            "change": "context",
-            "text": "Notes"
-          }
-        ]
-      }
-    },
-    "f7": {
-      "version": "markdown-diff-v1",
-      "status": "ready",
-      "blocks": [
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>",
-          "source_only": false
-        },
-        {
-          "kind": "context",
-          "side": "new",
-          "html": "<p>Text.</p>",
-          "source_only": false
-        }
-      ],
-      "source_only": false,
-      "frontmatter": {
-        "change": "removed",
-        "entries": [
-          {
-            "key": "draft",
-            "change": "removed",
-            "text": "True"
-          },
-          {
-            "key": "title",
-            "change": "removed",
-            "text": "Plain"
-          }
-        ]
-      }
-    },
     "f8": {
       "version": "markdown-diff-v1",
       "status": "too_large",
@@ -339,365 +462,175 @@
     }
   },
   "trees": {
-    "<h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>": [
-      {
-        "tag": "h1",
-        "attrs": [
-          [
-            "id",
-            "user-content-9db1f7c43fe35b9a67d97ca0-new-guide-"
-          ]
-        ],
-        "children": [
-          "Guide "
-        ]
-      }
-    ],
-    "<p>Read the <span>setup notes</span> first.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Read the ",
-          {
-            "tag": "span",
-            "attrs": [],
-            "children": [
-              "setup notes"
-            ]
-          },
-          " first."
-        ]
-      }
-    ],
-    "<p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Read the ",
-          {
-            "tag": "a",
-            "attrs": [
-              [
-                "href",
-                "/view/g1-ZG9jcw/g1-c2V0dXAubWQ"
-              ]
-            ],
-            "children": [
-              "first setup notes"
-            ]
-          },
-          " first."
-        ]
-      }
-    ],
-    "<p>Unchanged paragraph 0.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Unchanged paragraph 0."
-        ]
-      }
-    ],
-    "<p>Unchanged paragraph 1.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Unchanged paragraph 1."
-        ]
-      }
-    ],
-    "<p>Unchanged paragraph 2.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Unchanged paragraph 2."
-        ]
-      }
-    ],
-    "<p>Unchanged paragraph 3.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Unchanged paragraph 3."
-        ]
-      }
-    ],
-    "<p>Unchanged paragraph 4.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Unchanged paragraph 4."
-        ]
-      }
-    ],
-    "<p>Unchanged paragraph 5.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Unchanged paragraph 5."
-        ]
-      }
-    ],
-    "<p>Unchanged paragraph 6.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Unchanged paragraph 6."
-        ]
-      }
-    ],
-    "<p>Unchanged paragraph 7.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Unchanged paragraph 7."
-        ]
-      }
-    ],
-    "<img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">": [
-      {
-        "tag": "img",
-        "attrs": [
-          [
-            "loading",
-            "lazy"
-          ],
-          [
-            "src",
-            "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc"
-          ],
-          [
-            "alt",
-            "Diagram"
-          ]
-        ],
-        "children": []
-      }
-    ],
-    "<p>The <del>old</del> closing line.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "The ",
-          {
-            "tag": "del",
-            "attrs": [],
-            "children": [
-              "old"
-            ]
-          },
-          " closing line."
-        ]
-      }
-    ],
-    "<p>The <ins>new</ins> closing line.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "The ",
-          {
-            "tag": "ins",
-            "attrs": [],
-            "children": [
-              "new"
-            ]
-          },
-          " closing line."
-        ]
-      }
-    ],
-    "<p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"64\"></p>": [
-      {
-        "tag": "p",
-        "attrs": [
-          [
-            "align",
-            "center"
-          ]
-        ],
-        "children": [
-          {
-            "tag": "img",
-            "attrs": [
-              [
-                "loading",
-                "lazy"
-              ],
-              [
-                "referrerpolicy",
-                "no-referrer"
-              ],
-              [
-                "src",
-                "https://example.com/logo.png"
-              ],
-              [
-                "width",
-                "64"
-              ]
-            ],
-            "children": []
-          }
-        ]
-      }
-    ],
-    "<h1 id=\"user-content-16979ee89c3406b5dab20e21-new-demo\">Demo</h1>": [
-      {
-        "tag": "h1",
-        "attrs": [
-          [
-            "id",
-            "user-content-16979ee89c3406b5dab20e21-new-demo"
-          ]
-        ],
-        "children": [
-          "Demo"
-        ]
-      }
-    ],
-    "<p>Welcome.<br>Press <kbd>Ctrl</kbd> to begin.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Welcome.",
-          {
-            "tag": "br",
-            "attrs": [],
-            "children": []
-          },
-          "Press ",
-          {
-            "tag": "kbd",
-            "attrs": [],
-            "children": [
-              "Ctrl"
-            ]
-          },
-          " to begin."
-        ]
-      }
-    ],
-    "<details open>\n<summary>More</summary>\n<p>The <strong>details</strong>.</p>\n</details>": [
-      {
-        "tag": "details",
-        "attrs": [
-          [
-            "open",
-            ""
-          ]
-        ],
-        "children": [
-          "\n",
-          {
-            "tag": "summary",
-            "attrs": [],
-            "children": [
-              "More"
-            ]
-          },
-          "\n",
-          {
-            "tag": "p",
-            "attrs": [],
-            "children": [
-              "The ",
-              {
-                "tag": "strong",
-                "attrs": [],
-                "children": [
-                  "details"
-                ]
-              },
-              "."
-            ]
-          },
-          "\n"
-        ]
-      }
-    ],
-    "<h1 id=\"user-content-53205693cc2502516bbe3652-new-notes\">Notes</h1>": [
-      {
-        "tag": "h1",
-        "attrs": [
-          [
-            "id",
-            "user-content-53205693cc2502516bbe3652-new-notes"
-          ]
-        ],
-        "children": [
-          "Notes"
-        ]
-      }
-    ],
-    "<p>The <del>old</del> body.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "The ",
-          {
-            "tag": "del",
-            "attrs": [],
-            "children": [
-              "old"
-            ]
-          },
-          " body."
-        ]
-      }
-    ],
-    "<p>The <ins>new</ins> body.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "The ",
-          {
-            "tag": "ins",
-            "attrs": [],
-            "children": [
-              "new"
-            ]
-          },
-          " body."
-        ]
-      }
-    ],
-    "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>": [
-      {
-        "tag": "h1",
-        "attrs": [
-          [
-            "id",
-            "user-content-71ee10c56ecf50774ee672b1-new-plain"
-          ]
-        ],
-        "children": [
-          "Plain"
-        ]
-      }
-    ],
-    "<p>Text.</p>": [
-      {
-        "tag": "p",
-        "attrs": [],
-        "children": [
-          "Text."
-        ]
-      }
-    ]
+    "<h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>": [{"tag": "h1", "attrs": [["id", "user-content-9db1f7c43fe35b9a67d97ca0-new-guide-"]], "children": ["Guide "]}],
+    "<p>Read the <span>setup notes</span> first.</p>": [{"tag": "p", "attrs": [], "children": ["Read the ", {"tag": "span", "attrs": [], "children": ["setup notes"]}, " first."]}],
+    "<p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>": [{"tag": "p", "attrs": [], "children": ["Read the ", {"tag": "a", "attrs": [["href", "/view/g1-ZG9jcw/g1-c2V0dXAubWQ"]], "children": ["first setup notes"]}, " first."]}],
+    "<p>Unchanged paragraph 0.</p>": [{"tag": "p", "attrs": [], "children": ["Unchanged paragraph 0."]}],
+    "<p>Unchanged paragraph 1.</p>": [{"tag": "p", "attrs": [], "children": ["Unchanged paragraph 1."]}],
+    "<p>Unchanged paragraph 2.</p>": [{"tag": "p", "attrs": [], "children": ["Unchanged paragraph 2."]}],
+    "<p>Unchanged paragraph 3.</p>": [{"tag": "p", "attrs": [], "children": ["Unchanged paragraph 3."]}],
+    "<p>Unchanged paragraph 4.</p>": [{"tag": "p", "attrs": [], "children": ["Unchanged paragraph 4."]}],
+    "<p>Unchanged paragraph 5.</p>": [{"tag": "p", "attrs": [], "children": ["Unchanged paragraph 5."]}],
+    "<p>Unchanged paragraph 6.</p>": [{"tag": "p", "attrs": [], "children": ["Unchanged paragraph 6."]}],
+    "<p>Unchanged paragraph 7.</p>": [{"tag": "p", "attrs": [], "children": ["Unchanged paragraph 7."]}],
+    "<img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">": [{"tag": "img", "attrs": [["loading", "lazy"], ["src", "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc"], ["alt", "Diagram"]], "children": []}],
+    "<p>The <del>old</del> closing line.</p>": [{"tag": "p", "attrs": [], "children": ["The ", {"tag": "del", "attrs": [], "children": ["old"]}, " closing line."]}],
+    "<p>The <ins>new</ins> closing line.</p>": [{"tag": "p", "attrs": [], "children": ["The ", {"tag": "ins", "attrs": [], "children": ["new"]}, " closing line."]}],
+    "<p align=\"center\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/logo.png\" width=\"64\"></p>": [{"tag": "p", "attrs": [["align", "center"]], "children": [{"tag": "img", "attrs": [["loading", "lazy"], ["referrerpolicy", "no-referrer"], ["src", "https://example.com/logo.png"], ["width", "64"]], "children": []}]}],
+    "<h1 id=\"user-content-16979ee89c3406b5dab20e21-new-demo\">Demo</h1>": [{"tag": "h1", "attrs": [["id", "user-content-16979ee89c3406b5dab20e21-new-demo"]], "children": ["Demo"]}],
+    "<p>Welcome.<br>Press <kbd>Ctrl</kbd> to begin.</p>": [{"tag": "p", "attrs": [], "children": ["Welcome.", {"tag": "br", "attrs": [], "children": []}, "Press ", {"tag": "kbd", "attrs": [], "children": ["Ctrl"]}, " to begin."]}],
+    "<details open>\n<summary>More</summary>\n<p>The <strong>details</strong>.</p>\n</details>": [{"tag": "details", "attrs": [["open", ""]], "children": ["\n", {"tag": "summary", "attrs": [], "children": ["More"]}, "\n", {"tag": "p", "attrs": [], "children": ["The ", {"tag": "strong", "attrs": [], "children": ["details"]}, "."]}, "\n"]}],
+    "<h1 id=\"user-content-53205693cc2502516bbe3652-new-notes\">Notes</h1>": [{"tag": "h1", "attrs": [["id", "user-content-53205693cc2502516bbe3652-new-notes"]], "children": ["Notes"]}],
+    "<p>The <del>old</del> body.</p>": [{"tag": "p", "attrs": [], "children": ["The ", {"tag": "del", "attrs": [], "children": ["old"]}, " body."]}],
+    "<p>The <ins>new</ins> body.</p>": [{"tag": "p", "attrs": [], "children": ["The ", {"tag": "ins", "attrs": [], "children": ["new"]}, " body."]}],
+    "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>": [{"tag": "h1", "attrs": [["id", "user-content-71ee10c56ecf50774ee672b1-new-plain"]], "children": ["Plain"]}],
+    "<p>Text.</p>": [{"tag": "p", "attrs": [], "children": ["Text."]}],
+    "<h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>": [{"tag": "h1", "attrs": [["id", "user-content-25ebc7ae7b51d35c4452a791-new-long"]], "children": ["Long"]}],
+    "<p>See <span>the deep part</span> <del>now</del>.</p>": [{"tag": "p", "attrs": [], "children": ["See ", {"tag": "span", "attrs": [], "children": ["the deep part"]}, " ", {"tag": "del", "attrs": [], "children": ["now"]}, "."]}],
+    "<p>See <a href=\"#user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">the deep part</a> <ins>today</ins>.</p>": [{"tag": "p", "attrs": [], "children": ["See ", {"tag": "a", "attrs": [["href", "#user-content-25ebc7ae7b51d35c4452a791-new-deep-heading"]], "children": ["the deep part"]}, " ", {"tag": "ins", "attrs": [], "children": ["today"]}, "."]}],
+    "<p>Paragraph 0.</p>": [{"tag": "p", "attrs": [], "children": ["Paragraph 0."]}],
+    "<p>Paragraph 1.</p>": [{"tag": "p", "attrs": [], "children": ["Paragraph 1."]}],
+    "<p>Paragraph 2.</p>": [{"tag": "p", "attrs": [], "children": ["Paragraph 2."]}],
+    "<p>Paragraph 3.</p>": [{"tag": "p", "attrs": [], "children": ["Paragraph 3."]}],
+    "<p>Paragraph 4.</p>": [{"tag": "p", "attrs": [], "children": ["Paragraph 4."]}],
+    "<p>Paragraph 5.</p>": [{"tag": "p", "attrs": [], "children": ["Paragraph 5."]}],
+    "<p>Middle <del>old</del>.</p>": [{"tag": "p", "attrs": [], "children": ["Middle ", {"tag": "del", "attrs": [], "children": ["old"]}, "."]}],
+    "<p>Middle <ins>new</ins>.</p>": [{"tag": "p", "attrs": [], "children": ["Middle ", {"tag": "ins", "attrs": [], "children": ["new"]}, "."]}],
+    "<p>Intro A.</p>": [{"tag": "p", "attrs": [], "children": ["Intro A."]}],
+    "<p>Intro B.</p>": [{"tag": "p", "attrs": [], "children": ["Intro B."]}],
+    "<h2 id=\"user-content-25ebc7ae7b51d35c4452a791-new-deep-heading\">Deep heading</h2>": [{"tag": "h2", "attrs": [["id", "user-content-25ebc7ae7b51d35c4452a791-new-deep-heading"]], "children": ["Deep heading"]}],
+    "<p>Line.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.</p>": [{"tag": "p", "attrs": [], "children": ["Line.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine.\nLine."]}],
+    "<p>Outro A.</p>": [{"tag": "p", "attrs": [], "children": ["Outro A."]}],
+    "<p>Outro B.</p>": [{"tag": "p", "attrs": [], "children": ["Outro B."]}],
+    "<p>Later <del>old</del>.</p>": [{"tag": "p", "attrs": [], "children": ["Later ", {"tag": "del", "attrs": [], "children": ["old"]}, "."]}],
+    "<p>Later <ins>new</ins>.</p>": [{"tag": "p", "attrs": [], "children": ["Later ", {"tag": "ins", "attrs": [], "children": ["new"]}, "."]}],
+    "<p>Note A.</p>": [{"tag": "p", "attrs": [], "children": ["Note A."]}],
+    "<p>Note B.</p>": [{"tag": "p", "attrs": [], "children": ["Note B."]}],
+    "<h2 id=\"user-content-25ebc7ae7b51d35c4452a791-new-appendix\">Appendix</h2>": [{"tag": "h2", "attrs": [["id", "user-content-25ebc7ae7b51d35c4452a791-new-appendix"]], "children": ["Appendix"]}],
+    "<p>Row.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.</p>": [{"tag": "p", "attrs": [], "children": ["Row.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow.\nRow."]}],
+    "<p>Coda A.</p>": [{"tag": "p", "attrs": [], "children": ["Coda A."]}],
+    "<p>Coda B.</p>": [{"tag": "p", "attrs": [], "children": ["Coda B."]}],
+    "<p>The <del>old</del> end.</p>": [{"tag": "p", "attrs": [], "children": ["The ", {"tag": "del", "attrs": [], "children": ["old"]}, " end."]}],
+    "<p>The <ins>new</ins> end.</p>": [{"tag": "p", "attrs": [], "children": ["The ", {"tag": "ins", "attrs": [], "children": ["new"]}, " end."]}],
+    "<p>Page 0.</p>": [{"tag": "p", "attrs": [], "children": ["Page 0."]}],
+    "<p>Page 1.</p>": [{"tag": "p", "attrs": [], "children": ["Page 1."]}],
+    "<p>Page 2.</p>": [{"tag": "p", "attrs": [], "children": ["Page 2."]}],
+    "<p>Page 3.</p>": [{"tag": "p", "attrs": [], "children": ["Page 3."]}],
+    "<p>Page 4.</p>": [{"tag": "p", "attrs": [], "children": ["Page 4."]}],
+    "<p>Page 5.</p>": [{"tag": "p", "attrs": [], "children": ["Page 5."]}],
+    "<p>Page 6.</p>": [{"tag": "p", "attrs": [], "children": ["Page 6."]}],
+    "<p>Page 7.</p>": [{"tag": "p", "attrs": [], "children": ["Page 7."]}],
+    "<p>Page 8.</p>": [{"tag": "p", "attrs": [], "children": ["Page 8."]}],
+    "<p>Page 9.</p>": [{"tag": "p", "attrs": [], "children": ["Page 9."]}],
+    "<p>Page 10.</p>": [{"tag": "p", "attrs": [], "children": ["Page 10."]}],
+    "<p>Page 11.</p>": [{"tag": "p", "attrs": [], "children": ["Page 11."]}],
+    "<p>Page 12.</p>": [{"tag": "p", "attrs": [], "children": ["Page 12."]}],
+    "<p>Page 13.</p>": [{"tag": "p", "attrs": [], "children": ["Page 13."]}],
+    "<p>Page 14.</p>": [{"tag": "p", "attrs": [], "children": ["Page 14."]}],
+    "<p>Page 15.</p>": [{"tag": "p", "attrs": [], "children": ["Page 15."]}],
+    "<p>Page 16.</p>": [{"tag": "p", "attrs": [], "children": ["Page 16."]}],
+    "<p>Page 17.</p>": [{"tag": "p", "attrs": [], "children": ["Page 17."]}],
+    "<p>Page 18.</p>": [{"tag": "p", "attrs": [], "children": ["Page 18."]}],
+    "<p>Page 19.</p>": [{"tag": "p", "attrs": [], "children": ["Page 19."]}],
+    "<p>Page 20.</p>": [{"tag": "p", "attrs": [], "children": ["Page 20."]}],
+    "<p>Page 21.</p>": [{"tag": "p", "attrs": [], "children": ["Page 21."]}],
+    "<p>Page 22.</p>": [{"tag": "p", "attrs": [], "children": ["Page 22."]}],
+    "<p>Page 23.</p>": [{"tag": "p", "attrs": [], "children": ["Page 23."]}],
+    "<p>Page 24.</p>": [{"tag": "p", "attrs": [], "children": ["Page 24."]}],
+    "<p>Page 25.</p>": [{"tag": "p", "attrs": [], "children": ["Page 25."]}],
+    "<p>Page 26.</p>": [{"tag": "p", "attrs": [], "children": ["Page 26."]}],
+    "<p>Page 27.</p>": [{"tag": "p", "attrs": [], "children": ["Page 27."]}],
+    "<p>Page 28.</p>": [{"tag": "p", "attrs": [], "children": ["Page 28."]}],
+    "<p>Page 29.</p>": [{"tag": "p", "attrs": [], "children": ["Page 29."]}],
+    "<p>Page 30.</p>": [{"tag": "p", "attrs": [], "children": ["Page 30."]}],
+    "<p>Page 31.</p>": [{"tag": "p", "attrs": [], "children": ["Page 31."]}],
+    "<p>Page 32.</p>": [{"tag": "p", "attrs": [], "children": ["Page 32."]}],
+    "<p>Page 33.</p>": [{"tag": "p", "attrs": [], "children": ["Page 33."]}],
+    "<p>Page 34.</p>": [{"tag": "p", "attrs": [], "children": ["Page 34."]}],
+    "<p>Page 35.</p>": [{"tag": "p", "attrs": [], "children": ["Page 35."]}],
+    "<p>Page 36.</p>": [{"tag": "p", "attrs": [], "children": ["Page 36."]}],
+    "<p>Page 37.</p>": [{"tag": "p", "attrs": [], "children": ["Page 37."]}],
+    "<p>Page 38.</p>": [{"tag": "p", "attrs": [], "children": ["Page 38."]}],
+    "<p>Page 39.</p>": [{"tag": "p", "attrs": [], "children": ["Page 39."]}],
+    "<p>Page 40.</p>": [{"tag": "p", "attrs": [], "children": ["Page 40."]}],
+    "<p>Page 41.</p>": [{"tag": "p", "attrs": [], "children": ["Page 41."]}],
+    "<p>Page 42.</p>": [{"tag": "p", "attrs": [], "children": ["Page 42."]}],
+    "<p>Page 43.</p>": [{"tag": "p", "attrs": [], "children": ["Page 43."]}],
+    "<p>Page 44.</p>": [{"tag": "p", "attrs": [], "children": ["Page 44."]}],
+    "<p>Page 45.</p>": [{"tag": "p", "attrs": [], "children": ["Page 45."]}],
+    "<p>Page 46.</p>": [{"tag": "p", "attrs": [], "children": ["Page 46."]}],
+    "<p>Page 47.</p>": [{"tag": "p", "attrs": [], "children": ["Page 47."]}],
+    "<p>Page 48.</p>": [{"tag": "p", "attrs": [], "children": ["Page 48."]}],
+    "<p>Page 49.</p>": [{"tag": "p", "attrs": [], "children": ["Page 49."]}],
+    "<p>Page 50.</p>": [{"tag": "p", "attrs": [], "children": ["Page 50."]}],
+    "<p>Page 51.</p>": [{"tag": "p", "attrs": [], "children": ["Page 51."]}],
+    "<p>Page 52.</p>": [{"tag": "p", "attrs": [], "children": ["Page 52."]}],
+    "<p>Page 53.</p>": [{"tag": "p", "attrs": [], "children": ["Page 53."]}],
+    "<p>Page 54.</p>": [{"tag": "p", "attrs": [], "children": ["Page 54."]}],
+    "<p>Page 55.</p>": [{"tag": "p", "attrs": [], "children": ["Page 55."]}],
+    "<p>Page 56.</p>": [{"tag": "p", "attrs": [], "children": ["Page 56."]}],
+    "<p>Page 57.</p>": [{"tag": "p", "attrs": [], "children": ["Page 57."]}],
+    "<p>Page 58.</p>": [{"tag": "p", "attrs": [], "children": ["Page 58."]}],
+    "<p>Page 59.</p>": [{"tag": "p", "attrs": [], "children": ["Page 59."]}],
+    "<p>Page 60.</p>": [{"tag": "p", "attrs": [], "children": ["Page 60."]}],
+    "<p>Page 61.</p>": [{"tag": "p", "attrs": [], "children": ["Page 61."]}],
+    "<p>Page 62.</p>": [{"tag": "p", "attrs": [], "children": ["Page 62."]}],
+    "<p>Page 63.</p>": [{"tag": "p", "attrs": [], "children": ["Page 63."]}],
+    "<p>Page 64.</p>": [{"tag": "p", "attrs": [], "children": ["Page 64."]}],
+    "<p>Page 65.</p>": [{"tag": "p", "attrs": [], "children": ["Page 65."]}],
+    "<p>Page 66.</p>": [{"tag": "p", "attrs": [], "children": ["Page 66."]}],
+    "<p>Page 67.</p>": [{"tag": "p", "attrs": [], "children": ["Page 67."]}],
+    "<p>Page 68.</p>": [{"tag": "p", "attrs": [], "children": ["Page 68."]}],
+    "<p>Page 69.</p>": [{"tag": "p", "attrs": [], "children": ["Page 69."]}],
+    "<p>Page 70.</p>": [{"tag": "p", "attrs": [], "children": ["Page 70."]}],
+    "<p>Page 71.</p>": [{"tag": "p", "attrs": [], "children": ["Page 71."]}],
+    "<p>Page 72.</p>": [{"tag": "p", "attrs": [], "children": ["Page 72."]}],
+    "<p>Page 73.</p>": [{"tag": "p", "attrs": [], "children": ["Page 73."]}],
+    "<p>Page 74.</p>": [{"tag": "p", "attrs": [], "children": ["Page 74."]}],
+    "<p>Page 75.</p>": [{"tag": "p", "attrs": [], "children": ["Page 75."]}],
+    "<p>Page 76.</p>": [{"tag": "p", "attrs": [], "children": ["Page 76."]}],
+    "<p>Page 77.</p>": [{"tag": "p", "attrs": [], "children": ["Page 77."]}],
+    "<p>Page 78.</p>": [{"tag": "p", "attrs": [], "children": ["Page 78."]}],
+    "<p>Page 79.</p>": [{"tag": "p", "attrs": [], "children": ["Page 79."]}],
+    "<p>Page 80.</p>": [{"tag": "p", "attrs": [], "children": ["Page 80."]}],
+    "<p>Page 81.</p>": [{"tag": "p", "attrs": [], "children": ["Page 81."]}],
+    "<p>Page 82.</p>": [{"tag": "p", "attrs": [], "children": ["Page 82."]}],
+    "<p>Page 83.</p>": [{"tag": "p", "attrs": [], "children": ["Page 83."]}],
+    "<p>Page 84.</p>": [{"tag": "p", "attrs": [], "children": ["Page 84."]}],
+    "<p>Page 85.</p>": [{"tag": "p", "attrs": [], "children": ["Page 85."]}],
+    "<p>Page 86.</p>": [{"tag": "p", "attrs": [], "children": ["Page 86."]}],
+    "<p>Page 87.</p>": [{"tag": "p", "attrs": [], "children": ["Page 87."]}],
+    "<p>Page 88.</p>": [{"tag": "p", "attrs": [], "children": ["Page 88."]}],
+    "<p>Page 89.</p>": [{"tag": "p", "attrs": [], "children": ["Page 89."]}],
+    "<p>Page 90.</p>": [{"tag": "p", "attrs": [], "children": ["Page 90."]}],
+    "<p>Page 91.</p>": [{"tag": "p", "attrs": [], "children": ["Page 91."]}],
+    "<p>Page 92.</p>": [{"tag": "p", "attrs": [], "children": ["Page 92."]}],
+    "<p>Page 93.</p>": [{"tag": "p", "attrs": [], "children": ["Page 93."]}],
+    "<p>Page 94.</p>": [{"tag": "p", "attrs": [], "children": ["Page 94."]}],
+    "<p>Page 95.</p>": [{"tag": "p", "attrs": [], "children": ["Page 95."]}],
+    "<p>Page 96.</p>": [{"tag": "p", "attrs": [], "children": ["Page 96."]}],
+    "<p>Page 97.</p>": [{"tag": "p", "attrs": [], "children": ["Page 97."]}],
+    "<p>Page 98.</p>": [{"tag": "p", "attrs": [], "children": ["Page 98."]}],
+    "<p>Page 99.</p>": [{"tag": "p", "attrs": [], "children": ["Page 99."]}],
+    "<p>Page 100.</p>": [{"tag": "p", "attrs": [], "children": ["Page 100."]}],
+    "<p>Page 101.</p>": [{"tag": "p", "attrs": [], "children": ["Page 101."]}],
+    "<p>Page 102.</p>": [{"tag": "p", "attrs": [], "children": ["Page 102."]}],
+    "<p>Page 103.</p>": [{"tag": "p", "attrs": [], "children": ["Page 103."]}],
+    "<p>Page 104.</p>": [{"tag": "p", "attrs": [], "children": ["Page 104."]}],
+    "<p>Page 105.</p>": [{"tag": "p", "attrs": [], "children": ["Page 105."]}],
+    "<p>Page 106.</p>": [{"tag": "p", "attrs": [], "children": ["Page 106."]}],
+    "<p>Page 107.</p>": [{"tag": "p", "attrs": [], "children": ["Page 107."]}],
+    "<p>Page 108.</p>": [{"tag": "p", "attrs": [], "children": ["Page 108."]}],
+    "<p>Page 109.</p>": [{"tag": "p", "attrs": [], "children": ["Page 109."]}],
+    "<p>Page 110.</p>": [{"tag": "p", "attrs": [], "children": ["Page 110."]}],
+    "<p>Page 111.</p>": [{"tag": "p", "attrs": [], "children": ["Page 111."]}],
+    "<p>Page 112.</p>": [{"tag": "p", "attrs": [], "children": ["Page 112."]}],
+    "<p>Page 113.</p>": [{"tag": "p", "attrs": [], "children": ["Page 113."]}],
+    "<p>Page 114.</p>": [{"tag": "p", "attrs": [], "children": ["Page 114."]}],
+    "<p>Page 115.</p>": [{"tag": "p", "attrs": [], "children": ["Page 115."]}],
+    "<p>Page 116.</p>": [{"tag": "p", "attrs": [], "children": ["Page 116."]}],
+    "<p>Page 117.</p>": [{"tag": "p", "attrs": [], "children": ["Page 117."]}],
+    "<p>Page 118.</p>": [{"tag": "p", "attrs": [], "children": ["Page 118."]}],
+    "<p>Page 119.</p>": [{"tag": "p", "attrs": [], "children": ["Page 119."]}]
   }
 }

@@ -9,12 +9,13 @@ env:
 The diff’s toolbar ends with one group of choosers, **Diff | Current** before **Split |
 Unified**, or **Diff | Current** alone where the host fixes the layout, as a pull
 request’s Docs tab does.
-A file bar’s end group holds a rendered file’s **Rendered | Source** alone.
-**Diff** is the diff as it was before the chooser existed.
+A file bar’s end group holds a rendered file’s view chooser alone: **Full | Concise |
+Source** for Markdown, **Rendered | Source** for YAML and JSON. **Diff** is the diff as
+it was before the chooser existed.
 **Current** shows the new version alone: a code body draws only the new file’s lines, in
 one column whatever the layout, each hunk’s header naming the new side’s range without
 the heading Git takes from the old file, added lines marked `+` and no removed line
-drawn; a Rendered Markdown body keeps its added blocks and keys and hides its removed
+drawn; a rendered Markdown body keeps its added blocks and keys and hides its removed
 ones; a YAML or JSON tree is drawn without its removed entries; a deleted file and a
 file left empty say why they have no lines.
 The choice is one for the whole diff.
@@ -22,7 +23,7 @@ Each surface opens on its own default and remembers its own choice: Changes, a c
 page and a patch open on **Diff** and share `diff.show`; a pull request’s Docs tab opens
 on **Current** and keeps `github.docs.show`, so a choice on one does not move the other.
 A stored value that is not a choice reads as the surface’s default and is not rewritten.
-A file’s **Rendered | Source** stays its own and is not stored.
+A file’s view chooser stays its own and is not stored.
 When the choice changes, the line or block at the pane’s top keeps its place on the
 screen; where **Current** leaves that row out, the next row it draws keeps it.
 While the diff shows **Current**, the layout control keeps its place and shows the
@@ -69,7 +70,7 @@ $ node tests/dom/diff-current-session.js
       ],
       "written": [],
       "bar ends": {
-        "docs/guide.md": "*Rendered | Source",
+        "docs/guide.md": "Full | *Concise | Source",
         "a.py": "nothing",
         "config/app.yaml": "*Rendered | Source",
         "old.txt": "nothing",
@@ -78,7 +79,7 @@ $ node tests/dom/diff-current-session.js
       },
       "files": {
         "docs/guide.md": {
-          "nothing": "while its Rendered loads"
+          "nothing": "while its rendered view loads"
         },
         "a.py": {
           "source": [
@@ -91,7 +92,7 @@ $ node tests/dom/diff-current-session.js
           ]
         },
         "config/app.yaml": {
-          "nothing": "while its Rendered loads"
+          "nothing": "while its rendered view loads"
         },
         "old.txt": {
           "source": [
@@ -250,7 +251,7 @@ $ node tests/dom/diff-current-session.js
         "diff.show=current"
       ],
       "bar ends": {
-        "docs/guide.md": "Rendered | *Source",
+        "docs/guide.md": "Full | Concise | *Source",
         "a.py": "nothing",
         "config/app.yaml": "*Rendered | Source",
         "old.txt": "nothing",
@@ -279,7 +280,7 @@ $ node tests/dom/diff-current-session.js
       }
     },
     {
-      "step": "and its Rendered again: Rendered | Source is the file's own, unstored",
+      "step": "and its Concise again: Full | Concise | Source is the file's own, unstored",
       "shows": "current",
       "toolbar": [
         [
@@ -295,7 +296,7 @@ $ node tests/dom/diff-current-session.js
         "diff.show=current"
       ],
       "bar ends": {
-        "docs/guide.md": "*Rendered | Source",
+        "docs/guide.md": "Full | *Concise | Source",
         "a.py": "nothing",
         "config/app.yaml": "*Rendered | Source",
         "old.txt": "nothing",
@@ -856,7 +857,7 @@ $ node tests/dom/diff-current-session.js
       ],
       "written": [],
       "bar ends": {
-        "docs/guide.md": "*Rendered | Source",
+        "docs/guide.md": "*Full | Concise | Source",
         "a.py": "nothing",
         "config/app.yaml": "*Rendered | Source",
         "old.txt": "nothing",

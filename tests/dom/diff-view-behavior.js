@@ -994,7 +994,7 @@ async function headLinkChecks(mountDiffView, byName) {
         markdownViews,
         renderMarkdown: async (fileId) => {
           requested.push(fileId);
-          return structuredClone(recording.answers.f1);
+          return structuredClone(recording.answers.f1["view=concise"]);
         },
         markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
         markdownHoldMs: 0,
@@ -1048,8 +1048,8 @@ async function headLinkChecks(mountDiffView, byName) {
     check("disposal lets the page's pin-change news go", pinChanged === null);
 
     // A Markdown file whose changes did not load has the chooser too: Source is chosen,
-    // Rendered is unavailable for the reason the file's body gives, and no projection is
-    // asked for it (mb-rm40).
+    // Full and Concise are unavailable for the reason the file's body gives, and no
+    // projection is asked for it (mb-rm40).
     const unread = structuredClone(byName.get("added-text-file"));
     unread.manifest.files[0].availability = "too_large";
     unread.patches = {};
@@ -1097,11 +1097,14 @@ async function headLinkChecks(mountDiffView, byName) {
       .filter((node) => node.className === "diff-availability")
       .map((node) => node.textContent);
     check(
-      "a Markdown file whose changes did not load keeps its chooser, Rendered unavailable for the reason its body gives",
+      "a Markdown file whose changes did not load keeps its chooser, its views unavailable for the reason its body gives",
       chooser?.value === "source" &&
-        chooser.options[0].value === "rendered" &&
-        chooser.options[0].tip === "This change is too large to show inline." &&
-        chooser.options[1].tip === undefined &&
+        JSON.stringify(chooser.options.map((option) => option.value)) ===
+          JSON.stringify(["full", "concise", "source"]) &&
+        chooser.options
+          .slice(0, 2)
+          .every((option) => option.tip === "This change is too large to show inline.") &&
+        chooser.options[2].tip === undefined &&
         said.includes("This change is too large to show inline.") &&
         requested.length === asked,
       JSON.stringify({ choosers, said, requested }),
