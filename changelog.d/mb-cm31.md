@@ -8,7 +8,7 @@
   Changes, which is the front page without a guide
   ([The Stack Page](docs/design-system.md#the-stack-page)).
 
-- **The Pulls tab lists a stack’s page under its members.** Each open stack’s last row,
+- **The Pulls tab lists a stack’s page with its members.** Each open stack’s first row,
   **Whole stack**, with the stack’s Layers glyph, opens the stack’s page, as the stack
   menu’s first row does, and is the current row while that page is open.
   J and K stop on it and open the page, Enter and Space open it, and Left goes to the

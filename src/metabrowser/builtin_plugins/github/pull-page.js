@@ -57,6 +57,7 @@ import {
   createStackIndex,
   memberRoute,
   namedStackPosition,
+  stackEntries,
   stackLabel,
   stackMembership,
   stackMenuOrder,
@@ -4624,8 +4625,9 @@ export function stackMemberAuthor(stack, at, own) {
  * trigger.
  *
  * With `wholeStack`, the menu's first row, **Whole stack**, opens the stack's own page
- * (`/stack/<n>`, stack-page.js), before the members, in a member's row grid: the stack's
- * Layers glyph in the icon's slot, and its words where every member's title starts (mb-7cn4).
+ * (`/stack/<n>`, stack-page.js), before the members, in `stackEntries`' order, which an open
+ * stack's rows in the Pulls tab take too, and in a member's row grid: the stack's Layers
+ * glyph in the icon's slot, and its words where every member's title starts (mb-7cn4).
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
  * @param {{link(number: number): HTMLElement, wholeStack?: (stack: number) => HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, author?(): {login: string, avatar: string | null} | null, identity?(login: string, avatar: string | null): HTMLElement, menus?: MetabrowserMenus}} deps
@@ -4766,11 +4768,16 @@ export function createStackMenu(initial, number, deps) {
       }
     }
     links.length = 0;
-    const first = wholeRow();
-    if (first !== null) {
-      links.push(first);
-    }
-    for (const target of stackMenuOrder(stack)) {
+    // The stack's rows in the one order the Pulls tab's open stack has them too
+    // (`stackEntries`): the Whole stack row, where the menu has one, then the members.
+    for (const target of stackEntries(stackMenuOrder(stack))) {
+      if (target === null) {
+        const entry = wholeRow();
+        if (entry !== null) {
+          links.push(entry);
+        }
+        continue;
+      }
       let row = rows.get(target);
       if (!row) {
         const link = deps.link(target);

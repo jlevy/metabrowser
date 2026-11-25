@@ -79,13 +79,17 @@ def test_the_label_reads_the_shells_label_tokens_and_nothing_restyles_it() -> No
 
 def test_every_stack_word_comes_from_pull_stacks() -> None:
     """ "Stack #N", a position, and its tip are written once, in pull-stacks.js, and the
-    order a stack's members are listed in is `stackMenuOrder`: no surface spells its own."""
+    order a stack's rows are listed in, its Whole stack row among its members, is
+    `stackEntries` over `stackMenuOrder`, in the stack menu and the Pulls tab's groups
+    alike: no surface spells its own."""
 
     stacks = (GITHUB / "pull-stacks.js").read_text(encoding="utf-8")
     assert "export function stackLabel(" in stacks
     assert "export function stackPosition(" in stacks
     assert "export function stackPositionHint(" in stacks
     assert "export function stackMenuOrder(" in stacks
+    assert "export function stackEntries(" in stacks
+    assert "const entries = stackEntries(members);" in stacks, "groupByStack lists by it"
     for path in sorted(GITHUB.glob("*.js")):
         if path.name == "pull-stacks.js":
             continue
@@ -93,4 +97,4 @@ def test_every_stack_word_comes_from_pull_stacks() -> None:
         assert "Stack #${" not in text, f"{path.name} spells a stack's label itself"
         assert "position ${" not in text, f"{path.name} spells a position's tip itself"
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
-    assert "for (const target of stackMenuOrder(stack))" in page
+    assert "for (const target of stackEntries(stackMenuOrder(stack)))" in page
