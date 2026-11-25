@@ -416,7 +416,8 @@ async function main() {
 
   // A folder's page is what it was: its path, then the address, and nothing of a mirror.
   // At the root the eyebrow is the directory that holds the root, and the root's name is
-  // the title; under it the eyebrow is the root and the folders above the item.
+  // the title; under it the eyebrow is the root's address and the folders above the item,
+  // each followed by a slash.
   const folderRoot = served.folder.dataset.servedRoot;
   const cut = folderRoot.lastIndexOf("/");
   assert(
@@ -424,7 +425,7 @@ async function main() {
     `a folder's root reads ${folder.mainHeading.root}`,
   );
   assert(
-    folder.mainHeading.file.text === `\u2191 ${folderRoot} / docs` &&
+    folder.mainHeading.file.text === `\u2191 ${folderRoot} / docs /` &&
       folder.mainHeading.file.title === "guide.md",
     `a folder's eyebrow reads ${folder.mainHeading.file.text}`,
   );
@@ -469,7 +470,7 @@ async function main() {
     // A mirror's root has no directory above it: its eyebrow is the note alone.
     assert(root === `\u2191 ${where} ${name}`, `${page.subject}: the root reads ${root}`);
     assert(
-      file.text === `\u2191 ${name} / docs ${where}` && file.title === "guide.md",
+      file.text === `\u2191 ${name} / docs / ${where}` && file.title === "guide.md",
       `${page.subject}: a file's eyebrow reads ${file.text}`,
     );
     // The address is the name and the path under it: no commit, and no directory.
