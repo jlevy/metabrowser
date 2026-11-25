@@ -151,14 +151,15 @@ opened age, and add the exact updated time to the tooltip of the age it repeats.
 
 ### Ages End the Row
 
-In a list row, a timestamp or an age ends the row, right-aligned at its end, so the ages
-of a list read as one column a reader scans down for what changed last.
-A Pulls row’s age ends its last line, in a 5ch column after its lines and its chevron
-([The Pulls Tab](#the-pulls-tab)); a Commits row’s ends its line after the author
-(`.git-graph-age`), a ref selector row’s after its commit (`.source-ref-selector-age`),
-an agents session row’s after its title (`.agents-row-age`), and a guide’s commit row’s
-after its subject. A table, such as the agents Sessions table or an event log’s rows,
-gives its times a column of their own, so they read as one wherever its columns put it.
+In a list row with an age and no size, a timestamp or an age ends the row, right-aligned
+at its end, so the ages of a list read as one column a reader scans down for what
+changed last. A Pulls row’s age ends its last line, in a 5ch column after its lines and
+its chevron ([The Pulls Tab](#the-pulls-tab)); a Commits row’s ends its line after the
+author (`.git-graph-age`), a ref selector row’s after its commit
+(`.source-ref-selector-age`), an agents session row’s after its title
+(`.agents-row-age`), and a guide’s commit row’s after its subject.
+A table, such as the agents Sessions table or an event log’s rows, gives its times a
+column of their own, so they read as one wherever its columns put it.
 An age that is not in a list row stays where its words put it:
 
 - inline prose, such as a freshness sentence, “Fetched 2 min ago via GitHub CLI”, or a
@@ -167,6 +168,13 @@ An age that is not in a list row stays where its words put it:
   sentence;
 - a single-line item with no column under it, such as a tally, “3,310 commits begun 4mo
   ago”.
+
+A size outranks an age for the row’s end.
+When a row shows both, its size or count ends the row, right-aligned, and its age sits
+before it, because sizes compared down one column are worth more than ages are.
+A Files tree row is the standing case and keeps its layout: its age follows the name
+(`.tree-item-age-inline`) and its size or count ends the row (`.tree-item-size`). Only a
+row with an age and no size gives the age the row’s end.
 
 `tests/test_reserved_chrome.py` holds the Pulls row’s age column in source, and
 `tests/dom/github-pulls-row-lines-chrome.mjs` its place at the row’s end in Chrome.
