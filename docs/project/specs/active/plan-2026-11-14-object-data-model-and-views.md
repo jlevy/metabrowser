@@ -607,6 +607,11 @@ never a negotiation, the standing answer for file formats in
 [Compatibility and Legacy Code](../../../development.md#standing-compatibility-answers).
 A break in a *core* type a plugin reads is a break in the SDK, and moves
 `PLUGIN_SDK_VERSION` with every built-in manifest.
+The collection format’s plans apply this rule to changes it does not name, a required
+field made optional and an entry or a reference widened to a further shape, and record
+each reading for a reviewer to confirm
+([Guided Review Groups](plan-2026-11-24-guided-review-groups.md),
+[Whole-Stack Review](plan-2026-11-24-stack-review.md#open-questions)).
 
 **How they are validated.**
 

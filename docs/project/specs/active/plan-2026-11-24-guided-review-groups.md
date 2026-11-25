@@ -4,8 +4,9 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Phases 1 and 2 in progress under epic `mb-bxff`; phase 3 is designed here
-and not yet built.
+**Status:** Phases 1 and 2 in progress under epic `mb-bxff`, on #807 and #806. Phase 3,
+the stack rollup, is superseded by
+[Whole-Stack Review](plan-2026-11-24-stack-review.md).
 
 ## Overview
 
@@ -25,8 +26,9 @@ This plan adds four things:
 3. **Rendered documents.** A step that cites a whole Markdown, YAML, or JSON file draws
    it as the Changes and Docs tabs do, through the diff view’s rendered layer and its
    chooser, instead of as source hunks only.
-4. **Stack rollups.** A design for walking a whole stack’s guides as one, which this
-   plan does not build but which phases 1 and 2 shape their data for.
+4. **Stack rollups.** A design for walking a whole stack’s guides as one, since
+   superseded by [Whole-Stack Review](plan-2026-11-24-stack-review.md), which uses what
+   phases 1 and 2 lay down.
 
 ## Goals
 
@@ -40,11 +42,12 @@ This plan adds four things:
 ## Non-Goals
 
 - Groups inside groups in a written guide.
-  The record allows one level; only a derived rollup (phase 3) nests.
+  The record allows one level.
 - Rendering a *range* of a document.
   Projection blocks carry no source lines yet, so a ranged reference keeps its source
   hunk (`mb-8viy`).
-- Building the rollup (`mb-ri96`).
+- A stack’s guide (`mb-ri96`), which
+  [Whole-Stack Review](plan-2026-11-24-stack-review.md) plans.
 
 ## Phase 1: Groups and Rationale (`mb-enj3`, `mb-szxu`)
 
@@ -128,7 +131,8 @@ Every answer that has steps gains an **`outline`**: a tree of nodes in reading o
 
 - `titles` stays, the flat list the step pager reads.
 - A step’s answer names its `group`, the index of its group in `outline`, or null.
-- The tree is the groundwork for phase 3: a rollup is the same tree one level deeper.
+- A stack’s guide answers the same tree
+  ([Whole-Stack Review](plan-2026-11-24-stack-review.md#mechanics)).
 
 ### The Page
 
@@ -202,48 +206,20 @@ Rendered unavailable, saying why, as in Changes.
 The step’s source excerpt budgets (`MAX_STEP_PATCH_BYTES`) still bound what the guided
 route hydrates for that reference.
 
-## Phase 3: Stack Rollups (`mb-ri96`, Designed Only)
+## Phase 3: Stack Review
 
-A stack’s layers each carry their own guide, pinned to their own comparison.
-A reviewer of the whole stack wants to walk them as one.
+Superseded by [Whole-Stack Review](plan-2026-11-24-stack-review.md), on the owner’s
+decisions of 2026-11-24 (`mb-ri96` and its sibling beads).
 
-### Approaches Considered
+This plan recommended a rollup the route derives from the stack’s layers, one group for
+each layer holding that layer’s own outline (approach C). It is rejected: a rollup of
+layer guides has no overview of the stack, inherits every layer’s detail, and needs a
+tree deeper than the record’s one level of groups.
+A stack’s guide is instead one collection of its own, written for the whole stack and
+resolved against the stack’s combined comparison.
 
-| Approach | How | For | Against |
-| --- | --- | --- | --- |
-| A. One hand-written guide on the top layer | The top layer’s guide cites the stack’s cumulative diff | Works today | Duplicates every layer’s guide and drifts from them; references lose which layer changed a line; `MAX_ITEMS` caps it |
-| B. Nested by reference | A record’s entry includes another pull request’s guide, as `{include: {pull: 765}}` | One source of truth per layer | A new reference kind, cross-PR reads inside one record, and an author must keep the list of layers current by hand |
-| C. A derived rollup | The route builds the rollup from the stack the plugin already knows, one group per layer, each the layer’s own outline | No new record, no drift, each layer stale or current on its own pins | Needs a stack-level preface for decisions that span layers |
-
-**Recommended: C, with an optional preface.** The route answers a rollup for a stack’s
-top pull request: its `outline` has one node per layer, in stack order, whose children
-are that layer’s own outline (its groups and steps), and steps are numbered flat across
-the whole rollup. Each step resolves its references against its own layer’s comparison
-and is stale against its own layer’s pins.
-Decisions that span the stack go in an optional **Stack** group in the bottom layer’s
-guide, which the rollup shows first.
-B stays possible later as an additive field if a rollup needs layers the stack does not
-list.
-
-### What Phases 1 and 2 Lay Down
-
-- **The outline is a tree**, so a rollup is one more level of the same nodes.
-- **Steps are numbered flat** and navigation reads only step numbers, so the pager and
-  `createGuideNavigation` work over a rollup unchanged.
-- **A step answer carries what resolves it**: its references and their states, so a
-  rollup’s step can come from another layer’s route answer.
-  Phase 3 adds the step’s pull request number to each node.
-- **Staleness is per guide** (`stale` on each answer), so per layer in a rollup.
-- **Groups have no comparison of their own today.** If B is ever needed, a group gains
-  an optional `comparison`, which is additive.
-
-### Open Questions for Phase 3
-
-- Where the rollup lives: the top layer’s Guided Review tab with a stack toggle, or a
-  page of its own for the stack.
-- Whether a layer without a guide shows as one step that cites its whole diff, or is
-  skipped with a note.
-- How the rollup’s step addresses read in a URL (a flat number, or a layer and a step).
+What phases 1 and 2 lay down serves it unchanged: the outline tree, the flat step
+numbers, and whole documents drawn as Docs draws them.
 
 ## Implementation Plan
 
@@ -252,7 +228,7 @@ list.
    rationale step, the format reference, goldens and tests.
 2. Phase 2, stacked on phase 1: the diff plugin’s one-file entry point, the guide’s
    rendered references, tests, and the architecture and reviewing documents.
-3. Phase 3: build the rollup after both land and `mb-qn7e` has settled the chooser.
+3. Phase 3: [Whole-Stack Review](plan-2026-11-24-stack-review.md), in its own phases.
 
 ## Testing Strategy
 

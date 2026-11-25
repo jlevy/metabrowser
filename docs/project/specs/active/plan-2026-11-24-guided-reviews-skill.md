@@ -8,6 +8,9 @@
 section shipped in #785, with the block skeleton and the recipes to publish, confirm,
 and refresh a guide; the check route and its recipes, the handoff line, and the
 person-facing guide remain.
+[Whole-Stack Review](plan-2026-11-24-stack-review.md) plans the section’s later changes:
+shorter guides, Markdown notes, more reference kinds, and a stack’s guide
+([What Other Plans Change](#what-other-plans-change)).
 
 ## Overview
 
@@ -92,7 +95,8 @@ read, and answers:
   request’s current head when a pull request number is given;
 - for each step, each reference’s state as the page would draw it (`ready`, or why not),
   from the local repository’s objects;
-- the changed files no step cites.
+- the changed files no step cites, as information: a concise guide leaves files out on
+  purpose, so the skill does not ask for the list to be empty.
 
 It reads only local Git objects and the cached record, so it costs no GitHub request.
 It arrives with its parity row and a golden on the GitHub stand-in
@@ -111,9 +115,9 @@ Review**, with:
   branch;
 - what a guide covers, each concern a step or a run of steps of its own, in this order:
   keystone decisions; key documents; each area of change, in dependency or execution
-  order with every changed file cited; ambiguity and uncertainty a person should decide;
-  testing and QA, split three ways into what automated checks cover, what the agent
-  checked itself, and what still needs a person; and future work and further planning;
+  order; ambiguity and uncertainty a person should decide; testing and QA, split three
+  ways into what automated checks cover, what the agent checked itself, and what still
+  needs a person; and future work and further planning;
 - a minimal block skeleton and the YAML rules (quote a title or note holding `: ` or
   ` #`, and write a note with a list as a literal block);
 - the check, then `gh pr edit <n> --body-file`, replacing an existing block rather than
@@ -137,6 +141,24 @@ reviewer can stop at a keystone decision they reject, go straight to what is unc
 and tick off the person-only checks, and an agent’s claims about testing are kept apart
 from what CI proves.
 The owner set these concerns on 2026-11-24 after walking the first guides.
+
+### What Other Plans Change
+
+The section shipped asking that every changed file belong to some step.
+The owner dropped that rule on 2026-11-24: it forces a file inventory, which the Changes
+tab already is, and the coverage gap in [Background](#background) is answered by the
+check’s list, not by a longer guide.
+The skill’s later changes belong to the plans that make them:
+
+| Section of the skill | Change | Plan |
+| --- | --- | --- |
+| **Write a Guided Review**: what a guide covers, and the refresh recipe | Concise guides: a summary of the end state opening the description, about eight steps or fewer, notes of one to three sentences, no every-file rule, a stacked layer’s place in one line (`mb-mxcm`) | [Whole-Stack Review](plan-2026-11-24-stack-review.md#phase-0-concise-guides-mb-mxcm-mb-kkib) |
+| **Write a Guided Review**: the paragraph on plain text | Notes are Markdown, rendered inert; titles stay plain (`mb-kkib`) | The same phase |
+| **Write a Guided Review**: the groups and the rationale step | On #807 (`mb-szxu`) | [Guided Review Groups](plan-2026-11-24-guided-review-groups.md) |
+| **Write the Block**: the reference rules | A pull request, a file as a pull request changes it, and a commit (`mb-9dmv`) | [Whole-Stack Review](plan-2026-11-24-stack-review.md#phase-2-reference-kinds-mb-9dmv) |
+| **Route the Task**, and a new **Write a Stack Guide** | A stack’s guide in a `stack-review` block, with its template and recipe (`mb-ri96`) | [Whole-Stack Review](plan-2026-11-24-stack-review.md#phase-3-the-stack-guide-mb-ri96) |
+
+This plan keeps the check, its recipes, the person-facing guide, and the handoff line.
 
 ### This Repository’s Handoff
 
@@ -206,6 +228,8 @@ for an unreleased route.
 - Should the check take the draft as a path in the checkout, or as the pull request
   description file the agent will publish, so it also confirms there is exactly one
   block?
+- Should the check also read a `stack-review` block, against the stack’s comparison,
+  once [Whole-Stack Review](plan-2026-11-24-stack-review.md) builds one?
 
 ## References
 
@@ -215,6 +239,8 @@ for an unreleased route.
 - `src/metabrowser/builtin_plugins/github/guided_review.py` (`parse_guide`, `MAX_ITEMS`,
   `MAX_REFERENCES`)
 - #677 (guided reviews) and #679 (the collection format’s research)
+- [Whole-Stack Review](plan-2026-11-24-stack-review.md) and
+  [Guided Review Groups](plan-2026-11-24-guided-review-groups.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

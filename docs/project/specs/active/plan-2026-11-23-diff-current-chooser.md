@@ -74,6 +74,10 @@ changes marked.
 A file whose Rendered is unavailable shows Source, as today, and in Current shows Source
 Current; its Rendered chip stays unavailable for its reason.
 
+A stack’s page, planned in
+[Whole-Stack Review](plan-2026-11-24-stack-review.md#the-page), mounts the same view for
+its Docs and Changes, each with the default and the preference a pull request’s has.
+
 ### Placement
 
 The chooser is in the diff’s toolbar (`.diff-toolbar`), right-aligned, before the layout

@@ -724,6 +724,13 @@ account check and the bounds on probes.
   job in (`gh_budget.readers_own`). A job a reader’s click only joins is still counted
   toward `AUTOMATIC_CORE_PER_HOUR`, and a backfill that runs on inside a Reload’s job is
   not. Is that attribution good enough, or should each job say what it is?
+- A stack’s page, planned in
+  [Whole-Stack Review](plan-2026-11-24-stack-review.md#staying-current), is a new
+  visible page. It sends a pull request page’s ask for its top member, so the list stays
+  probed, and reads its other members through the catalog, with no probe of its own.
+  Opened cold, it asks one record refresh for each member this copy lacks, 46 for the
+  largest stack cached on 2026-11-24. Are those the reader’s own, or automatic work
+  under the ceiling?
 - The live test needs a real change on GitHub.
   A throwaway draft pull request in this repository, edited and closed by the test,
   would do; that publishes to GitHub, so it needs the owner’s go-ahead.

@@ -2,8 +2,9 @@
 
 **Status:** Built as contract `metabrowser.collection:Collection/v1`, with one carrier:
 guided reviews of GitHub pull requests.
-Designed, not built: collections in repository files, URL references, a Markdown form,
-and the other carriers below.
+Designed, not built: a stack’s guide, more kinds of reference, notes as Markdown,
+collections in repository files, URL references, a Markdown form, and the other carriers
+below.
 
 A collection is an ordered list of annotated items, which may be gathered in titled
 groups: each item is a title, a note, and the references it is about.
@@ -63,7 +64,9 @@ collection:
   forms an address; and a range needs `side` and both line numbers, in order, so every
   v1 range is a range of a diff.
   A carrier without a change, which cannot cite lines that way, relaxes the range rule,
-  as it does `comparison`.
+  as it does `comparison`. References to a pull request, to a file as a pull request
+  changes it, and to a commit are designed and not built
+  ([Planned Changes to the Record](#planned-changes-to-the-record)).
 - **`comparison`** pins the change the references resolve against.
   v1 requires it, because its one carrier is a pull request’s description, which is not
   versioned with the code it describes.
@@ -117,6 +120,12 @@ until a second carrier needs one.
 None of these is built.
 Each would reuse the record and add only its carrier’s rules:
 
+- **A stack’s guide** (mb-ri96): a `stack-review` fence in the description of a stack’s
+  top member, holding the same record pinned to the stack’s combined comparison, its
+  bottom member’s merge base and its top member’s head.
+  It is the description carrier with another comparison, so the `guided-review` route
+  answers it and the stack’s page draws it
+  ([Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md#phase-3-the-stack-guide-mb-ri96)).
 - **Other review scenarios.** A guide to a commit, or to a comparison of two branches or
   tags, would pin `comparison` as a guided review does and resolve paths against that
   diff. A working tree’s uncommitted changes have no commit for `head`, so a guide to
@@ -125,17 +134,37 @@ Each would reuse the record and add only its carrier’s rules:
 - **Collections in repository files** (mb-2sft): a YAML file in the served tree, read by
   a built-in `collection` plugin that takes over the format module, with Rows, Table,
   and Source views. Paths are relative to the file, and `comparison` is optional.
+  A stack’s guide could move to one later, by copying its block.
 - **URL references** (mb-1rte): a `{url}` reference, `https` only and never fetched, so
   a guide can cite a design document or an issue.
 - **A Markdown form** (mb-tzbp): a Markdown link list read into the same record, each
   heading a group and each link an item.
   Groups nest one level, so the form reads one level of headings.
-- **Later uses** (mb-z9ox): object references, cards, and a Documents view.
+- **Later uses** (mb-z9ox): references to other types of object, cards, and a Documents
+  view.
 
 The research brief on [#679](https://github.com/jlevy/metabrowser/pull/679) records the
-design and the owner’s decisions behind this split.
+design and the owner’s decisions behind this split, and
+[Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md#earlier-decisions-kept-or-revised)
+says which of them it keeps and which it revises.
 Moving the models out of the GitHub plugin is a module move: the contract ID already
 names the `collection` plugin that will own it, so it does not change.
+
+### Planned Changes to the Record
+
+[Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md) plans these, and
+none is built. Each keeps v1, since none removes, renames, or retypes a field.
+
+- **Reference kinds** (mb-9dmv): `{pull: <n>}`, a pull request; `{pull: <n>, path}`, a
+  file as that pull request changes it; and `{commit: <id>}`, a commit.
+  They are valid in every carrier, resolve from what is cached, and draw as rows.
+- **Notes as Markdown** (mb-kkib): a note renders inert, as a pull request’s description
+  does, in place of plain text; titles stay plain.
+- **Loose and pinned comparisons**, with collections in repository files: `comparison`
+  becomes optional and gains an optional `base` and `branch` beside its two pins.
+  A side pinned to a commit can be stale; a side left to its branch follows it and never
+  is. A line range needs both pins, and a reference may override the collection’s
+  comparison. Today’s guides are the fully pinned case.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
