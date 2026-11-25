@@ -296,7 +296,8 @@ the header’s Diff summary lists the files as on a pull request’s page, and
 `/stack/<n>/files` is no route; its front page without a guide is Changes; no file row
 or bar carries layer chips, and the diff view’s `fileMarks` hook that drew them is gone;
 View on GitHub opens GitHub’s `stack/<n>`, the address the counterpart route answers;
-and the Pulls tab lists the page as each open stack’s last row, **Whole stack**.
+and the Pulls tab lists the page as each open stack’s last row, **Whole stack**, which
+mb-4gcj moved to the stack’s first row, the stack menu’s place for it.
 
 **Why a page and not a switch on each pull request.** A pull request’s Changes and Docs
 carry a state machine that follows one comparison’s head (`filesAction`, `followedFrom`,

@@ -333,9 +333,11 @@ async function mountStory() {
       handle.toggleStack(286),
     );
     await step("and again opens it", () => handle.toggleStack(286));
-    await step("Right on the stack's row goes to its first pull request, which opens", () =>
-      handle.expand(),
+    await step(
+      "Right on the stack's row goes to its first row, Whole stack, which opens the stack's page",
+      () => handle.expand(),
     );
+    await step("J goes to its first pull request, which opens", () => handle.move(1));
     await step("Right on that pull request opens its files, as on a folder's", () =>
       handle.expand(),
     );
@@ -356,20 +358,24 @@ async function mountStory() {
       list.listeners.get("click")({ target: label, button: 0, preventDefault() {} }),
     );
     // Home (docs/design-system.md, "Home"): the list as a fresh load draws it. The reader
-    // opens #8's files, walks to the first pull request in no stack, and closes the stack;
-    // Home opens it, closes #8's files, and gives the Tab stop back to the stack's row. The
-    // address it opens names no pull request, which the host tells the list next.
-    await step("Right, Right: #8 opens, then its files", () => {
+    // opens #8's files, walks down the stack, and closes it; Home opens it, closes #8's
+    // files, and gives the Tab stop back to the stack's row. The address it opens names no
+    // pull request, which the host tells the list next.
+    await step("Right, J, Right: the Whole stack row, then #8, then #8's files", () => {
       handle.expand();
+      handle.move(1);
       return handle.expand();
     });
-    await step("K back to #8's row, J past the stack, then Space on its row closes it", () => {
-      handle.move(-1);
-      for (let press = 0; press < 3; press += 1) {
-        handle.move(1);
-      }
-      return handle.toggleStack(286);
-    });
+    await step(
+      "K back to the Whole stack row, J down the stack, then Space on its row closes it",
+      () => {
+        handle.move(-1);
+        for (let press = 0; press < 3; press += 1) {
+          handle.move(1);
+        }
+        return handle.toggleStack(286);
+      },
+    );
     const homeRequests = requests.length;
     await step("Home: every stack open, no files open, the Tab stop on the first row", () => {
       handle.home();
@@ -383,7 +389,7 @@ async function mountStory() {
     );
     assert.equal(pullRow(8).getAttribute("aria-expanded"), "false", "#8's files closed");
     assert.deepEqual(requests.slice(homeRequests), [], "Home reads nothing");
-    // The stack's Whole stack row, the last of its set: a press opens the stack's page, as a
+    // The stack's Whole stack row, the first of its set: a press opens the stack's page, as a
     // pull request's row opens its own, and while that page is open the row is the current
     // row, until an address that names a pull request takes the mark back.
     const wholeRow = () => drawnRows().find((row) => row.dataset.stack === "286" && isWhole(row));
@@ -590,8 +596,8 @@ async function mountStory() {
       rest.map((row) => row.number),
       listed.filter((number) => rest.some((row) => row.number === number)),
     );
-    // Each open stack's rows end with its Whole stack row, one of its set; a closed one has
-    // none.
+    // The rows under each open stack are its pull requests and its one Whole stack row, a
+    // level in, each placed in the stack's set where it is drawn; a closed one has none.
     for (const [at, row] of rows.entries()) {
       if (row.kind !== "stack") {
         continue;
@@ -603,10 +609,19 @@ async function mountStory() {
         assert.equal(whole, -1, "a closed stack has no Whole stack row");
         continue;
       }
-      assert.equal(whole, at + row.members.length + 1, "the Whole stack row ends its stack");
-      assert.equal(rows[whole].posinset, rows[whole].setsize);
-      assert.equal(rows[whole].setsize, row.members.length + 1);
-      assert.equal(rows[whole].key, wholeStackRowKey(row.stack.number));
+      const under = rows.slice(at + 1, at + row.members.length + 2);
+      assert.deepEqual(
+        under.flatMap((each) => (each.kind === "pull" ? [each.number] : [])),
+        row.members,
+      );
+      assert.deepEqual(
+        under.flatMap((each) => (each.kind === "whole" ? [each.key] : [])),
+        [wholeStackRowKey(row.stack.number)],
+        "an open stack has one Whole stack row, among its own rows",
+      );
+      for (const [place, each] of under.entries()) {
+        assert.deepEqual([each.level, each.posinset, each.setsize], [2, place + 1, under.length]);
+      }
     }
     const firstRest = rows.findIndex((row) => row.kind === "pull" && row.level === 1);
     assert.ok(firstRest < 0 || rows.slice(firstRest).every((row) => row.kind !== "stack"));
@@ -644,16 +659,16 @@ async function mountStory() {
 
   // ── Keys: a stack's row is a stop of its own, as a folder's is, and its Whole stack row
   // is a row that opens the stack's page, as a pull request's row opens its own.
-  for (const name of ["J", "J", "J", "J", "K"]) {
+  for (const name of ["J", "J", "J", "J", "J", "K"]) {
     await story.key(name);
   }
-  // The last open, #6, reads ahead its neighbours as drawn, #7 above it and #106 below, the
-  // stack's Whole stack row and a stack's row passed over, and the top: the stack's pull
-  // requests first.
+  // The last open, #6, reads ahead its neighbours as drawn, #7 above it and #106 below, and
+  // the top: the stack's pull requests first, its Whole stack row and a stack's row passed
+  // over.
   const ahead = story.log.prefetch.at(-1);
   story.log.prefetch.length = 0;
   record(
-    "J walks into the stack and onto its Whole stack row, which opens the stack's page, and K steps back; the stack's row opens nothing",
+    "J walks into the stack, onto its Whole stack row first, which opens the stack's page, then its pull requests and out, and K steps back; the stack's row opens nothing",
     story,
     current,
     { "read ahead after the last open": ahead?.records ?? null },
@@ -668,7 +683,11 @@ async function mountStory() {
   await story.key("Right");
   record("Right opens it", story, current);
   await story.key("Right");
-  record("Right again goes to its first pull request, which opens", story, current);
+  record(
+    "Right again goes to its first row, Whole stack, which opens the stack's page",
+    story,
+    current,
+  );
   await story.key("K");
   await story.key("Enter");
   record("Enter on the stack's row closes it", story, current, {

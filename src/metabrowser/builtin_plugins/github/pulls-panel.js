@@ -750,13 +750,14 @@ function contentOf(envelope) {
  *
  * Its rows are grouped by stack (`groupByStack` in pull-stacks.js) once the stacks are known
  * for the list's own reader, and are in the list's order until then: a stack's row, "Stack #N",
- * then its pull requests, then every pull request in no stack. The keys walk the rows as
- * they are drawn. A stack's row is a row of the tree as a folder is: J and K stop on it and
- * open nothing, Enter and Space open or close it, Right opens it or goes to its first pull
- * request, and Left closes it, or from a pull request in it goes to it. Under an open stack's
- * pull requests is its Whole stack row, which opens the stack's own page as a pull request's
- * row opens its page: J and K open it, Enter and Space open it, Left goes to its stack's row,
- * and while the address is that page it takes the current-row mark (`setCurrent`'s *stack*).
+ * then its Whole stack row and its pull requests, in `stackEntries`' order, then every pull
+ * request in no stack. The keys walk the rows as they are drawn. A stack's row is a row of the
+ * tree as a folder is: J and K stop on it and open nothing, Enter and Space open or close it,
+ * Right opens it or goes to its first row, its Whole stack row, and Left closes it, or from a
+ * row in it goes to it. An open stack's Whole stack row opens the stack's own page as a pull
+ * request's row opens its page: J and K open it, Enter and Space open it, Left goes to its
+ * stack's row, and while the address is that page it takes the current-row mark
+ * (`setCurrent`'s *stack*).
  *
  * @param {PullsDependencies} deps
  * @param {{filter?: string, current?: number | null, checkout?: boolean}} [options]
@@ -3120,12 +3121,22 @@ export function createPullsController(deps, options = {}) {
     return Promise.resolve();
   }
 
-  /** @param {number} number */
+  /**
+   * A pull request's row takes the current-row mark from whichever row held it, a stack's
+   * Whole stack row too, as `openStack` takes it the other way, so one row holds it: a walk
+   * from a stack's Whole stack row, which opens the stack's page, on to its pull requests
+   * leaves no second mark, and no stale stack page for `settleAnchor`, before the address
+   * follows.
+   *
+   * @param {number} number
+   */
   function setCurrentRow(number) {
     cancelCoreRetry();
-    const previous = current;
+    const previous = currentKey();
     if (previous !== number) {
       current = number;
+      currentStack = null;
+      wholeRevealPending = false;
       deps.markCurrent(previous, number);
     }
   }
@@ -3706,7 +3717,8 @@ export function createPullsController(deps, options = {}) {
       }
     },
     setStackOpen,
-    /** Right on a stack's row: open it, or go to its first pull request. */
+    /** Right on a stack's row: open it, or go to its first row, its Whole stack row, which opens
+     * the stack's page as J does. */
     enterStack() {
       if (disposed || anchor === null || anchor >= 0 || wholeStackOfKey(anchor) !== null) {
         return false;
@@ -4712,8 +4724,8 @@ export function mountPullsPanel(container, ctx, mb) {
 
   /**
    * Retain the logical row order and measurements; only the viewport builds DOM rows. The
-   * order is the list's, or, grouped by stack, the model's rows: each stack's row, its pull
-   * requests at the second level, then every pull request in no stack.
+   * order is the list's, or, grouped by stack, the model's rows: each stack's row, its Whole
+   * stack row and pull requests at the second level, then every pull request in no stack.
    *
    * @param {PullsModel} model
    */
@@ -4891,7 +4903,7 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * Draw a stack's Whole stack row, the last under its open stack: a link to the stack's own
+   * Draw a stack's Whole stack row, the first under its open stack: a link to the stack's own
    * page (`/stack/<n>`, stack-page.js), one line in a member's row grid, the stack's Layers
    * glyph, muted, in the state icon's slot and "Whole stack" where the members' titles start,
    * as the stack menu's Whole stack row has them (docs/design-system.md, "Stack Groups in the
@@ -6175,7 +6187,7 @@ export function mountPullsPanel(container, ctx, mb) {
     toggleStack: (number) => controller.setStackOpen(number),
     /**
      * Right, as on a folder: on a pull request's row its files open, or, open, focus goes to
-     * the first. On a stack's row: it opens, or focus goes to its first pull request.
+     * the first. On a stack's row: it opens, or focus goes to its first row, Whole stack.
      */
     expand() {
       anchorFocusedRow();
