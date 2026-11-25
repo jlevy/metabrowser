@@ -1306,11 +1306,14 @@ def _patched(target: object, name: str, value: object) -> Generator[None]:
         setattr(target, name, original)
 
 
-def build_home(directory: Path, *, files: bool = False, guided: bool = False) -> None:
+def build_home(
+    directory: Path, *, files: bool = False, guided: bool = False, documents: bool = False
+) -> None:
     """Cache the mirror and pull requests 7 to 10 through the production CLI path.
 
     With *files*, :func:`build_file_lists` adds lists of changed files.
-    With *guided*, the fake GitHub serves guides against known fixture comparisons.
+    With *guided*, the fake GitHub serves guides against known fixture comparisons; with
+    *documents* too, pull request 7's guide ends on a step that cites a Markdown file whole.
 
     The seams are the in-process goldens' own: the origin URL, the Git floor (the
     machine's Git may be below it), the clock, and a fake ``gh`` first on ``PATH``.
@@ -1327,7 +1330,7 @@ def build_home(directory: Path, *, files: bool = False, guided: bool = False) ->
     origin = build_origin(directory)
     answers = scenario(origin)
     if guided:
-        _add_guides(origin, answers)
+        _add_guides(origin, answers, documents=documents)
     environment = install_fake_gh(directory, answers)
     version, _raw = detect_git_version()
     local = origin.url
@@ -1387,10 +1390,22 @@ collection:
 """
 
 
-def _add_guides(origin: Origin, answers: dict[str, Any]) -> None:
+# A step whose one reference names a Markdown file whole, which the guide draws as Docs does.
+_DOCUMENT_STEP = """    - title: Read the new guide whole
+      note: Check that it reads as a document.
+      references:
+        - {path: docs/new.md}
+"""
+
+
+def _add_guides(origin: Origin, answers: dict[str, Any], *, documents: bool = False) -> None:
     fence = guide_body(origin)
     api = answers["api"]
-    api["repos/octo/demo/pulls/7"]["body"]["body"] = fence
+    if documents:
+        head, close, tail = fence.rpartition("```")
+        api["repos/octo/demo/pulls/7"]["body"]["body"] = head + _DOCUMENT_STEP + close + tail
+    else:
+        api["repos/octo/demo/pulls/7"]["body"]["body"] = fence
     api["repos/octo/demo/pulls/8"]["body"]["body"] = fence
     api["repos/octo/demo/pulls/9"]["body"]["body"] = fence + "\n" + fence
 
@@ -1629,11 +1644,14 @@ if __name__ == "__main__":
         build_home(Path(sys.argv[1]).resolve(), files=True)
     elif len(sys.argv) == 3 and sys.argv[2] == "--guided":
         build_home(Path(sys.argv[1]).resolve(), guided=True)
+    elif len(sys.argv) == 3 and sys.argv[2] == "--guided-documents":
+        build_home(Path(sys.argv[1]).resolve(), guided=True, documents=True)
     elif len(sys.argv) == 2:
         build_home(Path(sys.argv[1]).resolve())
     else:
         raise SystemExit(
             "usage: github_pull_fixture.py <directory> "
-            "[--files | --guided | --checkout | --serve <number> <port> [--exit-on-eof]] "
+            "[--files | --guided | --guided-documents | --checkout "
+            "| --serve <number> <port> [--exit-on-eof]] "
             "or --files-refresh <metab arguments>"
         )

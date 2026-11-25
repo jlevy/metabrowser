@@ -155,14 +155,18 @@ A decision with an obvious reason needs no rationale line.
 
 A reference that names a whole file (a path alone) of a format the diff view renders
 (`renderedFormat` in `diff/diff-markdown.js`: Markdown, YAML, JSON) draws that file as
-the Changes tab draws it: the file’s bar, the rendered layer, and its chooser.
+the Docs tab draws it: the file’s bar, the rendered layer, and its chooser, in Docs’
+unfolded, unified Current view (`DOCS_DRAWING` in `pull-page.js`), since a step cites a
+document whole to have it read.
 Every other reference draws as today: a range keeps its source hunk, and a whole file of
 another format its patch.
 
 ### Reuse, Not a Copy
 
 The step mounts the diff plugin’s own file view for that one file, from the comparison
-route’s one-file answer (`file=<id>`, which deferred files already use).
+route’s one-file answer (`file=<path>`, which deferred files already use).
+Its manifest entry carries the file’s id, which the rendered route takes as its own
+`file=`, so the guided route’s answer needs no id of its own.
 That brings the chooser, the projection route, sanitizing, place keeping, and, once
 `mb-qn7e` lands, the Full | Concise | Source modes and windowed drawing, with no code of
 the guide’s own. The diff plugin exports one entry point for it beside `mountFilePatch`,

@@ -15,6 +15,11 @@ lazy mount are pinned in ``tests/dom/github-pull-page-mount-behavior.js`` and
 and where a list's markers fall against the bordered box around them are paint too, so they are
 measured here: a marker on or past a border is what the first out-of-date notice drew (mb-u46w).
 
+A step's rendered document is the diff view's own drawing of a file over the server's
+projection, so ``tests/dom/github-guided-review-documents-chrome.mjs`` compares it with the
+Docs tab's drawing of the same file, on a stand-in whose pull request 7's guide ends on a step
+that cites a Markdown file whole (``--guided-documents``).
+
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node process
 leads a process group of its own, which Chrome joins (tests/process_group.py).
@@ -44,6 +49,7 @@ from tests.test_nav_metadata_chrome import (
 
 FIXTURE = Path(__file__).resolve().parent / "github_pull_fixture.py"
 SESSION = Path(__file__).resolve().parent / "dom" / "github-guided-review-chrome.mjs"
+DOCUMENTS = Path(__file__).resolve().parent / "dom" / "github-guided-review-documents-chrome.mjs"
 # Building the stand-in's home runs the production CLI four times through a fake gh; it took
 # about 5 s at a load average near 20 (2026-11-20).
 _BUILD_BUDGET_S = 60.0
@@ -61,7 +67,8 @@ LIFECYCLE_S = (
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 
-def test_guided_review_tab_and_excerpts_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
+def _session(tmp_path: Path, chrome_profile: Path, mode: str, session: Path) -> str:
+    """Build the stand-in in fixture *mode*, serve pull request 7, and run *session* on it."""
     chrome = require_chrome()
     node = require_node()
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
@@ -70,7 +77,7 @@ def test_guided_review_tab_and_excerpts_in_chrome(tmp_path: Path, chrome_profile
     stand_in = tmp_path / "stand-in"
     stand_in.mkdir()
     built = subprocess.run(
-        [sys.executable, str(FIXTURE), str(stand_in), "--guided"],
+        [sys.executable, str(FIXTURE), str(stand_in), mode],
         capture_output=True,
         text=True,
         env=env,
@@ -102,7 +109,7 @@ def test_guided_review_tab_and_excerpts_in_chrome(tmp_path: Path, chrome_profile
     try:
         _wait_until_serving(server, port, log)
         run = run_in_own_group(
-            [node, str(SESSION), f"http://127.0.0.1:{port}"],
+            [node, str(session), f"http://127.0.0.1:{port}"],
             timeout_s=_MEASUREMENT_BUDGET_S,
             env={**os.environ, "CHROME_BIN": chrome, "CHROME_PROFILES": str(chrome_profile)},
         )
@@ -111,5 +118,16 @@ def test_guided_review_tab_and_excerpts_in_chrome(tmp_path: Path, chrome_profile
     if run.timed_out:
         pytest.fail(f"ran past {_MEASUREMENT_BUDGET_S:g} s:\n{run.stderr}")
     assert run.returncode == 0, f"{run.stderr[-6000:]}\nserver: {_log_tail(log)}"
-    passed = re.fullmatch(r"guided review in Chrome: (\d+) checks passed\n", run.stdout)
-    assert passed is not None and int(passed.group(1)) > 0, run.stdout
+    return run.stdout
+
+
+def test_guided_review_tab_and_excerpts_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
+    stdout = _session(tmp_path, chrome_profile, "--guided", SESSION)
+    passed = re.fullmatch(r"guided review in Chrome: (\d+) checks passed\n", stdout)
+    assert passed is not None and int(passed.group(1)) > 0, stdout
+
+
+def test_guided_review_documents_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
+    stdout = _session(tmp_path, chrome_profile, "--guided-documents", DOCUMENTS)
+    passed = re.fullmatch(r"guided review documents in Chrome: (\d+) checks passed\n", stdout)
+    assert passed is not None and int(passed.group(1)) > 0, stdout

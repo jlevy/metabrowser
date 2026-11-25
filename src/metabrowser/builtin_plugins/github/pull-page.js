@@ -338,6 +338,20 @@ const DOCS_GROUP = "type:docs";
 const DOCS_SHOW_PREFERENCE = "github.docs.show";
 
 /**
+ * How Docs draws a document, which Guided Review's documents share (`loadDrawDocument`), so
+ * a step's document opens as the Docs tab opens it: every fold open, Unified with no layout
+ * choice, since a rendered document has no layout and its Source reads as its Rendered does
+ * in one column, and on the new version (Current), remembered apart from Changes'
+ * `diff.show`. An option Docs gives its documents belongs here, so both take it.
+ */
+const DOCS_DRAWING = Object.freeze({
+  unfold: true,
+  layout: /** @type {const} */ ("unified"),
+  show: /** @type {const} */ ("current"),
+  showPreference: DOCS_SHOW_PREFERENCE,
+});
+
+/**
  * Whether a diff document lists no changed file, and its list was not cut short at its
  * bounds: a Docs tab with no document to show.
  *
@@ -7774,16 +7788,10 @@ export function mountPullPage(container, ctx, mb) {
               summary: false,
               ...(docs
                 ? {
-                    // Docs: the documents alone, every fold open, and no File type or
-                    // layout choice. A rendered document has no layout, and a document's
-                    // Source reads as its Rendered does, in one column. Docs opens on the
-                    // new versions (Current), and remembers the reader's Diff | Current
-                    // apart from Changes' `diff.show`, so neither moves the other.
+                    // Docs: the documents alone, with no File type choice, drawn as Docs
+                    // draws a document (`DOCS_DRAWING`).
                     group: DOCS_GROUP,
-                    unfold: true,
-                    layout: "unified",
-                    show: "current",
-                    showPreference: DOCS_SHOW_PREFERENCE,
+                    ...DOCS_DRAWING,
                     emptyText: "No documents changed in this pull request.",
                     onDocument: (/** @type {unknown} */ document_) => {
                       documented = true;
@@ -8157,6 +8165,43 @@ export function mountPullPage(container, ctx, mb) {
           loadDrawPatch: async () => {
             const diff = await mb.plugins.load("diff");
             return (body, change, patch) => diff.mountFilePatch(body, change, patch, mb);
+          },
+          // A document a step cites whole is the diff plugin's own view of it, drawn as
+          // Docs draws it (`DOCS_DRAWING`), from this page's comparison while it is the one
+          // the step was read at; at another, the step shows the document's patch.
+          loadDrawDocument: async () => {
+            const diff = await mb.plugins.load("diff");
+            const files = await diff.loadRenderedFile();
+            if (files === null) {
+              return null;
+            }
+            /** @param {{merge_base: string | null, head: string}} pins */
+            const at = (pins) => {
+              const comparison = shown?.comparison ?? null;
+              return comparison !== null &&
+                comparison.left === pins.merge_base &&
+                comparison.right === pins.head
+                ? { ...comparison, base_policy: /** @type {const} */ ("merge_base") }
+                : null;
+            };
+            return {
+              renders(path, pins) {
+                const comparison = at(pins);
+                return comparison !== null && files.format(comparison, path) !== null;
+              },
+              mount(body, path, pins) {
+                const comparison = at(pins);
+                if (comparison === null) {
+                  return { settled: Promise.resolve(), dispose() {} };
+                }
+                return files.mount(body, comparison, path, {
+                  ...DOCS_DRAWING,
+                  // Its Markdown waits for Rendered with Source hidden for as long as
+                  // Changes' first screen does, so Source never shows first in its place.
+                  markdownHoldMs: CHANGES_FIRST_SCREEN_MS,
+                });
+              },
+            };
           },
         });
         mount.view.show(shown.recordRevision, shown.newCommits !== null);

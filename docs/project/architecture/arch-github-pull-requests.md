@@ -1028,9 +1028,24 @@ in `guided-review.js`), so its hunk bars, folds, type, row height, gutter, and c
 fills are Changes’. A range is one hunk in the diff model’s shape (`_rows_hunk` in
 `guided_review.py`), and a path alone is its file’s whole patch, within the step’s
 budget for whole files; a file past it, or past what the diff source reads in one run,
-is answered `patch_too_large`. A ready step carries KPress’s stylesheet manifest, as the
-description’s Markdown route does, and the page loads it and the diff plugin’s styles
-before drawing the step, so the tab reads the same when it is the first thing opened.
+is answered `patch_too_large`. A path alone of a format the diff view renders
+(`renderedFormat` in `diff-markdown.js`: Markdown, YAML, JSON) is a document instead
+(`referenceDrawing` in `guided-review.js`): the diff plugin’s own view of that file
+(`loadRenderedFile` in `diff/index.js`), drawn with the options the Docs tab gives its
+documents (`DOCS_DRAWING` in `pull-page.js`), so its file bar, rendered layer, Rendered
+| Source chooser, and Diff | Current are Docs’, and whatever Docs learns to draw a
+document with, the step’s document draws with too.
+The view reads the comparison route’s one-file answer by path, whose manifest entry
+carries the id the rendered route asks for, so the guided route’s answer is unchanged
+and the rendered answer keeps that route’s bounds.
+The page draws a document only while its own comparison is the one the step was read at;
+at another, or with no rendered route, the reference draws its patch, as does a range of
+any file and a whole file of any other format.
+Each document is in the step’s list of drawn views, so a step change, or the page
+ending, disposes it and aborts its read.
+A ready step carries KPress’s stylesheet manifest, as the description’s Markdown route
+does, and the page loads it and the diff plugin’s styles before drawing the step, so the
+tab reads the same when it is the first thing opened.
 Guided Review is the first tab when the description has a guide: it is the author’s
 reading order. `/pull/<n>` is then the guide, and Conversation is
 `/pull/<n>/conversation` (`shownTabFor` in `pull-page.js`); without a guide `/pull/<n>`

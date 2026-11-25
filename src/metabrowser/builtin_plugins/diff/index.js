@@ -591,7 +591,8 @@ function renderFailure(container, message) {
   return { dispose: () => notice.remove() };
 }
 
-mb.registerView("diff", "diff", {
+/** @type {MetabrowserPublicViewSpec} */
+const diffView = {
   render: async (container, ctx) => {
     const signal = ctx.comparisonSignal;
     if (signal?.aborted) {
@@ -609,6 +610,9 @@ mb.registerView("diff", "diff", {
     const group = revision && typeof ctx.group === "string" && ctx.group ? ctx.group : null;
     /** @type {Record<string, string>} */
     const narrowing = group === null ? {} : { group };
+    // One changed file, by its path: the route's one-file answer, which a deferred file's
+    // loader asks for too, drawn as the whole comparison draws that file (`loadRenderedFile`).
+    const file = revision && typeof ctx.file === "string" ? ctx.file : undefined;
     const startedAt = Date.now();
     // Asked for now, so its request overlaps the diff's own instead of following it. Its
     // failure waits for the mount below, and may never reach it: a diff that fails first
@@ -619,7 +623,8 @@ mb.registerView("diff", "diff", {
     // The tree the Diff summary is drawn on, whose display rule the file bars show paths by.
     const summaryTree = changedFilesTree();
     // Asked for beside the comparison too, for a diff of more than one file.
-    const typeFilter = group === null ? typeFilterModule(revision, ctx.summaryTotals) : null;
+    const typeFilter =
+      group === null && file === undefined ? typeFilterModule(revision, ctx.summaryTotals) : null;
     let payload;
     try {
       payload = revision
@@ -627,7 +632,7 @@ mb.registerView("diff", "diff", {
             ? fetchComparison(
                 revision,
                 signal === undefined ? undefined : { signal },
-                undefined,
+                file,
                 narrowing,
               )
             : ctx.raw)
@@ -867,8 +872,79 @@ mb.registerView("diff", "diff", {
     const { pinSwitch } = await viewFileModule();
     return pinSwitch.switchTo(selection, wanted);
   },
-});
+};
+mb.registerView("diff", "diff", diffView);
+
+/**
+ * One changed file of a comparison drawn whole by this view's own render, for a page that
+ * shows that file in its own place: a guided review's step draws a document it cites whole
+ * as the pull request's Docs tab draws it. It loads the rendered layer (`markdownLayer`),
+ * the on-demand tier Changes loads, and answers null when the layer did not load.
+ *
+ * *format* is the format a file at *path* renders in, by the layer's own rule
+ * (`renderedFormat`), or null, as for a comparison that names no rendered route. *mount*
+ * draws the file from the comparison route's one-file answer (`file=`, which a deferred
+ * file's loader asks for too), with *ctx* as a host passes this view, so the file has the
+ * bar, the Rendered | Source chooser, and the toolbar that host's diff would draw. Its
+ * handle's *settled* settles once the file is drawn, or says why it is not; *dispose* ends
+ * the read on its way, or the drawn view.
+ *
+ * @returns {Promise<MetabrowserDiffRenderedFile | null>}
+ */
+async function loadRenderedFile() {
+  const views = await import("./diff-markdown.js").catch((error) => {
+    console.error("metabrowser diff: Markdown view unavailable", error);
+    return null;
+  });
+  if (views === null) {
+    return null;
+  }
+  return {
+    format: (comparison, path) =>
+      typeof comparison.rendered_route === "string"
+        ? views.renderedFormat({ old: null, new: { path, entry_type: "file" } })
+        : null,
+    mount(container, comparison, path, ctx = {}) {
+      const controller = new AbortController();
+      /** @type {{dispose?: () => void} | null} */
+      let mounted = null;
+      const settled = Promise.resolve(
+        diffView.render(container, {
+          ...ctx,
+          comparison,
+          file: path,
+          // The file alone: a one-file diff draws no summary of its own anyway.
+          summary: false,
+          comparisonSignal: controller.signal,
+        }),
+      ).then(
+        (handle) => {
+          const owned = /** @type {{dispose?: () => void} | null} */ (handle);
+          if (controller.signal.aborted) {
+            owned?.dispose?.();
+          } else {
+            mounted = owned;
+          }
+        },
+        (error) => {
+          if (!controller.signal.aborted) {
+            console.error("metabrowser diff: view load failed", { hook: "diff/file", path }, error);
+          }
+        },
+      );
+      return {
+        settled,
+        dispose() {
+          controller.abort();
+          mounted?.dispose?.();
+          mounted = null;
+        },
+      };
+    },
+  };
+}
 
 // What a plugin that requires this one gets from `mb.plugins.load("diff")`: one file's hunks
-// drawn as Changes draws them, for a page that shows part of a change in its own place.
-export { mountFilePatch };
+// drawn as Changes draws them, and one changed file drawn whole as its comparison's diff draws
+// it, for a page that shows part of a change in its own place.
+export { loadRenderedFile, mountFilePatch };

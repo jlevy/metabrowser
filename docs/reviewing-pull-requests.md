@@ -225,6 +225,9 @@ it replaced. A step’s excerpts share one size budget (`MAX_EXCERPT_BYTES` in
 `guided_review.py`); an excerpt past it says it is too large to show.
 A `path` alone shows the file’s whole diff, as Changes draws it: its hunk bars, and its
 long runs folded behind bars you expand.
+A `path` alone of a Markdown, YAML, or JSON file shows the document as Docs draws it
+instead: rendered, with its **Rendered** and **Source** choice and **Diff** and
+**Current**. Docs lists it among the pull request’s other documents.
 A step’s whole files share a budget of their own (`MAX_STEP_PATCH_BYTES` in
 `guided_review.py`); a file past it says its diff is too large to show in the step, and
 **Open full diff** shows it in Changes.
