@@ -43,6 +43,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -86,10 +87,13 @@ STACKS_PATH = "repos/octo/demo/stacks?per_page=100&page=1"
 STACKS = ((70, (8, 10)), (71, (8, 7, 10)))
 
 
-def with_stacks(answers: dict[str, Any]) -> dict[str, Any]:
-    """The stand-in's answers, and its native stacks for ``gh stack``."""
+def with_stacks(
+    answers: dict[str, Any], stacks: Sequence[tuple[int, Sequence[int]]] = STACKS
+) -> dict[str, Any]:
+    """The stand-in's answers, and its native *stacks* for ``gh stack``, by default
+    :data:`STACKS`."""
 
-    stacks = [
+    listed = [
         {
             "number": number,
             "url": f"https://api.github.com/repos/octo/demo/stacks/{number}",
@@ -97,12 +101,12 @@ def with_stacks(answers: dict[str, Any]) -> dict[str, Any]:
             "open": True,
             "pull_requests": [{"number": pull} for pull in pulls],
         }
-        for number, pulls in STACKS
+        for number, pulls in stacks
     ]
     return {
         **answers,
         "stack_version": "0.1.0",
-        "api": {**answers["api"], STACKS_PATH: ok(STACKS_PATH, stacks)},
+        "api": {**answers["api"], STACKS_PATH: ok(STACKS_PATH, listed)},
     }
 
 

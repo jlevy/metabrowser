@@ -2,12 +2,13 @@
 // the panel and page; core PR data never waits for it and no row starts a request.
 //
 // Every surface that names a stack names it here, so the page's stack button and menu, a
-// Pulls row's place, and the Pulls tab's stack groups say one thing one way
-// (docs/design-system.md, "Stacks"): `stackLabel` is the "Stack #N" every heading, menu
-// and tip reads; `stackPosition` is the bold "2/4" of a badge and a member row, and
-// `namedStackPosition` the "300 2/2" of one that names its stack, which
-// `namedStackPositionNodes` draws; `stackPositionHint` is
-// the tip that names both; and `stackMenuOrder` is the one member order, top of the stack
+// Pulls row's place, a guide's pull request row's place, and the Pulls tab's stack groups
+// say one thing one way (docs/design-system.md, "Stacks"): `stackLabel` is the "Stack #N"
+// every heading, menu and tip reads; `stackPosition` is the bold "2/4" of a badge and a
+// member row, and `namedStackPosition` the "300 2/2" of a place that names its stack, which
+// `namedStackPositionNodes` draws after the Layers glyph; `stackPositionHint` is the tip
+// that names both, which `stackPlaceHint` writes from a stack's number and length, as the
+// guide's row has them; and `stackMenuOrder` is the one member order, top of the stack
 // first. `groupByStack` is the Pulls tab's grouping of its rows.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
