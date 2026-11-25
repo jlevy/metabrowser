@@ -51,10 +51,19 @@ export function displayState(pull) {
 }
 
 /**
- * What the repository's list of pull requests last said of each row, by source and number:
+ * What the repository's lists of pull requests last said of each row, by source and number:
  * its state, when GitHub last updated it, and its title. The Pulls tab writes it as rows
- * arrive; a page reads it, so a cached record older than the list paints the list's state at
- * once, and a page with no record yet titles its cold header as the record will be titled.
+ * arrive, and a page writes its own record back over it when the record is fresher
+ * (`noteRecord`); a page reads it, so a cached record older than the list paints the list's
+ * state at once, a page with no record yet titles its cold header as the record will be
+ * titled, and a stack menu draws each member's state.
+ *
+ * An answer takes back what the entries claim of the rows it no longer holds and would hold
+ * in that state (`listHolds`): a pull request the Open list noted open and then left out, as
+ * it does once the pull request merges or closes, is forgotten, where it had stayed open and a
+ * stack menu drew it with the Open icon and named it "Open" (mb-as06). A row the list's
+ * prefix only scrolled past is forgotten too, which costs its cold title and nothing a reader
+ * sees as wrong. A merged entry stays, since a merge is never undone.
  *
  * @type {Map<string, Map<number, {state: PullState, updatedAt: string, title: string | null}>>}
  */
@@ -62,13 +71,9 @@ const listedStates = new Map();
 // A source is a served repository: a page has one, and a few at most across a session.
 const LISTED_SOURCES = 4;
 
-/**
- * Note the list's rows for *source*, replacing what an older list said of them.
- *
- * @param {string} source
- * @param {{number: number, state: PullState, updatedAt: string | null, title?: string}[]} rows
- */
-export function noteListed(source, rows) {
+/** The entries of *source*, made, letting the oldest source go, when it has none.
+ * @param {string} source */
+function heldFor(source) {
   let held = listedStates.get(source);
   if (held === undefined) {
     held = new Map();
@@ -80,15 +85,80 @@ export function noteListed(source, rows) {
       listedStates.delete(oldest);
     }
   }
+  return held;
+}
+
+/**
+ * Whether *list* holds a pull request in *state*: the filters of `pull_list_refresh.py`'s
+ * `_FILTERS`, where Open holds open and draft ones, Closed closed and merged ones, and All
+ * every one.
+ *
+ * @param {string} list
+ * @param {PullState} state
+ */
+function listHolds(list, state) {
+  if (list === "open") {
+    return state === "open" || state === "draft";
+  }
+  return list === "all" || (list === "closed" && (state === "closed" || state === "merged"));
+}
+
+/**
+ * Note *list*'s answer for *source*: its rows, each replacing what an older answer said of
+ * it, and the end of every entry, merged ones aside, whose state *list* would hold but whose
+ * row this answer does not. A row GitHub updated before its entry was is older news, and
+ * replaces nothing.
+ *
+ * @param {string} source
+ * @param {string} list The filter the answer is for: "open", "closed", or "all".
+ * @param {{number: number, state: PullState, updatedAt: string | null, title?: string}[]} rows
+ */
+export function noteListed(source, list, rows) {
+  const held = heldFor(source);
+  const holds = new Set();
   for (const row of rows) {
-    if (row.updatedAt !== null) {
-      held.set(row.number, {
-        state: row.state,
-        updatedAt: row.updatedAt,
-        title: typeof row.title === "string" && row.title !== "" ? row.title : null,
-      });
+    holds.add(row.number);
+    const entry = held.get(row.number);
+    if (row.updatedAt === null || (entry !== undefined && entry.updatedAt > row.updatedAt)) {
+      continue;
+    }
+    held.set(row.number, {
+      state: row.state,
+      updatedAt: row.updatedAt,
+      title: typeof row.title === "string" && row.title !== "" ? row.title : null,
+    });
+  }
+  for (const [number, entry] of held) {
+    if (entry.state !== "merged" && !holds.has(number) && listHolds(list, entry.state)) {
+      held.delete(number);
     }
   }
+}
+
+/**
+ * Note a page's own record of a pull request back over what a list said of it, when the
+ * record is fresher, so a stack menu on another page draws the state the record holds. A
+ * merged record is noted where no list has said anything, since nothing can make it stale;
+ * any other is not, as only a list's answer can take an entry back once it goes stale.
+ *
+ * @param {string} source
+ * @param {Record<string, any>} pull GitHub's pull request, as a record holds it.
+ */
+export function noteRecord(source, pull) {
+  if (!Number.isInteger(pull.number) || typeof pull.updated_at !== "string") {
+    return;
+  }
+  const state = displayState(pull);
+  const entry = listedStates.get(source)?.get(pull.number);
+  if (entry === undefined ? state !== "merged" : !(pull.updated_at > entry.updatedAt)) {
+    return;
+  }
+  heldFor(source).set(pull.number, {
+    state,
+    updatedAt: pull.updated_at,
+    title:
+      typeof pull.title === "string" && pull.title !== "" ? pull.title : (entry?.title ?? null),
+  });
 }
 
 /**

@@ -743,6 +743,8 @@ def test_native_stack_navigation_and_cold_page_skeleton_preserve_cached_content(
         "fileCleared": True,
         "explicitReaderIntent": True,
         "disposedWorkReleased": True,
+        "memberStateTakenBack": True,
+        "recordNotedBack": True,
     }
 
 

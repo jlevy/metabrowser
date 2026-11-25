@@ -570,16 +570,17 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       8
     ],
     "lines": [
-      "draft 3/3 · Stack change 10",
-      "closed 2/3 · Stack change 9",
-      "merged 1/3 · Stack change 8"
+      "draft 3/3 · Stack change 10 [said, not shown: #10]",
+      "closed 2/3 · Stack change 9 [said, not shown: #9]",
+      "merged 1/3 · Stack change 8 [said, not shown: #8]"
     ],
     "layout": [
       "github-pull-state-icon",
       "github-pull-stack-member-copy",
       "github-pull-stack-member-position",
       "github-pull-stack-dot",
-      "github-pull-stack-member-title"
+      "github-pull-stack-member-title",
+      "visually-hidden"
     ],
     "groupRow": {
       "label": "Stack #290",

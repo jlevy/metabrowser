@@ -3664,11 +3664,17 @@ surface keeps a copy of either.
   slot, a tree row’s gap, then the position, the dot, and the title, about a space
   apart. The title alone gives way, cut short at the line’s end, and the row’s tip holds
   the whole of it, which the shell shows only while the title is cut short
-  ([Tooltips Add Information](#tooltips-add-information)). The icon is the state the
-  page shows for its own pull request, and for each other member the state the Pulls
-  list last read for it (`stackMemberState` in `pull-page.js`); a member the list has
-  not reached keeps the icon’s slot empty.
-  The menu reads the states again each time it opens and each time the page repaints.
+  ([Tooltips Add Information](#tooltips-add-information)). The number follows the title
+  in the shell’s `.visually-hidden`, said and not shown, so a screen reader tells two
+  members of one title apart.
+  The icon is the state the page shows for its own pull request, and for each other
+  member the state the Pulls list last read for it (`stackMemberState` in
+  `pull-page.js`); a member the list has not reached keeps the icon’s slot empty.
+  A list’s answer forgets what was noted of a pull request it no longer holds when the
+  list holds the noted state and it is not a merge, so a member the Open list left out
+  once it merged or closed is not drawn open; and a page notes its own record’s state
+  back over an older list’s (`noteListed` and `noteRecord` in `pull-state.js`). The menu
+  reads the states again each time it opens and each time the page repaints.
   The row this replaced wrapped a long title onto lines of its own and marked the
   current member with a check before its position and its number after its title.
 - **Order.** A stack’s members are listed top of the stack first, the order of

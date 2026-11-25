@@ -3205,14 +3205,14 @@ async function coldHold(page) {
   titled("no Pulls row in hand, mounted with no record in hand", plain.container);
   plain.handle.dispose();
   const listedAt = "2000-01-01T00:00:00Z";
-  states.noteListed("https://github.com/octo/listed", [
+  states.noteListed("https://github.com/octo/listed", "open", [
     { number: 7, state: "open", updatedAt: listedAt, title: "Count to two in the app" },
   ]);
   const seeded = await mountScripted(page, "", { cold: true });
   titled("its Pulls row in hand, mounted with no record in hand", seeded.container);
   tell("its Pulls row in hand, mounted with no record in hand", seeded.container);
   seeded.handle.dispose();
-  states.noteListed("https://github.com/octo/also-listed", [
+  states.noteListed("https://github.com/octo/also-listed", "closed", [
     { number: 7, state: "merged", updatedAt: listedAt, title: "Another seven" },
   ]);
   const ambiguous = await mountScripted(page, "", { cold: true });

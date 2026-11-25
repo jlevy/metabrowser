@@ -1097,7 +1097,7 @@ const COLD_LANDING = `async (width, labelled, outcome, seeded) => {
   }
   if (seeded) {
     const pull = body.record.pull;
-    states.noteListed("https://github.com/octo/demo", [
+    states.noteListed("https://github.com/octo/demo", "all", [
       { number: body.number, state: states.displayState(pull), updatedAt: pull.updated_at, title: pull.title },
     ]);
   }

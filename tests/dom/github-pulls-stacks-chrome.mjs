@@ -1437,7 +1437,7 @@ try {
         return [...menu.querySelectorAll(".github-pull-stack-member")].map((link) => {
           const number = new URL(link.href).pathname.split("/")[2];
           const [icon, copy] = link.children;
-          const [position, dot, title] = copy?.children ?? [];
+          const [position, dot, title, said] = copy?.children ?? [];
           const row = document.querySelector(\`a.github-pulls-row[data-number="\${number}"] > .github-pull-state-icon\`);
           const fontSize = parseFloat(getComputedStyle(title).fontSize);
           return {
@@ -1461,6 +1461,12 @@ try {
             titleCut: { overflow: getComputedStyle(title).textOverflow, wrap: getComputedStyle(title).whiteSpace },
             tip: link.dataset.tipText ?? null,
             titleText: title.textContent,
+            said: said === undefined ? null : {
+              text: said.textContent,
+              width: box(said).width,
+              height: box(said).height,
+              clip: getComputedStyle(said).clip,
+            },
             current: link.getAttribute("aria-current") === "page",
           };
         });
@@ -1468,6 +1474,23 @@ try {
     };
   })()`);
   measured.menu = menu;
+  // Each member's name as Chrome computes it for assistive technology: its state, place, and
+  // title, then its number, which the line does not show (mb-as06).
+  if (!before) {
+    await send("Accessibility.enable");
+    menu.names = [];
+    for (let at = 0; at < menu.lines.length; at += 1) {
+      const { result: handle } = await send("Runtime.evaluate", {
+        expression: `document.querySelectorAll(".github-pull-stack-menu .github-pull-stack-member")[${at}]`,
+      });
+      const { nodes } = await send("Accessibility.getPartialAXTree", {
+        objectId: handle.objectId,
+        fetchRelatives: false,
+      });
+      menu.names.push(nodes?.[0]?.name?.value ?? null);
+    }
+    await send("Accessibility.disable");
+  }
   const menuClip = await evaluate(`(() => {
     const r = document.querySelector(".github-pull-stack-menu").getBoundingClientRect();
     const t = document.querySelector(".github-pull-stack-trigger[aria-expanded='true']").getBoundingClientRect();
@@ -1528,9 +1551,26 @@ try {
                 "github-pull-stack-member-position",
                 "github-pull-stack-dot",
                 "github-pull-stack-member-title",
+                "visually-hidden",
               ]),
         ),
       JSON.stringify(lines),
+    );
+    check(
+      "each member's number is said and not shown: hidden in a clipped 1px box, and its name's end",
+      lines.every(
+        (line, at) =>
+          line.said?.text === `#${line.number}` &&
+          line.said.width <= 1 &&
+          line.said.height <= 1 &&
+          line.said.clip === "rect(0px, 0px, 0px, 0px)" &&
+          typeof menu.names[at] === "string" &&
+          menu.names[at].endsWith(`${line.titleText} #${line.number}`),
+      ),
+      JSON.stringify({
+        said: lines.map(({ number, said }) => ({ number, said })),
+        names: menu.names,
+      }),
     );
     check(
       "each member's icon draws its Pulls row's state",

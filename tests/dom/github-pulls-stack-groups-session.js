@@ -665,12 +665,22 @@ async function mountStory() {
   const [heading, ...links] = group.childNodes;
   const menuOrder = links.map((link) => Number(link.dataset.number));
   // Each member's one line as drawn (mb-as06): its state icon's state, then its text, the
-  // bold place, the muted dot, and the title; and the parts the line is made of, one layout
-  // for every member, the current one too.
+  // bold place, the muted dot, and the title, then the number a screen reader says and the
+  // line does not show, its visually hidden part, here in brackets; and the parts the line
+  // is made of, one layout for every member, the current one too.
   const elements = (node) => node.childNodes.filter((child) => child instanceof FakeElement);
   const memberLines = links.map((link) => {
     const [icon, copy] = elements(link);
-    return `${icon.dataset.state ?? "(state unknown)"} ${copy.textContent}`;
+    const text = copy.childNodes
+      .map((child) =>
+        child instanceof FakeElement && child.classList.contains("visually-hidden")
+          ? `[said, not shown: ${child.textContent}]`
+          : typeof child === "string"
+            ? child
+            : child.textContent,
+      )
+      .join("");
+    return `${icon.dataset.state ?? "(state unknown)"} ${text}`;
   });
   const memberLayouts = new Set(
     links.map((link) =>

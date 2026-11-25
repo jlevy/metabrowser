@@ -67,6 +67,7 @@ import {
   displayState,
   listedAnywhere,
   listedState,
+  noteRecord,
   PULL_STATES,
   pullStateIcon,
   withListedState,
@@ -2082,6 +2083,7 @@ export function renderedTextsHeld() {
  *   renderMarkdown(part: string, rendered: Record<string, any>, text: string): void,
  *   textUnavailable?(part: string, text: string, note?: string | null): void,
  *   listed?(source: string | null, number: number): {state: import("./pull-state.js").PullState, updatedAt: string} | null,
+ *   noteRecord?(source: string, pull: Record<string, any>): void,
  *   timelineStateChanged?(): void,
  *   switchPin(selection: {oid: string, under: string, view?: string}, wanted: () => boolean): Promise<{kind: "switched", href: string | null} | {kind: "busy"} | {kind: "abandoned"} | {kind: "refused", message: string}>,
  *   navigate(href: string): void,
@@ -2493,6 +2495,12 @@ export function createPullController(deps, options) {
   }
 
   function render() {
+    // The record's state, noted back over a list's older word, so another member's stack
+    // menu draws what this record holds rather than what the list said before it changed.
+    const recorded = envelope?.record?.pull;
+    if (recorded && typeof envelope?.source === "string") {
+      deps.noteRecord?.(envelope.source, recorded);
+    }
     const next = model();
     const owner = envelope?.record ?? envelope?.core_preview;
     const identity = owner
@@ -4424,16 +4432,20 @@ export function createStackMenu(initial, number, deps) {
           link.setAttribute("aria-current", "page");
         }
         // The state icon, then the place, a muted dot, and the title: the place and the dot
-        // never give way, and the title is cut short at the line's end.
+        // never give way, and the title is cut short at the line's end. The number is said and
+        // not shown, so a screen reader still tells two members of one title apart.
         const title = h("span", { class: "github-pull-stack-member-title" });
         const position = h("strong", { class: "github-pull-stack-member-position" });
         const dot = h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]);
+        const said = h("span", { class: "visually-hidden" }, [`#${target}`]);
         const copy = h("span", { class: "github-pull-stack-member-copy" }, [
           position,
           " ",
           dot,
           " ",
           title,
+          " ",
+          said,
         ]);
         const icon = h("span", { class: "github-pull-state-icon", "aria-hidden": "true" });
         link.append(icon, copy);
@@ -8929,6 +8941,7 @@ export function mountPullPage(container, ctx, mb) {
       navigate: (href) => window.location.assign(href),
       renderMarkdown,
       listed: listedState,
+      noteRecord,
       textUnavailable(part, text, note) {
         if (note) {
           refusedText(part, text, note);
