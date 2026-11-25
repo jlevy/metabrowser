@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Planned; nothing here is built.
+**Status:** Phase 0 is built (`mb-mxcm`, `mb-kkib`); phases 1 to 3 are planned.
 Epic `mb-bxff`. The owner’s decisions of 2026-11-24 are under [Decisions](#decisions).
 This plan replaces the stack rollup that
 [Guided Review Groups](plan-2026-11-24-guided-review-groups.md#phase-3-stack-review)
@@ -550,9 +550,9 @@ a range), `mb-qn7e` (Full, Concise, and Source, and windowed drawing), and `mb-u
 4. **A long stack opened cold** starts one record refresh for each member this copy
    lacks; the largest cached stack has 46. Measure before deciding whether merged
    members’ files should come from their cached lists, as `stack-change` reads them.
-5. **Line breaks in a note.** Notes written as plain text keep their line breaks today.
-   Whether a single line break stays one under Markdown should follow what the
-   description’s render does, so a note and a description read alike.
+5. **Line breaks in a note.** Answered in phase 0: a note follows the description’s
+   render, measured through the Markdown child, so a single line break joins two lines
+   into one paragraph and a list needs no blank line before it.
 6. **Changes’ address.** On a pull request `/pull/<n>/files` is Changes.
    The stack’s page has a Files tab too, so this plan gives Changes a `changes` segment;
    the alternative keeps `/stack/<n>/files/<path>` for a file in Changes.
