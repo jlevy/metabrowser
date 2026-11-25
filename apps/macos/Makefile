@@ -71,9 +71,12 @@ webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAut
 window_suites := SettingsWindowTests
 #
 # Each test process runs through scripts/swift-test.sh, which fails one that exits 0 without
-# swift-testing's summary of a passed run: a window-server event once ended a process that
-# way with its tests unrun, and a filter that matches nothing passes the same way.
-swift_test = SWIFT=$(SWIFT) scripts/swift-test.sh
+# swift-testing's summary of a passed run of at least one test: a window-server event once
+# ended a process that way with its tests unrun, and a process whose filters match no test
+# at all exits 0 too. It checks only that count, so a process that runs some tests passes
+# even when one of its filters names no suite. SWIFT is quoted so that a value of several
+# words, such as "xcrun swift", reaches it whole, as it reaches $(SWIFT) build.
+swift_test = SWIFT='$(SWIFT)' scripts/swift-test.sh
 #
 # The WebKit gate's driver ships in no product, so nothing else would notice a change to
 # the app's views or configuration that broke its build; the gate itself needs Chrome and

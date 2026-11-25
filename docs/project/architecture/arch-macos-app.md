@@ -402,8 +402,8 @@ orderly quit still ends with SIGKILL, and descendants in other process groups.
 
 ## Choosing a metab
 
-`RuntimeDiscovery.discover` runs on the first launch and from Settings > Runtime > Find
-Again. It tries, in order, the path a previous setup saved, `METABROWSER_METAB`,
+`RuntimeDiscovery.discover` runs on the first launch and from Settings > Runtime >
+Refresh. It tries, in order, the path a previous setup saved, `METABROWSER_METAB`,
 `~/.local/bin/metab`, uv’s tool bin directory, the Homebrew prefixes, and last the login
 shell’s `PATH`, which runs only when the earlier places miss `metab`, `git`, or `gh`,
 because it runs the user’s shell startup files in the app’s name.

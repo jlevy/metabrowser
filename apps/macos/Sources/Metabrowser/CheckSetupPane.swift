@@ -151,17 +151,36 @@ struct ReportTextView: NSViewRepresentable {
     /// two, such as free space, and a reader copying a part should not lose it.
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let view = scroll.documentView as? NSTextView, view.string != text else { return }
-        // Read before the text changes: `string` is the text storage's own, which changes too.
-        let selected = view.selectedRange()
-        let old = view.string as NSString
-        let part = selected.length > 0 && NSMaxRange(selected) <= old.length ? old.substring(with: selected) : nil
+        // Worked out before the text changes: `string` is the text storage's own, which
+        // changes with it.
+        let kept = Self.moved(view.selectedRange(), from: view.string as NSString, to: text as NSString)
         view.textStorage?.setAttributedString(Self.styled(text))
         // Laid out at once: TextKit 2 otherwise lays the new text out a moment later from an
         // estimate and moves the scroll (measured: 120 pt down became 94).
         if let layout = view.textLayoutManager { layout.ensureLayout(for: layout.documentRange) }
-        if let part, let kept = Self.range(of: part, in: text as NSString, near: selected.location) {
-            view.setSelectedRange(kept)
+        if let kept { view.setSelectedRange(kept) }
+    }
+
+    /// Where `selected` in `old` is in `new`. A selection within the text the two share at
+    /// the start, or at the end, keeps its characters there, so a short one such as `ok`
+    /// stays on its own check when a line above it changes; one the change runs through
+    /// goes to the occurrence of its text nearest where it was, or nowhere if it is gone.
+    static func moved(_ selected: NSRange, from old: NSString, to new: NSString) -> NSRange? {
+        guard selected.length > 0, NSMaxRange(selected) <= old.length else { return nil }
+        let shorter = min(old.length, new.length)
+        var prefix = 0
+        while prefix < shorter, old.character(at: prefix) == new.character(at: prefix) { prefix += 1 }
+        var suffix = 0
+        while suffix < shorter - prefix,
+            old.character(at: old.length - 1 - suffix) == new.character(at: new.length - 1 - suffix)
+        {
+            suffix += 1
         }
+        if NSMaxRange(selected) <= prefix { return selected }
+        if selected.location >= old.length - suffix {
+            return NSRange(location: selected.location + new.length - old.length, length: selected.length)
+        }
+        return range(of: old.substring(with: selected), in: new, near: selected.location)
     }
 
     /// Where `part` is in `text`, the occurrence nearest `location`, or nil if it is gone.

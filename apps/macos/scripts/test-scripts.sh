@@ -90,6 +90,28 @@ if [[ "$swift_test_status" == 1 ]]; then
 else
   fail "swift-test.sh exited $swift_test_status for a run that exited 1: $(cat "$work/out")"
 fi
+# A SWIFT of two words, as `make test SWIFT="xcrun swift"` gives one, runs the first with
+# the second as its argument: called directly, and as the line `make test` runs.
+cat >"$work/runner" <<'EOF'
+#!/usr/bin/env bash
+echo "runner got: $*"
+echo "✔ Test run with 1 test in 1 suite passed after 0.1 seconds."
+EOF
+chmod +x "$work/runner"
+if SWIFT="$work/runner swift" scripts/swift-test.sh --filter Suite >"$work/out" 2>&1 &&
+  grep -qx 'runner got: swift test --filter Suite' "$work/out"; then
+  pass "swift-test.sh runs a SWIFT of two words"
+else
+  fail "swift-test.sh with a SWIFT of two words: $(cat "$work/out")"
+fi
+make_line="$(env -u MAKEFLAGS -u MFLAGS -u MAKELEVEL make --no-print-directory -n test SWIFT="$work/runner swift" |
+  grep -- '--filter ExitObservationStressTests' || true)"
+if bash -c "$make_line" >"$work/out" 2>&1 &&
+  grep -qx 'runner got: swift test --filter ExitObservationStressTests' "$work/out"; then
+  pass "make test hands a SWIFT of two words to swift-test.sh whole"
+else
+  fail "make test's line ($make_line) with a SWIFT of two words: $(cat "$work/out")"
+fi
 
 # require_no_entitlements:
 # A failed read, a clean signature, and a signature with entitlements, on copies of a

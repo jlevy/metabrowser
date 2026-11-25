@@ -48,8 +48,8 @@ public nonisolated struct GitHubFailure: Equatable, Sendable {
         /// can fix. Each recheck runs the start again, and a not-found answer comes from
         /// the provider's size check or the probe of the origin, before any object is
         /// fetched, so these cost little to retry. The rest are not:
-        /// - `noGitHubCLI` and `notFoundWithoutGitHubCLI` fail the same way until Find
-        ///   Again finds the installed `gh`, which restarts nothing.
+        /// - `noGitHubCLI` and `notFoundWithoutGitHubCLI` fail the same way until
+        ///   Refresh in Settings > Runtime finds the installed `gh`, which restarts nothing.
         /// - `network` can end a first clone minutes into its fetch (`timed_out`), and a
         ///   retry fetches again from zero, holding the repository launch gate.
         /// - `rateLimited` would send GitHub another request while it asks for fewer, and

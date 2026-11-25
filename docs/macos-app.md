@@ -449,8 +449,8 @@ If discovery finds no usable `metab`, Settings > Runtime shows the required vers
 why it skipped or rejected any runtimes it found.
 **Installation and troubleshooting on GitHub** opens the
 [README](https://github.com/jlevy/metabrowser#installation) for installing or updating
-the CLI and for preview builds whose runtime is pending on PyPI. After setup, use **Find
-Again** or **Choose metab…** to select your runtime.
+the CLI and for preview builds whose runtime is pending on PyPI. After setup, use
+**Refresh** or **Choose metab…** to select your runtime.
 
 The app keeps watching, and when a usable `metab` appears, it opens the folders you
 asked for by itself.

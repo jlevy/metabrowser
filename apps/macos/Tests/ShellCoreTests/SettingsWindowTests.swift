@@ -280,6 +280,35 @@ import Testing
         #expect(ReportTextView.range(of: "error", in: text, near: 0) == nil)
     }
 
+    /// A selection outside the change keeps its characters, even where the nearest
+    /// occurrence of its text is another check's: here the line above `ok: c` shrinks by
+    /// more than the distance to `ok: d`. One the change runs through goes to the nearest
+    /// occurrence, and one whose text is gone goes nowhere.
+    @Test func aSelectionOutsideTheChangeKeepsItsCharacters() {
+        let old = "ok: a\nwarning: 30 GB free of 1000 GB on the cache volume\nok: c\nok: d\n" as NSString
+        let new = "ok: a\nwarning: 9 GB free\nok: c\nok: d\n" as NSString
+        let c = old.range(of: "ok: c")
+        let selected = NSRange(location: c.location, length: 2)
+        let expected = NSRange(location: new.range(of: "ok: c").location, length: 2)
+        // Nearest alone would take `ok: d`'s.
+        #expect(ReportTextView.range(of: "ok", in: new, near: selected.location) != expected)
+        #expect(ReportTextView.moved(selected, from: old, to: new) == expected)
+        // Before the change: the same place.
+        #expect(ReportTextView.moved(NSRange(location: 0, length: 2), from: old, to: new) == NSRange(location: 0, length: 2))
+        // Through the change: the nearest occurrence of its text, if it is still there.
+        let warning = old.range(of: "warning: 30")
+        #expect(ReportTextView.moved(warning, from: old, to: new) == nil, "its text is gone")
+        let label = NSRange(location: warning.location, length: "warning: 3".count)
+        #expect(ReportTextView.moved(label, from: old, to: new) == nil)
+        let word = NSRange(location: warning.location, length: "warning".count)
+        #expect(ReportTextView.moved(word, from: old, to: new) == word, "within the shared start")
+        let free = old.range(of: "GB free of")
+        #expect(ReportTextView.moved(free, from: old, to: new) == nil)
+        let gb = NSRange(location: free.location, length: "GB free".count)
+        #expect(ReportTextView.moved(gb, from: old, to: new) == new.range(of: "GB free"))
+        #expect(ReportTextView.moved(NSRange(location: 0, length: 0), from: old, to: new) == nil)
+    }
+
     /// Places looked lists every directory of a long `PATH` when no `metab` is found, under
     /// the setup guide's notices. It scrolls in place, so the pane fits the height the
     /// window is placed for, and everything under it, Reveal Logs Folder included, stays in
