@@ -113,6 +113,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {HTMLElement | null} showControl The toolbar's Diff | Current chooser.
  * @property {MetabrowserPublicPluginShortcutHandle | null} showKey `N`, on the chip it would
  *   select in the toolbar's chooser (`attachShowKey`).
+ * @property {{dispose: () => void}[]} pdfCards The PDF cards binary changes drew, to
+ *   dispose with the view.
  */
 
 /**
@@ -229,6 +231,72 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   stale: "The comparison changed underneath this file. Refresh to reload it.",
   unsupported: "This change cannot be shown as a text diff.",
 });
+
+/**
+ * The side of a binary change whose first page a PDF card shows: the new side, or the
+ * old one for a deletion, when its path ends in `.pdf` and its content is a blob of the
+ * repository the comparison was read from. Null for every other change.
+ *
+ * A PDF named without the extension is still a binary change with no card: the
+ * comparison does not sniff its sides, and the file bar's View file reaches its view.
+ *
+ * @param {Record<string, unknown>} change
+ * @returns {{path: string, oid: string} | null}
+ */
+export function pdfCardSide(change) {
+  const side = /** @type {Record<string, unknown> | undefined} */ (
+    change.kind === "deleted" ? change.old : change.new
+  );
+  const path = side?.path;
+  const content = /** @type {Record<string, unknown> | undefined} */ (side?.content);
+  if (typeof path !== "string" || !/\.pdf$/i.test(path)) {
+    return null;
+  }
+  if (content?.kind !== "git_object" || typeof content.oid !== "string") {
+    return null;
+  }
+  return { path, oid: content.oid };
+}
+
+/**
+ * Below a binary change's line, the PDF plugin's card for the side `pdfCardSide` names
+ * (`requires = ["pdf"]` in manifest.toml). The card holds an image the server drew,
+ * never a viewer; a page whose plugins cannot load leaves the line alone.
+ *
+ * @param {MountedDiffState} view
+ * @param {Record<string, unknown>} change
+ * @param {HTMLElement} body
+ */
+function appendPdfCard(view, change, body) {
+  const side = pdfCardSide(change);
+  const plugins = view.api?.plugins;
+  if (side === null || typeof plugins?.load !== "function") {
+    return;
+  }
+  const slot = el("div", "diff-pdf-card");
+  body.append(slot);
+  /** @type {{dispose: () => void} | null} */
+  let card = null;
+  let disposed = false;
+  view.pdfCards.push({
+    dispose() {
+      disposed = true;
+      card?.dispose();
+      slot.remove();
+    },
+  });
+  // A load that throws at once is a page without the plugin, as one that rejects is.
+  void new Promise((resolve) => resolve(plugins.load("pdf")))
+    .then((pdf) => {
+      const mount = /** @type {{mountPdfCard?: Function} | undefined} */ (pdf)?.mountPdfCard;
+      if (disposed || view.disposed || typeof mount !== "function") {
+        return;
+      }
+      const name = side.path.slice(side.path.lastIndexOf("/") + 1) || side.path;
+      card = mount(slot, { oid: side.oid, name });
+    })
+    .catch(() => slot.remove());
+}
 
 // What a file whose availability the table does not name says.
 const UNAVAILABLE_COPY = "These changes are unavailable.";
@@ -2982,6 +3050,9 @@ function spliceDeferred(file, loaded, view) {
   if (only && patch === undefined && reason) {
     // The server looked and has a reason: a file past the bound of one patch.
     file.body.append(el("div", "diff-availability", reason));
+    if (availability === "binary") {
+      appendPdfCard(view, only, file.body);
+    }
     return "none";
   }
   if (!only || patch === undefined) {
@@ -3774,6 +3845,9 @@ function renderFileSection(change, patch, context, view, draw) {
   if (availability !== "ready" || patch === undefined) {
     const copy = AVAILABILITY_COPY[availability] || UNAVAILABLE_COPY;
     body.append(el("div", "diff-availability", copy));
+    if (availability === "binary") {
+      appendPdfCard(view, change, body);
+    }
     return section;
   }
   const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
@@ -4029,6 +4103,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     viewFileBusy: null,
     viewFileBars: [],
     yielders: new Set(),
+    pdfCards: [],
     changedFiles: options.changedFiles ?? null,
     openFile: options.openFile ?? null,
     unfold: options.unfold === true,
@@ -4389,6 +4464,9 @@ export function mountDiffView(container, document_, api, options = {}) {
       }
       cancelPendingWork();
       view.viewFile?.dispose();
+      for (const card of view.pdfCards.splice(0)) {
+        card.dispose();
+      }
       view.layoutKey?.detach();
       view.layoutKey = null;
       view.showKey?.detach();

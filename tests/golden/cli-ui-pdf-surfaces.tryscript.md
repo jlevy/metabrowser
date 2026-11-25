@@ -14,10 +14,11 @@ recorded in `tests/fixtures/pdf-surfaces-responses.json` by
 The surfaces are a trusted folder, a folder served `--untrusted`, and a pinned revision,
 which is what every GitHub repository and pull request is.
 Each is read in a browser and in the macOS app, whose host descriptor is the only
-difference. The PDFs are one with NUL bytes, as real writers’ are; one whose bytes are
-all ASCII; one with no extension; and a text file named `.pdf`. The last commit of the
-pin adds them, and its comparison is what a commit’s diff or a pull request’s Changes
-draws.
+difference.
+The PDFs are one page with a NUL byte, as real writers’ have; one whose bytes
+are all ASCII and which has no page; one with no extension; and a text file named
+`.pdf`. The last commit of the pin adds them, and its comparison is what a commit’s diff
+or a pull request’s Changes draws.
 
 `seen` is the transcript a reviewer reads, one line per file per surface:
 
@@ -27,6 +28,13 @@ draws.
   pin’s admit an object from `/raw` alone (`object-src <origin>/raw`), whose every
   answer carries its own sandbox.
   The threat this answers is in `docs/project/architecture/arch-threat-model.md`.
+- **`first page behind it`:** the PDF plugin’s preview of the file, a PNG the server
+  drew of its first page, behind the viewer until the viewer paints.
+  `no first page` names the preview route’s reason: `unreadable` for a PDF PDFium cannot
+  draw, and `no_sandbox` for every PDF of an `--untrusted` folder and a pin, whose
+  previews are drawn only inside an operating-system sandbox (threat model T7). The
+  recording asks as a platform without one does, so it is the same on macOS and Linux.
+  The trusted folder’s two PDFs with the same bytes share one preview, drawn once.
 - **Each action:** its label, and the status and type the server answers at the address
   it links to. Every one is `application/pdf`, the extensionless PDF’s too, because
   `/raw` takes a type from a file’s leading bytes when its name gives none
@@ -40,47 +48,55 @@ draws.
   A binary PDF says “Binary file; no textual diff.”, as GitHub’s Files changed does, and
   an all-ASCII one is a text diff.
   Its own view is the file bar’s View file, pinned in
-  `cli-ui-diff-view-file.tryscript.md`.
+  `cli-ui-diff-view-file.tryscript.md`. Below a binary `.pdf`’s line is the PDF card:
+  the preview of the change’s new side, by its blob, which a revision’s content is never
+  trusted with. `without a sandbox` it says why it has no image; `with a sandbox` (a
+  stand-in that confines nothing, so the recording holds a drawn card on every platform)
+  it shows the first page, the name, and the page count.
+  The extensionless PDF has no card: the comparison does not sniff a side.
 
 A diff draws no PDF viewer at all, so a heavy comparison never grows one per changed
-PDF: the last line says the mounted diff holds no embed, object, or iframe, which the
-session asserts. In the app, Open on the extensionless PDF reaches the app’s type check,
-which reads a file by its name and refuses it.
+PDF: the last line says the mounted diff holds no embed, object, or iframe, the card’s
+included, which the session asserts.
+In the app, Open on the extensionless PDF reaches the app’s type check, which reads a
+file by its name and refuses it.
 The browser’s painting of a PDF is Chrome’s (`tests/test_pdf_preview_chrome.py`).
 
 ```console
 $ node tests/dom/pdf-surfaces-session.js
 {
   "seen": [
-    "folder · browser · papers/report.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "folder · browser · papers/ascii.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "folder · browser · scans/untitled: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "folder · browser · papers/report.pdf: viewer; first page behind it. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "folder · browser · papers/ascii.pdf: viewer; no first page (unreadable). Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "folder · browser · scans/untitled: viewer; first page behind it. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
     "folder · browser · notes/not-really.pdf: another view (text, the source view)",
-    "folder · app · papers/report.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
-    "folder · app · papers/ascii.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
-    "folder · app · scans/untitled: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
+    "folder · app · papers/report.pdf: viewer; first page behind it. Open → 200 application/pdf; Download → 200 application/pdf",
+    "folder · app · papers/ascii.pdf: viewer; no first page (unreadable). Open → 200 application/pdf; Download → 200 application/pdf",
+    "folder · app · scans/untitled: viewer; first page behind it. Open → 200 application/pdf; Download → 200 application/pdf",
     "folder · app · notes/not-really.pdf: another view (text, the source view)",
-    "folderUntrusted · browser · papers/report.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "folderUntrusted · browser · papers/ascii.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "folderUntrusted · browser · scans/untitled: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "folderUntrusted · browser · papers/report.pdf: viewer; no first page (no_sandbox). Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "folderUntrusted · browser · papers/ascii.pdf: viewer; no first page (no_sandbox). Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "folderUntrusted · browser · scans/untitled: viewer; no first page (no_sandbox). Download → 200 application/pdf; Open in new tab → 200 application/pdf",
     "folderUntrusted · browser · notes/not-really.pdf: another view (text, the source view)",
-    "folderUntrusted · app · papers/report.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
-    "folderUntrusted · app · papers/ascii.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
-    "folderUntrusted · app · scans/untitled: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
+    "folderUntrusted · app · papers/report.pdf: viewer; no first page (no_sandbox). Open → 200 application/pdf; Download → 200 application/pdf",
+    "folderUntrusted · app · papers/ascii.pdf: viewer; no first page (no_sandbox). Open → 200 application/pdf; Download → 200 application/pdf",
+    "folderUntrusted · app · scans/untitled: viewer; no first page (no_sandbox). Open → 200 application/pdf; Download → 200 application/pdf",
     "folderUntrusted · app · notes/not-really.pdf: another view (text, the source view)",
-    "pin · browser · papers/report.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "pin · browser · papers/ascii.pdf: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
-    "pin · browser · scans/untitled: viewer. Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "pin · browser · papers/report.pdf: viewer; no first page (no_sandbox). Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "pin · browser · papers/ascii.pdf: viewer; no first page (no_sandbox). Download → 200 application/pdf; Open in new tab → 200 application/pdf",
+    "pin · browser · scans/untitled: viewer; no first page (no_sandbox). Download → 200 application/pdf; Open in new tab → 200 application/pdf",
     "pin · browser · notes/not-really.pdf: another view (text, the source view)",
-    "pin · app · papers/report.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
-    "pin · app · papers/ascii.pdf: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
-    "pin · app · scans/untitled: viewer. Open → 200 application/pdf; Download → 200 application/pdf",
+    "pin · app · papers/report.pdf: viewer; no first page (no_sandbox). Open → 200 application/pdf; Download → 200 application/pdf",
+    "pin · app · papers/ascii.pdf: viewer; no first page (no_sandbox). Open → 200 application/pdf; Download → 200 application/pdf",
+    "pin · app · scans/untitled: viewer; no first page (no_sandbox). Open → 200 application/pdf; Download → 200 application/pdf",
     "pin · app · notes/not-really.pdf: another view (text, the source view)",
     "diff · modified README.md: text diff",
     "diff · added notes/not-really.pdf: text diff",
     "diff · added papers/ascii.pdf: text diff",
-    "diff · added papers/report.pdf: Binary file; no textual diff.",
+    "diff · added papers/report.pdf: Binary file; no textual diff. Card: unavailable (no_sandbox).",
     "diff · added scans/untitled: Binary file; no textual diff.",
+    "diff, without a sandbox · report.pdf · Previews of this source's PDFs are drawn only in a sandbox, which this system lacks. (no image)",
+    "diff, with a sandbox · report.pdf · 1 page (image)",
     "diff · draws no embed, object, or iframe"
   ],
   "surfaces": [
@@ -98,6 +114,18 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "behindViewer": {
+              "alt": "",
+              "aria-hidden": "true",
+              "class": "pdf-viewer-backdrop",
+              "decoding": "async",
+              "height": "320",
+              "loading": "lazy",
+              "src": "/api/plugin/pdf/preview-image?key=preview-1",
+              "width": "480"
+            }
+          },
           "actions": [
             {
               "label": "Download",
@@ -126,6 +154,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "unreadable"
+          },
           "actions": [
             {
               "label": "Download",
@@ -154,6 +185,18 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "behindViewer": {
+              "alt": "",
+              "aria-hidden": "true",
+              "class": "pdf-viewer-backdrop",
+              "decoding": "async",
+              "height": "320",
+              "loading": "lazy",
+              "src": "/api/plugin/pdf/preview-image?key=preview-1",
+              "width": "480"
+            }
+          },
           "actions": [
             {
               "label": "Download",
@@ -198,6 +241,18 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "behindViewer": {
+              "alt": "",
+              "aria-hidden": "true",
+              "class": "pdf-viewer-backdrop",
+              "decoding": "async",
+              "height": "320",
+              "loading": "lazy",
+              "src": "/api/plugin/pdf/preview-image?key=preview-1",
+              "width": "480"
+            }
+          },
           "actions": [
             {
               "label": "Open",
@@ -227,6 +282,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "unreadable"
+          },
           "actions": [
             {
               "label": "Open",
@@ -256,6 +314,18 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "behindViewer": {
+              "alt": "",
+              "aria-hidden": "true",
+              "class": "pdf-viewer-backdrop",
+              "decoding": "async",
+              "height": "320",
+              "loading": "lazy",
+              "src": "/api/plugin/pdf/preview-image?key=preview-1",
+              "width": "480"
+            }
+          },
           "actions": [
             {
               "label": "Open",
@@ -301,6 +371,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Download",
@@ -329,6 +402,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Download",
@@ -357,6 +433,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Download",
@@ -401,6 +480,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Open",
@@ -430,6 +512,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Open",
@@ -459,6 +544,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Open",
@@ -504,6 +592,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Download",
@@ -532,6 +623,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Download",
@@ -560,6 +654,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Download",
@@ -604,6 +701,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Open",
@@ -633,6 +733,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Open",
@@ -662,6 +765,9 @@ $ node tests/dom/pdf-surfaces-session.js
           "view": "preview",
           "shows": "viewer",
           "policyAdmitsViewer": true,
+          "firstPage": {
+            "none": "no_sandbox"
+          },
           "actions": [
             {
               "label": "Open",
@@ -694,48 +800,107 @@ $ node tests/dom/pdf-surfaces-session.js
       }
     }
   ],
-  "pinComparison": [
-    {
-      "path": "README.md",
-      "change": "modified",
-      "binary": false,
-      "availability": "ready",
-      "lines": "+2 −0",
-      "body": "text diff"
+  "pinComparison": {
+    "changes": [
+      {
+        "path": "README.md",
+        "change": "modified",
+        "binary": false,
+        "availability": "ready",
+        "lines": "+2 −0",
+        "body": "text diff",
+        "card": null
+      },
+      {
+        "path": "notes/not-really.pdf",
+        "change": "added",
+        "binary": false,
+        "availability": "ready",
+        "lines": "+1 −0",
+        "body": "text diff",
+        "card": null
+      },
+      {
+        "path": "papers/ascii.pdf",
+        "change": "added",
+        "binary": false,
+        "availability": "ready",
+        "lines": "+5 −0",
+        "body": "text diff",
+        "card": null
+      },
+      {
+        "path": "papers/report.pdf",
+        "change": "added",
+        "binary": true,
+        "availability": "binary",
+        "lines": null,
+        "body": "Binary file; no textual diff.",
+        "card": {
+          "state": "unavailable",
+          "reason": "no_sandbox",
+          "image": null,
+          "caption": [
+            "report.pdf",
+            "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
+          ]
+        }
+      },
+      {
+        "path": "scans/untitled",
+        "change": "added",
+        "binary": true,
+        "availability": "binary",
+        "lines": null,
+        "body": "Binary file; no textual diff.",
+        "card": null
+      }
+    ],
+    "cards": {
+      "noSandbox": {
+        "requests": [
+          "/api/plugin/pdf/preview?oid=a8c84b8788a38f312bc4cdd9359fbf7b19b770f4"
+        ],
+        "cards": [
+          {
+            "state": "unavailable",
+            "reason": "no_sandbox",
+            "image": null,
+            "caption": [
+              "report.pdf",
+              "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
+            ]
+          }
+        ]
+      },
+      "sandbox": {
+        "requests": [
+          "/api/plugin/pdf/preview?oid=a8c84b8788a38f312bc4cdd9359fbf7b19b770f4"
+        ],
+        "cards": [
+          {
+            "state": "ready",
+            "image": {
+              "class": "pdf-card-image",
+              "src": "/api/plugin/pdf/preview-image?key=preview-2",
+              "width": "480",
+              "height": "320",
+              "loading": "lazy",
+              "decoding": "async",
+              "alt": "First page of report.pdf"
+            },
+            "caption": [
+              "report.pdf",
+              "1 page"
+            ]
+          }
+        ]
+      }
     },
-    {
-      "path": "notes/not-really.pdf",
-      "change": "added",
-      "binary": false,
-      "availability": "ready",
-      "lines": "+1 −0",
-      "body": "text diff"
-    },
-    {
-      "path": "papers/ascii.pdf",
-      "change": "added",
-      "binary": false,
-      "availability": "ready",
-      "lines": "+5 −0",
-      "body": "text diff"
-    },
-    {
-      "path": "papers/report.pdf",
-      "change": "added",
-      "binary": true,
-      "availability": "binary",
-      "lines": null,
-      "body": "Binary file; no textual diff."
-    },
-    {
-      "path": "scans/untitled",
-      "change": "added",
-      "binary": true,
-      "availability": "binary",
-      "lines": null,
-      "body": "Binary file; no textual diff."
-    }
-  ]
+    "loads": [
+      "pdf"
+    ]
+  }
 }
 ? 0
 ```

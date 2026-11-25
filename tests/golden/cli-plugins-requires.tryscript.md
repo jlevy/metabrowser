@@ -75,7 +75,7 @@ metab --doctor: 18 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
-  diff: requires structured
+  diff: requires structured, pdf
   event-log: requires agents
   folder: requires markdown
   fsqlite: requires sqlite, table
@@ -121,7 +121,7 @@ metab --doctor: 4 problem(s):
 plugin requirements:
   agents: requires structured
   delimited: requires table
-  diff: requires structured
+  diff: requires structured, pdf
   event-log: requires agents
   folder: requires markdown
   fsqlite: requires sqlite, table
@@ -147,7 +147,7 @@ metab --doctor: 1 problem(s):
 plugin requirements:
   agents: requires structured
   delimited: requires table
-  diff: requires structured
+  diff: requires structured, pdf
   event-log: requires agents
   folder: requires markdown
   fsqlite: requires sqlite, table

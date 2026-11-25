@@ -202,16 +202,31 @@ exploits a parser.
 - **Server-side PDF rendering**, for the preview card (`mb-7tcl`), follows the same rule
   and one more: PDFium is a native parser of attacker-written bytes, and a browser runs
   it only inside its own sandbox.
-  So a preview of an untrusted source’s PDF is rendered only in a child process that is
-  itself sandboxed: no network, no writes, under a deadline.
-  On macOS that is a `sandbox-exec` profile.
-  Where no such sandbox is available, an untrusted source’s card has no image, and a
-  trusted folder’s PDFs still get one, since they are the reader’s own.
+  So every preview is rendered in a child process
+  (`builtin_plugins/pdf/render_child.py`) under a deadline, with its input and output
+  bounded, a minimal environment, and resource limits set before it reads a byte: CPU
+  seconds, no file growth, no core file, no new process, and on Linux its address space.
+  A preview of an untrusted source’s PDF (an `--untrusted` folder, a pin, any blob of a
+  comparison) is rendered only when that child is also sandboxed: on macOS a
+  `sandbox-exec` profile that denies by default, so it opens no socket, writes no file,
+  starts no process, and reads nothing outside the interpreter’s, PDFium’s, and the
+  system’s libraries and fonts (`preview_isolation.macos_profile`). Where the probe
+  finds no such sandbox (Linux today), an untrusted source’s card has no image and says
+  why, and a trusted folder’s PDFs still get one, since they are the reader’s own; where
+  it finds one, a trusted folder’s are rendered in it too.
+  The PNG the child writes is checked against the encoder’s own form before the server
+  keeps or serves it, and it is served with `nosniff` and a policy that runs nothing.
   The renderer is a pinned dependency under the supply-chain cool-off, declared by the
   `pdf` plugin alone.
 - **Evidence.** `tests/test_inert_render_deadline.py`, `tests/test_sqlite_access.py`,
   `tests/test_frontmatter_bounds.py`, and the alias-bomb test in
-  `tests/test_structured_diff_projection.py`; the preview’s own tests arrive with it.
+  `tests/test_structured_diff_projection.py`; for the PDF preview,
+  `tests/test_pdf_preview_sandbox.py` (macOS: a render under the probed profile, and a
+  write, a connection, a fork, an exec, and a read of the reader’s file refused under
+  it, each allowed bare), `tests/test_pdf_preview_routes.py` (no image for an untrusted
+  source or a blob without a sandbox, the deadline’s kill, the input bound, the image
+  answer’s headers), and `tests/test_pdf_preview.py` (the rule’s table, the PNG
+  validator).
 - **Residual.** A trusted folder’s Markdown renders in a server thread with no deadline.
   Accepted: the folder is the reader’s. The structured Tree view parses YAML and JSONC
   under the 8 MiB input cap only, without the bounded loader.
