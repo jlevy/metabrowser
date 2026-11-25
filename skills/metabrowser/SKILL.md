@@ -828,9 +828,9 @@ first step. Give it these groups and steps, in this order:
 | Open questions | One step, titled “Open questions: …” | What a person must decide | The code in doubt |
 | Testing and merging | One or two | Automated, agent-checked, and needs a person; the merge order, while a layer is open; deferred work with its tracker IDs | Tests, the plan |
 
-- Write nine to thirteen steps, as the table adds up to.
-  A group of one step stays a step of its own, whose title names its group, as in a pull
-  request’s guide.
+- Write ten to thirteen steps, as the table adds up to, and more only when the Documents
+  step splits. A group of one step stays a step of its own, whose title names its group,
+  as in a pull request’s guide.
 - Keep each note to five lines, in the present tense, about the end state.
 - Cite at most three references a step, except in the layers step, which cites every
   layer; split the Documents step when its documents would pass three.
@@ -903,7 +903,11 @@ echo '{"retry": true}' > <tmp>/retry.json &&
 ```
 
 When the stack is still missing, the list’s `.last_refresh.outcome` says how that
-refresh ended. A pull request in two stacks prints both numbers: take the one you are
+refresh ended.
+The list needs GitHub’s gh-stack extension: `gh_stack_missing` means it is
+not installed, so the list stays empty or as it was, and
+[Git and GitHub Setup](https://github.com/jlevy/metabrowser/blob/main/docs/installation.md#git-and-github-setup)
+installs it. A pull request in two stacks prints both numbers: take the one you are
 writing the guide for.
 
 Read the stack: its state, its pins, and its layers, bottom up.
@@ -974,17 +978,19 @@ recipes of [Publish and Confirm It](#publish-and-confirm-it), `<n>` the layer’
 
 Only the description you edit starts from the copy GitHub has, `gh pr view`, as in
 [Publish and Confirm It](#publish-and-confirm-it).
-Write the top layer’s whole description to a file, its own prose and guide and then the
-`stack-review` block, and publish it with `gh pr edit <top> --body-file <tmp>/body.md`.
-An edit of a description moves no head, so it starts no CI run and leaves the layer’s
-own guide current. As for a pull request’s guide, nothing checks the block before it is
-published: refresh the record of the layer you published to with
-`<invocation> <layer-url> --no-serve`, `<layer-url>` being its pull-request URL, since
-`--no-serve` fetches a record only for a pull-request URL, and check it as in
-[Publish and Confirm It](#publish-and-confirm-it); then read the guide’s outline from
-`/api/plugin/github/guided-review?stack=<s>` with that section’s outline recipe, then
-read each step, with `<k>` from 1 to `.step_count`, and fix and publish again until
-every step reads as below:
+Publish to the layer that carries the guide, `.guide.number`, or to the top layer,
+`.members[-1].number`, when the stack has no guide yet, so a stack keeps one block.
+Write that layer’s whole description to a file, its own prose and guide and then the
+`stack-review` block, and publish it with
+`gh pr edit <layer> --body-file <tmp>/body.md`. An edit of a description moves no head,
+so it starts no CI run and leaves the layer’s own guide current.
+As for a pull request’s guide, nothing checks the block before it is published: refresh
+the record of the layer you published to with `<invocation> <layer-url> --no-serve`,
+`<layer-url>` being its pull-request URL, since `--no-serve` fetches a record only for a
+pull-request URL, and check it as in [Publish and Confirm It](#publish-and-confirm-it);
+then read the guide’s outline from `/api/plugin/github/guided-review?stack=<s>` with
+that section’s outline recipe, then read each step, with `<k>` from 1 to `.step_count`,
+and fix and publish again until every step reads as below:
 
 ```shell
 <invocation> <url> --api '/api/plugin/github/guided-review?stack=<s>&step=<k>' --format json > <tmp>/step.json &&
@@ -992,7 +998,7 @@ every step reads as below:
 ```
 
 - `.carrier` is the layer whose block the page reads, which should be the layer you
-  published to: the top layer, unless a layer was added above it since.
+  published to.
 - `.state` and each reference’s state read as for a pull request’s guide: every one
   `ready`, or `not_cached` for a pull request this copy has not read.
 - `not_cached` for the whole guide means a layer is still being fetched, and
