@@ -1221,11 +1221,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .foregroundColor: NSColor.secondaryLabelColor,
             .paragraphStyle: centered,
         ])
-        credits.append(NSAttributedString(string: "By Joshua Levy\n", attributes: [
+        let credit: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: NSColor.labelColor,
             .paragraphStyle: centered,
+        ]
+        credits.append(NSAttributedString(string: "By ", attributes: credit))
+        credits.append(NSAttributedString(string: ProjectLinks.authorName, attributes: [
+            .font: font,
+            .link: ProjectLinks.author,
+            .paragraphStyle: centered,
         ]))
+        credits.append(NSAttributedString(string: "\n", attributes: credit))
         let repository = ProjectLinks.repository
         credits.append(NSAttributedString(string: repository.absoluteString, attributes: [
             .font: font,
