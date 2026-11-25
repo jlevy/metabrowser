@@ -353,13 +353,17 @@
   flex: none;
 }
 
+/* The toggle's box is its content, so its end padding is the room the inset focus ring
+   takes past the path's last letter, which the ring otherwise covered (seen in Chrome on
+   2026-11-24, mb-2t80); the end margin gives it back, so the bar lays out as before. */
 .metabrowser-diff-host .diff-file-toggle {
   flex: 0 1 auto;
   min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 0;
+  padding: 0 4px 0 0;
+  margin-inline-end: -4px;
   border: 0;
   background: transparent;
   color: var(--text);
@@ -542,7 +546,7 @@
    on the name focuses the disclosure in Chrome, and `:focus-within` then
    held the control shown beside that name, the pointer long gone, until
    the focus moved on. After a copy it stays shown, in the success ink,
-   until the shared delegate takes its "Copied!" back, as the file header's
+   until the shared delegate takes its "Copied" back, as the file header's
    does. At rest it keeps its place, unseen, so nothing in the bar moves
    when it shows. */
 .metabrowser-diff-host .diff-file-bar:hover .diff-file-copy,
@@ -1088,4 +1092,13 @@
 
 .metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary:hover {
   color: var(--text);
+}
+
+/* The one ring, stated here because the fold sits in `article.kpress`: KPress's document
+   sheet rings a `summary` there 3px wide and 2px outside the box, at a specificity the
+   shell's zero-specificity base does not reach (docs/design-system.md, "Focus Ring").
+   tests/test_diff_markdown_fold_chrome.py reads the ring with KPress's sheets loaded. */
+.metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }

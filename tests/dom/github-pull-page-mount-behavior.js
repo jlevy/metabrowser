@@ -1858,10 +1858,11 @@ async function headerAges(page) {
 // line is there only for a failure, a message, or an offer, and a rate limit's hold is
 // said in the freshness note's place, so it adds none (mb-ne91). Each row's height is its
 // stylesheet's (tests/test_reserved_chrome.py); here, that every row it shows is there, a
-// hidden row left out. A stack's chip has its slot at the author's row's end (mb-cf0l),
-// held by a strut until one arrives, which holds that row at a chip's height; and Refresh
-// has its slot at the row of ages' end on every tab. tests/dom/github-pull-header-chrome.mjs
-// measures that a late chip moves nothing.
+// hidden row left out. A stack's chip has its slot at the row of ages' end, just before
+// Refresh's slot, which ends that row on every tab (mb-646g); the slot is held by a strut
+// until a chip arrives, which holds the row at a chip's height, and the author's row is its
+// lead alone. tests/dom/github-pull-header-chrome.mjs measures that a late chip moves
+// nothing, Refresh included.
 async function headerShape(page) {
   // The header's corner, the View on GitHub button's, is no row: it is placed in the page's
   // upper right, out of the rows' flow (mb-4wqh).
@@ -1947,12 +1948,11 @@ async function headerShape(page) {
   /** What each variant's status line says, on every tab, or null where it is not there. */
   // A failure ends in its Details, the event log's records for it (mb-9zp5).
   const STATUS = {
-    failed:
-      "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed outDetails",
+    failed: "Could not reach GitHub.Details",
     "a checkout at the head":
       "This checkout’s HEAD is this pull request’s head. Browse the checkout",
     "on its way, its last refresh failed":
-      "Fetching the pull request…The last refresh failed: gh could not reach api.github.comDetails",
+      "Fetching the pull request…Could not reach GitHub.Details",
   };
   /** What each variant's note says where it is not the record's fetch, null where none. */
   const NOTE = {
@@ -1978,10 +1978,16 @@ async function headerShape(page) {
       const end = status.children.at(-1);
       const refresh = container.querySelector(".github-pull-refresh");
       assert.ok(end.classes.has("github-pull-status-end"), `${name} ${tab}: offers end the row`);
+      const opened = container.querySelector(".github-pull-opened");
       assert.equal(
-        meta.children.at(-1),
+        opened.children.at(-2),
         stacks,
-        `${name} ${tab}: the stack slot ends the author's row`,
+        `${name} ${tab}: the stack slot ends the row of ages, before Refresh's`,
+      );
+      assert.deepEqual(
+        meta.children.map((node) => node.getAttribute("class")),
+        ["github-pull-meta-lead"],
+        `${name} ${tab}: the author's row is its lead alone`,
       );
       if (!labelled) {
         assert.equal(labels, null, `${name} ${tab}: no labels, no labels row`);
@@ -2038,15 +2044,14 @@ async function headerShape(page) {
       }
       assert.ok(
         stacks.children.length !== 1 || stacks.children[0].classes.has("github-pull-stack-strut"),
-        `${name} ${tab}: a strut holds the author's row at a chip's height`,
+        `${name} ${tab}: a strut holds the row of ages at a chip's height`,
       );
       assert.ok(
         stacks.children.length > 0 && !stacks.hidden,
         `${name} ${tab}: the stack slot is held while no stack is known`,
       );
-      // Refresh's slot ends the row of ages, after Browse code, whatever the record's state
-      // (A1 of review A on #506).
-      const opened = container.querySelector(".github-pull-opened");
+      // Refresh's slot ends the row of ages, after Browse code and the stack's slot, whatever
+      // the record's state (A1 of review A on #506).
       assert.equal(opened.children.at(-1), refresh, `${name} ${tab}: Refresh ends the row of ages`);
       // The note ends the author's row's lead: the record's one time, or what is said in its
       // place (mb-ne91).
@@ -2932,7 +2937,7 @@ async function headerSummary(page) {
   assert.ok(followedNote, "a record with a moved head is followed, and Changes says so");
   assert.equal(
     followedNote.textContent,
-    "The pull request’s head moved from 85fcb2f to 9999999. Show the earlier changes",
+    "Changes now show this pull request’s newer commits. Show the earlier changes",
   );
   tell("a record with a moved head is followed: its diff reads the comparison", offered.row());
   offered.container.querySelector(".github-pull-earlier").events.get("click")();
@@ -3200,14 +3205,14 @@ async function coldHold(page) {
   titled("no Pulls row in hand, mounted with no record in hand", plain.container);
   plain.handle.dispose();
   const listedAt = "2000-01-01T00:00:00Z";
-  states.noteListed("https://github.com/octo/listed", [
+  states.noteListed("https://github.com/octo/listed", "open", [
     { number: 7, state: "open", updatedAt: listedAt, title: "Count to two in the app" },
   ]);
   const seeded = await mountScripted(page, "", { cold: true });
   titled("its Pulls row in hand, mounted with no record in hand", seeded.container);
   tell("its Pulls row in hand, mounted with no record in hand", seeded.container);
   seeded.handle.dispose();
-  states.noteListed("https://github.com/octo/also-listed", [
+  states.noteListed("https://github.com/octo/also-listed", "closed", [
     { number: 7, state: "merged", updatedAt: listedAt, title: "Another seven" },
   ]);
   const ambiguous = await mountScripted(page, "", { cold: true });
@@ -3416,27 +3421,27 @@ async function run() {
     assert.ok(corner.classes.has("view-header-end"));
     assert.equal(title.parentNode.children[titleIndex + 2], opened);
     assert.equal(title.parentNode.children[titleIndex + 3], meta);
-    // The author's row is its lead, the details then the freshness note (mb-ne91), then the
-    // stack's slot at its end (mb-cf0l), which holds a strut while no stack is known: a late
-    // chip lands in the row's empty end.
-    const [lead, stackSlot] = meta.children;
+    // The author's row is its lead alone, the details then the freshness note (mb-ne91).
+    const [lead] = meta.children;
     assert.ok(lead.classes.has("github-pull-meta-lead"));
     const [details, note] = lead.children;
     assert.ok(details.classes.has("github-pull-meta-details"));
     assert.ok(note.classes.has("github-pull-note"));
     assert.equal(lead.children.length, 2);
-    assert.ok(stackSlot.classes.has("github-pull-stacks"));
-    assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
-    assert.equal(meta.children.length, 2);
-    // The state's badge leads the first metadata row.
-    const [stateBadgeSlot, ages, refreshSlot] = opened.children;
+    assert.equal(meta.children.length, 1);
+    // The state's badge leads the first metadata row, and the stack's slot and Refresh's end
+    // it (mb-646g): the slot holds a strut while no stack is known, so a late chip lands in
+    // the row's empty end, before Refresh's slot.
+    const [stateBadgeSlot, ages, stackSlot, refreshSlot] = opened.children;
     assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
     assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));
+    assert.ok(stackSlot.classes.has("github-pull-stacks"));
+    assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
     // Refresh's slot ends the row of ages, after Browse code (A1 of review A on #506).
     assert.ok(refreshSlot.classes.has("github-pull-refresh"));
-    assert.equal(opened.children.length, 3);
+    assert.equal(opened.children.length, 4);
     const stateBadge = stateBadgeSlot.children[0];
-    assert.equal(meta.children.at(-1), container.querySelector(".github-pull-stacks"));
+    assert.equal(opened.children.at(-2), container.querySelector(".github-pull-stacks"));
     assert.equal(stateBadge.getAttribute("data-state"), "open");
     assert.deepEqual(stateBadge.children, ["Open"]);
     // The author's sentence is the row; the branches have the line below to themselves.
@@ -3606,7 +3611,7 @@ async function run() {
     await settle();
     await handle.whenFilesReady();
     assert.equal(mounted.length, 1);
-    const moved = /The pull request’s head moved from .+ to .+Show the earlier changes/;
+    const moved = /Changes now show this pull request’s newer commits\. Show the earlier changes/;
     if (outcome === "moved") {
       current = structuredClone(current);
       current.record.comparison.head = "e".repeat(40);
@@ -3722,7 +3727,7 @@ async function run() {
   assert.equal(stagedBody.querySelector(".spinner"), null, "nothing is on its way to spin for");
   assert.equal(
     stagedBody.querySelector(".github-pull-fetch-changes")?.textContent,
-    "Fetch changes",
+    "Fetch",
     "the reader can still fetch what the address does not ask for",
   );
   window.location.pathname = "/pull/10/files/src/app.txt";
@@ -3738,7 +3743,7 @@ async function run() {
   resolveComparison({
     status: 429,
     headers: { get: () => null },
-    json: async () => ({ error: "server busy" }),
+    json: async () => ({ error: "server busy", code: "too_many" }),
   });
   await settle();
   const [checkoutPollId, checkoutPoll] = timers.entries().next().value;
@@ -3751,9 +3756,10 @@ async function run() {
   // line, so the header has the same rows on every tab (B5 of review B on #506).
   assert.match(
     checkoutBody.textContent,
-    /server busy/,
+    /The refresh could not start while other pull requests are being fetched\./,
     "the refusal's reason outlasts the read that cleared its error",
   );
+  assert.doesNotMatch(checkoutBody.textContent, /server busy/, "said by its code, not its text");
   assert.equal(checkoutContainer.querySelector(".github-pull-message"), null);
   const shownRows = () =>
     checkoutContainer
@@ -3778,10 +3784,14 @@ async function run() {
     1,
     `a refused comparison leaves the header's rows the same on every tab: ${JSON.stringify(refusedRows)}`,
   );
-  assert.match(checkoutBody.textContent, /server busy/, "the body says it again back on Changes");
+  assert.match(
+    checkoutBody.textContent,
+    /other pull requests are being fetched/,
+    "the body says it again back on Changes",
+  );
   assert.equal(checkoutBody.querySelector(".spinner"), null);
   const retryChanges = checkoutBody.querySelector(".github-pull-retry-changes");
-  assert.equal(retryChanges?.textContent, "Retry changes");
+  assert.equal(retryChanges?.textContent, "Retry");
   retryChanges.events.get("click")();
   retryChanges.events.get("click")();
   await settle();

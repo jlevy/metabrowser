@@ -208,14 +208,14 @@ def test_every_builtin_loads_exactly_the_providers_it_declares() -> None:
         "agents": {"structured"},
         "binary": set(),
         "delimited": {"table"},
-        "diff": {"structured"},
+        "diff": {"pdf", "structured"},
         "event_log": {"agents"},
         "folder": {"markdown"},
         "fsqlite": {"sqlite", "table"},
         "github": {"markdown", "diff"},
         "html": set(),
         "image": set(),
-        "markdown": set(),
+        "markdown": {"pdf"},
         "pdf": set(),
         "sqlite": {"table"},
         "structured": {"table"},
@@ -240,7 +240,7 @@ def test_no_browser_code_reads_the_retired_builtins_namespace() -> None:
 
 
 def test_every_builtin_provider_exports_from_its_module() -> None:
-    for provider in ("agents", "github", "markdown", "structured"):
+    for provider in ("agents", "github", "markdown", "pdf", "structured"):
         source = (BUILTIN / provider / "index.js").read_text(encoding="utf-8")
         assert re.search(r"^export ", source, re.MULTILINE), provider
 

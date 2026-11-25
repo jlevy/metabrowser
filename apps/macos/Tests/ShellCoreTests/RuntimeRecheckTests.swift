@@ -202,7 +202,7 @@ import Testing
         }
     }
 
-    /// mb-2mpn: Find Again during a recheck kept the changed file's hold only until
+    /// mb-2mpn: Refresh during a recheck kept the changed file's hold only until
     /// the search started, so a folder opened meanwhile started the unchecked file.
     @Test func aSearchStartedDuringARecheckKeepsFoldersWaiting() {
         let old = RuntimeSetup(

@@ -36,7 +36,6 @@ MONO_DECLARATION_RE = re.compile(r"(?:^|;)\s*font(?:-family)?\s*:[^;]*--font-mon
 #   .log-event-raw *
 # Named exceptions, each deliberate:
 #   .compression-badge          a 7px glyph, iconography rather than text
-#   .metabrowser-kpress-error-detail   a verbatim error payload
 #   .log-event-header           structured log values (type, timestamps), not paths
 #   .git-commit-sha             an object id, where every character is identity
 MONO_ALLOWED_SELECTORS = frozenset(
@@ -60,7 +59,6 @@ MONO_ALLOWED_SELECTORS = frozenset(
         # data (docs/design-system.md, "Data Tables").
         ".data-literal",
         ".compression-badge",
-        ".metabrowser-kpress-error-detail",
         ".log-event-header",
         # The Session view's event row: the same structured log values (kind, tool,
         # timestamp) as the Log's event header, in the same face so the two views agree.

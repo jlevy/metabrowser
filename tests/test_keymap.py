@@ -22,6 +22,7 @@ import re
 import string
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -58,12 +59,12 @@ def test_every_kind_keeps_its_view_keys_clear_of_each_other_and_the_shell() -> N
         assert [key for key, count in taken.items() if count > 1] == [], kind
         assert check_view_keys(kind, _declared_views(kind)).problems == [], kind
 
-        # A folder view a plugin offers is served only where its predicate accepts the
-        # folder, so a request with no folder in hand does not list it.
+        # A view a plugin offers is served only where its predicate accepts the folder or
+        # the file, so a request with neither in hand does not list it.
         offered = [
             str(view["key"])
             for view in _declared_views(kind)
-            if "key" in view and view["id"] in server._FOLDER_OFFERS
+            if "key" in view and _is_offered(kind, view)
         ]
         served = [view.get("key") for view in server._views_for_kind(kind)]
         assert [key for key in served if key is not None] == [
@@ -289,7 +290,7 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
         for _ in re.finditer(r"\bshortcuts\.attach\(", path.read_text(encoding="utf-8"))
     )
     # The pull request page attaches its tabs' letters and numbers its header's controls,
-    # and the Pulls panel numbers its state chips and its Reload: numbers, so no letter.
+    # and the Pulls panel numbers its state chips and its Refresh: numbers, so no letter.
     assert calls == [
         "diff/diff-type-filter.js",
         "diff/diff-view.js",
@@ -355,11 +356,18 @@ def _manifest_views() -> list[tuple[str, str, str]]:
         for view in server._views_for_kind(kind):
             if "key" in view:
                 views.append((kind, str(view["label"]), str(view["key"])))
-        # The views a plugin offers on some folders are bound there, so they have rows too.
+        # The views a plugin offers on some folders or files are bound there, so they
+        # have rows too.
         for view in _declared_views(kind):
-            if "key" in view and view["id"] in server._FOLDER_OFFERS:
+            if "key" in view and _is_offered(kind, view):
                 views.append((kind, str(view["label"]), str(view["key"])))
     return views
+
+
+def _is_offered(kind: str, view: dict[str, Any]) -> bool:
+    if kind == "folder":
+        return view["id"] in server._FOLDER_OFFERS
+    return (kind, view["id"]) in server._FILE_OFFERS
 
 
 def test_the_documented_keymap_is_the_keys_the_app_binds() -> None:

@@ -48,8 +48,8 @@ public nonisolated struct GitHubFailure: Equatable, Sendable {
         /// can fix. Each recheck runs the start again, and a not-found answer comes from
         /// the provider's size check or the probe of the origin, before any object is
         /// fetched, so these cost little to retry. The rest are not:
-        /// - `noGitHubCLI` and `notFoundWithoutGitHubCLI` fail the same way until Find
-        ///   Again finds the installed `gh`, which restarts nothing.
+        /// - `noGitHubCLI` and `notFoundWithoutGitHubCLI` fail the same way until
+        ///   Refresh in Settings > Runtime finds the installed `gh`, which restarts nothing.
         /// - `network` can end a first clone minutes into its fetch (`timed_out`), and a
         ///   retry fetches again from zero, holding the repository launch gate.
         /// - `rateLimited` would send GitHub another request while it asks for fewer, and
@@ -146,11 +146,11 @@ public nonisolated struct GitHubFailure: Equatable, Sendable {
         case .notSignedIn:
             "Metabrowser clones and reads repositories with your GitHub CLI (gh) sign-in. Sign in in Terminal."
         case .noGitHubCLI:
-            "Without GitHub CLI (gh), Metabrowser reads only public repositories. Install it from https://cli.github.com and sign in, then choose Find Again in Runtime Settings so that Metabrowser finds it, and Retry."
+            "Without GitHub CLI (gh), Metabrowser reads only public repositories. Install it from https://cli.github.com and sign in, then choose Refresh in Settings > Runtime so that Metabrowser finds it, and Retry."
         case .notFound:
             "GitHub answers the same way for a repository that does not exist and for a private one it will not show: GitHub CLI is not signed in, its account cannot read the repository, or its sign-in lacks the repo scope."
         case .notFoundWithoutGitHubCLI:
-            "GitHub answers the same way for a repository that does not exist and for a private one, and without GitHub CLI (gh) Metabrowser could offer it no sign-in. Check the link. If the repository is private, install GitHub CLI from https://cli.github.com and sign in, then choose Find Again in Runtime Settings so that Metabrowser finds it, and Retry."
+            "GitHub answers the same way for a repository that does not exist and for a private one, and without GitHub CLI (gh) Metabrowser could offer it no sign-in. Check the link. If the repository is private, install GitHub CLI from https://cli.github.com and sign in, then choose Refresh in Settings > Runtime so that Metabrowser finds it, and Retry."
         case .network:
             "Check the network connection. Trying the same clone in Terminal shows whether this Mac reaches GitHub, and Retry then opens what it cloned."
         case .rateLimited:

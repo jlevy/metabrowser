@@ -326,7 +326,7 @@ def test_a_module_that_does_not_load_is_said_and_logged() -> None:
     steps = {step["step"]: step for step in run_session(SESSION)["steps"]}
     failed = steps["a page whose module does not load says so, and logs the request"]
     assert failed["bars"] == {}
-    assert failed["failure"] == ["Could not load this diff. Refresh the page to try again."]
+    assert failed["failure"] == ["Could not load this diff. Reload the page to try again."]
     assert failed["logged"] == [
         "metabrowser diff: view load failed · diff/view-file"
         " · Failed to fetch dynamically imported module"

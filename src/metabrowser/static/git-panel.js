@@ -1354,28 +1354,19 @@
    * @returns {string | null}
    */
   function commitBodyNote(body) {
+    // The bound and the deadline are the answer's (`max_bytes`, `deadline_ms`), for an
+    // agent; the note says what the reader sees (docs/design-system-messages.md).
     switch (typeof body?.code === "string" ? body.code : null) {
-      case "body_too_large": {
-        const kib = typeof body?.max_bytes === "number" ? Math.floor(body.max_bytes / 1024) : null;
-        const bound = kib === null ? "too long" : `longer than ${kib} KiB`;
-        return `This message is ${bound}, so it is shown as written rather than as Markdown.`;
-      }
-      case "render_deadline": {
-        const seconds = typeof body?.deadline_ms === "number" ? body.deadline_ms / 1000 : null;
-        const took =
-          seconds === null
-            ? "too long"
-            : `longer than ${seconds} second${seconds === 1 ? "" : "s"}`;
-        return `This message took ${took} to render, so it is shown as written.`;
-      }
+      case "body_too_large":
+        return "This message is too long to render, so it is shown as written.";
+      case "render_deadline":
+        return "This message took too long to render, so it is shown as written.";
       case "renderer_exited":
-        return "The renderer stopped while rendering this message, so it is shown as written.";
-      case "renderer_unavailable":
-        return "The renderer could not start, so this message is shown as written. Reload to try again.";
-      case "renderer_busy":
-        return "The renderer is busy with other texts, so this message is shown as written. Reload to try again.";
       case "render_failed":
         return "This message could not be rendered, so it is shown as written.";
+      case "renderer_unavailable":
+      case "renderer_busy":
+        return "This message could not be rendered, so it is shown as written. Reload the page to try again.";
       default:
         return null;
     }
@@ -1797,24 +1788,28 @@
   }
 
   /**
+   * The panel's one line and the walk again: Retry after a read that failed, Refresh where
+   * nothing failed (docs/design-system.md, "Refresh, Retry, and Reload Page").
+   *
    * @param {HTMLElement} panel
    * @param {string} message
+   * @param {"Refresh" | "Retry"} action
    */
-  function renderRefreshState(panel, message) {
+  function renderRefreshState(panel, message, action) {
     const empty = document.createElement("div");
     empty.className = "git-panel-empty";
     const label = document.createElement("div");
     label.textContent = message;
     empty.appendChild(label);
 
-    const refresh = document.createElement("button");
-    refresh.type = "button";
-    refresh.className = "btn git-panel-refresh";
-    refresh.textContent = "Refresh";
-    refresh.addEventListener("click", () => {
+    const again = document.createElement("button");
+    again.type = "button";
+    again.className = action === "Retry" ? "btn git-panel-retry" : "btn git-panel-refresh";
+    again.textContent = action;
+    again.addEventListener("click", () => {
       void refreshHistory();
     });
-    empty.appendChild(refresh);
+    empty.appendChild(again);
     panel.replaceChildren(empty);
   }
 
@@ -1946,14 +1941,7 @@
       if (state.stale) {
         placeholder.appendChild(staleHistoryNotice());
       } else if (state.failed && state.failedPage !== null) {
-        const retry = document.createElement("button");
-        retry.type = "button";
-        retry.className = "btn git-history-retry";
-        retry.textContent = "Retry loading history";
-        retry.addEventListener("click", () => {
-          void retryFailedPage();
-        });
-        placeholder.appendChild(retry);
+        placeholder.appendChild(failedPageNotice());
       } else {
         // A pending page shows the shape of the rows it is holding space
         // for, not the word "loading". See design-system.md, "Loading
@@ -2346,15 +2334,16 @@
       renderRefreshState(
         panel,
         viewHelpersFailed
-          ? "Could not load Git view controls. Refresh to try again."
+          ? "Could not load Git view controls."
           : "Could not read repository history.",
+        "Retry",
       );
       return;
     }
     if (state.rowCount === 0) {
       // A repository with no commits yet. Distinct from a failure, and
       // it should read that way.
-      renderRefreshState(panel, "No commits yet.");
+      renderRefreshState(panel, "No commits yet.", "Refresh");
       return;
     }
 
@@ -2484,7 +2473,7 @@
 
   /**
    * The typed stale state: the refs this walk was fingerprinted by moved, so the
-   * rows above are history as it was when the list loaded. Reloading starts a new
+   * rows above are history as it was when the list loaded. Refresh starts a new
    * walk over the refs as they are now.
    *
    * @returns {HTMLElement}
@@ -2495,14 +2484,36 @@
     notice.setAttribute("role", "status");
     const text = document.createElement("span");
     text.textContent = "History changed since this list loaded.";
-    const reload = document.createElement("button");
-    reload.type = "button";
-    reload.className = "btn git-history-reload";
-    reload.textContent = "Reload history";
-    reload.addEventListener("click", () => {
+    const refresh = document.createElement("button");
+    refresh.type = "button";
+    refresh.className = "btn git-history-refresh";
+    refresh.textContent = "Refresh";
+    refresh.addEventListener("click", () => {
       void refreshHistory();
     });
-    notice.append(text, reload);
+    notice.append(text, refresh);
+    return notice;
+  }
+
+  /**
+   * A page of history that did not load, where its rows go or at the list's end: what
+   * failed, and Retry, which asks for that page again (`retryFailedPage`).
+   *
+   * @returns {HTMLElement}
+   */
+  function failedPageNotice() {
+    const notice = document.createElement("div");
+    notice.className = "git-graph-more git-graph-more-failed git-history-failed";
+    const text = document.createElement("span");
+    text.textContent = "Could not load these commits.";
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "btn git-history-retry";
+    retry.textContent = "Retry";
+    retry.addEventListener("click", () => {
+      void retryFailedPage();
+    });
+    notice.append(text, retry);
     return notice;
   }
 
@@ -2537,16 +2548,7 @@
     } else if (state.stale) {
       trailing = staleHistoryNotice();
     } else if (state.failed && state.failedPage === state.nextPageNumber) {
-      trailing = document.createElement("div");
-      trailing.className = "git-graph-more git-graph-more-failed";
-      const retry = document.createElement("button");
-      retry.type = "button";
-      retry.className = "btn git-history-retry";
-      retry.textContent = "Retry loading history";
-      retry.addEventListener("click", () => {
-        void retryFailedPage();
-      });
-      trailing.appendChild(retry);
+      trailing = failedPageNotice();
     }
     if (trailing) {
       list.appendChild(trailing);
@@ -2828,7 +2830,7 @@
     if (controller === null || !freshness) {
       paint({
         state: "not_found",
-        title: "Commit not found",
+        title: "This commit was not found.",
         detail: "This commit is not in the repository.",
         retry: false,
       });
@@ -2873,16 +2875,15 @@
    * Say what an address with a short commit ID or a ref name needs, instead of that the
    * commit could not be loaded.
    *
-   * @param {string} revision
    * @param {MetabrowserPreviewClaim} previewClaim
    */
-  function showRevisionNotFull(revision, previewClaim) {
+  function showRevisionNotFull(previewClaim) {
     shell()?.renderPreviewNode(
       missingCommitNode(
         {
           state: "not_full",
-          title: "Full commit ID needed",
-          detail: `A commit’s address uses its full 40- or 64-character lowercase ID, not “${revision}”.`,
+          title: "This address needs the full commit ID.",
+          detail: "Use the commit’s full lowercase ID in the address, or open it from its row.",
           retry: false,
         },
         null,
@@ -3029,7 +3030,7 @@
             // one; a mirror's fetch from the origin continues after it.
             await showMissingCommit(revision, previewClaim);
           } else if (refusedRevision === revision) {
-            showRevisionNotFull(revision, previewClaim);
+            showRevisionNotFull(previewClaim);
           } else {
             bridge.renderPreviewHtml(
               '<div class="preview-empty">Could not load this commit.</div>',
@@ -3117,7 +3118,7 @@
       // one, which is the worse failure.
       html += `<div class="git-commit-file git-commit-file-note">This commit changes ${
         stats.files_changed || files.length
-      } files; the diff below is bounded.</div>`;
+      } files; only some of them are shown below.</div>`;
     }
     // The commit's diff is rendered by the diff plugin's own view over
     // this commit's first-parent comparison — the history view composes

@@ -174,6 +174,11 @@ function buttons(markup, parent = null) {
   });
 }
 
+// The served root the page's navigation heading carries (`data-served-root` on
+// `.header-path`), which the eyebrow writes as the root's crumb.
+const SERVED_ROOT = "~/wrk/project";
+const headerPath = { dataset: { servedRoot: SERVED_ROOT } };
+
 const calls = [];
 const sandbox = {
   console,
@@ -187,7 +192,7 @@ const sandbox = {
   __calls: calls,
   document: {
     addEventListener: () => {},
-    querySelector: () => null,
+    querySelector: (selector) => (selector === ".header-path" ? headerPath : null),
     querySelectorAll: () => [],
     createElement: () => ({}),
     documentElement: {},
@@ -214,9 +219,9 @@ const fileHeader = buttons(sandbox.viewHeader.viewHeaderEyebrowHtml("docs/a%25b.
 const folderHeader = buttons(sandbox.viewHeader.renderFolderHeader({ path: "docs/sub" }));
 const owner = fileHeader[0].getAttribute("data-mb-owner");
 check(
-  "each control carries its tip text: Up its folder, the served root's crumb its name, and every other crumb its own name, not its path",
+  "each control carries its tip text: Up its folder, the served root's crumb its address, and every other crumb its own name, not its path",
   JSON.stringify(fileHeader.map((element) => element.getAttribute("data-tip-text"))) ===
-    JSON.stringify(["Open docs/", "Served root", "docs"]),
+    JSON.stringify(["Open docs/", SERVED_ROOT, "docs"]),
 );
 check("the Up control carries a 32-hex owner mark", /^[0-9a-f]{32}$/.test(owner || ""));
 // A document's `<label for=…>` clicks the element with that id, and the click would

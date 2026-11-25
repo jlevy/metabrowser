@@ -128,11 +128,17 @@ def _note(log: Path, failure: str, tail: str) -> None:
 def _records(log: Path) -> tuple[list[dict[str, Any]], int]:
     """The log's records, and how many of its lines could not be read."""
 
-    if not log.exists():
+    try:
+        text = log.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
         return [], 0
+    except OSError:
+        # Read as the session ends (tests/conftest.py), where an error would replace the
+        # run's report: a log that cannot be read at all counts as one unreadable line.
+        return [], 1
     records: list[dict[str, Any]] = []
     unreadable = 0
-    for line in log.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         try:
             records.append(cast(dict[str, Any], json.loads(line)))
         except json.JSONDecodeError:

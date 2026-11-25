@@ -394,7 +394,8 @@ async def _respond(request: Request) -> Response:
         if admission == "retained":
             return _error(
                 "snapshot_objects_expired",
-                "This earlier PR revision is no longer cached. Open Changes for the current comparison.",
+                "This earlier revision of the pull request is no longer available. Open Changes for "
+                "the current comparison.",
                 410,
             )
         return _error(

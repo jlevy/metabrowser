@@ -196,9 +196,8 @@
        highlighted source, code blocks, Markdown inline code, and raw
        log payloads.
 
-     Four deliberate exceptions, and no others:
+     Three deliberate exceptions, and no others:
        .compression-badge          a 7px glyph — iconography, not text
-       .metabrowser-kpress-error-detail   a verbatim error payload
        .log-event-header           structured log values (event type,
                                    timestamps) rather than prose or paths
        .git-commit-sha             a short commit ID, where every character
@@ -1725,6 +1724,20 @@ body {
   color: var(--link);
 }
 
+/* The one focus ring for a button or summary no rule rings. Like the link base above it
+   has zero specificity, the pseudo-class inside `:where()` too, so every family's own
+   `:focus-visible` rule still wins, and it only replaces the user agent's ring, an outline
+   in the platform's accent color outside the box, which a diff file bar's label drew
+   (seen in Chrome on 2026-11-24, mb-2t80). Any rule that rings a control wins over it,
+   KPress's document sheet too, whose ring is 3px and outset on a `summary` inside
+   `article.kpress`, so a control the app draws inside a KPress article states its own
+   ring, as a rendered diff's run of unchanged blocks does. A link is not included: its
+   ring is its context's (docs/design-system.md, "Focus Ring"). */
+:where(button:focus-visible, summary:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
 /* Global scrollbars — every scroll container in the app inherits
    the same minimal style. Containers that sit on a non-default
    surface override --scrollbar-bg locally (e.g. .tree-content sets
@@ -2756,10 +2769,7 @@ html.theme-anim .menu {
      that from the anchor's inline end, which is the target's inline end:
      100% is the anchor's padding box, and no anchor has an inline border.
      So the badge covers the end of its own control, an icon or a crumb's
-     last letter, and none of the text after it. A crumb narrower than a
-     keycap, such as the root's /, lets the badge reach back over the text
-     before it: at the root, the end of the dimmed root name, the folder Up
-     opens.
+     last letter, and none of the text after it.
 
    The badge eases in on --motion-reveal, appears at once under reduced
    motion, and goes at once: the registry removes it when the reveal ends,
@@ -3285,6 +3295,13 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   align-items: center;
   gap: 6px;
   color: var(--text);
+}
+/* The offer's sentence wraps and its button does not: Reload page, two words, broke
+   over two lines in the default pane while the sentence beside it kept its width
+   (seen in Chrome on 2026-11-24, mb-qkvr). */
+.source-freshness-offer > .btn {
+  flex: none;
+  white-space: nowrap;
 }
 .source-freshness-error {
   color: var(--status-error-text);
@@ -4457,7 +4474,7 @@ a.tab-btn {
    In a pane too narrow for that, the row wraps between its controls, in order and as
    late as it can, so no control is cut, scrolled out of reach, or cut short: the
    leading controls stay first, and the trailing group, which takes the line's end
-   with an auto margin (Clear and the chevron on Files, Reload on Pulls), moves down
+   with an auto margin (Clear and the chevron on Files, Refresh on Pulls), moves down
    whole and stays right-aligned. A segmented group wider than a whole line takes the
    cluster layout instead (`.chip-group[data-fit="wrap"]`).
 
@@ -4466,19 +4483,20 @@ a.tab-btn {
    by a line and a gap for each line it adds, and a wrapped toolbar reads as one. A
    control is one line tall: a shorter one is centred in a line's height rather than
    making its line shorter, as Show ignored's checkbox is in the Files drawer
-   (`.filter-drawer-row`), and a taller one, a `.btn` such as Reload (26 px at the
+   (`.filter-drawer-row`), and a taller one, a `.btn` such as Refresh (26 px at the
    default size, two over a chip), is held to it rather than making its line, and so
    the one-line toolbar, taller. A cluster's own lines are a row's apart.
 
    Measured in headless Chrome on 2026-11-15, and the Files rows again on 2026-11-18
-   once Show ignored moved into the drawer (mb-ey0d), pane widths 179 px (the
+   once Show ignored moved into the drawer (mb-ey0d), and the Pulls rows again on
+   2026-11-24 once Reload became Refresh (mb-qkvr), pane widths 179 px (the
    narrowest, 180 less the pane's border) to 420 px, both font sets; the themes lay out
    alike. The widths each row fits one line from, default set / system set, the Pulls
    tallies "Open 100, Closed 2, All 102" unless four-digit:
      Files, no filter set                             179 / 179 (the narrowest)
      Files, a filter set, "No grouping" (its widest)  204 / 216
-     Pulls, Show and Reload                           276 / 308
-     Pulls, Show and Reload, four-digit tallies       303 / 341
+     Pulls, Show and Refresh                          279 / 312
+     Pulls, Show and Refresh, four-digit tallies      306 / 346
    Before this rule, the Files row ran up to 17.69 px past the default pane in the
    system set and 118 px past the narrowest pane, and the Pulls toolbar 8.05 px past
    the default pane in the system set, scrolled out of sight (35.77 px in the default
@@ -5177,17 +5195,19 @@ a.tab-btn {
 /* Geometry, hover, and reveal come from the .icon-btn primitive; only
    the reveal trigger and the copied-confirmation tint live here. */
 
-/* The eyebrow's address (view-header.js, headerEyebrowAddressHtml): the served root
-   and the folders that hold the item. Its crumbs are real buttons for keyboard use. */
+/* The eyebrow's address (view-header.js, headerEyebrowAddressHtml): the served root's
+   address, one crumb to the root, then a crumb for each folder under it that holds the
+   item, each crumb followed by a slash that is text and not a link. Its crumbs are real
+   buttons for keyboard use. */
 .folder-breadcrumb {
   gap: 2px;
 }
 /* The address gives way in the order the reader can afford to lose it: the
-   dimmed root prefix first, then the directories, and the folder that holds the
+   root's address first, then the directories, and the folder that holds the
    item last, because it is the one the title is in. Each shrinking part carries
    its own ellipsis, so a squeezed address ends in a visible "…" instead of being
-   cut mid-word against the eyebrow's clip. The separators and the leading slash
-   hold their size — they are five to eight pixels of structure, not content.
+   cut mid-word against the eyebrow's clip. The separators hold their size —
+   they are five to eight pixels of structure, not content.
 
    The weights matter more than their absolute values: the root outshrinks a
    directory by enough that it is effectively gone before one narrows, and a
@@ -5205,7 +5225,6 @@ a.tab-btn {
 .folder-breadcrumb .folder-crumb:not(.folder-crumb-root):last-of-type {
   flex-shrink: 1;
 }
-.folder-breadcrumb .folder-crumb-root,
 .folder-breadcrumb .folder-crumb-sep {
   flex: 0 0 auto;
 }
@@ -5225,11 +5244,13 @@ a.tab-btn {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
-/* The served root, absolute, ahead of the first slash. Dimmed because it
-   is identical on every page of the app: context for the live part of the
-   address rather than part of it. It gives up its width first, so a long
-   root elides before a folder does — the shrink weight is what puts it
-   first, against the 4 and the 1 the crumbs above carry.
+/* The served root's address, absolute, ahead of the first slash: below the
+   root, the crumb that opens it (.folder-crumb-root), a link as the folders'
+   crumbs are; on the root's own page, the directory that holds the root
+   (.file-header-root), dimmed, because nothing above the served root is open.
+   It gives up its width first, so a long root elides before a folder does —
+   the shrink weight is what puts it first, against the 4 and the 1 the crumbs
+   above carry.
 
    The weight is enormous on purpose, because flex-shrink is proportional
    rather than sequential: every shrinkable item gives up something at every
@@ -5252,9 +5273,18 @@ a.tab-btn {
    5000 gave up cleanly at 13px, with room, and is still finite so the
    ordering below stays real. Once the root reaches zero flex freezes
    it and redistributes the rest, so the 4-to-1 ordering between the
-   directories and the filename applies from there down. */
+   directories and the filename applies from there down. The table was
+   measured while the root was a dimmed prefix beside a separate "/" crumb.
+   Rechecked with the root as its own crumb, the same overflowing box with
+   the crumbs' 2px pad, in Chrome 152 at the eyebrow's 13px: on 900px and
+   760px windows showing a 153-character root / docs / project / specs, the
+   root was cut by 684px and 824px, and each folder's crumb kept its whole
+   width to the thousandth of a pixel. */
 .file-header-root {
   color: var(--muted);
+}
+.file-header-root,
+.folder-breadcrumb .folder-crumb-root {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5274,13 +5304,15 @@ a.tab-btn {
   direction: rtl;
   text-align: left;
 }
-.file-header-root > bdi {
+.file-header-root > bdi,
+.folder-crumb-root > bdi {
   direction: ltr;
 }
 /* A served mirror's root is the repository's name, which is cut at its end as
    it is in the navigation heading: the start of a path is the same on every
    page, and the start of a name is the name. */
-.mirror-source .file-header-root {
+.mirror-source .file-header-root,
+.mirror-source .folder-crumb-root {
   direction: ltr;
 }
 /* Where a served mirror is kept, after the address. A mirror's root is the
@@ -5932,8 +5964,7 @@ a.tab-btn {
   border-color: var(--status-error);
 }
 
-/* A KPress render failure: the document could not be rendered at all, so it
-   stacks its message above a detail block rather than sitting in a row. */
+/* A KPress render failure: the document could not be rendered at all. */
 .metabrowser-kpress-render-error {
   margin: 0 0 12px;
 }
@@ -5960,13 +5991,6 @@ a.tab-btn {
 
 .partial-notice-readout {
   font-variant-numeric: var(--tabular-numerals);
-}
-.metabrowser-kpress-error-detail {
-  margin: 8px 0 0;
-  white-space: pre-wrap;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--mono-block-font-size);
 }
 /* ── Code blocks (highlight.js integration) ─────────────────── */
 
@@ -7735,8 +7759,22 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--status-error-text);
 }
 
+/* A notice in the history list is its sentence, then its control: Retry after a page that
+   failed, Refresh after history that moved. They share a line where both fit and wrap
+   where they do not, a toolbar's one spacing apart either way. As a plain block a failed
+   page's Retry touched its sentence's last word, both edges at 224.31 px in a 300 px
+   column (measured in Chrome on 2026-11-24, mb-qkvr). */
+.git-history-failed,
+.git-history-stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nav-toolbar-gap);
+}
+
 /* Rides the .btn primitive; only the spacing is local. */
-.git-panel-refresh {
+.git-panel-refresh,
+.git-panel-retry {
   margin-top: 10px;
 }
 
@@ -8263,7 +8301,7 @@ pre.code-block.metabrowser-source-lines > code {
   background: var(--hover-bg);
 }
 
-/* .git-panel-refresh is not listed here: it rides .btn, which carries the
+/* .git-panel-refresh and .git-panel-retry are not listed here: they ride .btn, which carries the
    family's focus ring. .git-commit-file is a bare native button and needs
    its own. */
 .git-commit-file:focus-visible {

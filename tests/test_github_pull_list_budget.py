@@ -54,7 +54,7 @@ def test_below_the_floor_the_periodic_scan_stops_and_a_change_a_probe_finds_is_s
         assert refresh_wanted(_view(repository, probe), ask) == "probe"
         _probe(probe, repository)
         assert refresh_wanted(_view(repository, probe), ask) is False
-        # A reader's Reload never asks the budget.
+        # A reader's Refresh never asks the budget.
         assert refresh_wanted(_view(repository, probe), RefreshRequest("all", retry=True)) is True
         # And a change the probe finds is scanned for, below the floor as above it.
         github.update(_changed(2, minutes=5))

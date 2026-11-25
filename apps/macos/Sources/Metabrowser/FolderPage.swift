@@ -73,8 +73,8 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         let statusView = NSHostingView(rootView: StatusView(
             folderName: session.folderName, folderPath: session.location, status: status,
             retry: { [weak session] in session?.retry() },
-            revealLogs: { [weak session] in session?.revealLog() },
-            showSettings: { (NSApp.delegate as? AppDelegate)?.showSettings(nil) }))
+            revealServerLog: { [weak session] in session?.revealLog() },
+            showSettings: { (NSApp.delegate as? AppDelegate)?.showRuntimeSettings() }))
         container = WebContainerView(webView: webView, statusView: statusView)
         super.init(nibName: nil, bundle: nil)
 

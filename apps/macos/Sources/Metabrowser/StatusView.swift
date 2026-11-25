@@ -17,7 +17,7 @@ struct StatusView: View {
     let folderPath: String
     let status: WindowStatus
     let retry: () -> Void
-    let revealLogs: () -> Void
+    let revealServerLog: () -> Void
     let showSettings: () -> Void
 
     var body: some View {
@@ -31,7 +31,7 @@ struct StatusView: View {
             case .failed(let failure):
                 FailureView(
                     folderName: folderName, folderPath: folderPath, failure: failure, retry: retry,
-                    revealLogs: revealLogs, showSettings: showSettings)
+                    revealServerLog: revealServerLog, showSettings: showSettings)
             case .waitingForSelection:
                 VStack(spacing: 12) {
                     Text("Metabrowser opens \(folderName) when you select it.").font(.headline)
@@ -99,7 +99,7 @@ private struct FailureView: View {
     let folderPath: String
     let failure: ServerFailure
     let retry: () -> Void
-    let revealLogs: () -> Void
+    let revealServerLog: () -> Void
     let showSettings: () -> Void
 
     var body: some View {
@@ -129,7 +129,7 @@ private struct FailureView: View {
                         NSPasteboard.general.setString(gitHub.copiedText(location: folderPath), forType: .string)
                     }
                 }
-                Button("Reveal Logs", action: revealLogs)
+                Button("Reveal Server Log", action: revealServerLog)
                 Spacer()
                 Button("Runtime Settings…", action: showSettings)
             }
@@ -165,7 +165,7 @@ private struct GitHubFailureDetails: View {
     }
 }
 
-/// The server's newest lines, scrolled to the end; Reveal Logs shows the rest.
+/// The server's newest lines, scrolled to the end; Reveal Server Log shows the rest.
 private struct RecentOutput: View {
     let lines: [String]
 

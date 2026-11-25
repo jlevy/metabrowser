@@ -1146,7 +1146,7 @@ async function main() {
   equal(
     "an idle palette says indexing stopped at the file limit",
     status.textContent,
-    "Search includes 4,242 indexed files. Indexing stopped at the file limit.",
+    "Search includes 4,242 indexed files. Some files are not indexed.",
   );
   catalogTruncated = false;
   catalogObservedCount = 5;

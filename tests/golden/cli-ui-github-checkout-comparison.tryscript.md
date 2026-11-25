@@ -17,16 +17,16 @@ Changes shows progress only while an attempt is on its way or will be sent.
 A direct cold visit asks for the pull request first and then for exactly one comparison.
 When the server refuses that first request, nothing spins and the header offers Refresh.
 Changes painted while the address still names Conversation sends nothing and offers
-**Fetch changes**. A failed read before any attempt waits for the next good one.
-A refused comparison offers **Retry changes** and keeps its reason across reads, said in
-the Changes body beside it and not on the header, so no tab’s header differs, and a
-retry that then fails shows its own outcome.
+**Fetch**. A failed read before any attempt waits for the next good one.
+A refused comparison offers **Retry** and keeps its reason across reads, said in the
+Changes body beside it and not on the header, so no tab’s header differs, and a retry
+that then fails shows its own outcome.
 A refused Refresh is the header’s, even in the words a comparison’s refusal used: the
 ask that met it tells them apart.
 A recorded borrowing refusal or unreadable origin newer than the record, or a rate limit
-until it lifts, holds the automatic attempt for **Retry changes**; an older failure does
-not. The page wakes when the limit lifts, also when a Pulls-tab walk opened Changes and
-the route then confirmed it, and **Retry changes** sends the attempt at once.
+until it lifts, holds the automatic attempt for **Retry**; an older failure does not.
+The page wakes when the limit lifts, also when a Pulls-tab walk opened Changes and the
+route then confirmed it, and **Retry** sends the attempt at once.
 Changes opened while the page’s own refresh is on its way waits for it and paints no
 button. A reader’s selection shows progress before its first read.
 
@@ -132,7 +132,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "canFetchChanges": false,
     "canRefresh": true,
     "files": "Changes are unavailable because the full pull request could not be loaded.",
-    "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
+    "message": "The refresh could not start while other pull requests are being fetched.",
     "failure": null,
     "refreshing": false,
     "comparison": null
@@ -169,7 +169,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "comparison": null
   },
   {
-    "step": "Fetch changes asks for the comparison",
+    "step": "Changes' Fetch asks for the comparison",
     "requests": [
       "POST /api/plugin/github/pull-refresh {\"number\":10,\"retry\":true,\"comparison\":true}"
     ],
@@ -215,7 +215,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "comparison": null
   },
   {
-    "step": "a refused automatic comparison offers Retry changes",
+    "step": "a refused automatic comparison offers Changes' Retry",
     "requests": [
       "GET /api/plugin/github/pull?number=10",
       "POST /api/plugin/github/pull-refresh {\"number\":10,\"retry\":true,\"comparison\":true}"
@@ -224,7 +224,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "canRetryChanges": true,
     "canFetchChanges": false,
     "canRefresh": false,
-    "files": "Changes could not be fetched. The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
+    "files": "Changes could not be fetched. The refresh could not start while other pull requests are being fetched.",
     "message": null,
     "failure": null,
     "refreshing": false,
@@ -239,14 +239,14 @@ $ node tests/dom/github-checkout-comparison-session.js
     "canRetryChanges": true,
     "canFetchChanges": false,
     "canRefresh": false,
-    "files": "Changes could not be fetched. The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
+    "files": "Changes could not be fetched. The refresh could not start while other pull requests are being fetched.",
     "message": null,
     "failure": null,
     "refreshing": false,
     "comparison": null
   },
   {
-    "step": "Retry changes asks again and clears the reason",
+    "step": "Changes' Retry asks again and clears the reason",
     "requests": [
       "POST /api/plugin/github/pull-refresh {\"number\":10,\"retry\":true,\"comparison\":true}"
     ],
@@ -271,7 +271,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "canRefresh": false,
     "files": "Changes could not be fetched.",
     "message": null,
-    "failure": "The last refresh failed: the checkout cannot supply this comparison",
+    "failure": "The checkout cannot supply these changes.",
     "refreshing": false,
     "comparison": null
   },
@@ -285,9 +285,9 @@ $ node tests/dom/github-checkout-comparison-session.js
     "canRetryChanges": true,
     "canFetchChanges": false,
     "canRefresh": false,
-    "files": "Changes could not be fetched. The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
+    "files": "Changes could not be fetched. The refresh could not start while other pull requests are being fetched.",
     "message": null,
-    "failure": "The last refresh failed: gh could not reach api.github.com",
+    "failure": "Could not reach GitHub.",
     "refreshing": false,
     "comparison": null
   },
@@ -301,8 +301,8 @@ $ node tests/dom/github-checkout-comparison-session.js
     "canFetchChanges": false,
     "canRefresh": true,
     "files": null,
-    "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
-    "failure": "The last refresh failed: gh could not reach api.github.com",
+    "message": "The refresh could not start while other pull requests are being fetched.",
+    "failure": "Could not reach GitHub.",
     "refreshing": false,
     "comparison": null
   },
@@ -317,7 +317,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "canRefresh": false,
     "files": "Changes could not be fetched.",
     "message": null,
-    "failure": "The last refresh failed: the checkout cannot supply this comparison",
+    "failure": "The checkout cannot supply these changes.",
     "refreshing": false,
     "comparison": null
   },
@@ -332,7 +332,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "canRefresh": false,
     "files": "Changes could not be fetched.",
     "message": null,
-    "failure": "The last refresh failed: the repository could not be read from its origin",
+    "failure": "GitHub could not find this pull request, or this account cannot read it.",
     "refreshing": false,
     "comparison": null
   },
@@ -368,7 +368,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "comparison": null
   },
   {
-    "step": "Retry changes after the limit lifts sends the attempt at once",
+    "step": "Changes' Retry after the limit lifts sends the attempt at once",
     "requests": [
       "POST /api/plugin/github/pull-refresh {\"number\":10,\"retry\":true,\"comparison\":true}"
     ],
@@ -446,7 +446,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "comparison": null
   },
   {
-    "step": "Changes without its address paints no Fetch changes during the page's own refresh",
+    "step": "Changes without its address paints no Fetch during the page's own refresh",
     "requests": [
       "GET /api/plugin/github/pull?number=10",
       "POST /api/plugin/github/pull-refresh {\"number\":10,\"held\":\"b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4\"}"
@@ -462,7 +462,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "comparison": null
   },
   {
-    "step": "Fetch changes returns with the refresh's answer",
+    "step": "Changes' Fetch returns with the refresh's answer",
     "requests": [],
     "changesPending": false,
     "canRetryChanges": false,

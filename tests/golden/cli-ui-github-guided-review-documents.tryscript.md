@@ -45,7 +45,7 @@ $ node tests/dom/github-guided-review-documents-behavior.js
   "a step read at another merge base: docs/guide.md: says This file's diff is unavailable.",
   "a step read at another head: docs/guide.md: says This file's diff is unavailable.",
   "a comparison with no rendered route: docs/guide.md: document, its rendered layer absent",
-  "documents that could not be drawn: docs/threw.md: document says Could not load this diff. Refresh the page to try again. (its bar opens /pull/7/files/docs/threw.md) | docs/refused.md: document says Could not load this diff. Refresh the page to try again. (its bar opens /pull/7/files/docs/refused.md)",
+  "documents that could not be drawn: docs/threw.md: document says Could not load this diff. Reload the page to try again. (its bar opens /pull/7/files/docs/threw.md) | docs/refused.md: document says Could not load this diff. Reload the page to try again. (its bar opens /pull/7/files/docs/refused.md)",
   "their failures are logged: 2",
   "the page ends: 0 of 2 notices left",
   "a changed document of a stale guide: docs/guide.md: document (This file changed after the guide was written.)",

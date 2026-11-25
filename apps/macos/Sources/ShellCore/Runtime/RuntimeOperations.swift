@@ -12,7 +12,7 @@ import Foundation
 ///   search it overtook runs again, with a fresh ticket, so the overtaken one's late
 ///   result still changes nothing. Without that, a choice rejected during the first
 ///   search left no runtime, no search, and no first-run status, and the folders opened
-///   meanwhile waited for Find Again.
+///   meanwhile waited for a Refresh.
 ///
 /// The app (`AppDelegate`) supplies the work, which runs `metab` and the login shell, and
 /// shows each operation's end; `RuntimeOperationsTests` drive it with fakes.
@@ -190,7 +190,7 @@ public nonisolated enum RuntimeActivity: Equatable, Sendable {
     case checkingChoice
     /// A search found nothing, and the app is locating the directory to watch.
     case preparingGuide
-    /// Nothing is running: Find Again and Choose metab… are what remain.
+    /// Nothing is running: Refresh and Choose metab… are what remain.
     case idle
 
     public init(isSearching: Bool, isChoosing: Bool, isPreparingGuide: Bool) {

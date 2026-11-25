@@ -240,7 +240,7 @@ $ node tests/dom/agents-views-session.js
     },
     "progress when complete with an unreadable session": {
       "phase": "complete",
-      "text": "Session indexing finished. 1 could not be read."
+      "text": "1 session could not be read."
     },
     "the session page while the catalog's first pass runs": [
       "Reading the session catalog…",

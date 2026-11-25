@@ -171,7 +171,7 @@ function loadHeldOutsideImagesEagerly(root) {
  *
  * @template T
  * @param {HTMLElement} target
- * @param {{html: string, inert?: boolean, toc?: boolean, model?: {headings?: unknown}}} rendered
+ * @param {{html: string, inert?: boolean, toc?: boolean, model?: {headings?: unknown}, diagnostics?: Array<unknown>}} rendered
  * @param {MetabrowserPublicSdk} mb
  * @param {((root: HTMLElement) => T) | null} [enhance] Resolves the render's links and
  *   images under *root*; inert-render.js says when it runs for an inert render.
@@ -187,6 +187,25 @@ export async function placeRendered(target, rendered, mb, enhance = null) {
   }
   const inert = await import("./inert-render.js");
   return { enhanced: await inert.placeRendered(target, rendered, mb, enhance), inert };
+}
+
+/**
+ * Whether *diagnostic* is a render's `frontmatter_error`: why the file's front matter,
+ * read from its own bytes by the server, is not shown as metadata.
+ *
+ * The document shows it once, as KPress's Frontmatter error notice ahead of the prose: a
+ * trusted render carries KPress's own, and inert-render.js draws one for an inert render,
+ * whose allowlist cannot keep it. So the Diagnostics disclosure does not list it again.
+ *
+ * @param {unknown} diagnostic
+ * @returns {diagnostic is {type: "frontmatter_error", message: string}}
+ */
+export function isFrontmatterError(diagnostic) {
+  if (!diagnostic || typeof diagnostic !== "object") {
+    return false;
+  }
+  const value = /** @type {Record<string, unknown>} */ (diagnostic);
+  return value.type === "frontmatter_error" && typeof value.message === "string";
 }
 
 /** What marks a Mermaid diagram in a trusted render, and in an inert one. */

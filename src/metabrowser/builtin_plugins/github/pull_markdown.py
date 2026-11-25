@@ -134,7 +134,7 @@ async def render_part(
             "core_revision": preview["revision"],
         }
     elif not isinstance(record, PullRecord):
-        return 404, {"error": "no record of this pull request is cached", "code": record}
+        return 404, {"error": "This pull request has not been loaded.", "code": record}
     else:
         found = part_text(record, part)
         if found is None:

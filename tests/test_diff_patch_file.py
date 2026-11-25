@@ -243,7 +243,9 @@ def test_combined_merge_diff_is_unsupported_not_silently_empty() -> None:
 def test_section_with_no_usable_path_is_dropped_with_a_warning() -> None:
     document = parse_unified_patch(b"diff --git irrecoverable\n")
     assert document.manifest.totals.files == 0
-    assert any("skipped" in warning for warning in document.resolved.warnings)
+    assert document.resolved.warnings == (
+        "1 part of this patch could not be read and is left out.",
+    )
 
 
 def test_reviewed_crash_probes_all_return_values() -> None:
@@ -466,7 +468,7 @@ def test_a_section_that_fails_validation_is_named_and_the_rest_are_kept() -> Non
     assert second.availability is Availability.unsupported and "f2" not in kept.patches
     assert kept.manifest.totals.files == 2 and not kept.manifest.totals.exact
     assert kept.resolved.warnings == (
-        "1 section(s) could not be modeled and are left out: kept.txt",
+        "Changes to these files could not be read and are left out: kept.txt",
     )
     # What came back is what a document has to be.
     assert validate_document(dump_document(kept)).manifest.totals.files == 2

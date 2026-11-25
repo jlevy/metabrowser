@@ -335,7 +335,8 @@
   "not_a_repository": {
     "status": 409,
     "body": {
-      "error": "source does not support refs",
+      "error": "This is not available here.",
+      "detail": "source does not support refs",
       "code": "unsupported_for_subject",
       "capability": "refs"
     }
@@ -343,7 +344,8 @@
   "unsupported_git": {
     "status": 409,
     "body": {
-      "error": "showing a branch or tag of a checkout needs Git 2.43.7 or newer, which is known never to fetch into it; this is git version 2.39.2",
+      "error": "Git on this machine is too old to show this checkout's branches and tags.",
+      "detail": "showing a branch or tag of a checkout needs Git 2.43.7 or newer, which is known never to fetch into it; this is git version 2.39.2",
       "code": "unsupported_git"
     }
   }

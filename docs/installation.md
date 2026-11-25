@@ -190,9 +190,9 @@ folder in one step with `make macos-run FOLDER=path/to/folder`. If the published
 meets the app’s minimum ([Release Status](#release-status)), install it with
 `uv tool install metabrowser`. The app finds `metab` in uv’s tool directory without
 needing it on `PATH`, so `uv tool update-shell` is only for your terminal.
-If your preview needs a newer runtime, open **Settings → Choose metab…** and select the
-checkout’s `.venv/bin/metab`. Without a usable `metab`, the app shows its runtime
-requirement and links to the
+If your preview needs a newer runtime, open **Settings → Runtime → Choose metab…** and
+select the checkout’s `.venv/bin/metab`. Without a usable `metab`, the app shows its
+runtime requirement and links to the
 [README for setup help](https://github.com/jlevy/metabrowser#installation).
 
 The app has no updater: rebuild it from a newer checkout.

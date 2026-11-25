@@ -88,8 +88,8 @@ export const STATES = {
   unsupported: { title: "Unsupported format", severity: "error" },
   unreadable: { title: "Unreadable", severity: "error" },
   refused: { title: "Refused", severity: "error" },
-  reader_stopped: { title: "Reader stopped", severity: "error" },
-  too_large: { title: "Answer too large", severity: "error" },
+  reader_stopped: { title: "Could not read", severity: "error" },
+  too_large: { title: "Too large to read", severity: "error" },
 };
 
 /** How each access mode opened the database. */

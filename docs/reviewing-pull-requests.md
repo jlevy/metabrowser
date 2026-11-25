@@ -98,21 +98,22 @@ title on the line under it.
 A pull request in two stacks sits under the first, and its place names the other stack
 by its number, such as **3/4 · ⧉300 2/2**.
 
-On the page, a stack button at the end of the author’s line shows the same position, and
-a pull request in two stacks has a button for each, which names its stack, such as
-**⧉300 2/2**. The button opens a menu of the stack’s members, from top to base.
-On macOS, Control-N goes to the next member toward the top and Control-P to the previous
-one toward the base; on Windows and Linux, where those keys are the browser’s, use the
-menu. Without the extension, or when GitHub cannot answer, pull requests read as usual
-and the list stays flat, unless stacks are cached.
+On the page, a stack button at the end of the line of state and dates, just before
+Refresh, shows the same position, and a pull request in two stacks has a button for
+each, which names its stack, such as **⧉300 2/2**. The button opens a menu of the
+stack’s members, from top to base, each on one line: its state, its position, and its
+title. On macOS, Control-N goes to the next member toward the top and Control-P to the
+previous one toward the base; on Windows and Linux, where those keys are the browser’s,
+use the menu. Without the extension, or when GitHub cannot answer, pull requests read as
+usual and the list stays flat, unless stacks are cached.
 Metabrowser reads stacks and never changes them.
 
 ## The Pull Request Page
 
-The header gives the title and number; the author’s sentence, such as “octo wants to
-merge 2 commits”, with any stack button at its end; the head and base branches on a line
-of their own, head → base; the state and dates; and the labels, each in the color GitHub
-gives it, with its description, if any, shown on hover.
+The header gives the title and number; the state and dates, with any stack button at the
+end of their line; the author’s sentence, such as “octo wants to merge 2 commits”; the
+head and base branches on a line of their own, head → base; and the labels, each in the
+color GitHub gives it, with its description, if any, shown on hover.
 The author’s GitHub avatar is beside the name, and a neutral person icon holds its place
 where GitHub gave none, as on a commit’s page; a Pulls row shows none.
 **View on GitHub**, in the page’s upper right as on a file’s, a folder’s, and a commit’s
@@ -444,7 +445,7 @@ entries.
 
 The page says when GitHub CLI fetched what it shows, as in
 `Fetched 3 min ago via GitHub CLI`, at the end of the author’s line; Refresh ends the
-row of ages under it.
+line of state and dates above it.
 While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
 repository’s list of pull requests, so new pull requests, state changes, and edits
 arrive by themselves.
@@ -461,17 +462,17 @@ while enough of your GitHub rate limit remains.
 The page names a problem only when it cannot refresh: `Offline`, a rate limit with the
 time of its next check, or the last failure with **Refresh**. The page tries a failure
 again once a window while it stays open, except one you must fix, such as GitHub CLI
-missing or signed out, which waits for **Refresh**. The Pulls tab’s **Reload** asks for
+missing or signed out, which waits for **Refresh**. The Pulls tab’s **Refresh** asks for
 a new check of the list.
 
 The page follows the pull request.
 When new commits are pushed, the conversation and checks update, and **Changes** and
-**Docs** show the new head’s diff, with a line above it such as
-`The pull request’s head moved from 1a2b3c4 to 5d6e7f8.` You stay in the file you were
-reading, at the same place in it, when the new diff still has that file.
-**Show the earlier changes** on that line goes back to the diff you were reading, which
-then stays, also when you move between Changes and Docs, until you choose **Show the
-newer changes** or leave both for another tab.
+**Docs** show the new head’s diff, with the line
+`Changes now show this pull request’s newer commits.` above it.
+You stay in the file you were reading, at the same place in it, when the new diff still
+has that file. **Show the earlier changes** on that line goes back to the diff you were
+reading, which then stays, also when you move between Changes and Docs, until you choose
+**Show the newer changes** or leave both for another tab.
 The line and your choice outlast a reload of the page.
 While the new commits are still being fetched, both tabs say
 `New commits were pushed; updating.` over the diff they have.
@@ -585,8 +586,10 @@ The record names why in `unavailable.comparison`:
 | `no_merge_base` | The base and head share no history | Read the diff on GitHub |
 | `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | **Refresh**, or read the diff on GitHub |
 
-Every reason comes with a message that says more, and a rarer one, such as a failed TLS
-security check or a proxy that requires authentication, is named in its message.
+The page says each of these in one short sentence of its own.
+Every reason also comes with a message that says more, in the route’s JSON that
+`metab --api` prints, and a rarer one, such as a failed TLS security check or a proxy
+that requires authentication, is named in its message.
 [GitHub pull requests](project/architecture/arch-github-pull-requests.md) describes how
 records are prepared and how the cache refuses, and
 [mirror acquisition and refresh](project/architecture/arch-mirror-acquisition-and-refresh.md)

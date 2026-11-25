@@ -880,8 +880,10 @@ async function run() {
     ["1", "1"],
   );
   assert.match(checksBody.textContent, /tests \(3\.13\)/);
-  assert.match(checksBody.textContent, /Only some check runs are shown/);
-  assert.match(checksBody.textContent, /Commit statuses could not be read/);
+  // One note for the checks: statuses that could not be loaded at all outweigh check runs
+  // that were cut short, which still show what they hold.
+  assert.match(checksBody.textContent, /Commit statuses could not be loaded\./);
+  assert.doesNotMatch(checksBody.textContent, /Only some check runs are shown/);
   assert.match(checksBody.textContent, /No conflicts with the base branch/);
   assert.doesNotMatch(checksBody.textContent, /Only some comments are shown|It no longer does/);
   const checkLinks = checksBody.querySelectorAll("a[href]");

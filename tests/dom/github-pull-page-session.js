@@ -1702,7 +1702,7 @@ async function main() {
     ([when, mounted, next, chosen]) => `${when}: ${runtime.filesAction(mounted, next, chosen)}`,
   );
   // What Changes says over a diff that replaced another, as the page paints `followedNote`:
-  // both heads and the way back. The diff it replaced is the one shown before, on this page
+  // a sentence that names no commit, and the way back. The diff it replaced is the one shown before, on this page
   // or as the history entry remembers it across the reload a followed pin makes.
   const commit = (oid) => window.metabrowser.shortCommit(oid);
   const noted = (last, from, next) => {
@@ -1713,7 +1713,7 @@ async function main() {
     }
     const said =
       note.kind === "head"
-        ? `The pull request’s head moved from ${commit(note.from)} to ${commit(note.to)}.`
+        ? "Changes now show this pull request’s newer commits."
         : "The comparison has changed.";
     return `${said} [Show the earlier changes] -> ${commit(earlier.left)}...${commit(earlier.right)}`;
   };

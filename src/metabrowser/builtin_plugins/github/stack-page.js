@@ -618,7 +618,7 @@ export function mountStackPage(container, ctx, mb) {
         return;
       }
       if (!view) {
-        host.textContent = "The diff plugin is unavailable.";
+        host.textContent = "Changes could not be shown. Reload the page to try again.";
         return;
       }
       const shown = diffComparison(comparison);
@@ -663,7 +663,7 @@ export function mountStackPage(container, ctx, mb) {
     } catch (failure) {
       if (owns()) {
         console.error("metabrowser github: the stack's diff could not load", failure);
-        host.textContent = "The stack's changes could not be loaded.";
+        host.textContent = "The stack's changes could not load. Reload the page to try again.";
       }
     }
   }

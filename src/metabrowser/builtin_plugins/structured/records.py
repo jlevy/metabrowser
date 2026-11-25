@@ -828,12 +828,13 @@ def build_records(payload: StructuredPayload, generation: str) -> _Records:
 
     if payload.truncated:
         raise SourceUnreadableError(
-            "This file is larger than the "
+            "This file is too large to show as a table.",
+            detail="This file is larger than the "
             f"{STRUCTURED_PARSE_MAX_BYTES / 2**20:g} MiB of structured data read at once, "
-            "so its records are not read."
+            "so its records are not read.",
         )
     if payload.parse_error is not None:
-        raise SourceUnreadableError(f"This file could not be parsed: {payload.parse_error}")
+        raise SourceUnreadableError("This file could not be parsed.", detail=payload.parse_error)
     parsed = payload.parsed
     if not isinstance(parsed, list):
         raise _not_records(f"its top level is {_describe(parsed)}, not a list")
@@ -921,10 +922,13 @@ class _Refusal:
 
     generation: str
     reason: str
+    # What an agent reads beside the reason (docs/design-system-messages.md): a parser's
+    # own words, which the page does not show.
+    detail: str = ""
 
     @property
     def held_bytes(self) -> int:
-        return len(self.reason)
+        return len(self.reason) + len(self.detail)
 
 
 RECORDS_CACHE: MemoryCache[_Records | _Refusal] = MemoryCache(
@@ -978,7 +982,12 @@ class RecordListSource:
         try:
             return build_records(payload, generation)
         except SourceUnreadableError as exc:
-            return _Refusal(generation=generation, reason=str(exc))
+            detail = exc.details.get("detail")
+            return _Refusal(
+                generation=generation,
+                reason=str(exc),
+                detail=detail if isinstance(detail, str) else "",
+            )
 
     def _records(self) -> _Records:
         generation = self.generation()
@@ -986,7 +995,9 @@ class RecordListSource:
             self._handle.ref.identity, generation, lambda: self._build(generation)
         )
         if isinstance(found, _Refusal):
-            raise SourceUnreadableError(found.reason)
+            raise SourceUnreadableError(
+                found.reason, **({"detail": found.detail} if found.detail else {})
+            )
         return found
 
     @staticmethod

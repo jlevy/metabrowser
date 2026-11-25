@@ -119,8 +119,8 @@ async function main() {
     "a capped walk reports that indexing stopped",
     [cappedBatch.statusMessage, emptyCappedBatch.statusMessage],
     [
-      "4 matches in 5 indexed files. Indexing stopped at the file limit.",
-      "No matches in 5 indexed files. Indexing stopped at the file limit.",
+      "4 matches in 5 indexed files. Some files are not indexed.",
+      "No matches in 5 indexed files. Some files are not indexed.",
     ],
   );
   check("a capped walk keeps local coverage incomplete", cappedBatch.complete === false);
