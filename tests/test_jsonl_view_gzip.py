@@ -78,7 +78,8 @@ def test_parse_jsonl_file_degrades_line_parser_exceptions(tmp_path: Path, monkey
 
     assert result["summary"]["parse_errors"] == 1
     assert "kept rendering" in result["summary"]["warning"]
-    assert result["events"][0]["summary"].startswith("[parse_error] line 1:")
+    assert result["events"][0]["summary"] == "Line 1 could not be read."
+    assert result["events"][0]["raw"]["detail"] == "bad parser"
 
 
 def test_parse_jsonl_file_uses_logical_size_for_large_file_gate(tmp_path: Path) -> None:
@@ -154,4 +155,5 @@ def test_charts_endpoint_rejects_gzip_and_zlib_over_actual_decoded_cap(
         )
         assert response.status_code == 413
         body = json.loads(bytes(response.body))
-        assert "64" in body["error"]
+        assert body["error"] == "This log is too large to chart."
+        assert "64" in body["detail"]

@@ -60,7 +60,7 @@ export function mountStoreInfo(container, ctx, sdk) {
     },
     () => {
       if (!disposed) {
-        loading.textContent = "Could not load the SQLite plugin this view draws with.";
+        loading.textContent = "Could not load this view. Reload to try again.";
       }
     },
   );

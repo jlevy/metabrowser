@@ -240,6 +240,8 @@ Extending it:
 - [Plugin authoring](docs/plugins.md): the manifest, browser SDK, and data hooks
 - [Architecture](docs/architecture.md): the layers and every architecture document
 - [Design system](docs/design-system.md): tokens, components, and interaction design
+- [Reader messages](docs/design-system-messages.md): what notices, empty states, and
+  errors may say
 - [File Rollup Format](docs/project/architecture/file-rollup-format/file-rollup-format.md)
   and [File Diff Format](docs/project/architecture/file-diff-format/file-diff-format.md)
   specifications

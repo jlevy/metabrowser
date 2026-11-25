@@ -92,6 +92,7 @@ class UnsupportedSourceCapabilityError(ContentReadError):
 
     code = "unsupported_for_subject"
     http_status = 409
+    reader_message = "This is not available here."
 
     def __init__(self, capability: str) -> None:
         self.capability = capability
@@ -99,8 +100,11 @@ class UnsupportedSourceCapabilityError(ContentReadError):
 
 
 def unsupported_source_payload(exc: UnsupportedSourceCapabilityError) -> dict[str, str]:
+    """The answer a route gives for a capability the subject lacks: the reader's sentence,
+    and which capability as ``detail`` and ``capability``."""
     return {
-        "error": str(exc),
+        "error": exc.reader_message,
+        "detail": str(exc),
         "code": "unsupported_for_subject",
         "capability": exc.capability,
     }

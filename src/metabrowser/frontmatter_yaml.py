@@ -196,6 +196,26 @@ class FrontmatterError(BoundedYamlError):
     parse_failure: ClassVar[str] = "Error parsing YAML metadata"
 
 
+# What a page says of front matter that is present and not shown: the tooltip of the
+# file header's "Frontmatter error" badge and the notice KPress draws above the document.
+# The reason, a FrontmatterError's text, is the answer's `frontmatter_error_detail`
+# (docs/design-system-messages.md).
+FRONTMATTER_ERROR_MESSAGE: Final = "The frontmatter could not be read."
+
+
+def shown_frontmatter_error(reason: str | None) -> str | None:
+    """The reader's sentence for front matter refused for *reason*, or None for none."""
+    return None if reason is None else FRONTMATTER_ERROR_MESSAGE
+
+
+def frontmatter_error_fields(reason: str | None) -> dict[str, str]:
+    """An answer's fields for front matter refused for *reason*: the reader's sentence as
+    ``frontmatter_error`` and the reason as ``frontmatter_error_detail``, or none."""
+    if reason is None:
+        return {}
+    return {"frontmatter_error": FRONTMATTER_ERROR_MESSAGE, "frontmatter_error_detail": reason}
+
+
 class _ExpansionBudgetError(Exception):
     """The document passed its budget, written out without its aliases."""
 

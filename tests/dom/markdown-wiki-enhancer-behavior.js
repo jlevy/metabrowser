@@ -444,14 +444,16 @@ async function loadModule() {
     "a fallback link on a truncated catalog is disabled with an explanation",
     cappedLink.getAttribute("data-metabrowser-link-status") === "unsupported" &&
       cappedLink.getAttribute("aria-disabled") === "true" &&
-      cappedLink.getAttribute("title") === "Unsupported link (catalog-truncated)." &&
+      cappedLink.getAttribute("data-metabrowser-link-reason") === "catalog-truncated" &&
+      cappedLink.getAttribute("title") === "Unsupported link." &&
       !cappedLink.textContent.includes("resolving"),
     `${cappedLink.getAttribute("title")} / ${cappedLink.textContent}`,
   );
   check(
     "a note embed on a truncated catalog explains why it is not embedded",
     cappedEmbed.getAttribute("data-metabrowser-link-status") === "unsupported" &&
-      cappedEmbed.getAttribute("title") === "Unsupported link (catalog-truncated).",
+      cappedEmbed.getAttribute("data-metabrowser-link-reason") === "catalog-truncated" &&
+      cappedEmbed.getAttribute("title") === "Unsupported link.",
     String(cappedEmbed.getAttribute("title")),
   );
   check("a truncated catalog keeps the wiki subscription", typeof cappedListener === "function");

@@ -136,11 +136,18 @@ class SourceBusyError(TableSourceError):
     http_status = 409
 
 
+# The refusal of a sort or filter on a table with no row key to read it by in parts.
+_UNSORTABLE: Final = (
+    "This table is too large to sort or filter. Open it in its original order without a filter."
+)
+
+
 def access_error(exc: SqliteAccessError) -> TableSourceError:
     """A reader's refusal as the table routes answer it, naming its state."""
+    detail = {"detail": exc.detail} if exc.detail else {}
     if exc.state in _BUSY_STATES:
-        return SourceBusyError(str(exc), state=exc.state)
-    return SourceUnreadableError(str(exc), state=exc.state)
+        return SourceBusyError(str(exc), state=exc.state, **detail)
+    return SourceUnreadableError(str(exc), state=exc.state, **detail)
 
 
 # ── Types ──────────────────────────────────────────────────────
@@ -349,9 +356,10 @@ class SqliteSource:
             and (rows_upto is None or rows_upto > reader.SORT_UNINDEXED_MAX_ROWS)
         ):
             raise SourceUnreadableError(
-                "This object has no stable row key and is too large to sort or filter "
-                "within one read. Open it in its original order without a filter.",
+                _UNSORTABLE,
                 table=table,
+                detail="This object has no stable row key and is too large to sort or filter "
+                "within one read.",
             )
         served = 0
         if query.after is not None:
@@ -371,17 +379,19 @@ class SqliteSource:
         if answer.get("toobig"):
             if query.sort is not None:
                 raise TableQueryError(
-                    f"field {query.sort!r} holds a value longer than {VALUE_MAX_BYTES:,} "
-                    "bytes, so it cannot be sorted",
+                    f"Column {query.sort!r} holds a value too large to sort by.",
                     param="sort",
                     field=query.sort,
+                    detail=f"field {query.sort!r} holds a value longer than "
+                    f"{VALUE_MAX_BYTES:,} bytes, so it cannot be sorted",
                 )
             # A keyless object is numbered in its own order by a statement that holds
             # every value of each row, so one past the limit stops it.
             raise SourceUnreadableError(
-                f"a row holds a value longer than {VALUE_MAX_BYTES:,} bytes, so rows with "
-                "no key can be read only in their own order, unfiltered",
+                _UNSORTABLE,
                 table=table,
+                detail=f"a row holds a value longer than {VALUE_MAX_BYTES:,} bytes, so rows "
+                "with no key can be read only in their own order, unfiltered",
             )
         found = cast(list[dict[str, Any]], answer["rows"])
         counted = cast(dict[str, Any] | None, answer.get("count"))
@@ -684,7 +694,9 @@ class SqliteSource:
             for index, position in zip(missing, positions, strict=True):
                 if position is None:
                     raise SourceUnreadableError(
-                        "A row's key is too large to name it by", table=description["name"]
+                        "A row on this page has a key too large to link to.",
+                        table=description["name"],
+                        detail="A row's key is too large to name it by",
                     )
                 names[index] = position_key(position)
         return [name or "" for name in names]

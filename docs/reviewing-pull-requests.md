@@ -434,12 +434,12 @@ a new check of the list.
 
 The page follows the pull request.
 When new commits are pushed, the conversation and checks update, and **Changes** and
-**Docs** show the new head’s diff, with a line above it such as
-`The pull request’s head moved from 1a2b3c4 to 5d6e7f8.` You stay in the file you were
-reading, at the same place in it, when the new diff still has that file.
-**Show the earlier changes** on that line goes back to the diff you were reading, which
-then stays, also when you move between Changes and Docs, until you choose **Show the
-newer changes** or leave both for another tab.
+**Docs** show the new head’s diff, with the line
+`Changes now show this pull request’s newer commits.` above it.
+You stay in the file you were reading, at the same place in it, when the new diff still
+has that file. **Show the earlier changes** on that line goes back to the diff you were
+reading, which then stays, also when you move between Changes and Docs, until you choose
+**Show the newer changes** or leave both for another tab.
 The line and your choice outlast a reload of the page.
 While the new commits are still being fetched, both tabs say
 `New commits were pushed; updating.` over the diff they have.
@@ -553,8 +553,10 @@ The record names why in `unavailable.comparison`:
 | `no_merge_base` | The base and head share no history | Read the diff on GitHub |
 | `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | **Refresh**, or read the diff on GitHub |
 
-Every reason comes with a message that says more, and a rarer one, such as a failed TLS
-security check or a proxy that requires authentication, is named in its message.
+The page says each of these in one short sentence of its own.
+Every reason also comes with a message that says more, in the route’s JSON that
+`metab --api` prints, and a rarer one, such as a failed TLS security check or a proxy
+that requires authentication, is named in its message.
 [GitHub pull requests](project/architecture/arch-github-pull-requests.md) describes how
 records are prepared and how the cache refuses, and
 [mirror acquisition and refresh](project/architecture/arch-mirror-acquisition-and-refresh.md)

@@ -43,8 +43,13 @@ MAX_SIBLINGS: Final = 10_000
 _UNREADABLE: Final = (ValueError, OverflowError, RecursionError)
 
 
-def _refusal(message: str, code: str, status: int) -> JSONResponse:
-    return JSONResponse({"error": message, "code": code}, status_code=status)
+def _refusal(message: str, code: str, status: int, *, detail: str = "") -> JSONResponse:
+    """A view's refusal: *message* is the reader's sentence the view shows, *detail* the
+    specifics for an agent (docs/design-system-messages.md)."""
+    return JSONResponse(
+        {"error": message, "code": code, **({"detail": detail} if detail else {})},
+        status_code=status,
+    )
 
 
 async def _table(request: Request) -> views.Table | JSONResponse:
@@ -58,24 +63,24 @@ async def _table(request: Request) -> views.Table | JSONResponse:
     try:
         ref = await resolve_content(subpath)
         if ref is None:
-            return _refusal("Not found", "not_found", 404)
+            return _refusal("This log file was not found.", "not_found", 404)
         if ref.logical_ext != ".jsonl":
-            return _refusal("Not a JSONL file", "not_jsonl", 400)
+            return _refusal("This file is not a JSONL log.", "not_jsonl", 400)
         cached = views.remembered(ref.identity, ref.fingerprint)
         if cached is not None:
             return cached
         window = await read_content_window(ref, max_bytes=views.MAX_VIEW_BYTES)
     except ContentReadError as exc:
-        return _refusal(str(exc), exc.code, exc.http_status)
+        return _refusal(exc.reader_message, exc.code, exc.http_status, detail=str(exc))
     if window.has_more:
         # The cap is on bytes and the read enforces it: a compressed file declares its
         # length in a trailer nothing verifies, so asking for the cap and finding more is
         # the answer that cannot be forged.
         return _refusal(
-            f"The log is larger than one segment ({views.MAX_VIEW_BYTES} bytes); "
-            "the Raw JSON view reads it",
+            "This log is too large to show here. The Raw JSON view shows it.",
             "event_log_too_large",
             413,
+            detail=f"The log is larger than one segment ({views.MAX_VIEW_BYTES} bytes)",
         )
     try:
         table = await asyncio.to_thread(views.build_table, window.data)
@@ -83,10 +88,11 @@ async def _table(request: Request) -> views.Table | JSONResponse:
         return _unreadable(subpath, exc)
     if table.records == 0 and table.skipped > 0:
         return _refusal(
-            f"None of its {table.skipped} lines is an event log record of schema "
-            f"version {views.event_log.SCHEMA_VERSION}",
+            "This file is not an event log.",
             "not_an_event_log",
             415,
+            detail=f"None of its {table.skipped} lines is an event log record of schema "
+            f"version {views.event_log.SCHEMA_VERSION}",
         )
     views.remember(ref.identity, ref.fingerprint, table)
     return table
@@ -95,9 +101,10 @@ async def _table(request: Request) -> views.Table | JSONResponse:
 def _unreadable(subpath: str, exc: BaseException) -> JSONResponse:
     name = PurePosixPath(subpath).name or subpath
     return _refusal(
-        f"{name} could not be read as an event log: {type(exc).__name__}: {exc}",
+        f"{name} could not be read as an event log.",
         "unreadable_event_log",
         422,
+        detail=f"{type(exc).__name__}: {exc}",
     )
 
 
@@ -139,7 +146,7 @@ async def _answer(request: Request, build: Callable[[views.Table, dict[str, str]
     try:
         answer = await asyncio.to_thread(build, table, params)
     except views.ViewError as exc:
-        return _refusal(str(exc), exc.code, exc.status)
+        return _refusal(str(exc), exc.code, exc.status, detail=exc.detail)
     except _UNREADABLE as exc:
         return _unreadable(subpath, exc)
     # Whether a later segment exists is read for each answer: the table is kept by the

@@ -429,7 +429,10 @@ def _read_records(
             cells += len(record)
     except csv.Error as exc:
         if not has_more:
-            raise SourceUnreadableError(f"not readable as delimited text: {exc}") from exc
+            raise SourceUnreadableError(
+                "This file cannot be read as a table.",
+                detail=f"not readable as delimited text: {exc}",
+            ) from exc
     if has_more and not stopped and records:
         # The read stopped at the byte cap, so the last record may be cut.
         cells -= len(records.pop())

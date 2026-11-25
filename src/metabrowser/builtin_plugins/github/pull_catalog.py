@@ -1052,4 +1052,6 @@ def _commit(
         # Damage found before the versions were read cannot say none is newer.
         if not classified:
             raise UnknownCatalogError(_DAMAGED_VERSIONS) from exc
-        raise CatalogUnusableError(f"the catalog is damaged: {exc}") from exc
+        # SQLite's own words stay on the cause, which the writer's log line names
+        # (`failure_line`); the message becomes a refresh outcome's.
+        raise CatalogUnusableError("the catalog is damaged") from exc

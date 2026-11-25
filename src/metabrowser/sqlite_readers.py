@@ -353,10 +353,23 @@ def _held(folder: Path, lock: tuple[int, int]) -> bool:
     return (info.st_dev, info.st_ino) == lock
 
 
+# The reader's sentence when the process reading a database stopped or could not start.
+_TRY_AGAIN_MESSAGE: Final = "This database could not be read. Try again."
+
+
+def _pool_closed() -> SqliteAccessError:
+    """The refusal of a read once the pool has closed, as the server stops."""
+    return SqliteAccessError(
+        "busy", sqlite_access.BUSY_MESSAGE, detail="The reader processes have stopped."
+    )
+
+
 def _folder_error(exc: OSError) -> SqliteAccessError:
     return SqliteAccessError(
         "unreadable",
-        f"The private folder databases are read through could not be made: {exc.strerror or exc}",
+        sqlite_access.UNREADABLE_MESSAGE,
+        detail="The private folder databases are read through could not be made: "
+        f"{exc.strerror or exc}",
     )
 
 
@@ -408,7 +421,7 @@ class ReaderPool:
         """
         with self._cond:
             if self._closed:
-                raise SqliteAccessError("busy", "The reader processes have stopped.")
+                raise _pool_closed()
             if self._folder is not None and _held(self._folder, self._lock_key):
                 return self._folder
             lost, fd = self._folder, self._lock_fd
@@ -568,17 +581,22 @@ class ReaderPool:
             self._discard(worker)
             if isinstance(exc, _TimedOut):
                 raise SqliteAccessError(
-                    "busy", "The read did not finish in time, and its reader was stopped."
+                    "busy",
+                    sqlite_access.TOO_SLOW_MESSAGE,
+                    detail="The read did not finish in time, and its reader was stopped.",
                 ) from None
             if isinstance(exc, _TooLarge):
                 raise SqliteAccessError(
                     "too_large",
-                    f"The reader's answer passed {sqlite_access.ANSWER_MAX_BYTES:,} bytes, "
-                    "and its reader was stopped.",
+                    sqlite_access.TOO_LARGE_MESSAGE,
+                    detail=f"The reader's answer passed {sqlite_access.ANSWER_MAX_BYTES:,} "
+                    "bytes, and its reader was stopped.",
                 ) from None
             if isinstance(exc, _Stopped):
                 raise SqliteAccessError(
-                    "reader_stopped", "The process reading this database stopped."
+                    "reader_stopped",
+                    _TRY_AGAIN_MESSAGE,
+                    detail="The process reading this database stopped.",
                 ) from None
             raise
         finally:
@@ -588,7 +606,8 @@ class ReaderPool:
             return response.get("result")
         raise SqliteAccessError(
             sqlite_access.error_state(response.get("state")),
-            str(response.get("error") or "The read failed."),
+            str(response.get("error") or sqlite_access.UNREADABLE_MESSAGE),
+            detail=str(response.get("detail") or ""),
         )
 
     def _acquire(self, deadline: float, subject: str) -> _Worker:
@@ -597,9 +616,11 @@ class ReaderPool:
         try:
             with self._cond:
                 if self._closed:
-                    raise SqliteAccessError("busy", "The reader processes have stopped.")
+                    raise _pool_closed()
                 if self._waiting >= self._queue_max:
-                    raise SqliteAccessError("busy", "Too many reads are waiting.")
+                    raise SqliteAccessError(
+                        "busy", sqlite_access.BUSY_MESSAGE, detail="Too many reads are waiting."
+                    )
                 self._waiting += 1
                 try:
                     while True:
@@ -625,7 +646,11 @@ class ReaderPool:
                             continue
                         remaining = deadline - time.monotonic()
                         if remaining <= 0:
-                            raise SqliteAccessError("busy", "Every reader stayed busy.")
+                            raise SqliteAccessError(
+                                "busy",
+                                sqlite_access.BUSY_MESSAGE,
+                                detail="Every reader stayed busy.",
+                            )
                         self._cond.wait(remaining)
                 finally:
                     self._waiting -= 1
@@ -637,7 +662,9 @@ class ReaderPool:
         except OSError as exc:
             self._discard(None)
             raise SqliteAccessError(
-                "reader_stopped", f"A reader process could not start: {exc}"
+                "reader_stopped",
+                _TRY_AGAIN_MESSAGE,
+                detail=f"A reader process could not start: {exc}",
             ) from exc
         self.started += 1
         return worker

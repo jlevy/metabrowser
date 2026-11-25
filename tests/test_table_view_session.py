@@ -681,7 +681,7 @@ def test_a_refused_watch_says_the_table_is_not_following(session: dict[str, Any]
         "live: a watch refused says the table is not following its file, until it is live again"
     ]
     assert refused["notes while refused"] == [
-        "This table is not following changes to its file now: this page watches as many files as it may."
+        "This table is not following changes to its file now."
     ]
     assert refused["notes once live"] == []
 

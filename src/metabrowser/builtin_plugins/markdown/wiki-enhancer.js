@@ -265,6 +265,9 @@ function describeUnresolved(element, resolved) {
   const label = labelFor(element);
   element.setAttribute("data-mb-wiki-label", label);
   element.setAttribute("data-metabrowser-link-status", resolved.status);
+  // The reason code is data for a test or an agent, not the tooltip's
+  // (docs/design-system-messages.md).
+  element.setAttribute("data-metabrowser-link-reason", resolved.reason);
   element.setAttribute("aria-disabled", "true");
   element.setAttribute(
     "role",
@@ -280,7 +283,7 @@ function describeUnresolved(element, resolved) {
   const candidateDetail = announced.length
     ? ` Candidates: ${announced.join(", ")}${remainder ? `, and ${remainder} more` : ""}.`
     : "";
-  const explanation = `${suffix} (${resolved.reason}).${candidateDetail}`;
+  const explanation = `${suffix}.${candidateDetail}`;
   element.setAttribute("title", explanation);
   element.setAttribute("aria-label", `${label}. ${explanation}`);
   element.textContent = `${label} (${suffix.toLowerCase()})`;
