@@ -1,0 +1,385 @@
+created_at: 2026-11-25T03:55:51.606Z
+ops:
+  - bead_id: is-01m82yzrw40w07dnw6zhsg8jep
+    client_id: a1f2ad9a-4950-49f4-a746-607f45b67213
+    kind: create_issue
+    patch:
+      description: The Treemap drew two levels, laid out to the viewport's border box so right
+        and bottom edge cells were clipped, and the rollup's breadth-first node budget
+        left large folders unexpanded. Nest as deep as cells have room (framed nesting
+        for small folders), spread the cell budget by area, request the rollup's max
+        depth and width with heaviest-first emission, fix the drawable box, and extract
+        the map into a component also drawn compactly under File Overview.
+      hold: null
+      priority: 2
+      resolution: null
+      slot: backlog
+      status: open
+      title: "Treemap: deeper nesting, containment fix, compact map on Overview"
+  - attachments:
+      - metadata:
+          assignee: null
+          bead_id: mb-bjsy
+          children: 33
+          created_at: 2026-11-23T01:05:37.128Z
+          dependencies: []
+          internal_id: is-01m82yzrw40w07dnw6zhsg8jep
+          kind: epic
+          labels:
+            - linear
+            - Feature
+          parent_id: null
+          priority: 2
+          ready_children: 4
+          spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
+          status: open
+          updated_at: 2026-11-25T03:54:46.363Z
+        subtitle: open · P2
+        title: mb-bjsy · epic
+        url: tbd://bead/mb-bjsy
+      - subtitle: plan spec
+        title: plan-2026-11-22-treemap-canvas-granularity.md
+        url: https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
+    bead_id: is-01m82yzrw40w07dnw6zhsg8jep
+    external_id: a1f2ad9a-4950-49f4-a746-607f45b67213
+    kind: upsert_attachments
+  - bead_id: is-01m82yzrw40w07dnw6zhsg8jep
+    block: |-
+      ⟦tbd⟧
+      `mb-bjsy` · epic · open · P2
+      Spec: [plan-2026-11-22-treemap-canvas-granularity.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md)
+      Children: 33 (4 ready)
+      Bead: `tbd show mb-bjsy`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: a1f2ad9a-4950-49f4-a746-607f45b67213
+    kind: splice_description
+  - bead_id: is-01m87bky1pb8rhr10p26bsp6w6
+    client_id: 78d2f6ac-e82a-4191-9213-8e1b1bcf07c9
+    kind: create_issue
+    patch:
+      description: >-
+        Findings (2026-11-24 survey of origin/main d95398297):
+
+
+        Today: no `pdf` kind. A .pdf falls through to `binary` and opens in the Bytes
+        view. A Markdown `![[x.pdf]]` or `<embed src=x.pdf>` resolves to mediaKind
+        "resource" and becomes a plain link to /raw (wiki-enhancer.js
+        createMediaElement). The file-type registry already has pdf's label, color, and
+        icon.
+
+
+        GitHub (observed on mozilla/pdf.js test/pdfs/tracemonkey.pdf): the blob view
+        mounts an iframe on a separate origin,
+        viewscreen.githubusercontent.com/view/pdf, with sandbox="allow-scripts
+        allow-same-origin allow-top-navigation". It renders with PDF.js (pdfjsLib
+        present) onto canvases. It drew 5 of 14 pages and showed a "More Pages" button.
+        GitHub's docs say only that PDFs render and that links within them are ignored.
+        No size limit or diff behavior is documented.
+
+
+        Measured (a stdlib server sending /raw's exact headers, with a 20-page 216 KB
+        PDF; WKWebView snapshot plus headless Chrome 'new'):
+
+        - <iframe src=/raw…> with /raw's CSP sandbox (either profile): blank in WebKit
+        and Chrome. The sandbox disables the native viewer in a frame.
+
+        - <embed type=application/pdf src=/raw…> with the sandbox: renders in WebKit;
+        Chrome's viewer UI loads.
+
+        - Top-level navigation to /raw with the sandbox: renders in WebKit; Chrome's
+        viewer UI loads (allow-scripts profile).
+
+        - <iframe> with no CSP: renders in both.
+
+        So <embed> works without weakening /raw's sandbox. Per-instance memory and time
+        for large PDFs are NOT measured yet; measure them before setting any bound.
+
+
+        Proposed design:
+
+        1. A built-in `pdf` plugin. It adds a [[kind]] matching magic %PDF- (hex
+        255044462d) plus .pdf, at a priority above binary, and one client view that
+        mounts <embed type="application/pdf" src="/raw?path=…"> with a dispose path. No
+        new dependency.
+
+        2. Embedded contexts (Markdown wiki and HTML embeds, the PR Docs tab, anything
+        future) never auto-mount. They show a compact card (icon, name, size, later page
+        count or thumbnail) with Show preview (click to mount the same embed, lazy,
+        disposable), Open, and Open in Preview (app only). The file's own view mounts
+        the viewer directly below a measured size bound, and shows the card above it.
+
+        3. macOS: the app has no web-to-native bridge today; it only calls
+        NSWorkspace.open for external URLs. Add a narrow host message, "open this served
+        path locally". The app resolves the path to a file URL under its open folder
+        (containment checked, or the server reports the resolved path) and calls
+        NSWorkspace to open it in the default PDF app (Preview unless the user changed
+        it). Pinned revisions and GitHub mirrors have no working-tree file: write /raw's
+        bytes to an app cache file first. In a plain browser, offer "Open in new tab"
+        (top-level /raw, which works with the sandbox) and Download instead.
+
+        4. Alternative, not recommended now: PDF.js, as GitHub does. It gives
+        first-N-pages and thumbnails, but adds roughly 1 MB or more of on-demand assets,
+        a supply-chain dependency, and parsing of untrusted PDFs in our origin (for
+        example CVE-2024-4367).
+
+        5. Parity: the kind and its metadata via metab --api with a golden. The native
+        viewer's paint needs a named browser-only exemption. Decide a CLI equivalent for
+        the open-locally action.
+      hold: null
+      priority: 2
+      resolution: null
+      slot: in_progress
+      status: in_progress
+      title: "A minimal built-in PDF plugin: native viewer, click-to-load in embedded
+        contexts, Open in Preview from the macOS app"
+  - attachments:
+      - metadata:
+          assignee: null
+          bead_id: mb-df0r
+          children: 10
+          created_at: 2026-11-24T18:03:18.453Z
+          dependencies: []
+          internal_id: is-01m87bky1pb8rhr10p26bsp6w6
+          kind: epic
+          labels:
+            - linear
+            - Feature
+          parent_id: null
+          priority: 2
+          ready_children: 2
+          spec_path: docs/project/specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md
+          status: in_progress
+          updated_at: 2026-11-25T03:52:13.041Z
+        subtitle: in_progress · P2
+        title: mb-df0r · epic
+        url: tbd://bead/mb-df0r
+      - subtitle: plan spec
+        title: plan-2026-11-24-pdf-plugin-and-open-in-default-app.md
+        url: https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md
+    bead_id: is-01m87bky1pb8rhr10p26bsp6w6
+    external_id: 78d2f6ac-e82a-4191-9213-8e1b1bcf07c9
+    kind: upsert_attachments
+  - bead_id: is-01m87bky1pb8rhr10p26bsp6w6
+    block: |-
+      ⟦tbd⟧
+      `mb-df0r` · epic · in_progress · P2
+      Spec: [plan-2026-11-24-pdf-plugin-and-open-in-default-app.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-24-pdf-plugin-and-open-in-default-app.md)
+      Children: 10 (2 ready)
+      Bead: `tbd show mb-df0r`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 78d2f6ac-e82a-4191-9213-8e1b1bcf07c9
+    kind: splice_description
+  - bead_id: is-01m87ky2a36j5yg4pf9827xxd6
+    client_id: 01c43e85-79cd-458a-9674-6e9c92bf7e74
+    kind: create_issue
+    patch:
+      description: "Owner, 2026-11-24: the guided-review out-of-date notice on #785 listed 9
+        commits, SHAs, merge-base and rebase mechanics, and a plan-spec path, in a
+        bulleted list whose bullets overlap the left border. 'We should not be showing
+        internal plan specs or so much excessive confusing detail on any error messages,
+        ever.' A notice can have a warning and a simple remediation suggestion; the
+        condition should be graceful, not a big problem. Detailed diagnostics stay in
+        route JSON for agents and metab --api; the page shows only the concise text."
+      hold: null
+      priority: 1
+      resolution: null
+      slot: in_progress
+      status: in_progress
+      title: "Reader-facing notices and errors: a short warning and one simple remedy, never
+        internals"
+  - attachments:
+      - metadata:
+          assignee: null
+          bead_id: mb-wsly
+          children: 10
+          created_at: 2026-11-24T20:28:39.099Z
+          dependencies: []
+          internal_id: is-01m87ky2a36j5yg4pf9827xxd6
+          kind: epic
+          labels:
+            - linear
+            - Improvement
+          parent_id: null
+          priority: 1
+          ready_children: 3
+          spec_path: null
+          status: in_progress
+          updated_at: 2026-11-25T03:54:44.750Z
+        subtitle: in_progress · P1
+        title: mb-wsly · epic
+        url: tbd://bead/mb-wsly
+    bead_id: is-01m87ky2a36j5yg4pf9827xxd6
+    external_id: 01c43e85-79cd-458a-9674-6e9c92bf7e74
+    kind: upsert_attachments
+  - bead_id: is-01m87ky2a36j5yg4pf9827xxd6
+    block: |-
+      ⟦tbd⟧
+      `mb-wsly` · epic · in_progress · P1
+      Children: 10 (3 ready)
+      Bead: `tbd show mb-wsly`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 01c43e85-79cd-458a-9674-6e9c92bf7e74
+    kind: splice_description
+  - bead_id: is-01kxj6mrvpkqnkn274rhy3mg2j
+    block: |-
+      ⟦tbd⟧
+      `mb-p7ts` · epic · in_progress · P2
+      Children: 8 (1 ready)
+      Bead: `tbd show mb-p7ts`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 7fe6f65e-3f29-477c-9c54-3bcd91ae211a
+    kind: splice_description
+  - bead_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
+    block: |-
+      ⟦tbd⟧
+      `mb-ypme` · epic · in_progress · P2
+      Spec: [plan-2026-08-17-general-diff-rendering.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md)
+      Children: 63 (19 ready)
+      Bead: `tbd show mb-ypme`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 0390e452-459b-479d-8bc2-d469e35c1dd5
+    kind: splice_description
+  - bead_id: is-01m03tqjzm7j6qkxjeath5qe0d
+    block: |-
+      ⟦tbd⟧
+      `mb-ge1b` · epic · open · P2
+      Children: 30 (11 ready)
+      Bead: `tbd show mb-ge1b`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: da29ec9a-dfad-45c8-96a5-c5866a6ac816
+    kind: splice_description
+  - bead_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
+    external_id: 0a6ffe43-9914-47d3-a43e-d11ff31a7de1
+    kind: update_issue
+    patch:
+      parentId: c5f1e322-b8de-4351-8877-3b910724f569
+  - bead_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
+    block: |-
+      ⟦tbd⟧
+      `mb-48vd` · epic · open · P3
+      Spec: [plan-2026-08-21-load-time-performance.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-21-load-time-performance.md)
+      Children: 12 (1 ready)
+      Bead: `tbd show mb-48vd`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 0a6ffe43-9914-47d3-a43e-d11ff31a7de1
+    kind: splice_description
+  - bead_id: is-01m0k5wh7jgr0dgs5y78kwwke1
+    block: |-
+      ⟦tbd⟧
+      `mb-ww58` · epic · open · P0
+      Spec: [plan-2026-08-21-load-time-performance.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-21-load-time-performance.md)
+      Children: 80 (37 ready)
+      Bead: `tbd show mb-ww58`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: c5f1e322-b8de-4351-8877-3b910724f569
+    kind: splice_description
+  - bead_id: is-01m2eb9qv8c4rf52j15pcm2j86
+    external_id: 353d0532-56c6-4498-b4db-7536f2e14510
+    kind: update_issue
+    patch:
+      parentId: da29ec9a-dfad-45c8-96a5-c5866a6ac816
+  - bead_id: is-01m2hs64m7nfagfxyf7b0hxrhr
+    external_id: 4f128317-9c92-41b8-9ef6-d4fb131f66c6
+    kind: update_issue
+    patch:
+      parentId: c5f1e322-b8de-4351-8877-3b910724f569
+  - bead_id: is-01m402dbhn3zsc1h896f3xnrsq
+    block: |-
+      ⟦tbd⟧
+      `mb-425f` · epic · open · P1
+      Children: 51 (21 ready)
+      Bead: `tbd show mb-425f`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: d35b48d1-3e75-4302-928f-acd928f51c87
+    kind: splice_description
+  - bead_id: is-01m6f3n89kn7ztmfhrzswxnsgz
+    block: |-
+      ⟦tbd⟧
+      `mb-2iok` · epic · in_progress · P1
+      Children: 89 (18 ready)
+      Bead: `tbd show mb-2iok`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 8ab234b3-0c78-4c45-931a-d9a9944c1c15
+    kind: splice_description
+  - bead_id: is-01m748xpx7bjg68tfaf3q4nxmj
+    block: |-
+      ⟦tbd⟧
+      `mb-1apq` · epic · in_progress · P1
+      Spec: [plan-2026-11-10-native-macos-app.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-10-native-macos-app.md)
+      Children: 128 (24 ready)
+      Bead: `tbd show mb-1apq`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 92793121-e71d-4d48-964f-9c3f40100392
+    kind: splice_description
+  - bead_id: is-01m7ey9fq9v53mp3c974mg2d89
+    external_id: 3bb54022-1406-4f22-a768-5cbc30bfae86
+    kind: update_issue
+    patch:
+      parentId: d35b48d1-3e75-4302-928f-acd928f51c87
+  - bead_id: is-01m7wysf407hkpj5n35r533gzc
+    block: |-
+      ⟦tbd⟧
+      `mb-moo3` · epic · open · P2
+      Children: 36 (18 ready)
+      Bead: `tbd show mb-moo3`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 011c03c5-06d7-4b08-aaf2-fe9aa920e54d
+    kind: splice_description
+  - bead_id: is-01m82h0qrnw9vg6vrj597asgpv
+    external_id: 0c7789d9-960d-4814-a23b-d2a26e474369
+    kind: update_issue
+    patch:
+      hold: null
+      resolution: null
+      slot: todo
+      status: open
+  - bead_id: is-01m82h0qrnw9vg6vrj597asgpv
+    block: |-
+      ⟦tbd⟧
+      `mb-dip2` · epic · open · P1
+      Spec: [plan-2026-11-22-pull-request-update-cadence.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md)
+      Children: 47 (2 ready)
+      Bead: `tbd show mb-dip2`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 0c7789d9-960d-4814-a23b-d2a26e474369
+    kind: splice_description
+  - bead_id: is-01m836c38mhwwhmnxwz2ydn61z
+    block: |-
+      ⟦tbd⟧
+      `mb-vui8` · epic · in_progress · P2
+      Children: 10 (4 ready)
+      Bead: `tbd show mb-vui8`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: e6d16b1a-6932-46d8-ab79-79487c4851c8
+    kind: splice_description
+provider: linear
+run_id: 01m88dgxxnnf1s37j5fx7yj3cr
+type: in
