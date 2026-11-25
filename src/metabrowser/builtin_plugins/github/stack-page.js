@@ -154,9 +154,10 @@ export function comparisonAction(shownKey, envelope) {
  * One member's ask, by the member's number and the head its record has: in flight
  * (`asking`), refused or unanswered and sent again at `due` (`waiting`), taken by the
  * server, which answered once a read sent after the `after`th saw it (`accepted`), or
- * ended without a usable record (`failed`).
+ * ended without a usable record (`failed`). `checked` marks a reader's ask whose fetch one
+ * answer showed ended, which the next read confirms before the page names it failed.
  *
- * @typedef {{number: number, retry: boolean, phase: "asking" | "waiting" | "accepted" | "failed", tries: number, due: number, after: number}} MemberAsk
+ * @typedef {{number: number, retry: boolean, phase: "asking" | "waiting" | "accepted" | "failed", tries: number, due: number, after: number, checked: boolean}} MemberAsk
  */
 
 /**
@@ -207,7 +208,7 @@ export function refreshAsks(envelope, asks, now) {
  */
 export function askAnswered(ask, status, now, reads) {
   if (status === 202) {
-    return { ...ask, phase: "accepted", after: reads };
+    return { ...ask, phase: "accepted", after: reads, checked: false };
   }
   const wait = ASK_BACKOFF_MS[Math.min(ask.tries, ASK_BACKOFF_MS.length - 1)];
   return { ...ask, phase: "waiting", tries: ask.tries + 1, due: now + wait };
@@ -217,9 +218,9 @@ export function askAnswered(ask, status, now, reads) {
  * Each member's ask once an answer is read: one whose fetch ended, by an answer read after
  * the server took it, with the member still pending and no fetch of it running, has
  * `failed` when it was the reader's own (the page names the member, with a Retry, rather
- * than say it is fetching), and otherwise waits to be sent again, since the server decides
- * when an automatic one is due. The ask of a member no longer pending at that head is
- * dropped.
+ * than say it is fetching), once one more read finds it so, and otherwise waits to be sent
+ * again, since the server decides when an automatic one is due. The ask of a member no
+ * longer pending at that head is dropped.
  *
  * @param {StackEnvelope | null} envelope
  * @param {ReadonlyMap<string, MemberAsk>} asks
@@ -237,15 +238,19 @@ export function asksAfterRead(envelope, asks, read, now, reads) {
     if (ask === undefined || !member.pending) {
       continue;
     }
-    const ended =
-      envelope?.state !== "absent" &&
-      member.fetching !== true &&
-      ask.phase === "accepted" &&
-      read > ask.after;
-    next.set(
-      key,
-      !ended ? ask : ask.retry ? { ...ask, phase: "failed" } : askAnswered(ask, null, now, reads),
-    );
+    // An absent answer carries its members and their fetches too, so an ask the server took
+    // before the stack stopped being one comparison ends as any other does.
+    const ended = member.fetching !== true && ask.phase === "accepted" && read > ask.after;
+    if (!ended) {
+      next.set(key, ask);
+    } else if (!ask.retry) {
+      next.set(key, askAnswered(ask, null, now, reads));
+    } else if (!ask.checked) {
+      // The next read confirms it: a record written as the fetch ended is then read too.
+      next.set(key, { ...ask, checked: true, after: read });
+    } else {
+      next.set(key, { ...ask, phase: "failed" });
+    }
   }
   return next;
 }
@@ -618,6 +623,7 @@ export function createStackController(deps, options) {
       tries: before?.tries ?? 0,
       due: 0,
       after: 0,
+      checked: false,
     });
     const status = await send(due.number, null, due.retry);
     const asked = asks.get(due.key);
@@ -642,13 +648,17 @@ export function createStackController(deps, options) {
     }
   }
 
-  /** The next delay: the poll's, or sooner when a refused ask is due before it. */
+  /**
+   * The next delay: the poll's, or sooner when a refused ask is due before it. An absent
+   * stack sends no ask (`refreshAsks`), so its waiting asks set no delay.
+   */
   function nextDelay() {
+    const sends = envelope !== null && envelope.state !== "absent";
     let busy = false;
     let delay = pollDelay(envelope, deps.isVisible(), false);
     for (const ask of asks.values()) {
       busy ||= ask.phase === "asking" || ask.phase === "accepted";
-      if (delay !== null && ask.phase === "waiting") {
+      if (sends && delay !== null && ask.phase === "waiting") {
         delay = Math.min(delay, Math.max(0, ask.due - deps.now()));
       }
     }

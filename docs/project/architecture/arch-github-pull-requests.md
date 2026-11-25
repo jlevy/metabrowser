@@ -1016,9 +1016,10 @@ measurements that set them:
   automatic ask the answer’s `probe` names.
   An ask the server refuses (429, past `MAX_PULL_JOBS`), that fails, or whose fetch ends
   with the member still pending is sent again after `ASK_BACKOFF_MS`; each member’s
-  `fetching` says whether its fetch is running now, so the page tells one under way from
-  one that ended. A member with no record whose fetch ended without one is named as
-  failed, with a Retry.
+  `fetching` says whether its fetch was running before its record was read (asked on the
+  loop first, as `PullView` asks), so the page tells one under way from one that ended.
+  A member with no record whose fetch ended without one is named as failed, with a
+  Retry, once a second read finds it so.
   A hidden page does not poll.
   A comparison the page drew stays while the stack is pending, refused, or moved, with a
   notice above it, and a new comparison is offered rather than swapped in.

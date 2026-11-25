@@ -49,12 +49,19 @@ them.
 - `cold` is a stack of ten members with no record on a server that fetches eight at once
   and refuses the rest (429). A refused member is asked for again after 2, 4, 8, then 16
   s until its fetch starts.
-  One whose fetch ends without a record is named as failed, with a Retry, and the
-  reader’s Retry asks for it again.
+  One whose fetch ends without a record is named as failed, with a Retry, once a second
+  read finds it so, and the reader’s Retry asks for it again.
   Once nothing is being asked for or fetched, the page reads at the slow cadence
   (`delay_after_failure`).
 - `one_loop` is a read asked for while one is on its way: it starts no second loop, and
   is made once the first answer is drawn, which leaves one timer.
+- `absent_ask` is a member’s fetch the server took while the stack was pending, which
+  ends without moving the member once the stack is not linear: the ask ends there as on
+  any other answer, and the page reads at the absent stack’s cadence, not every second.
+- `ended_race` is the reader’s fetch of a member with no record, one answer showing it
+  ended before the record it wrote is read, and the next read having it.
+  The page confirms an ended fetch with one more read before it names the member as
+  failed, so it names none, and the stack is current a second later.
 - `body` is the page’s body over a reader who opens `docs/draft.md` in Changes while the
   stack moves. The file is scrolled to when its diff is first drawn and when the reader
   opens it again, never on a later answer.
@@ -314,7 +321,7 @@ $ node tests/dom/github-stack-page-session.js
       "2s #109 retry 429",
       "6s #108 retry 202",
       "6s #109 retry 202",
-      "9s #109 retry 202"
+      "10s #109 retry 202"
     ],
     "rendered": [
       {
@@ -402,19 +409,19 @@ $ node tests/dom/github-stack-page-session.js
         "pending": [
           109
         ],
+        "failed": []
+      },
+      {
+        "at": "10s",
+        "pending": [
+          109
+        ],
         "failed": [
           109
         ]
       },
       {
-        "at": "9s",
-        "pending": [
-          109
-        ],
-        "failed": []
-      },
-      {
-        "at": "9s",
+        "at": "10s",
         "pending": [
           109
         ],
@@ -436,6 +443,13 @@ $ node tests/dom/github-stack-page-session.js
       },
       {
         "at": "12s",
+        "pending": [
+          109
+        ],
+        "failed": []
+      },
+      {
+        "at": "13s",
         "pending": [],
         "failed": []
       }
@@ -456,6 +470,35 @@ $ node tests/dom/github-stack-page-session.js
       "timers": 1
     }
   },
+  "absent_ask": {
+    "asked": [
+      "0s #8 202"
+    ],
+    "reads": [
+      "0s pending",
+      "1s pending",
+      "2s pending",
+      "3s absent",
+      "33s absent"
+    ]
+  },
+  "ended_race": [
+    {
+      "at": "0s",
+      "state": "pending",
+      "failed": []
+    },
+    {
+      "at": "1s",
+      "state": "pending",
+      "failed": []
+    },
+    {
+      "at": "2s",
+      "state": "current",
+      "failed": []
+    }
+  ],
   "body": [
     {
       "step": "opened a file, nothing read",

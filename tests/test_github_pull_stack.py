@@ -8,9 +8,12 @@ earlier comparisons a stack keeps admitted after it moves.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -20,9 +23,10 @@ from metabrowser.builtin_plugins.github.pull_stack_retained import (
     MAX_RETAINED_STACK_PAIRS,
     retained_stack_pair,
 )
+from metabrowser.builtin_plugins.github.pull_stacks import NativeStack
 from metabrowser.cache.paths import source_pulls_directory, source_stack_snapshots
 from metabrowser.diff.format import ChangeSetManifest, EntrySide, FileChange, Totals
-from metabrowser.home import ensure_private_directory
+from metabrowser.home import ensure_home, ensure_private_directory
 from metabrowser.view_routes import decode_safe_stack_route, format_stack_href
 
 A, B, C, D = ("a" * 40, "b" * 40, "c" * 40, "d" * 40)
@@ -176,9 +180,11 @@ _SLUG = "github-com-octo-demo-01234567890"
 
 
 def _published(home: Path, store: str = "store-1") -> Any:
-    """What retention reads of a published source: its home, slug and store, with the
-    directory its pull records, which a stack's comparison is drawn from, are kept in."""
+    """What retention reads of a published source: its home, slug and store, in an
+    application home (whose locks the write takes) with the directory its pull records,
+    which a stack's comparison is drawn from, are kept in."""
 
+    ensure_home(home)
     ensure_private_directory(home, source_pulls_directory(_SLUG))
     return SimpleNamespace(home=home, slug=_SLUG, store_id=store)
 
@@ -236,3 +242,77 @@ def test_an_unreadable_file_answers_unknown_and_a_malformed_one_nothing(
     path = tmp_path / source_stack_snapshots(_SLUG, 7)
     path.write_text('[{"store": "store-1"}]')
     assert retained_stack_pair(published, 7, None, A, C, None) is None
+
+
+def test_a_pair_is_written_again_after_its_file_is_removed(tmp_path: Path) -> None:
+    # A cache clear empties the pulls directory while a page stays open on its comparison.
+    published = _published(tmp_path)
+    drawn, moved = _pair(C), _pair(D)
+    pull_stack_retained.retain_stack_pair(published, drawn, "gh:alice")
+    path = tmp_path / source_stack_snapshots(_SLUG, 7)
+    path.unlink()
+    pull_stack_retained.retain_stack_pair(published, drawn, "gh:alice")
+    assert path.exists()
+    pull_stack_retained.retain_stack_pair(published, moved, "gh:alice")
+    assert retained_stack_pair(published, 7, "gh:alice", A, C, drawn.digest) == drawn
+
+
+def test_a_pair_is_written_under_the_source_alias_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    published = _published(tmp_path)
+    held: list[str] = []
+    real_lock = pull_stack_retained.source_alias_lock
+    real_write = pull_stack_retained.write_private_file_atomic
+
+    @contextmanager
+    def lock(home: Path, slug: str) -> Generator[None]:
+        with real_lock(home, slug):
+            held.append(slug)
+            try:
+                yield
+            finally:
+                held.remove(slug)
+
+    def write(home: Path, relative: str, data: bytes) -> None:
+        assert held == [_SLUG], "written outside the source's alias lock"
+        real_write(home, relative, data)
+
+    monkeypatch.setattr(pull_stack_retained, "source_alias_lock", lock)
+    monkeypatch.setattr(pull_stack_retained, "write_private_file_atomic", write)
+    pull_stack_retained.retain_stack_pair(published, _pair(C), "gh:alice")
+    assert retained_stack_pair(published, 7, "gh:alice", A, C, None) == _pair(C)
+
+
+def test_a_fetch_that_ends_while_the_records_are_read_is_answered_as_fetching(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Member 1's refresh is running when the stack is read, and ends, without a usable
+    # record, while the records are read; member 2 has none running. The running state is
+    # taken before the records are read, so the answer cannot say member 1's fetch ended
+    # while lacking the record it may have written.
+    stack = NativeStack(number=7, base_ref="main", open=True, pulls=(1, 2))
+    running = {1}
+
+    def records(
+        _repository: object, _published: object, found: NativeStack, _reader: object
+    ) -> tuple[Any, ...]:
+        running.clear()
+        return tuple(
+            pull_stack._Member(  # pyright: ignore[reportPrivateUsage]
+                number=number, record=None, revision=None, title=None, state="open", moved=False
+            )
+            for number in found.pulls
+        )
+
+    monkeypatch.setattr(pull_stack, "_snapshot_stack", lambda _repository, _number: stack)
+    monkeypatch.setattr(pull_stack, "_read_members", records)
+    repository = cast(Any, SimpleNamespace(source="https://github.com/octo/demo"))
+    envelope = asyncio.run(
+        pull_stack.stack_envelope(repository, cast(Any, object()), 7, None, running.__contains__)
+    )
+    assert envelope["state"] == "pending"
+    assert [(member["number"], member["fetching"]) for member in envelope["members"]] == [
+        (1, True),
+        (2, False),
+    ]

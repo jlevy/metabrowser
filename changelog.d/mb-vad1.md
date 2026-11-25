@@ -19,5 +19,6 @@
   `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of `number` and admit
   the stack’s current pair and its last earlier pairs, which are kept in
   `sources/<slug>/pulls/stack-<n>.snapshots.json`. Each pending member of the `stack`
-  answer says whether its fetch is running (`fetching`). The diff view’s `render` and
-  `summary` take a `fileMarks` hook that puts a host’s links on each file’s row and bar.
+  answer says whether its fetch was running before its record was read (`fetching`). The
+  diff view’s `render` and `summary` take a `fileMarks` hook that puts a host’s links on
+  each file’s row and bar.
