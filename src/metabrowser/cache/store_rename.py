@@ -71,10 +71,11 @@ renamed are not legacy names any more. Nothing is read or written outside the ho
 
 The consumers are two. ``f01`` is released data: v0.12.0 wrote it, so its whole-digest store
 names, its ``repository-stores`` directory and its ``--`` slugs and ``RepositorySource/v1``
-records are read here for as long as such a home can exist. ``f02`` was never released: it
-exists only in the homes of development builds between #647 and this layout, and the
-store-key spelling it added (``f02_key_parts`` and the words it kept) is deleted before the
-release that carries ``f03`` (mb-t7wx).
+records are read here for as long as such a home can exist. ``f02`` is released data too.
+No release ended on it, but v0.13.0 upgrades an ``f01`` home through it and records the
+layout after each step, so an upgrade stopped between the two leaves ``f02`` on disk. The
+store-key spelling it added (``f02_key_parts`` and the words it kept) is therefore read
+here for as long as such a home can exist (mb-t7wx).
 """
 
 from __future__ import annotations

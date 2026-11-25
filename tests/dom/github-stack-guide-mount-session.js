@@ -2,7 +2,7 @@
 // stack route's recorded answers (tests/fixtures/github-stack-responses.json). First its
 // header: the rows its first paint draws from the stack the Pulls tab knows, before the stack's
 // answer, are the rows the answer settles in, and what it passes the diff view draws the Diff
-// summary collapsed and Docs and Changes with no layer marks, as a pull request's page does.
+// summary collapsed and Docs and Changes as a pull request's page does.
 // Then Guided Review:
 // the front page mounts the stack's guide and reads its first step at the comparison it draws;
 // a step's file opens in the stack's Changes and another pull request's file in that pull
@@ -112,6 +112,12 @@ const stacksAnswer = {
       open: true,
       pulls: recorded.current.members.map((member) => member.number),
       titles: recorded.current.members.map((member) => member.title),
+      // The stacks route read 10's author with its title and holds none for 8, so 10's
+      // member row ends in its author and 8's in its number.
+      authors: recorded.current.members.map((member) =>
+        member.number === 10 ? "maintainer" : null,
+      ),
+      avatars: recorded.current.members.map(() => null),
     },
   ],
 };
@@ -329,6 +335,13 @@ async function run() {
   };
   const mb = {
     titleNodes: (title) => [title],
+    // The shell's actor identity, as its name alone.
+    actorIdentity(name, { nameClass = "" } = {}) {
+      const identity = new Element("span");
+      identity.className = nameClass;
+      identity.textContent = name;
+      return identity;
+    },
     formatAge: () => ({ label: "now", className: "age" }),
     formatTimestamp: () => "now",
     shortCommit: (sha) => sha.slice(0, 7),
@@ -439,7 +452,7 @@ async function run() {
   assert.deepEqual(names(firstPaint), names(settled), "the answer lands in the rows drawn");
   assert.equal(cold, false, "a stack the Pulls tab knows is not held as cold");
   const summaryDrawn = drawings.find((drawing) => drawing.summary)?.summary;
-  assert.deepEqual(Object.keys(summaryDrawn).sort(), ["openFile"], "collapsed, no marks");
+  assert.deepEqual(Object.keys(summaryDrawn).sort(), ["openFile"], "where a file opens alone");
   report.header = {
     first_paint: firstPaint,
     settled,
@@ -466,6 +479,20 @@ async function run() {
   // its outside link is marked.
   reads[0].answer(step(revision(1), 1, pinsOf(drawnFirst)));
   await settle();
+  // Its step list has no overview, and no step is in a group, so each row starts on a group
+  // heading's edge with its number, in a column one digit wide (mb-420k).
+  const list = container.querySelector(".github-pull-guide-steps");
+  const isElement = (node) => typeof node !== "string";
+  report.list = {
+    rows: list.children.filter(isElement).map((item) =>
+      item.children
+        .find(isElement)
+        .children.filter(isElement)
+        .map((part) => `${[...part.classes].join(".")}: ${part.textContent}`)
+        .join(", "),
+    ),
+    style: list.getAttribute("style"),
+  };
   assert.deepEqual(
     documents.map(({ path: file, right }) => `${file}@${right}`),
     [`docs/draft.md@${drawnFirst.right}`],

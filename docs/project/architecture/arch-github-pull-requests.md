@@ -1138,18 +1138,19 @@ A step can also cite past its pull request, with the format’s other
 and every field, null where its kind has none (`_references` in `guided_review.py`), and
 each read from this copy alone, never stale, and never counted in `changed_steps`
 (`_own_paths`), except a `{pull, path}` that names the guide’s own pull request, which
-is a `{path}` (`_carried`). A `{pull}` is that pull request’s title and state, from its
-cached record or else its row in the list of pull requests, and its place in a stack
-from the stack snapshot, preferring the stack that holds the guide’s own pull request
-(`_pull_targets`), or `not_cached` when this copy knows neither; its address is the pull
-request’s page. A `{pull, path}` is that file at that pull request’s current comparison,
-read from its record’s kept manifest with one run of the diff source for each pull
-request the step cites, within the step’s one budget (`_pull_files`): the answer carries
-that comparison’s pins and the routes that answer it, which the page draws a document
-from, and is `comparison_unavailable` when this copy cannot read it, or `not_cached`
-when it has no record or no manifest kept for the record’s comparison, which a refresh
-keeps (`prepare_pull_manifest`) and this route never lists; its address is the file in
-that pull request’s Changes, which loads it.
+is a `{path}` (`_carried`). A `{pull}` is that pull request’s title, state, and author,
+from its cached record or else its row in the list of pull requests, and its place in a
+stack from the stack snapshot, preferring the stack that holds the guide’s own pull
+request (`_pull_targets`), or `not_cached` when this copy knows neither; its address is
+the pull request’s page.
+A `{pull, path}` is that file at that pull request’s current comparison, read from its
+record’s kept manifest with one run of the diff source for each pull request the step
+cites, within the step’s one budget (`_pull_files`): the answer carries that
+comparison’s pins and the routes that answer it, which the page draws a document from,
+and is `comparison_unavailable` when this copy cannot read it, or `not_cached` when it
+has no record or no manifest kept for the record’s comparison, which a refresh keeps
+(`prepare_pull_manifest`) and this route never lists; its address is the file in that
+pull request’s Changes, which loads it.
 A `{commit}` is its subject and committer date, read for every commit of the step by one
 bounded `git log` in the store (`_commit_targets`), or `commit_unavailable`; its address
 is `/commit/<sha>`, which the page opens as a plain link, unless the server browses a

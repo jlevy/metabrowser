@@ -1013,6 +1013,7 @@ RECIPE_ROUTES: Final = frozenset(
     {
         "/api/plugin/github/pull?number=<n>",
         "$ROUTE",
+        "$ROUTE&file=<path>",
         "/api/source/status",
         REFRESH_ROUTE,
         "/api/plugin/github/guided-review?number=<n>&step=<k>",
@@ -1035,7 +1036,7 @@ def test_the_skill_is_read_as_commands(skill: str, guide: str) -> None:
     named = {_value(command.args, "--api") for command in found if command.whole}
     assert read >= RECIPE_ROUTES and named >= PROSE_ROUTES, (read, named)
     assert any(not command.whole for command in found)
-    assert len(_recipes(skill)) == 5
+    assert len(_recipes(skill)) == 8
     assert len(present_recipes(skill)) == 4
     assert len([c for c in commands(guide, GUIDE.name) if c.whole]) >= 8
 

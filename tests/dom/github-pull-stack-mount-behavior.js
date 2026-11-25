@@ -239,10 +239,8 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
       state: "open",
       updatedAt: current.body.record.pull.updated_at,
       title: current.body.record.pull.title,
-      author: "forker",
-      avatar: null,
     },
-    "the page notes its fresher record back, its author too",
+    "the page notes its fresher record back",
   );
   assert(warm.textContent.includes(current.body.record.pull.title));
   // The freshness note ends the author's row (mb-ne91).
@@ -315,15 +313,19 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.equal(allLinks()[0].textContent, "Whole stack");
   assert.deepEqual(
     memberLinks().map((item) => item.textContent),
-    ["Stack change 8 3/3 · #8", "Stack change 7 2/3 · #7 · forker", "Stack change 6 1/3 · #6"],
+    [
+      "Stack change 8 3/3 · #8 · contributor",
+      "Stack change 7 2/3 · #7 · forker",
+      "Stack change 6 1/3 · #6 · contributor",
+    ],
   );
   // Every member is one line in one layout (mb-as06): the state icon, then the title, whose
   // whole is the member's tip, then, together at the line's end, the bold place, a muted dot,
   // the number, and another dot and the author, in a Pulls row's order, the title, the place,
   // the number, and the author (mb-1kzu, mb-pw8t, mb-x0z1), so a reader and a screen reader
   // alike tell two members of one title apart. The page's own member has the header's state and
-  // author; a member the Pulls list has not listed keeps the icon's slot empty, and has no
-  // author.
+  // author; a member the Pulls list has not listed keeps the icon's slot empty, and every other
+  // member has the author the stacks route read with its title.
   const classOf = (node) => node.className || node.getAttribute("class");
   const layout = (link) => ({
     parts: link.children.map(classOf),
@@ -355,16 +357,15 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
         .map((node) => node.textContent),
     ),
     [
-      ["#8", ""],
+      ["#8", " · contributor"],
       ["#7", " · forker"],
-      ["#6", ""],
+      ["#6", " · contributor"],
     ],
-    "each member's number is followed by its author where it is known, which ends its line",
+    "each member's number is followed by its author, which ends its line",
   );
-  // Once the Pulls list has said the others' states and authors, the menu opened again draws
-  // them.
+  // Once the Pulls list has said the others' states, the menu opened again draws them.
   pullState.noteListed(source, "all", [
-    { number: 8, state: "draft", updatedAt: "2026-11-24T00:00:00Z", author: "maintainer" },
+    { number: 8, state: "draft", updatedAt: "2026-11-24T00:00:00Z" },
     { number: 6, state: "merged", updatedAt: "2026-11-24T00:00:00Z" },
   ]);
   const linksBefore = memberLinks();
@@ -375,11 +376,6 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.deepEqual(
     memberLinks().map((link) => link.children[0].dataset.state ?? null),
     ["draft", "open", "merged"],
-  );
-  assert.deepEqual(
-    memberLinks().map((link) => link.children[1].children.at(-1).textContent),
-    [" · maintainer", " · forker", ""],
-    "an author the list has said since is drawn when the menu opens again",
   );
   assert(
     memberLinks().every((link, at) => link === linksBefore[at]),
@@ -450,8 +446,6 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     state: "merged",
     updatedAt: "2026-11-24T02:00:00Z",
     title: "Four",
-    author: null,
-    avatar: null,
   });
   // An Open answer read before the merge, as a cached one is, says #4 open: it is older news.
   pullState.noteListed(elsewhere, "open", [
@@ -489,8 +483,8 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert(following);
   assert.equal(anchors[2].getAttribute("aria-current"), "page");
   // Each member's author follows its number, after a dot (mb-x0z1): the page's own for the pull
-  // request it shows, and nothing for a member the list has not said, #6 and #8 here. The
-  // Whole stack row has the stack's glyph in the icon's slot (mb-7cn4).
+  // request it shows, and the stack's for the others, #6 and #8 here. The Whole stack row has
+  // the stack's glyph in the icon's slot (mb-7cn4).
   const byOf = (anchor) =>
     [...anchor.descendants()].find(
       (element) => element.getAttribute("class") === "github-pull-stack-member-by",
@@ -500,8 +494,8 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.deepEqual(
     [anchors[1], anchors[3]].map((anchor) => [byOf(anchor).hidden, byOf(anchor).textContent]),
     [
-      [true, ""],
-      [true, ""],
+      [false, " · contributor"],
+      [false, " · contributor"],
     ],
   );
   assert.deepEqual(

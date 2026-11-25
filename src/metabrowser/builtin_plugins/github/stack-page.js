@@ -66,12 +66,14 @@ import {
   isPlainClick,
   manifestFiles,
   noFiles,
+  pullAge,
   SLOW_POLL_MS,
+  stackMemberAuthor,
   textRefusalNote,
 } from "./pull-page.js";
 import { stackLabel, stackMenuOrder, stackPosition, watchStacks } from "./pull-stacks.js";
 import { listedState } from "./pull-state.js";
-import { fillStackMemberRow } from "./stack-member-row.js";
+import { stackMemberRow } from "./stack-member-row.js";
 
 export const STACK_ROUTE = "/api/plugin/github/stack";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
@@ -96,7 +98,7 @@ export const STACK_TABS = Object.freeze([
 ]);
 
 /**
- * @typedef {{number: number, place: number, title: string | null, state: "open" | "draft" | "merged" | "closed" | null, base: string | null, head: string | null, in_top: boolean | null, pending: boolean, fetching?: boolean}} StackMember
+ * @typedef {{number: number, place: number, title: string | null, state: "open" | "draft" | "merged" | "closed" | null, author: string | null, avatar: string | null, base: string | null, head: string | null, in_top: boolean | null, pending: boolean, fetching?: boolean}} StackMember
  * @typedef {{left: string, right: string, key: string, route: string, image_route: string, rendered_route: string}} StackComparison
  * @typedef {{path: string, layers: Array<{number: number, place: number, path: string}>}} StackFile
  * @typedef {{
@@ -844,7 +846,7 @@ export function isStackEnvelope(value) {
 /**
  * @typedef {import("./pull-stacks.js").NativeStack} NativeStack
  * @typedef {import("./stack-member-row.js").StackMemberLine} StackMemberLine
- * @typedef {{state: import("./pull-state.js").PullState, title?: string | null, author?: string | null, avatar?: string | null} | null} ListedPull
+ * @typedef {{state: import("./pull-state.js").PullState, title?: string | null} | null} ListedPull
  */
 
 /**
@@ -872,6 +874,12 @@ export function knownStack(index, number) {
  * (*listed*), so the list the answer lands on is the list the first paint drew. Null while
  * neither names a member.
  *
+ * A member's author is the answer's, its record's or else its cached list row's
+ * (pull_stack.py), and before the answer the one the stack menu draws, the stacks route's
+ * (`stackMemberAuthor`), read from the same cached list. The answer's falls back to the
+ * stacks route's too, so an answer never takes away an author the first paint drew; neither
+ * names one for a member with no record and no cached row.
+ *
  * @param {StackEnvelope | null} envelope
  * @param {NativeStack | null} known
  * @param {(number: number) => ListedPull} listed
@@ -883,8 +891,8 @@ export function memberLines(envelope, known, listed) {
   const knownTitle = (number) => known?.titles?.[known.pulls.indexOf(number)] ?? null;
   /** @param {number} number */
   const author = (number) => {
-    const row = listed(number);
-    return row?.author ? { login: row.author, avatar: row.avatar ?? null } : null;
+    const at = known === null ? -1 : known.pulls.indexOf(number);
+    return known === null || at < 0 ? null : stackMemberAuthor(known, at, null);
   };
   if (members.length > 0) {
     // A member whose record the server has not read yet keeps the title and the state the
@@ -894,7 +902,9 @@ export function memberLines(envelope, known, listed) {
       place: stackPosition(member.place - 1, members.length),
       title: member.title ?? knownTitle(member.number) ?? listed(member.number)?.title ?? null,
       state: member.state ?? listed(member.number)?.state ?? null,
-      author: author(member.number),
+      author: member.author
+        ? { login: member.author, avatar: member.avatar ?? null }
+        : author(member.number),
     }));
   }
   if (known === null || known.pulls.length === 0) {
@@ -1206,6 +1216,13 @@ export function mountStackPage(container, ctx, mb) {
    * @type {boolean | null} */
   let coldHeld = null;
   let membersKey = "";
+  /**
+   * Each member's item and row (`stackMemberRow`), by number, kept while the member is, so
+   * an answer that changes a line changes only its nodes and an author's avatar keeps its
+   * image (docs/design-system.md, "A Repaint Keeps Its Images").
+   * @type {Map<number, {item: HTMLElement, row: import("./stack-member-row.js").StackMemberRow}>}
+   */
+  const memberRows = new Map();
   let mergeKey = "";
   let statusKey = "";
   /** The comparison read once for the Diff summary and Changes, by its key.
@@ -1264,19 +1281,38 @@ export function mountStackPage(container, ctx, mb) {
       return;
     }
     membersKey = key;
-    memberList.replaceChildren(
-      ...(lines ?? []).map((line) => {
-        const row = link({ number: line.number, tab: "" }, `/pull/${line.number}`, "menu-item", []);
-        // Each author as the stack menu draws it: no box where it has no avatar, and its
-        // avatar asked for once the row is drawn (docs/design-system.md, "Actor Identity").
-        fillStackMemberRow(row, line, mb.titleNodes, (login, avatar) =>
+    const drawn = (lines ?? []).map((line) => {
+      let member = memberRows.get(line.number);
+      if (member === undefined) {
+        const anchor = link(
+          { number: line.number, tab: "" },
+          `/pull/${line.number}`,
+          "menu-item",
+          [],
+        );
+        // The stack menu's member row, its author drawn as the menu draws it: no box where it
+        // has no avatar (docs/design-system.md, "Actor Identity").
+        const row = stackMemberRow(anchor, mb.titleNodes, (login, avatar) =>
           authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
             placeholder: false,
           }),
         );
-        return h("li", { class: "github-pull-stack-members-item" }, [row]);
-      }),
-    );
+        member = { item: h("li", { class: "github-pull-stack-members-item" }, [anchor]), row };
+        memberRows.set(line.number, member);
+      }
+      member.row.show(line);
+      return member.item;
+    });
+    const listed = new Set((lines ?? []).map((line) => line.number));
+    for (const number of [...memberRows.keys()]) {
+      if (!listed.has(number)) {
+        memberRows.delete(number);
+      }
+    }
+    const shown = [...memberList.children];
+    if (shown.length !== drawn.length || shown.some((item, at) => item !== drawn[at])) {
+      memberList.replaceChildren(...drawn);
+    }
   }
 
   /** @param {{head: string, base: string} | null} merge */
@@ -1659,23 +1695,12 @@ export function mountStackPage(container, ctx, mb) {
               ? { number: target, tab: "" }
               : { number: target, tab: "files", file: path },
           ),
-        age: (iso) => {
-          const at = Date.parse(iso);
-          if (!Number.isFinite(at)) {
-            return h("span", {}, [iso]);
-          }
-          const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-          return h(
-            "span",
-            {
-              class: `github-pull-age ${className}`,
-              "data-tip-text": mb.formatTimestamp(at / 1000),
-              "data-age-at": String(at),
-            },
-            [label],
-          );
-        },
+        // A pull request's page's age, in its freshness ink.
+        age: (iso) => pullAge(mb, iso),
         shortCommit: (sha) => mb.shortCommit(sha),
+        // A cited pull request's author, as a stack menu's member draws it.
+        identity: (login, avatar) =>
+          authorLabel(mb, login, avatar, "github-pull-guide-row-author", { placeholder: false }),
         loadStyles: (assets) =>
           Promise.all([
             mb.loadKpressAssets(

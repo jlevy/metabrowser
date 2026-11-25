@@ -19,13 +19,17 @@ page’s glue between them.
 - `header`: the header’s rows as the reader sees them, at the page’s first paint and
   once its answer has landed, with the Pulls tab having read the repository’s stacks, as
   it has when a stack button opens the page.
-  The first paint lists the members top first, each the stack menu’s member row, and
-  holds the merge’s row and the pending size line and summary; the answer lands in the
-  same rows, so nothing under the title moves.
+  The first paint lists the members top first, each the stack menu’s member row, ending
+  in the author the stacks route names, 10’s, and holds the merge’s row and the pending
+  size line and summary; the answer lands in the same rows, naming 8’s author from its
+  record too, so nothing under the title moves.
   The Diff summary is drawn with what a pull request’s page passes, so it starts
-  collapsed with no layer marks on its rows.
+  collapsed, as every Diff summary does.
 - `front`: the front page of 70, whose guide 10 carries, shows Guided Review and reads
   step 1 at the comparison the page draws, by its two commits and its key.
+- `list`: its step list, which has no overview row, and whose steps are in no group, so
+  each row is its number and its title from the list’s edge, the edge a group’s heading
+  starts on, in a column one digit wide.
 - `step`: the step draws a file of the stack as a patch, a Markdown file whole from the
   comparison drawn, and a file of 9 from 9’s own comparison.
   Its note is inserted against the page of the member that carries the guide, here 8’s,
@@ -41,8 +45,8 @@ page’s glue between them.
   earlier views disposed, and read at the comparison now drawn.
 - `left`: leaving the tab for Changes while a read is on its way disposes the view,
   aborts the read, and draws Changes as a pull request’s page draws its own, with no
-  summary of its own and no layer marks; the header’s Diff summary is drawn once for
-  each comparison the page drew.
+  summary of its own; the header’s Diff summary is drawn once for each comparison the
+  page drew.
 - `failed`: Docs and Changes that could not load.
   Each says so in a pull request’s error notice, “Docs could not load.”
   or “Changes could not load.”, with Retry, whether the diff failed to draw or drew and
@@ -60,7 +64,7 @@ $ node tests/dom/github-stack-guide-mount-session.js
       "corner",
       {
         "members": [
-          "WIP: draft the next page 2/2 · #10",
+          "WIP: draft the next page 2/2 · #10 · maintainer",
           "Say more in the guide 1/2 · #8"
         ]
       },
@@ -79,8 +83,8 @@ $ node tests/dom/github-stack-guide-mount-session.js
       "corner",
       {
         "members": [
-          "WIP: draft the next page 2/2 · #10",
-          "Say more in the guide 1/2 · #8"
+          "WIP: draft the next page 2/2 · #10 · maintainer",
+          "Say more in the guide 1/2 · #8 · maintainer"
         ]
       },
       {
@@ -100,6 +104,14 @@ $ node tests/dom/github-stack-guide-mount-session.js
   "front": {
     "tab": "Guided Review",
     "asks": "70 1 <base> <draft_head> ebfe45cd812c6d00f8d4a921576b31d7"
+  },
+  "list": {
+    "rows": [
+      "github-pull-guide-steps-number: 1, github-pull-guide-steps-title: The layers",
+      "github-pull-guide-steps-number: 2, github-pull-guide-steps-title: The draft",
+      "github-pull-guide-steps-number: 3, github-pull-guide-steps-title: The plan"
+    ],
+    "style": "--github-pull-guide-loose-digits: 1"
   },
   "step": {
     "documents": [

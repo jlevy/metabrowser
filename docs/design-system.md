@@ -149,6 +149,28 @@ When a summary shows created or opened and updated ages, omit the updated age wh
 displayed label matches the closed or merged age beside it, or else the created or
 opened age, and add the exact updated time to the tooltip of the age it repeats.
 
+### Ages End the Row
+
+In a list row, a timestamp or an age ends the row, right-aligned at its end, so the ages
+of a list read as one column a reader scans down for what changed last.
+A Pulls row’s age ends its last line, in a 5ch column after its lines and its chevron
+([The Pulls Tab](#the-pulls-tab)); a Commits row’s ends its line after the author
+(`.git-graph-age`), a ref selector row’s after its commit (`.source-ref-selector-age`),
+an agents session row’s after its title (`.agents-row-age`), and a guide’s commit row’s
+after its subject. A table, such as the agents Sessions table or an event log’s rows,
+gives its times a column of their own, so they read as one wherever its columns put it.
+An age that is not in a list row stays where its words put it:
+
+- inline prose, such as a freshness sentence, “Fetched 2 min ago via GitHub CLI”, or a
+  card’s head, “jlevy commented 3d ago”;
+- a page header’s metadata line, “Opened 3d ago · updated 2h ago”, which reads as a
+  sentence;
+- a single-line item with no column under it, such as a tally, “3,310 commits begun 4mo
+  ago”.
+
+`tests/test_reserved_chrome.py` holds the Pulls row’s age column in source, and
+`tests/dom/github-pulls-row-lines-chrome.mjs` its place at the row’s end in Chrome.
+
 ## Typography
 
 The shell uses a compact UI face for chrome, a monospaced face for rendered content, and
@@ -1755,8 +1777,8 @@ was measured before a revision took its line’s size, and has not been measured
 [Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#row-baselines)
 has the offsets behind these three decisions.
 A [Pulls](#the-pulls-tab) row left the table when its title took two lines: its run,
-title to age, is one flow of inline text, and its last line sets the lines and the
-chevron at one size on one line height and centers them.
+title to author, is one flow of inline text, and its last line sets the lines, the
+chevron, and the age at one size on one line height and centers them.
 Aligned to a baseline, the number and the age had taken it from the line that held the
 number, a wrap whose first line can hold no text, and moved 6px when the author left
 that line (Chrome 152, at 200 and 180px); `tests/dom/github-pulls-row-lines-chrome.mjs`
@@ -2402,7 +2424,7 @@ surface that shows a merge calls `mergeRefs`.
 `test_merges_read_source_to_target_in_one_notation` in `tests/test_design_vocabulary.py`
 holds that the page calls it head first, draws no ref chip of its own, and never writes
 `←`, that a Pulls row does not call it, the arrow’s name, direction, floor, and tokens,
-and the rules by which a Pulls row’s author gives way to its age.
+and the rules by which a Pulls row’s author ends its run and its age ends the row.
 The page’s session holds the order, the arrow’s name, and the literal refs it draws.
 
 ### File Change Status
@@ -2480,8 +2502,8 @@ this component, after its file count, “35 files changed · ”, only where no
 [hover card](#git-commit-summary), a commit page’s totals line, a pull request’s row in
 the Pulls tab ([The Pulls Tab](#the-pulls-tab)), and a stack’s heading there
 ([Stack Groups](#stack-groups-in-the-pulls-tab)) draw it too; the last two draw its line
-totals alone, with no statuses, as a Pulls row’s lines share its run with the title and
-the number. It sets no size or ink of its own, so it takes its line’s.
+totals alone, with no statuses, on a Pulls row’s last line under the run of its title,
+number, and author. It sets no size or ink of its own, so it takes its line’s.
 `tests/dom/count-parts-session.js` pins its markup (`cli-ui-count-parts.tryscript.md`),
 and `test_count_summaries_mute_their_punctuation_and_ink_their_status_counts` its rule
 and that no plugin writes its classes itself.
@@ -3304,8 +3326,8 @@ reader does with it.
 | Place | “Overview”, or “Step 3 of 9”: where the reader is, never the count alone | `placeName` |
 | A step by name | “Step 3: Inspect the request path”: the list, the tips, the way on and back | `stepName` |
 | Badge | A state badge’s outlined box leading a head, 8px from its label, as a page header’s state badge leads its line | `guideBadge`, `.github-pull-guide-card-head` |
-| Step list | A card above the step: the badge, the arrows around the place, then each step, numbered, the one shown marked as a table of contents marks its section | `.github-pull-guide-outline`, `--highlight-bg`, `--highlight-bar` |
-| Group | In the step list, the group’s title as the shell’s [group heading](#groups-in-a-menu), on the edge the rows’ numbers start on, with no number and nothing to press, above its steps, which keep their numbers; on a step’s card, its title before the place, “Decisions · Step 2 of 12” | `.group-heading`, `.github-pull-guide-steps-heading`, `groupedPlace` |
+| Step list | A card above the step: the badge, the arrows around the place, then each step, numbered, the one shown marked as a table of contents marks its section. A row outside any group is not indented: it starts on the edge a group’s heading starts on, the overview’s title with no number before it, and a step’s number read from that edge, in a column as wide as the widest such number, so those steps’ titles line up | `.github-pull-guide-outline`, `--highlight-bg`, `--highlight-bar`, `--github-pull-guide-loose-digits` |
+| Group | In the step list, the group’s title as the shell’s [group heading](#groups-in-a-menu), on the edge a row outside any group starts on, with no number and nothing to press, above its steps, which keep their numbers in a column of their own that starts on that edge, each number set to the column’s end; on a step’s card, its title before the place, “Decisions · Step 2 of 12” | `.group-heading`, `.github-pull-guide-steps-heading`, `.github-pull-guide-steps-members`, `groupedPlace` |
 | Group note | The group’s note above its first step’s card at the card text’s inset, its Markdown rendered as a step’s note is, or as typed when the render did not come, with a refused render’s line under it as a step’s note has | `.github-pull-guide-group-note`, `.github-pull-guide-note-refused` |
 | Arrows | Icon buttons, `arrowLeft` and `arrowRight`, centered in an icon button’s box, with no label of their own | `.github-pull-guide-arrow` |
 | Way on and back | Worded buttons below a step that name the step they go to | `.github-pull-guide-pager` |
@@ -3402,19 +3424,20 @@ newest first. Like the page it opens, it has almost no vocabulary of its own.
 A pull request is one item, its link, with one hover, one selection, and one keyboard
 stop: a run and a last line.
 The run is one flow: the state icon, then the title, a stack member’s place, the number,
-the author, and the age, a muted dot before each part after the title: “Fix the reader ·
-5/12 · #455 · jlevy · 3d”. The run wraps where it needs to, and every line of it starts
-in the text column, past the icon, as a tree’s title wraps past its icon.
+and the author, a muted dot before each part after the title: “Fix the reader · 5/12 ·
+#455 · jlevy”. The run wraps where it needs to, and every line of it starts in the text
+column, past the icon, as a tree’s title wraps past its icon.
 The last line is the lines the pull request changes, its
 [brief change line](#brief-change-line) of its line totals alone, a total of zero left
 out, “+1,234” for a pull request that only adds lines, with the registry’s chevron after
-them, alone in the text column: “+1,234 −567 ›”. The item holds the pull request’s
-changed-files tree, which hangs under it, is owned by the row’s link through
-`aria-owns`, whose `aria-expanded` alone says whether it is open, and starts collapsed.
-The lines and the chevron after them are the toggle, the summary the chevron expands
-([Diff Summary](#diff-summary)): clicking them toggles the tree and opens no page, and
-clicking anywhere else on the item, the title, the place, the number, the author, the
-age, or the last line past the chevron, opens the page and expands nothing
+them, from the text column, and the age at the row’s end, muted
+([Ages End the Row](#ages-end-the-row)): “+1,234 −567 ›” and “3d”. The item holds the
+pull request’s changed-files tree, which hangs under it, is owned by the row’s link
+through `aria-owns`, whose `aria-expanded` alone says whether it is open, and starts
+collapsed. The lines and the chevron after them are the toggle, the summary the chevron
+expands ([Diff Summary](#diff-summary)): clicking them toggles the tree and opens no
+page, and clicking anywhere else on the item, the title, the place, the number, the
+author, the age, or the last line past the chevron, opens the page and expands nothing
 ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)). A press
 on the toggle, or Space, Right, or Left on the item, keeps the row where it is, under
 the pointer or the focus, even above a row a reveal placed, whose place gives way to it.
@@ -3466,15 +3489,14 @@ A row names no branches: the pull request’s page names them, head → base, as
 A row’s run starts on the list’s row inset with the state icon, in the tree’s icon slot,
 then the title in the text column, then, for a stack member, the stack menu’s muted dot
 and its place in its stack, bold, “· 14/15”, as [Stacks](#stacks) sets the place, then
-the dot and the number, “· #455”, then the dot and the author, and the dot and the age,
-“· jlevy · 3d”: the stack menu’s member line’s order, the title, then the place, the
-number, and the author.
-A row not in a stack has no place and no dot before one: the icon, the title, the
-number, the author, and the age.
+the dot and the number, “· #455”, then the dot and the author, “· jlevy”: the stack
+menu’s member line’s order, the title, then the place, the number, and the author
+([Authors Follow Pull Requests](#authors-follow-pull-requests)). A row not in a stack
+has no place and no dot before one: the icon, the title, the number, and the author.
 A dot keeps to the part before it, so a line breaks after a dot and never starts with
-one; the place and the number never break, the author and the age never part, and only a
-word of the title longer than the line breaks anywhere.
-The run is never cut short, so it always ends with the age.
+one; the place, the number, and the author never break, and only a word of the title
+longer than the line breaks anywhere.
+The run is never cut short, so it always ends with the author.
 At the nav’s default width a typical title’s run takes three lines, so its row is four
 with its last; a short title’s run takes two, as most do at a wider pane, and a long one
 four or more. The list places each row by its measured box, so a title’s length moves no
@@ -3482,12 +3504,14 @@ row.
 A row in no stack is flush on the list’s inset; only a stack’s members are indented,
 under their stack’s row, so the indent itself says which rows are a stack’s. The changed
 files hang one tree level under the state icon.
-The author’s name ends in an ellipsis only where the author and the age are wider than a
-line, and the age never gives way: the name leaves the age its room,
-`--github-pulls-age-room`, the room of a dot and the longest compact age.
-The author’s avatar in a row is a tenth smaller than the shell’s `--actor-avatar-size`
-(`.github-pulls-by` in `builtin_plugins/github/styles.css`), since the author is
-secondary to the title it follows.
+The author’s name ends in an ellipsis only where the author is wider than a line.
+The age never gives way: its column at the last line’s end is 5ch of the row’s type, the
+room of the longest compact age, “12mo”, and where the line has no room for the lines as
+well, at the narrowest pane, the lines give way whole to an ellipsis, and the chevron
+and the age stay. The author’s avatar in a row is a tenth smaller than the shell’s
+`--actor-avatar-size`, `--github-pull-row-avatar-size` in
+`builtin_plugins/github/styles.css`, which a stack menu’s member and a guide’s pull
+request row take too, since the author is secondary to the title it follows.
 The Pulls column has no tooltips
 ([Tooltips Add Information](#tooltips-add-information)). Stack membership comes from one
 shared repository snapshot, indexed once by PR number; rows make no stack requests, and
@@ -3589,7 +3613,7 @@ that shows a number takes it:
 | --- | --- |
 | The pull request page’s title | `.github-pull-number`, after the title |
 | A Pulls row | `.github-pulls-number`, in its run after the title and the place, after a muted dot |
-| A stack menu’s member | `.github-pull-stack-member-number`, at the end of its one line, after its place and a muted dot, in the Pulls row’s ink |
+| A stack menu’s member | `.github-pull-stack-member-number`, after its title, its place, and a muted dot, before its author, in the Pulls row’s ink |
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
 | The ref selector, on a branch’s row | `.source-ref-selector-pull-number`, after the state icon |
@@ -3604,6 +3628,42 @@ own number, in “Stack #286”, is part of the stack’s label, in the label re
 ([Stacks](#stacks)). `test_the_pulls_tab_carries_the_shells_primitives` holds the rules
 to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
 `tests/dom/github-pull-header-chrome.mjs` read each surface’s computed weight in Chrome.
+
+### Authors Follow Pull Requests
+
+Wherever a row names a pull request by its number or its stack place, its author
+follows, after a muted dot, in the shell’s [actor identity](#actor-identity): the bold
+name, and the avatar at `--github-pull-row-avatar-size`, where it has one.
+A reader tells whose work a number is without opening it.
+The name is cut short only past its share of the line, and a screen reader hears the
+author after the number.
+
+| Surface | The author |
+| --- | --- |
+| A Pulls row | `.github-pulls-by`, ending the run after the number, cut short only where it is wider than a line |
+| A stack menu’s member | `.github-pull-stack-member-by`, ending the line after the number, at most a third of it |
+| A member on a stack’s page | The stack menu’s member row itself, drawn by its builder, `stackMemberRow` |
+| A guide’s pull request row | `.github-pull-guide-row-by`, after the title, at most a third of the line |
+| The pull request page’s title | The header’s sentence, “jlevy wants to merge 3 commits”, which names the merger once the pull request is merged, as github.com’s does |
+
+Two surfaces show no author:
+
+- **The stack button**, “⧉3/4”, at the end of the header’s row of ages, has no room for
+  one. An author there, a dot, an avatar, and a short login, is 58 px wide, 64 px with
+  its gap. Measured in Chrome on 2026-11-25, it took 64 px of the 89 px a 360 px pane’s
+  row left its ages, leaving 25, and all of a merged pull request’s; at 560 px it cut a
+  closed pull request’s ages from 284 px to 232. Its pull request is the page’s own,
+  whose header names its author already.
+- **Plain text** cannot draw an identity: a tooltip, an accessible name, a message such
+  as “#455 is not in this list.”, or a sentence that links “Pull request #12”. A row’s
+  accessible name says its author in words where the row shows one (`rowSaid` in
+  `pulls-panel.js`).
+
+A stack’s own number, in “Stack #286”, names the stack, not a pull request, and has no
+author. `tests/dom/github-pulls-row-lines-chrome.mjs` holds a Pulls row’s author,
+`tests/dom/github-pulls-stacks-chrome.mjs` a stack menu member’s, its third, and its
+baseline, and `tests/dom/github-guided-review-mount-behavior.js` and
+`tests/dom/github-guided-review-kinds-chrome.mjs` a guide row’s.
 
 ### Titles
 
@@ -3662,11 +3722,11 @@ holds the one helper and the one rule in source.
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | The item, `.github-pulls-entry`, around its link, the run and the last line: the link’s `min-height: --ui-row-height`; one `--hover-bg` under it all, the -2px focus ring round it, and `--highlight-bg` when current, with the 2px `--highlight-bar` down the link’s edge, as on a Files row (`.tree-item`) | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, on the row’s inset, in the run’s start padding, centered on its first line, so every line of the run starts in the text column past it | [One Glyph Size](#one-glyph-size) |
-| Lines and chevron | The row’s last line, `.github-pulls-change` in `.github-pulls-tail`, alone in the text column and one line tall whatever it holds: the [brief change line](#brief-change-line) of the line totals alone, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read, then the registry’s chevron, a space’s width on; with no lines, the chevron alone; no ground or stop of its own, and hidden from assistive technology, its words describing the link: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The toggle, the summary the chevron expands, so a click on it toggles the changed files, and a click elsewhere on the item opens it ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)); a diff summary’s toggle ends with its chevron ([Diff Summary](#diff-summary)) |
+| Lines and chevron | The row’s last line, `.github-pulls-change` in `.github-pulls-tail`, from the text column, before the age, and one line tall whatever it holds: the [brief change line](#brief-change-line) of the line totals alone, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read, then the registry’s chevron, a space’s width on; with no lines, the chevron alone; no ground or stop of its own, and hidden from assistive technology, its words describing the link: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The toggle, the summary the chevron expands, so a click on it toggles the changed files, and a click elsewhere on the item opens it ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)); a diff summary’s toggle ends with its chevron ([Diff Summary](#diff-summary)) |
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the run’s first part, after the state icon, wrapping in the text column and never cut short (`.github-pulls-heading`) | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
-| Updated time | `metabrowser.formatAge`, ending the run after the author and a muted dot, in the room the author’s name leaves it, `--github-pulls-age-room`; the page gives the exact time | [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
+| Updated time | `metabrowser.formatAge`, muted, at the row’s end on its last line, in a 5ch column of the row’s type after the lines and the chevron (`.github-pulls-age` in `.github-pulls-tail`); the page gives the exact time | [Ages End the Row](#ages-end-the-row); [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`), in the run after the title and the place, after a muted dot, never breaking | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
-| Username | `--nav-font-size`; `.actor-name`, in the run after the number and a muted dot, never parting from the age after it. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` too | Secondary metadata reads at the size of its line ([Type Scale](#type-scale)); usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes before the age |
+| Username | `--nav-font-size`; `.actor-name`, in the run after the number and a muted dot, ending it, never breaking. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` too | Secondary metadata reads at the size of its line ([Type Scale](#type-scale)); usernames remain bold in normal text ink, and a row’s username ellipsizes only where it is wider than a line ([Authors Follow Pull Requests](#authors-follow-pull-requests)) |
 | Stack place | `.github-pulls-place`, after the title and before the number, in the run’s size: a muted dot, `.github-pull-stack-dot`, in `--muted` at `--micro-font-size`, then the position bold in text ink, as a stack menu’s member line has them, “title · 14/15 · #N”, with what it shows set in [Stacks](#stacks); a row in no stack has neither | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no count of its pull requests ([Heading Tallies](#heading-tallies)); its pull requests one icon slot and gap in, each state icon under the Layers icon and each title under the label | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
@@ -3679,17 +3739,18 @@ holds the one helper and the one rule in source.
 A pull request is a run and a last line, one item, and two targets, because a pane is
 narrower than its parts.
 Its run is one flow: the state icon, then the title, a stack member’s place, the number,
-the author, and the age, a dot before each part after the title, every line of it in the
-text column, past the icon, and never cut short, so it always ends with the age.
+and the author, a dot before each part after the title, every line of it in the text
+column, past the icon, and never cut short, so it always ends with the author.
 The run’s start padding is the text column, and the icon is out of its flow, so no
 line’s start rests on `text-indent`, which WebKit drops on a `-webkit-box`: in the app’s
 web view a place or a title that a first line’s indent made room for was drawn over the
 state icon, and the run is no `-webkit-box`. The last line is the brief change line with
-the chevron after it, alone in the text column, at one size and centered on the line
-([Rows and Disclosures](#rows-and-disclosures)). A plain click on the lines or the
-chevron opens and closes the files and opens no page, a modified or middle click on them
-toggles nothing and opens no tab, and a click anywhere else on the item opens the pull
-request. The keys see the item as one row of the list.
+the chevron after it, from the text column, and the age at the row’s end, at one size
+and centered on the line ([Rows and Disclosures](#rows-and-disclosures)). A plain click
+on the lines or the chevron opens and closes the files and opens no page, a modified or
+middle click on them toggles nothing and opens no tab, and a click anywhere else on the
+item opens the pull request.
+The keys see the item as one row of the list.
 The title is the link’s first text, so the row’s accessible name gives the state, from
 the state icon’s label, the title, and the place, before the number, the author, and the
 age in words. It is one link, so a new tab and a copied address are the browser’s own,
@@ -3805,14 +3866,16 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
   the link’s blue.
 - **Member row.** A stack’s member reads in one order wherever it appears: its title,
   its place, its number, and its author, “Fix the reader · 14/15 · #455 · jlevy”.
-  A Pulls row’s run has all four and then the age ([The Pulls Tab](#the-pulls-tab)); the
-  stack menu’s member row has all four on one line; and the stack button, on a page
-  whose header already names the pull request’s title, number, and author, shows the
-  place alone, “⧉14/15”. Every member in the menu has one layout, one line tall, so the
-  members line up and every row of the menu is as tall as the others: the state icon in
-  the tree’s icon slot, a tree row’s gap, then the title, and at the line’s end,
-  together, the position, the dot, the pull request’s number, and another dot and its
-  author, “14/15 · #455 · jlevy”, the menu with them right-aligned.
+  A Pulls row’s run has all four, its age at the row’s end on the line below
+  ([The Pulls Tab](#the-pulls-tab)); the stack menu’s member row has all four on one
+  line; and the stack button shows the place alone, “⧉14/15”, with no author, since the
+  row it ends has no room for one
+  ([Authors Follow Pull Requests](#authors-follow-pull-requests)). Every member in the
+  menu has one layout, one line tall, so the members line up and every row of the menu
+  is as tall as the others: the state icon in the tree’s icon slot, a tree row’s gap,
+  then the title, and at the line’s end, together, the position, the dot, the pull
+  request’s number, and another dot and its author, “14/15 · #455 · jlevy”, the menu
+  with them right-aligned.
   The number follows the place, “#455” as a Pulls row shows it, in the text’s ink at the
   number’s weight ([Pull Request Numbers](#pull-request-numbers)), so a reader tells two
   members of one title apart, and the author ends the line, as a Pulls row draws it, the
@@ -3826,8 +3889,10 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
   member the state the Pulls list last read for it (`stackMemberState` in
   `pull-page.js`); a member the list has not reached keeps the icon’s slot empty.
   The author is the page’s own for its pull request, and for each other member the one
-  the Pulls list last read for it (`stackMemberAuthor`), so a member the list has not
-  reached has no author and no dot before one.
+  the stacks route reads with its title from the repository’s cached list of pull
+  requests (`authors` and `avatars` beside `titles`, `pull_stacks_route.py`;
+  `stackMemberAuthor`), so a member the list does not hold has no author and no dot
+  before one.
 - **Whole stack.** The menu’s first row opens the stack’s page.
   It is in a member row’s grid: the stack’s Layers glyph, muted, in the state icon’s
   slot, the glyph the stack button and a stack group’s row show, and “Whole stack” at a
@@ -3915,6 +3980,9 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   ([Spacing](#the-stack-pages-spacing)) and ending as the menu’s does, “2/4 · #455 ·
   jlevy”, the author the shell’s actor identity with a 16 px avatar; no row is the page,
   so none takes the current-row mark.
+  A member’s author is the one the stack’s answer gives it (`author` and `avatar` on
+  each member of `GET stack`), its record’s or else its cached list row’s, and before
+  the answer the one the stack menu draws, the stacks route’s `authors` and `avatars`.
 - **Branches:** kept. The merge the stack makes, the top member’s head → the stack’s
   base, in the shell’s merge refs, held a line tall until the stack’s answer names the
   head.
@@ -3960,12 +4028,14 @@ answer lands moving nothing under the title.
 `tests/dom/github-stack-page-session.js` runs the header’s rows, from first paint to
 settled, and the drawings the page asks for against the stack route’s recorded answers;
 `tests/dom/github-stack-guide-mount-session.js` mounts the page and holds that the rows
-of its first paint are its settled rows, that the Diff summary is closed, and that no
-drawing asks for layer marks.
-`tests/test_github_stack_page_chrome.py` measures in headless Chrome that the header’s
-rows are a pull request’s, in its order; that a member row is the stack menu’s; that
-View on GitHub opens the whole stack; and that nothing on the page moves from its first
-paint, opening the page or its tabs.
+of its first paint are its settled rows and that the Diff summary is closed.
+`tests/test_github_stack_page_chrome.py` measures in headless Chrome that nothing on the
+page moves from its first paint, opening the page or its tabs; that every member names
+its author; and that View on GitHub opens the whole stack.
+A member row is not measured there: the page draws it with the stack menu’s builder,
+`stackMemberRow` in `stack-member-row.js`, so it is the menu’s row by construction, and
+its ages are a pull request’s page’s, `pullAge` in `pull-page.js`, in their freshness
+ink.
 
 #### The Stack Page’s Spacing
 
@@ -4099,40 +4169,40 @@ mounts the panel and the page’s stack menu to hold the tree’s roles, places,
 each open stack ending in its Whole stack row, which a key or a press opens and an
 address of the stack’s page marks.
 `tests/test_github_stack_page_chrome.py` holds in headless Chrome that the row is the
-current row and in view on the stack’s page, that a press on it and `J` onto it from the
-last member open the page, and that its glyph and words start where the members’ icons
-and titles do. `tests/dom/github-pulls-stack-lines-session.js` runs what each heading
-shows of its change line, and when it is read, against the production code on the
-route’s recorded answers, and mounts the panel to print a heading waiting, with its
-line, with none, and with “(estimated)”. `tests/test_github_pulls_stack_lines_chrome.py`
-measures in headless Chrome, at every width down to the pane’s minimum in both themes,
-that nothing in a stack’s row moves when its line arrives, that the row stays one line
-with its label whole and the line whole or out of view, never cut short, and that the
-line’s inks and weights are the component’s. `tests/test_github_pulls_stacks_chrome.py`
-measures the same design in headless Chrome against a running server with two native
-stacks: the shared label tokens, a stack’s row that shows its label alone with its size
-in its accessible name, where rows start, hover and focus, the toolbar’s fit, real keys
-and presses, a row’s toggle among them, the scroll, a pull request’s row with the state
-icon centered on its run’s first line, the number, the author, and the age in its run,
-and the toggle on its last line, a member’s place and dot after its title and its
-missing icon, and the menu’s order and ink, each member’s author after its number, and
-the Whole stack row’s glyph and words where the members’ icons and titles start, in the
-menu and in the list.
-`tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width down to
-the pane’s minimum and holds that a place sits after the title with its dot before it,
-and the run ends inside the row with nothing scrolling sideways; that one stack’s place
-shows whole; that every line of the run starts in the text column, the icon centered on
-its first line, and the run ends with the age, the last line under it with the chevron
-in the text column; and that the author follows the number, its name ending before the
-age.
+current row and in view on the stack’s page, and that a press on it and `J` onto it from
+the last member open the page.
+`tests/dom/github-pulls-stack-lines-session.js` runs what each heading shows of its
+change line, and when it is read, against the production code on the route’s recorded
+answers, and mounts the panel to print a heading waiting, with its line, with none, and
+with “(estimated)”. `tests/test_github_pulls_stack_lines_chrome.py` measures in headless
+Chrome, at every width down to the pane’s minimum in both themes, that nothing in a
+stack’s row moves when its line arrives, that the row stays one line with its label
+whole and the line whole or out of view, never cut short, and that the line’s inks and
+weights are the component’s. `tests/test_github_pulls_stacks_chrome.py` measures the
+same design in headless Chrome against a running server with two native stacks: the
+shared label tokens, a stack’s row that shows its label alone with its size in its
+accessible name, where rows start, hover and focus, the toolbar’s fit, real keys and
+presses, a row’s toggle among them, the scroll, a pull request’s row with the state icon
+centered on its run’s first line, the number and the author in its run, and the toggle
+and the age at the row’s end on its last line, a member’s place and dot after its title
+and its missing icon, and the menu’s order and ink, each member’s author after its
+number, on its baseline, and cut short at a third of the line for GitHub’s longest
+login, and the Whole stack row’s glyph and words where the members’ icons and titles
+start. `tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width
+down to the pane’s minimum and holds that a place sits after the title with its dot
+before it, and the run ends inside the row with nothing scrolling sideways; that one
+stack’s place shows whole; that every line of the run starts in the text column, the
+icon centered on its first line, and the run ends with the author, the last line under
+it with the chevron in the text column and the age at the row’s end; and that the author
+follows the number and ends the run inside the row.
 `tests/dom/github-pulls-row-lines-session.js` runs what each row’s run and last line
 show, when it is read, and what a press and each key do, against the production code on
 the summary route’s recorded answers, and `tests/test_github_pulls_row_lines_chrome.py`
 measures in headless Chrome, at every width down to the pane’s minimum in both themes,
 that nothing in a row moves when its lines arrive, that every line of its run starts in
-the text column and the run ends with the author and the age, the lines and the chevron
-after them alone on the last line, that its inks and weights are the component’s, and
-that a press, Right, and Left keep the row in place.
+the text column and the run ends with the author, the lines and the chevron after them
+on the last line and the age at its end, that its inks and weights are the component’s,
+and that a press, Right, and Left keep the row in place.
 `tests/test_github_stack_design.py` holds the source to one label class and one place
 for every stack word.
 

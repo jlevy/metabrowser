@@ -301,7 +301,14 @@ def test_a_fetch_that_ends_while_the_records_are_read_is_answered_as_fetching(
         running.clear()
         return tuple(
             pull_stack._Member(  # pyright: ignore[reportPrivateUsage]
-                number=number, record=None, revision=None, title=None, state="open", moved=False
+                number=number,
+                record=None,
+                revision=None,
+                title=None,
+                state="open",
+                author=None,
+                avatar=None,
+                moved=False,
             )
             for number in found.pulls
         )
@@ -316,4 +323,47 @@ def test_a_fetch_that_ends_while_the_records_are_read_is_answered_as_fetching(
     assert [(member["number"], member["fetching"]) for member in envelope["members"]] == [
         (1, True),
         (2, False),
+    ]
+
+
+def test_a_member_with_no_record_takes_its_author_from_the_cached_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A member's author ends its row on the stack's page as on the stack menu: its record's,
+    # and with no record its cached list row's, as its title is and as the stacks route
+    # reads it; none where neither holds the member.
+    from metabrowser.builtin_plugins.github import pull_files_route, pull_list_route, pull_route
+    from metabrowser.builtin_plugins.github.pull_list import PullListRow
+
+    row = PullListRow(
+        number=1,
+        title="Count to two",
+        state="open",
+        draft=False,
+        merged_at=None,
+        author="octo",
+        author_avatar_url="https://avatars.githubusercontent.com/u/1?v=4",
+        created_at="2026-09-16T12:00:00Z",
+        updated_at="2026-09-17T12:00:00Z",
+        closed_at=None,
+        base_ref="topic",
+        head_ref="work",
+        head_repository="octo/demo",
+        labels=(),
+    )
+    monkeypatch.setattr(
+        pull_route, "cached_pull_record", lambda _home, _slug, _n: (None, b"", None)
+    )
+    monkeypatch.setattr(
+        pull_list_route, "cached_list_row", lambda _home, _slug, n: row if n == 1 else None
+    )
+    monkeypatch.setattr(pull_files_route, "known_head", lambda _home, _slug, _n: (None, None))
+    place = cast(Any, SimpleNamespace(home=Path("home"), slug="demo"))
+    members = pull_stack._read_members(  # pyright: ignore[reportPrivateUsage]
+        place, place, NativeStack(number=7, base_ref="main", open=True, pulls=(1, 2)), None
+    )
+    assert [(member.title, member.author, member.avatar) for member in members] == [
+        # The row's avatar as the catalog keeps it, sized for a row.
+        ("Count to two", "octo", "https://avatars.githubusercontent.com/u/1?s=40"),
+        (None, None, None),
     ]

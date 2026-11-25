@@ -18,7 +18,7 @@
 // comment's file, a pull request's Checks, a tooltip's detail, and Help's descriptions each
 // read a step smaller than their text. A file's and a folder's header and a diff file bar are
 // the main view's reading text, the navigation column's foot is its list text, and Quick
-// Search's status reads at its results' size. A Pulls row's age room holds the longest
+// Search's status reads at its results' size. A Pulls row's age column holds the longest
 // compact age whole. In the narrowest pane, a commit row's author gives way and its age stays
 // whole ("History Rows": never the age), where the column's clip cut it.
 //
@@ -145,31 +145,27 @@ try {
   await accompanies(pulls, "#tab-pulls .github-pulls-author", "#tab-pulls .github-pulls-number");
   await accompanies(pulls, "#tab-pulls .github-pulls-age", "#tab-pulls .github-pulls-title");
   await accompanies(pulls, ".github-pulls-connection-text", "#tab-pulls .github-pulls-title");
-  // The age ends the run, after the author and a dot, in the room the author's name leaves it,
-  // --github-pulls-age-room (mb-lqkb, mb-rb3n), and the longest compact age is four
-  // characters, "12mo": written into a row's age, its dot and it fit the room, on one line
-  // inside the run.
+  // The age's column is 5ch of the row's type, at the end of its last line (mb-lqkb, mb-rb3n),
+  // and the longest compact age is four characters, "12mo": written into a row's age, it is
+  // whole inside the column.
   const longestAge = await evaluate(`(async () => {
     const age = [...document.querySelectorAll("#tab-pulls .github-pulls-age")].find((e) => e.getClientRects().length);
     const saved = age.textContent;
     age.textContent = "12mo";
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const run = age.closest(".github-pulls-heading");
-    const end = run.getBoundingClientRect().right - Number.parseFloat(getComputedStyle(run).paddingRight);
-    const when = age.closest(".github-pulls-when");
+    const row = age.closest(".github-pulls-tail").getBoundingClientRect();
+    const box = age.getBoundingClientRect();
     const range = document.createRange();
     range.selectNodeContents(age);
     const text = range.getBoundingClientRect();
-    const room =
-      Number.parseFloat(getComputedStyle(age.closest(".github-pulls-row")).getPropertyValue("--github-pulls-age-room")) *
-      Number.parseFloat(getComputedStyle(when).fontSize);
-    const read = { text: Math.round(text.width * 100) / 100, when: Math.round(when.getBoundingClientRect().width * 100) / 100, room: Math.round(room * 100) / 100, lines: range.getClientRects().length, inside: text.right <= end + 0.5 };
+    const column = Number.parseFloat(getComputedStyle(age.closest(".github-pulls-tail")).gridTemplateColumns.split(" ").pop());
+    const read = { text: Math.round(text.width * 100) / 100, box: Math.round(box.width * 100) / 100, column: Math.round(column * 100) / 100, cut: age.scrollWidth > age.clientWidth, inside: text.right <= row.right + 0.5 };
     age.textContent = saved;
     return read;
   })()`);
   check(
-    `${pulls}: the longest age, "12mo", is whole in its room`,
-    longestAge.lines === 1 && longestAge.inside && longestAge.when <= longestAge.room,
+    `${pulls}: the longest age, "12mo", is whole in its column`,
+    !longestAge.cut && longestAge.inside && longestAge.text <= longestAge.column,
     JSON.stringify(longestAge),
   );
   process.stderr.write(`measured 12mo ${JSON.stringify(longestAge)}\n`);
