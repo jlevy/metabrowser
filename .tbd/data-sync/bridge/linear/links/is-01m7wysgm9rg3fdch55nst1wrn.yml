@@ -5,8 +5,8 @@ base:
     - linear
     - Improvement
   priority: 2
-  slot: in_progress
-  status: in_progress
+  slot: todo
+  status: open
   title: "CI speed: finish the Fast CI plan and verify its phases"
 bead_id: is-01m7wysgm9rg3fdch55nst1wrn
 external_id: 1ece55fe-0ac1-49d4-bf60-5ea298d7306c
@@ -14,7 +14,7 @@ external_key: OS-624
 external_url: https://linear.app/finterm-ai/issue/OS-624/ci-speed-finish-the-fast-ci-plan-and-verify-its-phases
 refinement_slot: in_progress
 refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
-remote_updated_at: 2026-11-22T23:31:23.948Z
+remote_updated_at: 2026-11-25T02:20:08.958Z
 state: linked
-synced_at: 2026-11-22T23:47:09.905Z
+synced_at: 2026-11-25T02:20:09.143Z
 type: lk

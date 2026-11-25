@@ -5,8 +5,8 @@ base:
     - linear
     - Improvement
   priority: 1
-  slot: in_progress
-  status: in_progress
+  slot: todo
+  status: open
   title: "Source and checkout kinds: one mode and one icon for a cloud mirror, a Git
     checkout, and a plain folder"
 bead_id: is-01m7wyrvxk2xx44pqtqmy5cq5g
@@ -15,7 +15,7 @@ external_key: OS-616
 external_url: https://linear.app/finterm-ai/issue/OS-616/source-and-checkout-kinds-one-mode-and-one-icon-for-a-cloud-mirror-a
 refinement_slot: in_progress
 refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
-remote_updated_at: 2026-11-21T19:57:11.572Z
+remote_updated_at: 2026-11-25T02:20:04.762Z
 state: linked
-synced_at: 2026-11-21T19:57:11.756Z
+synced_at: 2026-11-25T02:20:04.950Z
 type: lk

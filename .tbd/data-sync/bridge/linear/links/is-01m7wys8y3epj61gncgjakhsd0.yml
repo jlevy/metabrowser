@@ -5,8 +5,8 @@ base:
     - linear
     - Feature
   priority: 2
-  slot: todo
-  status: open
+  slot: in_progress
+  status: in_progress
   title: Pulls tab, pull request page, and commit page
 bead_id: is-01m7wys8y3epj61gncgjakhsd0
 external_id: 4ac6525a-dabe-49c8-aad1-d542e247da5a
@@ -14,7 +14,7 @@ external_key: OS-619
 external_url: https://linear.app/finterm-ai/issue/OS-619/pulls-tab-pull-request-page-and-commit-page
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-25T01:48:55.534Z
+remote_updated_at: 2026-11-25T02:20:05.795Z
 state: linked
-synced_at: 2026-11-25T01:48:55.994Z
+synced_at: 2026-11-25T02:20:06.137Z
 type: lk

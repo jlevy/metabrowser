@@ -6,8 +6,8 @@ base:
     - linear
     - Feature
   priority: 2
-  slot: todo
-  status: open
+  slot: in_progress
+  status: in_progress
   title: "General diff rendering: source-agnostic comparison model, renderer, and adapters"
 bead_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 external_id: 0390e452-459b-479d-8bc2-d469e35c1dd5
@@ -15,7 +15,7 @@ external_key: OS-281
 external_url: https://linear.app/finterm-ai/issue/OS-281/general-diff-rendering-source-agnostic-comparison-model-renderer-and
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-24T00:45:42.560Z
+remote_updated_at: 2026-11-25T02:19:56.117Z
 state: linked
-synced_at: 2026-11-24T00:45:42.734Z
+synced_at: 2026-11-25T02:19:56.343Z
 type: lk
