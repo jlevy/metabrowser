@@ -620,16 +620,19 @@ async function main() {
   // The header from the page's first paint, when the Pulls tab knows the stack and its lists
   // titled and stated its members, through each answer, and for a stack the Pulls tab does
   // not know. Its rows stay those of the first paint; only the status line comes and goes.
+  // The stacks route read 8's author with its title, so 8's member row ends in it, and holds
+  // none for 10, whose row ends in its number.
   const known = {
     number: 70,
     base_ref: current.base_ref,
     open: true,
     pulls: current.members.map((member) => member.number),
     titles: current.members.map((member) => member.title),
+    authors: current.members.map((member) => (member.number === 8 ? "octo" : null)),
+    avatars: current.members.map(() => null),
   };
-  // The Pulls tab's lists read 8, merged, and its author, whose member row ends in it.
-  const listed = (number) =>
-    number === 8 ? { state: "merged", title: null, author: "octo", avatar: null } : null;
+  // The Pulls tab's lists read 8, merged.
+  const listed = (number) => (number === 8 ? { state: "merged", title: null } : null);
   const unlisted = () => null;
   const headerAt = (envelope, from, drawn, failedNow = []) => {
     const model = page.stackHeader(
@@ -668,7 +671,7 @@ async function main() {
   };
 
   // What the page passes the diff view: for the header's Diff summary, the comparison read
-  // and where a file opens, so it starts collapsed with no layer marks; for Docs and Changes,
+  // and where a file opens, so it starts collapsed, as every Diff summary does; for Docs and Changes,
   // a pull request's drawings, with no summary of their own and the first screen's hold.
   const signal = new AbortController().signal;
   const opens = () => {};

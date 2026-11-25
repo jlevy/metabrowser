@@ -107,12 +107,16 @@ def test_golden_optional_stacks(
     fetched = run(body={})
     assert fetched["complete"] and [s["number"] for s in fetched["stacks"]] == [70, 90]
     assert run()["stacks"] == fetched["stacks"]
-    blocks.append("## Cached catalog titles enrich membership without a provider request.\n")
+    blocks.append(
+        "## Cached catalog titles and authors enrich membership without a provider request.\n"
+    )
     repository = ListedRepository(home, FixtureSource("https", CANONICAL).slug, "octo", "demo")
     seed_catalog(repository, [generated_item(7), generated_item(8)])
     fetched = run()
     assert fetched["stacks"][0]["titles"] == ["Work item 7", "Work item 8"]
     assert fetched["stacks"][1]["titles"] == [None]
+    assert fetched["stacks"][0]["authors"] == ["contributor", "contributor"]
+    assert fetched["stacks"][1]["authors"] == [None]
     assert run(body={})["refresh"] == "not_due"
     blocks.append("## A due refresh asks conditionally; a 304 without Link retains page two.\n")
     now += timedelta(seconds=301)

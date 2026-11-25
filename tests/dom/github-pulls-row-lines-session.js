@@ -1,8 +1,8 @@
-// Browserless session: each Pulls row's run and last line (mb-d0a3, mb-lqkb, mb-pw8t): the
-// title, the place, the number, and the lines the pull request changes, its brief change line
-// of its line totals alone, with the chevron for its changed files after them (mb-h0ml,
-// mb-f0pz), then the author and the age, and the presses and keys that reach it (mb-1l4i),
-// through the production code.
+// Browserless session: each Pulls row's run and last line (mb-d0a3, mb-lqkb, mb-pw8t,
+// mb-rb3n): the title, the place, the number, and the author, then the lines the pull request
+// changes, its brief change line of its line totals alone, with the chevron for its changed
+// files after them (mb-h0ml, mb-f0pz), and the age at the row's end, and the presses and keys
+// that reach it (mb-1l4i), through the production code.
 //
 // builtin_plugins/github/row-lines.js decides what lines a row's toggle shows: the shell's
 // pending placeholder while the line is read or the row's list is being listed, the line once
@@ -541,8 +541,8 @@ async function rowStory(lines, totals = null) {
       return undefined;
     };
     // The item is one zone (`.github-pulls-entry`, mb-1z7j), its link, the row of the tree:
-    // its run, the title, the place, the number, the author, and the age, and its last line,
-    // its toggle, the lines and the chevron after them (mb-rb3n).
+    // its run, the title, the place, the number, and the author, and its last line, its
+    // toggle, the lines and the chevron after them, and the age at the row's end (mb-rb3n).
     const zoneOf = (number) => childByClass(item(number), "github-pulls-entry");
     const rowOf = (number) => zoneOf(number).childNodes[0];
     const headingOf = (number) => childByClass(rowOf(number), "github-pulls-heading");
@@ -578,9 +578,9 @@ async function rowStory(lines, totals = null) {
         : node.getAttribute("hidden") !== null
           ? ""
           : node.childNodes.map(shownOf).join("");
-    /** A part of a row's run: its class, and the parts of the author and its age. */
+    /** A part of a row's run: its class, and the parts of the author. */
     const runPart = (node) =>
-      node.className === "github-pulls-by" || node.className === "github-pulls-when"
+      node.className === "github-pulls-by"
         ? { [node.className]: node.childNodes.map(runPart) }
         : (node.className ?? node.data);
     /** Each row as drawn: its run's parts, its last line's parts, the text its run shows, the
@@ -596,6 +596,7 @@ async function rowStory(lines, totals = null) {
             {
               run: heading.childNodes.map(runPart),
               last: tailOf(number).childNodes[0].childNodes.map((node) => node.className),
+              end: tailOf(number).childNodes.at(-1).className,
               shown: shownOf(heading).replaceAll("\u00a0", " "),
               spoken: textOf(childByClass(rowOf(number), "sr-only")),
               text: textOf(lineOf(number)),
@@ -719,11 +720,11 @@ async function rowStory(lines, totals = null) {
       shape([...sdk.changeLineNodes(said106)]),
       "the row draws the component, after the dot before it",
     );
-    // The run holds the title, the place, the number, the author, and the age, a dot before
-    // each part after the title (mb-rb3n); the last line holds the toggle alone, the lines and
-    // the chevron after them, the summary it expands (mb-f0pz), one line tall whatever it
-    // holds, so a row with no lines, whose chevron is alone there, moves nothing when its
-    // lines are read after all.
+    // The run holds the title, the place, the number, and the author, a dot before each part
+    // after the title (mb-rb3n); the last line holds the toggle, the lines and the chevron
+    // after them, the summary it expands (mb-f0pz), and the age at the row's end, one line
+    // tall whatever it holds, so a row with no lines, whose chevron is alone there, moves
+    // nothing when its lines are read after all.
     for (const number of SHOWN) {
       const run = arrived[`#${number}`].run;
       assert.deepEqual(
@@ -736,20 +737,17 @@ async function rowStory(lines, totals = null) {
         ["github-pulls-change-line", "github-pulls-toggle", "github-pulls-change-words"],
         `#${number}'s last line is the toggle, the lines then the chevron`,
       );
+      assert.equal(
+        arrived[`#${number}`].end,
+        "github-pulls-age age-min",
+        `#${number}'s age ends it`,
+      );
     }
     for (const number of SHOWN.map((shown) => `#${shown}`)) {
       assert.deepEqual(
         arrived[number].run.slice(5),
-        [
-          "github-pulls-sep",
-          {
-            "github-pulls-by": [
-              "actor-identity github-pull-identity",
-              { "github-pulls-when": ["github-pulls-sep", "github-pulls-age age-min"] },
-            ],
-          },
-        ],
-        `${number}'s run ends with the dot, the author, and the dot and the age`,
+        ["github-pulls-sep", { "github-pulls-by": ["actor-identity github-pull-identity"] }],
+        `${number}'s run ends with the dot and the author`,
       );
     }
     // The link is the run, the last line, and the number, the author, and the age said for

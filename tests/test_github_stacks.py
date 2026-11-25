@@ -136,10 +136,22 @@ def test_titles_follow_the_matching_catalog_without_refetching_native_membership
     asyncio.run(refresh_stacks(repository))
     before = stack_envelope(StackView(repository, None, False))
     assert before["stacks"][0]["titles"] == [None, None]
+    assert before["stacks"][0]["authors"] == before["stacks"][0]["avatars"] == [None, None]
     stored = read_stacks(repository)
-    seed_catalog(repository, [generated_item(7) | {"title": "A useful title"}])
+    avatar = "https://avatars.githubusercontent.com/u/7?v=4"
+    seed_catalog(
+        repository,
+        [
+            generated_item(7)
+            | {"title": "A useful title", "user": {"login": "maintainer", "avatar_url": avatar}}
+        ],
+    )
     first = stack_envelope(StackView(repository, None, False))
     assert first["stacks"][0]["titles"] == ["A useful title", None]
+    # The member's author and avatar come from the same cached row, for the stack menu.
+    assert first["stacks"][0]["authors"] == ["maintainer", None]
+    # The catalog keeps the avatar at the size a list draws it.
+    assert first["stacks"][0]["avatars"] == ["https://avatars.githubusercontent.com/u/7?s=40", None]
     assert envelope_etag(first) != envelope_etag(before)
     seed_catalog(
         repository,
@@ -150,6 +162,7 @@ def test_titles_follow_the_matching_catalog_without_refetching_native_membership
     assert len(calls) == 4, "projecting cached titles never invokes the provider"
     data = (repository.home / f"sources/{repository.slug}/pulls/stacks.json").read_text()
     assert '"titles"' not in data, "native membership does not duplicate catalog metadata"
+    assert '"authors"' not in data and '"avatars"' not in data
 
 
 @pytest.mark.parametrize("changed", ["reader", "source"])

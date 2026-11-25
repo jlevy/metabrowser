@@ -67,6 +67,7 @@ import {
   manifestFiles,
   noFiles,
   SLOW_POLL_MS,
+  stackMemberAuthor,
   textRefusalNote,
 } from "./pull-page.js";
 import { stackLabel, stackMenuOrder, stackPosition, watchStacks } from "./pull-stacks.js";
@@ -828,7 +829,7 @@ export function isStackEnvelope(value) {
 /**
  * @typedef {import("./pull-stacks.js").NativeStack} NativeStack
  * @typedef {import("./stack-member-row.js").StackMemberLine} StackMemberLine
- * @typedef {{state: import("./pull-state.js").PullState, title?: string | null, author?: string | null, avatar?: string | null} | null} ListedPull
+ * @typedef {{state: import("./pull-state.js").PullState, title?: string | null} | null} ListedPull
  */
 
 /**
@@ -853,8 +854,10 @@ export function knownStack(index, number) {
  * The members as the header lists them, top first, each a member row's line
  * (stack-member-row.js): the stack's answer's once it names them, and before that the
  * stack the Pulls tab knows (*known*), titled and stated as its lists last read them
- * (*listed*), so the list the answer lands on is the list the first paint drew. Null while
- * neither names a member.
+ * (*listed*), so the list the answer lands on is the list the first paint drew. Each
+ * member's author is the one the stack menu draws, the stacks route's
+ * (`stackMemberAuthor`), read from the repository's cached list with the member's title,
+ * and none where that list does not hold the member. Null while neither names a member.
  *
  * @param {StackEnvelope | null} envelope
  * @param {NativeStack | null} known
@@ -867,8 +870,8 @@ export function memberLines(envelope, known, listed) {
   const knownTitle = (number) => known?.titles?.[known.pulls.indexOf(number)] ?? null;
   /** @param {number} number */
   const author = (number) => {
-    const row = listed(number);
-    return row?.author ? { login: row.author, avatar: row.avatar ?? null } : null;
+    const at = known === null ? -1 : known.pulls.indexOf(number);
+    return known === null || at < 0 ? null : stackMemberAuthor(known, at, null);
   };
   if (members.length > 0) {
     // A member whose record the server has not read yet keeps the title and the state the
@@ -1658,6 +1661,9 @@ export function mountStackPage(container, ctx, mb) {
           );
         },
         shortCommit: (sha) => mb.shortCommit(sha),
+        // A cited pull request's author, as a stack menu's member draws it.
+        identity: (login, avatar) =>
+          authorLabel(mb, login, avatar, "github-pull-guide-row-author", { placeholder: false }),
         loadStyles: (assets) =>
           Promise.all([
             mb.loadKpressAssets(

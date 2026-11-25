@@ -184,6 +184,10 @@ A guide whose merge base alone moved is out of date too: a step that cites a fil
 changed on the base side is marked, and when none is, a quiet line says so.
 A refused step keeps the step list, whose buttons survive the click that chose it, and
 says why in the step’s place.
+A row outside any group starts on the edge a group’s heading starts on: the overview’s,
+which has no number, and each step’s, numbered in a column as wide as the widest of
+their numbers, two digits for a guide of twelve steps in no group, and one for a guide
+whose only such step is its first, however far its group’s steps run.
 A guide in groups lists each group as a heading, with no number and nothing to press,
 above its steps, which keep their numbers through the groups; a step outside a group
 sits between them. A step’s card names its group before its place, a group’s note shows
@@ -219,6 +223,7 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "its tab opens: guide mounted; asked step 1",
   "the guide's overview: rendered",
   "the guide opens on: Overview; > Overview | 1 Step 1 | 2 Step 2; step shown null",
+  "its rows outside a group: Overview, no number | 1 | 2; column 1",
   "step 1: Step 1; rows context one, del <i>two</i>, add three",
   "a path outside the comparison says: This path is not in the comparison.",
   "Open full diff: files src/app.txt",
@@ -234,7 +239,7 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "a guide behind a newer head on GitHub: none; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
   "a guide whose head this copy lacks: warning: This guide was written for an earlier version of this pull request, so some steps may not match it. Its author can update the guide.; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
   "and its step: Step 1; src/app.txt: This file may have changed since the guide was written. | gone.txt: This path is not in the comparison. | src/app.txt: These lines may have changed since the guide was written.",
-  "a step past its pull request: Guided Review | Step 1 of 3; row to /pull/8: #8 · Say <b>more</b> Stack #71 1/3 (tip: Stack #71, position 1 of 3) | row to /pull/2000: #2000 · Pull request #2000 | #9 src/app.txt: no note | #12 docs/plan.md: This pull request has not been loaded here. Open it to load its changes. | row to /commit/cccccccccccccccccccccccccccccccccccccccc: ccccccc Count <i>to</i> two committed now | row: eeeeeee This commit is unavailable. | row: fffffff Fetched with its pull request Not in this checkout.",
+  "a step past its pull request: Guided Review | Step 1 of 3; row to /pull/8: #8 · Say <b>more</b> · maintainer Stack #71 1/3 (tip: Stack #71, position 1 of 3) | row to /pull/2000: #2000 · Pull request #2000 | #9 src/app.txt: no note | #12 docs/plan.md: This pull request has not been loaded here. Open it to load its changes. | row to /commit/cccccccccccccccccccccccccccccccccccccccc: ccccccc Count <i>to</i> two committed now | row: eeeeeee This commit is unavailable. | row: fffffff Fetched with its pull request Not in this checkout.",
   "its pull request row, then its other pull request's Open full diff, open: #8 front page; #9 files src/app.txt",
   "a guide whose cited files did not change: quiet: This guide was written for an earlier version of this pull request, but the files it cites have not changed.",
   "a guide whose merge base alone moved: warning: This guide was written for an earlier version of this pull request, so steps marked changed may not match it. Its author can update the guide.; > Overview | 1 Step 1 changed | 2 Step 2 | 3 Step 3",
@@ -243,7 +248,10 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "chosen again: asked step 1, step 2, step 2",
   "and answered: Step 2 of 3; Step 2; says nothing",
   "back: Step 1 of 3; asked step 1, step 2, step 2",
+  "a guide of twelve steps, its rows outside a group: Overview, no number | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12; column 2",
+  "a step, then a group of ten, its rows outside a group: Overview, no number | 1; column 1",
   "a guide in groups opens on: Overview; > Overview | [Decisions] | 1 Step 1 | 2 Step 2 changed | 3 Step 3 | [Testing] | 4 Step 4 changed",
+  "its rows outside a group: Overview, no number | 3; column 1",
   "its first step: Guided Review | Decisions · Step 1 of 4; under the group's note: Read these first.\nEach says why.",
   "its second: Guided Review | Decisions · Step 2 of 4 · changed",
   "step 3: Guided Review | Step 3 of 4; Overview | [Decisions] | 1 Step 1 | 2 Step 2 changed | > 3 Step 3 | [Testing] | 4 Step 4 changed",

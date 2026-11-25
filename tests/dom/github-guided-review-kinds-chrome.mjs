@@ -102,10 +102,16 @@ try {
   // phone's width. The pane keeps its width in a narrow window, so it is hidden there, as
   // `\` hides it, and the reading column takes the window.
   const rows = await evaluate(ROWS);
+  // Each with its author after its title, where this copy knows the pull request
+  // (docs/design-system.md, "Authors Follow Pull Requests").
   same(
     "the step's pull requests",
     rows.slice(0, 3).map((row) => row.text),
-    ["#8 · Say more in the guide", "#50 · Work item 50", "#2000 · Pull request #2000"],
+    [
+      "#8 · Say more in the guide · maintainer",
+      "#50 · Work item 50 · contributor",
+      "#2000 · Pull request #2000",
+    ],
   );
   check(
     "the commit's row: its short ID, its subject, and when it was committed",
