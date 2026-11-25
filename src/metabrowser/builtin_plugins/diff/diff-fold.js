@@ -1,10 +1,11 @@
 // The diff's fold expander: the blue bar that stands for a run of rows withheld from a
 // file and opens to them (docs/design-system.md, "Fold Expanders"). A code file's long
-// changed run (diff-view.js) and a rendered Markdown file's run of unchanged blocks
-// (diff-markdown.js) are folds of one kind, so both draw this bar and open and close
-// alike: the bar comes first, the group it controls follows it, and the group grows from
-// nothing when it opens. The bar owns its state; what the group holds is its caller's,
-// which fills the group when it opens and empties it when it closes.
+// changed run and the unchanged lines between its hunks (diff-view.js), and a rendered
+// Markdown file's run of unchanged blocks (diff-markdown.js), are folds of one kind, so
+// all draw this bar and open and close alike: the bar comes first, the group it controls
+// follows it, and the group grows from nothing when it opens. The bar owns its state; what
+// the group holds is its caller's, which fills the group when it opens and empties it when
+// it closes.
 
 /**
  * The shell's icon of that name, or nothing outside the shell. The diff view's other
@@ -26,15 +27,20 @@ export function shellIcon(name) {
  * @property {HTMLElement} group What the bar shows and hides.
  * @property {() => boolean} expanded
  * @property {(next: boolean) => void} set Open or close it, as a click does, and say so.
+ * @property {() => void} relabel Say *label* again, for a count that changed in the state
+ *   it is in.
  */
 
 /**
  * A fold's bar and the group it controls, open when *expanded*.
  *
  * *label* names the bar in each state: what the closed bar holds, then the inverse
- * ("40 more changed lines", "Hide 40 lines"). *onToggle* runs after every change of state,
- * a click's or `set`'s, with the new state, and fills or empties the group; a fold drawn
- * open calls it once the caller has the bar, to fill the group (`open` is for that).
+ * ("40 more changed lines", "Hide 40 lines"). *detail*, where a fold has one, follows the
+ * label in the face of the rows it stands among, as a hunk's separator does, its ranges
+ * between `@@` marks.
+ * *onToggle* runs after every change of state, a click's or `set`'s, with the new state,
+ * and fills or empties the group; a fold drawn open calls it once the caller has the bar,
+ * to fill the group (`open` is for that).
  *
  * @param {{
  *   id: string,
@@ -42,10 +48,11 @@ export function shellIcon(name) {
  *   label: (expanded: boolean) => string,
  *   onToggle: (expanded: boolean) => void,
  *   groupClass?: string,
+ *   detail?: string,
  * }} options
  * @returns {FoldExpander}
  */
-export function foldExpander({ id, expanded, label, onToggle, groupClass = "" }) {
+export function foldExpander({ id, expanded, label, onToggle, groupClass = "", detail = "" }) {
   let open = expanded;
   const group = document.createElement("div");
   group.className = `diff-fold-group${groupClass ? ` ${groupClass}` : ""}`;
@@ -63,6 +70,12 @@ export function foldExpander({ id, expanded, label, onToggle, groupClass = "" })
   const text = document.createElement("span");
   text.className = "diff-fold-label";
   control.append(chevron, text);
+  if (detail !== "") {
+    const said = document.createElement("span");
+    said.className = "diff-fold-detail";
+    said.textContent = detail;
+    control.append(said);
+  }
 
   function draw() {
     control.setAttribute("aria-expanded", String(open));
@@ -88,5 +101,5 @@ export function foldExpander({ id, expanded, label, onToggle, groupClass = "" })
     set(!open);
   });
   draw();
-  return { control, group, expanded: () => open, set };
+  return { control, group, expanded: () => open, set, relabel: draw };
 }

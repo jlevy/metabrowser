@@ -8,7 +8,13 @@
 //                      conformance corpus vouches for.
 
 import { validateDocument, validateManifest } from "./diff-model.js";
-import { mountDiffSummary, mountDiffView, mountFilePatch, setChangeLoader } from "./diff-view.js";
+import {
+  mountDiffSummary,
+  mountDiffView,
+  mountFilePatch,
+  setChangeLoader,
+  setGapLoader,
+} from "./diff-view.js";
 
 const mb = window.metabrowser;
 if (!mb) {
@@ -19,6 +25,15 @@ if (!mb) {
 // the deferred-file loader to the same hook the whole comparison came
 // from, narrowed to one path.
 setChangeLoader((revision, path, options) => fetchComparison(revision, options, path));
+// And the unchanged lines between a file's hunks to the same hook's `view=lines`, which a
+// pull request's comparison route answers as the diff plugin's does.
+setGapLoader((revision, path, ask, options) =>
+  fetchComparison(revision, options, path, {
+    view: "lines",
+    start: String(ask.start),
+    count: String(ask.count),
+  }),
+);
 
 // A comparison between two endpoints travels to the deferred loader as one opaque
 // string, the way a revision does: `left...right` from their merge base, as

@@ -687,6 +687,22 @@
   flex: none;
 }
 
+/* A gap's bar stands where its hunk's `@@` separator stood and keeps it, in the code face,
+   after the label (`renderGapFold` in diff-view.js); a long heading ends in an ellipsis
+   before the label gives way. */
+.metabrowser-diff-host .diff-gap-control .diff-fold-label {
+  flex: none;
+}
+
+.metabrowser-diff-host .diff-fold-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+}
+
 .metabrowser-diff-host .diff-fold-group {
   interpolate-size: allow-keywords;
   height: auto;
