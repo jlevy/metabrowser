@@ -5131,6 +5131,7 @@ async def raw_file(request: Request) -> Response:
 # server run) is deliberately deferred.
 
 from metabrowser.plugin_loader.classify import (
+    CONTENT_PREDICATE_MAX_BYTES,
     CompiledKindRule,
     build_classifier,
     classify_magic,
@@ -5144,10 +5145,12 @@ from metabrowser.plugin_loader.manifest import (
     view_entry,
 )
 from metabrowser.plugin_loader.static_assets import (
+    FileOffer,
     FolderOffer,
     build_plugin_routes,
     plugin_asset_prefix,
     plugin_asset_trees,
+    resolve_file_offers,
     resolve_folder_offers,
 )
 from metabrowser.tree import (
@@ -5201,6 +5204,9 @@ for _idx, _plugin in enumerate(_LOADED_PLUGINS):
 
 # Folder views a plugin offers only where its predicate accepts the folder, by view id.
 _FOLDER_OFFERS: dict[str, FolderOffer | None] = resolve_folder_offers(_LOADED_PLUGINS)
+# File views a plugin offers only where its predicate accepts the file's leading bytes,
+# by kind and view id.
+_FILE_OFFERS: dict[tuple[str, str], FileOffer | None] = resolve_file_offers(_LOADED_PLUGINS)
 
 _PLUGIN_CLASSIFY = build_classifier(_PLUGIN_KIND_RULES)
 _PLUGIN_CLASSIFY_BINARY = build_classifier(_PLUGIN_BINARY_KIND_RULES)
@@ -5432,7 +5438,11 @@ install_table_sources(
 
 
 def _views_for_kind(
-    kind: str, *, target: Path | None = None, active_content: bool | None = None
+    kind: str,
+    *,
+    target: Path | None = None,
+    prefix: tuple[bytes, str] | None = None,
+    active_content: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
@@ -5453,11 +5463,19 @@ def _views_for_kind(
     no folder in hand no offered view is kept. The predicates touch the disk, so a
     caller on the event loop runs this in a thread when :data:`_FOLDER_OFFERS` is
     not empty.
+
+    For a file kind, :func:`_offered_file_views` keeps a plugin's offered view only
+    where its predicate accepts the file's leading bytes: *prefix*, the bytes and the
+    logical extension, when the caller holds them, as a pinned blob's does, or else
+    read from *target*. With neither, no offered view is kept. Reading *target* touches
+    the disk, so a caller on the event loop that passes it runs this in a thread.
     """
     merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
     out = check_view_keys(kind, merged).views
     if kind == "folder" and _FOLDER_OFFERS:
         out = _offered_folder_views(out, target)
+    elif any(key[0] == kind for key in _FILE_OFFERS):
+        out = _offered_file_views(kind, out, prefix if prefix is not None else _file_prefix(target))
     if kind == "html":
         out = _html_kind_views(out, target, active_content=active_content)
     elif out and not any(v.get("default") for v in out):
@@ -5496,6 +5514,51 @@ def _offered_folder_views(views: list[dict[str, Any]], target: Path | None) -> l
             offered_default = view_id
     if offered_default is not None:
         kept = [{**view, "default": view["id"] == offered_default} for view in kept]
+    return kept
+
+
+def _file_prefix(target: Path | None) -> tuple[bytes, str] | None:
+    """The leading logical bytes every file offer reads, one past the largest content
+    predicate's cap, and the logical extension; None with no file in hand or none that
+    can be read."""
+
+    if target is None:
+        return None
+    artifact = ArtifactPath(target)
+    try:
+        with artifact.open_binary(max_output_bytes=CONTENT_PREDICATE_MAX_BYTES + 1) as source:
+            data = source.read(CONTENT_PREDICATE_MAX_BYTES + 1)
+    except (ArtifactCompressionError, OSError):
+        return None
+    return data, artifact.logical_ext
+
+
+def _offered_file_views(
+    kind: str, views: list[dict[str, Any]], prefix: tuple[bytes, str] | None
+) -> list[dict[str, Any]]:
+    """Keep each of *kind*'s offered views only where its predicate accepts *prefix*.
+
+    A predicate that raises is logged and its view left out, as a folder's is. A view
+    left out that was the default leaves the default to the caller's fallback, the
+    first view.
+    """
+
+    kept: list[dict[str, Any]] = []
+    for view in views:
+        key = (kind, view["id"])
+        if key not in _FILE_OFFERS:
+            kept.append(view)
+            continue
+        predicate = _FILE_OFFERS[key]
+        if prefix is None or predicate is None:
+            continue
+        try:
+            offered = bool(predicate(*prefix))
+        except Exception:
+            LOG.exception("%s view %s offer failed; leaving the view out", kind, view["id"])
+            continue
+        if offered:
+            kept.append(view)
     return kept
 
 

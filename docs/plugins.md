@@ -314,14 +314,25 @@ kind declared by another plugin, which is useful for composing generic renderers
 `render_runtime` documents whether the client or KPress renders the view, and a
 printable view declares a `print_profile` suited to documents or source code.
 
-A view of the `folder` kind may set `offer = "module:function"`, a Python predicate that
-receives the folder’s path.
-The view is served only on folders where it returns true, and an offered view with
-`default = true` is then the folder’s only default, so the page opens on it.
-The predicate runs for every folder page, off the event loop, and should read no more
-than a few directory entries; one that raises is logged and its view left out.
-A Git revision’s folders never offer a view, and an operator directory’s JavaScript-only
-plugin cannot declare one.
+A view may set `offer = "module:function"`, a Python predicate that decides where the
+view is served; one that raises is logged and its view left out, and an operator
+directory’s JavaScript-only plugin cannot declare one.
+
+- **A `folder` view’s predicate** receives the folder’s path.
+  The view is served only on folders where it returns true, and an offered view with
+  `default = true` is then the folder’s only default, so the page opens on it.
+  The predicate runs for every folder page, off the event loop, and should read no more
+  than a few directory entries.
+  A Git revision’s folders never offer a view.
+
+- **A file kind’s view’s predicate** receives the file’s leading logical bytes, at most
+  `CONTENT_PREDICATE_MAX_BYTES` + 1 of them (`plugin_loader/classify.py`), and its
+  logical extension, and the view is served only on files where it returns true.
+  It runs for every response that lists the file’s views, the hover prefetch included,
+  for a pinned revision’s blobs as for a folder’s files, so it decides from those bytes
+  and never parses the whole file.
+  The structured kind offers its Table view this way, only on a file that starts as a
+  list of records (`structured/offer.py`).
 
 `key` is an optional one-letter key for the view’s tab.
 A kind with more than one view should give each view one: `v` for a rendered view, `s`

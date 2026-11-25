@@ -309,12 +309,15 @@ class ViewSpec(BaseModel):
         default=None,
         pattern=r"^[A-Za-z_][\w.]*:[A-Za-z_]\w*$",
         description=(
-            "``module:function`` predicate, for a view of the ``folder`` kind only. The "
-            "function receives the folder's path and returns whether to offer the view "
-            "there; it runs for every folder page, off the event loop, so it reads no "
-            "more than a few directory entries. An offered view with ``default = true`` "
-            "is then the folder's only default. Python plugins only: an operator "
-            "directory's plugin never offers the view."
+            "``module:function`` predicate that returns whether to offer the view. For "
+            "the ``folder`` kind it receives the folder's path; it runs for every folder "
+            "page, off the event loop, so it reads no more than a few directory entries, "
+            "and an offered view with ``default = true`` is then the folder's only "
+            "default. For a file kind it receives the file's leading logical bytes (at "
+            "most ``CONTENT_PREDICATE_MAX_BYTES`` + 1) and its logical extension, and "
+            "runs for every response that lists the file's views, so it decides from "
+            "those bytes alone. Python plugins only: an operator directory's plugin "
+            "never offers the view."
         ),
     )
 
@@ -607,15 +610,6 @@ class PluginManifest(BaseModel):
                 )
             if kr.binary and kr.container is not None:
                 problems.append(f"kind '{kr.id}' claims binary files and cannot be a container")
-
-        # An offer decides where a folder view appears; no other kind has a place to
-        # decide it from, since a file's kind already chose the file.
-        for view in self.view:
-            if view.offer is not None and view.kind != "folder":
-                problems.append(
-                    f"view '{view.id}' declares offer={view.offer!r}, but only a "
-                    "view of the folder kind can be offered"
-                )
 
         # Each kind needs a non-empty match predicate.
         for kr in self.kind:

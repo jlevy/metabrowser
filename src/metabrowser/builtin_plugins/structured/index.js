@@ -127,9 +127,10 @@ export { expansion, renderInlineTree, renderSourceFallback as renderSource, rend
 
 // ── The Table view ─────────────────────────────────────────────
 //
-// A JSON or YAML list of mappings as a table (plan Decision 12). Every structured file
-// has the tab. The table plugin draws it from its routes, which ask this plugin's
-// record-list source (records.py), and a document that is not a list of records is the
+// A JSON or YAML list of mappings as a table (plan Decision 12). The server offers the
+// tab only on a file that starts as a list of records (offer.py). The table plugin draws
+// it from its routes, which ask this plugin's record-list source (records.py), and a
+// file that starts as one but is not, a later item that is not a mapping, is the
 // source's refusal, which the view says in place of a table. Tree stays the kind's
 // default, so the table plugin's module is asked for when the tab is first shown, not
 // when the file opens; the view is a few lines here rather than a module of its own,
