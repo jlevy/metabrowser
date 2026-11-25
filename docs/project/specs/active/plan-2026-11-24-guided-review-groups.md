@@ -89,15 +89,19 @@ collection:
 - `MAX_ITEMS` bounds every entry, steps and groups together, since its measured cost is
   the parse per entry, so a group holds at most `MAX_ITEMS - 1` steps.
   No one list’s bound states the total, so the models enforce it, and the shape walk
-  that runs before the schema (`_outside_shape`) refuses it at `items`.
+  that runs before the schema (`_outside_shape`) refuses it in words of its own, since
+  the schema admits such a block and a refusal in its name would not say what is wrong.
 - **It stays `Collection/v1`.** Every record v1 accepts today is still accepted and
   means the same. The widened entry type is read by one consumer, the server and page
   that ship together. Guides already published in pull-request descriptions are the
   released data, and none of them changes meaning.
   [Contracts](plan-2026-11-14-object-data-model-and-views.md#contracts) counts removal,
   renaming, and retyping as breaks; widening an entry to a union with a new shape is
-  none of those. A reviewer should confirm this reading (it is in the guide’s ambiguity
-  step).
+  none of those. The cost is in the other direction: a release before groups refuses a
+  grouped guide at `items.N`, so its reader needs this release or later.
+  A `Collection/v2` would not help that reader, whose release refuses v2 as well, so the
+  guide stays v1. A reviewer should confirm this reading (it is in the guide’s Open
+  questions).
 - **Groups are optional, and that is the compatibility.** A guide without groups is the
   record shape v1 had: it parses the same, the route answers it as before apart from the
   added `outline` and `group`, and the page draws it as before.
@@ -141,22 +145,23 @@ Every answer that has steps gains an **`outline`**: a tree of nodes in reading o
 
 ### The Skill’s Recommendation
 
-`skills/metabrowser/SKILL.md` recommends, for a guide of more than about six steps or
-one that covers several of these concerns, these groups in this order.
-Groups are optional: a short guide stays flat, and a small change merges or omits them.
+`skills/metabrowser/SKILL.md` recommends these groups, in this order, for a guide of
+more than about six steps.
+A guide of about six steps or fewer stays flat, even when it covers several concerns,
+since its step titles name them, and a small change merges or omits groups.
 The skill shows both a flat skeleton and a grouped one:
 
 | Group | Steps |
 | --- | --- |
-| Decisions | Key decisions: the few choices everything follows from, each in a line or two. Rationale: for each, the alternative rejected and the constraint, measurement, or requirement that decided it. |
+| Decisions | Key decisions: the few choices everything follows from, each in a line or two. Rationale: one step, with a line or two for each key decision, the alternative rejected and the constraint, measurement, or requirement that decided it; split only when it would run long. |
 | Documents | One step per spec, plan, architecture document, or guide added or rewritten, cited whole. |
 | Changes | One step per area, in dependency order, saying what to verify. |
 | Open questions | Ambiguity and uncertainty a person should decide or check. |
 | Testing | Automated, agent-checked, and needs-a-person, each its own step or line, never merged. |
 | Future work | Deferred work with its tracker IDs, and what needs more planning. |
 
-**Rationale stays concise.** A rationale step states each decision’s *why* in a sentence
-or two: what else was considered, and the fact that decided it (a measurement, a
+**Rationale stays concise.** The rationale step states each key decision’s *why* in a
+line or two: what else was considered, and the fact that decided it (a measurement, a
 constraint, a requirement, a precedent).
 It does not retell the design, and it cites the lines or the document where the decision
 is recorded at length.
@@ -252,8 +257,10 @@ list.
 
 ## Testing Strategy
 
-- Route goldens for a grouped guide, a mixed guide, a refused empty group, a refused
-  nested group, and the `outline` of an ungrouped guide
+- Route goldens for a grouped guide, a mixed guide, a longer guide of two groups of two
+  steps (which tells numbering through the groups from numbering by entry), a refused
+  empty group, a refused nested group, a guide refused past `MAX_ITEMS`, and the
+  `outline` of an ungrouped guide
   (`tests/golden/cli-github-guided-review.tryscript.md`). The stand-in’s guides stay
   ungrouped, so every golden written before groups changes only by the added `outline`
   and `group`; the grouped and mixed guides are written over a cached description by the
@@ -261,10 +268,11 @@ list.
 - A real ungrouped guide, four steps of one this repository published (#785), kept byte
   for byte in `tests/fixtures/guided-review/`, parses unchanged and answers each step
   `ready` with a flat outline.
-- Model tests for the group and step shapes and the schema drift check
-  (`tests/test_guided_review.py`).
+- Model tests for the group and step shapes, the outline’s numbering through groups of
+  two steps, and the schema drift check (`tests/test_guided_review.py`).
 - A browserless session of the grouped outline and its navigation against the production
-  `guided-review.js`, and a Chrome check of the grouped list’s layout.
+  `guided-review.js`, which checks that each group’s list is named by its heading, and a
+  Chrome check of the grouped list’s layout.
 - The skill’s command checks (`tests/test_skill_commands.py`) on both skeletons: the
   flat one has no group, and the grouped one has one.
 - For phase 2, a Chrome check that a whole-file Markdown reference draws rendered with

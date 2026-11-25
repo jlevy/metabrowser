@@ -228,6 +228,8 @@ group holds steps only, so groups do not nest, and a group without steps is refu
 a guide without steps is.
 Steps outside a group may sit between groups, and every step is numbered in reading
 order, through the groups.
+A group’s note is for orientation, so the page shows it once, above the group’s first
+step.
 
 Use the changed path shown in Changes, the `old` or `new` side, and an inclusive line
 range within one diff hunk.
@@ -270,10 +272,11 @@ To bring the guide current, update its pins and ranges in the PR description.
 
 A guide the page cannot read says why in place of the steps: invalid YAML, a second
 block, another contract, a field that fails the schema (with its place below
-`collection`, such as `items.0.references.0`), or pins whose `merge_base` is not an
-ancestor of their `head`. Its block then stays in the description, so its author sees
-what they wrote. The same answer is the `guided-review` route’s, which this prints from
-the cached pull request:
+`collection`, such as `items.0.references.0`), more steps and groups than `MAX_ITEMS`
+allows, or pins whose `merge_base` is not an ancestor of their `head`. Its block then
+stays in the description, so its author sees what they wrote.
+The same answer is the `guided-review` route’s, which this prints from the cached pull
+request:
 
 ```shell
 metab <pull request URL> --api '/api/plugin/github/guided-review?number=<n>'

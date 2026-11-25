@@ -30,8 +30,10 @@ from metabrowser.builtin_plugins.github.guided_review import (
     GuideError,
     _excerpt,  # pyright: ignore[reportPrivateUsage]
     _hunk_rows,  # pyright: ignore[reportPrivateUsage]
+    _outline,  # pyright: ignore[reportPrivateUsage]
     _outside_shape,  # pyright: ignore[reportPrivateUsage]
     _references,  # pyright: ignore[reportPrivateUsage]
+    _schema_refusal,  # pyright: ignore[reportPrivateUsage]
     parse_guide,
     read_guide,
     without_guide,
@@ -182,10 +184,16 @@ def _guide_of(items: int) -> str:
     return one + "  items:\n" + "".join(step.format(n=n) for n in range(items)) + "```"
 
 
+# What a guide past MAX_ITEMS is told, in its own words: the schema admits a block whose
+# lists are each within their bounds, so a refusal in its name would not say what is wrong.
+TOO_MANY = f"This guide has more than {MAX_ITEMS} steps and groups."
+
+
 def test_a_guide_may_have_at_most_max_items_items() -> None:
     assert parse_guide(_guide_of(MAX_ITEMS)) is not None
-    with pytest.raises(GuideError, match=r"does not satisfy the v1 SoftSchema at items\.$"):
+    with pytest.raises(GuideError) as refused:
         parse_guide(_guide_of(MAX_ITEMS + 1))
+    assert str(refused.value) == TOO_MANY
 
 
 _STEP = "{{title: Step {n}, note: Check it., references: [{{path: a.py}}]}}"
@@ -229,11 +237,38 @@ def test_a_guide_groups_its_steps_one_level_deep() -> None:
     assert plain is not None and plain.flat_items() == plain.items
 
 
+def test_the_outline_numbers_steps_through_groups_not_by_entry() -> None:
+    """A group of two steps after another group of two, with a step between: the outline
+    numbers the steps 1 to 5 through the groups, as ``step=<k>`` reads them, where numbering
+    by entry would give each group's steps one number (A3 of review A on #807). Each step's
+    group is its group's index in the outline."""
+    guide = parse_guide(
+        _entries_of(_group("A", range(1, 3)), _STEP.format(n=3), _group("B", range(4, 6)))
+    )
+    assert guide is not None
+    outline, groups = _outline(guide)
+    numbered = [
+        [
+            (child["step"], child["title"])
+            for child in cast(list[dict[str, object]], node["children"])
+        ]
+        if node["kind"] == "group"
+        else (node["step"], node["title"])
+        for node in outline
+    ]
+    assert numbered == [
+        [(1, "Step 1"), (2, "Step 2")],
+        (3, "Step 3"),
+        [(4, "Step 4"), (5, "Step 5")],
+    ]
+    assert groups == [0, 0, None, 2, 2]
+
+
 def test_max_items_counts_each_group_and_its_steps() -> None:
     """MAX_ITEMS bounds every entry, a group and each of its steps alike, since the parse
-    costs by the entry. No one list states the total, so the walk refuses it at `items`
-    before the schema runs; a group's own list is refused at its place, as the schema
-    refuses it."""
+    costs by the entry. No one list states the total, so the walk refuses it before the
+    schema runs, saying what is wrong; a group's own list past its bound is past the total
+    too."""
     full = MAX_ITEMS - 1
     whole = parse_guide(_entries_of(_group("All", range(full))))
     assert whole is not None and len(whole.flat_items()) == full
@@ -241,16 +276,14 @@ def test_max_items_counts_each_group_and_its_steps() -> None:
     steps = [_STEP.format(n=n) for n in range(half)]
     mixed = parse_guide(_entries_of(_group("Some", range(half - 1)), *steps))
     assert mixed is not None and len(mixed.flat_items()) == MAX_ITEMS - 1
-    for body, where in (
-        (_entries_of(_group("All", range(full + 1))), "items.0.items"),
-        (_entries_of(_group("Some", range(half - 1)), *steps, _STEP.format(n=0)), "items"),
-        (_entries_of(*steps, _group("Some", range(half))), "items"),
+    for body in (
+        _entries_of(_group("All", range(full + 1))),
+        _entries_of(_group("Some", range(half - 1)), *steps, _STEP.format(n=0)),
+        _entries_of(*steps, _group("Some", range(half))),
     ):
         with pytest.raises(GuideError) as refused:
             parse_guide(body)
-        assert str(refused.value) == (
-            f"The guided-review block does not satisfy the v1 SoftSchema at {where}."
-        )
+        assert str(refused.value) == TOO_MANY
     # The models state the total too, for a collection made in code.
     item = CollectionItem(title="t", note="n", references=[CollectionReference(path="a.py")])
     with pytest.raises(ValueError, match="at most 40 items and groups"):
@@ -347,17 +380,22 @@ def _at_the_bound(collection: str, units: Iterator[str], end: str) -> str:
 _COMPARISON = f"comparison: {{merge_base: {_SHA}, head: {_SHA}}}"
 
 
+def _schema_said(where: str) -> str:
+    """The schema's refusal of a block, at *where* when it is one."""
+    return f"The guided-review block does not satisfy the v1 SoftSchema{where}."
+
+
 @pytest.mark.parametrize(
-    ("body", "where"),
+    ("body", "refusal"),
     [
-        (_at_the_bound(f"{{{_COMPARISON}, items: [{_ITEM}], ", _keys(), "}"), ""),
+        (_at_the_bound(f"{{{_COMPARISON}, items: [{_ITEM}], ", _keys(), "}"), _schema_said("")),
         (
             _at_the_bound(
                 f"{{comparison: {{merge_base: {_SHA}, head: {_SHA}, ",
                 _keys(),
                 f"}}, items: [{_ITEM}]}}",
             ),
-            " at comparison",
+            _schema_said(" at comparison"),
         ),
         (
             _at_the_bound(
@@ -365,7 +403,7 @@ _COMPARISON = f"comparison: {{merge_base: {_SHA}, head: {_SHA}}}"
                 _keys(),
                 "}]}",
             ),
-            " at items.0",
+            _schema_said(" at items.0"),
         ),
         (
             _at_the_bound(
@@ -373,21 +411,21 @@ _COMPARISON = f"comparison: {{merge_base: {_SHA}, head: {_SHA}}}"
                 _keys(),
                 "}]}]}",
             ),
-            " at items.0.references.0",
+            _schema_said(" at items.0.references.0"),
         ),
         (
             _at_the_bound(f"{{{_COMPARISON}, items: [", itertools.repeat("{}, "), "{}]}"),
-            " at items",
+            TOO_MANY,
         ),
-        (_at_the_bound(f"{{{_COMPARISON}, items: [", itertools.repeat("0, "), "0]}"), " at items"),
-        (_at_the_bound(f"{{{_COMPARISON}, items: {{", _keys(), "}}"), " at items"),
+        (_at_the_bound(f"{{{_COMPARISON}, items: [", itertools.repeat("0, "), "0]}"), TOO_MANY),
+        (_at_the_bound(f"{{{_COMPARISON}, items: {{", _keys(), "}}"), _schema_said(" at items")),
         (
             _at_the_bound(
                 f"{{{_COMPARISON}, items: [{{title: t, note: n, references: [",
                 itertools.repeat("{path: a.py}, "),
                 "{path: a.py}]}]}",
             ),
-            " at items.0.references",
+            _schema_said(" at items.0.references"),
         ),
     ],
     ids=[
@@ -402,13 +440,14 @@ _COMPARISON = f"comparison: {{merge_base: {_SHA}, head: {_SHA}}}"
     ],
 )
 def test_a_block_outside_the_schemas_shape_never_reaches_the_schema(
-    monkeypatch: pytest.MonkeyPatch, body: str, where: str
+    monkeypatch: pytest.MonkeyPatch, body: str, refusal: str
 ) -> None:
     """softschema writes a record for each undeclared key, each with a copy of the whole
     mapping, and checks MAX_ITEMS and MAX_REFERENCES in the same pass, so a description
     at the body bound took about two minutes to refuse (D1 of review D on #677). Each such
     shape is refused before softschema runs, at a place softschema refuses too, the same
-    place for a block with one problem."""
+    place for a block with one problem, and a list of more entries than MAX_ITEMS in words
+    of its own."""
     validated: list[object] = []
     real = guided_review.validate_artifact
 
@@ -419,9 +458,7 @@ def test_a_block_outside_the_schemas_shape_never_reaches_the_schema(
     monkeypatch.setattr(guided_review, "validate_artifact", validating)
     with pytest.raises(GuideError) as refused:
         parse_guide(body)
-    assert (
-        str(refused.value) == f"The guided-review block does not satisfy the v1 SoftSchema{where}."
-    )
+    assert str(refused.value) == refusal
     assert validated == []
     # A block within the shape still reaches it.
     assert parse_guide(_GUIDE) is not None
@@ -510,7 +547,7 @@ def test_the_shape_walk_reaches_every_nested_model() -> None:
     refusal (E2 of review E on #677), so each one reachable from Collection is refused at
     its own place: an object for an undeclared key, and a list one past its bound. A list
     at its bound is within the shape unless MAX_ITEMS, which counts a group's items with
-    the entries, refuses it at `items`."""
+    the entries, refuses it in words of its own."""
     places = list(_places(Collection, []))
     # The search finds today's six, so it would find a seventh.
     found = [(place, inner) for place, _, inner, _ in places]
@@ -527,13 +564,16 @@ def test_the_shape_walk_reaches_every_nested_model() -> None:
         at = place if index is None else [*place, index]
         document = copy.deepcopy(_skeleton(Collection))
         _node(document, at)["undeclared"] = 0
-        assert _outside_shape(document) == at
+        assert _outside_shape(document) == _schema_refusal(at)
         if bound is not None:
             for count in (bound, bound + 1):
                 document = copy.deepcopy(_skeleton(Collection))
                 _node(document, place[:-1])[place[-1]] = [_skeleton(inner)] * count
-                within = None if _entries(document) <= MAX_ITEMS else ["items"]
-                assert _outside_shape(document) == (place if count > bound else within)
+                if _entries(document) > MAX_ITEMS:
+                    assert _outside_shape(document) == TOO_MANY
+                else:
+                    past = count > bound
+                    assert _outside_shape(document) == (_schema_refusal(place) if past else None)
 
 
 @pytest.fixture

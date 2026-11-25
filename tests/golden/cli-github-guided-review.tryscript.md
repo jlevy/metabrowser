@@ -926,6 +926,33 @@ null
 ? 0
 ```
 
+A longer guide whose two groups each hold two steps numbers them 1 to 4 through the
+groups, not by entry: the second group’s steps are 3 and 4, and step 3’s group is 1.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 longer
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=3' --format json > longer.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.state, .step_count, .outline, .step, .group, .title' longer.json
+"ready"
+4
+[{"kind":"group","title":"The count","note":null,"children":[{"kind":"step","step":1,"title":"Start with the count"},{"kind":"step","step":2,"title":"Compare the old count"}]},{"kind":"group","title":"The docs","note":null,"children":[{"kind":"step","step":3,"title":"Read the new guide"},{"kind":"step","step":4,"title":"Read each file whole"}]}]
+3
+1
+"Read the new guide"
+? 0
+```
+
 A group without steps is refused, as a guide without steps is, and so is a group inside
 a group: each says where, below `collection`.
 
@@ -965,6 +992,30 @@ status: 200
   "record_revision": "7a8064e614fdf0641ca368682429b46d86d7a9f4cffd57d7757e6aa89c7acf71",
   "state": "invalid",
   "message": "The guided-review block does not satisfy the v1 SoftSchema at items.0.items.0."
+}
+? 0
+```
+
+A guide whose steps and groups together pass `MAX_ITEMS` is refused in words that say
+so, even when each of its lists is within its own bound, as here: two groups whose steps
+pass it together.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 past-max-items
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7'
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+api: /api/plugin/github/guided-review?number=7
+status: 200
+{
+  "record_revision": "cdb594bebd68f182cd784b6b04e867d5a08cd44cfa280ac815fb67ae6941c1e1",
+  "state": "invalid",
+  "message": "This guide has more than 40 steps and groups."
 }
 ? 0
 ```
