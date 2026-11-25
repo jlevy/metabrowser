@@ -1448,12 +1448,29 @@ _WHOLE_STEP = """\
         - {path: src/app.txt}
         - {path: docs/new.md}
 """
+# The count's step with Markdown in its note, which renders as the description does: two
+# lines that join, a list with no blank line before it, a relative link, raw HTML, a
+# script, an image whose source is not a URL, and an image over https. Its title is markup
+# too, which stays text.
+_MARKDOWN_STEP = """\
+    - title: Start with the <b>count</b>
+      note: |-
+        Check that the **original** value
+        is preserved:
+        - `one` stays,
+        - and [the guide](docs/new.md) says so.
+
+        Raw <b>bold</b><script>alert(1)</script> <img src=x onerror=alert(1)> ![chart](https://example.com/chart.png)
+      references:
+        - {path: src/app.txt, side: new, start_line: 1, end_line: 2}
+"""
 
 
 # The guides `--describe` writes into a cached description: the stand-in guide's steps each
 # in a group, the first with a note; groups mixed with a step; a longer guide, two groups
-# of two steps each, which tells numbering through the groups from numbering by entry; and
-# two blocks the page refuses, an empty group and a group inside a group.
+# of two steps each, which tells numbering through the groups from numbering by entry;
+# notes in Markdown, a group's of two steps and the first step's; and two blocks the page
+# refuses, an empty group and a group inside a group.
 GUIDE_VARIANTS: Final[dict[str, str]] = {
     "grouped": (
         "    - title: The count\n"
@@ -1470,6 +1487,11 @@ GUIDE_VARIANTS: Final[dict[str, str]] = {
         "    - title: The count\n"
         "      items:\n" + _in_group(_COUNT_STEP + _OLD_COUNT_STEP) + "    - title: The docs\n"
         "      items:\n" + _in_group(_DOCS_STEP + _WHOLE_STEP)
+    ),
+    "markdown": (
+        "    - title: The count\n"
+        "      note: Read the `count` before *its* explanation.\n"
+        "      items:\n" + _in_group(_MARKDOWN_STEP + _OLD_COUNT_STEP) + _DOCS_STEP
     ),
     "empty-group": "    - title: The count\n      items: []\n" + _DOCS_STEP,
     "nested-group": (
@@ -1498,6 +1520,11 @@ BUILT_VARIANTS: Final[dict[str, Callable[[], str]]] = {"past-max-items": _past_m
 def grouped_guide_body(origin: Origin) -> str:
     """The stand-in guide of :func:`guide_body` with each of its steps in a group."""
     return _guide_body(origin["base"], origin["fork_head"], GUIDE_VARIANTS["grouped"])
+
+
+def markdown_guide_body(origin: Origin) -> str:
+    """The stand-in guide with Markdown in its notes (``markdown`` of :data:`GUIDE_VARIANTS`)."""
+    return _guide_body(origin["base"], origin["fork_head"], GUIDE_VARIANTS["markdown"])
 
 
 # The files a documents build adds to pull request 7's head: a YAML file, which a step that

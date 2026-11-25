@@ -59,6 +59,8 @@ status: 200
   "group": null,
   "title": "Start with the count",
   "note": "Check that the original value is preserved.",
+  "note_html": "\n<div><div><p>Check that the original value is preserved.</p></div></div>",
+  "group_note_html": null,
   "references": [
     {
       "path": "src/app.txt",
@@ -258,6 +260,8 @@ status: 200
   "group": null,
   "title": "Read the new guide",
   "note": "Check the new docs against the behavior.",
+  "note_html": "\n<div><div><p>Check the new docs against the behavior.</p></div></div>",
+  "group_note_html": null,
   "references": [
     {
       "path": "docs/new.md",
@@ -541,6 +545,8 @@ status: 200
   "group": null,
   "title": "Start with the count",
   "note": "Check that the original value is preserved.",
+  "note_html": "\n<div><div><p>Check that the original value is preserved.</p></div></div>",
+  "group_note_html": null,
   "references": [
     {
       "path": "src/app.txt",
@@ -1023,6 +1029,80 @@ status: 200
   "state": "invalid",
   "message": "This guide has more than 40 steps and groups."
 }
+? 0
+```
+
+# Notes
+
+A note is Markdown, rendered as the description is: KPress in its sanitized mode, then
+the inert allowlist against the pull request’s page, in the server’s Markdown child
+under its deadline.
+Each answer with a step carries its note as written, `note`, and that
+render beside it, `note_html`, which is null when the render is refused; the page then
+shows the note as typed.
+The step that opens a group with a note carries the group’s note rendered so,
+`group_note_html`, and the outline keeps it as written.
+A title stays text.
+In 7’s guide with Markdown in its notes, the first step’s two opening
+lines join into one paragraph, as two lines do in a description, its list needs no blank
+line before it, and its link is made absolute against the pull request’s page.
+Its raw HTML is reduced to the allowlist: the `<b>` stays, the script is dropped, an
+image from a relative source becomes a link to it, and an image over `https` keeps its
+source and sends no referrer.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --describe 7 markdown
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=1' --format json > notes.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -r '.state, .title, .note, .note_html, .outline[0].note, .group_note_html' notes.json
+ready
+Start with the <b>count</b>
+Check that the **original** value
+is preserved:
+- `one` stays,
+- and [the guide](docs/new.md) says so.
+
+Raw <b>bold</b><script>alert(1)</script> <img src=x onerror=alert(1)> ![chart](https://example.com/chart.png)
+
+<div><div><p>Check that the <strong>original</strong> value
+is preserved:</p>
+<ul>
+<li><code>one</code> stays,</li>
+<li>and <a href="https://github.com/octo/demo/pull/docs/new.md" target="_blank" rel="noopener noreferrer">the guide</a> says so.</li>
+</ul>
+<p>Raw <b>bold</b> <a href="https://github.com/octo/demo/pull/x" target="_blank" rel="noopener noreferrer"><span class="mb-image-fallback" data-tip-text="https://github.com/octo/demo/pull/x">image</span></a> <img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/chart.png" alt="chart"></p></div></div>
+Read the `count` before *its* explanation.
+
+<div><div><p>Read the <code>count</code> before <em>its</em> explanation.</p></div></div>
+? 0
+```
+
+The group’s second step is in the group but does not open it, so it carries no group’s
+note.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=2' --format json > notes.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.group, .group_note_html, .note_html' notes.json
+0
+null
+"\n<div><div><p>Check what the count replaced.</p></div></div>"
 ? 0
 ```
 

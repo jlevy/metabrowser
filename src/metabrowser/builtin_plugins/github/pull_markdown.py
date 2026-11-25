@@ -12,7 +12,8 @@ when two records share a timestamp. It also carries the manifest of
 KPress's stylesheets, which set the text as they set a Markdown file. That manifest is the
 same for every text, and it is the only part of KPress's render envelope that reaches
 the page: the render's own asset list names scripts KPress adds for what a text contains,
-and a comment must not choose what the page loads.
+and a comment must not choose what the page loads. A guide's notes are texts of the
+description too, and the guided-review route renders each through :func:`render_text`.
 
 A text's author is untrusted, and what KPress spends on a text depends on what it
 contains, so the render and the hardening run in the server's Markdown child under its
@@ -145,30 +146,8 @@ async def render_part(
         )
         link_base = record.pull.html_url
         answered = {"fetched_at": record.fetched_at, "record_revision": revision}
-    # KPress caches a render by this key, and the Markdown child joins a request to one in
-    # flight with the same key (`InertRender.flight_key`). A render is of the part's text
-    # and the page its links resolve against alone, so the key is those and not when the
-    # text was read: a page that asks again, a reload, a refresh that left the text as it
-    # was, and the record that follows a core preview with its description unchanged all
-    # reuse one render (mb-d59o).
-    key = hashlib.sha256(f"{part}\0{link_base}\0{text}".encode()).hexdigest()[:16]
     try:
-        # KPress's sanitized mode keeps what a document may load; in the page it must not,
-        # so the child reduces the HTML to the allowlist against the pull request's page.
-        rendered = await shared_worker().render_inert(
-            InertRender(
-                source_text=text,
-                source_path=f"pull-{number}-{part.replace('/', '-')}.md",
-                identity=text_identity(text),
-                kind="markdown",
-                view="document",
-                ext=".md",
-                mtime_hash=key,
-                size=len(text.encode()),
-                include_toc="off",
-                link_base=link_base,
-            )
-        )
+        html = await render_text(text, number=number, part=part, link_base=link_base)
     except InertRenderRefused as refused:
         return refused.http_status, {**refused.payload(), "number": number, "part": part}
     except (kpress_adapter.KPressInvalidRequestError, kpress_adapter.KPressRenderError) as exc:
@@ -177,9 +156,45 @@ async def render_part(
         "number": number,
         **answered,
         "part": part,
-        "html": str(rendered["html"]),
+        "html": html,
         "assets": await asyncio.to_thread(kpress_adapter.document_stylesheets),
     }
 
 
-__all__ = ["PART_PATTERN", "part_text", "render_part"]
+async def render_text(text: str, *, number: int, part: str, link_base: str) -> str:
+    """*text*, a text of pull request *number*, as inert HTML: KPress in its sanitized mode,
+    then :func:`~metabrowser.inert_html.harden` against *link_base*, the pull request's page,
+    in the Markdown child under its deadline.
+
+    *part* names the text: a part :data:`PART_PATTERN` matches, or a guide's note, which
+    renders as the description does (``guided_review.py``). Raises
+    :class:`InertRenderRefused`, and KPress's ``KPressInvalidRequestError`` and
+    ``KPressRenderError``.
+    """
+    # KPress caches a render by this key, and the Markdown child joins a request to one in
+    # flight with the same key (`InertRender.flight_key`). A render is of the part's text
+    # and the page its links resolve against alone, so the key is those and not when the
+    # text was read: a page that asks again, a reload, a refresh that left the text as it
+    # was, and the record that follows a core preview with its description unchanged all
+    # reuse one render (mb-d59o).
+    key = hashlib.sha256(f"{part}\0{link_base}\0{text}".encode()).hexdigest()[:16]
+    # KPress's sanitized mode keeps what a document may load; in the page it must not, so
+    # the child reduces the HTML to the allowlist against the pull request's page.
+    rendered = await shared_worker().render_inert(
+        InertRender(
+            source_text=text,
+            source_path=f"pull-{number}-{part.replace('/', '-')}.md",
+            identity=text_identity(text),
+            kind="markdown",
+            view="document",
+            ext=".md",
+            mtime_hash=key,
+            size=len(text.encode()),
+            include_toc="off",
+            link_base=link_base,
+        )
+    )
+    return str(rendered["html"])
+
+
+__all__ = ["PART_PATTERN", "part_text", "render_part", "render_text"]

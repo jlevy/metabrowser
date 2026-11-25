@@ -203,9 +203,12 @@ ordered annotated items that guided reviews are the first use of
 ([Collection Format](project/architecture/arch-collection-format.md)). In a guided
 review it holds the comparison it was written against and ordered `items`, each a step
 with a `title`, a `note` saying what to verify, and its `references`, or a group of
-steps with a `title`, an optional `note`, and its own `items`. Write each field as plain
-text: the page shows them as typed and keeps their line breaks, so Markdown such as
-backticks, lists, and links prints literally.
+steps with a `title`, an optional `note`, and its own `items`. A title is plain text,
+shown as typed. A note is Markdown, rendered as the description is, inert, in every
+guide: raw HTML is cut to the same safe subset, a link resolves against the pull request
+on GitHub, a single line break joins two lines into one paragraph, and a blank line
+starts the next. A Mermaid block in a note shows as code.
+A note whose render takes too long, or fails, shows as typed, with its line breaks kept.
 
 ````markdown
 ```guided-review

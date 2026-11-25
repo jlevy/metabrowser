@@ -93,10 +93,11 @@ A tab left while the import is on its way mounts nothing, and neither does a pag
 ends there. A new record revision asks again for the step on screen and aborts the read
 still on its way, whose late answer paints nothing, and a poll of the same record asks
 for nothing. Leaving the tab, or ending the page, disposes the view and aborts its read.
-A step is inserted as text, so markup in the guide stays markup, and each row is the
-diff plugin’s, its code a span, which the shell’s highlighter, which takes `pre code`,
-skips. Open full diff reaches the page’s own `openChangedFile`, which asks the route for
-the file’s Changes address.
+A step’s title is inserted as text, so markup in it stays markup, and so is a note whose
+render was refused, and each row is the diff plugin’s, its code a span, which the
+shell’s highlighter, which takes `pre code`, skips.
+Open full diff reaches the page’s own `openChangedFile`, which asks the route for the
+file’s Changes address.
 A guide stale only because GitHub reports a newer head says nothing, since the page’s
 header already says new commits were pushed.
 A guide whose head the local copy lacks marks no step and says some may not match; above
@@ -110,8 +111,11 @@ A guide in groups lists each group as a heading, with no number and nothing to p
 above its steps, which keep their numbers through the groups; a step outside a group
 sits between them. A step’s card names its group before its place, a group’s note shows
 above its first step alone, and the list keeps its buttons and its changed marks as the
-reader moves. A core preview opens a guided pull request on its guide, which waits for
-the record, and the record’s arrival reads the guide without changing tab.
+reader moves. A note the route rendered, a step’s or its group’s, is handed to the
+description’s allowlist against the pull request’s page, and what it builds is set in
+the step’s prose after the title, or, for a group, in a KPress article above the card.
+A core preview opens a guided pull request on its guide, which waits for the record, and
+the record’s arrival reads the guide without changing tab.
 On a guided front page, Guided Review’s link and key go to the page already shown, and
 the description’s card on Conversation links the front page.
 
@@ -155,6 +159,7 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "step 3: Guided Review | Step 3 of 4; Overview | [Decisions] | 1 Step 1 | 2 Step 2 changed | > 3 Step 3 | [Testing] | 4 Step 4 changed",
   "step 4: Guided Review | Testing · Step 4 of 4 · changed; Overview | [Decisions] | 1 Step 1 | 2 Step 2 changed | 3 Step 3 | [Testing] | > 4 Step 4 changed",
   "asked: step 1, step 2, step 3, step 4",
+  "a rendered note: title Step <b>1</b>; blocks span.inert-rebuilt: <p>Check <b>this</b> first.</p>; group's note <p>Read <em>these</em>.</p>; allowlist asked <p>Check <b>this</b> first.</p> at https://github.com/octo/demo/pull/7, <p>Read <em>these</em>.</p> at https://github.com/octo/demo/pull/7",
   "a preview's front page: guide mounted; says The guide needs the full pull request.; asked nothing",
   "its record arrives: guide mounted; asked step 1",
   "the guided front page: Guided Review links /pull/7, Conversation /pull/7/conversation; its key opens nothing",

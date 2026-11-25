@@ -1,10 +1,9 @@
 # Collection Format
 
 **Status:** Built as contract `metabrowser.collection:Collection/v1`, with one carrier:
-guided reviews of GitHub pull requests.
-Designed, not built: a stack’s guide, more kinds of reference, notes as Markdown,
-collections in repository files, URL references, a Markdown form, and the other carriers
-below.
+guided reviews of GitHub pull requests, whose notes render as Markdown.
+Designed, not built: a stack’s guide, more kinds of reference, collections in repository
+files, URL references, a Markdown form, and the other carriers below.
 
 A collection is an ordered list of annotated items, which may be gathered in titled
 groups: each item is a title, a note, and the references it is about.
@@ -42,10 +41,17 @@ collection:
 ```
 
 - **`items`** are ordered, and the order is the author’s. Each entry is an item or a
-  group. An item has a `title`, a `note`, and one or more `references`, all plain text
-  that a reader shows as typed.
+  group. An item has a `title`, plain text that a reader shows as typed, a `note`,
+  Markdown that a reader renders inert, and one or more `references`. Notes were plain
+  text when v1 was first built and became Markdown within it: no field is removed,
+  renamed, or retyped, so by
+  [Contracts](../specs/active/plan-2026-11-14-object-data-model-and-views.md#contracts)
+  this is no break. A note written as plain text reads the same unless it used Markdown
+  syntax, which now renders as its author likely meant, or a single line break, which
+  now joins its two lines into one paragraph.
 - **A group** has a `title`, an optional `note`, and its own `items`, at least one,
   which are items only: groups nest one level.
+  A group’s note is Markdown as an item’s is.
   An entry with `items` is a group and one without is an item; the models tell them
   apart that way (`_entry_kind` in `guided_review.py`), and the compiled schema states
   it as an `if` on `items`. Groups and items outside a group mix in any order.
@@ -107,10 +113,11 @@ The split keeps the format small enough to share:
 The record is a `guided-review` fence in a pull request’s description; `comparison` is
 required, its `merge_base` must be an ancestor of its `head`, and its head a commit; a
 path is a changed file and a range lies in one hunk of its diff; excerpts are bounded by
-`MAX_EXCERPT_BYTES` and `MAX_STEP_PATCH_BYTES`; the record is stale when the pull
-request’s comparison moves.
-The `guided-review` route answers it, and the pull page’s Guided Review tab draws it
-([GitHub Pull Requests](arch-github-pull-requests.md#guided-review),
+`MAX_EXCERPT_BYTES` and `MAX_STEP_PATCH_BYTES`; a note renders as the description does,
+through the same inert render (`render_text` in `pull_markdown.py`), and shows as typed
+when that render is refused; the record is stale when the pull request’s comparison
+moves. The `guided-review` route answers it, and the pull page’s Guided Review tab draws
+it ([GitHub Pull Requests](arch-github-pull-requests.md#guided-review),
 [Reviewing Pull Requests](../../reviewing-pull-requests.md#guided-review)).
 
 The fence names the carrier, not the format, so the same record could be written
@@ -161,8 +168,6 @@ none is built. Each keeps v1, since none removes, renames, or retypes a field.
 - **Reference kinds** (mb-9dmv): `{pull: <n>}`, a pull request; `{pull: <n>, path}`, a
   file as that pull request changes it; and `{commit: <id>}`, a commit.
   They are valid in every carrier, resolve from what is cached, and draw as rows.
-- **Notes as Markdown** (mb-kkib): a note renders inert, as a pull request’s description
-  does, in place of plain text; titles stay plain.
 - **Loose and pinned comparisons**, with collections in repository files: `comparison`
   becomes optional and gains an optional `base` and `branch` beside its two pins.
   A side pinned to a commit can be stale; a side left to its branch follows it and never

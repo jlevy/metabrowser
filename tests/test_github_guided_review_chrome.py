@@ -9,8 +9,8 @@ rows the highlighter touched, and what a row paints, are the browser's; so this 
 GitHub stand-in, whose pull requests 7 to 9 have guides in their descriptions, 8's rewritten
 into groups, and whose 10 has none, and ``tests/dom/github-guided-review-chrome.mjs`` drives it: the tab and
 its key on a pull request with a guide and with none, the shell's own pass over the excerpt, a
-row's layout, the steps and Open full diff, where a group's heading and note sit, and a guide
-that cannot be read. Browserless, the tab's key and its
+row's layout, the steps and Open full diff, where a group's heading and note sit, how a note's
+rendered Markdown is set, and a guide that cannot be read. Browserless, the tab's key and its
 lazy mount are pinned in ``tests/dom/github-pull-page-mount-behavior.js`` and
 ``tests/dom/github-guided-review-mount-behavior.js``. An out-of-date guide's notice, its marks,
 and where a list's markers fall against the bordered box around them are paint too, so they are

@@ -499,14 +499,18 @@ A smaller change merges concerns, so one step can be both the key decision and t
 area, and merges or leaves out their groups, but keep the testing step and its three-way
 split on every pull request, and the open questions whenever there is anything to say.
 A group needs no note.
-A note is for orientation, and the page shows it once, before the group’s first step, so
+A group’s note is for orientation, and the page shows it once, before its first step, so
 give one only when the group’s steps share something a reader should know first, and
 never repeat the description.
 
-The page shows each title and note as written, line breaks kept and Markdown printed
-literally, so write them as plain text.
-A note says what to check and why; the description says what the change is, so do not
-repeat it. When the description or a note warns of a doubt, a risk, or a check still
+A title is plain text, shown as typed.
+A note is Markdown, rendered as the description is: code spans, emphasis, links, and
+lists render, and raw HTML is cut to a safe subset.
+As in the description, a single line break joins two lines into one paragraph, so leave
+a blank line between paragraphs; a list needs no blank line before it, only its own
+lines. Write a link as a full URL: a relative one resolves against the pull request’s
+page. A note says what to check and why; the description says what the change is, so do
+not repeat it. When the description or a note warns of a doubt, a risk, or a check still
 running, make the warning short, give at most one simple remedy, and leave out internals
 such as commit IDs, commit lists, and merge-base or rebase mechanics.
 
@@ -528,7 +532,7 @@ collection:
     head: "<full head commit ID>"
   items:
     - title: "Keystone: the snapshot is served before the worker ends"
-      note: Check that the request returns the cached snapshot without waiting.
+      note: Check that `fetch` returns the cached snapshot without waiting.
       references:
         - {path: src/cache.py, side: new, start_line: 42, end_line: 51}
     - title: "Testing, by a person: what still needs a human"
@@ -557,7 +561,7 @@ collection:
     - title: Decisions
       items:
         - title: "Keystone: the snapshot is served before the worker ends"
-          note: Check that the request returns the cached snapshot without waiting.
+          note: Check that `fetch` returns the cached snapshot without waiting.
           references:
             - {path: src/cache.py, side: new, start_line: 42, end_line: 51}
         - title: "Rationale: why the snapshot, not a wait"
@@ -593,8 +597,9 @@ collection:
   another YAML indicator such as `[`, `{`, or `*`, in double quotes.
   Unquoted, a `: ` or a leading indicator makes the page refuse the block as invalid
   YAML, and a ` #` silently cuts the text there.
-- Write a note that holds a list as a literal block, `note: |-`, which keeps its lines
-  and needs no quotes; a folded block, `>-`, joins them into one.
+- Write a note that holds a list or more than one paragraph as a literal block,
+  `note: |-`, which keeps its lines as Markdown needs them and needs no quotes; a folded
+  block, `>-`, joins them, so its list reads as one paragraph.
 - A step’s whole files share one size budget, and a file past it answers
   `patch_too_large`: split the step, or cite the file’s ranges instead.
   A whole Markdown, YAML, or JSON file the page draws rendered answers its format as

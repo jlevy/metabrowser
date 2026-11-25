@@ -5424,20 +5424,32 @@ export function mountPullPage(container, ctx, mb) {
    * @param {Element} element The text element the host goes in.
    */
   function kpressHost(inert, rendered, element) {
-    const nodes = inert.sanitizeHtml(
-      String(rendered.html),
-      shown?.pull?.htmlUrl ?? "https://github.com/",
-    );
     const article = h("article", { class: "kpress kpress-inert" }, [
-      inert.kpressProse(nodes, document),
+      inertProse(inert, String(rendered.html)),
     ]);
-    // Only this newly sanitized, lazily opened message is visited. Authored SVG and
-    // state attributes have already been discarded; known state comes from our record.
-    for (const anchor of article.querySelectorAll("a[href]")) {
-      decoratePullLink(/** @type {HTMLElement} */ (anchor), shown?.pull ?? null, mb);
-    }
     drawTextDiagrams(element, article);
     return h("div", { class: "metabrowser-kpress-host" }, [article]);
+  }
+
+  /**
+   * A text's inert HTML in KPress's prose element, as `kpressHost` sets a description's and
+   * Guided Review sets a note's (`DrawProse` in guided-review.js): rebuilt from the allowlist,
+   * links absolute against the pull request.
+   *
+   * @param {MetabrowserInertHtmlRuntime} inert
+   * @param {string} html
+   */
+  function inertProse(inert, html) {
+    const prose = inert.kpressProse(
+      inert.sanitizeHtml(html, shown?.pull?.htmlUrl ?? "https://github.com/"),
+      document,
+    );
+    // Only this newly sanitized, lazily opened message is visited. Authored SVG and
+    // state attributes have already been discarded; known state comes from our record.
+    for (const anchor of prose.querySelectorAll("a[href]")) {
+      decoratePullLink(/** @type {HTMLElement} */ (anchor), shown?.pull ?? null, mb);
+    }
+    return prose;
   }
 
   /**
@@ -8296,6 +8308,15 @@ export function mountPullPage(container, ctx, mb) {
                 });
               },
             };
+          },
+          // A note's Markdown, which the route renders inert as it renders a description, is
+          // inserted through the description's allowlist.
+          loadDrawProse: async () => {
+            const inert = await inertReady;
+            if (inert === null) {
+              throw new Error("the inert HTML allowlist did not load");
+            }
+            return (html) => inertProse(inert, html);
           },
         });
         mount.view.show(shown.recordRevision, shown.newCommits !== null);

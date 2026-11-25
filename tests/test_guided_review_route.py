@@ -10,8 +10,10 @@ handler does. The stand-in's pull request 7 is ``base`` → ``fork_earlier`` ("e
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 from collections.abc import Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -28,13 +30,16 @@ from metabrowser.builtin_plugins.github.guided_review import parse_guide
 from metabrowser.builtin_plugins.github.pull_record import MAX_BODY_BYTES, PullRecord
 from metabrowser.builtin_plugins.github.pull_route import PullHost, PullView
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
+from metabrowser.diff import markdown_projection_worker as worker_module
 from metabrowser.diff.adapters.base import DiffSourceError
+from metabrowser.diff.markdown_projection_worker import InertRenderRefused
 from metabrowser.git.process import GitError, GitLocation, GitOutputCutError, RepositoryStoreTarget
 from tests.diff_fixture_repo import git
 from tests.github_pull_fixture import (
     _DOCUMENT_FILES,  # pyright: ignore[reportPrivateUsage]
     grouped_guide_body,
     guide_body,
+    markdown_guide_body,
     scenario,
 )
 from tests.required_tools import needs_git
@@ -43,6 +48,35 @@ from tests.test_github_pulls import stand as stand
 from tests.test_guided_review import PUBLISHED_GUIDE
 
 _MISSING = "e" * 40
+
+
+@dataclass
+class _NoteChild:
+    """The Markdown child's stand-in for a step's notes: each render asked of it, and its
+    answer, the note's text in a paragraph, or the refusal it was told to give."""
+
+    asked: list[Any] = field(default_factory=list[Any])
+    refusal: InertRenderRefused | None = None
+
+    async def render_inert(self, request: Any) -> dict[str, Any]:
+        self.asked.append(request)
+        if self.refusal is not None:
+            raise self.refusal
+        return {"html": f"<p>{html.escape(request.source_text)}</p>"}
+
+
+@pytest.fixture(autouse=True)
+def notes(monkeypatch: pytest.MonkeyPatch) -> _NoteChild:
+    """Every answer with a step renders its note through the Markdown child, which a test
+    of something else need not start: those notes are a stand-in's. The tests of the render
+    itself put the real child back (`_real_child`)."""
+    child = _NoteChild()
+    monkeypatch.setattr(pull_markdown, "shared_worker", lambda: child)
+    return child
+
+
+def _real_child(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pull_markdown, "shared_worker", worker_module.shared_worker)
 
 
 def _cache(stand: _Stand, body: str) -> PullRecord:
@@ -359,6 +393,114 @@ def test_a_published_guide_without_groups_answers_each_step_as_before(stand: _St
         assert (answer["state"], answer["step"], answer["title"]) == ("ready", number, title)
         assert (answer["outline"], answer["group"], answer["titles"]) == (flat, None, titles)
         assert {reference["state"] for reference in answer["references"]} == {"path_not_changed"}
+
+
+def test_a_step_answers_its_note_rendered_beside_its_source(
+    stand: _Stand, notes: _NoteChild
+) -> None:
+    """A step's note renders as the description does, from the pull request's page, and its
+    group's note on the group's first step alone; a title is never rendered. The render is
+    kept with the parse, so the step read again asks nothing more of the child."""
+    record = _cache(stand, markdown_guide_body(stand.origin))
+    first = _ask(stand, step=1)
+    assert (first["state"], first["title"]) == ("ready", "Start with the <b>count</b>")
+    assert first["note"].startswith("Check that the **original** value\n")
+    assert first["note_html"] == f"<p>{html.escape(first['note'])}</p>"
+    group_note = "Read the `count` before *its* explanation."
+    assert first["outline"][0]["note"] == group_note
+    assert first["group_note_html"] == f"<p>{html.escape(group_note)}</p>"
+    assert [request.source_text for request in notes.asked] == [first["note"], group_note]
+    request = notes.asked[0]
+    assert (request.kind, request.view, request.ext, request.include_toc) == (
+        "markdown",
+        "document",
+        ".md",
+        "off",
+    )
+    assert (request.link_base, request.source_path) == (
+        record.pull.html_url,
+        "pull-7-guided-review-note.md",
+    )
+    # The group's second step opens nothing, and a step outside a group has no group.
+    second, third = _ask(stand, step=2), _ask(stand, step=3)
+    assert (second["group"], second["group_note_html"]) == (0, None)
+    assert (third["group"], third["group_note_html"]) == (None, None)
+    assert second["note_html"] == "<p>Check what the count replaced.</p>"
+    asked = len(notes.asked)
+    assert _ask(stand, step=1) == first
+    assert len(notes.asked) == asked
+
+
+def test_a_note_past_the_kept_renders_renders_again(
+    stand: _Stand, notes: _NoteChild, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cache(stand, guide_body(stand.origin))
+    monkeypatch.setattr(guided_review, "_MAX_KEPT_NOTE_CHARS", 0)
+    assert _ask(stand)["note_html"] == _ask(stand)["note_html"] is not None
+    assert len(notes.asked) == 2
+
+
+def test_a_refused_render_answers_the_note_alone(stand: _Stand, notes: _NoteChild) -> None:
+    """A note whose render is refused is answered as written, with no HTML, and the step
+    reads as before: the page shows the note as typed. A refusal is not kept here, so the
+    next read asks again, and the child answers from the refusal it keeps."""
+    _cache(stand, markdown_guide_body(stand.origin))
+    notes.refusal = InertRenderRefused("render_deadline")
+    answer = _ask(stand)
+    assert (answer["state"], answer["note_html"], answer["group_note_html"]) == (
+        "ready",
+        None,
+        None,
+    )
+    assert answer["note"].startswith("Check that the **original** value")
+    assert [ref["state"] for ref in answer["references"]] == ["ready"]
+    _ask(stand)
+    assert len(notes.asked) == 4
+
+
+def test_the_published_guides_notes_render_inert(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every note of the guide #785 published renders in the real Markdown child, as its
+    text: plain prose reads the same as Markdown, its flags included."""
+    _real_child(monkeypatch)
+    published = PUBLISHED_GUIDE.read_text("utf-8")
+    guide = parse_guide(published)
+    assert guide is not None
+    _cache(
+        stand,
+        published.replace(guide.comparison.merge_base, stand.origin["base"]).replace(
+            guide.comparison.head, stand.origin["fork_head"]
+        ),
+    )
+    host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
+    steps = guide.flat_items()
+
+    async def every_step() -> list[dict[str, object]]:
+        # One event loop, so one child renders every note.
+        return [await guided_review.guided_review(host, 7, k) for k in range(1, len(steps) + 1)]
+
+    for answer, step in zip(asyncio.run(every_step()), steps, strict=True):
+        paragraph = html.escape(step.note, quote=False)
+        assert answer["note_html"] == f"\n<div><div><p>{paragraph}</p></div></div>"
+
+
+def test_a_note_past_the_render_deadline_shows_as_typed(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A note KPress takes seconds to render, 100 unpaired ``[`` before 60 KiB of ``%``
+    (``tests/test_inert_render_deadline.py``), is stopped at the real child's deadline and
+    answered as written."""
+    _real_child(monkeypatch)
+    monkeypatch.setattr(worker_module, "_RENDER_DEADLINE_S", 0.25)
+    slow = "[" * 100 + "%" * (60 * 1024)
+    body = guide_body(stand.origin).replace(
+        "note: Check that the original value is preserved.", f"note: |-\n        {slow}"
+    )
+    assert slow in body
+    _cache(stand, body)
+    answer = _ask(stand)
+    assert (answer["state"], answer["note"], answer["note_html"]) == ("ready", slow, None)
 
 
 def test_a_step_past_the_guide_and_an_uncached_pull_request(stand: _Stand) -> None:
