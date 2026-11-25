@@ -33,11 +33,12 @@ A screen reader is told the same in words, each status by its name.
 In the tree, every folder carries the line counts of the files under it, open or closed,
 and says how many of them have no counts, as a binary file has none.
 A chain of single folders is one row.
-Counts are written as the rows write them (`changeStats`), and a folder says what its
-sums leave out, for each side when the sides differ.
-A path a patch lists more than once, as a file that became a symlink or a commit series
-repeats it, is one row with both changes’ counts and a status for what happened to it,
-so the root’s counts are the header’s totals.
+Counts are written as the rows write them (`changeStats`), the brief change line of
+their totals alone, so a total of zero is left out and a row of no lines reads “0 lines”
+(mb-ox6a), and a folder says what its sums leave out, for each side when the sides
+differ. A path a patch lists more than once, as a file that became a symlink or a commit
+series repeats it, is one row with both changes’ counts and a status for what happened
+to it, so the root’s counts are the header’s totals.
 A long tree has in the document only the rows in the window’s view of it, 40 more each
 way, and the row that takes Tab.
 A path is its author’s text, so a control, format, or invisible character in it, such as
@@ -149,8 +150,8 @@ $ node tests/dom/diff-summary-session.js
       }
     },
     "no files": {
-      "text": "0 files changed · +0 −0",
-      "label": "0 files changed; 0 lines added, 0 deleted",
+      "text": "0 files changed · 0 lines",
+      "label": "0 files changed; no lines changed",
       "estimated": false,
       "numbers": [
         "0"
@@ -180,22 +181,22 @@ $ node tests/dom/diff-summary-session.js
       "v src/ (7; 1 file without line counts) +666 −59",
       "  v app/ (5; 1 file without line counts) +46 −24",
       "    v views/ (2) +6 −2",
-      "      C copy.py (from src/app/views/main.py) +1 −0",
+      "      C copy.py (from src/app/views/main.py) +1",
       "      R main.py (from src/app/main.py) +5 −2",
       "    U conflict.py",
-      "    A new.py +40 −0",
-      "    D old.py +0 −22",
+      "    A new.py +40",
+      "    D old.py −22",
       "  v viewer/plugins/diff/ (2) +620 −35",
-      "    A diff-summary.js +400 −0",
+      "    A diff-summary.js +400",
       "    M diff-view.js +220 −35",
-      "v tools/ (1) +0 −0",
-      "  T run +0 −0",
+      "v tools/ (1) 0 lines",
+      "  T run 0 lines",
       "M README.md +3 −1"
     ],
     "past the threshold only the top level shows": [
       "> assets/ (2; 2 files without line counts)",
       "> src/ (7; 1 file without line counts) +666 −59",
-      "> tools/ (1) +0 −0",
+      "> tools/ (1) 0 lines",
       "M README.md +3 −1"
     ],
     "the keys move along the rows, and only Enter, Space, or a press jumps": [
@@ -286,8 +287,8 @@ $ node tests/dom/diff-summary-session.js
       "  M icon.png",
       "  A logo.png",
       "> src/ (7; 1 file without line counts) +666 −59",
-      "v tools/ (1) +0 −0",
-      "  T run +0 −0",
+      "v tools/ (1) 0 lines",
+      "  T run 0 lines",
       "M README.md +3 −1"
     ],
     "closing a folder keeps the row that takes Tab, on the folder": {
@@ -300,14 +301,14 @@ $ node tests/dom/diff-summary-session.js
         "v src/ (7; 1 file without line counts) +666 −59",
         "  v app/ (5; 1 file without line counts) +46 −24",
         "    v views/ (2) +6 −2",
-        "      C copy.py (from src/app/views/main.py) +1 −0",
+        "      C copy.py (from src/app/views/main.py) +1",
         "      R main.py (from src/app/main.py) +5 −2",
         "    U conflict.py",
-        "    A new.py +40 −0",
-        "    D old.py +0 −22",
+        "    A new.py +40",
+        "    D old.py −22",
         "  > viewer/plugins/diff/ (2) +620 −35",
-        "v tools/ (1) +0 −0",
-        "  T run +0 −0",
+        "v tools/ (1) 0 lines",
+        "  T run 0 lines",
         "M README.md +3 −1"
       ],
       "file": {
@@ -318,10 +319,10 @@ $ node tests/dom/diff-summary-session.js
     "a path's control and invisible characters show as U+FFFD": {
       "rows": [
         "v docs/ (2) +2 <U+2212>1",
-        "  R new<U+FFFD>name.md (from docs/old<U+FFFD>name.md) +1 <U+2212>0",
+        "  R new<U+FFFD>name.md (from docs/old<U+FFFD>name.md) +1",
         "  M zero<U+FFFD>width.md +1 <U+2212>1",
-        "v src/ (1) +3 <U+2212>0",
-        "  A evil<U+FFFD>gnp.js +3 <U+2212>0"
+        "v src/ (1) +3",
+        "  A evil<U+FFFD>gnp.js +3"
       ],
       "identities": [
         "docs/new<U+200B>name.md",
@@ -353,11 +354,11 @@ $ node tests/dom/diff-summary-session.js
     "a folder says what its sums leave out": [
       {
         "row": "v lib/ (3; 1 file without an added count, 2 files without deleted counts) +6 −2",
-        "label": "lib, 3 files, 6 added, 2 deleted, 1 file without an added count, 2 files without deleted counts"
+        "label": "lib, 3 files, 6 lines added, 2 deleted, 1 file without an added count, 2 files without deleted counts"
       },
       {
         "row": "  M half.py +4 −?",
-        "label": "half.py, modified, 4 added, unknown deleted"
+        "label": "half.py, modified, 4 lines added, ? deleted"
       },
       {
         "row": "  A logo.png",
@@ -365,7 +366,7 @@ $ node tests/dom/diff-summary-session.js
       },
       {
         "row": "  M whole.py +2 −2",
-        "label": "whole.py, modified, 2 added, 2 deleted"
+        "label": "whole.py, modified, 2 lines added, 2 deleted"
       }
     ],
     "a long tree draws its view, its overscan, and the row that takes Tab": {

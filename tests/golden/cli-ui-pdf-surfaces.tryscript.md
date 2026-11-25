@@ -811,7 +811,7 @@ $ node tests/dom/pdf-surfaces-session.js
         "change": "modified",
         "binary": false,
         "availability": "ready",
-        "lines": "+2 −0",
+        "lines": "+2",
         "body": "text diff",
         "card": null,
         "barControls": [
@@ -827,7 +827,7 @@ $ node tests/dom/pdf-surfaces-session.js
         "change": "added",
         "binary": false,
         "availability": "ready",
-        "lines": "+1 −0",
+        "lines": "+1",
         "body": "text diff",
         "card": null,
         "barControls": [
@@ -843,7 +843,7 @@ $ node tests/dom/pdf-surfaces-session.js
         "change": "added",
         "binary": false,
         "availability": "ready",
-        "lines": "+5 −0",
+        "lines": "+5",
         "body": "text diff",
         "card": null,
         "barControls": [

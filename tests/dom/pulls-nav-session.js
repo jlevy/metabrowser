@@ -1008,32 +1008,36 @@ function twoTreesPage() {
   const filesTab = make("div", { id: "tab-files", "data-tab-content": "files" }, [
     make("div", { role: "tree", "aria-label": "Files" }, files),
   ]);
-  // The Pulls tab's list, as the panel paints it: a tree of anchors in items of no role. A
-  // pull request's row is the tree's item, whose changed files are its children, as a
-  // folder's are (mb-1z7j).
-  const pullRow = (number) =>
-    make("a", {
-      class: "github-pulls-row",
-      href: `/pull/${number}`,
-      role: "treeitem",
-      "aria-level": "1",
-      "aria-expanded": "false",
-      tabindex: number === 3900 ? "0" : "-1",
-      "data-number": String(number),
-    });
-  const pulls = [3900, 3899, 3898].map(pullRow);
-  // Each row's third line, its change line, under it in the item's one zone: the line that
-  // carries the toggle, the pointer's alone. It is no stop of the tree's and hidden from
-  // assistive technology, so Space on the row is the keyboard's way to its files, and the
-  // row's `aria-expanded` is their one state; the line only turns its chevron.
+  // Each row's toggle, the lines and the chevron at the end of its run, in its link
+  // (mb-pw8t): the pointer's alone. It is no stop of the tree's and hidden from assistive
+  // technology, so Space on the row is the keyboard's way to its files, and the row's
+  // `aria-expanded` is their one state; the toggle only turns its chevron.
   const changeLines = [3900, 3899, 3898].map((number) =>
-    make("div", {
+    make("span", {
       class: "github-pulls-change disclosure-toggle collapsed",
       "aria-hidden": "true",
       "data-number": String(number),
-      "data-tree-id": `#${number}'s change line`,
+      "data-tree-id": `#${number}'s toggle`,
     }),
   );
+  // The Pulls tab's list, as the panel paints it: a tree of anchors in items of no role. A
+  // pull request's row is the tree's item, whose changed files are its children, as a
+  // folder's are (mb-1z7j).
+  const pullRow = (number, index) =>
+    make(
+      "a",
+      {
+        class: "github-pulls-row",
+        href: `/pull/${number}`,
+        role: "treeitem",
+        "aria-level": "1",
+        "aria-expanded": "false",
+        tabindex: number === 3900 ? "0" : "-1",
+        "data-number": String(number),
+      },
+      [changeLines[index]],
+    );
+  const pulls = [3900, 3899, 3898].map(pullRow);
   const copyRef = make("button", { "aria-label": "Copy ref main" });
   const pullsList = make(
     "ul",
@@ -1042,9 +1046,7 @@ function twoTreesPage() {
       make(
         "li",
         { role: "none" },
-        [make("div", { class: "github-pulls-entry" }, [row, changeLines[index]])].concat(
-          index === 0 ? [copyRef] : [],
-        ),
+        [make("div", { class: "github-pulls-entry" }, [row])].concat(index === 0 ? [copyRef] : []),
       ),
     ),
   );
@@ -1372,19 +1374,19 @@ async function twoTreesStory() {
     assert.equal(action["focus on"], page.named(firstPull), "Space keeps focus on the row");
   }
   assert.equal(nextPull.getAttribute("aria-expanded"), "false", "Space ignores the tab stop");
-  // The change line is no stop: no key reaches it, so focus never lands on it. Hidden from
+  // The toggle is no stop: no key reaches it, so focus never lands on it. Hidden from
   // assistive technology, it is not one of the tree's children either.
   assert.ok(
     page.changeLines.every((line) => line.getAttribute("tabindex") === null),
-    "the line that carries the toggle is no stop of the tree's",
+    "the toggle is no stop of the tree's",
   );
   assert.ok(
     page.changeLines.every((line) => line.getAttribute("aria-hidden") === "true"),
-    "the line that carries the toggle is hidden from assistive technology",
+    "the toggle is hidden from assistive technology",
   );
   assert.ok(
     page.changeLines.every((line) => line.getAttribute("aria-expanded") === null),
-    "the row, not its change line, says whether its files are open",
+    "the row, not its toggle, says whether its files are open",
   );
   assert.ok(
     page.changeLines.every(
@@ -1392,7 +1394,7 @@ async function twoTreesStory() {
         line.classList.contains("expanded") ===
         (page.pulls[index].getAttribute("aria-expanded") === "true"),
     ),
-    "each change line's chevron turns with its row's state",
+    "each toggle's chevron turns with its row's state",
   );
   // Grouped by stack, Space on a stack's row opens and closes the stack, by its number, and
   // a held Space does nothing more.

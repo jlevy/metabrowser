@@ -776,7 +776,9 @@ No Git involvement.
 - [x] `src/metabrowser/builtin_plugins/diff/diff-model.js` and
   `src/metabrowser/builtin_plugins/diff/diff-view.js`: unified rendering, sticky file
   headers, every availability state (`mb-snkb`, `mb-ao1d`)
-- [ ] Hunk context expansion (`mb-hhmb`)
+- [x] Hunk context expansion: a hunk’s separator opens the unchanged lines between hunks
+  ([Context Between Hunks](../../architecture/arch-diff-pipeline.md#context-between-hunks),
+  `mb-zz81`)
 - [x] Golden fixtures: a corpus of patches including pathological and malformed cases
   (`tests/test_diff_patch_file.py`)
 
@@ -851,9 +853,9 @@ Those results retain the shared byte bound and do not justify an aggregate cap o
 worker. `@pierre/diffs` and `@git-diff-view/core` still offer material advantages for
 virtualization and worker tokenization, not for this completed slice.
 Phase 4 now uses a focused VS Code algorithm port for intraline refinement.
-Context expansion, whitespace controls, and virtualization remain on this plan and
-`mb-hhmb`; they can trigger another measured dependency review if their implementation
-cost justifies one.
+Whitespace controls and virtualization remain on this plan and `mb-hhmb`, and context
+expansion has landed (`mb-zz81`); they can trigger another measured dependency review if
+their implementation cost justifies one.
 
 [Historical Diff View Spike Results](../../research/archive/research-2026-07-18-diff-view-spike-results.md)
 preserves an earlier prototype comparison of both libraries, server-rendered HTML, and

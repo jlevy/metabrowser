@@ -1,20 +1,20 @@
-"""Each Pulls row's third line, its change line, laid out by headless Chrome.
+"""Each Pulls row's run and last line laid out by headless Chrome.
 
-What a row's third line shows, and when, and what a press and each key do, is browserless
+What a row's toggle shows, and when, and what a press and each key do, is browserless
 (``tests/dom/github-pulls-row-lines-session.js``); what only a browser can tell is held here
-(``tests/dom/github-pulls-row-lines-chrome.mjs``): that a row is three lines, two of title, cut
-short at the second, with the state icon leading the first, and the change line, the chevron in
-the same slot, then the number, the author, and the lines changed, with the age at its end
-(mb-85op, mb-lqkb); that nothing moves when the lines arrive; that the change line stays one line
-at every pane width from 420 px to the 180 px minimum in both themes, its lines whole or out of
-view, the author leaving first; that its inks and weights are the component's; that a row's
-three lines are one item (mb-1z7j), which carries the open row's highlight, hovers as one
-wherever the pointer is on it, and takes the focus ring round all three, while the change line,
-the toggle's line, adds its chevron's own hover and is no stop; and that a real press on the
-title expands nothing while one anywhere on the change line, the number and the author
-included, opens and closes the files under it. ``METABROWSER_ROW_LINES_MEASURED`` names a file
-for what it measured, and ``METABROWSER_ROW_LINES_SHOTS`` a directory for a screenshot of each
-width and theme, waiting and shown.
+(``tests/dom/github-pulls-row-lines-chrome.mjs``): that a row is its run, the state icon, the
+title, the number, and the lines with the chevron after them, every line of it in the text
+column past the icon and never cut short, and its last line, the author with the age at its end
+(mb-pw8t); that a closed row is ``ROW_ESTIMATE_PX`` tall with a run of three lines; that nothing
+but the chevron moves when the lines arrive, at every pane width from 420 px to the 180 px
+minimum in both themes, the lines whole and in the row; that their inks and weights are the
+component's; that a row is one item (mb-1z7j), which carries the open row's highlight, hovers as
+one wherever the pointer is on it, and takes the focus ring round it, while the toggle, the lines
+and the chevron, adds its chevron's own hover and is no stop; and that a real press on the
+title, the number, or the author opens the pull request and expands nothing while one on the
+chevron or the lines opens and closes the files under it. ``METABROWSER_ROW_LINES_MEASURED``
+names a file for what it measured, and ``METABROWSER_ROW_LINES_SHOTS`` a directory for a
+screenshot of each width and theme, waiting and shown.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 """
@@ -44,7 +44,7 @@ LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
 
-def test_a_rows_change_line_arrives_in_place_in_chrome(
+def test_a_rows_lines_arrive_in_its_run_in_place_in_chrome(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
     chrome = require_chrome()

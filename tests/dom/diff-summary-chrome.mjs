@@ -9,9 +9,9 @@
 // own, which Chrome and the server join, and judges the one JSON line it prints.
 //
 // What it measures is layout, which no browserless DOM computes (docs/design-system.md,
-// "Diff Summary"; mb-hi4l): where the header's chevron and words start, and where each row
-// of the opened tree starts at every depth, so its first level is one indentation step in
-// from the header and each level one more; that the opened tree has no scroll bar of its own
+// "Diff Summary"; mb-hi4l): where the header's words start and end, where its chevron, after
+// them (mb-f0pz), starts, and where each row of the opened tree starts at every depth, so its
+// first level is one indentation step in from the header's words and each level one more; that the opened tree has no scroll bar of its own
 // and is as tall as its rows, in the page's flow; that on a long change set only the rows in
 // the window's view of the tree and its overscan are in the document, as the page scrolls;
 // that the header starts collapsed with no tree; and that the keys and the focus ring are
@@ -103,6 +103,10 @@ const LAYOUT = `(() => {
     viewHeight: innerHeight,
     header: {
       chevron: round(left(toggle.querySelector(".diff-summary-chevron"))),
+      // Where its words end: the part before its chevron, which follows them (mb-f0pz).
+      wordsEnd: round(
+        toggle.querySelector(".diff-summary-chevron").previousElementSibling.getBoundingClientRect().right,
+      ),
       // The header's words start at its change line where its page says the file count on
       // its size line ("Change Size Line"), and at the file count where it says it itself.
       words: round(left(toggle.querySelector(".diff-summary-files") ?? toggle.querySelector(".change-line"))),

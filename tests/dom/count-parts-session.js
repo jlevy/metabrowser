@@ -152,16 +152,16 @@ const format = (count) => count.toLocaleString("en-US");
 const family = (status, letter, word, count) => ({ status, letter, word, count });
 
 /**
- * Build a brief change line through the shell and the SDK, built with *build* and painted
- * with *options*, paint it both ways, hold the paints to one answer, and record it: its
- * text, its words, and its nodes or markup.
+ * Build a brief change line through the shell and the SDK, painted with *options*, paint it
+ * both ways, hold the paints to one answer, and record it: its text, its words, and its
+ * nodes or markup.
  */
-function changeLine(label, change, options, record, build = {}) {
-  const line = formatters.changeLine(change, format, build);
+function changeLine(label, change, options, record) {
+  const line = formatters.changeLine(change, format);
   // The SDK's builder writes the shell's number format, which is this locale's here.
   assert.deepEqual(
-    JSON.parse(JSON.stringify(mb.changeLine(change, build))),
-    JSON.parse(JSON.stringify(formatters.changeLine(change, formatters.formatInteger, build))),
+    JSON.parse(JSON.stringify(mb.changeLine(change))),
+    JSON.parse(JSON.stringify(formatters.changeLine(change, formatters.formatInteger))),
     `the SDK builds ${label} as the shell does`,
   );
   const nodes = shape(formatters.changeLineNodes(recording, line, options));
@@ -222,12 +222,10 @@ const changeLines = {
   ),
 };
 
-// A line that leaves out a total of zero, as the Pulls tab's rows and stack headings build
-// theirs (mb-efum): a side that is zero is not shown, both nonzero are shown as without it,
-// an unknown one is "?", and a change of no lines is a muted "0 lines".
-const OMIT_ZERO = Object.freeze({ omitZeroTotals: true });
-const omitZero = (label, change, record = "html") =>
-  changeLine(label, change, {}, record, OMIT_ZERO);
+// Every line leaves out a total of zero (mb-efum, mb-ox6a): a side that is zero is not
+// shown, both nonzero are both shown, an unknown one is "?", and a change of no lines is a
+// muted "0 lines".
+const omitZero = (label, change, record = "html") => changeLine(label, change, {}, record);
 const zeroTotalsLeftOut = {
   "only additions": omitZero("only additions", { statuses: [], additions: 1234, deletions: 0 }),
   "only deletions": omitZero("only deletions", { statuses: [], additions: 0, deletions: 1 }),
@@ -254,18 +252,6 @@ const zeroTotalsLeftOut = {
     deletions: null,
   }),
 };
-// Both nonzero, or unknown, the line is the one built without leaving anything out.
-for (const change of [
-  { statuses: [], additions: 1234, deletions: 567 },
-  { statuses: [], additions: 12, deletions: null },
-  { statuses: [], additions: null, deletions: null },
-]) {
-  assert.deepEqual(
-    formatters.changeLine(change, format, OMIT_ZERO),
-    formatters.changeLine(change, format),
-    `${JSON.stringify(change)} is shown whole`,
-  );
-}
 
 /** What each summary of a change set says, from its totals and its statuses' counts. */
 const SUMMARIES = [
