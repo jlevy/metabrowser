@@ -21,6 +21,9 @@ type MetabrowserRenderContext = {
   };
   /** The owner of a selected comparison read, while its view is mounting. */
   comparisonSignal?: AbortSignal;
+  /** One changed file of the comparison, by its path: the diff view draws the comparison
+   *  route's one-file answer, as the diff plugin's `mountRenderedFile` asks it to. */
+  file?: string;
   /** How the host opens one of a comparison's changed files at its own address, as a pull
    *  request's Changes does at `/pull/<n>/files/<path>`; absent where a file has none. */
   openFile?: (path: string) => void;
@@ -1477,6 +1480,17 @@ type DiffExports = {
     patch: Record<string, unknown>,
     api: MetabrowserPublicSdk,
   ) => { dispose(): void };
+  /** One changed file of a comparison drawn whole from the comparison route's one-file
+   * answer by the diff view's own `render`, rendered layer included, *ctx* as a host passes
+   * that view. `settled` is true once the file is drawn, and false when it is not: the
+   * view's notice then says why in its place, or the handle was disposed first. `dispose`
+   * ends the read on its way or removes what was drawn. */
+  mountRenderedFile: (
+    container: HTMLElement,
+    comparison: NonNullable<MetabrowserRenderContext["comparison"]>,
+    path: string,
+    ctx?: MetabrowserRenderContext,
+  ) => { settled: Promise<boolean>; dispose(): void };
 };
 
 /** What the GitHub plugin exports for the shell. */

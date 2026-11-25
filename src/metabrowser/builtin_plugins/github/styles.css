@@ -2090,6 +2090,27 @@
   font-variant-numeric: var(--tabular-numerals);
   text-align: end;
 }
+/* A group of steps in the list: the shell's group heading (`.group-heading`, "Groups in a
+   Menu"), which starts on the edge a row's first column starts on, its number here, past
+   the row's 2px marker edge, and the group's steps below it, which keep their numbers.
+   Two classes, so the shell's own padding never wins by the order the sheets load in. */
+.github-pull-guide-steps .github-pull-guide-steps-heading {
+  padding-block: 6px 2px;
+  padding-inline: calc(var(--github-pull-text-inset) + 2px);
+}
+.github-pull-guide-steps-members {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* A group's note above its first step's card: the author's text, as typed, at the card
+   text's inset. */
+.github-pull-guide-group-note {
+  margin: 0 0 0.75rem;
+  padding-inline: var(--github-pull-text-inset);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* A changed step's mark is metadata, at its row's or its card head's size ("Type Scale"). */
 .github-pull-guide-step-changed {
   color: var(--muted);

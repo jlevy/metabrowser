@@ -345,6 +345,30 @@ const DOCS_GROUP = "type:docs";
 const DOCS_SHOW_PREFERENCE = "github.docs.show";
 
 /**
+ * How Docs draws a document, which a Markdown file a guided step cites whole shares
+ * (`loadDrawDocument`), so it opens as the Docs tab opens it: every fold open, Unified with
+ * no layout choice, since a rendered document has no layout and its Source reads as its
+ * Rendered does in one column, and on the new version (Current), remembered apart from
+ * Changes' `diff.show`. An option Docs gives its documents belongs here, so both take it.
+ */
+const DOCS_DRAWING = Object.freeze({
+  unfold: true,
+  layout: /** @type {const} */ ("unified"),
+  show: /** @type {const} */ ("current"),
+  showPreference: DOCS_SHOW_PREFERENCE,
+});
+
+/**
+ * How Changes draws a file, which a YAML or JSON file a guided step cites whole shares
+ * (`loadDrawDocument`): the diff view's own defaults, so it opens as Changes opens it, on
+ * Diff as `diff.show` remembers it, its long runs folded, in the reader's layout. Docs lists
+ * neither format: they are the `data` File type, and Docs the `docs` one
+ * (`recommended-file-types.toml`). An option Changes gives its files belongs here, so both
+ * take it.
+ */
+const CHANGES_DRAWING = Object.freeze({});
+
+/**
  * Whether a diff document lists no changed file, and its list was not cut short at its
  * bounds: a Docs tab with no document to show.
  *
@@ -7864,16 +7888,10 @@ export function mountPullPage(container, ctx, mb) {
               summary: false,
               ...(docs
                 ? {
-                    // Docs: the documents alone, every fold open, and no File type or
-                    // layout choice. A rendered document has no layout, and a document's
-                    // Source reads as its Rendered does, in one column. Docs opens on the
-                    // new versions (Current), and remembers the reader's Diff | Current
-                    // apart from Changes' `diff.show`, so neither moves the other.
+                    // Docs: the documents alone, with no File type choice, drawn as Docs
+                    // draws a document (`DOCS_DRAWING`).
                     group: DOCS_GROUP,
-                    unfold: true,
-                    layout: "unified",
-                    show: "current",
-                    showPreference: DOCS_SHOW_PREFERENCE,
+                    ...DOCS_DRAWING,
                     emptyText: "No documents changed in this pull request.",
                     onDocument: (/** @type {unknown} */ document_) => {
                       documented = true;
@@ -7881,6 +7899,8 @@ export function mountPullPage(container, ctx, mb) {
                     },
                   }
                 : {
+                    // Changes: every file, drawn as Changes draws a file (`CHANGES_DRAWING`).
+                    ...CHANGES_DRAWING,
                     // The File type choice is the page's: kept while the reader is on
                     // another tab, and gone with the page, as the diff's place is.
                     types: diffTypes,
@@ -8248,6 +8268,37 @@ export function mountPullPage(container, ctx, mb) {
           loadDrawPatch: async () => {
             const diff = await mb.plugins.load("diff");
             return (body, change, patch) => diff.mountFilePatch(body, change, patch, mb);
+          },
+          // A file a step cites whole that the rendered route renders is the diff plugin's
+          // own view of it, from this page's comparison while it is the one the step was read
+          // at: a Markdown file drawn as Docs draws it (`DOCS_DRAWING`), and a YAML or JSON
+          // file as Changes does (`CHANGES_DRAWING`).
+          loadDrawDocument: async () => {
+            const diff = await mb.plugins.load("diff");
+            /** @param {{merge_base: string | null, head: string}} pins */
+            const at = (pins) => {
+              const comparison = shown?.comparison ?? null;
+              return comparison !== null &&
+                comparison.left === pins.merge_base &&
+                comparison.right === pins.head
+                ? { ...comparison, base_policy: /** @type {const} */ ("merge_base") }
+                : null;
+            };
+            return {
+              draws: (pins) => at(pins) !== null,
+              mount(body, path, format, pins) {
+                const comparison = at(pins);
+                if (comparison === null) {
+                  return { settled: Promise.resolve(false), dispose() {} };
+                }
+                return diff.mountRenderedFile(body, comparison, path, {
+                  ...(format === "markdown" ? DOCS_DRAWING : CHANGES_DRAWING),
+                  // Its rendered layer waits for Rendered with Source hidden for as long as
+                  // Changes' first screen does, so Source never shows first in its place.
+                  markdownHoldMs: CHANGES_FIRST_SCREEN_MS,
+                });
+              },
+            };
           },
         });
         mount.view.show(shown.recordRevision, shown.newCommits !== null);
