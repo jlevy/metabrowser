@@ -1816,7 +1816,7 @@
   justify-self: center;
   color: var(--muted);
 }
-/* A stack's Whole stack row (pulls-panel.js, `paintWholeRow`), the last under its open stack,
+/* A stack's Whole stack row (pulls-panel.js, `paintWholeRow`), the first under its open stack,
    opens the stack's own page. It is one line in a member's row grid: the stack's Layers glyph,
    muted, in the state icon's slot, and "Whole stack" in the members' title column, one
    --github-pull-row-gap (the tree's icon gap) past the glyph, as the stack menu's Whole stack

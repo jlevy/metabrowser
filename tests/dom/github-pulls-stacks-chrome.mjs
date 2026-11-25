@@ -140,7 +140,7 @@ const LIST = `(() => {
       };
       stacks.push(open);
     } else if (row.classList.contains("github-pulls-whole-row") && open !== null) {
-      // The stack's Whole stack row, the last of its set, under its members (mb-cm31).
+      // The stack's Whole stack row, one of its set (mb-cm31).
       open.whole = {
         text: row.textContent,
         name: row.getAttribute("aria-label"),
@@ -567,6 +567,7 @@ try {
       const el = document.activeElement;
       if (el?.matches?.(".github-pulls-change")) return "line " + el.dataset.number;
       if (el?.matches?.(".github-pull-file-row, .github-pull-folder-row")) return "file";
+      if (el?.matches?.(".github-pulls-whole-row")) return "whole " + el.dataset.stack;
       return el?.dataset?.stack ? "stack " + el.dataset.stack : el?.dataset?.number ? "#" + el.dataset.number : el?.tagName ?? null;
     })()`);
   /** Whether the first stack's row is inside the list's scroller's view, and where it is. */
@@ -694,17 +695,17 @@ try {
         : /^Stack #286: .+; 4 pull requests$/.test(first?.name ?? ""),
       first?.name,
     );
-    // Each open stack's last row is its Whole stack row (mb-cm31), a link to the stack's own
-    // page, the last of the stack's set.
+    // Each open stack's rows hold its Whole stack row (mb-cm31), a link to the stack's own
+    // page, one of the stack's set; the keys below say where it is.
     check(
-      "each open stack ends in its Whole stack row, which links to the stack's page",
+      "each open stack has its Whole stack row, one of its set, which links to the stack's page",
       list.stacks.every(
         (stack) =>
           stack.expanded !== "true" ||
           (stack.whole?.text === "Whole stack" &&
             stack.whole.href === `/stack/${stack.stack}` &&
             stack.whole.name === `Whole stack, Stack #${stack.stack}` &&
-            stack.whole.place === `${stack.members.length + 1}/${stack.members.length + 1}`),
+            stack.whole.place.endsWith(`/${stack.members.length + 1}`)),
       ),
       JSON.stringify(list.stacks.map(({ stack, expanded, whole }) => ({ stack, expanded, whole }))),
     );
@@ -886,7 +887,8 @@ try {
     await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 1200, y: 880 });
     await shot("after-pulls-grouped", await paneClip());
 
-    // Real keys: onto a stack's row and off it, closing and opening it.
+    // Real keys: off a stack's row and back, closing and opening it. J from the stack's row
+    // lands on its Whole stack row first, and so does Right on the open stack.
     await evaluate(`document.querySelector(".github-pulls-stack-row").focus()`);
     const keys = [];
     for (const key of ["j", "k", "ArrowLeft", "ArrowRight", "ArrowRight"]) {
@@ -907,14 +909,14 @@ try {
     }
     measured.keys = keys;
     check(
-      "J, K, Left and Right move real focus over a stack's row",
+      "J, K, Left and Right move real focus over a stack's row, J and Right onto its Whole stack row first",
       JSON.stringify(keys.map((k) => [k.focus, k.expanded])) ===
         JSON.stringify([
-          ["#10", "true"],
+          ["whole 286", "true"],
           ["stack 286", "true"],
           ["stack 286", "false"],
           ["stack 286", "true"],
-          ["#10", "true"],
+          ["whole 286", "true"],
         ]),
       JSON.stringify(keys),
     );
@@ -1962,8 +1964,14 @@ try {
     }))`;
     const oneStack = await evaluate(CHIPS);
     await click('a.github-pulls-row[data-number="10"]');
+    // #10's page, committed, with both its chips (mb-66qu). Until the shell commits it, the
+    // page is built in a hidden stage beside #9's (createFilePreviewStage in app.js), and
+    // its header holds a strut, a hidden chip of the same class, until its stacks arrive:
+    // #9's chip and #10's strut made two chips while #9's page was still the one shown.
     await waitFor(
-      `document.querySelectorAll(".github-pull-stacks .github-pull-stack-trigger").length === 2`,
+      `document.querySelector(".preview-file-stage") === null &&
+        document.querySelectorAll(".github-pull-stacks").length === 1 &&
+        document.querySelectorAll(".github-pull-stacks .github-pull-stack-trigger:not(.github-pull-stack-strut)").length === 2`,
     );
     await frames();
     const twoStacks = await evaluate(CHIPS);

@@ -424,15 +424,18 @@ try {
   await frames();
   phase("pulls");
   await shot(`stack-70-with-pulls`);
-  // The Pulls tab's Whole stack row (mb-cm31): the last of Stack #70's rows, under its
-  // members, the current row while the stack's page is open, and in view.
+  // The Pulls tab's Whole stack row (mb-cm31): one of Stack #70's rows, with its members,
+  // the current row while the stack's page is open, and in view.
   const WHOLE = `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')`;
   const NAV = `(() => {
     const whole = ${WHOLE};
     if (whole === null) return null;
+    // The stack's rows: the second-level items between its stack's row and the next row
+    // a level out, the Whole stack row's among them.
     const members = [];
-    for (let item = whole.closest("li").previousElementSibling; item?.dataset.level === "2"; item = item.previousElementSibling) {
-      members.unshift(Number(item.dataset.number));
+    let item = document.querySelector('#tab-pulls .github-pulls-stack-row[data-stack="70"]')?.closest("li")?.nextElementSibling;
+    for (; item?.dataset.level === "2"; item = item.nextElementSibling) {
+      if (!item.classList.contains("github-pulls-whole-item")) members.push(Number(item.dataset.number));
     }
     const view = document.querySelector(".tree-content").getBoundingClientRect();
     const box = whole.getBoundingClientRect();
@@ -452,13 +455,13 @@ try {
   const nav = await evaluate(NAV);
   measured.nav = { open: nav };
   check(
-    "the Pulls tab's Whole stack row ends Stack #70's members and links to its page",
+    "the Pulls tab's Whole stack row is one of Stack #70's rows and links to its page",
     nav !== null &&
       nav.text === "Whole stack" &&
       nav.href === "/stack/70" &&
       nav.members.length > 0 &&
       nav.members.every((number) => [10, 8].includes(number)) &&
-      nav.place === `${nav.members.length + 1}/${nav.members.length + 1}`,
+      nav.place.endsWith(`/${nav.members.length + 1}`),
     JSON.stringify(nav),
   );
   check(
@@ -468,7 +471,7 @@ try {
   );
   const last = nav?.members.at(-1);
   // A member's row takes the mark; a press on the Whole stack row opens the stack's page
-  // again and gives it back; and J from the last member walks onto it and opens the page.
+  // again and gives it back; and J from the stack's row walks onto it and opens the page.
   await click(`#tab-pulls a.github-pulls-row[data-number="${last}"]`);
   await waitFor(
     `location.pathname === "/pull/${last}" && ${WHOLE}.getAttribute("aria-current") === null`,
@@ -481,7 +484,7 @@ try {
   await click(`#tab-pulls a.github-pulls-row[data-number="${last}"]`);
   await waitFor(`location.pathname === "/pull/${last}"`);
   await evaluate(
-    `document.querySelector('#tab-pulls a.github-pulls-row[data-number="${last}"]').focus()`,
+    `document.querySelector('#tab-pulls .github-pulls-stack-row[data-stack="70"]').focus()`,
   );
   for (const type of ["keyDown", "keyUp"]) {
     await send("Input.dispatchKeyEvent", {
@@ -496,7 +499,7 @@ try {
   await waitFor(`${WHOLE}.getAttribute("aria-current") === "page"`);
   measured.nav.walked = await evaluate(NAV);
   check(
-    "a press on it, and J onto it from the last member, open the stack's page and mark it",
+    "a press on it, and J onto it from the stack's row, open the stack's page and mark it",
     measured.nav.pressed?.address === "/stack/70" &&
       measured.nav.pressed.current === "page" &&
       measured.nav.walked?.address === "/stack/70" &&
