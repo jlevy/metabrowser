@@ -34,7 +34,10 @@ from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.pull_catalog import catalog_member
 from metabrowser.builtin_plugins.github.pull_freshness import record_freshness
-from metabrowser.builtin_plugins.github.pull_manifest import shared_pull_manifest
+from metabrowser.builtin_plugins.github.pull_manifest import (
+    kept_pull_manifest,
+    shared_pull_manifest,
+)
 from metabrowser.builtin_plugins.github.pull_record import (
     MAX_BODY_BYTES,
     PullRecord,
@@ -97,10 +100,17 @@ _MARKDOWN = MarkdownIt("commonmark").disable("inline")
 # (INITIAL_PULL_FILES in sidekick.py), in one run of the diff source. A ranged reference
 # renders its lines (MAX_EXCERPT_BYTES), and a path alone its file's whole patch
 # (MAX_STEP_PATCH_BYTES), or, for a file the rendered route renders, nothing at all.
-# A `{pull, path}` reads its own pull request's comparison instead, so a step whose
-# references cite files of several pull requests runs the diff source once for each, at
-# most this many runs; a `{pull}` reads a record and a catalog row, and a `{commit}` one
-# bounded `git log`. Those costs were not measured when the kinds arrived (mb-9dmv).
+# A `{pull, path}` reads its own pull request's kept manifest instead and runs the diff
+# source once for each pull request, so a step citing files of several pull requests
+# makes at most this many runs, and never lists a comparison (_pull_files); a `{pull}`
+# reads a record and a catalog row, and every `{commit}` of a step shares one bounded
+# `git log` (_commit_targets). The worst cases, on this repository's own cache with the
+# carrier #838, interleaved, best and median of nine, at a load average near 120 on
+# 10 cores (2026-11-25, timing _step_references): eight `{path}` of the carrier took
+# 36/38 ms; eight `{pull, path}` in eight pull requests with kept manifests 213/265 ms,
+# and with none kept (`not_cached`) 9/11 ms, where listing one cold comparison instead
+# cost 68/80 ms for each pull request; eight `{pull}` 5/5 ms; eight `{commit}` 23/27 ms,
+# against 157/171 ms for eight separate `git log` runs.
 MAX_REFERENCES = 8
 # Every entry of a collection's items counts: an item at the top, a group, and each item in a
 # group, so a group holds at most MAX_ITEMS - 1 items. A group is a title and an optional
@@ -168,6 +178,8 @@ MAX_STALE_SUBJECT_BYTES: Final = 240
 # One commit's line of `git log`, its ID or date and its subject, at most the subject's
 # bound written in four-byte characters, as `_commits_since` sizes each of its lines.
 _MAX_COMMIT_ROW_BYTES: Final = 200 + 4 * MAX_STALE_SUBJECT_BYTES
+# A commit's line without its subject: a 64-hex ID, a time in epoch seconds, and their NULs.
+_MAX_COMMIT_ID_ROW_BYTES: Final = 128
 # The paths changed since the guide decide which of its steps may no longer match the pull
 # request. A change past this many paths is answered as unknown rather than read whole: no
 # step is then marked, and the page says some may not match.
@@ -223,22 +235,27 @@ type ReferenceKind = Literal["file", "pull_file", "pull", "commit"]
 # The fields a kind of reference does not take, stated in the compiled schema as an `if` on
 # the field that names the kind, as groups' `if` on `items` is (`_GroupWhenItHasItems`), so
 # a refusal keeps its place: `{commit, path}` is refused at `references.0.path`, and a
-# reference that names nothing at `references.0`. A field is forbidden as `not: {}`: a
-# `false` schema's refusal is placed at the reference alone by softschema's error record.
-# `CollectionReference._usable_reference` states the same for a reference made in code and
-# for a null value, which the schema admits.
+# reference that names nothing at `references.0`. A null field is absent, as the model
+# reads it, so each `if` holds only for a value of its field, and a field a kind does not
+# take may be null: a reference the route answers, which names every field and nulls those
+# its kind lacks, parses back as the same kind. `CollectionReference._usable_reference`
+# states the same for a reference made in code.
 _RANGE: Final = ("side", "start_line", "end_line")
 
 
+# A value, of any type: the field's own schema refuses one of the wrong type, at the field.
+_VALUE: Final[JsonDict] = {"not": {"type": "null"}}
+
+
 def _forbidden(*fields: str) -> JsonDict:
-    return {"properties": {name: {"not": {}} for name in fields}}
+    return {"properties": {name: {"type": "null"} for name in fields}}
 
 
 _REFERENCE_KINDS: Final[JsonDict] = {
-    "if": {"required": ["commit"]},
+    "if": {"required": ["commit"], "properties": {"commit": _VALUE}},
     "then": _forbidden("path", "pull", *_RANGE),
     "else": {
-        "if": {"required": ["pull"]},
+        "if": {"required": ["pull"], "properties": {"pull": _VALUE}},
         "then": _forbidden(*_RANGE),
         "else": {"required": ["path"]},
     },
@@ -906,6 +923,8 @@ class _Carrier:
     *manifest* lists the carrier's comparison, and is asked only by a step that cites one
     of its files. A `{pull}` in more than one stack is placed in *stack* when it is a
     member, else in the first stack that holds *pull*, else in the first that holds it.
+    *links* is where a commit's page reads Git when that is not the store, a served
+    checkout's (:func:`_commit_targets`), and ``None`` on a mirror.
     """
 
     store: PublishedSource
@@ -917,6 +936,7 @@ class _Carrier:
     repository: ListedRepository | None = None
     stack: int | None = None
     pull: int | None = None
+    links: GitLocation | None = None
 
 
 async def _read_files(
@@ -989,8 +1009,12 @@ async def _pull_files(
     comparison: its kept manifest, the one its Changes reads, and the patches its cited
     files need, one run of the diff source for each pull request.
 
-    A pull request with no record answers `not_cached`, and one whose record has no
-    comparison, or whose comparison the store cannot read now, `comparison_unavailable`.
+    A pull request with no record answers `not_cached`, as does one with no manifest kept
+    for its record's comparison, which is listed here only by its own page, when the reader
+    opens it: a refresh keeps one (`prepare_pull_manifest`), and listing a whole comparison
+    on this request, once for each pull request a step cites, is what `MAX_REFERENCES`
+    leaves out. One whose record has no comparison, or whose comparison the store cannot
+    read now, answers `comparison_unavailable`.
     """
     cited: dict[int, list[CollectionReference]] = {}
     for ref in references:
@@ -1010,8 +1034,11 @@ async def _pull_files(
             found[number] = _PullFiles(None, None, "comparison_unavailable")
             continue
         base, head = comparison.base, comparison.head
+        compared = await asyncio.to_thread(kept_pull_manifest, store, number, base, head)
+        if compared is None:
+            found[number] = _PullFiles(None, None, "not_cached")
+            continue
         try:
-            compared = await shared_pull_manifest(store, number, base, head)
             files = await _read_files(store, compared, head, refs)
         except (DiffSourceError, GitError):
             found[number] = _PullFiles(None, None, "comparison_unavailable")
@@ -1079,43 +1106,93 @@ def _pull_targets(carrier: _Carrier, cited: Sequence[tuple[int, int]]) -> dict[i
     return found
 
 
-async def _commit_target(location: GitLocation, commit: str) -> _Target:
-    """A `{commit}`: its subject, cut as a stale guide's commits' are, and when it was
-    committed, or `commit_unavailable` when the store has no such commit.
+async def _commit_targets(
+    location: GitLocation, commits: Sequence[str], links: GitLocation | None
+) -> dict[str, _Target]:
+    """Each `{commit}` a step cites, by its ID: its subject, cut as a stale guide's commits'
+    are, and when it was committed, or `commit_unavailable` when the store has no such
+    commit. Its address is `/commit/<sha>`, whose page reads the commit where the session
+    reads Git, *links* when that is not the store: on a served checkout, a commit the store
+    holds and the checkout does not, as a pull request's branch the store alone fetched,
+    is answered with no address, and its row says it is not in this checkout.
 
-    One bounded `git log`, sized as :func:`_commits_since` sizes one commit's line. Git
-    prints a subject whole, so one past the bound answers the commit with neither. The time
-    is read as epoch seconds and written in UTC with a `Z`, as GitHub writes a time, since
-    `%cI` keeps the committer's offset and Git 2.43 writes UTC's as `+00:00`.
+    One `git log` over every ID, and one more at *links* over those found, each bounded by
+    its commits, a line each as :func:`_commits_since` sizes one. Git prints a subject
+    whole, so a run past its bound is read again for the commits and times alone, and
+    names no subject.
+    The time is read as epoch seconds and written in UTC with a `Z`, as GitHub writes a
+    time, since `%cI` keeps the committer's offset and Git 2.43 writes UTC's as `+00:00`.
     """
-    href = format_commit_href(commit)
+    wanted = list(dict.fromkeys(commits))
+    if not wanted:
+        return {}
+    try:
+        rows = await _commit_rows(location, wanted, "%H%x00%ct%x00%s", _MAX_COMMIT_ROW_BYTES)
+        if rows is None:
+            rows = await _commit_rows(location, wanted, "%H%x00%ct%x00", _MAX_COMMIT_ID_ROW_BYTES)
+    except GitError:
+        rows = None
+    found = {row[0]: row for row in rows or () if len(row) == 3 and row[0] in wanted}
+    shown = set(found)
+    if links is not None and found:
+        try:
+            present = await _commit_rows(links, list(found), "%H", _MAX_COMMIT_ID_ROW_BYTES)
+        except GitError:
+            # What the session's Git holds is unknown: the commit's page says what it can.
+            present = None
+        if present is not None:
+            shown = {row[0] for row in present}
+    targets: dict[str, _Target] = {}
+    for commit in wanted:
+        row = found.get(commit)
+        if row is None:
+            targets[commit] = ("commit_unavailable", None, None)
+            continue
+        _, when, subject = row
+        targets[commit] = (
+            "ready",
+            format_commit_href(commit) if commit in shown else None,
+            {
+                "subject": cut_text(subject, MAX_STALE_SUBJECT_BYTES)[0] or None,
+                "committed_at": _utc_text(when),
+            },
+        )
+    return targets
+
+
+async def _commit_rows(
+    location: GitLocation, commits: Sequence[str], fields: str, row_bytes: int
+) -> list[list[str]] | None:
+    """`git log`'s *fields*, separated by `%x00`, of each of *commits* that *location* holds
+    as a commit, in no order, or ``None`` past *row_bytes* a commit. An ID that names no
+    commit, missing or another kind of object, is left out (`--ignore-missing`), never
+    refused. A line a commit: a subject is its first paragraph on one line."""
     try:
         out = await run_git_at(
             [
                 "log",
                 *GIT_NO_DRIVER_ARGS,
-                "-1",
-                "--no-walk",
-                "--format=%ct%x00%s",
-                f"{commit}^{{commit}}",
+                "--no-walk=unsorted",
+                "--ignore-missing",
+                f"--format=tformat:{fields}",
+                *commits,
                 "--",
             ],
             location,
-            max_bytes=_MAX_COMMIT_ROW_BYTES,
+            max_bytes=len(commits) * row_bytes,
         )
     except GitOutputTooLargeError:
-        return "ready", href, {"subject": None, "committed_at": None}
-    except GitError:
-        return "commit_unavailable", None, None
-    when, _, subject = out.decode("utf-8", errors="replace").rstrip("\n").partition("\0")
-    return (
-        "ready",
-        href,
-        {
-            "subject": cut_text(subject, MAX_STALE_SUBJECT_BYTES)[0] or None,
-            "committed_at": _utc_text(when),
-        },
-    )
+        return None
+    lines = out.decode("utf-8", errors="replace").split("\n")
+    return [line.split("\0") for line in lines if line]
+
+
+def _links(links: GitLocation | None, store: PublishedSource) -> GitLocation | None:
+    """*links*, where the session reads Git, or ``None`` when that is *store* itself, as on
+    a mirror, where a commit the store holds is one its page reads."""
+    if links is None or (links.target is not None and links.target.git_dir == store.git_dir):
+        return None
+    return links
 
 
 def _utc_text(epoch: str) -> str | None:
@@ -1140,7 +1217,7 @@ async def _step_references(carrier: _Carrier, step: CollectionItem) -> list[dict
     comparison for the step's files; a `{pull, path}` whose comparison it cannot list says
     so in its place.
     """
-    references = step.references
+    references = [_carried(ref, carrier.pull) for ref in step.references]
     files = _Files({})
     own = [ref for ref in references if ref.kind == "file"]
     if own:
@@ -1158,9 +1235,10 @@ async def _step_references(carrier: _Carrier, step: CollectionItem) -> list[dict
     location = GitLocation.revision(
         RepositoryStoreTarget(store.git_dir, store.object_format), carrier.head
     )
-    for at, ref in enumerate(references):
-        if ref.commit is not None:
-            targets[at] = await _commit_target(location, ref.commit)
+    cited = {at: ref.commit for at, ref in enumerate(references) if ref.commit is not None}
+    if cited:
+        commits = await _commit_targets(location, list(cited.values()), carrier.links)
+        targets.update({at: commits[commit] for at, commit in cited.items()})
     return await asyncio.to_thread(
         _references, carrier.href, references, files, pulls=pulls, targets=targets
     )
@@ -1258,7 +1336,12 @@ async def _pins_compare(location: GitLocation, pinned: CollectionComparison) -> 
 
 
 async def _staleness(
-    store: PublishedSource | None, record: PullRecord, guide: Collection, *, newer: bool
+    store: PublishedSource | None,
+    record: PullRecord,
+    guide: Collection,
+    *,
+    newer: bool,
+    own: int | None = None,
 ) -> dict[str, object]:
     """What a stale guide was written for, what the pull request is now, and what changed.
 
@@ -1270,7 +1353,8 @@ async def _staleness(
     excerpts are the current diff's all the same, which can draw a file another way, as
     when the diff now pairs it with a deleted file as a rename. With *newer*, GitHub reports
     a head this copy lacks, so what changed is unknown: the commits since are this copy's,
-    and neither list is read.
+    and neither list is read. *own* is the guide's own pull request, whose `{pull, path}`
+    is a `{path}` (:func:`_carried`).
 
     Raises :class:`GuideError` for pins that do not name a comparison: a ``merge_base``
     the store has that is not an ancestor of the guide's ``head``.
@@ -1313,7 +1397,7 @@ async def _staleness(
     if changed is not None:
         # Only a file of the guide's own comparison can be out of date: a `{pull, path}`
         # follows its pull request, and a pull request or a commit is what it is.
-        cited = [_own_paths(item) for item in guide.flat_items()]
+        cited = [_own_paths(item, own) for item in guide.flat_items()]
         answer["changed_paths"] = sorted(set().union(*cited) & changed)
         answer["changed_steps"] = [
             at for at, paths in enumerate(cited, start=1) if not paths.isdisjoint(changed)
@@ -1321,9 +1405,23 @@ async def _staleness(
     return answer
 
 
-def _own_paths(item: CollectionItem) -> set[str]:
-    """The files of the guide's own comparison that *item* cites, its `{path}` references'."""
-    return {ref.path for ref in item.references if ref.kind == "file" and ref.path is not None}
+def _carried(reference: CollectionReference, own: int | None) -> CollectionReference:
+    """*reference* as the guide of pull request *own* reads it: a `{pull, path}` that names
+    *own* is a file of the guide's own comparison, its `{path}`, read at the guide's pins
+    and marked when a push changes it."""
+    if reference.kind == "pull_file" and reference.pull == own:
+        return reference.model_copy(update={"pull": None})
+    return reference
+
+
+def _own_paths(item: CollectionItem, own: int | None) -> set[str]:
+    """The files of the guide's own comparison that *item* cites, its `{path}` references'
+    and those of a `{pull, path}` that names *own*, the guide's own pull request."""
+    return {
+        ref.path
+        for ref in (_carried(ref, own) for ref in item.references)
+        if ref.kind == "file" and ref.path is not None
+    }
 
 
 def _head_moved(store: PublishedSource, record: PullRecord) -> bool:
@@ -1404,11 +1502,13 @@ async def guided_review(
     number: int,
     step_number: int,
     repository: ListedRepository | None = None,
+    links: GitLocation | None = None,
 ) -> dict[str, object]:
     """Return the first or selected step of this PR's guide and only its excerpts.
 
     *repository* is the served repository, whose stack snapshot places a `{pull}` reference
-    in its stack; without it, a `{pull}` names no place.
+    in its stack; without it, a `{pull}` names no place. *links* is where the session reads
+    Git, which a `{commit}`'s page reads (:func:`_commit_targets`).
     """
     served = host.pulls
     record, _, revision = await asyncio.to_thread(
@@ -1443,7 +1543,9 @@ async def guided_review(
         or (comparison is not None and guide.comparison.merge_base != comparison.base)
     )
     try:
-        staleness = await _staleness(published, record, guide, newer=newer) if stale else None
+        staleness = (
+            await _staleness(published, record, guide, newer=newer, own=number) if stale else None
+        )
     except GuideError as exc:
         return {**identity, "state": "invalid", "message": str(exc)}
     # A stale guide's diagnostics ride on every answer, a refusal's too, for an agent that
@@ -1470,6 +1572,7 @@ async def guided_review(
                 href=partial(format_pull_href, number, "files"),
                 repository=repository,
                 pull=number,
+                links=_links(links, published),
             ),
             step,
         )

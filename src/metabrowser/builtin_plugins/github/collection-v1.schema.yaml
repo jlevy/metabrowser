@@ -92,17 +92,25 @@ $defs:
         required:
         - path
       if:
+        properties:
+          pull:
+            not:
+              type: 'null'
         required:
         - pull
       then:
         properties:
           end_line:
-            not: {}
+            type: 'null'
           side:
-            not: {}
+            type: 'null'
           start_line:
-            not: {}
+            type: 'null'
     if:
+      properties:
+        commit:
+          not:
+            type: 'null'
       required:
       - commit
     properties:
@@ -143,15 +151,15 @@ $defs:
     then:
       properties:
         end_line:
-          not: {}
+          type: 'null'
         path:
-          not: {}
+          type: 'null'
         pull:
-          not: {}
+          type: 'null'
         side:
-          not: {}
+          type: 'null'
         start_line:
-          not: {}
+          type: 'null'
     title: CollectionReference
     type: object
   LineNumber:
@@ -194,4 +202,4 @@ title: Collection
 type: object
 x-softschema:
   contract: metabrowser.collection:Collection/v1
-  schema_sha256: a54f79e64d2ae21643029e4b3e651d1f3d4a536fa9ba7a28a8eb97688b4238b7
+  schema_sha256: 44e19fc732cee0b9087dfc1f7f8c5698143dfb0900088121dc445f67118bc7f4

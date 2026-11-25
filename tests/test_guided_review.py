@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import itertools
+import json
 import re
 import threading
 from collections.abc import Iterator
@@ -369,6 +370,15 @@ def _cite(reference: str) -> str:
         ("{pull: 805, path: docs/plan.md}", "pull_file"),
         ('{commit: "' + "c" * 40 + '"}', "commit"),
         ('{commit: "' + "c" * 64 + '"}', "commit"),
+        # A null field is absent, in the schema as in the model.
+        ("{path: worker.py, commit: null}", "file"),
+        (
+            "{path: worker.py, side: new, start_line: 1, end_line: 2, pull: null, commit: null}",
+            "file",
+        ),
+        ("{path: worker.py, side: new, start_line: 1, end_line: 2, pull: null}", "file"),
+        ("{pull: 805, path: null, side: null, start_line: null, end_line: null}", "pull"),
+        ('{commit: "' + "c" * 40 + '", path: null, pull: null, side: null}', "commit"),
     ],
 )
 def test_a_reference_is_of_the_kind_its_fields_name(reference: str, kind: str) -> None:
@@ -377,6 +387,34 @@ def test_a_reference_is_of_the_kind_its_fields_name(reference: str, kind: str) -
     step = guide.items[1]
     assert isinstance(step, CollectionItem)
     assert step.references[0].kind == kind
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "{path: worker.py}",
+        "{path: worker.py, side: new, start_line: 1, end_line: 2}",
+        "{pull: 805}",
+        "{pull: 805, path: docs/plan.md}",
+        '{commit: "' + "c" * 40 + '"}',
+    ],
+)
+def test_a_reference_the_route_answers_parses_back_as_the_same_reference(reference: str) -> None:
+    """The route answers a reference's every field, null where its kind has none
+    (`**reference.model_dump()` in `_references`), so an author or agent may copy a
+    cited reference back from an answer into a guide."""
+
+    def cited(body: str) -> CollectionReference:
+        guide = parse_guide(_cite(body))
+        assert guide is not None
+        step = guide.items[1]
+        assert isinstance(step, CollectionItem)
+        return step.references[0]
+
+    first = cited(reference)
+    answered = json.dumps(first.model_dump())
+    assert "null" in answered
+    assert cited(answered) == first
 
 
 @pytest.mark.parametrize(

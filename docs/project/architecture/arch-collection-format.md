@@ -84,12 +84,13 @@ collection:
   range: it follows that pull request’s comparison, which the collection does not pin,
   so a range into it would come to point at other lines.
   A commit is cited alone.
-  The compiled schema states which fields each kind refuses, as an `if` on `commit` and
-  then on `pull` (`_REFERENCE_KINDS`), so a refusal names the field that does not
-  belong. The models enforce the rules it does not express: a path is a normalized
-  relative path (no `./`, `..`, or trailing `/`), checked as the pull route forms an
-  address; a range needs `side` and both line numbers, in order, so every v1 range is a
-  range of a diff; and a reference names a file, a pull request, or a commit.
+  A null field is an absent one: `{commit: null, path: a.py}` is a file.
+  The compiled schema states which fields each kind refuses, as an `if` on a value of
+  `commit` and then of `pull` (`_REFERENCE_KINDS`), so a refusal names the field that
+  does not belong. The models enforce the rules it does not express: a path is a
+  normalized relative path (no `./`, `..`, or trailing `/`), checked as the pull route
+  forms an address; a range needs `side` and both line numbers, in order, so every v1
+  range is a range of a diff; and a reference names a file, a pull request, or a commit.
   A carrier without a change, which cannot cite lines that way, relaxes the range rule,
   as it does `comparison`. The three kinds past a file arrived within v1, as groups did:
   `path` stopped being required and two optional fields joined it, so every record v1

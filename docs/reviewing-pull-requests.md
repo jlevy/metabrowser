@@ -291,7 +291,10 @@ the commit.
 These are read from what this copy already has: a pull request not loaded yet
 shows by its number, a file of one not loaded yet says to open it, and a commit the copy
 lacks says it is unavailable.
-None of them makes the guide out of date.
+A commit fetched with a pull request but missing from the checkout you are browsing
+shows without a link, since its page reads that checkout.
+None of them makes the guide out of date, except a file this pull request itself
+changes, cited with its own number, which counts as a file of the guide.
 
 The
 [compiled SoftSchema](../src/metabrowser/builtin_plugins/github/collection-v1.schema.yaml)
