@@ -2070,19 +2070,16 @@
   list-style: none;
 }
 /* A group's note above its first step's card, at the card text's inset: its Markdown
-   rendered as a step's note is, whose first and last block keep no margin of their own, as
-   in a card, or its text as typed when the render did not come. */
+   rendered as a step's note is, in a `.github-pull-text` host whose first and last block
+   keep no margin of their own, as in a card, or its text as typed when the render did
+   not come. */
 .github-pull-guide-group-note {
   margin: 0 0 0.75rem;
+  padding-block: 0;
   padding-inline: var(--github-pull-text-inset);
 }
-.github-pull-guide-group-note .kpress-prose > :first-child {
-  margin-block-start: 0;
-}
-.github-pull-guide-group-note .kpress-prose > :last-child {
-  margin-block-end: 0;
-}
-p.github-pull-guide-group-note {
+/* The typed fallback keeps its line breaks, as a step's typed note does. */
+.github-pull-guide-group-note-typed {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

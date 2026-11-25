@@ -320,9 +320,11 @@ def test_a_text_is_set_in_a_kpress_article_the_page_makes() -> None:
     source = PAGE_JS.read_text(encoding="utf-8")
     assert re.search(
         r'h\("article", \{ class: "kpress kpress-inert" \}, \[\s*'
-        r"inert\.kpressProse\(nodes, document\),?\s*\]\)",
+        r"inertProse\(inert, String\(rendered\.html\)\),?\s*\]\)",
         source,
     )
+    # The one insertion a description and a guide's note share builds KPress's prose element.
+    assert re.search(r"const prose = inert\.kpressProse\(\s*inert\.sanitizeHtml\(", source)
     assert '{ class: "metabrowser-kpress-host" }' in source
     # Nothing but the card's own edges is left to this stylesheet.
     rules = _style_rules()

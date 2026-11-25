@@ -301,8 +301,8 @@ function stepProse(state, drawProse) {
  */
 function groupNote(note, html, drawProse) {
   return typeof html === "string" && drawProse !== null
-    ? proseHost(drawProse(html), "github-pull-guide-group-note")
-    : element("p", note, "github-pull-guide-group-note");
+    ? proseHost(drawProse(html), "github-pull-text github-pull-guide-group-note")
+    : element("p", note, "github-pull-guide-group-note github-pull-guide-group-note-typed");
 }
 
 /**
