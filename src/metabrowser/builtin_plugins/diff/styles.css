@@ -687,9 +687,10 @@
   flex: none;
 }
 
-/* A gap's bar stands where its hunk's `@@` separator stood and keeps it, in the code face,
-   after the label (`renderGapFold` in diff-view.js); a long heading ends in an ellipsis
-   before the label gives way. */
+/* A gap's bar stands where its hunk's `@@` separator stood and keeps it after the label, in
+   the plain separator's muted tone, size, and sans face (`.diff-hunk-header`; chrome is sans,
+   tests/test_chrome_typography.py), as `renderGapFold` in diff-view.js draws it; a long
+   heading ends in an ellipsis before the label gives way. */
 .metabrowser-diff-host .diff-gap-control .diff-fold-label {
   flex: none;
 }
@@ -699,7 +700,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--muted);
-  font-family: var(--font-mono);
   font-size: var(--mono-block-font-size);
 }
 

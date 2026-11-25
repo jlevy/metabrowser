@@ -1767,7 +1767,7 @@ gap opening above the pane leaves the reader’s row where it is at every frame.
 
 A hunk’s `@@` separator is such a bar where the diff can read the file’s lines, which a
 comparison can and a patch file cannot.
-The bar stands where the separator stood and keeps it, in the code face, after its label
+The bar stands where the separator stood and keeps it after its label, muted as before
 (`63 unchanged lines @@ -76,7 +77,7 @@ def main():`), so the hunk’s ranges and heading
 still say where it is.
 Below the last hunk a bar with no separator reads `Rest of the file` until the diff

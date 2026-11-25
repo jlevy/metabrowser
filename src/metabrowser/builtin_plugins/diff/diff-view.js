@@ -1832,7 +1832,9 @@ function renderGapFold(state, gap, toward, detail, renderRow, parent) {
       return;
     }
     fold.control.setAttribute("aria-busy", "true");
-    const box = progressBox("Loading unchanged lines");
+    // Its accessible name, never shown: what it reads, by count where the file's end is known.
+    const what = end() === null ? "the rest of the file" : `${count(to - from)} unchanged lines`;
+    const box = progressBox(`Loading ${what}`);
     group.append(box);
     const source = /** @type {GapSource} */ (state.gaps);
     readGapLines(state, gap, from, to).then(

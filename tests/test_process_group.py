@@ -107,6 +107,7 @@ CHROME_TESTS = (
     "tests.test_control_chords_chrome",
     "tests.test_diff_current_chrome",
     "tests.test_diff_file_bar_chrome",
+    "tests.test_diff_hunk_gap_chrome",
     "tests.test_diff_markdown_fold_chrome",
     "tests.test_diff_markdown_spacing_chrome",
     "tests.test_diff_structured_chrome",

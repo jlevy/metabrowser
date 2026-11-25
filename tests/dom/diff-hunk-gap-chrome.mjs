@@ -21,8 +21,8 @@
 // What it measures is layout and the browser's own scrolling, which no browserless DOM has
 // (docs/design-system.md, "Fold Expanders"): every gap's bar, the nested one too, computes
 // as the changed run's fold bar does, at rest and under the pointer, in Unified and in
-// Split, and spans its file; the separator it keeps is in the code face and the muted tone,
-// on one line, and gives way to an ellipsis at 320 px while the label stays whole; the
+// Split, and spans its file; the separator it keeps is in the muted tone and the bar's own
+// sans face, on one line, and gives way to an ellipsis at 320 px while the label stays whole; the
 // keyboard reaches a gap's bar with the ring the changed run's bar draws, and Enter opens
 // and closes it; and the reader's place holds, which is the browser's scroll anchoring
 // beside the diff's own (`settlePlace`): opened from the keyboard while its bar is above
@@ -110,7 +110,7 @@ const COMPARISON = {
           old_start: 7,
         },
         {
-          heading: "def main():",
+          heading: "def handle_request(request: Request, *, timeout: float = 30.0) -> Response:",
           lines: [
             ...context(597, 599),
             { op: "del", text: `line ${CHANGED}` },
@@ -312,7 +312,7 @@ const BAR_STYLE = [
 
 // In the page: every gap's bar and the changed run's, each with its computed style, its box
 // against its file's, where its chevron and label are, and its separator's face, tone, and
-// whether it is cut; and the shell's code face and muted tone resolved in the diff.
+// whether it is cut; and the shell's muted tone resolved in the diff.
 const READ_BARS = inPage(`
   const names = ${JSON.stringify(BAR_STYLE)};
   const read = (node) => {
@@ -361,7 +361,6 @@ const READ_BARS = inPage(`
     gaps: [...document.querySelectorAll("#long .diff-gap-control")].map(read),
     run: read(runBar()),
     separators: document.querySelectorAll("#long .diff-hunk-header").length,
-    mono: token("font-family", "var(--font-mono)"),
     muted: token("color", "var(--muted)"),
   };
 `);
@@ -598,9 +597,9 @@ function lookChecks(/** @type {any} */ read, /** @type {string} */ at, /** @type
     check(`${name}: its label is whole`, !gap.labelCut, gap.text);
     if (gap.detail !== "") {
       check(
-        `${name}: its separator is in the code face and the muted tone`,
-        gap.detailFace === read.mono && gap.detailColor === read.muted,
-        `${gap.detailFace} ${gap.detailColor} against ${read.mono} ${read.muted}`,
+        `${name}: its separator is in the bar's face and the muted tone`,
+        gap.detailFace === gap.style["font-family"] && gap.detailColor === read.muted,
+        `${gap.detailFace} ${gap.detailColor} against ${gap.style["font-family"]} ${read.muted}`,
       );
     }
   }
@@ -625,7 +624,7 @@ try {
     unified.gaps.map((/** @type {any} */ gap) => gap.text).join(" | ") ===
       "6 unchanged lines | 534 unchanged lines | Rest of the file" &&
       unified.gaps[0].detail.startsWith("@@ -7,6 +7,56 @@") &&
-      unified.gaps[1].detail.startsWith("@@ -547,7 +597,7 @@ def main():") &&
+      unified.gaps[1].detail.startsWith("@@ -547,7 +597,7 @@ def handle_request(") &&
       unified.gaps[2].detail === "",
     JSON.stringify(unified.gaps.map((/** @type {any} */ gap) => [gap.text, gap.detail])),
   );
@@ -646,6 +645,10 @@ try {
   const hovered = await chrome.evaluate(BACKGROUND(leading));
   await point(runResting);
   const runHovered = await chrome.evaluate(BACKGROUND("runBar()"));
+  // The pointer leaves the bars, beside the pane, and their backgrounds settle at rest.
+  await point({ x: 990, y: 790 });
+  await chrome.evaluate(BACKGROUND("runBar()"));
+  await chrome.evaluate(BACKGROUND(leading));
   record.hover = { resting, hovered, runResting, runHovered };
   check(
     "under the pointer, a gap's bar takes the changed run's bar's hover",
