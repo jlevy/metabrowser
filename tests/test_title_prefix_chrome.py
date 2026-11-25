@@ -60,7 +60,7 @@ SURFACES = (
     # commits.
     (
         PLUGINS / "github" / "pull-page.js",
-        'h("span", { class: "github-pull-title-text" }, mb.titleNodes(title))',
+        "titleHeading(pullStateIcon(state, { named: false }), mb.titleNodes(title), number)",
     ),
     (
         PLUGINS / "github" / "stack-member-row.js",
