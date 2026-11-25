@@ -229,6 +229,20 @@ def pulls_url(clone_url: str) -> str | None:
     return f"{clone_url}/pulls"
 
 
+def stack_url(clone_url: str, number: int) -> str | None:
+    """The github.com page of *clone_url*'s native stack *number*, or ``None`` when it is not
+    GitHub's.
+
+    GitHub's stack page, ``stack/<n>``, draws every member's changes together, as the
+    stack's page here does. Like the list, no selection names it, so ``metab`` does not open
+    a stack's URL; :func:`pulls_url` says why.
+    """
+
+    if parse_repository_url(clone_url) is None:
+        return None
+    return f"{clone_url}/stack/{number}"
+
+
 def file_anchor(path: bytes) -> FileAnchor:
     """GitHub's anchor for the file at *path* among a comparison's changed files.
 
@@ -698,6 +712,9 @@ class GithubCounterpartHost:
 
     def pulls_url(self, clone_url: str) -> str | None:
         return pulls_url(clone_url)
+
+    def stack_url(self, clone_url: str, number: int) -> str | None:
+        return stack_url(clone_url, number)
 
     def file_anchor(self, path: bytes) -> FileAnchor:
         return file_anchor(path)

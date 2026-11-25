@@ -153,7 +153,8 @@ async function mountStory() {
           shown: true,
           refreshAhead: false,
           scrollRoot: null,
-          open: (route) => opened.push(route.number),
+          open: (route) =>
+            opened.push(route.stack ? `Stack #${route.number}'s page` : route.number),
           file: null,
           fileHref: (number, file) => `/pull/${number}/files/${file}`,
           pageFor: () => null,
@@ -184,7 +185,8 @@ async function mountStory() {
         : item.childNodes[0];
     const drawnRows = () =>
       list.childNodes.filter((item) => item.classList.contains("github-pulls-item")).map(rowOf);
-    const stackRow = () => drawnRows().find((row) => row.dataset.stack === "286");
+    const isWhole = (row) => row.classList.contains("github-pulls-whole-row");
+    const stackRow = () => drawnRows().find((row) => row.dataset.stack === "286" && !isWhole(row));
     /** The first element under *node*, at any depth, with the class *name*, or null. */
     const find = (node, name) =>
       node.classList?.contains(name)
@@ -213,7 +215,9 @@ async function mountStory() {
         row.getAttribute("aria-posinset") === null
           ? null
           : `${row.getAttribute("aria-posinset")}/${row.getAttribute("aria-setsize")}`,
-        `expanded ${row.getAttribute("aria-expanded")}`,
+        row.getAttribute("aria-expanded") === null
+          ? null
+          : `expanded ${row.getAttribute("aria-expanded")}`,
         row.getAttribute("tabindex") === "0" ? "Tab stop" : null,
         document.activeElement === row ? "focused" : null,
       ]
@@ -229,12 +233,22 @@ async function mountStory() {
       return rows
         .slice(0, end + 1)
         .flatMap((row) =>
-          row.dataset.stack
-            ? [said(row, `Stack #${row.dataset.stack}`)]
-            : [
-                said(row, `#${row.dataset.number}`),
-                saidLine(changeOf(row), `  #${row.dataset.number}'s toggle`),
-              ],
+          isWhole(row)
+            ? [
+                [
+                  said(row, `Whole stack of #${row.dataset.stack}`),
+                  row.getAttribute("href"),
+                  row.getAttribute("aria-current") === "page" ? "current" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+              ]
+            : row.dataset.stack
+              ? [said(row, `Stack #${row.dataset.stack}`)]
+              : [
+                  said(row, `#${row.dataset.number}`),
+                  saidLine(changeOf(row), `  #${row.dataset.number}'s toggle`),
+                ],
         );
     };
     const steps = [];
@@ -284,7 +298,7 @@ async function mountStory() {
       return { heading, place, text };
     };
     const memberLines = drawnRows()
-      .filter((row) => row.getAttribute("aria-level") === "2")
+      .filter((row) => row.getAttribute("aria-level") === "2" && !isWhole(row))
       .map((row) => {
         assert.equal(
           find(row, "github-pull-stack-icon"),
@@ -366,6 +380,22 @@ async function mountStory() {
     );
     assert.equal(pullRow(8).getAttribute("aria-expanded"), "false", "#8's files closed");
     assert.deepEqual(requests.slice(homeRequests), [], "Home reads nothing");
+    // The stack's Whole stack row, the last of its set: a press opens the stack's page, as a
+    // pull request's row opens its own, and while that page is open the row is the current
+    // row, until an address that names a pull request takes the mark back.
+    const wholeRow = () => drawnRows().find((row) => row.dataset.stack === "286" && isWhole(row));
+    const wholeTitle = wholeRow().childNodes.find((node) =>
+      node.classList?.contains("github-pulls-whole-title"),
+    );
+    await step("a press on the Whole stack row opens the stack's page", () =>
+      list.listeners.get("click")({ target: wholeTitle, button: 0, preventDefault() {} }),
+    );
+    await step("the stack's page is open: its Whole stack row is the current row", () =>
+      handle.setCurrent(null, null, { stack: 286 }),
+    );
+    await step("Left on it goes to the stack's row", () => handle.collapse());
+    await step("an address that names #8 takes the mark back", () => handle.setCurrent(8));
+    assert.equal(wholeRow().getAttribute("aria-current"), null, "the mark has left the row");
     handle.dispose();
     return {
       "member lines": memberLines,
@@ -389,15 +419,27 @@ async function mountStory() {
   const stackModule = await import(pathToFileURL(path.join(GITHUB, "pull-stacks.js")).href);
   const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
   const page = await import(pathToFileURL(path.join(GITHUB, "pull-page.js")).href);
-  const { createStackIndex, stackCaption, stackMenuOrder } = stackModule;
+  const { createStackIndex, stackCaption, stackMenuOrder, wholeStackOfKey, wholeStackRowKey } =
+    stackModule;
+  /** A row key as a reader names the row: a pull request, a stack, or a stack's Whole stack. */
+  const rowName = (key) =>
+    key === null
+      ? null
+      : wholeStackOfKey(key) !== null
+        ? `Whole stack of #${wholeStackOfKey(key)}`
+        : key < 0
+          ? `Stack #${-key}`
+          : `#${key}`;
   const index = (name) => createStackIndex(stacks[name].body);
 
   /** One panel's controller over recorded answers, with every effect it asks for logged. */
   function mount({ filter = "all", list = "current" } = {}) {
     // `requests` counts every request, which Home's reset makes none of.
-    const log = { opened: [], marks: [], prefetch: [], requests: 0 };
+    const log = { opened: [], marks: [], prefetch: [], revealed: [], requests: 0 };
     let model = null;
     let anchor = null;
+    /** The row the current-row mark is on. */
+    let marked = null;
     const timers = new Map();
     let nextTimer = 1;
     const controller = panel.createPullsController(
@@ -428,16 +470,26 @@ async function mountStory() {
         render(next) {
           model = next;
         },
-        markCurrent() {},
+        markCurrent(previous, next) {
+          // As the panel keeps it: a mark that leaves clears only the row that held it.
+          if (next !== null || marked === previous) {
+            marked = next;
+          }
+        },
         markAnchor(_previous, next, focus) {
           anchor = next;
           if (focus) {
-            log.marks.push(next < 0 ? `focus Stack #${-next}` : `focus #${next}`);
+            log.marks.push(`focus ${rowName(next)}`);
           }
         },
-        reveal() {},
+        reveal(key) {
+          log.revealed.push(key);
+        },
         open(route) {
           log.opened.push(route.number);
+        },
+        openStack(number) {
+          log.opened.push(`Stack #${number}'s page`);
         },
         filterChanged() {},
       },
@@ -460,6 +512,7 @@ async function mountStory() {
       log,
       model: () => model,
       anchor: () => anchor,
+      marked: () => marked,
       runTimers,
       async key(name, how) {
         const handled = {
@@ -494,6 +547,8 @@ async function mountStory() {
         lines.push(
           `${row.expanded ? "▾" : "▸"} ${row.label} [${row.posinset}/${row.setsize}] · ${row.hint}`,
         );
+      } else if (row.kind === "whole") {
+        lines.push(`    Whole stack [${row.posinset}/${row.setsize}]`);
       } else if (row.level === 2) {
         lines.push(
           `    #${row.number} ${caption(row.number, row.stack)} [${row.posinset}/${row.setsize}]`,
@@ -534,6 +589,24 @@ async function mountStory() {
       rest.map((row) => row.number),
       listed.filter((number) => rest.some((row) => row.number === number)),
     );
+    // Each open stack's rows end with its Whole stack row, one of its set; a closed one has
+    // none.
+    for (const [at, row] of rows.entries()) {
+      if (row.kind !== "stack") {
+        continue;
+      }
+      const whole = rows.findIndex(
+        (other) => other.kind === "whole" && other.stack === row.stack.number,
+      );
+      if (!row.expanded) {
+        assert.equal(whole, -1, "a closed stack has no Whole stack row");
+        continue;
+      }
+      assert.equal(whole, at + row.members.length + 1, "the Whole stack row ends its stack");
+      assert.equal(rows[whole].posinset, rows[whole].setsize);
+      assert.equal(rows[whole].setsize, row.members.length + 1);
+      assert.equal(rows[whole].key, wholeStackRowKey(row.stack.number));
+    }
     const firstRest = rows.findIndex((row) => row.kind === "pull" && row.level === 1);
     assert.ok(firstRest < 0 || rows.slice(firstRest).every((row) => row.kind !== "stack"));
     return true;
@@ -568,17 +641,22 @@ async function mountStory() {
     tabStop: story.anchor(),
   });
 
-  // ── Keys: a stack's row is a stop of its own, as a folder's is.
+  // ── Keys: a stack's row is a stop of its own, as a folder's is, and its Whole stack row
+  // is a row that opens the stack's page, as a pull request's row opens its own.
   for (const name of ["J", "J", "J", "J", "K"]) {
     await story.key(name);
   }
-  // The last open, #6, reads ahead its neighbours as drawn, #7 above it and #106 below, a
-  // stack's row passed over, and the top: the stack's pull requests first.
+  // The last open, #6, reads ahead its neighbours as drawn, #7 above it and #106 below, the
+  // stack's Whole stack row and a stack's row passed over, and the top: the stack's pull
+  // requests first.
   const ahead = story.log.prefetch.at(-1);
   story.log.prefetch.length = 0;
-  record("J walks into the stack and out past it, K steps back; only pulls open", story, current, {
-    "read ahead after the last open": ahead?.records ?? null,
-  });
+  record(
+    "J walks into the stack and onto its Whole stack row, which opens the stack's page, and K steps back; the stack's row opens nothing",
+    story,
+    current,
+    { "read ahead after the last open": ahead?.records ?? null },
+  );
   await story.key("Left");
   record("Left on a pull request in a stack goes to the stack's row", story, current);
   await story.key("Left");
@@ -599,6 +677,38 @@ async function mountStory() {
   record("an address that names #7 opens the stack that holds it", story, current, {
     closed: story.controller.snapshot().closedStacks,
     tabStop: story.anchor(),
+  });
+  // The stack's own page (`/stack/<n>`): its Whole stack row is the current row, and an
+  // address that names the page opens a stack the reader closed, as one naming a member does.
+  await story.key("Left");
+  await story.key("Left");
+  story.controller.setCurrent(null, { stack: 286 });
+  record(
+    "the reader closes the stack; an address that names its page opens it and marks its Whole stack row",
+    story,
+    current,
+    {
+      closed: story.controller.snapshot().closedStacks,
+      current: rowName(story.marked()),
+      tabStop: rowName(story.anchor()),
+    },
+  );
+  await story.key("Left");
+  record("Left on the Whole stack row goes to its stack's row", story, current, {
+    tabStop: rowName(story.anchor()),
+  });
+  story.controller.focused(wholeStackRowKey(286));
+  await story.key("Right");
+  await story.key("Enter");
+  record(
+    "Right on the Whole stack row does nothing; Enter opens the stack's page",
+    story,
+    current,
+    { current: rowName(story.marked()) },
+  );
+  story.controller.setCurrent(7);
+  record("an address that names #7 again takes the mark back", story, current, {
+    current: rowName(story.marked()),
   });
   // Home (docs/design-system.md, "Home"): the rows as a fresh load draws them, from the rows
   // held. The reader closes the stack and walks past it; Home opens it again and gives the
@@ -649,6 +759,33 @@ async function mountStory() {
   record("a failed refresh keeps the snapshot, which still groups", story, retained);
   story.controller.setStacks(index("empty"));
   record("a repository with no stacks: flat", story, index("empty"));
+  // ── A stack's page named before the list knows the stacks: its Whole stack row is marked
+  // and revealed once the stacks arrive and draw it, as a pull request's row is revealed once
+  // the list holds it.
+  const early = mount();
+  await early.controller.start({ shown: true });
+  await settle();
+  early.log.revealed.length = 0;
+  early.controller.setCurrent(null, { stack: 286 });
+  const revealedFlat = early.log.revealed.splice(0).map(rowName);
+  early.controller.setStacks(current);
+  record(
+    "an address of Stack #286's page before the stacks are known: its row is revealed when they draw it",
+    early,
+    current,
+    {
+      "revealed while flat": revealedFlat,
+      "revealed once grouped": early.log.revealed.splice(0).map(rowName),
+      current: rowName(early.marked()),
+      tabStop: rowName(early.anchor()),
+    },
+  );
+  early.controller.setStacks(index("absent"));
+  early.controller.setStacks(current);
+  record("stacks read again: the row is not revealed again", early, current, {
+    revealed: early.log.revealed.splice(0).map(rowName),
+  });
+
   const other = mount({ filter: "open", list: "another_reader" });
   other.controller.setStacks(current);
   await other.controller.start({ shown: true });

@@ -762,8 +762,6 @@ const diffView = {
       ...(ctx.summaryTotals === undefined ? {} : { summaryTotals: ctx.summaryTotals }),
       changedFiles,
       ...(typeof ctx.openFile === "function" ? { openFile: ctx.openFile } : {}),
-      // A host's marks on each file, as a stack's page names the layers that change it.
-      ...(typeof ctx.fileMarks === "function" ? { fileMarks: ctx.fileMarks } : {}),
       ...(ctx.unfold === true ? { unfold: true } : {}),
       ...(ctx.layout === "unified" ? { layout: ctx.layout } : {}),
       ...(ctx.show === "diff" || ctx.show === "current" ? { show: ctx.show } : {}),
@@ -877,11 +875,8 @@ const diffView = {
    * summary opens goes to *openFile*. Null for a comparison whose manifest is not valid, which
    * draws nothing.
    *
-   * A stack's page draws it as its Files tab: open from the first draw (*open*), and with
-   * its layers on each file row (*fileMarks*).
-   *
    * @param {HTMLElement} slot
-   * @param {{raw: unknown, openFile: (path: string) => void, fileMarks?: (path: string) => ReadonlyArray<{text: string, label: string, href: string, open?: () => void}>, open?: boolean}} ctx
+   * @param {{raw: unknown, openFile: (path: string) => void}} ctx
    * @returns {Promise<{dispose: () => void} | null>}
    */
   summary: async (slot, ctx) => {
@@ -893,8 +888,6 @@ const diffView = {
     return mountDiffSummary(slot, { manifest: result.manifest }, mb, {
       changedFiles,
       openFile: ctx.openFile,
-      ...(typeof ctx.fileMarks === "function" ? { fileMarks: ctx.fileMarks } : {}),
-      ...(ctx.open === true ? { open: true } : {}),
     });
   },
   /**

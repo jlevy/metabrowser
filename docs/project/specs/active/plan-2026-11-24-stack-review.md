@@ -290,6 +290,14 @@ GitHub’s own page of a stack.
   the stack moves, as it keeps a pull request’s earlier pairs
   (`pull_stack_retained.py`).
 
+**Since built (mb-cm31).** The page became a pull request’s page for the whole stack
+([The Stack Page](../../../design-system.md#the-stack-page)): it has no Files tab, since
+the header’s Diff summary lists the files as on a pull request’s page, and
+`/stack/<n>/files` is no route; its front page without a guide is Changes; no file row
+or bar carries layer chips, and the diff view’s `fileMarks` hook that drew them is gone;
+View on GitHub opens GitHub’s `stack/<n>`, the address the counterpart route answers;
+and the Pulls tab lists the page as each open stack’s last row, **Whole stack**.
+
 **Why a page and not a switch on each pull request.** A pull request’s Changes and Docs
 carry a state machine that follows one comparison’s head (`filesAction`, `followedFrom`,
 and `rememberedChanges` in `pull-page.js`); a scope switch would double every state.
@@ -405,7 +413,7 @@ commit is not. Moving a guide to a file later is copying the block.
   request’s guide has: `_step_references` reads the stack’s kept manifest, and
   `_staleness` compares the pins with the stack’s pair.
   It reads at the pair the page draws (`left`, `right`, `key`), the current one or a
-  kept one, as the stack’s Files, Docs, and Changes do.
+  kept one, as the stack’s Diff summary, Docs, and Changes do.
   A pair the route never gave, or a kept pair the guide’s pins are past, answers
   `stack_moved`: there the guide was written for a later comparison, and reading it at
   the old pair would report it rewritten.
@@ -435,9 +443,9 @@ commit is not. Moving a guide to a file later is copying the block.
 - Eight to twelve steps.
 - A note of at most five lines, in the present tense, about the end state.
 - At most three references a step, the layers step excepted.
-- Never: narration by layer or by commit, a file inventory (Files is one), anything a
-  layer’s guide says (cite its `{pull}`), how the design evolved, review rounds, commit
-  IDs, or counts the header shows.
+- Never: narration by layer or by commit, a file inventory (the Diff summary is one),
+  anything a layer’s guide says (cite its `{pull}`), how the design evolved, review
+  rounds, commit IDs, or counts the header shows.
 
 The skill gains **Write a Stack Guide** with this table, a skeleton held to the parser
 by `tests/test_skill_commands.py`, and the recipe below.
@@ -522,8 +530,8 @@ The owner decided these on 2026-11-24, on the design this plan records:
    Markdown takes, in every guide and not only a stack’s.
 3. **The stack guide is a `stack-review` block in the top member’s description now,**
    and a collection in a repository file later.
-4. **The stack page’s first tab is Guided Review when the stack has a guide, and Files
-   otherwise.**
+4. **The stack page’s first tab is Guided Review when the stack has a guide, and Changes
+   otherwise (since mb-cm31).**
 5. **The skill’s “every changed file belongs to some step” rule goes,** and
    per-pull-request guides become concise, as phase 0 sets out.
 
@@ -603,9 +611,10 @@ a range), `mb-qn7e` (Full, Concise, and Source, and windowed drawing), and `mb-u
 5. **Line breaks in a note.** Answered in phase 0: a note follows the description’s
    render, measured through the Markdown child, so a single line break joins two lines
    into one paragraph and a list needs no blank line before it.
-6. **Changes’ address.** On a pull request `/pull/<n>/files` is Changes.
-   The stack’s page has a Files tab too, so this plan gives Changes a `changes` segment;
-   the alternative keeps `/stack/<n>/files/<path>` for a file in Changes.
+6. **Changes’ address.** Settled by mb-cm31. On a pull request `/pull/<n>/files` is
+   Changes; the stack’s page had a Files tab too, so this plan gave Changes a `changes`
+   segment. The Files tab and `/stack/<n>/files` are gone, and `changes` stays:
+   `/stack/<n>/changes/<path>` is a file in Changes.
 7. **The contract reading.** A reviewer should confirm that widening a reference, and
    reading a note as Markdown, stay within v1, as the groups plan asks of groups.
 8. **The draft check** (`mb-uqwl`) reads a `guided-review` block.

@@ -128,6 +128,7 @@ CHROME_TESTS = (
     "tests.test_github_pulls_row_lines_chrome",
     "tests.test_github_pulls_stack_lines_chrome",
     "tests.test_github_pulls_stacks_chrome",
+    "tests.test_github_stack_page_chrome",
     "tests.test_inert_render_refusal_chrome",
     "tests.test_markdown_badges_chrome",
     "tests.test_markdown_diagrams_chrome",
