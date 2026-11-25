@@ -5,7 +5,11 @@ title: "PR page stack menu: show each member's PR number"
 kind: feature
 status: in_progress
 priority: 1
-version: 2
+version: 3
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/827
+    at: 2026-11-25T09:03:34.748Z
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,7 +17,7 @@ parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-25T06:13:53.201Z
-updated_at: 2026-11-25T06:14:29.105Z
+updated_at: 2026-11-25T09:03:34.753Z
 started_at: 2026-11-25T06:14:29.104Z
 ---
 Asked by the user after #817 merged: the stack menu opened from the PR page's stack chip shows each member as [state icon] bold place · title, with the PR number said to screen readers but not shown. Show the PR number too, in the same face the Pulls tab's rows draw it (#455). Done when each member line shows its number, muted and never cut (the title is cut short before it), read once by a screen reader (the hidden copy removed), and pinned in the stack-groups session, its golden, and a Chrome check.
