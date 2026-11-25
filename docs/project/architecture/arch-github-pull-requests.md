@@ -1086,8 +1086,9 @@ to press, above its steps, which keep their flat numbers, built once for each ou
 the rows are; a step’s card names its group before its place (`groupedPlace`), and a
 group’s note shows above its first step.
 A guide without groups is an outline of steps alone, which draws as it did before
-groups. The tree is the shape a stack’s rollup would answer one level deeper
-([the plan](../specs/active/plan-2026-11-24-guided-review-groups.md#phase-3-stack-rollups-mb-ri96-designed-only)).
+groups. A stack’s guide, designed and not built, is a collection of its own and answers
+the same tree
+([Whole-Stack Review](../specs/active/plan-2026-11-24-stack-review.md#phase-3-the-stack-guide-mb-ri96)).
 Each answer with a step is kept for its record revision, and a new revision or a moved
 head drops them. A step whose read is refused or fails keeps the guide’s steps, so the
 reader can move on, and is read again when chosen again.
