@@ -1017,9 +1017,9 @@ has the before and after).
   extent is half the least of those, so their bands meet there at most and never overlap
   into a darker seam. An article drawn a chunk at a time joins a chunk to the change on
   either side of it (`joinChanges`), so a run that crosses chunks is still one box.
-  Before mb-zkmy each row drew its own band, and two changed blocks in a row left the
-  document’s space between them unpainted, less the two extents: a 24 px gap from a
-  paragraph to an added h2.
+  When each row drew its own band, two changed blocks in a row left the document’s space
+  between them unpainted, less the two extents: a 24 px gap from a paragraph to an added
+  h2.
 - **A list or a quote split into rows**, as a changed list is, one row per item, reads
   as one: between two rows of one list or quote, its own margins give way, so its items
   are spaced as KPress spaces them inside it, and its first and last rows keep the
