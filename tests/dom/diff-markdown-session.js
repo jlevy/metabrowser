@@ -582,6 +582,40 @@ function changeRows(change) {
   return rows;
 }
 
+// The production `markJoins`, which `main` loads with the module.
+let markJoins = null;
+
+// Each row's joins (`markJoins` in diff-markdown.js) are the ones the rows shown around it
+// make now, whatever was drawn, hidden, or opened since: marking the article again whole, and
+// each open fold, changes none of them. A step that draws or hides rows without marking the
+// rows it moved fails here.
+function joinsAreFresh(file, container = file.rendered) {
+  const all = [];
+  const collect = (node) => {
+    for (const child of node.children) {
+      if (child.hidden) {
+        continue;
+      }
+      if (child.classList.contains("diff-markdown-block")) {
+        assert(child.dataset.join !== undefined, "a row shown is marked (markJoins)");
+        all.push(child);
+      } else {
+        collect(child);
+      }
+    }
+  };
+  collect(container);
+  const marks = () => all.map((row) => row.dataset.join);
+  const before = JSON.stringify(marks());
+  markJoins(container.children);
+  for (const group of container.children) {
+    if (group.classList.contains("diff-fold-group")) {
+      markJoins(group.children);
+    }
+  }
+  assert(JSON.stringify(marks()) === before, `${file.name}: a row's joins are stale`);
+}
+
 /** A long file's rows, shortened to their first and last few. */
 function shortened(all) {
   return all.length <= 48
@@ -680,6 +714,9 @@ function describe(file) {
   // Showing Source instead of Rendered is never a message in the body: nothing but the
   // Rendered body goes beside Source.
   assert(file.section.childNodes.length === 3, `${file.name}: something announces the format`);
+  if (file.rendered.childNodes.length > 0) {
+    joinsAreFresh(file);
+  }
   return {
     chooser: chips.join(" | "),
     shows,
@@ -715,6 +752,7 @@ async function main() {
   const markdown = await import(
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-markdown.js")).href
   );
+  markJoins = markdown.markJoins;
 
   // Every file of a rendered format is drawn with the chooser; a projection is asked only
   // for one whose changes loaded.

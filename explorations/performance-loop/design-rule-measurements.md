@@ -385,6 +385,8 @@ starts a formatting context; a plain page in Chrome 152 with the same markup and
 `overflow` collapsed the margins.
 Changed blocks used to touch, their 4 px paddings forming one band; with the document’s
 spacing, two changed blocks’ bands part by the gap less 8 px.
+Since mb-zkmy one band spans each run of changed blocks of one kind, so blocks in a run
+no longer part.
 
 ## Diff Summary
 
