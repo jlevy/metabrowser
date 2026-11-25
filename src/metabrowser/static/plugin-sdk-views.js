@@ -1291,7 +1291,7 @@
     const sourceChip = refMenuSourceChips.get(trigger);
     // It closes as every menu does (docs/design-system.md, "Every Menu Closes Alike"); a
     // press on the source chip beneath its overlay is the trigger's.
-    const dismissal = /** @type {MetabrowserMenus} */ (global.metabrowser.menus).dismissible({
+    const dismissal = global.metabrowser.menus?.dismissible({
       name: "git-ref-menu",
       trigger,
       inside: (node) => menu.contains(node) || Boolean(sourceChip?.contains(node)),
@@ -1302,7 +1302,7 @@
     function close(focus) {
       controller.abort();
       observer.disconnect();
-      dismissal.dispose();
+      dismissal?.dispose();
       activeRefMenu = null;
       menu.remove();
       trigger.setAttribute("aria-expanded", "false");
@@ -1333,7 +1333,7 @@
         ? rect.bottom + margin
         : rect.top - menu.offsetHeight - margin,
     )}px`;
-    dismissal.opened();
+    dismissal?.opened();
     items[last ? items.length - 1 : 0].focus({ preventScroll: true });
     // A press can land on the source chip beneath its overlay. Keep focus from moving to
     // the underlying row before it forwards the click.
@@ -2472,13 +2472,13 @@
         menu.hidden = true;
         more.setAttribute("aria-expanded", "false");
       }
-      dismissal.closed();
+      dismissal?.closed();
       if (refocus) {
         more.focus();
       }
     }
     // It closes as every menu does (docs/design-system.md, "Every Menu Closes Alike").
-    const dismissal = /** @type {MetabrowserMenus} */ (global.metabrowser.menus).dismissible({
+    const dismissal = global.metabrowser.menus?.dismissible({
       name: "counterpart-menu",
       trigger: more,
       inside: (node) => menu.contains(node),
@@ -2490,7 +2490,7 @@
       if (menu.hidden) {
         menu.hidden = false;
         more.setAttribute("aria-expanded", "true");
-        dismissal.opened();
+        dismissal?.opened();
       }
       items[((at % items.length) + items.length) % items.length].focus();
     }
