@@ -608,7 +608,9 @@ def test_a_stack_members_place_is_on_its_numbers_line() -> None:
     # whole (github-pull-header-chrome.mjs measures it at 180 to 420 px).
     part = _rule(css, ".github-pulls-id")
     assert "white-space: nowrap;" in part and "min-width: 0;" in part
-    assert "flex: none;" in _rule(css, ".github-pulls-number")
+    # The number's own rule, not the weight's, whose selector list ends in it too.
+    own = re.search(r"(?m)(?<!,\n)^\.github-pulls-number \{([^}]*)\}", css)
+    assert own is not None and "flex: none;" in own.group(1)
     assert "text-overflow: ellipsis;" in _rule(
         css, ".github-pulls-place > .github-pull-stack-position"
     )

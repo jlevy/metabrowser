@@ -3451,7 +3451,7 @@ selector’s rows, in the shell, draw the same icon through the plugin’s expor
 ### Pull Request Numbers
 
 A pull request’s number, “#455”, is bold wherever it names the pull request, at the
-weight of a stack’s position, so a member’s “1/6 · #455” reads as one identifier.
+weight of a stack’s position, so a Pulls row’s “1/6 · #455” reads as one identifier.
 One token sets it, `--pull-number-weight` in the shell’s stylesheet, and every surface
 that shows a number takes it:
 
@@ -3459,13 +3459,14 @@ that shows a number takes it:
 | --- | --- |
 | The pull request page’s title | `.github-pull-number`, after the title |
 | A Pulls row | `.github-pulls-number`, on the number’s line |
-| A stack menu’s member | `.github-pull-stack-member-number` |
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
 | The ref selector, on a branch’s row | `.source-ref-selector-pull-number`, after the state icon |
 
-The GitHub plugin’s three are one rule.
-A number in prose, a commit subject, or a tooltip is text, and keeps its line’s weight.
+The GitHub plugin’s two are one rule.
+A stack menu’s member shows no number: its place and title name it on its one line
+([Stacks](#stacks)). A number in prose, a commit subject, or a tooltip is text, and
+keeps its line’s weight.
 A count’s numeral, such as a heading’s tally, is not a pull request’s number and takes
 its own token, `--count-numeral-weight` ([Heading Tallies](#heading-tallies)). A stack’s
 own number, in “Stack #286”, is part of the stack’s label, in the label register
@@ -3632,7 +3633,7 @@ surface keeps a copy of either.
 | --- | --- | --- |
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
 | Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the row of ages, before Refresh; a Pulls row’s place, before its number, with no icon |
-| Member row | Its position, bold; its title, bold in normal text ink; its `#number`, bold ([Pull Request Numbers](#pull-request-numbers)); and on the current pull request a check, `aria-current="page"`, and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu |
+| Member row | One line, as a Pulls row’s first line is: the pull request’s state icon, `.github-pull-state-icon`; its position, bold; a muted dot, `.github-pull-stack-dot`; and its title, bold in normal text ink, cut short at the line’s end. On the current pull request, `aria-current="page"` and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu |
 | Stack group row | The registry’s chevron, the Layers icon, and the label, with no count, since its pull requests are the rows under it ([Heading Tallies](#heading-tallies)); then, after a muted dot, the stack’s [brief change line](#brief-change-line) | The Pulls tab |
 
 - **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
@@ -3655,9 +3656,21 @@ surface keeps a copy of either.
   the bare position, “⧉3/4”.
 - **Ink.** The position is in normal text ink wherever it appears: in a Pulls row’s
   place, the ink of the number it comes before, on the stack button, and in a member
-  row. A member row is a link, so its position, title, and number each set their own ink,
-  and no link, visited, hover, focus, or current state changes them; a part that set
-  none would take the link’s blue.
+  row. A member row is a link, so its position and title each set their own ink, and no
+  link, visited, hover, focus, or current state changes them; a part that set none would
+  take the link’s blue.
+- **Member row.** Every member has one layout, one line tall, so the members line up and
+  every row of the menu is as tall as the others: the state icon in the tree’s icon
+  slot, a tree row’s gap, then the position, the dot, and the title, about a space
+  apart. The title alone gives way, cut short at the line’s end, and the row’s tip holds
+  the whole of it, which the shell shows only while the title is cut short
+  ([Tooltips Add Information](#tooltips-add-information)). The icon is the state the
+  page shows for its own pull request, and for each other member the state the Pulls
+  list last read for it (`stackMemberState` in `pull-page.js`); a member the list has
+  not reached keeps the icon’s slot empty.
+  The menu reads the states again each time it opens and each time the page repaints.
+  The row this replaced wrapped a long title onto lines of its own and marked the
+  current member with a check before its position and its number after its title.
 - **Order.** A stack’s members are listed top of the stack first, the order of
   `stackMenuOrder`: the menu’s rows and a stack group’s rows in the Pulls tab are one
   order.
@@ -6518,8 +6531,8 @@ Focus lands on the checked row, or on the first row when none is checked, so `�
 `Home`, `End`, Enter, Escape, and the rows’ letters below act on the next key.
 `W`’s branch list is the precedent: it opens with focus in its filter box.
 The pull request page’s stack menu opens the same way, on its current member, the row it
-checks, by a press, Enter, Space, `↓`, or `↑` ([Stacks](#stacks)); on its button, as on
-a filter’s trigger, `Home` and `End` open nothing.
+marks, by a press, Enter, Space, `↓`, or `↑` ([Stacks](#stacks)); on its button, as on a
+filter’s trigger, `Home` and `End` open nothing.
 
 - **Closing.** Escape, a second click on the trigger, and a choice that closes a
   single-select menu give focus back to the trigger.

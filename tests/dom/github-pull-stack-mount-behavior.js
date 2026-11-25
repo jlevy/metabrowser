@@ -287,9 +287,55 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   disclosure.open = true;
   disclosure.events.get("toggle")();
   const members = warm.querySelector(".github-pull-stack-menu");
+  const memberLinks = () => [...members.descendants()].filter((item) => item.tag === "a");
   assert.deepEqual(
-    [...members.descendants()].filter((item) => item.tag === "a").map((item) => item.textContent),
-    ["3/3 · Stack change 8 · #8", "✓2/3 · Stack change 7 · #7", "1/3 · Stack change 6 · #6"],
+    memberLinks().map((item) => item.textContent),
+    ["3/3 · Stack change 8", "2/3 · Stack change 7", "1/3 · Stack change 6"],
+  );
+  // Every member is one line in one layout (mb-as06): the state icon, then the bold place, a
+  // muted dot, and the title, whose whole is the member's tip. The page's own member has the
+  // header's state; a member the Pulls list has not listed keeps the icon's slot, empty.
+  const classOf = (node) => node.className || node.getAttribute("class");
+  const layout = (link) => ({
+    parts: link.children.map(classOf),
+    line: link.children[1].children
+      .filter((node) => typeof node === "object")
+      .map((node) => `${node.tag}.${classOf(node)}`),
+    state: link.children[0].dataset.state ?? null,
+    named: link.children[0].getAttribute("aria-label") ?? null,
+    tip: link.getAttribute("data-tip-text"),
+  });
+  const line = [
+    "strong.github-pull-stack-member-position",
+    "span.github-pull-stack-dot",
+    "span.github-pull-stack-member-title",
+  ];
+  const parts = ["github-pull-state-icon", "github-pull-stack-member-copy"];
+  assert.deepEqual(memberLinks().map(layout), [
+    { parts, line, state: null, named: null, tip: "Stack change 8" },
+    { parts, line, state: "open", named: "Open", tip: "Stack change 7" },
+    { parts, line, state: null, named: null, tip: "Stack change 6" },
+  ]);
+  // Once the Pulls list has said the others' states, the menu opened again draws them.
+  const pullState = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-state.js")).href
+  );
+  pullState.noteListed(optionalStacks.current.body.source, [
+    { number: 8, state: "draft", updatedAt: "2026-11-24T00:00:00Z" },
+    { number: 6, state: "merged", updatedAt: "2026-11-24T00:00:00Z" },
+  ]);
+  const linksBefore = memberLinks();
+  disclosure.open = false;
+  disclosure.events.get("toggle")();
+  disclosure.open = true;
+  disclosure.events.get("toggle")();
+  assert.deepEqual(
+    memberLinks().map((link) => link.children[0].dataset.state ?? null),
+    ["draft", "open", "merged"],
+  );
+  assert(
+    memberLinks().every((link, at) => link === linksBefore[at]),
+    "a state drawn anew keeps each member's link",
   );
   // A menu of one group is named once, by the heading over its members: the host's group
   // heading, in the stack's label class (docs/design-system.md, "Stacks").
@@ -452,7 +498,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     });
     assert.equal(prevented || Boolean(standalone.element.open), false, `${name} opens nothing`);
   }
-  // Every way the menu opens puts focus on the current member, #7, the row checked, whose
+  // Every way the menu opens puts focus on the current member, #7, the row marked, whose
   // place in the top-first list is second (mb-xlla).
   key("ArrowDown");
   const menuLinks = standalone.element.querySelectorAll("a[href]");

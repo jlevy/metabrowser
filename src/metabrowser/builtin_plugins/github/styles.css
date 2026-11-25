@@ -136,12 +136,12 @@
 .github-pull-number {
   color: var(--text);
 }
-/* A pull request's number is bold wherever it names the pull request: the page's title, a
-   Pulls row, and a stack menu's member, at the shell's one weight for it
-   (`--pull-number-weight`; docs/design-system.md, "Pull Request Numbers"). */
+/* A pull request's number is bold wherever it names the pull request: the page's title and a
+   Pulls row, at the shell's one weight for it (`--pull-number-weight`; docs/design-system.md,
+   "Pull Request Numbers"). A stack menu's member names its pull request by its place and
+   title, and shows no number (mb-as06). */
 .github-pull-number,
-.github-pulls-number,
-.github-pull-stack-member-number {
+.github-pulls-number {
   font-weight: var(--pull-number-weight);
 }
 .github-pull-title-with-state > .github-pull-number {
@@ -1691,14 +1691,23 @@
   max-height: min(60vh, 480px);
   overflow-y: auto;
 }
+/* A member is one line, as a Pulls row's first line is (mb-as06): its state icon in the
+   tree's icon slot, a tree row's gap before its text, then its bold place, a muted dot, and
+   its title, which alone gives way, cut short at the line's end with the whole title in the
+   member's tip. The row it replaced, a check then "1/6 · title · #N", wrapped a long title
+   onto lines of its own, so members were of different heights. */
 .github-pull-stack-member {
-  align-items: start;
+  gap: var(--tree-icon-gap);
   color: var(--text);
-  white-space: normal;
   text-decoration: none;
 }
+/* The line's spaces collapse in a flex row, so a gap of about a space's width (0.25em, 3 px
+   at the menu's 12 px) parts the place, the dot, and the title. */
 .github-pull-stack-member-copy {
-  display: block;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 0.25em;
   min-width: 0;
 }
 /* A stack's position takes the pull request number's weight, through its one token, so
@@ -1756,17 +1765,20 @@
 }
 /* A member row is a link, so its parts set their own ink, as a pull request's title does
    (docs/design-system.md, "Stacks"): a part that set none would take the link's blue. */
-.github-pull-stack-member-position,
-.github-pull-stack-member-number {
+.github-pull-stack-member-position {
   color: var(--text);
-}
-.github-pull-stack-member-number {
-  white-space: nowrap;
 }
 .github-pull-stack-member-title {
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
   color: var(--text);
   font-weight: var(--weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.github-pull-stack-member-copy > .github-pull-stack-member-position,
+.github-pull-stack-member-copy > .github-pull-stack-dot {
+  flex: none;
 }
 /* The current member is marked as the Pulls list marks its current row
    (`.github-pulls-row.selected`): the highlight's tint and its 2px bar at the row's left

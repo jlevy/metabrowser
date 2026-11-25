@@ -45,8 +45,11 @@ drawn: its place in its stack before its number, “3/3 · #8 · maintainer”.
 `menu` is the page’s stack menu, mounted over a stand-in for the DOM: its heading is the
 stack’s label on the shared label classes, its trigger shows its bare position, a press
 opens it with focus on the current member, and its members are the group’s, in one
-order. `named` is #8’s two chips, one for each of its stacks, each naming its stack
-before its position, as its page draws them.
+order. `lines` is each member’s one line as drawn: its state icon’s state, as the list
+said it, then its bold place, a muted dot, and its title; `layout` is the parts that
+line is made of, one for every member, the current one too.
+`named` is #8’s two chips, one for each of its stacks, each naming its stack before its
+position, as its page draws them.
 Every step holds the session’s invariants: each listed pull request is drawn once or
 held by its closed stack, a stack’s members are in the menu’s order, and the rest keep
 the list’s.
@@ -565,6 +568,18 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       10,
       9,
       8
+    ],
+    "lines": [
+      "draft 3/3 · Stack change 10",
+      "closed 2/3 · Stack change 9",
+      "merged 1/3 · Stack change 8"
+    ],
+    "layout": [
+      "github-pull-state-icon",
+      "github-pull-stack-member-copy",
+      "github-pull-stack-member-position",
+      "github-pull-stack-dot",
+      "github-pull-stack-member-title"
     ],
     "groupRow": {
       "label": "Stack #290",

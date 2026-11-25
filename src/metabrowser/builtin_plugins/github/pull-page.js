@@ -4259,22 +4259,45 @@ function outside(mb, href, base, children, className = "") {
 let stackMenuSerial = 0;
 
 /**
+ * A stack member's state for the stack menu's line: the page's own for the pull request it
+ * shows, as its header says it, and what the repository's list of pull requests last said of
+ * any other (`listedState`), or null where the list has not said, as for a member it has not
+ * reached.
+ *
+ * @param {string | null} source
+ * @param {number} target
+ * @param {number} number The page's pull request.
+ * @param {import("./pull-state.js").PullState | null} current The page's state for it.
+ * @returns {import("./pull-state.js").PullState | null}
+ */
+export function stackMemberState(source, target, number, current) {
+  return target === number ? current : (listedState(source, target)?.state ?? null);
+}
+
+/**
  * The native stack's compact trigger and lazy, keyboard-navigable member menu. Its words
  * are the shared stack design's (docs/design-system.md, "Stacks"): the trigger is the
  * position badge, the menu's heading is the stack's label, and its members come in
- * `stackMenuOrder`, the order the Pulls tab's stack groups list them in. A member's title
- * is the SDK's `titleNodes` (docs/design-system.md, "Titles").
+ * `stackMenuOrder`, the order the Pulls tab's stack groups list them in.
+ *
+ * Every member is one line in one layout, as a Pulls row's first line is (mb-as06): the pull
+ * request's state icon, its place in the stack in bold, "14/15", a muted dot, and its title,
+ * the SDK's `titleNodes` (docs/design-system.md, "Titles"), cut short at the line's end with
+ * the whole title in its tip. The state is `deps.state`'s, read again each time the menu
+ * opens or the page repaints, and a member whose state is not known yet keeps the icon's
+ * slot empty, so every member's place starts at one edge. The current member is marked by
+ * the Pulls list's current-row mark and `aria-current`, not by a check before its icon.
  *
  * A pull request in more than one stack has a trigger for each, and each then names its
  * stack before its position, "300 2/2", as a Pulls row's place names every stack but its
  * own (`named`, and `update`'s): two bare positions told the stacks apart only by their
  * tips. However it opens, by a press, Enter, Space, `↓`, or `↑`, focus lands on the
- * current member, the row checked, as a filter's menu opens on its checked row
+ * current member, the row marked, as a filter's menu opens on its checked row
  * (docs/design-system.md, "Keys in a Menu"); Escape closes it and gives focus back to the
  * trigger.
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean}} deps
+ * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
@@ -4322,7 +4345,11 @@ export function createStackMenu(initial, number, deps) {
   const signal = listening.signal;
   /** @type {HTMLElement[]} */
   const links = [];
-  /** @type {Map<number, {link: HTMLElement, title: HTMLElement, position: HTMLElement, number: HTMLElement}>} */
+  /**
+   * Each member's line, and what it last drew, so a repaint that changes nothing changes no
+   * node: `text` and `state` are the title and state shown, `state` undefined before any.
+   * @type {Map<number, {link: HTMLElement, icon: HTMLElement, position: HTMLElement, title: HTMLElement, copy: HTMLElement, shown: {text: string | null, state: import("./pull-state.js").PullState | null | undefined}}>}
+   */
   const rows = new Map();
   // The members under the heading that names them and the menu: the host's group
   // look, with no group role, since a menu of one group is named by its heading. The
@@ -4334,18 +4361,37 @@ export function createStackMenu(initial, number, deps) {
   const group = h("div", { class: "menu-group" });
   let populated = false;
 
-  function updateTitles() {
+  /** Each drawn member's state icon, place, and title, from the stack and `deps.state`. */
+  function updateMembers() {
     for (let at = 0; at < stack.pulls.length; at += 1) {
       const target = stack.pulls[at];
       const row = rows.get(target);
-      if (row) {
-        row.title.replaceChildren(
-          ...deps.titleNodes(
-            stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`),
-          ),
-        );
-        row.position.textContent = stackPosition(at, stack.pulls.length);
-        row.number.textContent = `#${target}`;
+      if (!row) {
+        continue;
+      }
+      const title =
+        stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`);
+      if (row.shown.text !== title) {
+        row.title.replaceChildren(...deps.titleNodes(title));
+        // The whole title, which the shell shows only while the line cuts it short
+        // (docs/design-system.md, "Tooltips Add Information").
+        row.link.setAttribute("data-tip-text", title);
+        row.shown.text = title;
+      }
+      const place = stackPosition(at, stack.pulls.length);
+      if (row.position.textContent !== place) {
+        row.position.textContent = place;
+      }
+      const state = deps.state?.(target) ?? null;
+      if (row.shown.state !== state) {
+        // Named, as a Pulls row's icon is, since nothing else on the line says the state; an
+        // unknown state keeps the icon's slot, empty.
+        row.icon =
+          state === null
+            ? h("span", { class: "github-pull-state-icon", "aria-hidden": "true" })
+            : pullStateIcon(state);
+        row.link.replaceChildren(row.icon, row.copy);
+        row.shown.state = state;
       }
     }
   }
@@ -4353,6 +4399,8 @@ export function createStackMenu(initial, number, deps) {
   /** @param {boolean} [reorder] */
   function populate(reorder = false) {
     if (populated && !reorder) {
+      // Opened again: the members as they are now, a state the Pulls list has learned since.
+      updateMembers();
       return;
     }
     const focused = document.activeElement;
@@ -4375,31 +4423,26 @@ export function createStackMenu(initial, number, deps) {
         if (target === number) {
           link.setAttribute("aria-current", "page");
         }
+        // The state icon, then the place, a muted dot, and the title: the place and the dot
+        // never give way, and the title is cut short at the line's end.
         const title = h("span", { class: "github-pull-stack-member-title" });
         const position = h("strong", { class: "github-pull-stack-member-position" });
-        const identity = h("span", { class: "github-pull-stack-member-number" });
-        link.append(
-          h("span", { class: "chip-menu-check", "aria-hidden": "true" }, [
-            target === number ? "✓" : "",
-          ]),
-          h("span", { class: "github-pull-stack-member-copy" }, [
-            position,
-            " ",
-            h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
-            " ",
-            title,
-            " ",
-            h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
-            " ",
-            identity,
-          ]),
-        );
-        row = { link, title, position, number: identity };
+        const dot = h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]);
+        const copy = h("span", { class: "github-pull-stack-member-copy" }, [
+          position,
+          " ",
+          dot,
+          " ",
+          title,
+        ]);
+        const icon = h("span", { class: "github-pull-state-icon", "aria-hidden": "true" });
+        link.append(icon, copy);
+        row = { link, icon, position, title, copy, shown: { text: null, state: undefined } };
         rows.set(target, row);
       }
       links.push(row.link);
     }
-    updateTitles();
+    updateMembers();
     group.replaceChildren(label, ...links);
     if (!populated) {
       menu.append(group);
@@ -4573,12 +4616,15 @@ export function createStackMenu(initial, number, deps) {
     element: root,
     close,
     /** A title or membership update keeps the menu open and retains surviving link focus.
+     * A repaint with neither still draws a member's state anew where it changed, as the
+     * page's own does when another actor merges it.
      * @param {import("./pull-stacks.js").NativeStack} next
      * @param {string} title
      * @param {boolean} [nextNamed] Whether the pull request is in another stack too.
      */
     update(next, title, nextNamed = false) {
       if (next === stack && title === currentTitle && nextNamed === named) {
+        updateMembers();
         return;
       }
       const reordered =
@@ -4594,7 +4640,7 @@ export function createStackMenu(initial, number, deps) {
       if (populated && reordered) {
         populate(true);
       } else {
-        updateTitles();
+        updateMembers();
       }
     },
     dispose() {
@@ -4839,6 +4885,9 @@ export function mountPullPage(container, ctx, mb) {
   let stackIdentity = null;
   let stackKey = "";
   let preferredStack = 0;
+  /** The state the page shows, which its stack menus give its own member: the header's.
+   * @type {import("./pull-state.js").PullState | null} */
+  let stackPullState = null;
   /** @type {Map<number, ReturnType<typeof createStackMenu>>} */
   const stackMenus = new Map();
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
@@ -5718,6 +5767,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     // In more than one stack, each chip names its stack, as a Pulls row's place does.
     const named = memberships.length > 1;
+    stackPullState = model.pull?.state ?? null;
     const nodes = memberships.map((stack) => {
       let menu = stackMenus.get(stack.number);
       if (menu) {
@@ -5730,6 +5780,8 @@ export function mountPullPage(container, ctx, mb) {
         currentTitle: model.pull?.title ?? "",
         named,
         titleNodes: mb.titleNodes,
+        state: (target) =>
+          stackMemberState(stackIdentity?.source ?? null, target, number, stackPullState),
         onOpen() {
           preferredStack = stack.number;
           for (const [other, view] of stackMenus) {
