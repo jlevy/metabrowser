@@ -24,7 +24,8 @@ changes: a merged tree with changed, removed, added and unchanged entries in eac
 a change only in a comment (``source_only``), a JSON pair inside its 128 KiB bound and a
 YAML pair of the same size past its own, and a JSON pair past its bound, refused in the
 tree's format. Every refusal of the route itself has its own code: a request without a
-file, a file of no rendered format, a file the comparison does not list, and a pair the
+file, a file of no rendered format, a file the comparison does not list, a range of
+blocks or a view other than Full asked of a YAML tree, which has neither, and a pair the
 record never admitted.
 
 A page never hides a changed file's Rendered | Source chooser, so each refusal here is
@@ -348,6 +349,12 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
     assert rendered(f"&file={ids['src/app.txt']}")["status"] == "unsupported"
     assert rendered("&file=absent")["status"] == "unsupported"
     assert rendered("", ok=False)["code"] == "invalid_rendered_diff"
+    # A tree has one view and no blocks, so a range or another view asked of one is the
+    # client's error (A11 of review A on #811); a refusal answers every view alike.
+    for query in ("&blocks=0-1", "&view=concise"):
+        answered = rendered(f"&file={ids['config/app.yaml']}{query}", ok=False)
+        assert answered["code"] == "invalid_rendered_diff"
+    assert rendered(f"&file={ids['config/sized.yaml']}&blocks=0-1")["status"] == "too_large"
     other = route.replace(f"left={envelope['record']['comparison']['base']}", "left=" + "0" * 40)
     session.blocks.append("")
     refused = session.run(selected, "--api", f"{other}&file={ids['docs/guide.md']}")

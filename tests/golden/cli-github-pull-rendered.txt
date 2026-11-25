@@ -1869,6 +1869,50 @@ pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 Error: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE> returned HTTP 400
 --- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f3&blocks=0-1'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f3&blocks=0-1
+status: 400
+{
+  "code": "invalid_rendered_diff"
+}
+--- stderr ---
+selection: pull_request
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f3&blocks=0-1 returned HTTP 400
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f3&view=concise'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f3&view=concise
+status: 400
+{
+  "code": "invalid_rendered_diff"
+}
+--- stderr ---
+selection: pull_request
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f3&view=concise returned HTTP 400
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f8&blocks=0-1'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=905f369f455a2258ad9db5f8aa160a5a393756c2&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f8&blocks=0-1
+status: 200
+{
+  "version": "structured-diff-v1",
+  "status": "too_large",
+  "root": [],
+  "source_only": false
+}
+--- stderr ---
+selection: pull_request
+pin: 1fbe7f21adea41e790684a50c64f81ea949b9b45 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
 # metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=1fbe7f21adea41e790684a50c64f81ea949b9b45&store=<STORE>&file=f11'
 exit: 1
 --- stdout ---

@@ -23,7 +23,9 @@ list the projection's ``count`` of blocks and its ``folds``, so the page draws e
 view from either answer once it holds the blocks. ``blocks=I-J`` answers the
 projection's blocks from *I* up to *J* alone, for a withheld fold the reader opens.
 The route keeps one projection a file and puts each answer together from its encoded
-blocks, so neither parameter is part of what it keeps.
+blocks, so neither parameter is part of what it keeps. A refusal is the same for every
+view and range; a ready YAML or JSON tree has one view and no blocks, so a range, or a
+view other than ``full``, asked of one is refused as invalid.
 
 A Markdown pair is read up to :data:`_MARKDOWN_PAIR_MAX_BYTES`, whatever a projection in
 a thread may hold: past the thread's budgets the pair is the Markdown child's, whose
@@ -137,10 +139,14 @@ _MARKDOWN_PAIR_MAX_BYTES = 1024 * 1024
 # with 4.3-4.6 ms of layout (review C of #349); what an answer at this cap costs a page
 # has not been measured (mb-qq0c).
 _MAX_HTML_BYTES = 2 * 1024 * 1024
-# The encoded answers the route keeps, in bytes: four at _MAX_HTML_BYTES, and real ones
-# are far smaller, since the 434 real pairs answer at most 120 KiB. A tree's answer was
-# kept as Python objects, which a 120 KB list of 39,999 empty mappings made 2.9 MB
-# (mb-8274 review B7); kept encoded, an answer weighs what is sent.
+# What the route keeps of its answers, in the bytes `_Kept.weight` counts: four at
+# _MAX_HTML_BYTES, and real ones are far smaller, since the 434 real pairs answer at most
+# 120 KiB. A tree's answer was kept as Python objects, which a 120 KB list of 39,999 empty
+# mappings made 2.9 MB (mb-8274 review B7), so answers are kept encoded. A tree's or a
+# refusal's weight is the body it sends. A Markdown projection's is its encoded fields,
+# blocks, and fold anchors, about what Full sends, which Concise sends less of; it leaves
+# out what holds them, each block's `bytes` object and tuple slot (about 40 bytes a block
+# on CPython) and the `Fold` objects.
 _MAX_KEPT_BYTES = 8 * 1024 * 1024
 # How long the route refuses a pair the child was stopped on before it asks the child
 # again, and how many such pairs it remembers: an inert render's own, for its reasons
@@ -225,6 +231,8 @@ class _Kept:
     # The HTML bytes of the blocks, for `prefers_full`.
     html_bytes: int = 0
     folds: tuple[Fold, ...] = ()
+    # A ready YAML or JSON tree, which has no views or blocks to ask for (`body` alone).
+    tree: bool = False
 
     @property
     def markdown(self) -> bool:
@@ -232,6 +240,8 @@ class _Kept:
 
     @property
     def weight(self) -> int:
+        """The encoded bytes kept, which `_MAX_KEPT_BYTES` bounds."""
+
         return (
             len(self.body)
             + sum(len(key) + len(value) for key, value in self.fields)
@@ -244,7 +254,10 @@ def _kept(answer: dict[str, Any]) -> _Kept:
     """An answer as the route keeps it."""
 
     if answer.get("version") != MARKDOWN_DIFF_VERSION or answer.get("status") != "ready":
-        return _Kept(body=_encoded(answer))
+        return _Kept(
+            body=_encoded(answer),
+            tree=answer.get("status") == "ready",
+        )
     blocks = cast("list[MarkdownDiffBlock]", answer["blocks"])
     return _Kept(
         fields=tuple((key, _encoded(value)) for key, value in answer.items() if key != "blocks"),
@@ -594,6 +607,10 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
 
     try:
         kept = await cache.get(key, lambda: slot.run(load))
+        if kept.tree and (span is not None or view not in ("", "full")):
+            # A tree has one view and no blocks: a refusal is the same for every view and
+            # range, but a view or range asked of a tree is the client's error.
+            return _invalid()
         if not kept.markdown:
             body = kept.body
         elif span is not None:

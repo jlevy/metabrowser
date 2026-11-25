@@ -37,10 +37,12 @@ CONTEXT_BLOCKS = 2
 # a load average of about 430, in headless Chrome 152: in finterm-ai/investment-research
 # #22, a fold sent opened in 1-2 ms (six folds, two runs), and a withheld one of 49 blocks
 # and 272 lines in 20-135 ms (four opens; its request took 8-118 ms, 25.6 KB, 6.6 KB
-# compressed); its file's Concise answer was 10.6 KB and its Full one 34.9 KB. Its HTML is
-# 94 bytes a line, so a fold sent adds at most about 9 KB to an answer, and a withheld one
-# only the anchors of its headings, however long the unchanged run. The answer's size was
-# not timed apart from the request.
+# compressed); its file's Concise answer was 10.6 KB and its Full one 34.9 KB. That file's
+# HTML averages 94 bytes a line, so there a fold sent adds at most about 9 KB to an answer,
+# and a withheld one only the anchors of its headings, however long the unchanged run. The
+# bound is on lines, not bytes: a document written a paragraph a line, as long generated
+# books often are, sends a fold of up to 99 lines at many times that. The answer's size
+# was not timed apart from the request.
 INLINE_FOLD_MAX_LINES = 100
 # The blocks, and their HTML bytes, of a document the Docs tab opens in Full. Block
 # count, not bytes, predicts what drawing them costs: measured 2026-11-24 in headless
