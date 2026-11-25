@@ -165,6 +165,41 @@ def test_titles_follow_the_matching_catalog_without_refetching_native_membership
     assert '"authors"' not in data and '"avatars"' not in data
 
 
+def test_a_member_the_catalog_lacks_is_named_by_its_cached_record(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A merged member the repository's list no longer holds is named in the stack menu as a
+    # stack's page names it, by its cached record (`member_identity`); one whose record
+    # another account read, like one with neither a row nor a record, has no name.
+    from metabrowser.builtin_plugins.github import pull_route
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord
+
+    fixtures = Path(__file__).parent / "fixtures" / "github-pull-page-responses.json"
+    recorded = PullRecord.model_validate(
+        json.loads(fixtures.read_text(encoding="utf-8"))["current"]["body"]["record"]
+    )
+    merged = recorded.model_copy(
+        update={
+            "reader": f"gh:{READER}",
+            "pull": recorded.pull.model_copy(
+                update={"number": 8, "title": "Merged work", "author": "maintainer"}
+            ),
+        }
+    )
+    records = {8: merged, 9: merged.model_copy(update={"reader": "gh:someone-else"})}
+
+    def cached(_home: Path, _slug: str, number: int) -> tuple[Any, None, None]:
+        return records.get(number, "not_cached"), None, None
+
+    monkeypatch.setattr(pull_route, "cached_pull_record", cached)
+    provider(monkeypatch, [response([native(30, 7, 8, 9, 10)])])
+    asyncio.run(refresh_stacks(repository))
+    seed_catalog(repository, [generated_item(7)])
+    stack = envelope(repository)["stacks"][0]
+    assert stack["titles"] == ["Work item 7", "Merged work", None, None]
+    assert stack["authors"] == ["contributor", "maintainer", None, None]
+
+
 @pytest.mark.parametrize("changed", ["reader", "source"])
 def test_stack_titles_never_cross_catalog_identity(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, changed: str

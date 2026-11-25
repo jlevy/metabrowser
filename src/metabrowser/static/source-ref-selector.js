@@ -48,7 +48,7 @@
 // formatter (docs/design-system.md, "Age").
 //
 // A branch that is the head of a pull request shows it on a second line: its state's
-// icon, its number, and its title, from the listing's `pulls`, which the server reads from
+// icon, its title, and its number, from the listing's `pulls`, which the server reads from
 // what the repository's provider has cached and never fetches. The filter finds a branch
 // by its pull request's number or title too, which the server does, so the list the page
 // shows is the server's. While the provider is still filling its cache the listing says
@@ -1726,7 +1726,7 @@
    * Load the GitHub plugin, which draws a pull request's state, once, and draw the rows
    * again when it has: they were drawn with an empty slot where its icon goes, the slot's
    * own width, so nothing moves. A plugin that cannot load leaves the slots empty, and
-   * each row's accessible text still says the number and title. Browser only.
+   * each row's accessible text still says the title and number. Browser only.
    *
    * @param {MetabrowserSourceRefSelectorParts} parts
    */

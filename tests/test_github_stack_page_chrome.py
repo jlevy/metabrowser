@@ -1,24 +1,26 @@
 """A native stack's page, in a real Chrome: a pull request's page for the whole stack.
 
 What the stack's page says is browserless, against the stack route's recorded answers: its
-header's rows at first paint and settled, its member rows, and the Diff summary and diff
-drawings it asks for, in ``tests/dom/github-stack-page-session.js`` and
+header's rows at first paint and settled, its member rows, and the diff drawings it asks
+for, in ``tests/dom/github-stack-page-session.js`` and
 ``tests/dom/github-stack-guide-mount-session.js``. What only a browser can tell is held here
-(docs/design-system.md, "The Stack Page"): that nothing on the page moves from its first
-paint, opening the page or its Docs and Changes, while the delayed loading block, on this
-page and on a pull request's, stays where it shows; that the running app gives every member
-its author, merged 8 too, and marks no member current, since none is the page; that the Diff
-summary is closed; that View on GitHub opens the whole stack; that the tabs are a pull
-request's without Files; and that the Pulls tab's Whole stack row is current and in view
-while the page is open and opens it. A member row is not measured against the menu's: the
-page draws it with the stack menu's builder (`stackMemberRow`), so it is the menu's by
-construction; only its inset in the members' card, the page's own rule, is measured below.
+(docs/design-system.md, "The Stack Page"): that on a stack whose members' records are read,
+nothing on the page moves from its first paint, opening the page or its Docs and Changes,
+while the delayed loading block, on this page and on a pull request's, stays where it
+shows; that the running app gives every member its author, merged 8 too, and marks no
+member current, since none is the page; that the Diff summary is closed; that View on
+GitHub opens the whole stack; that the tabs are a pull request's without Files; and that
+the Pulls tab's Whole stack row is current and in view while the page is open and opens it.
+A stack still being fetched is not measured: its status line says what is being fetched
+and then goes, which moves the lines under it. A member row is not measured against the
+menu's either: the page draws it with the stack menu's builder (`stackMemberRow`), so it is
+the menu's by construction; only its inset in the members' card, the page's own rule, is
+measured, by the second test.
 
 So this serves a checkout of the GitHub stand-in with a fake ``gh`` whose ``gh stack``
 answers native stacks over the stand-in's pull requests, #70 (8, then 10) and #71 (8, 7,
 then 10, where the top lacks 7), and ``tests/dom/github-stack-page-chrome.mjs`` measures the
-running app. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its screenshots, and
-``METABROWSER_STACK_PAGE_MODE=--before`` takes only those, of a shell before this design.
+running app. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its screenshots.
 
 The second test serves the stand-in with guides (``--guided-stack``): 7 carries its own, and
 10 the guide of #70, whose top it is. ``tests/dom/github-stack-page-layout-chrome.mjs`` holds
@@ -43,6 +45,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -86,10 +89,13 @@ STACKS_PATH = "repos/octo/demo/stacks?per_page=100&page=1"
 STACKS = ((70, (8, 10)), (71, (8, 7, 10)))
 
 
-def with_stacks(answers: dict[str, Any]) -> dict[str, Any]:
-    """The stand-in's answers, and its native stacks for ``gh stack``."""
+def with_stacks(
+    answers: dict[str, Any], stacks: Sequence[tuple[int, Sequence[int]]] = STACKS
+) -> dict[str, Any]:
+    """The stand-in's answers, and its native *stacks* for ``gh stack``, by default
+    :data:`STACKS`."""
 
-    stacks = [
+    listed = [
         {
             "number": number,
             "url": f"https://api.github.com/repos/octo/demo/stacks/{number}",
@@ -97,12 +103,12 @@ def with_stacks(answers: dict[str, Any]) -> dict[str, Any]:
             "open": True,
             "pull_requests": [{"number": pull} for pull in pulls],
         }
-        for number, pulls in STACKS
+        for number, pulls in stacks
     ]
     return {
         **answers,
         "stack_version": "0.1.0",
-        "api": {**answers["api"], STACKS_PATH: ok(STACKS_PATH, stacks)},
+        "api": {**answers["api"], STACKS_PATH: ok(STACKS_PATH, listed)},
     }
 
 
@@ -110,7 +116,6 @@ def run_measurement(
     tmp_path: Path,
     chrome_profile: Path,
     *,
-    mode: list[str],
     session: Path = SESSION,
     build: tuple[str, ...] = (),
 ) -> GroupRun:
@@ -163,7 +168,7 @@ def run_measurement(
         _wait_until_serving(server, port, log)
         shots = os.environ.get("METABROWSER_STACK_PAGE_SHOTS")
         run = run_in_own_group(
-            [node, str(session), f"http://127.0.0.1:{port}", *mode],
+            [node, str(session), f"http://127.0.0.1:{port}"],
             timeout_s=_MEASUREMENT_BUDGET_S,
             env={
                 **os.environ,
@@ -185,10 +190,7 @@ def run_measurement(
 def test_the_stack_page_is_a_pull_request_page_that_holds_still_in_chrome(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
-    mode = os.environ.get("METABROWSER_STACK_PAGE_MODE")
-    run = run_measurement(tmp_path, chrome_profile, mode=[mode] if mode else [])
-    if mode == "--before":
-        return
+    run = run_measurement(tmp_path, chrome_profile)
     passed = re.fullmatch(r"stack page in Chrome: (\d+) checks passed\n", run.stdout)
     assert passed is not None and int(passed.group(1)) > 0, run.stdout
 
@@ -196,8 +198,6 @@ def test_the_stack_page_is_a_pull_request_page_that_holds_still_in_chrome(
 def test_the_stack_page_lays_out_as_a_pull_request_page_in_chrome(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
-    run = run_measurement(
-        tmp_path, chrome_profile, mode=[], session=LAYOUT, build=("--guided-stack",)
-    )
+    run = run_measurement(tmp_path, chrome_profile, session=LAYOUT, build=("--guided-stack",))
     passed = re.fullmatch(r"stack page layout in Chrome: (\d+) checks passed\n", run.stdout)
     assert passed is not None and int(passed.group(1)) > 0, run.stdout

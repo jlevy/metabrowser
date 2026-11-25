@@ -82,18 +82,40 @@ globalThis.DOMParser = class {
   }
 };
 
-// What a reader sees: the text of every node not hidden, its spaces collapsed.
-const seen = (node) =>
-  (typeof node === "string" ? node : node.hidden ? "" : node.children.map(seen).join("")).replace(
-    /\s+/g,
-    " ",
-  );
-// The classes of the parts after the icon, in order, so an empty part shows.
-const parts = (link) => {
-  const holder = link.children.find((child) => child.className.endsWith("-copy"));
-  return (holder ?? link).children
-    .filter((child) => typeof child !== "string" && !child.hidden)
-    .map((child) => child.className);
+// The order the design sets (docs/design-system.md, "One Order for a Pull Request's Fields").
+const ORDER = ["title", "place", "number", "by"];
+
+// What a reader meets, in order: each field the row draws, by the layout's name for it, and
+// each dot. A hidden node draws nothing; a field drawn empty still counts, as its element is
+// on the line; a dot inside a field is met before the field's own words.
+const tokens = (link, layout) => {
+  const fieldOf = new Map(ORDER.map((name) => [layout[name], name]));
+  const met = [];
+  const walk = (node, pending) => {
+    if (typeof node === "string") {
+      const text = node.trim();
+      if (text === "·") {
+        met.push("·");
+      } else if (text !== "" && pending.name !== null && !pending.met) {
+        met.push(pending.name);
+        pending.met = true;
+      }
+      return;
+    }
+    if (node.hidden) {
+      return;
+    }
+    const name = fieldOf.get(node.className);
+    const own = name === undefined ? pending : { name, met: false };
+    for (const child of node.children) {
+      walk(child, own);
+    }
+    if (own !== pending && !own.met) {
+      met.push(own.name);
+    }
+  };
+  walk(link, { name: null, met: true });
+  return met;
 };
 
 (async () => {
@@ -106,7 +128,6 @@ const parts = (link) => {
   const titleNodes = (title) => [title];
   const identity = (login) => {
     const element = new Element("span");
-    element.className = "actor-identity";
     element.textContent = login;
     return element;
   };
@@ -117,37 +138,75 @@ const parts = (link) => {
     state: "open",
     author: author === null ? null : { login: author, avatar: null },
   });
-  const draw = (layout, ...members) => {
+  const given = (line) =>
+    ORDER.filter(
+      (name) => (name === "place" ? line.place : name === "by" ? line.author : 1) !== null,
+    );
+  // Each case: the members shown one after another; the row is read after the last.
+  const cases = {
+    placed: [member("14/15", "jlevy")],
+    noPlace: [member(null, "jlevy")],
+    noAuthor: [member("14/15", null)],
+    neither: [member(null, null)],
+    placeLost: [member("14/15", "jlevy"), member(null, "jlevy")],
+    placeFound: [member(null, "jlevy"), member("2/3", "jlevy")],
+    authorLost: [member("2/3", "jlevy"), member("2/3", null)],
+  };
+  const draw = (layout, members) => {
     const link = new Element(layout.flow ? "span" : "a");
     const row = stackMemberRow(link, titleNodes, identity, layout);
     for (const line of members) {
       row.show(line);
     }
-    return { seen: seen(link).trim(), parts: parts(link) };
+    return tokens(link, layout);
   };
-
-  const line = {
-    placed: draw(MEMBER_LINE, member("14/15", "jlevy")),
-    noPlace: draw(MEMBER_LINE, member(null, "jlevy")),
-    noPlaceNoAuthor: draw(MEMBER_LINE, member(null, null)),
-    placeLost: draw(MEMBER_LINE, member("14/15", "jlevy"), member(null, "jlevy")),
-    placeFound: draw(MEMBER_LINE, member(null, "jlevy"), member("2/3", "jlevy")),
-    placeMoved: draw(MEMBER_LINE, member("1/3", "jlevy"), member("2/3", "jlevy")),
-  };
-  const run = {
-    placed: draw(PULLS_RUN, member("14/15", "jlevy")),
-    noPlace: draw(PULLS_RUN, member(null, "jlevy")),
-    noPlaceNoAuthor: draw(PULLS_RUN, member(null, null)),
-    placeLost: draw(PULLS_RUN, member("14/15", "jlevy"), member(null, "jlevy")),
-  };
-  // A field that is absent draws no dot: no row's text starts or ends with one, or has two
-  // with nothing between them.
-  for (const drawn of [...Object.values(line), ...Object.values(run)]) {
-    assert.doesNotMatch(drawn.seen, /^·|·$|·\s*·/, drawn.seen);
+  let drawings = 0;
+  for (const [name, members] of Object.entries(cases)) {
+    const last = members.at(-1);
+    const byLayout = [MEMBER_LINE, PULLS_RUN].map((layout) => {
+      drawings += 1;
+      const met = draw(layout, members);
+      const said = `${name}: ${met.join(" ")}`;
+      // A dot sits between two fields: none starts or ends the row, and no two meet.
+      assert.ok(
+        met[0] !== "·" &&
+          met.at(-1) !== "·" &&
+          met.every((token, at) => token !== "·" || met[at + 1] !== "·"),
+        said,
+      );
+      // A run has a dot before each field after the title; a line none before the first of
+      // them, which starts the group at the line's end, and one before each of the rest.
+      const after = met.slice(met.indexOf("title") + 1);
+      const dotted = after
+        .map((token, at) => (token === "·" ? null : after[at - 1] === "·"))
+        .filter((dot) => dot !== null);
+      assert.deepEqual(
+        dotted,
+        dotted.map((_, at) => layout.flow || at > 0),
+        said,
+      );
+      // An absent field draws nothing, not even an empty element, and the fields drawn keep
+      // the one order.
+      const shown = met.filter((token) => token !== "·");
+      assert.deepEqual(shown, given(last), said);
+      // A row that got here by changing reads as one drawn so at once.
+      assert.deepEqual(met, draw(layout, [last]), said);
+      return shown;
+    });
+    // A line and a run show the same fields in the same order.
+    assert.deepEqual(byLayout[0], byLayout[1], name);
   }
-  assert.deepEqual(line.placeLost, line.noPlace);
-  assert.deepEqual(run.placeLost, run.noPlace);
-  console.log(JSON.stringify({ line, run }));
+  console.log(
+    JSON.stringify({
+      cases: Object.keys(cases).length,
+      drawings,
+      dotsSitBetweenFields: true,
+      absentFieldsDrawNothing: true,
+      fieldsKeepTheOneOrder: true,
+      changedRowsReadAsDrawn: true,
+      layoutsAgree: true,
+    }),
+  );
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

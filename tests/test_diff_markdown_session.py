@@ -49,11 +49,13 @@ _GUIDE_NEW = (
     .replace(b"setup notes", b"first setup notes")
     .replace(b"The old closing line.", b"The new closing line.")
 )
-# Front matter that did not change, above a body that did, and front matter removed.
+# Front matter that did not change, above a body that did, and front matter removed with
+# the heading under it renamed, so the removed front matter and the first block's change
+# are one change (`joinChanges` in `paint`).
 _NOTES_OLD = b"---\ntitle: Notes\n---\n# Notes\n\nThe old body.\n"
 _NOTES_NEW = _NOTES_OLD.replace(b"The old body.", b"The new body.")
 _PLAIN_OLD = b"---\ntitle: Plain\ndraft: true\n---\n# Plain\n\nText.\n"
-_PLAIN_NEW = b"# Plain\n\nText.\n"
+_PLAIN_NEW = b"# Plain Page\n\nText.\n"
 # A document whose unchanged runs fold: a short run, sent with a Concise answer, and two
 # long ones, each with a heading, withheld from it. The first change links to the first
 # withheld heading.

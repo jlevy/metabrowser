@@ -13,11 +13,17 @@ mechanism rather than restating any colour:
    the ink, weight, size, or numerals outranks the shared rule wherever its selector is
    more specific: `.github-pulls-tail > .github-pulls-age { color: var(--muted) }` drew
    every Pulls row's age gray (mb-daxw). A call site's class places an age and nothing
-   more, and every age's call-site class ends in `-age`, so this check can find it.
+   more, and every age's call-site class ends in `-age`, so this check can find it, and
+   a check below holds every class a call site gives the builder to that.
 2. **A module painting the class itself.** A module that takes the primitive's class from
    `formatAge` or `MetabrowserFormatters.age` and puts it on an element draws an age the
    builder does not, and can drop the class. Their label is for words: a sentence or an
    accessible name.
+
+**What it cannot see.** The stylesheet check reads a rule's subject by its classes, so a
+rule that reaches an age by structure alone, such as `.agents-row-line > span:last-child`,
+passes it. No such rule sets an age's ink today; making the freshness rule win whatever
+selects an age is its own change.
 """
 
 from __future__ import annotations
@@ -173,4 +179,42 @@ def test_the_age_namespace_holds_only_freshness_classes() -> None:
     assert findings == [], (
         "a class beginning `age-` is a freshness class, which retellAge replaces; name a call "
         "site's class `<surface>-age`:\n" + "\n".join(findings)
+    )
+
+
+_BUILDER_CALL = re.compile(r"\bageLabel(?:Html)?\(")
+
+
+def _call_arguments(text: str, start: int) -> str:
+    """The text between a call's parentheses, from just after its opening one."""
+
+    depth = 1
+    for index in range(start, len(text)):
+        if text[index] == "(":
+            depth += 1
+        elif text[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[start:index]
+    return text[start:]
+
+
+def test_every_age_a_call_site_draws_has_an_age_class() -> None:
+    # The stylesheet check above finds a rule by its subject's class, so it holds an age only
+    # while every call site's class says it is one. A class the builder is given is a string
+    # literal ending in `-age`, which that check reads.
+    findings: list[str] = []
+    for module in _tracked("src/metabrowser/*.js"):
+        if module in PRIMITIVE_MODULES:
+            continue
+        text = module.read_text(encoding="utf-8")
+        for call in _BUILDER_CALL.finditer(text):
+            arguments = _call_arguments(text, call.end())
+            for given in re.finditer(r"\bclassName:\s*([^,}\n]+)", arguments):
+                if not re.fullmatch(r"\"[\w-]*-age\"", given.group(1).strip()):
+                    line = text.count("\n", 0, call.start()) + 1
+                    findings.append(f"{module.relative_to(ROOT)}:{line}: {given.group(1).strip()}")
+    assert findings == [], (
+        "give the age builder a call site's class as a literal ending in `-age`:\n"
+        + "\n".join(findings)
     )

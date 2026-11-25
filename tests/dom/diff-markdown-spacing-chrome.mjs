@@ -1,10 +1,10 @@
 // The space between a rendered Markdown diff's blocks, laid out by headless Chrome beside
 // the Document view of the same text: the production `blockRow`, `sanitizeBlock`,
-// `changeRuns`, and `removedParts` (builtin_plugins/diff/diff-markdown.js) build the
-// server's projection into the article a
-// pull request's Changes and Docs mount, under the shell's, the Markdown plugin's, the
-// pull request page's, the diff plugin's, and KPress's stylesheets, and KPress's render of
-// each version is set in a Document view's frame.
+// `changeRuns`, `removedParts`, and `markJoins` (builtin_plugins/diff/diff-markdown.js)
+// build the server's projection into the article a pull request's Changes and Docs
+// mount, under the shell's, the Markdown plugin's, the pull request page's, the diff
+// plugin's, and KPress's stylesheets, and KPress's render of each version is set in a
+// Document view's frame.
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
 //     KPRESS_STATIC=/dir/with/kpress/css/and/fonts SPACING_INPUT=/path/to/input.json \
@@ -26,7 +26,8 @@
 // collapsing across rows and through the runs and changes around them, which only a browser
 // computes, that has to give the document's space. Two of KPress's rules key on a
 // heading's next sibling (`h2 + h3`, and `h4 + p` to `h6 + p`), and a row's block has no
-// sibling in the row before it. The diff joins the second across rows; the first would
+// sibling in the row before it. The diff joins the second across rows, by the rows shown
+// on either side of a row (`markJoins`), hidden removed ones left out; the first would
 // restate KPress's margin, so an h3 straight after an h2 keeps the h3's own space, and this
 // session states that case.
 import fs from "node:fs";
@@ -67,8 +68,8 @@ const PAGE = `<!doctype html><html style="--doc-max-chars: ${INPUT.docMaxChars}"
 ${INPUT.sheets.map((/** @type {string} */ sheet) => `<link rel="stylesheet" href="/kpress/${sheet}">`).join("\n")}
 <script src="/static/inert-html.js"></script>
 <script type="module">
-import { blockRow, changeRuns, removedParts, sanitizeBlock } from "/plugins/diff/diff-markdown.js";
-window.diffSpacing = { blockRow, changeRuns, removedParts, sanitizeBlock };
+import { blockRow, changeRuns, markJoins, removedParts, sanitizeBlock } from "/plugins/diff/diff-markdown.js";
+window.diffSpacing = { blockRow, changeRuns, markJoins, removedParts, sanitizeBlock };
 </script>
 </head><body><div id="preview-pane" class="preview-pane" style="display: grid; grid-template-columns: repeat(2, ${FRAME_PX}px); align-items: start"></div></body></html>`;
 
@@ -106,7 +107,7 @@ function serve() {
 // version's.
 const MOUNT = `(blocks, documents, frame) => {
   const inert = window.MetabrowserInertHtml;
-  const { blockRow, changeRuns, removedParts, sanitizeBlock } = window.diffSpacing;
+  const { blockRow, changeRuns, markJoins, removedParts, sanitizeBlock } = window.diffSpacing;
   const base = "https://github.com/octo/demo/blob/main/docs/guide.md";
   const el = (tag, className, children = []) => {
     const node = document.createElement(tag);
@@ -137,6 +138,7 @@ const MOUNT = `(blocks, documents, frame) => {
     const placed = changeRuns(blocks.map((block) => blockRow(block, build)));
     for (const part of removedParts(placed)) part.hidden = current;
     const article = el("article", "kpress kpress-inert diff-markdown", placed);
+    markJoins(placed);
     const diff = el("div", "github-pull-diff metabrowser-diff-host", [
       el("div", "diff-root", [el("section", "diff-file", [article])]),
     ]);

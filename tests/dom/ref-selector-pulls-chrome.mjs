@@ -8,7 +8,7 @@
 // kind of row is, that the rows abut at those heights, that the list's box is as tall as
 // every row together, which row a scroll position puts at the list's center, that a key
 // that jumps past every drawn row brings its row into view, and that a pull request's
-// icon, number, and title are drawn, the title cut at the line's end. So this serves the
+// icon, title, and number are drawn, the title cut at the line's end. So this serves the
 // test's checkout, whose `origin` is a GitHub repository with its pull requests cached,
 // with `metab` as a reader does, and in one headless Chrome:
 //

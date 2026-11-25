@@ -545,6 +545,144 @@ export function joinChanges(elements) {
   return kept;
 }
 
+// KPress's rules that space a block by the block before it in one document: a list or a
+// quote continued gives way its margins on both sides, so its items are spaced as inside
+// one list, and a paragraph straight under an h4, h5, or h6 has no space above it (`h4 + p`
+// to `h6 + p` in KPress's document.css). KPress's `h2 + h3` sets a space of its own, not a
+// zero, so it is not carried: an h3 after an h2 keeps its own space above it.
+const CONTINUED = new Set(["UL", "OL", "BLOCKQUOTE"]);
+const CLOSE_UNDER = new Set(["H4", "H5", "H6"]);
+
+/**
+ * How KPress spaces a block that starts with *after* below one that ends with *before*,
+ * by tag: whether the later block's start margin gives way, and the earlier's end margin.
+ * @param {string | null} before
+ * @param {string | null} after
+ * @returns {{start: boolean, end: boolean}}
+ */
+export function joinOf(before, after) {
+  if (before !== null && before === after && CONTINUED.has(before)) {
+    return { start: true, end: true };
+  }
+  return { start: after === "P" && before !== null && CLOSE_UNDER.has(before), end: false };
+}
+
+/**
+ * The tag of a row's block at one edge, the first or the last element its prose holds, or
+ * null for a row with no prose, as front matter's.
+ * @param {Element} row
+ * @param {boolean} last
+ * @returns {string | null}
+ */
+function edgeTag(row, last) {
+  for (const child of row.children) {
+    if (child.classList.contains("kpress-prose")) {
+      const element = child.children[last ? child.children.length - 1 : 0];
+      return element === undefined ? null : element.tagName;
+    }
+  }
+  return null;
+}
+
+/**
+ * The rows an element of an article shows, in order: a row, unless hidden; the rows a
+ * change shows in its runs; and null for anything else, a fold's bar or group or a chunk
+ * not drawn yet, which stands between the rows on either side of it.
+ * @param {Element} element
+ * @returns {Element[] | null}
+ */
+function shownRows(element) {
+  if (isChange(element)) {
+    return [...element.children].flatMap((run) =>
+      /** @type {HTMLElement} */ (run).hidden
+        ? []
+        : [...run.children].filter((row) => !(/** @type {HTMLElement} */ (row).hidden)),
+    );
+  }
+  if (element.classList.contains("diff-markdown-block")) {
+    return /** @type {HTMLElement} */ (element).hidden ? [] : [element];
+  }
+  return null;
+}
+
+/**
+ * The row shown next to *element* on one side, among its siblings: past rows and changes
+ * that show none, up to anything that stands between rows.
+ * @param {Element} element
+ * @param {boolean} before
+ * @returns {Element | null}
+ */
+function shownNeighbour(element, before) {
+  for (
+    let node = before ? element.previousElementSibling : element.nextElementSibling;
+    node !== null;
+    node = before ? node.previousElementSibling : node.nextElementSibling
+  ) {
+    const rows = shownRows(node);
+    if (rows === null) {
+      return null;
+    }
+    if (rows.length > 0) {
+      return /** @type {Element} */ (rows[before ? rows.length - 1 : 0]);
+    }
+  }
+  return null;
+}
+
+/**
+ * Mark each row of *elements*, neighbours in an article or an open fold, and the row shown
+ * on either side of them, with how KPress spaces it by the row shown before it and the row
+ * shown after it (`joinOf`), which its block cannot see from its own row. Every row shown
+ * carries `data-join`, which holds `start` when its block's start margin gives way and
+ * `end` when its end margin does (styles.css), and is empty when neither does. The rows
+ * shown are the rows drawn and not hidden, so Current, which hides a removed run, marks
+ * each row by the rows around it in the new version, and a run of changes or a chunk
+ * boundary between two rows makes no difference. Call it whenever what is drawn or hidden
+ * changes: a chunk drawn, a fold filled, Diff or Current chosen.
+ * @param {Element[]} elements
+ */
+export function markJoins(elements) {
+  const [first] = elements;
+  if (first === undefined) {
+    return;
+  }
+  /** @type {(Element | null)[]} */
+  const sequence = [shownNeighbour(first, true)];
+  for (const element of elements) {
+    const rows = shownRows(element);
+    if (rows === null) {
+      sequence.push(null);
+    } else {
+      sequence.push(...rows);
+    }
+  }
+  sequence.push(shownNeighbour(/** @type {Element} */ (elements[elements.length - 1]), false));
+  for (let index = 0; index + 1 < sequence.length; index += 1) {
+    const before = sequence[index] ?? null;
+    const after = sequence[index + 1] ?? null;
+    const join = joinOf(
+      before === null ? null : edgeTag(before, true),
+      after === null ? null : edgeTag(after, false),
+    );
+    if (before !== null) {
+      setJoin(/** @type {HTMLElement} */ (before), "end", join.end);
+    }
+    if (after !== null) {
+      setJoin(/** @type {HTMLElement} */ (after), "start", join.start);
+    }
+  }
+}
+
+/**
+ * @param {HTMLElement} row
+ * @param {"start" | "end"} edge
+ * @param {boolean} joined
+ */
+function setJoin(row, edge, joined) {
+  const kept = (row.dataset.join ?? "").split(" ").filter((each) => each !== "" && each !== edge);
+  row.dataset.join = (joined ? [...kept, edge].sort() : kept).join(" ");
+}
+
 /**
  * What a view draws of a projection, in order: in Full, each block; in Concise, each block
  * outside a fold, and each fold, which stands for the blocks it holds until it opens.
@@ -1049,6 +1187,10 @@ export function createMarkdownViews(deps) {
     for (const part of file.removed) {
       part.hidden = current;
     }
+    // Which rows are shown changed, so what each is shown beside did too.
+    if (file.removed.length > 0) {
+      markJoins([...file.rendered.children]);
+    }
     file.tree?.setCurrent(current);
   }
 
@@ -1495,7 +1637,9 @@ export function createMarkdownViews(deps) {
       const first = region.chunks.length === 0;
       region.chunks.push(chunk);
       if (first) {
-        container.append(...chunkRows(region, chunk));
+        const placed = chunkRows(region, chunk);
+        container.append(...placed);
+        markJoins(placed);
         continue;
       }
       const spacer = document.createElement("div");
@@ -1563,6 +1707,7 @@ export function createMarkdownViews(deps) {
     const after = /** @type {HTMLElement | null} */ (spacer.nextElementSibling);
     const placed = chunkRows(region, chunk);
     spacer.replaceWith(...placed);
+    markJoins(placed);
     joinChanges([before, ...placed, after]);
   }
 
