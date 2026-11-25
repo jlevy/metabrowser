@@ -149,8 +149,9 @@ case "$scenario" in
   no-metab)
     launch "$copy" "$folder"
     step "No uv and no metab" \
-      "Settings opens and shows the minimum metab version, with a notice when that version is pending on PyPI." \
-      "It shows \"Watching for metab in ~/.local/bin.\" and offers \"Find Again\" and \"Choose metab…\"." \
+      "Settings opens on Runtime and shows the minimum metab version, with a notice when that version is pending on PyPI." \
+      "It shows \"Watching for metab in ~/.local/bin.\" and offers \"Refresh\" and \"Choose metab…\"." \
+      "Places looked lists the places searched, scrolling within the tab when it is long; Reveal Logs Folder stays in the window." \
       "Open \"Installation and troubleshooting on GitHub\" and check the README's Installation section." \
       "If the minimum is on PyPI, the README gives the uv tool install and upgrade steps." \
       "If pending, the Developer preview section explains how to build and select the checkout's .venv/bin/metab." \
@@ -158,10 +159,10 @@ case "$scenario" in
     install_link "$uv_path" "$home/.local/bin/uv"
     step "uv installed (linked into the scratch ~/.local/bin)" \
       "Settings still shows the required runtime and watches ~/.local/bin." \
-      "Find Again still reports no usable metab, and no folder window opens."
+      "Refresh still reports no usable metab, and no folder window opens."
     install_link "$checkout_metab" "$home/.local/bin/metab"
     step "metab installed (this checkout's, linked into the scratch ~/.local/bin)" \
-      "Within a few seconds, the notes folder opens in its own window without clicking Find Again." \
+      "Within a few seconds, the notes folder opens in its own window without clicking Refresh." \
       "Settings shows metab $current from ~/.local/bin."
     ;;
   old-metab)
@@ -169,7 +170,7 @@ case "$scenario" in
     install_stand_in metab-0.12.0 "$home/.local/bin/metab"
     launch "$copy" "$folder"
     step "An older metab (a stand-in that reports 0.12.0)" \
-      "Settings opens and shows the minimum metab version." \
+      "Settings opens on Runtime and shows the minimum metab version." \
       "It names ~/.local/bin/metab, reports version 0.12.0 as incompatible, and explains why." \
       "The README's Installation section leads to the upgrade steps for a released minimum or the source" \
       "checkout instructions when the minimum is pending on PyPI." \

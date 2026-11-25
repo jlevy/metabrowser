@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import ShellCore
 
-/// Find Again and Choose metab… overlapping, and a search that finds nothing (review
+/// Refresh and Choose metab… overlapping, and a search that finds nothing (review
 /// findings A4, C3, and A5 on #341). The app delegate used to apply every result as it
 /// arrived and kept its own copy of the runtime beside the window's.
 @Suite struct RuntimeSelectionTests {

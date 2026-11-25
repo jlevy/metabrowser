@@ -18,7 +18,8 @@ import SwiftUI
 }
 
 struct CheckSetupActions {
-    var checkAgain: () -> Void
+    /// Refresh: runs the check again.
+    var refresh: () -> Void
 }
 
 /// Settings > Check Setup: a sentence that says whether `metab` can serve a folder, then
@@ -46,8 +47,9 @@ struct CheckSetupView: View {
             }
             HStack {
                 // Enabled with no `metab` selected too: it rereads the selection, so one
-                // chosen in Settings > Runtime meanwhile is checked.
-                Button("Check Again", action: actions.checkAgain).disabled(model.isRunning)
+                // chosen in Settings > Runtime meanwhile is checked. Disabled while a run is
+                // under way, which a press would only wait for.
+                Button("Refresh", action: actions.refresh).disabled(model.isRunning)
                 Button("Copy Report") {
                     guard let text = model.text else { return }
                     NSPasteboard.general.clearContents()
@@ -71,7 +73,7 @@ struct CheckSetupView: View {
         if !model.hasRuntime {
             Text(
                 "No metab is selected, so there is nothing to check. Settings > Runtime finds or chooses one; "
-                    + "then Check Again."
+                    + "then Refresh."
             )
             .fixedSize(horizontal: false, vertical: true)
         } else {
@@ -143,9 +145,59 @@ struct ReportTextView: NSViewRepresentable {
         return scroll
     }
 
+    /// A report the same as the one shown is left alone, selection and scroll included. A
+    /// new one replaces it where the old one was scrolled to, and a selection stays on the
+    /// same text, where it is still in the report: a rerun usually changes only a value or
+    /// two, such as free space, and a reader copying a part should not lose it.
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let view = scroll.documentView as? NSTextView, view.string != text else { return }
+        // Worked out before the text changes: `string` is the text storage's own, which
+        // changes with it.
+        let kept = Self.moved(view.selectedRange(), from: view.string as NSString, to: text as NSString)
         view.textStorage?.setAttributedString(Self.styled(text))
+        // Laid out at once: TextKit 2 otherwise lays the new text out a moment later from an
+        // estimate and moves the scroll (measured: 120 pt down became 94).
+        if let layout = view.textLayoutManager { layout.ensureLayout(for: layout.documentRange) }
+        if let kept { view.setSelectedRange(kept) }
+    }
+
+    /// Where `selected` in `old` is in `new`. A selection within the text the two share at
+    /// the start, or at the end, keeps its characters there, so a short one such as `ok`
+    /// stays on its own check when a line above it changes; one the change runs through
+    /// goes to the occurrence of its text nearest where it was, or nowhere if it is gone.
+    static func moved(_ selected: NSRange, from old: NSString, to new: NSString) -> NSRange? {
+        guard selected.length > 0, NSMaxRange(selected) <= old.length else { return nil }
+        let shorter = min(old.length, new.length)
+        var prefix = 0
+        while prefix < shorter, old.character(at: prefix) == new.character(at: prefix) { prefix += 1 }
+        var suffix = 0
+        while suffix < shorter - prefix,
+            old.character(at: old.length - 1 - suffix) == new.character(at: new.length - 1 - suffix)
+        {
+            suffix += 1
+        }
+        if NSMaxRange(selected) <= prefix { return selected }
+        if selected.location >= old.length - suffix {
+            return NSRange(location: selected.location + new.length - old.length, length: selected.length)
+        }
+        return range(of: old.substring(with: selected), in: new, near: selected.location)
+    }
+
+    /// Where `part` is in `text`, the occurrence nearest `location`, or nil if it is gone.
+    static func range(of part: String, in text: NSString, near location: Int) -> NSRange? {
+        var nearest: NSRange?
+        var search = NSRange(location: 0, length: text.length)
+        while true {
+            let found = text.range(of: part, options: [], range: search)
+            guard found.location != NSNotFound else { break }
+            if nearest.map({ abs($0.location - location) > abs(found.location - location) }) ?? true {
+                nearest = found
+            }
+            let next = found.location + 1
+            guard next < text.length else { break }
+            search = NSRange(location: next, length: text.length - next)
+        }
+        return nearest
     }
 
     /// `text` in the report's font and the text color, each line indented under itself

@@ -18,15 +18,25 @@ import SwiftUI
 }
 
 struct RuntimeActions {
-    var findAgain: () -> Void
+    /// Refresh: runtime discovery again.
+    var refresh: () -> Void
     var choose: () -> Void
-    var revealLogs: () -> Void
+    var revealLogsFolder: () -> Void
 }
 
 /// Settings > Runtime.
 struct RuntimeView: View {
     let model: RuntimeModel
     let actions: RuntimeActions
+
+    /// The most Places looked takes before it scrolls: about nine lines. A search that
+    /// finds no `metab` lists each directory of the login shell's `PATH`
+    /// (`RuntimeDiscovery`), dozens on some Macs, under the setup guide's notices, and the
+    /// pane outgrew the height the window is placed for (`CheckSetupView.height`), which put
+    /// Reveal Logs Folder and the help link below a small screen's edge. Measured on
+    /// 2026-11-24 with 40 places and three notices (`SettingsWindowTests`): the pane is
+    /// 431 pt with this cap and 861 pt without it.
+    static let placesLookedHeight: CGFloat = 130
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -44,23 +54,29 @@ struct RuntimeView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                Button("Find Again", action: actions.findAgain).disabled(model.isSearching)
+                // Disabled while a search runs, which a press would only wait for.
+                Button("Refresh", action: actions.refresh).disabled(model.isSearching)
                 Button("Choose metab…", action: actions.choose)
             }
-            // Shown as it is rather than behind a disclosure: the pane has the room, and a
-            // disclosure's title takes no click on macOS, only its chevron does.
+            // Shown rather than behind a disclosure, whose title takes no click on macOS,
+            // only its chevron does; a long list scrolls in place.
             if !model.tried.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Places looked").foregroundStyle(.secondary)
-                    Text(model.tried.map { "\($0.path) — \(Self.describe($0.result))" }.joined(separator: "\n"))
-                        .font(.system(size: 11, design: .monospaced))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+                    ScrollView(.vertical) {
+                        Text(model.tried.map { "\($0.path) — \(Self.describe($0.result))" }.joined(separator: "\n"))
+                            .font(.system(size: 11, design: .monospaced))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: Self.placesLookedHeight)
+                    .accessibilityLabel("Places looked")
                 }
             }
             Divider()
             HStack {
-                Button("Reveal Logs", action: actions.revealLogs)
+                Button("Reveal Logs Folder", action: actions.revealLogsFolder)
                 Link("Installation and troubleshooting on GitHub", destination: ProjectLinks.installationGuide)
             }
         }
@@ -99,7 +115,7 @@ struct RuntimeView: View {
         case .searching: working("Looking for the metab command-line tool…")
         case .checkingChoice: working("Checking the chosen metab…")
         case .preparingGuide: working("Checking where metab is installed…")
-        case .idle: Text("No metab is selected. Find Again looks for one, and Choose metab… picks one.")
+        case .idle: Text("No metab is selected. Refresh looks for one, and Choose metab… picks one.")
         }
     }
 
