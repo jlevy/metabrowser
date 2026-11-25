@@ -1556,15 +1556,35 @@
     return global.MetabrowserFormatters.ageLabelHtml(secondsSinceEpoch, options);
   }
 
+  // A freshness class is one of the stylesheet's age-* classes, and a call site's own class
+  // ends in "-age" instead; tests/test_age_single_source.py holds both, so telling an age again
+  // can swap its freshness class and keep every other. Not a startup script's: only a view
+  // that keeps its ages tells them again, and the startup scripts' budget had no room for it.
+  const FRESHNESS_CLASS = /^age-/;
+
   /**
-   * Tell a drawn age as of now, as a ticking or kept view does; returns its label.
+   * Tell a drawn age as of now, as a ticking or kept view does: its label, and its freshness
+   * class in place of the one it had, its other classes kept. Returns its label.
    * @param {Element} element
    * @param {number | null | undefined} secondsSinceEpoch
    * @param {MetabrowserAgeOptions} [options]
    * @returns {string}
    */
   function retellAge(element, secondsSinceEpoch, options) {
-    return global.MetabrowserFormatters.retellAge(element, secondsSinceEpoch, options);
+    const { label, className } = global.MetabrowserFormatters.age(
+      Number(secondsSinceEpoch) || 0,
+      options,
+    );
+    if (element.textContent !== label) {
+      element.textContent = label;
+    }
+    const had = element.getAttribute("class") ?? "";
+    const kept = had.split(/\s+/).filter((name) => name !== "" && !FRESHNESS_CLASS.test(name));
+    const wanted = [...kept, className].filter(Boolean).join(" ");
+    if (had !== wanted) {
+      element.setAttribute("class", wanted);
+    }
+    return label;
   }
 
   /**

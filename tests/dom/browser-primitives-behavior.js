@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { createSdkSandbox } = require("./sdk-sandbox.js");
 
 const repoRoot = path.resolve(process.argv[2]);
 const failures = [];
@@ -118,8 +119,12 @@ for (const name of [
     age(now / 1000 - 7200).className === age(now / 1000 - 7200, { style: "relative" }).className,
   );
   // The one age builder: whatever a call site asks, the drawn age carries the primitive's
-  // own class beside the call site's, and telling it again swaps that class alone.
-  const { ageLabel, ageLabelHtml, retellAge } = sandbox.MetabrowserFormatters;
+  // own class beside the call site's, and telling it again swaps that class alone. Telling
+  // an age again is the SDK views' (plugin-sdk-views.js), run here on the same clock.
+  const { ageLabel, ageLabelHtml } = sandbox.MetabrowserFormatters;
+  const sdk = createSdkSandbox();
+  sdk.Date = sandbox.Date;
+  const { retellAge } = sdk.metabrowser;
   const element = () => {
     const attributes = new Map();
     return {
