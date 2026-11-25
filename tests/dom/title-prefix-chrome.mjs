@@ -228,8 +228,8 @@ const MEASURE = `async (titles) => {
     await document.fonts.ready;
     await frames();
     out.pullsRow = { prefixed: read(title(rows[0].number)), plain: read(title(rows[1].number)) };
-    // The row's run (mb-pw8t): the title, the number, and the toggle, wrapping in as many lines
-    // as they take, never cut short.
+    // The row's run (mb-pw8t, mb-rb3n): the title, the number, and the author, wrapping in as
+    // many lines as they take, never cut short.
     const heading = title(rows[0].number).closest(".github-pulls-heading");
     const lineHeight = parseFloat(getComputedStyle(heading).lineHeight);
     out.pullsHeading = {

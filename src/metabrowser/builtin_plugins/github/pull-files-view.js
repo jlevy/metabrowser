@@ -6,10 +6,10 @@
 //
 // The group follows the Files tree's row contract (docs/design-system.md, "Container Rows"):
 // one `.tree-children[role="group"]` after the pull request's run and last line, owned by its
-// row as a folder's children are, whose chevron follows the lines at the run's end, the toggle
-// for the pointer (pulls-panel.js), folders that lead with the
-// registry's chevron in the tree's icon slot and file rows with the change letter a patch's
-// children carry in place of an icon, the tree's indent and row height, and the inline change
+// row as a folder's children are, whose chevron follows the lines on the row's last line, the
+// toggle for the pointer (pulls-panel.js), folders that lead with the registry's chevron in
+// the tree's icon slot and file rows with the change letter a patch's children carry in place
+// of an icon, the tree's indent and row height, and the inline change
 // stats: a file's own, and a folder's rolled up from every file under it, open or closed, as
 // a Files folder keeps its size whichever way it is turned. Its rows are the shell's
 // `.changed-file-row` class set (static/styles.css), the Diff summary's too, so the two trees
@@ -621,7 +621,7 @@ export function mountFileTree(host) {
     controller,
     /**
      * Hang the tree under a pull request's row, the item that owns it, as a folder owns its
-     * children, after the item's run and last line; *line*, the toggle at the run's end, its
+     * children, after the item's run and last line; *line*, the toggle on the last line, its
      * lines and the chevron after them, carries the toggle's state (pulls-panel.js,
      * `buildRow`). A repaint of the list may build all three again.
      *

@@ -112,7 +112,7 @@ registered, any other status, and a golden that never runs the route.
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
 | `/pull` | covered | `--show /pull/<n>[/files[/<path>] or /checks]` | `cli-github-pull.tryscript.md`, `cli-github-pull-files.tryscript.md` |
 | `/pulls` | covered | `--show /pulls` | `cli-github-pulls.tryscript.md` |
-| `/stack` | covered | `--show /stack/<n>[/guided, /files, /docs, or /changes[/<path>]]` | `cli-github-pull.tryscript.md`, `cli-github-stack.txt`, `cli-github-stack-guide.txt` |
+| `/stack` | covered | `--show /stack/<n>[/guided, /files, /docs, or /changes[/<path>]]` | `cli-github-pull.tryscript.md`, `cli-github-stack-states.txt`, `cli-github-stack-guide.txt` |
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 | `/api/events/watch` | covered | `--api` with `--data` | `cli-api-events-watch.tryscript.md` |
 | `/raw` | exempt | — | asset serving; the query form and `/raw/{path}` share one resolver and send the file’s bytes plus sandbox headers, covered by `tests/test_raw_passthrough.py`, `tests/test_content_trust.py`, `tests/test_raw_path_route.py`, and, on a served Git pin, `tests/test_serve_pin.py`. A raster image’s query-form answer at the file’s current version (`v`, from the `raw_versions` of `/api/kpress/render`) is kept for a year and every other is `no-cache`, covered by `tests/test_raw_versions.py`, and in Chrome across a switch to `--untrusted` by `tests/test_raw_profile_cache_chrome.py`; only an `If-None-Match` naming the trust profile’s tag is answered `304`, covered by `tests/test_asset_stamps.py` |

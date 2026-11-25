@@ -1098,8 +1098,9 @@ async function paintStory(panel, selection = false) {
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
     // A pull request is one zone, its item's first child (mb-1z7j): the row, the link and the
-    // tree's item, which owns its files, whose run ends with their toggle, its lines and the
-    // chevron after them (mb-pw8t), and whose last line is the author and the age.
+    // tree's item, which owns its files, whose run ends with the author, and whose last line is
+    // their toggle, its lines and the chevron after them, and the age at the row's end (mb-pw8t,
+    // mb-rb3n).
     const row = (item) => item.firstElementChild.firstElementChild;
     /** The first element under *node*, at any depth, with the class *name*. */
     const deep = (node, name) => {
@@ -1402,16 +1403,16 @@ async function paintStory(panel, selection = false) {
     /** @param {any} parent @param {string} name */
     const child = (parent, name) =>
       parent.childNodes.find((node) => node.classList?.contains(name));
-    // The row's run holds the title, a stack member's place, the number, and the lines changed
-    // with the chevron after them; its last line, the author and the age (mb-pw8t). A row
-    // names no branches; the pull request's page does.
+    // The row's run holds the title, a stack member's place, the number, and the author; its
+    // last line, the lines changed with the chevron after them, and the age at its end
+    // (mb-rb3n). A row names no branches; the pull request's page does.
     const heading = child(row(hostile), "github-pulls-heading");
     const numberLabel = child(heading, "github-pulls-number");
-    const byline = child(row(hostile), "github-pulls-byline");
-    const by = child(byline, "github-pulls-by");
-    // The stylesheet lays the run out as one flow (mb-85op, mb-pw8t): the state icon, then the
-    // title, the place, the number, and the toggle, a dot before each part after the title,
-    // every line of it in the text column; then the last line, the author and the age.
+    const by = child(heading, "github-pulls-by");
+    const tail = child(row(hostile), "github-pulls-tail");
+    // The stylesheet lays the run out as one flow (mb-85op, mb-pw8t, mb-rb3n): the state icon,
+    // then the title, the place, the number, and the author, a dot before each part after the
+    // title, every line of it in the text column; then the last line, the toggle and the age.
     // tests/dom/github-pulls-row-lines-chrome.mjs lays these rows out in Chrome.
     const classesOf = (node) =>
       node.childNodes
@@ -1423,7 +1424,7 @@ async function paintStory(panel, selection = false) {
         );
     assert(
       JSON.stringify(classesOf(row(hostile))) ===
-        JSON.stringify(["github-pulls-heading", "github-pulls-byline", "sr-only"]),
+        JSON.stringify(["github-pulls-heading", "github-pulls-tail", "sr-only"]),
       `the row's link is its run, its last line, and its number, author, and age in words: ${classesOf(row(hostile))}`,
     );
     const order = classesOf(heading);
@@ -1436,17 +1437,26 @@ async function paintStory(panel, selection = false) {
           "github-pulls-sep",
           "github-pulls-number",
           "github-pulls-sep",
-          "github-pulls-tail",
+          "github-pulls-by",
         ]),
-      `the run is the state icon, the title, the place, a dot and the number, and a dot and the toggle: ${order}`,
+      `the run is the state icon, the title, the place, a dot and the number, and a dot and the author: ${order}`,
     );
-    // The number holds its text alone, and the toggle is the tail's one part: the lines, then
-    // the chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t).
-    const toggle = child(child(heading, "github-pulls-tail"), "github-pulls-change");
+    // The author is its identity alone, hidden, since the link's name says it.
+    assert(
+      JSON.stringify(classesOf(by)) === JSON.stringify(["github-pull-identity"]) &&
+        by.getAttribute("aria-hidden") === "true",
+      `the author is its identity: ${classesOf(by)}`,
+    );
+    // The number holds its text alone, and the last line is the toggle, the lines, then the
+    // chevron after them, then their words for a screen reader (mb-f0pz, mb-pw8t), and the age
+    // at the row's end, hidden, since the link's name says it (mb-rb3n).
+    const toggle = child(tail, "github-pulls-change");
+    const tailAge = child(tail, "github-pulls-age");
     assert(
       classesOf(numberLabel).length === 0 &&
-        JSON.stringify(classesOf(child(heading, "github-pulls-tail"))) ===
-          JSON.stringify(["github-pulls-change"]) &&
+        JSON.stringify(classesOf(tail)) ===
+          JSON.stringify(["github-pulls-change", "github-pulls-age"]) &&
+        tailAge.getAttribute("aria-hidden") === "true" &&
         JSON.stringify(classesOf(toggle)) ===
           JSON.stringify([
             "github-pulls-change-line",
@@ -1464,10 +1474,8 @@ async function paintStory(panel, selection = false) {
             "github-pulls-change-line",
             "github-pulls-toggle",
             "github-pulls-change-words",
-          ]) &&
-        JSON.stringify(classesOf(byline)) ===
-          JSON.stringify(["github-pulls-by", "github-pulls-age"]),
-      "one zone, the link: its run ends with the toggle, the lines, the chevron after them, and their words, which describe the row, and its last line is the author and the age",
+          ]),
+      "one zone, the link: its run ends with the author, and its last line is the toggle, the lines, the chevron after them, and their words, which describe the row, and the age",
     );
     assert(
       heading.childNodes[2].hidden && heading.childNodes[2].textContent === "",
@@ -1476,17 +1484,17 @@ async function paintStory(panel, selection = false) {
     assert(
       numberLabel.firstChild.textContent === `#${first.body.rows[0].number}` &&
         by.textContent.includes(first.body.rows[0].author),
-      "the run shows the number, and the last line the author, and neither names a branch",
+      "the run shows the number and the author, and names no branch",
     );
     assert(
-      !heading.textContent.includes("→") && !byline.textContent.includes("→"),
+      !heading.textContent.includes("→") && !tail.textContent.includes("→"),
       "the row names no merge",
     );
     assert(
       child(row(hostile), "sr-only").textContent.startsWith(
         `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
       ),
-      "the link says the number, the author, and the age, which its run and last line show hidden",
+      "the link says the number, the author, and the age, which its run shows hidden",
     );
     assert(
       heading.childNodes[3].classList.contains("github-pulls-sep") &&

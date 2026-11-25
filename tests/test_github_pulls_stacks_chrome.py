@@ -76,12 +76,38 @@ pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 STACKS_PATH = "repos/octo/demo/stacks?per_page=100&page=1"
 # Native stacks list their members from the base; #10 is in both.
 STACKS = ((286, (7, 8, 9, 10)), (300, (5, 10)))
+# GitHub's longest login, 39 characters, for #8's author in the catalog, so the stack menu's
+# cap on an author's share of its member's line has a name to cut (github/styles.css,
+# `.github-pull-stack-member-by`).
+LONG_LOGIN = "contributor-with-the-longest-login-name"
+LONG_AUTHOR_PULL = 8
 
 
-def stacks_scenario(origin: Origin) -> dict[str, Any]:
-    """The stand-in's answers, and two native stacks for ``gh stack``."""
+def _long_author(api: dict[str, Any]) -> dict[str, Any]:
+    """*api* with #8's author in each catalog page given :data:`LONG_LOGIN`."""
+
+    patched = dict(api)
+    for key, entry in api.items():
+        if not re.fullmatch(r"graphql:(all|open|closed|updated):.+", key):
+            continue
+        body = entry["body"]
+        nodes = body["data"]["repository"]["page"]["nodes"]
+        if not any(node["number"] == LONG_AUTHOR_PULL for node in nodes):
+            continue
+        for node in nodes:
+            if node["number"] == LONG_AUTHOR_PULL:
+                node["author"] = {**(node["author"] or {}), "login": LONG_LOGIN}
+        patched[key] = ok(key, body)
+    return patched
+
+
+def stacks_scenario(origin: Origin, *, long_author: bool = False) -> dict[str, Any]:
+    """The stand-in's answers, and two native stacks for ``gh stack``; with *long_author*,
+    #8's author's login is GitHub's longest."""
 
     answers = files_scenario(origin)
+    if long_author:
+        answers = {**answers, "api": _long_author(answers["api"])}
     stacks = [
         {
             "number": number,
@@ -107,7 +133,7 @@ def run_measurement(
     chrome = require_chrome()
     node = require_node()
     checkout = clone_checkout(pull_origin, tmp_path / "checkout")
-    fake = install_fake_gh(tmp_path, stacks_scenario(pull_origin))
+    fake = install_fake_gh(tmp_path, stacks_scenario(pull_origin, long_author=True))
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
     env.update(fake)
     tools = _private(tmp_path / "tools")

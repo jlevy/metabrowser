@@ -62,13 +62,13 @@ Metabrowser fetches the repository’s list of pull requests in the background a
 each page as it arrives; scroll toward the end to load more, and a spinner below the
 last row says how many have been fetched so far.
 
-Each row reads as one run: the title, the number, and the lines the pull request adds
-and deletes, with a chevron after them, such as **Fix the reader · #455 · +1,234 −567
-›**, wrapping as far as it needs, each line starting under the title, so walking the
-list shows the size of each change.
-The author and the age are on the line below.
-At the Pulls tab’s default width most rows take four lines, and a short title three; a
-wider tab fits more rows in three.
+Each row reads as one run: the title, the number, and the author, such as **Fix the
+reader · #455 · jlevy**, wrapping as far as it needs, each line starting under the
+title. The lines the pull request adds and deletes are on the line below, with a chevron
+after them, such as **+1,234 −567 ›**, so walking the list shows the size of each
+change, and the age, such as **3d**, is at that line’s right end, where every row’s age
+lines up. At the Pulls tab’s default width most rows take four lines, and a short title
+three; a wider tab fits more rows in three.
 The lines sum the same list of changed files the row’s tree shows, as a stack’s heading
 sums its pull requests’, and ask GitHub for nothing: the lists come from what the Pulls
 tab already reads behind you for the rows in view and from trees you open, and a gray
@@ -98,19 +98,20 @@ tab groups the pull requests of each native GitHub stack under a **Stack #N** ro
 by default, top of the stack first; pull requests in no stack follow, and a stack’s row
 opens and closes like a folder.
 A member’s row shows its place after its title and before its number, such as **Fix the
-reader · 1/6 · #455**; a pull request in no stack shows no place.
+reader · 1/6 · #455 · jlevy**; a pull request in no stack shows no place.
 A pull request in two stacks sits under the first, and its place names the other stack
 by its number, such as **3/4 · ⧉300 2/2**.
 
 On the page, a stack button at the end of the line of state and dates shows the same
 position, and a pull request in two stacks has a button for each, which names its stack,
 such as **⧉300 2/2**. The button opens a menu of the stack’s members, from top to base,
-each on one line: its state and its title, then its position and its number at the
-line’s end, such as **Fix the reader 1/6 · #455**, the order a row in the Pulls tab has.
-On macOS, Control-N goes to the next member toward the top and Control-P to the previous
-one toward the base; on Windows and Linux, where those keys are the browser’s, use the
-menu. Without the extension, or when GitHub cannot answer, pull requests read as usual
-and the list stays flat, unless stacks are cached.
+each on one line: its state and its title, then its position, its number, and its author
+at the line’s end, such as **Fix the reader 1/6 · #455 · jlevy**, the order a row in the
+Pulls tab has. On macOS, Control-N goes to the next member toward the top and Control-P
+to the previous one toward the base; on Windows and Linux, where those keys are the
+browser’s, use the menu.
+Without the extension, or when GitHub cannot answer, pull requests read as usual and the
+list stays flat, unless stacks are cached.
 Metabrowser reads stacks and never changes them.
 
 ## The Pull Request Page
@@ -285,7 +286,7 @@ references:
 ```
 
 A pull request shows as a row the way the stack menu lists a member: its state, number,
-and title, and its place in a stack when it has one; it opens that pull request.
+title, and author, and its place in a stack when it has one; it opens that pull request.
 A file of another pull request is drawn as a file of this one is, from that pull
 request’s own changes, under a bar that names the pull request, and its **Open full
 diff** opens the file there.

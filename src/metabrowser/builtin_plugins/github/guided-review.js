@@ -12,9 +12,10 @@ import { pullStateIcon } from "./pull-state.js";
  *   rendered_route: string}} PullComparison Another pull request's current comparison, and
  *   the routes that answer it, which a `{pull, path}` reference's document is drawn from.
  * @typedef {{title: string | null, state: import("./pull-state.js").PullState | null,
- *   stack: {number: number, place: number, count: number} | null}} PullTarget What a
- *   `{pull}` row names: its title and state, and its place in a stack, `place` counted from
- *   the stack's base.
+ *   stack: {number: number, place: number, count: number} | null, author: string | null,
+ *   avatar: string | null}} PullTarget What a `{pull}` row names: its title and state, its
+ *   place in a stack, `place` counted from the stack's base, and its author and the
+ *   author's avatar.
  * @typedef {{subject: string | null, committed_at: string | null}} CommitTarget What a
  *   `{commit}` row names; both null for a commit whose line passed its bound.
  * @typedef {{kind: "file" | "pull_file" | "pull" | "commit", path: string | null,
@@ -54,8 +55,9 @@ import { pullStateIcon } from "./pull-state.js";
  * @typedef {{open: (path: string) => void,
  *   openPull: (number: number, path: string | null) => void,
  *   age: (iso: string) => HTMLElement, shortCommit: (sha: string) => string,
+ *   identity: (login: string, avatar: string | null) => HTMLElement,
  *   subject: GuideSubject["kind"]}} ReferenceWays
- *   Where a reference goes and how a row says when and which: a file to its Changes
+ *   Where a reference goes and how a row says when, which, and whose: a file to its Changes
  *   address, the pull request's or the stack's, and another pull request to its page or a
  *   file in its Changes (`mountGuidedReview`'s deps); *subject* is what the guide's own
  *   files are the changes of.
@@ -538,8 +540,9 @@ const plainPress = (event) =>
  * icon's slot empty and names itself by its number, as a member with no title does.
  *
  * @param {Reference} reference @param {(number: number, path: string | null) => void} openPull
+ * @param {(login: string, avatar: string | null) => HTMLElement} identity
  */
-function pullRow(reference, openPull) {
+function pullRow(reference, openPull, identity) {
   const number = reference.pull ?? 0;
   const target = /** @type {PullTarget | null} */ (reference.target);
   const link = /** @type {HTMLAnchorElement} */ (
@@ -569,6 +572,16 @@ function pullRow(reference, openPull) {
     " ",
     element("span", title, "github-pull-guide-row-title"),
   );
+  // Its author follows, after a muted dot, as a stack menu's member has it
+  // (docs/design-system.md, "Authors Follow Pull Requests").
+  const author = target?.author ?? null;
+  if (author !== null) {
+    const second = element("span", "·", "github-pull-stack-dot");
+    second.setAttribute("aria-hidden", "true");
+    const by = element("span", "", "github-pull-guide-row-by");
+    by.append(" ", second, " ", identity(author, target?.avatar ?? null));
+    copy.append(" ", by);
+  }
   // A flex row draws no space between its parts; the spaces keep its text, and so the
   // link's name, in words.
   link.append(icon, " ", copy);
@@ -730,7 +743,7 @@ function renderReference(reference, ways, change, drawers, drawn) {
   const drawing = referenceDrawing(reference, drawers);
   if (drawing === "row") {
     return reference.kind === "pull"
-      ? pullRow(reference, ways.openPull)
+      ? pullRow(reference, ways.openPull, ways.identity)
       : commitRow(reference, ways);
   }
   const path = reference.path ?? "";
@@ -941,6 +954,7 @@ let groupHeadings = 0;
  *   openPull: (number: number, path: string | null) => void,
  *   age: (iso: string) => HTMLElement,
  *   shortCommit: (sha: string) => string,
+ *   identity: (login: string, avatar: string | null) => HTMLElement,
  *   loadStyles: (assets: unknown) => Promise<unknown>,
  *   loadDrawPatch: () => Promise<DrawPatch>,
  *   loadDrawDocument: () => Promise<DrawDocument>,
@@ -948,7 +962,8 @@ let groupHeadings = 0;
  *   refusalNote: RefusalNote,
  * }} deps *open* goes to a file's Changes address, and *openPull* to another pull
  *   request's page, or to a file in its Changes. *age* and *shortCommit* say when a commit
- *   was made and name it, as the Commits tab does. *loadStyles* loads the stylesheets the
+ *   was made and name it, as the Commits tab does, and *identity* draws a pull request's
+ *   author as a stack menu's member does. *loadStyles* loads the stylesheets the
  *   guide is drawn in: KPress's, from the manifest a ready step carries, and the diff
  *   plugin's; the guide waits for them, as a description does. *loadDrawPatch* loads the
  *   diff plugin's file renderer, which draws the excerpts, and *loadDrawDocument* its view
@@ -965,6 +980,7 @@ export function mountGuidedReview(host, introduction, subject, deps) {
     openPull: deps.openPull,
     age: deps.age,
     shortCommit: deps.shortCommit,
+    identity: deps.identity,
     subject: subject.kind,
   };
   const stacked = subject.kind === "stack";

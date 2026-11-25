@@ -707,10 +707,14 @@ def test_a_step_cites_other_pull_requests_and_commits(stand: _Stand) -> None:
     ]
     layer, document, patch, *_rest = answer["references"]
     # 8 is in both stacks; its place is in 71, the stack that holds 7, the guide's own.
+    # Its author follows its number wherever it is named (docs/design-system.md, "Authors
+    # Follow Pull Requests"): from its record, which names no avatar.
     assert layer["target"] == {
         "title": "Say more in the guide",
         "state": "merged",
         "stack": {"number": 71, "place": 1, "count": 3},
+        "author": "maintainer",
+        "avatar": None,
     }
     assert (layer["path"], layer["comparison"], layer["hunks"]) == (None, None, [])
     # A document another pull request changes is drawn whole from that pull request's own

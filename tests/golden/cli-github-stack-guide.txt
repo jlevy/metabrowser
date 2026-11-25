@@ -76,7 +76,9 @@ status: 200
           "number": 70,
           "place": 1,
           "count": 2
-        }
+        },
+        "author": "maintainer",
+        "avatar": null
       }
     },
     {
@@ -100,7 +102,9 @@ status: 200
           "number": 70,
           "place": 2,
           "count": 2
-        }
+        },
+        "author": "maintainer",
+        "avatar": null
       }
     }
   ],
@@ -1327,6 +1331,12 @@ status: 202
         ],
         "titles": [
           null
+        ],
+        "authors": [
+          null
+        ],
+        "avatars": [
+          null
         ]
       },
       {
@@ -1339,6 +1349,16 @@ status: 202
           10
         ],
         "titles": [
+          null,
+          null,
+          null
+        ],
+        "authors": [
+          null,
+          null,
+          null
+        ],
+        "avatars": [
           null,
           null,
           null
@@ -1355,6 +1375,14 @@ status: 202
         "titles": [
           null,
           null
+        ],
+        "authors": [
+          null,
+          null
+        ],
+        "avatars": [
+          null,
+          null
         ]
       },
       {
@@ -1366,6 +1394,14 @@ status: 202
           9
         ],
         "titles": [
+          null,
+          null
+        ],
+        "authors": [
+          null,
+          null
+        ],
+        "avatars": [
           null,
           null
         ]
@@ -1401,6 +1437,12 @@ status: 200
       ],
       "titles": [
         null
+      ],
+      "authors": [
+        null
+      ],
+      "avatars": [
+        null
       ]
     },
     {
@@ -1413,6 +1455,16 @@ status: 200
         10
       ],
       "titles": [
+        null,
+        null,
+        null
+      ],
+      "authors": [
+        null,
+        null,
+        null
+      ],
+      "avatars": [
         null,
         null,
         null
@@ -1429,6 +1481,14 @@ status: 200
       "titles": [
         null,
         null
+      ],
+      "authors": [
+        null,
+        null
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -1442,6 +1502,14 @@ status: 200
       "titles": [
         null,
         null
+      ],
+      "authors": [
+        null,
+        null
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -1452,6 +1520,12 @@ status: 200
         7
       ],
       "titles": [
+        null
+      ],
+      "authors": [
+        null
+      ],
+      "avatars": [
         null
       ]
     }

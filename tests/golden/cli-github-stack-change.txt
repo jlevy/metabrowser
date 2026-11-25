@@ -74,6 +74,14 @@ status: 200
       "titles": [
         null,
         null
+      ],
+      "authors": [
+        null,
+        null
+      ],
+      "avatars": [
+        null,
+        null
       ]
     },
     {
@@ -84,6 +92,12 @@ status: 200
         9
       ],
       "titles": [
+        null
+      ],
+      "authors": [
+        null
+      ],
+      "avatars": [
         null
       ]
     }

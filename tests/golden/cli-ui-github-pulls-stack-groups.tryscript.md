@@ -584,7 +584,8 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "github-pull-stack-member-title",
       "github-pull-stack-member-position",
       "github-pull-stack-dot",
-      "github-pull-stack-member-number"
+      "github-pull-stack-member-number",
+      "github-pull-stack-member-by"
     ],
     "groupRow": {
       "label": "Stack #290",
