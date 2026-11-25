@@ -28,7 +28,8 @@ read it rather than fall back to a GitPath wire. They omit compressed identity
 because blobs are stored bytes with no gzip smudge.
 Markdown blob envelopes include parsed YAML ``frontmatter`` and
 ``frontmatter_error`` the way filesystem ``/api/file`` does; KPress on a pin
-uses that parse rather than an empty mapping.
+uses that parse of the blob's own bytes rather than an empty mapping, also when
+the page sends prepared text to render in the blob's place.
 Text blobs use the same first-window and highlight bound as filesystem
 listings, and advertise ``bytes_read`` plus preview limits so Load more and
 ``fetchText`` can continue a truncated Git envelope.
@@ -2314,15 +2315,23 @@ async def git_revision_kpress_render(
             entry = followed
         if not entry.is_blob or entry.is_symlink or entry.is_gitlink:
             return _json(_NOT_FOUND, status_code=404)
+        ext = blob_logical_ext(entry.path)
         body = (
             b"" if source_override is not None else await subject.tree_source.read_blob(entry.path)
         )
+        # Front matter is the blob's own, as the filesystem route reads it from the file:
+        # text a page sends in the blob's place is what it renders, prepared for the page
+        # (the wiki preprocessor writes anchors into it), never what the file says.
+        head = body
+        if source_override is not None and ext == ".md":
+            head, _size = await subject.tree_source.read_blob_window(
+                entry.oid, offset=0, max_bytes=_PREDICATE_PREFIX_BYTES
+            )
     except GitObjectUnavailableError:
         return _json(_NOT_FOUND, status_code=404)
     except GitBlobTooLargeError as exc:
         return _json(_blob_too_large_payload(exc), status_code=413)
 
-    ext = blob_logical_ext(entry.path)
     if source_override is not None:
         content = source_override
         logical_size = len(source_override.encode())
@@ -2357,9 +2366,8 @@ async def git_revision_kpress_render(
     frontmatter = None
     frontmatter_error = None
     if ext == ".md":
-        parse_source = source_override.encode() if source_override is not None else body
-        _, _, frontmatter, frontmatter_error = await asyncio.to_thread(
-            _git_blob_content_predicates, ext, parse_source
+        _, _, frontmatter, frontmatter_error = await _blob_predicates_off_loop(
+            ext, head[:_PREDICATE_PREFIX_BYTES]
         )
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
     try:

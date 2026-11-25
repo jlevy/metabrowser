@@ -51,8 +51,10 @@ $ grep -E '^  "(type|kind|frontmatter|frontmatter_error)":' bomb.txt
 
 ## Test: under the untrusted profile the document renders with the reason
 
-The inert render shows the body, and names the refusal in its diagnostics and in the
-document, where the Frontmatter disclosure would be.
+The inert render shows the body and names the refusal in its diagnostics.
+KPress’s Frontmatter error notice leaves the inert HTML, whose allowlist would keep only
+its words, and the page draws the notice from the diagnostic where the Frontmatter
+disclosure would be (`cli-ui-markdown-frontmatter-error.tryscript.md`).
 
 ```console
 $ metab docs --untrusted --api '/api/kpress/render?path=bomb.md&view=document' > render.txt
@@ -70,7 +72,7 @@ $ grep -E '^  "(type|inert)":|^      "(type|message)":' render.txt
 
 ```console
 $ grep '^  "html":' render.txt
-  "html": "\n<strong>Frontmatter error</strong><span>Front matter not parsed: written out without its YAML aliases it is larger than 1,048,576 characters</span><div><div><h1 id=\"user-content-seven-alias-levels\">Seven Alias Levels</h1>\n<p>The body still renders.</p></div></div>",
+  "html": "\n<div><div><h1 id=\"user-content-seven-alias-levels\">Seven Alias Levels</h1>\n<p>The body still renders.</p></div></div>",
 ? 0
 ```
 

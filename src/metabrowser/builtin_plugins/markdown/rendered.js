@@ -1,6 +1,6 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
-import { drawDiagrams, placeRendered } from "./place-rendered.js";
+import { drawDiagrams, isFrontmatterError, placeRendered } from "./place-rendered.js";
 import { holdLightPrintTheme, mountPrintIndicator } from "./print-indicator.js";
 import { kpressTocConfig } from "./toc-toggle.js";
 import { transclusionKey } from "./transclusion.js";
@@ -57,9 +57,19 @@ export function buildDiagnosticsNode(diagnostics, mb) {
   return temporary.firstElementChild;
 }
 
-/** @param {HTMLElement} container @param {Array<unknown>} diagnostics @param {MetabrowserPublicSdk} mb */
+/**
+ * Gather a placed document's preamble -- KPress's Frontmatter error notice and
+ * Frontmatter disclosure -- with a Diagnostics disclosure of *diagnostics* at the top of
+ * its prose. A front-matter error is left out of the disclosure: the document shows it
+ * as its notice (`isFrontmatterError`).
+ *
+ * @param {HTMLElement} container @param {Array<unknown>} diagnostics @param {MetabrowserPublicSdk} mb
+ */
 export function injectDiagnostics(container, diagnostics, mb) {
-  const node = buildDiagnosticsNode(diagnostics, mb);
+  const node = buildDiagnosticsNode(
+    diagnostics.filter((diagnostic) => !isFrontmatterError(diagnostic)),
+    mb,
+  );
   const article = container.querySelector("article.kpress");
   const layout = article?.querySelector(":scope > .kpress-doc-layout");
   const prose = layout?.querySelector(":scope > .kpress-prose");

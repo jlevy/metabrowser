@@ -10,7 +10,9 @@
 // there, before the page adopts it, so an image loads only the address the enhancer
 // gave it; a link or image past the enhancer's limit loses its address. When KPress
 // drew a table of contents, the article gets the page's own, from the render's entries
-// (inert-toc.js), ahead of the prose. A trusted render is inserted as it always was, and
+// (inert-toc.js), ahead of the prose; and when the file's front matter was not read, the
+// page's own Frontmatter error notice, from its diagnostic, ahead of the layout as KPress
+// puts it in a trusted render. A trusted render is inserted as it always was, and
 // enhanced after. The views place a render through place-rendered.js, which imports this
 // module on the first inert render, so a trusted folder's Markdown view never loads it.
 
@@ -18,6 +20,8 @@
 // transclusions, and an import back would be a cycle.
 import { MAX_ENHANCED_TARGETS } from "./dom-traversal.js";
 import { buildInertToc, inertTocEntries, wireInertToc } from "./inert-toc.js";
+// Already loaded: it imports this module, on demand.
+import { isFrontmatterError } from "./place-rendered.js";
 
 export { wireInertToc };
 
@@ -55,11 +59,37 @@ export function dropUnadmittedTargets(root) {
 }
 
 /**
+ * KPress's Frontmatter error notice for *reason*, as a trusted render draws it ahead of
+ * the layout (kpress/format/render.py, `_render_frontmatter_error`).
+ *
+ * The server takes KPress's own out of an inert render, whose allowlist would keep only
+ * its words run into the prose (`kpress_adapter.inert_render`), and the reason stays in
+ * the render's `frontmatter_error` diagnostic. The page's own markup carries KPress's
+ * class, as the inert table of contents does, so KPress's stylesheet draws the box; the
+ * reason is text.
+ *
+ * @param {Document} doc
+ * @param {string} reason
+ */
+function frontmatterErrorNotice(doc, reason) {
+  const notice = doc.createElement("aside");
+  notice.className = "kpress-frontmatter-error";
+  notice.setAttribute("role", "alert");
+  notice.setAttribute("aria-label", "Frontmatter error");
+  const title = doc.createElement("strong");
+  title.append(doc.createTextNode("Frontmatter error"));
+  const message = doc.createElement("span");
+  message.append(doc.createTextNode(reason));
+  notice.append(title, message);
+  return notice;
+}
+
+/**
  * Put *rendered*'s HTML into *target*, replacing what is there, and resolve its links.
  *
  * @template T
  * @param {HTMLElement} target
- * @param {{html: string, inert?: boolean, toc?: boolean, model?: {headings?: unknown}}} rendered
+ * @param {{html: string, inert?: boolean, toc?: boolean, model?: {headings?: unknown}, diagnostics?: Array<unknown>}} rendered
  * @param {MetabrowserPublicSdk} mb
  * @param {((root: HTMLElement) => T) | null} [enhance] Resolves the render's links and
  *   images under *root*. For an inert render it runs before the page adopts the nodes,
@@ -99,6 +129,10 @@ export async function placeRendered(target, rendered, mb, enhance = null) {
     layout.append(...toc);
   }
   layout.append(prose);
+  const frontmatterError = rendered.diagnostics?.find(isFrontmatterError);
+  if (frontmatterError) {
+    article.append(frontmatterErrorNotice(scratch, frontmatterError.message));
+  }
   article.append(layout);
   dropUnadmittedTargets(prose);
   const enhanced = enhance

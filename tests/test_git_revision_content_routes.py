@@ -615,6 +615,101 @@ def test_git_file_and_kpress_surface_markdown_frontmatter(
     asyncio.run(_run())
 
 
+# An invented note of the shape a reader reported: plain keys, the last one an ID.
+_HARBOR_FRONT_MATTER = (
+    '---\ntitle: "Tide Tables for a Small Harbor"\n'
+    "description: A working note on how the harbor office reads its tide tables and posts"
+    " them for skippers each morning\n"
+    'author: Harbor Office\ndate: 2026-03-02\nas_of: "2026-03-02"\nstatus: draft\n'
+    "bead: tide-k7m2\n---\n"
+)
+_HARBOR_NOTE = _HARBOR_FRONT_MATTER + "\n# Tide Tables\n\nThe office posts the table by eight.\n"
+# What the wiki preprocessor sent for that note before it left front matter alone: the
+# last key, over the closing `---`, read as a setext heading, so its anchor led the line.
+_HARBOR_PREPARED = _HARBOR_NOTE.replace(
+    "bead: tide-k7m2\n",
+    '<span class="metabrowser-wiki-heading" id="obsidian-heading-bead: tide-k7m2"></span>'
+    "bead: tide-k7m2\n",
+).replace(
+    "# Tide Tables",
+    '# <span class="metabrowser-wiki-heading" id="obsidian-heading-Tide Tables"></span>Tide Tables',
+)
+
+
+def test_git_kpress_render_reads_front_matter_from_the_blob_not_the_sent_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Text a page sends to render in a blob's place never stands for its front matter.
+
+    The Document view posts the text it prepared (``wiki-parser.js``) as ``source_text``.
+    A pin parsed that text's front matter, so markup the page wrote into it was reported
+    as the file's YAML error, quoting the markup, while the file parsed cleanly. The
+    filesystem route reads the file; a pin reads the blob, whatever the page sent.
+    """
+
+    store, commit = fast_import_store(
+        tmp_path,
+        {
+            b"harbor.md": _HARBOR_NOTE.encode(),
+            b"broken.md": b"---\ntitle: [unclosed\n---\n\nBody.\n",
+            b"plain.md": b"# Plain\n\nNo front matter.\n",
+        },
+    )
+    seen = _capture_pin_renders(monkeypatch)
+    mapping = {
+        "title": "Tide Tables for a Small Harbor",
+        "description": (
+            "A working note on how the harbor office reads its tide tables and posts them"
+            " for skippers each morning"
+        ),
+        "author": "Harbor Office",
+        "date": "2026-03-02",
+        "as_of": "2026-03-02",
+        "status": "draft",
+        "bead": "tide-k7m2",
+    }
+
+    async def _render(client: AsyncClient, name: bytes, source_text: str) -> dict[str, Any]:
+        seen.clear()
+        rendered = await client.post(
+            "/api/kpress/render",
+            json={
+                "path": _wire(name),
+                "view": "rendered",
+                "profile": "document",
+                "source_text": source_text,
+            },
+        )
+        assert rendered.status_code == 200, rendered.text
+        return rendered.json()
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            envelope = (await client.get("/api/file", params={"path": _wire(b"harbor.md")})).json()
+            assert envelope["frontmatter"] == mapping
+            assert "frontmatter_error" not in envelope
+
+            body = await _render(client, b"harbor.md", _HARBOR_PREPARED)
+            assert seen["frontmatter"] == mapping
+            assert seen["frontmatter_error"] is None
+            assert [d for d in body["diagnostics"] if d.get("type") == "frontmatter_error"] == []
+            assert "</span>bead" not in body["html"]
+            assert "tide-k7m2" in body["html"]
+
+            # The blob's own error stands, though the text sent parses.
+            await _render(client, b"broken.md", "---\ntitle: Fine\n---\n\nBody.\n")
+            assert seen["frontmatter"] is None
+            error = seen["frontmatter_error"]
+            assert isinstance(error, str) and error.startswith("Error parsing YAML metadata:")
+
+            # And a blob without front matter has none, though the text sent does.
+            await _render(client, b"plain.md", "---\ntitle: Sent\n---\n\n# Plain\n")
+            assert seen["frontmatter"] is None
+            assert seen["frontmatter_error"] is None
+
+    asyncio.run(_run())
+
+
 BOMBS_ON_A_PIN = ("alias-12", "merge-12", "duplicate-key-12")
 
 
