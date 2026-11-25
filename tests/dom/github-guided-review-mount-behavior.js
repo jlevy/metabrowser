@@ -78,7 +78,14 @@ function step(generation, number, count = 2) {
     comparison: { merge_base: "a".repeat(40), head: "b".repeat(40) },
     step_count: count,
     titles: Array.from({ length: count }, (_, index) => `Step ${index + 1}`),
+    // A guide without groups: its outline is its steps, and no step has a group.
+    outline: Array.from({ length: count }, (_, index) => ({
+      kind: "step",
+      step: index + 1,
+      title: `Step ${index + 1}`,
+    })),
     step: number,
+    group: null,
     title: `Step ${number}`,
     note: "Check <b>this</b> first.\nThen that.",
     references: [
@@ -265,18 +272,30 @@ function host() {
         },
         /** The step list's head: the overview or a step, and how many. */
         position: () => container.querySelector(".github-pull-guide-position")?.textContent ?? null,
-        /** The step list as it reads: each step, the one shown marked. */
+        /** The step list as it reads: each group's heading in brackets, and each step, the one
+         * shown marked. */
         outline: () =>
           container
-            .querySelectorAll(".github-pull-guide-steps-link")
-            .map(
-              (link) =>
-                `${link.getAttribute("aria-current") === "step" ? "> " : ""}${link.children
-                  .map((part) => part.textContent)
-                  .filter(Boolean)
-                  .join(" ")}`,
+            .querySelectorAll(".github-pull-guide-steps-heading, .github-pull-guide-steps-link")
+            .map((node) =>
+              node.classes.has("github-pull-guide-steps-heading")
+                ? `[${node.textContent}]`
+                : `${node.getAttribute("aria-current") === "step" ? "> " : ""}${node.children
+                    .map((part) => part.textContent)
+                    .filter(Boolean)
+                    .join(" ")}`,
             )
             .join(" | "),
+        /** The shown step's card head, and the group's note above the card, if any. */
+        card() {
+          const detail = container.querySelector(".github-pull-guide-step");
+          const head = detail?.querySelector(".github-pull-guide-card-head");
+          const note = detail?.querySelector(".github-pull-guide-group-note");
+          const parts = head?.children.filter((part) => typeof part !== "string");
+          return `${parts?.map((part) => part.textContent).join(" | ") ?? "no card"}${
+            note ? `; under the group's note: ${note.textContent}` : ""
+          }`;
+        },
         /** The step list's buttons, in order. */
         links: () => container.querySelectorAll(".github-pull-guide-steps-link"),
         /** What the guide says in place of a step, or "nothing". */
@@ -445,6 +464,24 @@ async function run() {
     assert.equal(wrapper.hidden, false);
     steps.push(
       `the guide opens on: ${view.position()}; ${view.outline()}; step shown ${view.shown()}`,
+    );
+    // A guide without groups draws its list as it did before groups: an item for the overview
+    // and one for each step, each holding its button, and no group's heading, list, or item.
+    const nodes = (parent) => parent.children.filter((node) => typeof node !== "string");
+    assert.deepEqual(
+      nodes(view.container.querySelector(".github-pull-guide-steps")).map((item) => [
+        item.tag,
+        [...item.classes],
+        nodes(item),
+      ]),
+      view.links().map((link) => ["li", ["github-pull-guide-steps-item"], [link]]),
+    );
+    assert.equal(view.links().length, 3);
+    assert.equal(
+      view.container.querySelectorAll(
+        ".github-pull-guide-steps-heading, .github-pull-guide-steps-members, .github-pull-guide-steps-group",
+      ).length,
+      0,
     );
     view.press("Next step");
     await settle();
@@ -736,6 +773,97 @@ async function run() {
     view.press("Previous step");
     await settle();
     steps.push(`back: ${view.position()}; asked ${asked(refused.reads)}`);
+    view.handle.dispose();
+  }
+
+  // A guide in groups: each group is a heading in the step list, with no number and nothing
+  // to press, above its steps, which keep their numbers through the groups; a step outside
+  // a group sits between them. A step's card names its group before its place, and a
+  // group's note shows above its first step alone. The list keeps its buttons as the reader
+  // moves, and its changed marks are the steps' own.
+  {
+    const grouped = host();
+    const view = grouped.mount(page, "guided", envelope(1));
+    await settle();
+    const outline = [
+      {
+        kind: "group",
+        title: "Decisions",
+        note: "Read these first.\nEach says why.",
+        children: [
+          { kind: "step", step: 1, title: "Step 1" },
+          { kind: "step", step: 2, title: "Step 2" },
+        ],
+      },
+      { kind: "step", step: 3, title: "Step 3" },
+      {
+        kind: "group",
+        title: "Testing",
+        note: null,
+        children: [{ kind: "step", step: 4, title: "Step 4" }],
+      },
+    ];
+    const groups = [0, 0, null, 2];
+    /** Step *at* of the grouped guide, as the route answers it. */
+    const answer = (at) => ({ ...step(1, at, 4), outline, group: groups[at - 1] });
+    const stale = {
+      guide: { merge_base: "a".repeat(40), head: "b".repeat(40) },
+      current: { merge_base: "a".repeat(40), head: "c".repeat(40) },
+      github_newer: false,
+      history: "ahead",
+      commit_count: 1,
+      commits: [],
+      changed_paths: ["src/app.txt"],
+      changed_steps: [2, 4],
+    };
+    grouped.pending()[0].answer({ ...answer(1), state: "stale", stale });
+    await settle();
+    steps.push(`a guide in groups opens on: ${view.position()}; ${view.outline()}`);
+    const headings = view.container.querySelectorAll(".github-pull-guide-steps-heading");
+    assert.ok(
+      headings.every((heading) => heading.tag !== "button" && heading.events.size === 0),
+      "a group's heading is no control",
+    );
+    // Each group's list is named by the heading above it, as a menu's group heading names its
+    // group, by an id of its own (A7 of review A on #807).
+    const members = view.container.querySelectorAll(".github-pull-guide-steps-members");
+    const namedBy = members.map((list) => {
+      const peers = list.parentNode.children;
+      const heading = peers[peers.indexOf(list) - 1];
+      return heading?.classes.has("github-pull-guide-steps-heading") &&
+        typeof heading.id === "string" &&
+        heading.id !== "" &&
+        list.getAttribute("aria-labelledby") === heading.id
+        ? heading.id
+        : null;
+    });
+    assert.ok(
+      members.length === 2 &&
+        namedBy.every((id) => id !== null) &&
+        new Set(namedBy).size === members.length,
+      "each group's list is named by its own heading",
+    );
+    const buttons = view.links();
+    view.press("Next step");
+    await settle();
+    steps.push(`its first step: ${view.card()}`);
+    view.press("Next step");
+    await settle();
+    grouped.pending()[0].answer({ ...answer(2), state: "stale", stale });
+    await settle();
+    steps.push(`its second: ${view.card()}`);
+    for (const at of [3, 4]) {
+      view.links()[at].events.get("click")();
+      await settle();
+      grouped.pending()[0].answer({ ...answer(at), state: "stale", stale });
+      await settle();
+      steps.push(`step ${at}: ${view.card()}; ${view.outline()}`);
+    }
+    assert.ok(
+      view.links().every((button, index) => button === buttons[index]),
+      "the grouped list keeps its buttons as the reader moves",
+    );
+    steps.push(`asked: ${asked(grouped.reads)}`);
     view.handle.dispose();
   }
 

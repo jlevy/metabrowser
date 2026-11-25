@@ -692,7 +692,10 @@ The namespace is what `import()` answers, so a provider must not export a functi
 `then`: the promise would treat the namespace as a thenable and call it.
 A provider whose helpers are costly to fetch can export a function that loads them, so
 that its `index.js`, which every page showing one of its kinds loads, stays small: the
-agents plugin exports `loadLogRenderers`, which answers its agent-log renderers.
+agents plugin exports `loadLogRenderers`, which answers its agent-log renderers, and the
+diff plugin `mountRenderedFile`, which draws one file of a comparison as the diff view
+draws it, rendered layer included, and loads that layer only when it is called; GitHub’s
+Guided Review draws a document a step cites whole with it.
 
 Discovery refuses a plugin whose `requires` names a plugin that was not discovered or
 was itself refused, and every plugin on a cycle of requirements, since two modules that

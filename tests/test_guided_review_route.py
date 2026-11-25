@@ -18,17 +18,29 @@ from typing import Any, cast
 
 import pytest
 
-from metabrowser.builtin_plugins.github import guided_review, pull_manifest, pull_markdown
+from metabrowser.builtin_plugins.github import (
+    guided_review,
+    pull_manifest,
+    pull_markdown,
+    pull_rendered_diff,
+)
+from metabrowser.builtin_plugins.github.guided_review import parse_guide
 from metabrowser.builtin_plugins.github.pull_record import MAX_BODY_BYTES, PullRecord
 from metabrowser.builtin_plugins.github.pull_route import PullHost, PullView
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.git.process import GitError, GitLocation, GitOutputCutError, RepositoryStoreTarget
 from tests.diff_fixture_repo import git
-from tests.github_pull_fixture import guide_body, scenario
+from tests.github_pull_fixture import (
+    _DOCUMENT_FILES,  # pyright: ignore[reportPrivateUsage]
+    grouped_guide_body,
+    guide_body,
+    scenario,
+)
 from tests.required_tools import needs_git
 from tests.test_github_pulls import _Stand
 from tests.test_github_pulls import stand as stand
+from tests.test_guided_review import PUBLISHED_GUIDE
 
 _MISSING = "e" * 40
 
@@ -224,6 +236,129 @@ def test_a_file_too_large_for_a_step_is_not_read(
         ("missing.txt", "path_not_changed"),
     ]
     assert [len(ids) for ids in asked] == [1]
+
+
+@pytest.mark.parametrize("budget", [guided_review.MAX_STEP_PATCH_BYTES, 79])
+def test_a_document_cited_whole_is_drawn_from_its_own_reads(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, budget: int
+) -> None:
+    """A path alone of a file the rendered route renders answers that route's format and no
+    hunks: the page draws the file whole from its own reads, so the step reads no patch for
+    it and charges it nothing, and the step's other whole files keep the whole budget. With
+    a budget of 79 bytes, less than any one row, the document still answers ready, and the
+    other file is too large to show whole."""
+    ranged = "        - {path: docs/new.md, side: new, start_line: 1, end_line: 1}\n"
+    body = guide_body(stand.origin)
+    assert ranged in body
+    _cache(stand, body.replace(ranged, "        - {path: docs/new.md}\n"))
+    monkeypatch.setattr(guided_review, "MAX_STEP_PATCH_BYTES", budget)
+    asked: list[tuple[str, ...]] = []
+    real = guided_review.GitDiffSource.hydrate
+
+    async def hydrate(self: Any, resolved: Any, ids: tuple[str, ...], **kwargs: Any) -> Any:
+        asked.append(ids)
+        return await real(self, resolved, ids, **kwargs)
+
+    monkeypatch.setattr(guided_review.GitDiffSource, "hydrate", hydrate)
+    answer = _ask(stand, step=2)
+    whole = "ready" if budget > 79 else "patch_too_large"
+    assert [
+        (ref["path"], ref["side"], ref["state"], ref["rendered"], len(ref["hunks"]))
+        for ref in answer["references"]
+    ] == [
+        ("docs/new.md", None, "ready", "markdown", 0),
+        ("src/app.txt", None, whole, None, 1 if budget > 79 else 0),
+        ("missing.txt", None, "path_not_changed", None, 0),
+        ("src/app.txt", "old", "range_unavailable", None, 0),
+    ]
+    # src/app.txt alone is read: its range needs its patch at either budget.
+    manifest = asyncio.run(
+        pull_manifest.shared_pull_manifest(
+            stand.published, 7, stand.origin["base"], stand.origin["fork_head"]
+        )
+    ).manifest
+    ids = {change.new.path: change.id for change in manifest.files if change.new is not None}
+    assert asked == [(ids["src/app.txt"],)]
+
+
+def test_the_large_document_build_is_past_the_step_budget_and_inside_the_rendered_bound() -> None:
+    """The large document a documents build adds (``--guided-large-document``, which the
+    guided-review golden reads) would be too large to show as a step's patch, and is not
+    too large for the rendered route to read."""
+    text = _DOCUMENT_FILES["docs/large.md"]
+    charge = sum(80 + 6 * len(line) for line in text.split("\n")[:-1])
+    assert charge > guided_review.MAX_STEP_PATCH_BYTES
+    assert len(text.encode()) < pull_rendered_diff._MARKDOWN_PAIR_MAX_BYTES  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_guide_in_groups_numbers_its_steps_through_them(stand: _Stand) -> None:
+    """Each answer with a step carries the guide's outline, a tree of its groups and steps,
+    and the index of the step's group in it. Steps are numbered through the groups, as
+    ``step=<k>`` asks for them and a stale guide's ``changed_steps`` names them."""
+    origin = stand.origin
+    body = grouped_guide_body(origin).replace(
+        f'head: "{origin["fork_head"]}"', f'head: "{origin["fork_earlier"]}"'
+    )
+    _cache(stand, body)
+    first, second = _ask(stand, step=1), _ask(stand, step=2)
+    assert (
+        first["outline"]
+        == second["outline"]
+        == [
+            {
+                "kind": "group",
+                "title": "The count",
+                "note": "Read the value before its explanation.",
+                "children": [{"kind": "step", "step": 1, "title": "Start with the count"}],
+            },
+            {
+                "kind": "group",
+                "title": "The docs",
+                "note": None,
+                "children": [{"kind": "step", "step": 2, "title": "Read the new guide"}],
+            },
+        ]
+    )
+    assert (first["group"], second["group"]) == (0, 1)
+    assert first["titles"] == ["Start with the count", "Read the new guide"]
+    assert first["stale"]["changed_steps"] == [1, 2]
+    assert [ref["path"] for ref in second["references"]] == [
+        "docs/new.md",
+        "src/app.txt",
+        "missing.txt",
+        "src/app.txt",
+    ]
+    assert _ask(stand, step=3)["state"] == "step_not_found"
+
+
+def test_a_guide_without_groups_is_an_outline_of_its_steps(stand: _Stand) -> None:
+    _cache(stand, guide_body(stand.origin))
+    plain = _ask(stand, step=2)
+    assert plain["outline"] == [
+        {"kind": "step", "step": 1, "title": "Start with the count"},
+        {"kind": "step", "step": 2, "title": "Read the new guide"},
+    ]
+    assert plain["group"] is None
+
+
+def test_a_published_guide_without_groups_answers_each_step_as_before(stand: _Stand) -> None:
+    """The guide #785 published, its pins moved to the stand-in's comparison, answers each
+    step ``ready`` with an outline of its steps alone and no group. It cites this
+    repository's files, which the stand-in's pull request does not change."""
+    published = PUBLISHED_GUIDE.read_text("utf-8")
+    guide = parse_guide(published)
+    assert guide is not None
+    pinned = published.replace(guide.comparison.merge_base, stand.origin["base"]).replace(
+        guide.comparison.head, stand.origin["fork_head"]
+    )
+    _cache(stand, pinned)
+    titles = [step.title for step in guide.items]
+    flat = [{"kind": "step", "step": k, "title": title} for k, title in enumerate(titles, 1)]
+    for number, title in enumerate(titles, 1):
+        answer = _ask(stand, step=number)
+        assert (answer["state"], answer["step"], answer["title"]) == ("ready", number, title)
+        assert (answer["outline"], answer["group"], answer["titles"]) == (flat, None, titles)
+        assert {reference["state"] for reference in answer["references"]} == {"path_not_changed"}
 
 
 def test_a_step_past_the_guide_and_an_uncached_pull_request(stand: _Stand) -> None:
