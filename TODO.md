@@ -196,6 +196,9 @@ rendering, export, and raw serving.
 
 Archives contain multiple logical files, so they need a navigable virtual tree and a
 stronger security boundary than transparent single-file compression.
+The
+[archive plan](docs/project/specs/active/plan-2026-11-24-archive-contents-and-browsing.md)
+covers ZIP and the tar family in two phases.
 
 ## Browser Defense in Depth
 
