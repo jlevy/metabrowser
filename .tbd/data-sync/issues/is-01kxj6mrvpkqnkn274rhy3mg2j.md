@@ -5,8 +5,12 @@ title: "Spec: Archive contents and browsing archives as folders"
 kind: epic
 status: in_progress
 priority: 2
-version: 17
+version: 18
 spec_path: docs/project/specs/active/plan-2026-11-24-archive-contents-and-browsing.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/810
+    at: 2026-11-25T01:37:44.087Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -25,7 +29,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-07-15T06:15:21.716Z
-updated_at: 2026-11-25T01:32:03.522Z
+updated_at: 2026-11-25T01:37:44.089Z
 started_at: 2026-11-25T01:30:45.263Z
 extensions:
   linear:
