@@ -1,0 +1,17 @@
+base:
+  assignee: null
+  description_hash: sha256v7:55ebf471fe8f319ac7352bd4bf8d1f5d94e4ae2b40b118f9feffef8902cb3e17
+  labels:
+    - linear
+    - Feature
+  priority: 2
+  status: in_progress
+  title: "Spec: Archive contents and browsing archives as folders"
+bead_id: is-01kxj6mrvpkqnkn274rhy3mg2j
+external_id: 7fe6f65e-3f29-477c-9c54-3bcd91ae211a
+external_key: OS-629
+external_url: https://linear.app/finterm-ai/issue/OS-629/spec-archive-contents-and-browsing-archives-as-folders
+remote_updated_at: 2026-11-25T01:31:41.678Z
+state: linked
+synced_at: 2026-11-25T01:31:41.885Z
+type: lk

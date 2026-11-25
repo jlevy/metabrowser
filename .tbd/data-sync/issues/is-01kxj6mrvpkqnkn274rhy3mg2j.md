@@ -5,7 +5,7 @@ title: "Spec: Archive contents and browsing archives as folders"
 kind: epic
 status: in_progress
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-24-archive-contents-and-browsing.md
 delegate: claude-code@spud10.local
 labels:
@@ -18,12 +18,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-07-15T06:15:21.716Z
-updated_at: 2026-11-25T01:31:29.801Z
+updated_at: 2026-11-25T01:31:41.260Z
 started_at: 2026-11-25T01:30:45.263Z
 extensions:
   linear:
     id: 7fe6f65e-3f29-477c-9c54-3bcd91ae211a
-    linked_at: 2026-11-25T01:31:29.801Z
+    linked_at: 2026-11-25T01:31:41.259Z
 ---
 Effort epic for archive support (ZIP and every ZIP-based format by its bytes; tar, and tar compressed with gzip, bzip2, or xz), planned in docs/project/specs/active/plan-2026-11-24-archive-contents-and-browsing.md.
 
