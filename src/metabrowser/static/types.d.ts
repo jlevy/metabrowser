@@ -4173,6 +4173,8 @@ declare global {
     label: HTMLElement;
     /** A checkout's revision's button back to the working tree. */
     back: HTMLButtonElement;
+    /** Why a switch the back button asked for failed, while the list is closed. */
+    backError: HTMLElement;
     stale: HTMLElement;
     staleText: HTMLElement;
     reload: HTMLButtonElement;

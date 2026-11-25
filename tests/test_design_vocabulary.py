@@ -4450,6 +4450,24 @@ def test_a_control_no_rule_rings_takes_the_one_ring() -> None:
     assert styles.count(base) == 1
 
 
+def test_the_ref_selectors_current_row_shows_focus_by_the_ring() -> None:
+    """A menu row shows focus by the hover tint, which the current row's highlight replaces.
+
+    So the current row, the working tree's or a ref's, draws the one ring on focus instead,
+    and keyboard focus on it is not invisible.
+    """
+
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert shell[".menu-item:focus-visible"] == {"background": "var(--hover-bg)", "outline": "none"}
+    for row in (".source-ref-selector-row", ".source-ref-selector-working-tree"):
+        current = f'{row}[aria-current="true"]'
+        assert shell[current]["background"] == "var(--highlight-bg)", row
+        assert shell[current + ":focus-visible"] == {
+            "outline": _FOCUS_OUTLINE,
+            "outline-offset": _FOCUS_OFFSET,
+        }, row
+
+
 _STATUS_TEXT_TOKENS = (
     "--status-success-text",
     "--status-warning-text",

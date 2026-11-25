@@ -242,6 +242,9 @@ are deferred.
   button back to the working tree
   ([The Ref Selector](../../design-system.md#the-ref-selector)), and a revision’s name
   carries `@<ref>`, as a mirror’s does.
+  The server writes `HEAD` on the row (`data-working-branch` or `data-working-commit`),
+  and each `/api/source/refs` listing’s `working_tree.head_name` replaces the branch, so
+  a switch made in a terminal shows once the list is opened.
 - **The view is the Files tab’s.** The chooser leads the Files tab’s toolbar, and the
   other tabs do not follow it: Pulls never depended on it, and Commits is the checkout’s
   history whichever view Files shows, read from the folder

@@ -578,6 +578,43 @@ try {
   await capture("working-tree");
   result.workingTreePanel = await openPanel();
   await capture("working-tree-panel");
+  // Keyboard focus on the current row, the working tree's here, draws the one ring: its
+  // highlight takes the place of the hover tint a menu row shows focus with. Shift-Tab
+  // from the filter box, where the panel opens, back to the row.
+  for (let step = 0; step < 4; step += 1) {
+    if (
+      await chrome.evaluate(
+        `document.activeElement?.matches(".source-ref-selector-working-tree") === true`,
+      )
+    ) {
+      break;
+    }
+    for (const type of ["keyDown", "keyUp"]) {
+      await chrome.send("Input.dispatchKeyEvent", {
+        type,
+        key: "Tab",
+        code: "Tab",
+        windowsVirtualKeyCode: 9,
+        modifiers: 8,
+      });
+    }
+  }
+  result.currentRowFocus = await chrome.evaluate(`(() => {
+    const row = document.querySelector(".source-ref-selector-working-tree");
+    const style = getComputedStyle(row);
+    const probe = document.createElement("span");
+    probe.style.color = "var(--focus-ring-color)";
+    row.append(probe);
+    const ringColor = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      focused: document.activeElement === row,
+      current: row.getAttribute("aria-current"),
+      focusVisible: row.matches(":focus-visible"),
+      outline: [style.outlineStyle, style.outlineWidth, style.outlineOffset].join(" "),
+      ringColor: style.outlineColor === ringColor,
+    };
+  })()`);
   await chrome.evaluate('document.querySelector(".source-ref-selector-kinds button").focus()');
   for (const type of ["keyDown", "keyUp"]) {
     await chrome.send("Input.dispatchKeyEvent", {

@@ -114,6 +114,8 @@ A folder that is a repository’s root opens on **Working tree**, the files on d
 whatever you have edited, staged, or not yet added.
 The row under the Files tab says so, then names the branch the files are on, as in
 “Working tree · main”, or the commit when `HEAD` is detached.
+If you switch branches in a terminal, the row names the new branch once you open the
+list, or when you reload the page.
 Click the branch’s chip for its actions.
 Click the chevron in that row or press `W` to browse the other branches and tags.
 

@@ -332,6 +332,58 @@
       "view_href": "/view/README.md"
     }
   },
+  "branches_detached": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "",
+      "pin": null,
+      "ref": null,
+      "kinds": [
+        "branch",
+        "tag",
+        "remote"
+      ],
+      "working_tree": {
+        "current": true,
+        "head": null,
+        "head_name": null,
+        "name": "checkout",
+        "location": "/sandbox/checkout"
+      },
+      "origin": null,
+      "pull_requests": null,
+      "refs": [
+        {
+          "name": "local-work",
+          "ref": "refs/heads/local-work",
+          "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
+          "committed_at": 1769904000.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        },
+        {
+          "name": "feature",
+          "ref": "refs/heads/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        },
+        {
+          "name": "topic",
+          "ref": "refs/heads/topic",
+          "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "committed_at": 1767229200.0,
+          "default": false,
+          "checked_out": false,
+          "current": false
+        }
+      ]
+    }
+  },
   "not_a_repository": {
     "status": 409,
     "body": {

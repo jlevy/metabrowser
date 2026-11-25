@@ -70,7 +70,7 @@ function createPage(page) {
         body === undefined ? `${method} ${route}` : `${method} ${route} ${JSON.stringify(body)}`;
       log.push(line);
       return new Promise((resolve, reject) => {
-        const request = { route, resolve };
+        const request = { route, resolve, reject };
         waiting.push(request);
         // As fetch does: an aborted request settles at once with an AbortError.
         signal?.addEventListener("abort", () => {
@@ -109,6 +109,16 @@ function createPage(page) {
       assert(waiting.length > index, "no request is waiting for an answer");
       const [request] = waiting.splice(index, 1);
       request.resolve({ status: recording.status, etag: null, body: recording.body });
+      await settle();
+    },
+    /**
+     * Fail the oldest waiting request as `fetch` does when the server is gone: a server
+     * that answers has no failure to record for it.
+     */
+    async fail(index = 0) {
+      assert(waiting.length > index, "no request is waiting to fail");
+      const [request] = waiting.splice(index, 1);
+      request.reject(new TypeError("Failed to fetch"));
       await settle();
     },
     async fireTimer(delayMs = selectorRuntime.FILTER_DELAY_MS) {
@@ -166,7 +176,9 @@ function paintOf(model) {
   // A checkout's revision ends its row with a button back to the working tree.
   const back = model.back ? { back: "[← Working tree]" } : {};
   if (!model.open) {
-    return { button: model.button, ...back, open: false, ...stale };
+    // Why a switch the back button asked for failed, which the row says with the list closed.
+    const error = model.error === null ? {} : { error: model.error };
+    return { button: model.button, ...back, open: false, ...error, ...stale };
   }
   return {
     button: model.button,

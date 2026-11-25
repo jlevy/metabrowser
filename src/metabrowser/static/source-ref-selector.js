@@ -855,6 +855,19 @@
       state.loading = false;
       state.listing = listing;
       state.error = error;
+      // A listing reads HEAD afresh, so a branch switched in a terminal since the page was
+      // drawn is named in the row as in the list's "checked out" badge. A detached HEAD's
+      // commit is not in it: a page drawn on a branch then names no ref, and one drawn
+      // detached keeps the commit the server wrote.
+      const tree = listing?.working_tree;
+      if (tree) {
+        if (tree.head_name !== null) {
+          state.workingBranch = tree.head_name;
+          state.workingCommit = undefined;
+        } else {
+          state.workingBranch = undefined;
+        }
+      }
       if (gone) {
         state.open = false;
         state.removed = true;
@@ -922,6 +935,8 @@
       requested += 1;
       state.open = false;
       state.loading = false;
+      // What the list said goes with it, so the row says only what failed while closed.
+      state.error = null;
       render();
     }
 
@@ -1185,6 +1200,10 @@
     // A revision of a checkout offers the way back in its own row.
     parts.back.hidden = !model.back;
     parts.back.disabled = model.switching;
+    // A switch asked for with the list closed, by the back button, says why it failed in
+    // the row; the list's own error line is in the closed panel.
+    parts.backError.textContent = model.open ? "" : (model.error ?? "");
+    parts.backError.hidden = model.open || model.error === null;
     parts.toggle.setAttribute("aria-expanded", String(model.open));
     parts.panel.hidden = !model.open;
     parts.root.dataset.open = String(model.open);
@@ -1907,6 +1926,12 @@
       buttonHost.append(label, toggle);
       element.replaceChildren(buttonHost, back);
     }
+    const backError = document.createElement("p");
+    backError.className = "source-ref-selector-error source-ref-selector-back-error";
+    backError.setAttribute("role", "alert");
+    backError.hidden = true;
+    // After the back button, which the server draws on a revision's row and no other.
+    element.append(backError);
     const foot = document.getElementById("index-progress");
     if (foot) {
       foot.after(stale);
@@ -1919,6 +1944,7 @@
       toggle,
       label,
       back,
+      backError,
       stale,
       staleText,
       reload,

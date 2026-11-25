@@ -41,6 +41,7 @@ from metabrowser.builtin_plugins.github.ref_pulls import GithubRefPulls, ref_pul
 from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.records import StoreOperation
 from metabrowser.commit_ids import short_commit
+from metabrowser.git import repo as git_repo
 from metabrowser.git.process import UnsupportedGitVersionError
 from metabrowser.git.tree_source import GitPath
 from metabrowser.mirror_refresh import serve_mirror
@@ -55,7 +56,7 @@ from tests.golden_harness import (
     stand_in_sandbox,
 )
 from tests.required_tools import needs_git
-from tests.source_checkout_fixture import admit_installed_git, build_checkout
+from tests.source_checkout_fixture import admit_installed_git, build_checkout, git
 from tests.source_checkout_fixture import view as revision_view
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
 from tests.test_cache_acquire import _allow_installed_git, _file_source
@@ -208,6 +209,11 @@ def _record_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[st
         recorded["branches_on_revision"] = listing(kind="branch")
         recorded["switch_checked_out"] = switch({"ref": "refs/heads/topic", "view": readme})
         recorded["switch_working_tree"] = switch({"working_tree": True, "view": readme})
+        # HEAD detached in a terminal after the page was drawn: a listing past the
+        # repository's lookup TTL (`GIT_REPO_INFO_TTL_S`) reads it.
+        git(checkout, "checkout", "-q", "--detach", "topic")
+        git_repo.clear_repo_cache()
+        recorded["branches_detached"] = listing(kind="branch")
     # A folder holding a `.git` that is no repository, whose row the page removes.
     hollow = sandbox / "hollow"
     (hollow / ".git").mkdir(parents=True)
@@ -271,6 +277,8 @@ def test_recording_is_what_a_served_checkout_answers(
     )
     assert recorded["switch_working_tree_same"]["body"]["changed"] is False
     assert recorded["switch_missing"]["status"] == 404
+    detached = recorded["branches_detached"]["body"]["working_tree"]
+    assert (detached["current"], detached["head"], detached["head_name"]) == (True, None, None)
     check_recording(CHECKOUT_RECORDING, recorded, transcript=TRANSCRIPT)
 
 
@@ -324,6 +332,19 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
     ]
     assert by_name["the page goes to the same file in the folder"]["navigated"] == [
         recording["views"]["readme"]
+    ]
+    # The way back failed with the list closed: the row says why, and the list clears it.
+    failed = by_name["a failed way back says so in the row, with the list closed"]["paint"]
+    assert (failed["open"], failed["error"]) == (False, "The switch request failed.")
+    assert "error" not in by_name["opening and closing the list clears it"]["paint"]
+    # A switch in a terminal: the row and its tooltip follow the listing's HEAD.
+    drawn = by_name["a page drawn before a switch in a terminal names the branch it was on"]
+    fresh = by_name["a listing names the branch HEAD is on now, in the row and its tooltip"]
+    gone = by_name["a HEAD detached since is the working tree's word alone"]
+    assert [(step["paint"]["button"], step["tip"]) for step in (drawn, fresh, gone)] == [
+        ("Working tree · Branch: feature", "The files on disk, live. The checkout is on feature."),
+        ("Working tree · Branch: topic", "The files on disk, live. The checkout is on topic."),
+        ("Working tree", "The files on disk, live."),
     ]
     assert "navigated" not in by_name["choosing the working tree while it is shown only closes"]
     assert by_name["a ref gone from the checkout says so, and nothing is fetched"]["paint"][

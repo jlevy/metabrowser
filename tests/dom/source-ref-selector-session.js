@@ -372,6 +372,51 @@ async function runCheckout() {
   steps.push(page.observe("the page goes to the same file in the folder"));
   selector.dispose();
 
+  // The way back failed, with the list closed: the server is gone, since one that answers
+  // serves its working tree. The row says so under its button, and opening the list, or
+  // the next try, clears it.
+  page = createPage(onRevisionReadme);
+  selector = selectorRuntime.createSelector(
+    page.deps,
+    options(shownOf(recording.switch_checked_out)),
+  );
+  const failedBack = selector.chooseWorkingTree();
+  await page.fail();
+  await failedBack;
+  steps.push(page.observe("a failed way back says so in the row, with the list closed"));
+  const openedOnRefusal = selector.open();
+  await page.answer(recording.branches_on_revision);
+  await openedOnRefusal;
+  selector.close();
+  steps.push(page.observe("opening and closing the list clears it"));
+  selector.dispose();
+
+  // HEAD moved in a terminal after the page was drawn on feature. The row and its tooltip
+  // name feature until a listing reads HEAD afresh, as the list's "checked out" badge does.
+  page = createPage(onReadme);
+  selector = selectorRuntime.createSelector(page.deps, {
+    shown: null,
+    checkout: true,
+    workingBranch: "feature",
+  });
+  const withTip = (step) => ({
+    ...page.observe(step),
+    tip: selectorRuntime.describe(selector.snapshot()).viewTip,
+  });
+  steps.push(withTip("a page drawn before a switch in a terminal names the branch it was on"));
+  const readsHead = selector.open();
+  await page.answer(recording.branches);
+  await readsHead;
+  selector.close();
+  steps.push(withTip("a listing names the branch HEAD is on now, in the row and its tooltip"));
+  // The listing has no commit for a detached HEAD, so the row names no ref then.
+  const readsDetached = selector.open();
+  await page.answer(recording.branches_detached);
+  await readsDetached;
+  selector.close();
+  steps.push(withTip("a HEAD detached since is the working tree's word alone"));
+  selector.dispose();
+
   // Back on the working tree.
   page = createPage(onReadme);
   selector = selectorRuntime.createSelector(page.deps, options(null));

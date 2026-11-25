@@ -6270,16 +6270,21 @@ children. Visually similar surfaces do not borrow the wrong role merely to share
 ### The Ref Selector
 
 A served mirror or a served checkout has a revision row directly below the Files tab and
-above the filters, including Group by (`static/source-ref-selector.js`). The row has two
-distinct targets:
+above the filters, including Group by (`static/source-ref-selector.js`). A checkout’s
+row first says which view the page shows, **Working tree** or **Revision**, in words; a
+mirror’s names the ref alone.
+The row has these targets:
 
-- **The branch or tag chip** names the current ref.
+- **The branch or tag chip** names the ref the page shows, or, on a checkout’s working
+  tree, the branch its `HEAD` is on.
   Click its name to open that ref’s [action menu](#action-menu).
 - **The standalone down chevron** opens the revision chooser.
   Its tooltip and accessible name say “Switch branch or tag”.
   The `W` shortcut opens the same list.
   It remains visible beside the chip and keeps its open highlight while the chooser is
   open. The list spans the pane to give ref names, commit IDs, and ages room.
+- **The back button**, on a checkout’s revision only, returns to the working tree in one
+  click, as described below.
 
 The chooser has a filter box and one row per ref.
 The revision row belongs to Files.
@@ -6378,9 +6383,11 @@ revisions.
   does. It is drawn as a Pulls row and a stack’s member are drawn current: the medium
   weight, `--highlight-bg`, and the 2px `--highlight-bar` inset at its left edge,
   hovered or not. The weight alone left the list on the working tree and the list on a
-  revision looking the same (2026-11-25). The checked-out branch is not that row unless
-  it was chosen: it says “checked out” in the `.source-ref-selector-badge` a mirror’s
-  default branch says “default” in.
+  revision looking the same (2026-11-25). The highlight takes the place of the hover
+  tint a menu row shows focus with, so keyboard focus on the current row draws the one
+  [focus ring](#focus-ring) instead.
+  The checked-out branch is not that row unless it was chosen: it says “checked out” in
+  the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
 
 - **A checkout’s row says which view the page shows, in words, before the ref.** A
   checkout has two views, the working tree and a revision, and the checked-out branch
@@ -6398,12 +6405,19 @@ revisions.
     cannot read leaves the word alone.
     The word’s tooltip says the files are live on disk and which branch or commit they
     are on. The chooser’s **Working tree** entry is current.
+    The server names `HEAD` when it draws the page, and every listing the chooser loads
+    reads it again, so a branch switched in a terminal shows in the row and its tooltip
+    once the list is opened, as it does in the list’s “checked out” badge.
+    A listing carries no commit for a detached `HEAD`, so a page drawn on a branch then
+    shows the word alone.
   - **Revision · `feature`**: one commit chosen from the list, read-only, whichever ref
     it came from, the checked-out branch included.
     The row ends with a `.btn`, `.source-ref-selector-back`, “← Working tree”, named
     “Back to the working tree”, which asks for the working tree as the chooser’s entry
     does: one click back from any revision.
     The word’s tooltip says the files on disk are unchanged.
+    If the switch fails while the list is closed, the reason shows in the row, on its
+    own line under the button (`.source-ref-selector-back-error`).
   - The words are the view’s, not the ref’s: a mirror has only revisions, so its row
     names the ref alone and has no way back.
   - Where the pane is too narrow for the row, the button goes under it, at its end, and

@@ -139,6 +139,15 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
 
     panel = result["workingTreePanel"]
     assert panel["open"] and panel["focused"]
+    # Keyboard focus on the current row draws the one ring, which its highlight would
+    # otherwise hide: the hover tint is how other menu rows show focus.
+    assert result["currentRowFocus"] == {
+        "focused": True,
+        "current": "true",
+        "focusVisible": True,
+        "outline": "solid 2px -2px",
+        "ringColor": True,
+    }
     # The working tree is named by its folder, the path as the page names the folder, and
     # has no commit or age; the folder's own name is shown whole in the narrow pane.
     working_tree = panel["workingTree"]

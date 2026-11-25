@@ -44,14 +44,15 @@ The checked-out branch is badged and is a ref like any other, so choosing it sho
 commit; only the working-tree row asks the pin route for the working tree, and the row’s
 button back from a revision, `back`, which calls the same `chooseWorkingTree`. The
 button says which view the page shows before the ref: “Working tree” and the branch the
-files on disk are on, which the page names as the server writes it, or “Revision” and
-the ref chosen, so the checked-out branch’s own revision never reads as its working tree
-(mb-cxpq). A page left behind by a switch elsewhere offers a reload, which a mirror’s
-freshness row does for a mirror.
-A checkout’s rows say which chip each name is drawn as, and its `labels` are the button
-on the working tree on a branch, at a detached `HEAD`, and with a `HEAD` the server
-could not read, then on a branch, a remote-tracking branch, a tag, and a commit, each
-with its view word’s tooltip.
+files on disk are on, which the page names as the server writes it and as each listing
+reads `HEAD` again, or “Revision” and the ref chosen, so the checked-out branch’s own
+revision never reads as its working tree (mb-cxpq).
+A way back that fails with the list closed says why in the row.
+A page left behind by a switch elsewhere offers a reload, which a mirror’s freshness row
+does for a mirror. A checkout’s rows say which chip each name is drawn as, and its
+`labels` are the button on the working tree on a branch, at a detached `HEAD`, and with
+a `HEAD` the server could not read, then on a branch, a remote-tracking branch, a tag,
+and a commit, each with its view word’s tooltip.
 A folder holding a `.git` that Git does not take for a repository’s root loses its row
 when the listing says so, and a Git older than the one a checkout’s revisions are read
 with is refused in the server’s own words.
@@ -679,6 +680,65 @@ $ node tests/dom/source-ref-selector-session.js
         "navigated": [
           "/view/README.md"
         ]
+      },
+      {
+        "step": "a failed way back says so in the row, with the list closed",
+        "requests": [
+          "POST /api/source/pin {\"working_tree\":true,\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Revision · Branch: topic",
+          "back": "[← Working tree]",
+          "open": false,
+          "error": "The switch request failed."
+        }
+      },
+      {
+        "step": "opening and closing the list clears it",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Revision · Branch: topic",
+          "back": "[← Working tree]",
+          "open": false
+        }
+      },
+      {
+        "step": "a page drawn before a switch in a terminal names the branch it was on",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: feature",
+          "open": false
+        },
+        "tip": "The files on disk, live. The checkout is on feature."
+      },
+      {
+        "step": "a listing names the branch HEAD is on now, in the row and its tooltip",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree · Branch: topic",
+          "open": false
+        },
+        "tip": "The files on disk, live. The checkout is on topic."
+      },
+      {
+        "step": "a HEAD detached since is the working tree's word alone",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": false
+        },
+        "tip": "The files on disk, live."
       },
       {
         "step": "choosing the working tree while it is shown only closes",

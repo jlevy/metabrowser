@@ -414,6 +414,30 @@ def test_the_row_tells_the_working_tree_from_the_checked_out_branchs_revision(
     ) in detached
 
 
+def test_a_github_checkouts_row_names_its_head_from_the_pages_repository_context(
+    checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A checkout whose origin is on github.com has a repository context, read for the page,
+    which already holds its ``HEAD``: the row names the branch or commit from it, and the
+    server does not read ``HEAD`` a second time."""
+
+    git(checkout, "remote", "set-url", "origin", "git@github.com:Octo/Demo.git")
+    server._set_root_dir(checkout)
+
+    def read_again(root: Path) -> None:
+        raise AssertionError(f"HEAD of {root} was read again")
+
+    monkeypatch.setattr(server, "checked_out_head", read_again)
+    with TestClient(server.app) as client:
+        tree = _selector_row(client)
+        assert ' data-view="working-tree" data-working-branch="topic">' in tree
+        assert '<span class="git-ref-label">topic</span>' in tree
+        git(checkout, "checkout", "-q", "--detach", "topic")
+        detached = _selector_row(client)
+        assert f' data-view="working-tree" data-working-commit="{SECOND}">' in detached
+        assert f'<span class="git-commit-sha">{short_commit(SECOND)}</span>' in detached
+
+
 def test_a_tag_a_remote_branch_and_a_commit_are_shown_and_a_miss_fetches_nothing(
     served: TestClient,
 ) -> None:
