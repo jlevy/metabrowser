@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import re
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Final, Literal, TypeGuard
 
@@ -44,6 +44,7 @@ from metabrowser.cache.acquire import PublishedSource
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource, display_path
 from metabrowser.diff.format import Availability, Hunk, LineOp, LineRecord
+from metabrowser.diff.markdown_projection_worker import InertRenderRefused
 from metabrowser.git.process import (
     GIT_NO_DRIVER_ARGS,
     GitCommandError,
@@ -152,6 +153,20 @@ MAX_STALE_SUBJECT_BYTES: Final = 240
 MAX_STALE_PATHS: Final = 4000
 # A path as `git diff --name-only -z` writes it is at most a filesystem path, 4096 bytes.
 _MAX_STALE_PATH_BYTES: Final = 4096
+# The rendered notes kept with a guide's parse (`_Read.notes`), in characters of HTML, so a
+# step read again, after a reload or from another page, takes its note from here and not
+# from the Markdown child. A note is a text of the description, so a guide's notes total at
+# most MAX_BODY_BYTES; measured through the child (`render_text` in pull_markdown.py) at a
+# load average near 386 on 10 cores (2026-11-24), a note's inert HTML was 1.0 to 1.2 times
+# its text for the four notes of tests/fixtures/guided-review/, and, for 64 KiB of one
+# construct, 2.8 times for emphasis, 13 for links, and 27 for images, the largest found. So
+# this keeps every note of a guide whose notes fill its description at up to four times
+# their text, and a guide written to expand further only up to it, which bounds the
+# _MAX_READS kept parses at 4 MiB of notes. A note past it renders again each time it is
+# read: KPress keeps the render by its key, and the child reduces it to the allowlist again.
+_MAX_KEPT_NOTE_CHARS: Final = 4 * MAX_BODY_BYTES
+# What a guide's note is called where it renders (`render_text`): its log name and its key.
+_NOTE_PART: Final = "guided-review-note"
 
 type Prose = Annotated[str, Field(min_length=1)]
 type LineNumber = Annotated[int, Field(ge=1)]
@@ -477,13 +492,17 @@ class _Read:
     message: str | None
     # The description the page renders: without its block only when the block is a guide.
     introduction: str
+    # Each note's inert HTML, by its text, once it rendered (`_rendered_note`), within
+    # _MAX_KEPT_NOTE_CHARS. Only the event loop reads or writes it.
+    notes: dict[str, str] = field(default_factory=dict[str, str])
 
 
 # One parse for each pull request, kept with the record revision (a hash of the record's
 # content) that it read, so a Previous or Next click reads the guide the first request
 # parsed, the description's render reads the introduction that parse cut, and an edited
 # description is parsed once. A guide that does not parse is kept as its message, since it
-# costs as much to refuse as to read. Each entry holds at most two bodies of MAX_BODY_BYTES.
+# costs as much to refuse as to read. Each entry holds at most two bodies of MAX_BODY_BYTES,
+# and its notes' renders, at most _MAX_KEPT_NOTE_CHARS.
 _READS: dict[tuple[str, str, int], _Read] = {}
 _READS_LOCK: Final = threading.Lock()
 _MAX_READS: Final = 16
@@ -523,12 +542,20 @@ def _reading(key: tuple[str, str, int], revision: str, body: str) -> _Read:
         done.set()
 
 
-def read_guide(key: tuple[str, str, int], revision: str, body: str) -> Collection | None:
-    """:func:`parse_guide` of *body*, reused while *key*'s record has this *revision*."""
+def _kept_read(key: tuple[str, str, int], revision: str, body: str) -> _Read:
+    """The kept parse of a readable guide, or a description without one. Blocking.
+
+    Raises :class:`GuideError` when the description's block is not a guide.
+    """
     hit = _reading(key, revision, body)
     if hit.message is not None:
         raise GuideError(hit.message)
-    return hit.guide
+    return hit
+
+
+def read_guide(key: tuple[str, str, int], revision: str, body: str) -> Collection | None:
+    """:func:`parse_guide` of *body*, reused while *key*'s record has this *revision*."""
+    return _kept_read(key, revision, body).guide
 
 
 def guide_introduction(key: tuple[str, str, int], revision: str, body: str) -> str:
@@ -931,6 +958,34 @@ def _head_moved(store: PublishedSource, record: PullRecord) -> bool:
     ).head_moved
 
 
+async def _rendered_note(read: _Read, note: str, number: int, link_base: str) -> str | None:
+    """*note* as inert HTML, rendered as the description is, or ``None`` when its render is
+    refused or fails, and the page shows the note as typed.
+
+    The render is the description's own path (`render_text` in pull_markdown.py): KPress in
+    its sanitized mode, then the inert allowlist against the pull request's page, in the
+    Markdown child under its deadline, which keeps a refusal by the note's text. A render is
+    kept with *read* while :data:`_MAX_KEPT_NOTE_CHARS` holds it.
+    """
+    kept = read.notes.get(note)
+    if kept is not None:
+        return kept
+    # pull_markdown imports this module, for the description's introduction.
+    from metabrowser.builtin_plugins.github.pull_markdown import render_text
+
+    try:
+        html = await render_text(note, number=number, part=_NOTE_PART, link_base=link_base)
+    except (
+        InertRenderRefused,
+        kpress_adapter.KPressInvalidRequestError,
+        kpress_adapter.KPressRenderError,
+    ):
+        return None
+    if sum(map(len, read.notes.values())) + len(html) <= _MAX_KEPT_NOTE_CHARS:
+        read.notes[note] = html
+    return html
+
+
 def _outline(guide: Collection) -> tuple[list[dict[str, object]], list[int | None]]:
     """The guide in reading order, as the route answers it, and each step's group.
 
@@ -968,8 +1023,8 @@ async def guided_review(host: PullHost, number: int, step_number: int) -> dict[s
     if not isinstance(record, PullRecord) or revision is None:
         return {**identity, "state": "not_cached"}
     try:
-        guide = await asyncio.to_thread(
-            read_guide, (str(served.home), served.slug, number), revision, record.pull.body
+        read = await asyncio.to_thread(
+            _kept_read, (str(served.home), served.slug, number), revision, record.pull.body
         )
     except GuideError as exc:
         if record.pull.body_truncated:
@@ -977,6 +1032,7 @@ async def guided_review(host: PullHost, number: int, step_number: int) -> dict[s
             # on GitHub: the cut is the cause, not the author's block.
             return {**identity, "state": "description_truncated"}
         return {**identity, "state": "invalid", "message": str(exc)}
+    guide = read.guide
     if guide is None:
         return {
             **identity,
@@ -1009,6 +1065,19 @@ async def guided_review(host: PullHost, number: int, step_number: int) -> dict[s
     except (DiffSourceError, GitError):
         return {**identity, "state": "comparison_unavailable", **diagnostics}
     outline, groups = _outline(guide)
+    group = groups[step_number - 1]
+    opened = None if group is None else guide.items[group]
+    # A group's note shows above its first step alone, so only that step renders it.
+    group_note = (
+        opened.note
+        if isinstance(opened, CollectionGroup) and groups.index(group) == step_number - 1
+        else None
+    )
+    link_base = record.pull.html_url
+    note_html = await _rendered_note(read, step.note, number, link_base)
+    group_note_html = (
+        None if group_note is None else await _rendered_note(read, group_note, number, link_base)
+    )
     return {
         **identity,
         "state": "ready" if staleness is None else "stale",
@@ -1021,9 +1090,15 @@ async def guided_review(host: PullHost, number: int, step_number: int) -> dict[s
         # The guide's groups and steps, which the page lists above the step it shows.
         "outline": outline,
         "step": step_number,
-        "group": groups[step_number - 1],
+        "group": group,
         "title": step.title,
         "note": step.note,
+        # The note as inert HTML, rendered as the description is, or null when its render was
+        # refused, and the page shows `note` as typed. A title stays plain text.
+        "note_html": note_html,
+        # The note of the group this step opens, rendered so, or null when the step opens no
+        # group with a note or its render was refused; the outline has the note as written.
+        "group_note_html": group_note_html,
         "references": references,
         # The page sets the guide's prose in a KPress article, as it sets a description, and
         # may show this tab before any description has loaded KPress's stylesheets.

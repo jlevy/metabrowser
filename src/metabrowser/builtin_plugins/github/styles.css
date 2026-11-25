@@ -1955,9 +1955,11 @@
   display: none;
 }
 
-/* KPress sets the guide's headings, paragraphs, and the space between them. The text is
-   plain, so its own line breaks stand, and an unbroken run wraps inside the column. */
-.github-pull-guide-prose p {
+/* KPress sets the guide's headings, paragraphs, and the space between them. A note is
+   Markdown, rendered as a description is, so its blocks are set as a description's. A note
+   whose render did not come is shown as typed: its own line breaks stand, and an unbroken
+   run wraps inside the column. */
+.github-pull-guide-commentary {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -2041,11 +2043,20 @@
   padding: 0;
   list-style: none;
 }
-/* A group's note above its first step's card: the author's text, as typed, at the card
-   text's inset. */
+/* A group's note above its first step's card, at the card text's inset: its Markdown
+   rendered as a step's note is, whose first and last block keep no margin of their own, as
+   in a card, or its text as typed when the render did not come. */
 .github-pull-guide-group-note {
   margin: 0 0 0.75rem;
   padding-inline: var(--github-pull-text-inset);
+}
+.github-pull-guide-group-note .kpress-prose > :first-child {
+  margin-block-start: 0;
+}
+.github-pull-guide-group-note .kpress-prose > :last-child {
+  margin-block-end: 0;
+}
+p.github-pull-guide-group-note {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

@@ -500,6 +500,18 @@ try {
     })()`),
     ["Read the value before its explanation.", true],
   );
+  // A note is Markdown the route rendered, set as a description's paragraphs are: a line
+  // break in it is the render's, not the source's, and a group's note is in the type of the
+  // step's own note.
+  same(
+    "a note's rendered paragraph is a description's, and the group's note is in its type",
+    await evaluate(`(() => {
+      const note = getComputedStyle(document.querySelector(".github-pull-guide-card .kpress-prose > h2 + p"));
+      const group = getComputedStyle(document.querySelector(".github-pull-guide-group-note .kpress-prose > p"));
+      return [note.whiteSpace, group.whiteSpace, group.fontSize === note.fontSize, group.fontFamily === note.fontFamily];
+    })()`),
+    ["normal", "normal", true, true],
+  );
   same(
     "its file, no longer in the pull request's changes, says so in its place",
     await evaluate(

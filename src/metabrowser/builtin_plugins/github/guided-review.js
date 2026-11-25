@@ -41,11 +41,18 @@
  *   OutlineGroup A group of the guide's steps, which the reader never lands on alone.
  * @typedef {{state: "ready" | "stale", record_revision: string, step: number,
  *   step_count: number, titles: string[], outline: Array<OutlineStep | OutlineGroup>,
- *   group: number | null, title: string, note: string, references: Reference[],
- *   comparison: Pins, stale?: Staleness, assets?: unknown}} Step `group` is the index in
- *   `outline` of the step's group, or null for a step outside one (`_outline` in
- *   guided_review.py); *comparison* is the one the references were read at, the pull
+ *   group: number | null, title: string, note: string, note_html: string | null,
+ *   group_note_html: string | null, references: Reference[], comparison: Pins,
+ *   stale?: Staleness, assets?: unknown}} Step `group` is the index in `outline` of the
+ *   step's group, or null for a step outside one (`_outline` in guided_review.py);
+ *   *note_html* is the note's Markdown rendered inert, as the description's is, and
+ *   *group_note_html* the note of the group the step opens, each null when its render was
+ *   refused or there is none; *comparison* is the one the references were read at, the pull
  *   request's current one.
+ * @typedef {(html: string) => HTMLElement} DrawProse The page's insertion of a text's
+ *   rendered Markdown (`inertProse` in pull-page.js): the server's inert HTML rebuilt from
+ *   static/inert-html.js's allowlist into a `.kpress-prose` element, its links made absolute
+ *   against the pull request and marked as a description's are.
  * @typedef {{state: "absent" | "invalid" | "comparison_unavailable" |
  *   "description_truncated" | "step_not_found" | "not_cached", record_revision: string | null,
  *   message?: string, stale?: Staleness}} Refusal
@@ -250,20 +257,52 @@ function element(tag, content = "", className = "") {
  * The guide's own text in a KPress article, as the page sets a description
  * (`kpressHost` in pull-page.js): KPress's prose element sets the headings, paragraphs, and
  * the space between them, and the chrome prose class keeps it in the chrome's sans
- * (docs/design-system.md, "Serif Is for Documents"). The text is the author's, set as text.
+ * (docs/design-system.md, "Serif Is for Documents").
  *
  * @param {HTMLElement} prose The `.kpress-prose` element the caller fills.
+ * @param {string} [className] The host's place: by default a text in a card, as the page
+ *   sets a description's, whose inset and edge margins are `.github-pull-text`'s
+ *   (styles.css).
  */
-function proseHost(prose) {
+function proseHost(prose, className = "github-pull-text github-pull-guide-prose") {
   const article = element("article", "", "kpress kpress-inert");
   article.append(prose);
   const host = element("div", "", "metabrowser-kpress-host");
   host.append(article);
-  // A text in a card, as the page sets a description's: its inset and edge margins are
-  // `.github-pull-text`'s (styles.css).
-  const text = element("div", "", "github-pull-text github-pull-guide-prose chrome-prose");
+  const text = element("div", "", `${className} chrome-prose`);
   text.append(host);
   return text;
+}
+
+/**
+ * A step's title and note as the page shows them, in KPress's prose element: the title as
+ * text, and the note as the route's inert render of its Markdown, inserted as the page
+ * inserts a description's (*drawProse*), or, when the render was refused or the allowlist
+ * did not load, as typed, with nothing said.
+ *
+ * @param {Step} state @param {DrawProse | null} drawProse
+ */
+function stepProse(state, drawProse) {
+  const html = state.note_html;
+  const prose = typeof html === "string" && drawProse !== null ? drawProse(html) : null;
+  const shown = prose ?? element("div", "", "kpress-prose");
+  if (prose === null) {
+    shown.append(element("p", state.note, "github-pull-guide-commentary"));
+  }
+  shown.prepend(element("h2", state.title, "github-pull-guide-title"));
+  return shown;
+}
+
+/**
+ * The note of the group a step opens, above the step's card: rendered as a step's note is,
+ * in a KPress article at the card text's inset, or as typed when its render did not come.
+ *
+ * @param {string} note @param {string | null} html @param {DrawProse | null} drawProse
+ */
+function groupNote(note, html, drawProse) {
+  return typeof html === "string" && drawProse !== null
+    ? proseHost(drawProse(html), "github-pull-guide-group-note")
+    : element("p", note, "github-pull-guide-group-note");
 }
 
 /**
@@ -579,15 +618,17 @@ let groupHeadings = 0;
  *   loadStyles: (assets: unknown) => Promise<unknown>,
  *   loadDrawPatch: () => Promise<DrawPatch>,
  *   loadDrawDocument: () => Promise<DrawDocument>,
+ *   loadDrawProse: () => Promise<DrawProse>,
  * }} deps *open* goes to a file's Changes address. *loadStyles* loads the stylesheets the
  *   guide is drawn in: KPress's, from the manifest a ready step carries, and the diff
  *   plugin's; the guide waits for them, as a description does. *loadDrawPatch* loads the
  *   diff plugin's file renderer, which draws the excerpts, and *loadDrawDocument* its view
  *   of one whole file, which draws a file the rendered route renders; the view loads the
  *   rendered layer when it draws one, so a guide that cites none never loads it.
+ *   *loadDrawProse* loads the allowlist a note's rendered Markdown is inserted through.
  */
 export function mountGuidedReview(host, introduction, number, deps) {
-  const { open, loadStyles, loadDrawPatch, loadDrawDocument } = deps;
+  const { open, loadStyles, loadDrawPatch, loadDrawDocument, loadDrawProse } = deps;
   /** @type {Promise<unknown> | null} */
   let styles = null;
   /** @type {Promise<DrawPatch | null> | null} */
@@ -598,6 +639,10 @@ export function mountGuidedReview(host, introduction, number, deps) {
   let documents = null;
   /** @type {DrawDocument | null} */
   let drawDocument = null;
+  /** @type {Promise<DrawProse | null> | null} */
+  let proses = null;
+  /** @type {DrawProse | null} */
+  let drawProse = null;
   /** The views the shown step drew, disposed when another is drawn or the guide ends. */
   /** @type {Array<{dispose: () => void}>} */
   let drawn = [];
@@ -782,9 +827,20 @@ export function mountGuidedReview(host, introduction, number, deps) {
           console.warn("metabrowser github: the diff plugin did not load for the guide", error);
           return null;
         });
-        const [, loaded, documented] = await Promise.all([styles, drawer, documents]);
+        // Without the allowlist a note shows as typed, as a description's text does.
+        proses ??= loadDrawProse().catch((error) => {
+          console.warn("metabrowser github: the guide's notes will show as typed", error);
+          return null;
+        });
+        const [, loaded, documented, inserted] = await Promise.all([
+          styles,
+          drawer,
+          documents,
+          proses,
+        ]);
         drawPatch = loaded;
         drawDocument = documented;
+        drawProse = inserted;
       }
       return result;
     },
@@ -855,11 +911,7 @@ export function mountGuidedReview(host, introduction, number, deps) {
         detail.replaceChildren();
         return;
       }
-      const step = element("div", "", "kpress-prose");
-      step.append(
-        element("h2", state.title, "github-pull-guide-title"),
-        element("p", state.note, "github-pull-guide-commentary"),
-      );
+      const step = stepProse(state, drawProse);
       const stale = state.stale;
       const references = element("div", "", "metabrowser-diff-host github-pull-guide-references");
       const drawers = { patch: drawPatch, document: drawDocument, pins: state.comparison };
@@ -889,10 +941,10 @@ export function mountGuidedReview(host, introduction, number, deps) {
         "page-card github-pull-card github-pull-event github-pull-guide-card",
       );
       card.append(head, proseHost(step), references);
-      // A group's note opens the group: it shows above its first step, as typed.
+      // A group's note opens the group: it shows above its first step.
       const opens = group !== null && group.note !== null && group.children[0]?.step === state.step;
       detail.replaceChildren(
-        ...(opens ? [element("p", group.note ?? "", "github-pull-guide-group-note")] : []),
+        ...(opens ? [groupNote(group.note ?? "", state.group_note_html, drawProse)] : []),
         card,
       );
     },

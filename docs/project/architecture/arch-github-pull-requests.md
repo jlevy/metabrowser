@@ -1024,25 +1024,34 @@ guide the first request parsed and an edited description is parsed once, by the 
 the requests that ask for it at once.
 An excerpt shows a replacement whole: `_hunk_rows` includes a line that exists only on
 the other side when it lies inside the range or touches either end of it.
-Guide text and diff lines are inserted as text, in the design system’s existing parts:
-each step is a page card headed by the Guided Review badge and its place, as
-Conversation draws a comment, its title and note prose in a KPress article, as a
-description is, and each excerpt is drawn by the diff plugin’s own renderer
-(`mountFilePatch`, which the page loads with `plugins.load("diff")`; `renderReference`
-in `guided-review.js`), so its hunk bars, folds, type, row height, gutter, and change
-fills are Changes’. A range is one hunk in the diff model’s shape (`_rows_hunk` in
-`guided_review.py`), and a path alone is its file’s whole patch, within the step’s
-budget for whole files; a file past it, or past what the diff source reads in one run,
-is answered `patch_too_large`. A path alone of a file the rendered route renders, by
-that route’s own rule on both sides of the change (`rendered_format` in
-`pull_rendered_diff.py`: Markdown, YAML, JSON), is a document instead: the guided route
-answers its format as `rendered`, reads no patch for it, gives it no hunks, and charges
-it nothing against the step’s budget for whole files (`_step_references` in
-`guided_review.py`), so a large document is bounded only by the rendered route’s own
-bounds. The page draws it (`referenceDrawing` in `guided-review.js`) with the diff
-plugin’s own view of that file (`mountRenderedFile` in `diff/index.js`): a Markdown file
-with the options the Docs tab gives its documents (`DOCS_DRAWING` in `pull-page.js`),
-and a YAML or JSON file, which Docs does not list, with the options Changes draws with
+A note is Markdown, rendered as the description is: each answer with a step carries its
+note’s render as `note_html`, and the step that opens a group with a note carries that
+note’s as `group_note_html`, each produced by the description’s own path (`render_text`
+in `pull_markdown.py`: KPress in its sanitized mode, then `harden`, in the Markdown
+child under its deadline) and kept with the guide’s parse for the record revision within
+`_MAX_KEPT_NOTE_CHARS` (`_rendered_note` in `guided_review.py`). A refused render
+answers null, and the page shows the note as typed, saying nothing.
+The page inserts a render through the description’s allowlist (`inertProse` in
+`pull-page.js`), and draws no Mermaid diagram from a note.
+Titles and diff lines are inserted as text, in the design system’s existing parts: each
+step is a page card headed by the Guided Review badge and its place, as Conversation
+draws a comment, its title and note prose in a KPress article, as a description is, and
+each excerpt is drawn by the diff plugin’s own renderer (`mountFilePatch`, which the
+page loads with `plugins.load("diff")`; `renderReference` in `guided-review.js`), so its
+hunk bars, folds, type, row height, gutter, and change fills are Changes’.
+A range is one hunk in the diff model’s shape (`_rows_hunk` in `guided_review.py`), and
+a path alone is its file’s whole patch, within the step’s budget for whole files; a file
+past it, or past what the diff source reads in one run, is answered `patch_too_large`. A
+path alone of a file the rendered route renders, by that route’s own rule on both sides
+of the change (`rendered_format` in `pull_rendered_diff.py`: Markdown, YAML, JSON), is a
+document instead: the guided route answers its format as `rendered`, reads no patch for
+it, gives it no hunks, and charges it nothing against the step’s budget for whole files
+(`_step_references` in `guided_review.py`), so a large document is bounded only by the
+rendered route’s own bounds.
+The page draws it (`referenceDrawing` in `guided-review.js`) with the diff plugin’s own
+view of that file (`mountRenderedFile` in `diff/index.js`): a Markdown file with the
+options the Docs tab gives its documents (`DOCS_DRAWING` in `pull-page.js`), and a YAML
+or JSON file, which Docs does not list, with the options Changes draws with
 (`CHANGES_DRAWING`), so its file bar, its rendered layer and that layer’s chooser, and
 its Diff and Current are that tab’s, and whatever the tab learns to draw a file with,
 the step’s document draws with too.

@@ -53,8 +53,9 @@ commit, the build the skill is written for:
    a state renamed in prose fails here though check 5 leaves one-word values alone.
 8. **The block skeletons.** Each block under "Write the Block", its commit IDs filled
    in, is a guide ``parse_guide`` reads, with a quoted title holding ``: `` and a note
-   whose list keeps its lines, the two YAML rules the section states. The first is flat,
-   as a short guide is, and the second puts its steps in groups, as a longer one does.
+   whose list keeps its lines, so its Markdown renders as a list, the two YAML rules the
+   section states. The first is flat, as a short guide is, and the second puts its steps
+   in groups, as a longer one does.
 
 ``docs/working-with-agents.md`` repeats the skill's commands for a person, so checks 1,
 2, 3, and 5 read it too. Outside every check: the names of query parameters, page

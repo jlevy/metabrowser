@@ -88,6 +88,9 @@ function step(generation, number, count = 2) {
     group: null,
     title: `Step ${number}`,
     note: "Check <b>this</b> first.\nThen that.",
+    // A note whose render was refused, which the page shows as typed.
+    note_html: null,
+    group_note_html: null,
     references: [
       {
         path: "src/app.txt",
@@ -121,6 +124,8 @@ function host() {
   const opened = [];
   /** Each patch the page handed the diff plugin to draw, and whether it was disposed. */
   const patches = [];
+  /** Each text's HTML the page handed the allowlist, with the page it resolves against. */
+  const sanitized = [];
   /** The diff plugin's export, as `plugins.load("diff")` answers it: it draws each line as
    * the diff draws a row, its text a span. The diff plugin's own drawing (hunk bars, folds,
    * syntax) is its own, pinned by its tests and painted in the Chrome check. */
@@ -163,12 +168,22 @@ function host() {
       return id;
     },
     clearTimeout: (id) => timers.delete(id),
+    // The allowlist's stand-in: each text it is handed comes back as one element holding the
+    // HTML as text, so a test reads where the page put it. The rebuild itself is the
+    // allowlist's, pinned by tests/dom/inert-html-session.js.
     MetabrowserInertHtml: {
-      sanitizeHtml: (html) => html,
-      kpressProse(html) {
-        const node = document.createElement("p");
+      sanitizeHtml(html, base) {
+        sanitized.push({ html, base });
+        const node = document.createElement("span");
+        node.className = "inert-rebuilt";
         node.textContent = html;
-        return node;
+        return [node];
+      },
+      kpressProse(nodes) {
+        const prose = document.createElement("div");
+        prose.className = "kpress-prose";
+        prose.append(...nodes);
+        return prose;
       },
     },
   };
@@ -214,6 +229,7 @@ function host() {
     reads,
     opened,
     patches,
+    sanitized,
     set current(value) {
       current = value;
     },
@@ -864,6 +880,69 @@ async function run() {
       "the grouped list keeps its buttons as the reader moves",
     );
     steps.push(`asked: ${asked(grouped.reads)}`);
+    view.handle.dispose();
+  }
+
+  // A note is Markdown, which the route renders inert as it renders the description: the page
+  // hands that HTML to the description's allowlist, against the pull request's page, and sets
+  // what it builds in the step's prose after the title, which stays text. A group's note on its
+  // first step is drawn the same way, in a KPress article above the card. A note whose render
+  // was refused shows as typed, holding no element (step 1 above), with nothing said.
+  {
+    const rendered = host();
+    const view = rendered.mount(page, "guided", envelope(1));
+    await settle();
+    const title = "Step <b>1</b>";
+    rendered.pending()[0].answer({
+      ...step(1, 1),
+      title,
+      outline: [
+        {
+          kind: "group",
+          title: "Decisions",
+          note: "Read *these*.",
+          children: [
+            { kind: "step", step: 1, title },
+            { kind: "step", step: 2, title: "Step 2" },
+          ],
+        },
+      ],
+      group: 0,
+      note_html: "<p>Check <b>this</b> first.</p>",
+      group_note_html: "<p>Read <em>these</em>.</p>",
+    });
+    await settle();
+    // The overview's description is the allowlist's too; only the step's texts count here.
+    rendered.sanitized.length = 0;
+    view.press("Next step");
+    await settle();
+    const card = view.container.querySelector(".github-pull-guide-card");
+    const prose = card.querySelector(".kpress-prose");
+    const [heading, ...blocks] = prose.children;
+    assert.equal(heading.tag, "h2");
+    assert.ok(
+      heading.children.every((child) => typeof child === "string"),
+      "a title holds text and no element",
+    );
+    assert.equal(card.querySelector(".github-pull-guide-commentary"), null);
+    const note = view.container.querySelector(".github-pull-guide-group-note");
+    const article = note.querySelector(".kpress");
+    assert.ok(
+      note.tag === "div" &&
+        note.classes.has("chrome-prose") &&
+        article?.tag === "article" &&
+        article.querySelector(".kpress-prose") !== null,
+      "a group's rendered note is set in a KPress article",
+    );
+    steps.push(
+      `a rendered note: title ${heading.textContent}; blocks ${blocks
+        .map((block) => `${block.tag}.${[...block.classes].join(".")}: ${block.textContent}`)
+        .join(
+          ", ",
+        )}; group's note ${note.querySelector(".inert-rebuilt")?.textContent}; allowlist asked ${rendered.sanitized
+        .map(({ html, base }) => `${html} at ${base}`)
+        .join(", ")}`,
+    );
     view.handle.dispose();
   }
 
