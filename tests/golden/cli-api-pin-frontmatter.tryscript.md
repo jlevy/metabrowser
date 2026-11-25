@@ -104,9 +104,10 @@ $ grep -E '^  "diagnostics":' harbor-folder.txt
 
 ## Test: a pinned file’s own error stands, though the posted text parses
 
-`/api/file` and the render report the file’s error, quoting its own line.
-The inert HTML has no Frontmatter error notice; the page draws one from the diagnostic
-(`cli-ui-markdown-frontmatter-error.tryscript.md`).
+`/api/file` and the render say what the reader sees, that the front matter could not be
+read, and carry the parser’s reason beside it, quoting the file’s own line, as
+`frontmatter_error_detail`. The inert HTML has no Frontmatter error notice; the page
+draws one from the diagnostic (`cli-ui-markdown-frontmatter-error.tryscript.md`).
 
 ```console
 $ metab checkout --ref main --api '/api/file?path=g1-YnJva2VuLm1k' > broken-file.txt
@@ -114,9 +115,10 @@ $ metab checkout --ref main --api '/api/file?path=g1-YnJva2VuLm1k' > broken-file
 ```
 
 ```console
-$ grep -E '^  "(kind|frontmatter|frontmatter_error)":' broken-file.txt
+$ grep -E '^  "(kind|frontmatter|frontmatter_error|frontmatter_error_detail)":' broken-file.txt
   "kind": "markdown",
-  "frontmatter_error": "Error parsing YAML metadata: mapping values are not allowed here\n  in \"<unicode string>\", line 2, column 19:\n    description: Tides: how the harbor office reads it ... \n                      ^ (line: 2)"
+  "frontmatter_error": "The frontmatter could not be read.",
+  "frontmatter_error_detail": "Error parsing YAML metadata: mapping values are not allowed here\n  in \"<unicode string>\", line 2, column 19:\n    description: Tides: how the harbor office reads it ... \n                      ^ (line: 2)"
 ? 0
 ```
 
@@ -126,9 +128,10 @@ $ metab checkout --ref main --api /api/kpress/render --data broken-pin.json > br
 ```
 
 ```console
-$ grep -E '^      "(type|message)":' broken-pin.txt
+$ grep -E '^  "frontmatter_error_detail":|^      "(type|message)":' broken-pin.txt
       "type": "frontmatter_error",
-      "message": "Error parsing YAML metadata: mapping values are not allowed here\n  in \"<unicode string>\", line 2, column 19:\n    description: Tides: how the harbor office reads it ... \n                      ^ (line: 2)",
+      "message": "The frontmatter could not be read.",
+  "frontmatter_error_detail": "Error parsing YAML metadata: mapping values are not allowed here\n  in \"<unicode string>\", line 2, column 19:\n    description: Tides: how the harbor office reads it ... \n                      ^ (line: 2)"
 ? 0
 ```
 

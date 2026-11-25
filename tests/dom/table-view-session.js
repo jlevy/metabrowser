@@ -1254,7 +1254,7 @@ function liveInvariants() {
   assert.equal(model.livePillText(true, 0), "Paused");
   assert.equal(model.livePillText(true, 1), "Paused · 1 change");
   // A busy source's refusal keeps the rows and says why, as every other refusal does.
-  assert.match(model.liveFailure("busy"), /writer is busy/);
+  assert.match(model.liveFailure("busy"), /file is busy/);
   assert.match(model.liveFailure(null), /rows last read/);
 }
 

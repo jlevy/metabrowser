@@ -656,8 +656,8 @@ async function loadModule() {
   initialPublishedFrame[1](0);
   check(
     "initial incomplete route pass is item bounded",
-    publishedAnchors.filter((anchor) =>
-      anchor.getAttribute("title")?.includes("catalog-incomplete"),
+    publishedAnchors.filter(
+      (anchor) => anchor.getAttribute("data-metabrowser-link-reason") === "catalog-incomplete",
     ).length === 32 && publishedFrames.size === 1,
   );
   publishedSnapshot = {
@@ -750,8 +750,8 @@ async function loadModule() {
     !cappedAnchor.hasAttribute("href") &&
       cappedAnchor.getAttribute("data-metabrowser-link-status") === "unsupported" &&
       cappedAnchor.getAttribute("aria-disabled") === "true" &&
-      cappedAnchor.getAttribute("title") ===
-        "Metabrowser cannot resolve this destination (catalog-truncated).",
+      cappedAnchor.getAttribute("data-metabrowser-link-reason") === "catalog-truncated" &&
+      cappedAnchor.getAttribute("title") === "Metabrowser cannot resolve this destination.",
     String(cappedAnchor.getAttribute("title")),
   );
   check(

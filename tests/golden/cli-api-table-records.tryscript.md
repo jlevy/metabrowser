@@ -601,7 +601,8 @@ status: 422
   "type": "table_error",
   "path": "broken.json",
   "code": "source_unreadable",
-  "error": "This file could not be parsed: ValueError: <string>:1 Unexpected end of input at column 8"
+  "error": "This file could not be parsed.",
+  "detail": "ValueError: <string>:1 Unexpected end of input at column 8"
 }
 Error: /api/plugin/table/schema?path=broken.json returned HTTP 422
 ? 1

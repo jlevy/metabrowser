@@ -724,7 +724,7 @@ export function mountTable(container, ctx, host = {}) {
     unwatch = sdk.watchFile(path, {
       generation: page?.generation ?? null,
       onChange: onFileChange,
-      onState: (watchState, reason) => {
+      onState: (watchState) => {
         const shown = watchState === "live" || paused;
         for (const pill of [livePill, recordPill]) {
           pill.hidden = !shown;
@@ -738,7 +738,8 @@ export function mountTable(container, ctx, host = {}) {
           watchState === "refused"
             ? noticeBox(
                 "warning",
-                `This table is not following changes to its file now${reason === "too_many_watches" ? ": this page watches as many files as it may" : ""}.`,
+                // Why, `reason`, is the watch's, for an agent (docs/design-system-messages.md).
+                "This table is not following changes to its file now.",
               )
             : null;
         drawNotes();
@@ -1554,18 +1555,18 @@ export function mountTable(container, ctx, host = {}) {
     if (refused !== null) {
       // A sort that could not be done in time answers no rows; the table has them.
       const name = fieldsByName.get(refused)?.title || refused;
-      // Asking again may succeed: a source can spend the time on something other than
-      // the sort, as the delimited source's parse of the file does on its first request.
+      // One remedy, the one that always works: the table's own order needs no sort
+      // (docs/design-system-messages.md).
       const box = noticeBox(
         "warning",
-        `This table is too large to sort by “${name}” in the time a request may take.`,
+        `This table is too large to sort by “${name}”.`,
         el(
           "a",
           { href: href(withSort(state, refused, null)), class: "table-unsort" },
           "Show the table’s own order",
         ),
       );
-      box.append(" or ", el("a", { href: href(state), class: "table-retry" }, "try again"), ".");
+      box.append(".");
       notes.append(box);
       return;
     }
@@ -1969,9 +1970,6 @@ export function mountTable(container, ctx, host = {}) {
       go(EMPTY_STATE);
     } else if (link.classList.contains("table-unsort")) {
       go(withSort(state, state.sort ?? "", null));
-    } else if (link.classList.contains("table-retry")) {
-      // The same question again, from its first page.
-      void loadRows();
     } else if (link.classList.contains("table-position")) {
       const tr = ancestor(link, (node) => node.localName === "tr");
       const index = Number(tr?.dataset.index ?? 0);

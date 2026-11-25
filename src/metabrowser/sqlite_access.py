@@ -276,11 +276,33 @@ APPLICATION_IDS: Final = {
 
 
 class SqliteAccessError(Exception):
-    """A read that could not be answered, and the state it is shown as."""
+    """A read that could not be answered, and the state it is shown as.
 
-    def __init__(self, state: ErrorState, message: str) -> None:
+    The message is the reader's sentence, which a page shows
+    (docs/design-system-messages.md). *detail* is what an agent or a log needs beyond
+    it, such as SQLite's own error text, and a route answers it as ``detail``.
+    """
+
+    def __init__(self, state: ErrorState, message: str, *, detail: str = "") -> None:
         super().__init__(message)
         self.state: ErrorState = state
+        self.detail: str = detail
+
+    def wire(self) -> dict[str, str]:
+        """The error as a route answers it: its state, message, and any detail."""
+        return {
+            "state": self.state,
+            "message": str(self),
+            **({"detail": self.detail} if self.detail else {}),
+        }
+
+
+# The reader's sentences for the states more than one failure shares; the failure's own
+# words go in the error's detail.
+UNREADABLE_MESSAGE: Final = "This database could not be read."
+BUSY_MESSAGE: Final = "This database is busy. Try again shortly."
+TOO_SLOW_MESSAGE: Final = "Reading this database took too long. Try again shortly."
+TOO_LARGE_MESSAGE: Final = "This database is too large to read here."
 
 
 # ── Observing the files ────────────────────────────────────────
@@ -479,7 +501,9 @@ def observe(path: Path) -> Observation:
     except PermissionError as exc:
         raise SqliteAccessError("unreadable", "This file cannot be read.") from exc
     except OSError as exc:
-        raise SqliteAccessError("unreadable", f"This file cannot be read: {exc.strerror}") from exc
+        raise SqliteAccessError(
+            "unreadable", "This file cannot be read.", detail=exc.strerror or ""
+        ) from exc
     if len(header) < HEADER_BYTES or not header.startswith(SQLITE_MAGIC):
         raise SqliteAccessError("not_sqlite", "This file is not a SQLite database.")
     journal_path = sidecar(path, "-journal")
@@ -504,7 +528,7 @@ def observe(path: Path) -> Observation:
             wal = None
         except OSError as exc:
             raise SqliteAccessError(
-                "unreadable", f"This database's log cannot be read: {exc.strerror}"
+                "unreadable", "This database's log cannot be read.", detail=exc.strerror or ""
             ) from exc
     shm_path = sidecar(path, "-shm")
     shm = _stat(shm_path)
@@ -553,7 +577,7 @@ def sqlite_generation(path: Path) -> str:
         parts.append("-")
     except OSError as exc:
         raise SqliteAccessError(
-            "unreadable", f"This database's log cannot be read: {exc.strerror}"
+            "unreadable", "This database's log cannot be read.", detail=exc.strerror or ""
         ) from exc
     try:
         # The server holds no connection to a database it does not own, so opening and
@@ -917,18 +941,23 @@ def _classify(exc: sqlite3.Error) -> SqliteAccessError:
     reported at prepare time as a plain error naming it.
     """
     code = _error_code(exc)
+    said = str(exc)
     if code in _DAMAGED_CODES:
-        return SqliteAccessError("damaged", f"This database is damaged: {exc}")
+        return SqliteAccessError("damaged", "This database is damaged.", detail=said)
     if code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED, sqlite3.SQLITE_NOMEM):
-        return SqliteAccessError("busy", f"The database is busy: {exc}")
+        return SqliteAccessError("busy", BUSY_MESSAGE, detail=said)
     if code == sqlite3.SQLITE_INTERRUPT:
-        return SqliteAccessError("busy", "The read ran past its deadline or its work budget.")
-    if code == sqlite3.SQLITE_AUTH or "not authorized" in str(exc):
-        return SqliteAccessError("refused", f"The read was refused: {exc}")
-    if str(exc).startswith("no such collation sequence: "):
-        name = str(exc).removeprefix("no such collation sequence: ")
-        return SqliteAccessError("unreadable", f"This read needs the SQLite collation {name!r}.")
-    return SqliteAccessError("unreadable", f"This database could not be read: {exc}")
+        return SqliteAccessError(
+            "busy", TOO_SLOW_MESSAGE, detail="The read ran past its deadline or its work budget."
+        )
+    if code == sqlite3.SQLITE_AUTH or "not authorized" in said:
+        return SqliteAccessError("refused", "This part of the database is not read.", detail=said)
+    if said.startswith("no such collation sequence: "):
+        name = said.removeprefix("no such collation sequence: ")
+        return SqliteAccessError(
+            "unreadable", f"This read needs the SQLite collation {name!r}.", detail=said
+        )
+    return SqliteAccessError("unreadable", UNREADABLE_MESSAGE, detail=said)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1061,7 +1090,9 @@ def _attempt[T](
         if plan.mode == "read_only" and _error_code(exc) in _TRANSIENT_CODES:
             raise _Transient(error) from exc
         if error.state == "damaged" and plan.state != "current":
-            raise SqliteAccessError(plan.state, f"{plan.reason}; reading it failed: {exc}") from exc
+            raise SqliteAccessError(
+                plan.state, UNREADABLE_MESSAGE, detail=f"{plan.reason}; reading it failed: {exc}"
+            ) from exc
         raise error from exc
     if lock_free and not obs.unchanged(observe(real)):
         return None
@@ -1096,7 +1127,7 @@ def _read_through_log[T](
         raise _LookAgain from exc
     except OSError as exc:
         raise SqliteAccessError(
-            "unreadable", f"This database's log index cannot be read: {exc.strerror}"
+            "unreadable", "This database's log index cannot be read.", detail=exc.strerror or ""
         ) from exc
     try:
         held_state = FileState.of(os.fstat(held))
@@ -1276,18 +1307,29 @@ def _handle(request: dict[str, Any]) -> dict[str, Any]:
     args = request.get("args") or {}
     deadline = time.monotonic() + float(request.get("seconds", 0))
     if op is None:
-        return {"ok": False, "state": "refused", "error": f"unknown request {request.get('op')!r}"}
+        return {
+            "ok": False,
+            "state": "refused",
+            "error": UNREADABLE_MESSAGE,
+            "detail": f"unknown request {request.get('op')!r}",
+        }
     try:
         return {"ok": True, "result": op(args, deadline)}
     except SqliteAccessError as exc:
-        return {"ok": False, "state": exc.state, "error": str(exc)}
+        return {"ok": False, "state": exc.state, "error": str(exc), "detail": exc.detail}
     except MemoryError:
-        return {"ok": False, "state": "busy", "error": "The read ran out of memory."}
+        return {
+            "ok": False,
+            "state": "busy",
+            "error": BUSY_MESSAGE,
+            "detail": "The read ran out of memory.",
+        }
     except Exception as exc:
         return {
             "ok": False,
             "state": "unreadable",
-            "error": f"The reader failed: {type(exc).__name__}: {exc}",
+            "error": UNREADABLE_MESSAGE,
+            "detail": f"The reader failed: {type(exc).__name__}: {exc}",
         }
 
 
@@ -1334,7 +1376,8 @@ def serve() -> None:
             response: dict[str, Any] = {
                 "ok": False,
                 "state": "refused",
-                "error": "malformed request",
+                "error": UNREADABLE_MESSAGE,
+                "detail": "malformed request",
             }
         else:
             response = _handle(request)
@@ -1351,6 +1394,7 @@ def _encode_answer(response: dict[str, Any]) -> bytes:
     refusal = {
         "ok": False,
         "state": "too_large",
-        "error": f"The answer was longer than the {ANSWER_MAX_BYTES:,} bytes a reader returns.",
+        "error": TOO_LARGE_MESSAGE,
+        "detail": f"The answer was longer than the {ANSWER_MAX_BYTES:,} bytes a reader returns.",
     }
     return json.dumps(refusal, separators=(",", ":")).encode()

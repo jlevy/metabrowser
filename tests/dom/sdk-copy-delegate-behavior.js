@@ -155,7 +155,7 @@ if (typeof clickHandler !== "function") {
       if (clipboardWrites.length !== 1 || clipboardWrites[0] !== "print('hi')\n# complete source") {
         failures.push(`expected one code write, got ${JSON.stringify(clipboardWrites)}`);
       }
-      if (!first.btn.classList.has("copied") || first.btn.dataset.tipText !== "Copied!") {
+      if (!first.btn.classList.has("copied") || first.btn.dataset.tipText !== "Copied") {
         failures.push(
           `expected copied feedback, got tip=${first.btn.dataset.tipText} classes=${[...first.btn._classes]}`,
         );
@@ -176,7 +176,7 @@ if (typeof clickHandler !== "function") {
         if (clipboardWrites[1] !== "0123456789abcdef") {
           failures.push(`expected explicit text write, got ${JSON.stringify(clipboardWrites)}`);
         }
-        if (!direct.btn.classList.has("copied") || direct.btn.dataset.tipText !== "Copied!") {
+        if (!direct.btn.classList.has("copied") || direct.btn.dataset.tipText !== "Copied") {
           failures.push(`expected direct copied feedback, got tip=${direct.btn.dataset.tipText}`);
         }
         for (const fn of timers.splice(0)) {

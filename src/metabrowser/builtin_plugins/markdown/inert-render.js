@@ -59,19 +59,20 @@ export function dropUnadmittedTargets(root) {
 }
 
 /**
- * KPress's Frontmatter error notice for *reason*, as a trusted render draws it ahead of
+ * KPress's Frontmatter error notice saying *said*, as a trusted render draws it ahead of
  * the layout (kpress/format/render.py, `_render_frontmatter_error`).
  *
  * The server takes KPress's own out of an inert render, whose allowlist would keep only
- * its words run into the prose (`kpress_adapter.inert_render`), and the reason stays in
- * the render's `frontmatter_error` diagnostic. The page's own markup carries KPress's
- * class, as the inert table of contents does, so KPress's stylesheet draws the box; the
- * reason is text.
+ * its words run into the prose (`kpress_adapter.inert_render`), and the sentence it said
+ * stays in the render's `frontmatter_error` diagnostic; the parser's reason is the
+ * answer's `frontmatter_error_detail`, which the page does not show. The page's own
+ * markup carries KPress's class, as the inert table of contents does, so KPress's
+ * stylesheet draws the box; the sentence is text.
  *
  * @param {Document} doc
- * @param {string} reason
+ * @param {string} said
  */
-function frontmatterErrorNotice(doc, reason) {
+function frontmatterErrorNotice(doc, said) {
   const notice = doc.createElement("aside");
   notice.className = "kpress-frontmatter-error";
   notice.setAttribute("role", "alert");
@@ -79,7 +80,7 @@ function frontmatterErrorNotice(doc, reason) {
   const title = doc.createElement("strong");
   title.append(doc.createTextNode("Frontmatter error"));
   const message = doc.createElement("span");
-  message.append(doc.createTextNode(reason));
+  message.append(doc.createTextNode(said));
   notice.append(title, message);
   return notice;
 }

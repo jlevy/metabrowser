@@ -1155,7 +1155,7 @@
     if (held === false) {
       decided(false);
       refMenuIsSwitching = false;
-      status.textContent = "A ref switch is already in progress.";
+      status.textContent = "Another switch is already in progress.";
       return;
     }
     try {
@@ -1170,16 +1170,15 @@
         global.location.assign("/view/");
         leaving = true;
       } else {
-        const answer = await response.json().catch(() => null);
+        // The answer's words and code are an agent's (`metab --api`); the menu says what
+        // the reader can do (docs/design-system-messages.md).
         status.textContent =
           response.status === 202
-            ? "Fetching this ref. Try again when the fetch ends."
-            : typeof answer?.error === "string"
-              ? answer.error
-              : "Could not open this ref.";
+            ? "This branch or tag is still being fetched. Try again shortly."
+            : "Could not open this branch or tag.";
       }
     } catch {
-      status.textContent = "Could not open this ref.";
+      status.textContent = "Could not open this branch or tag.";
     } finally {
       decided(leaving);
       if (!leaving) {

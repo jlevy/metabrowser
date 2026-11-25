@@ -189,4 +189,11 @@ def test_a_merge_base_comparison_of_unrelated_histories_is_a_typed_refusal(
         )
     assert refused.status_code == 404
     assert refused.json()["error"] == "diff_comparison"
-    assert "no merge base" in refused.json()["message"]
+    assert (
+        refused.json()["message"]
+        == "These two commits share no history, so they cannot be compared."
+    )
+    assert (refused.json()["code"], "no merge base" in refused.json()["detail"]) == (
+        "no_merge_base",
+        True,
+    )

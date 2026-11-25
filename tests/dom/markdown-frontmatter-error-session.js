@@ -12,7 +12,8 @@
 //   wrote its anchor into the YAML, and a pin parsed that text.
 // - A trusted render carries KPress's notice; an inert one does not (the server takes
 //   it out, `kpress_adapter.inert_render`), and the page draws the same notice from the
-//   diagnostic. Either way the document's preamble holds one notice with the reason, and
+//   diagnostic. Either way the document's preamble holds one notice with the reader's
+//   sentence, never the parser's reason (`frontmatter_error_detail`), and
 //   the Diagnostics disclosure lists the render's other diagnostics only; a render whose
 //   only diagnostic is the front-matter error has no disclosure.
 //
@@ -246,7 +247,9 @@ globalThis.window = sandbox.window;
 const tag = (name, attrs, ...children) => ({ tag: name, attrs, children });
 
 // An invented note of the shape a reader reported, whose description holds a `: ` YAML
-// reads as a second mapping, and the reason the server gives for it.
+// reads as a second mapping. The server's diagnostic says what the reader sees, the
+// sentence `FRONTMATTER_ERROR_MESSAGE` (metabrowser/frontmatter_yaml.py); the parser's
+// reason is the answer's `frontmatter_error_detail`, for `metab --api` and not the page.
 const note = [
   "---",
   'title: "Tide Tables for a Small Harbor"',
@@ -261,7 +264,8 @@ const note = [
   "The office posts the table by eight.",
   "",
 ].join("\n");
-const reason =
+const reason = "The frontmatter could not be read.";
+const detail =
   "Error parsing YAML metadata: mapping values are not allowed here\n" +
   '  in "<unicode string>", line 2, column 19:\n' +
   "    description: Tides: how the harbor office reads it ... \n" +
@@ -337,6 +341,9 @@ function preamble(container) {
       };
     }),
     notices: container.querySelectorAll(".kpress-frontmatter-error").length,
+    detailShown: (meta?.children ?? []).some((child) =>
+      `${child.textContent ?? ""}${child.markup ?? ""}`.includes("Error parsing YAML"),
+    ),
   };
 }
 
@@ -370,18 +377,21 @@ async function main() {
   transcript.trusted = await mount({
     html: trustedHtml,
     diagnostics: [frontmatterError, otherDiagnostic],
+    frontmatter_error_detail: detail,
   });
   transcript.inert = await mount({
     html: inertHtml,
     inert: true,
     toc: false,
     diagnostics: [frontmatterError, otherDiagnostic],
+    frontmatter_error_detail: detail,
   });
   transcript.inertOnlyFrontmatterError = await mount({
     html: inertHtml,
     inert: true,
     toc: false,
     diagnostics: [frontmatterError],
+    frontmatter_error_detail: detail,
   });
   transcript.inertWithoutFrontmatterError = await mount({
     html: inertHtml,
@@ -400,6 +410,7 @@ async function main() {
   };
   for (const name of ["trusted", "inert"]) {
     assert(transcript[name].notices === 1, `the ${name} document shows one notice`);
+    assert(!transcript[name].detailShown, `the ${name} document leaves the parser's reason out`);
   }
   assert(transcript.sentText.frontMatterAsWritten, "the front matter is sent as written");
   process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);

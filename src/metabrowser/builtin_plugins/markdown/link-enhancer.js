@@ -589,7 +589,10 @@ function disableTarget(element, attribute, status, reason) {
   element.removeAttribute(attribute);
   element.setAttribute("data-metabrowser-link-status", status);
   element.setAttribute("aria-disabled", "true");
-  element.setAttribute("title", `${destinationStatusMessage(status)} (${reason}).`);
+  // The reason code is data for a test or an agent, not the tooltip's
+  // (docs/design-system-messages.md).
+  element.setAttribute("data-metabrowser-link-reason", reason);
+  element.setAttribute("title", `${destinationStatusMessage(status)}.`);
   if (element.tagName.toLowerCase() === "a" && !element.hasAttribute("tabindex")) {
     element.setAttribute("tabindex", "0");
     element.setAttribute("data-metabrowser-managed-tabindex", "true");
@@ -617,6 +620,7 @@ function clearDisabledTarget(element) {
   }
   element.removeAttribute("aria-disabled");
   element.removeAttribute("data-metabrowser-link-status");
+  element.removeAttribute("data-metabrowser-link-reason");
   const authoredTitle = element.getAttribute("data-metabrowser-authored-title");
   if (authoredTitle === null) {
     element.removeAttribute("title");

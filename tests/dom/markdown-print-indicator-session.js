@@ -732,9 +732,18 @@ async function flush() {
   // A render that failed draws an error, which has no card and no button.
   renders.set("broken.md", Object.assign(new Error("KPress render failed"), { payload: {} }));
   const brokenView = container();
-  const brokenHandle = await mounted(
-    registered.get("markdown/rendered").render(brokenView, context("broken.md")),
-  );
+  // The failure goes to the console (docs/design-system-messages.md), which this
+  // session does not pin.
+  const consoleError = console.error;
+  console.error = () => {};
+  let brokenHandle;
+  try {
+    brokenHandle = await mounted(
+      registered.get("markdown/rendered").render(brokenView, context("broken.md")),
+    );
+  } finally {
+    console.error = consoleError;
+  }
   const broken = { buttons: describe(brokenView).buttons, card: card(brokenView) !== null };
   check("a failed render has no button", broken.buttons === 0 && !broken.card, broken);
 

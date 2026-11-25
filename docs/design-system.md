@@ -287,7 +287,7 @@ it.
 | Controls | `--ui-small-font-size` | Chips and the counts in their menus, badges, buttons, filters, menus, fold expanders, and a tree row’s leading change letter, its slot’s glyph |
 | Keycaps and their hint strips | `--kbd-font-size` | A [key](#keyboard-keys), and a strip of hints that labels keys, at the navigation column’s foot and in Quick Search, so a key and its word read as one mark |
 | Labels | `--label-font-size` | All-caps tabs, table headers, stat labels, group headings, and dialog titles, at the controls’ size: labels differ by caps treatment, not by another size |
-| Monospace blocks | `--mono-block-font-size` | Source, diffs and their hunk headers, review hunks, logs and their event headers, raw JSON, and a verbatim error, at the controls’ size |
+| Monospace blocks | `--mono-block-font-size` | Source, diffs and their hunk headers, review hunks, logs and their event headers, and raw JSON, at the controls’ size |
 | Ref chip | `--git-ref-font-size` | `--git-ref-font-scale` of the size it inherits, so slightly smaller than the text it sits in: the ramp’s one relative size, because a chip sits in text of several sizes and reads as part of it ([Branch Chips](#branch-chips)) |
 | Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges |
 
@@ -1802,6 +1802,11 @@ box fill.
 
 Build a partial-content notice through `mb.partialNoticeHtml` rather than by hand, so a
 new view gets the markup, the severity, and the placement together.
+
+What a notice, an empty state, or an error may say, and where the detail it leaves out
+goes, is the subject of [Reader Messages](design-system-messages.md): one statement in
+the reader’s terms and at most one remedy, never a commit list, an internal path, or an
+exception’s text.
 
 ### Continuing Partial Content
 
@@ -3399,8 +3404,11 @@ the colon:
 - The scope is one or more characters other than parentheses, so a list such as
   `fix(ui, git):` counts, as conventional-changelog’s parser reads one, and an empty
   `()` does not.
-- It counts only at 16 characters or fewer, colon included, counted in code points:
-  `refactor(stack):` counts, and `refactor(stacks):` is part of the title.
+- It counts only up to `TITLE_PREFIX_MAX_CHARS` in `static/formatters.js`, colon
+  included, counted in code points, set from the prefixes of real commit subjects as
+  `tests/dom/title-prefix-session.js` records: `feat(view-on-github):` counts, and a
+  parenthetical sentence such as
+  `note(this is how the cache and the scroller keep a row):` is part of the title.
 - Whitespace and more of the title follow the colon.
   `fix:keep` and a title that ends at its colon have no prefix.
 

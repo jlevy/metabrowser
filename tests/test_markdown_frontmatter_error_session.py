@@ -4,9 +4,9 @@
 over a trusted and an inert render of a note whose front matter does not parse; its
 transcript is ``cli-ui-markdown-frontmatter-error.tryscript.md``. These check what
 matters however the transcript is worded: one Frontmatter error notice with the
-server's reason, first in the document's preamble, the Diagnostics disclosure listing
-the other diagnostics only, and the text sent to render keeping the front matter as
-written.
+server's sentence for the reader, first in the document's preamble, never the parser's
+reason the answer carries beside it, the Diagnostics disclosure listing the other
+diagnostics only, and the text sent to render keeping the front matter as written.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from metabrowser.frontmatter_yaml import FRONTMATTER_ERROR_MESSAGE
 from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -43,8 +44,8 @@ def test_a_front_matter_error_is_one_notice_and_not_a_diagnostic_row() -> None:
         notice = shown["children"][0]
         assert notice["notice"] == "Frontmatter error", name
         assert notice["role"] == "alert", name
-        assert notice["reason"].startswith("Error parsing YAML metadata:"), name
-        assert "\n" in notice["reason"], name
+        assert notice["reason"] == FRONTMATTER_ERROR_MESSAGE, name
+        assert shown["detailShown"] is False, name
         listed = [child["listed"] for child in shown["children"][1:]]
         assert all("frontmatter_error" not in rows for rows in listed), name
     assert session["trusted"]["children"][1]["listed"] == ["broken_anchor"]

@@ -1947,12 +1947,11 @@ async function headerShape(page) {
   /** What each variant's status line says, on every tab, or null where it is not there. */
   // A failure ends in its Details, the event log's records for it (mb-9zp5).
   const STATUS = {
-    failed:
-      "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed outDetails",
+    failed: "Could not reach GitHub.Details",
     "a checkout at the head":
       "This checkout’s HEAD is this pull request’s head. Browse the checkout",
     "on its way, its last refresh failed":
-      "Fetching the pull request…The last refresh failed: gh could not reach api.github.comDetails",
+      "Fetching the pull request…Could not reach GitHub.Details",
   };
   /** What each variant's note says where it is not the record's fetch, null where none. */
   const NOTE = {
@@ -2932,7 +2931,7 @@ async function headerSummary(page) {
   assert.ok(followedNote, "a record with a moved head is followed, and Changes says so");
   assert.equal(
     followedNote.textContent,
-    "The pull request’s head moved from 85fcb2f to 9999999. Show the earlier changes",
+    "Changes now show this pull request’s newer commits. Show the earlier changes",
   );
   tell("a record with a moved head is followed: its diff reads the comparison", offered.row());
   offered.container.querySelector(".github-pull-earlier").events.get("click")();
@@ -3606,7 +3605,7 @@ async function run() {
     await settle();
     await handle.whenFilesReady();
     assert.equal(mounted.length, 1);
-    const moved = /The pull request’s head moved from .+ to .+Show the earlier changes/;
+    const moved = /Changes now show this pull request’s newer commits\. Show the earlier changes/;
     if (outcome === "moved") {
       current = structuredClone(current);
       current.record.comparison.head = "e".repeat(40);
@@ -3738,7 +3737,7 @@ async function run() {
   resolveComparison({
     status: 429,
     headers: { get: () => null },
-    json: async () => ({ error: "server busy" }),
+    json: async () => ({ error: "server busy", code: "too_many" }),
   });
   await settle();
   const [checkoutPollId, checkoutPoll] = timers.entries().next().value;
@@ -3751,9 +3750,10 @@ async function run() {
   // line, so the header has the same rows on every tab (B5 of review B on #506).
   assert.match(
     checkoutBody.textContent,
-    /server busy/,
+    /The refresh could not start while other pull requests are being fetched\./,
     "the refusal's reason outlasts the read that cleared its error",
   );
+  assert.doesNotMatch(checkoutBody.textContent, /server busy/, "said by its code, not its text");
   assert.equal(checkoutContainer.querySelector(".github-pull-message"), null);
   const shownRows = () =>
     checkoutContainer
@@ -3778,7 +3778,11 @@ async function run() {
     1,
     `a refused comparison leaves the header's rows the same on every tab: ${JSON.stringify(refusedRows)}`,
   );
-  assert.match(checkoutBody.textContent, /server busy/, "the body says it again back on Changes");
+  assert.match(
+    checkoutBody.textContent,
+    /other pull requests are being fetched/,
+    "the body says it again back on Changes",
+  );
   assert.equal(checkoutBody.querySelector(".spinner"), null);
   const retryChanges = checkoutBody.querySelector(".github-pull-retry-changes");
   assert.equal(retryChanges?.textContent, "Retry changes");

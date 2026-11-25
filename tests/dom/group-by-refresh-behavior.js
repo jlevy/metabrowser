@@ -67,7 +67,7 @@ function session(setup) {
       calls.push(["groups", options.preserve === true]);
       return setup.groups();
     },
-    failGroupedTree: (reason) => calls.push(["failed", reason]),
+    failGroupedTree: (cause) => calls.push(["failed", String(cause)]),
     startIndexProgressPolling() {},
     observeFileAges() {},
     applyFilterTallies() {},

@@ -541,7 +541,8 @@ def test_git_kpress_render_honors_gitpath_without_mtime(
                 params={"path": _wire(b"nul.bin"), "view": "rendered"},
             )
             assert binary.status_code == 415
-            assert binary.json()["error"] == "KPress render supports text-like files only"
+            assert binary.json()["error"] == "Only a text file can be rendered as a document."
+            assert binary.json()["detail"] == "KPress render supports text-like files only"
 
             symlink = await client.get(
                 "/api/kpress/render",
@@ -693,14 +694,15 @@ def test_git_kpress_render_reads_front_matter_from_the_blob_not_the_sent_text(
             assert seen["frontmatter"] == mapping
             assert seen["frontmatter_error"] is None
             assert [d for d in body["diagnostics"] if d.get("type") == "frontmatter_error"] == []
+            assert "frontmatter_error_detail" not in body
             assert "</span>bead" not in body["html"]
             assert "tide-k7m2" in body["html"]
 
             # The blob's own error stands, though the text sent parses.
-            await _render(client, b"broken.md", "---\ntitle: Fine\n---\n\nBody.\n")
+            broken = await _render(client, b"broken.md", "---\ntitle: Fine\n---\n\nBody.\n")
             assert seen["frontmatter"] is None
-            error = seen["frontmatter_error"]
-            assert isinstance(error, str) and error.startswith("Error parsing YAML metadata:")
+            assert seen["frontmatter_error"] == frontmatter_yaml.FRONTMATTER_ERROR_MESSAGE
+            assert broken["frontmatter_error_detail"].startswith("Error parsing YAML metadata:")
 
             # And a blob without front matter has none, though the text sent does.
             await _render(client, b"plain.md", "---\ntitle: Sent\n---\n\n# Plain\n")
@@ -772,7 +774,8 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
                 assert (body["type"], body["kind"]) == ("text", "markdown")
                 assert body["content"].startswith("---\n" + OVER_BUDGET)
                 assert "frontmatter" not in body
-                assert "without its YAML aliases" in body["frontmatter_error"]
+                assert body["frontmatter_error"] == "The frontmatter could not be read."
+                assert "without its YAML aliases" in body["frontmatter_error_detail"]
                 assert plain.json()["frontmatter"] == {"title": "Plain"}
 
                 seen.clear()
@@ -782,7 +785,8 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
                 assert rendered.status_code == 200, shape
                 assert "lol" not in rendered.json()["html"]
                 assert seen["frontmatter"] is None
-                assert "without its YAML aliases" in seen["frontmatter_error"]
+                assert seen["frontmatter_error"] == "The frontmatter could not be read."
+                assert "without its YAML aliases" in rendered.json()["frontmatter_error_detail"]
 
             odd = (await client.get("/api/file", params={"path": _wire(b"odd.md")})).json()
             assert "frontmatter_error" not in odd
@@ -794,7 +798,7 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
                 path = _wire(f"fails-{case}.md".encode())
                 failed = await client.get("/api/file", params={"path": path})
                 assert failed.status_code == 200, case
-                assert failed.json()["frontmatter_error"].startswith(
+                assert failed.json()["frontmatter_error_detail"].startswith(
                     f"Error parsing YAML metadata: {reason}"
                 ), case
 

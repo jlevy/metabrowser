@@ -85,7 +85,8 @@ def test_a_pinned_database_past_the_cap_is_not_copied(
     [(kind, info)] = _ask(store, commit, [APP])
     assert kind == "sqlite"
     assert info["error"]["state"] == "unreadable"
-    assert "larger than the 1,024 bytes" in info["error"]["message"]
+    assert info["error"]["message"] == "This database is too large to read here."
+    assert "larger than the 1,024 bytes" in info["error"]["detail"]
 
 
 @needs_git

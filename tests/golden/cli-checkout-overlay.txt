@@ -502,8 +502,10 @@ api: /api/plugin/diff/comparison?left=3fe5d55744d3e20e0fdcb2a6c7e774b6d48ea19f&r
 status: 404
 {
   "error": "diff_comparison",
-  "message": "this store's history is too shallow to know what these two commits share (base_uncertain)",
-  "path": ""
+  "message": "This copy of the repository has too little history to compare these commits.",
+  "path": "",
+  "detail": "this store's history is too shallow to know what these two commits share (base_uncertain)",
+  "code": "base_uncertain"
 }
 --- stderr ---
 selection: pull_request
@@ -520,8 +522,10 @@ api: /api/plugin/diff/comparison?revision=7793d124d206a7532c17b11dbdce90bd0820a2
 status: 404
 {
   "error": "diff_comparison",
-  "message": "this commit's parent is beyond the shallow history here, so what it changed cannot be shown (parent_unavailable); more history would settle it",
-  "path": "7793d124d206a7532c17b11dbdce90bd0820a2f6"
+  "message": "This commit's parent is not in this copy of the repository, so its changes cannot be shown.",
+  "path": "7793d124d206a7532c17b11dbdce90bd0820a2f6",
+  "detail": "this commit's parent is beyond the shallow history here, so what it changed cannot be shown (parent_unavailable); more history would settle it",
+  "code": "parent_unavailable"
 }
 --- stderr ---
 selection: pull_request

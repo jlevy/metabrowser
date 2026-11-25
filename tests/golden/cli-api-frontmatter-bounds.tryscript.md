@@ -18,7 +18,8 @@ millions of values, so the loader measures the composed document and then builds
 itself, and refuses front matter that, written out without its aliases, is larger than
 `FRONTMATTER_MAX_EXPANDED_SIZE` characters, and an alias inside the value it names.
 A refused front matter is not metadata: the file still answers as text, with
-`frontmatter_error` saying why, and its rendered document carries the same reason.
+`frontmatter_error` the sentence a page shows and `frontmatter_error_detail` saying why,
+and its rendered document shows the same sentence.
 
 This transcript runs a served folder.
 The compressed reader and a pinned revision share the loader and have their own fence
@@ -34,7 +35,8 @@ its constructor refuses; `shared.md`, an anchor used twice within the bound; and
 
 ## Test: an alias bomb answers as text with the reason
 
-The answer has the file’s text and kind, no `frontmatter`, and the reason.
+The answer has the file’s text and kind, no `frontmatter`, the page’s sentence, and the
+reason.
 
 ```console
 $ metab docs --api '/api/file?path=bomb.md' > bomb.txt
@@ -42,19 +44,21 @@ $ metab docs --api '/api/file?path=bomb.md' > bomb.txt
 ```
 
 ```console
-$ grep -E '^  "(type|kind|frontmatter|frontmatter_error)":' bomb.txt
+$ grep -E '^  "(type|kind|frontmatter|frontmatter_error|frontmatter_error_detail)":' bomb.txt
   "type": "text",
   "kind": "markdown",
-  "frontmatter_error": "Front matter not parsed: written out without its YAML aliases it is larger than 1,048,576 characters"
+  "frontmatter_error": "The frontmatter could not be read.",
+  "frontmatter_error_detail": "Front matter not parsed: written out without its YAML aliases it is larger than 1,048,576 characters"
 ? 0
 ```
 
 ## Test: under the untrusted profile the document renders with the reason
 
-The inert render shows the body and names the refusal in its diagnostics.
-KPress’s Frontmatter error notice leaves the inert HTML, whose allowlist would keep only
-its words, and the page draws the notice from the diagnostic where the Frontmatter
-disclosure would be (`cli-ui-markdown-frontmatter-error.tryscript.md`).
+The inert render shows the body and names the refusal in its diagnostics; the answer
+carries the reason. KPress’s Frontmatter error notice leaves the inert HTML, whose
+allowlist would keep only its words, and the page draws the notice from the diagnostic
+where the Frontmatter disclosure would be
+(`cli-ui-markdown-frontmatter-error.tryscript.md`).
 
 ```console
 $ metab docs --untrusted --api '/api/kpress/render?path=bomb.md&view=document' > render.txt
@@ -62,11 +66,12 @@ $ metab docs --untrusted --api '/api/kpress/render?path=bomb.md&view=document' >
 ```
 
 ```console
-$ grep -E '^  "(type|inert)":|^      "(type|message)":' render.txt
+$ grep -E '^  "(type|inert|frontmatter_error_detail)":|^      "(type|message)":' render.txt
   "type": "kpress-rendered-document",
       "type": "frontmatter_error",
-      "message": "Front matter not parsed: written out without its YAML aliases it is larger than 1,048,576 characters",
+      "message": "The frontmatter could not be read.",
   "inert": true,
+  "frontmatter_error_detail": "Front matter not parsed: written out without its YAML aliases it is larger than 1,048,576 characters",
 ? 0
 ```
 
@@ -89,7 +94,8 @@ $ metab docs --api '/api/file?path=merge.md' > merge.txt
 
 ```console
 $ grep -E '^  "frontmatter' merge.txt
-  "frontmatter_error": "Front matter not parsed: written out without its YAML aliases it is larger than 1,048,576 characters"
+  "frontmatter_error": "The frontmatter could not be read.",
+  "frontmatter_error_detail": "Front matter not parsed: written out without its YAML aliases it is larger than 1,048,576 characters"
 ? 0
 ```
 
@@ -100,7 +106,8 @@ $ metab docs --api '/api/file?path=duplicate.md' > duplicate.txt
 
 ```console
 $ grep -E '^  "frontmatter' duplicate.txt
-  "frontmatter_error": "Front matter not parsed: written out without its YAML aliases it is larger than 1,048,576 characters"
+  "frontmatter_error": "The frontmatter could not be read.",
+  "frontmatter_error_detail": "Front matter not parsed: written out without its YAML aliases it is larger than 1,048,576 characters"
 ? 0
 ```
 
@@ -112,9 +119,10 @@ $ metab docs --api '/api/file?path=badtag.md' > badtag.txt
 ```
 
 ```console
-$ grep -E '^  "(type|frontmatter|frontmatter_error)":' badtag.txt
+$ grep -E '^  "(type|frontmatter|frontmatter_error|frontmatter_error_detail)":' badtag.txt
   "type": "text",
-  "frontmatter_error": "Error parsing YAML metadata: line 1: not a valid !!bool"
+  "frontmatter_error": "The frontmatter could not be read.",
+  "frontmatter_error_detail": "Error parsing YAML metadata: line 1: not a valid !!bool"
 ? 0
 ```
 
@@ -127,7 +135,8 @@ $ metab docs --api '/api/file?path=loop.md' > loop.txt
 
 ```console
 $ grep -E '^  "frontmatter' loop.txt
-  "frontmatter_error": "Front matter not parsed: a YAML alias refers to a value that contains it"
+  "frontmatter_error": "The frontmatter could not be read.",
+  "frontmatter_error_detail": "Front matter not parsed: a YAML alias refers to a value that contains it"
 ? 0
 ```
 

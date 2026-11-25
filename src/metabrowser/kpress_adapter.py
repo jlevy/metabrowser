@@ -123,6 +123,14 @@ class KPressAssetNotFoundError(FileNotFoundError):
     """Raised when a KPress package asset path is missing or unsafe."""
 
 
+# The `error` of a `kpress_render_error` answer, on a folder and a pin alike: what the
+# Document view says (docs/design-system-messages.md). The route's `detail`, `max_size`,
+# and `diagnostics` say which bound or which part of the request it was.
+RENDER_FAILED_MESSAGE: Final = "This document could not be rendered."
+RENDER_TOO_LARGE_MESSAGE: Final = "This document is too large to render."
+RENDER_TEXT_ONLY_MESSAGE: Final = "Only a text file can be rendered as a document."
+
+
 __all__ = [
     "KPressAssetNotFoundError",
     "KPressInvalidRequestError",
@@ -410,10 +418,10 @@ def export_kpress_document(request: KPressExportRequest) -> dict[str, object]:
 # of the prose, where nothing the document wrote can be: titles in it are escaped.
 _KPRESS_PROSE = '<div class="kpress-prose'
 _KPRESS_TOC = re.compile(r"<button\b[^>]*\bdata-kpress-toc-toggle\b.*?</nav>", re.DOTALL)
-# KPress's front-matter error notice, ahead of the layout: the reason the server handed it,
-# escaped. The allowlist drops its box and keeps its title and reason, run together with
-# no space between them ahead of the prose, so the page draws the notice from the render's
-# `frontmatter_error` diagnostic instead (builtin_plugins/markdown/inert-render.js).
+# KPress's front-matter error notice, ahead of the layout: the sentence the server handed
+# it, escaped. The allowlist drops its box and keeps its title and sentence, run together
+# with no space between them ahead of the prose, so the page draws the notice from the
+# render's `frontmatter_error` diagnostic instead (builtin_plugins/markdown/inert-render.js).
 _KPRESS_FRONTMATTER_ERROR = re.compile(
     r'<aside class="kpress-frontmatter-error"[^>]*>.*?</aside>', re.DOTALL
 )

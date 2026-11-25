@@ -138,7 +138,7 @@ def test_kpress_render_invalid_request_maps_to_400(tmp_path: Path, monkeypatch) 
     assert response.status_code == 400
     payload = _json_body(response)
     assert payload["type"] == "kpress_render_error"
-    assert payload["error"] == "Invalid KPress render request"
+    assert payload["error"] == "This document could not be rendered."
     assert "Unsupported KPress print profile" in payload["detail"]
     assert payload["diagnostics"] == ["Unsupported KPress print profile 'bogus'"]
 
@@ -183,7 +183,8 @@ def test_kpress_render_rejects_oversized_transformed_source(tmp_path: Path) -> N
     )
 
     assert response.status_code == 413
-    assert response.json()["error"] == "Transformed source exceeds safety limits"
+    assert response.json()["error"] == "This document is too large to render."
+    assert response.json()["detail"] == "Transformed source exceeds safety limits"
 
 
 def test_kpress_render_rejects_invalid_transformed_source_fields(tmp_path: Path) -> None:
@@ -208,12 +209,13 @@ def test_kpress_render_rejects_invalid_transformed_source_fields(tmp_path: Path)
     )
 
     assert invalid_profile.status_code == 400
-    assert invalid_profile.json()["error"] == "Invalid render body fields"
+    assert invalid_profile.json()["error"] == "This document could not be rendered."
+    assert invalid_profile.json()["detail"] == "Invalid render body fields"
     # A falsy non-string profile is malformed, as it is for export, rather than
     # silently selecting the default profile.
     assert [response.status_code for response in falsy_profiles] == [400, 400]
     assert invalid_encoding.status_code == 400
-    assert invalid_encoding.json()["error"] == "Invalid transformed source encoding"
+    assert invalid_encoding.json()["detail"].startswith("Invalid transformed source encoding")
 
 
 def test_kpress_render_route_delegates_file_context(tmp_path: Path, monkeypatch) -> None:

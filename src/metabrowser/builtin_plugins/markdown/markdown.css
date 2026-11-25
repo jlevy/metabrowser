@@ -147,16 +147,6 @@
   }
 }
 
-/* A Frontmatter error notice's reason is the YAML parser's message: what failed, then
-   the line it quotes with a caret under the column. Its lines are kept, in the code
-   face, so the caret stands under the column it names. */
-.metabrowser-kpress-host .kpress-frontmatter-error > span {
-  display: block;
-  font-family: var(--kpress-font-mono, ui-monospace, monospace);
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
 /* A document whose render the server refused shows its source under one notice saying
    why (render-refusal.js); the notice sits above the source as a render error would. */
 .metabrowser-render-refused {
