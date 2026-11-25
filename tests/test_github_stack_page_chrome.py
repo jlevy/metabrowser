@@ -222,6 +222,6 @@ def test_the_stack_page_lays_out_as_a_pull_request_page_in_chrome(
 def test_the_stack_page_says_what_changed_and_its_button_draws_it_in_chrome(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
-    run = run_measurement(tmp_path, chrome_profile, mode=[], session=NOTICE, moves=True)
+    run = run_measurement(tmp_path, chrome_profile, session=NOTICE, moves=True)
     passed = re.fullmatch(r"stack page notice in Chrome: (\d+) checks passed\n", run.stdout)
     assert passed is not None and int(passed.group(1)) > 0, run.stdout
