@@ -5,7 +5,8 @@ title: "Address review A on #722 (rollup layer)"
 kind: task
 status: closed
 priority: 2
-version: 10
+version: 11
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -21,7 +22,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-23T03:21:09.184Z
-updated_at: 2026-11-23T05:31:23.751Z
+updated_at: 2026-11-25T02:16:20.156Z
 started_at: 2026-11-23T03:22:01.557Z
 closed_at: 2026-11-23T05:31:23.746Z
 close_reason: every finding of review A has a disposition, posted on the PR at the pushed head

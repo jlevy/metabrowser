@@ -5,7 +5,8 @@ title: "Treemap: file cells lose their top border along the top edge of a packed
 kind: bug
 status: closed
 priority: 2
-version: 3
+version: 4
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/752
@@ -14,7 +15,7 @@ labels: []
 dependencies: []
 parent_id: is-01m82yzrw40w07dnw6zhsg8jep
 created_at: 2026-11-23T15:16:13.594Z
-updated_at: 2026-11-23T15:51:23.656Z
+updated_at: 2026-11-25T02:16:20.156Z
 closed_at: 2026-11-23T15:51:23.646Z
 close_reason: "First-row and first-column cells draw their edge, checked in the paint session and on this repository's live canvas. In #752."
 resolution: null

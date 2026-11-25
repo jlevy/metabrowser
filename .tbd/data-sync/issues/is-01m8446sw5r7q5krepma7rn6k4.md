@@ -5,12 +5,13 @@ title: "Review layer 4: treemap canvas (PR 752)"
 kind: task
 status: closed
 priority: 2
-version: 2
+version: 3
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 labels: []
 dependencies: []
 parent_id: is-01m82yzrw40w07dnw6zhsg8jep
 created_at: 2026-11-23T11:56:04.846Z
-updated_at: 2026-11-23T11:56:16.705Z
+updated_at: 2026-11-25T02:16:20.156Z
 closed_at: 2026-11-23T11:56:16.703Z
 close_reason: Findings fixed in 474b7b0ea on PR 752; the family-hover cost is measured under mb-72rg.
 resolution: null

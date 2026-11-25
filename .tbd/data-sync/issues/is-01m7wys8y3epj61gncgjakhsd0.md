@@ -3,9 +3,9 @@ type: is
 id: is-01m7wys8y3epj61gncgjakhsd0
 title: Pulls tab, pull request page, and commit page
 kind: epic
-status: open
+status: in_progress
 priority: 2
-version: 47
+version: 48
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/506
@@ -109,7 +109,7 @@ child_order_hints:
   - is-01m8857tz3aba496s56jqscpz8
   - is-01m8857xyfxsj228ngzhzzkavc
 created_at: 2026-11-20T17:06:37.632Z
-updated_at: 2026-11-25T01:31:08.094Z
+updated_at: 2026-11-25T02:16:49.837Z
 extensions:
   linear:
     id: 4ac6525a-dabe-49c8-aad1-d542e247da5a

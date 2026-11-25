@@ -5,12 +5,13 @@ title: "Treemap WebKit gate case: set PAINT_MAX_CELLS from WKWebView"
 kind: task
 status: closed
 priority: 2
-version: 3
+version: 4
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 labels: []
 dependencies: []
 parent_id: is-01m82yzrw40w07dnw6zhsg8jep
 created_at: 2026-11-23T08:22:57.463Z
-updated_at: 2026-11-23T14:37:23.862Z
+updated_at: 2026-11-25T02:16:20.156Z
 closed_at: 2026-11-23T14:37:23.855Z
 close_reason: "The WebKit gate case treemap-100k landed in #754. Layout was within 1.3x of Chrome at every cap, so PAINT_MAX_CELLS stays at 25,000. With palette keys kept per extension, the hover passed. Details are in the QA addendum."
 resolution: null

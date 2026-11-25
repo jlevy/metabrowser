@@ -3,9 +3,10 @@ type: is
 id: is-01m832rz5kkqdjm64fftcyjsb7
 title: "Treemap: extract the map component, fix edge containment, nest deeper"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 5
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/723
@@ -17,7 +18,11 @@ parent_id: is-01m82yzrw40w07dnw6zhsg8jep
 hold: null
 hold_until: null
 created_at: 2026-11-23T02:11:48.526Z
-updated_at: 2026-11-23T02:52:13.446Z
+updated_at: 2026-11-25T02:16:20.156Z
 started_at: 2026-11-23T02:12:07.170Z
+closed_at: 2026-11-25T02:10:38.507Z
+close_reason: "Landed in #723 (treemap stack layer 2), merged to main."
+resolution: null
+duplicate_of: null
 ---
 Extract treemap-map.js from treemap.js; lay out to the padding box so edge cells sit inside the border; nest as deep as cells have room, framing folders too small for a label; spread the cell budget by area; request the rollup's maximum depth and width (export ROLLUP_MAX_DEPTH and ROLLUP_MAX_TOP to the browser). Stack layer 2.

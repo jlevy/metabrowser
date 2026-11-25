@@ -3,9 +3,9 @@ type: is
 id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 title: "General diff rendering: source-agnostic comparison model, renderer, and adapters"
 kind: epic
-status: open
+status: in_progress
 priority: 2
-version: 66
+version: 67
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -71,7 +71,7 @@ child_order_hints:
   - is-01m85cqzk2aa0xjsg7j6jzqrms
   - is-01m85g2mmqswsg6ph8txz0fg44
 created_at: 2026-07-18T01:38:43.961Z
-updated_at: 2026-11-24T00:42:45.766Z
+updated_at: 2026-11-25T02:17:03.921Z
 extensions:
   linear:
     id: 0390e452-459b-479d-8bc2-d469e35c1dd5

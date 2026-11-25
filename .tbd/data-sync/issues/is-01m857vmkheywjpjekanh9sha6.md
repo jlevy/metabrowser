@@ -5,7 +5,8 @@ title: "Treemap icons: one rule for every cell size, scaled down, painted on the
 kind: bug
 status: closed
 priority: 2
-version: 4
+version: 5
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/764
@@ -17,7 +18,7 @@ parent_id: is-01m82yzrw40w07dnw6zhsg8jep
 hold: null
 hold_until: null
 created_at: 2026-11-23T22:19:07.756Z
-updated_at: 2026-11-23T22:34:09.903Z
+updated_at: 2026-11-25T02:16:20.156Z
 started_at: 2026-11-23T22:19:20.925Z
 closed_at: 2026-11-23T22:34:09.899Z
 close_reason: "Done in PR #764 (layer 8 of stack #725)"

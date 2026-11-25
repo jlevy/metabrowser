@@ -3,9 +3,9 @@ type: is
 id: is-01m85d2hj4x5fmcx1vdke1637w
 title: "Address PR #768 review A: free-space bound on first clones"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 10
+version: 11
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -22,7 +22,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-23T23:50:16.900Z
-updated_at: 2026-11-23T23:50:49.018Z
+updated_at: 2026-11-25T02:15:38.312Z
 started_at: 2026-11-23T23:50:49.018Z
+closed_at: 2026-11-25T02:15:38.309Z
+close_reason: "#768 merged to main 2026-11-24 with review A addressed; its recorded findings are closed and A1 continues as mb-c2pc."
+resolution: null
+duplicate_of: null
 ---
 Address review A (senior, round 1) of https://github.com/jlevy/metabrowser/pull/768: https://github.com/jlevy/metabrowser/pull/768#pullrequestreview-6031209981. Findings A1-A11; review B (https://github.com/jlevy/metabrowser/pull/768#pullrequestreview-6031333210) has no findings.

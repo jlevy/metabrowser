@@ -5,7 +5,8 @@ title: "Treemap: measure how headers and frames distort area comparisons across 
 kind: task
 status: closed
 priority: 2
-version: 7
+version: 8
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/763
@@ -17,7 +18,7 @@ parent_id: is-01m82yzrw40w07dnw6zhsg8jep
 hold: null
 hold_until: null
 created_at: 2026-11-23T15:16:14.394Z
-updated_at: 2026-11-23T18:01:51.932Z
+updated_at: 2026-11-25T02:16:20.156Z
 started_at: 2026-11-23T16:59:33.226Z
 closed_at: 2026-11-23T18:01:51.927Z
 close_reason: "Layer 7 PR #763: folders sized for header and frame; measured and verified in Chrome"

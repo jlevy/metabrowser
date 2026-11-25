@@ -5,7 +5,7 @@ title: "Design system: icon catalog, shared view header, and visual consistency"
 kind: epic
 status: open
 priority: 2
-version: 38
+version: 39
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/489
@@ -102,8 +102,9 @@ child_order_hints:
   - is-01m7p9wxbnv6essbhr1rask8ve
   - is-01m7tdygg4z9pkdpff2h98jrgw
   - is-01m7rfjvq8xafvwfrw85ex2mwj
+  - is-01m85jfacd6d3bg6d57znqgacj
 created_at: 2026-11-20T17:06:43.967Z
-updated_at: 2026-11-20T19:16:52.890Z
+updated_at: 2026-11-25T02:18:39.064Z
 extensions:
   linear:
     id: 011c03c5-06d7-4b08-aaf2-fe9aa920e54d

@@ -5,7 +5,8 @@ title: Treemap hover keeps cell edges dark and unchanged, lifts a folder's heade
 kind: feature
 status: closed
 priority: 2
-version: 3
+version: 4
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m82yzrw40w07dnw6zhsg8jep
 hold: null
 hold_until: null
 created_at: 2026-11-23T22:21:18.350Z
-updated_at: 2026-11-24T00:47:55.528Z
+updated_at: 2026-11-25T02:16:20.156Z
 started_at: 2026-11-23T22:21:24.715Z
 closed_at: 2026-11-24T00:47:55.526Z
 close_reason: Merged in the treemap stack (#722–#769) into main at 7c42f45

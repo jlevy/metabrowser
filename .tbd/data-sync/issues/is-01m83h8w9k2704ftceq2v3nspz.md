@@ -5,7 +5,8 @@ title: "Overview compact treemap: an outer box for the folder that opens the Tre
 kind: feature
 status: closed
 priority: 2
-version: 3
+version: 4
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m82yzrw40w07dnw6zhsg8jep
 hold: null
 hold_until: null
 created_at: 2026-11-23T06:25:09.937Z
-updated_at: 2026-11-23T06:28:05.511Z
+updated_at: 2026-11-25T02:16:20.156Z
 started_at: 2026-11-23T06:25:22.269Z
 closed_at: 2026-11-23T06:28:05.505Z
 close_reason: "fixed in 658657751: the compact map's folder is an outer box that opens the Treemap view at the folder; compact session step and golden"

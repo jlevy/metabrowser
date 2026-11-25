@@ -3,9 +3,9 @@ type: is
 id: is-01m78ftefp9ks9100ebsm7sm29
 title: Plugin sources and out-of-process plugin environments
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 22
+version: 23
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
 labels:
   - linear
@@ -29,7 +29,7 @@ child_order_hints:
   - is-01m78fwdh6mt5frdg94thadjkh
   - is-01m78gmwnk00rz776w8w8k7g9j
 created_at: 2026-11-12T18:20:18.805Z
-updated_at: 2026-11-20T19:16:39.798Z
+updated_at: 2026-11-25T02:17:14.359Z
 extensions:
   linear:
     id: 2c899caa-16c3-454c-acd8-d66b8a42baf7

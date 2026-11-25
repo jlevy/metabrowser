@@ -3,9 +3,9 @@ type: is
 id: is-01m7wyrvxk2xx44pqtqmy5cq5g
 title: "Source and checkout kinds: one mode and one icon for a cloud mirror, a Git checkout, and a plain folder"
 kind: epic
-status: in_progress
+status: open
 priority: 1
-version: 14
+version: 15
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/667
@@ -28,7 +28,7 @@ child_order_hints:
   - is-01m7zt8s6hyeah3vfpm02rb6zf
   - is-01m7zt8tjfje20937mytx38qr8
 created_at: 2026-11-20T17:06:24.306Z
-updated_at: 2026-11-21T19:56:50.043Z
+updated_at: 2026-11-25T02:17:58.685Z
 extensions:
   linear:
     id: 74de802a-b5dd-4672-8169-c0ba864abbc5

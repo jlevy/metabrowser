@@ -5,7 +5,8 @@ title: "File Overview: put the type legend in a right column on wide screens"
 kind: feature
 status: closed
 priority: 2
-version: 6
+version: 7
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/757
@@ -17,7 +18,7 @@ parent_id: is-01m82yzrw40w07dnw6zhsg8jep
 hold: null
 hold_until: null
 created_at: 2026-11-23T15:17:56.275Z
-updated_at: 2026-11-23T18:01:51.257Z
+updated_at: 2026-11-25T02:16:20.156Z
 started_at: 2026-11-23T15:52:28.899Z
 closed_at: 2026-11-23T16:09:41.090Z
 close_reason: "The legend is a rail on the TOC's track in the wide band, and unchanged in narrower bands. Measured in Chrome and pinned in the README TOC session. In #757."

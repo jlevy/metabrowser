@@ -3,9 +3,9 @@ type: is
 id: is-01m7wysgm9rg3fdch55nst1wrn
 title: "CI speed: finish the Fast CI plan and verify its phases"
 kind: epic
-status: in_progress
+status: open
 priority: 2
-version: 21
+version: 22
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 refs:
   - kind: pr
@@ -56,7 +56,7 @@ child_order_hints:
   - is-01m7pq9dk5hbfvrq38zv4v53zb
   - is-01m82c8bd5hw5cyz98wty5qm63
 created_at: 2026-11-20T17:06:45.512Z
-updated_at: 2026-11-22T23:30:43.004Z
+updated_at: 2026-11-25T02:17:40.320Z
 extensions:
   linear:
     id: 1ece55fe-0ac1-49d4-bf60-5ea298d7306c

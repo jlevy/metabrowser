@@ -5,12 +5,13 @@ title: "Treemap: a file's name sits under its icon; sizes only when whole"
 kind: feature
 status: closed
 priority: 2
-version: 2
+version: 3
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 labels: []
 dependencies: []
 parent_id: is-01m82yzrw40w07dnw6zhsg8jep
 created_at: 2026-11-23T23:31:31.709Z
-updated_at: 2026-11-24T02:15:49.023Z
+updated_at: 2026-11-25T02:16:20.156Z
 closed_at: 2026-11-24T02:15:49.022Z
 close_reason: "Merged in #772 (stack merge 8810591)"
 resolution: null

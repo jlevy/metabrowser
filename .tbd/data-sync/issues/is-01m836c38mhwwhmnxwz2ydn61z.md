@@ -5,7 +5,7 @@ title: "Annotated collections: one format for Guided PR guides, reading lists, d
 kind: epic
 status: in_progress
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
 refs:
   - kind: pr
@@ -30,8 +30,9 @@ child_order_hints:
   - is-01m836c4t77h19q6q9wdh833zk
   - is-01m836c59zjyn3p0p4azezrhh3
   - is-01m836c5sjm5382s2wc93p852s
+  - is-01m7xccaqxzj6bv9wfmk549dnw
 created_at: 2026-11-23T03:14:41.041Z
-updated_at: 2026-11-23T03:51:30.951Z
+updated_at: 2026-11-25T02:19:10.375Z
 extensions:
   linear:
     id: e6d16b1a-6932-46d8-ab79-79487c4851c8

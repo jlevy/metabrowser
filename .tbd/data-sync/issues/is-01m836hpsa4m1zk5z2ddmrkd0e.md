@@ -5,7 +5,8 @@ title: "Treemap: tiny cells render past their parents (CSS padding and border fl
 kind: bug
 status: closed
 priority: 1
-version: 3
+version: 4
+spec_path: docs/project/specs/active/plan-2026-11-22-treemap-canvas-granularity.md
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m82yzrw40w07dnw6zhsg8jep
 hold: null
 hold_until: null
 created_at: 2026-11-23T03:17:44.820Z
-updated_at: 2026-11-23T05:31:37.629Z
+updated_at: 2026-11-25T02:16:20.156Z
 started_at: 2026-11-23T03:18:19.655Z
 closed_at: 2026-11-23T05:31:37.615Z
 close_reason: "fixed in 01cfb5aab and 538eead8a: inset edge and no padding on bare cells, compact padding on labelled cells only; test_treemap_containment_chrome reads both maps (0 escapes)"
