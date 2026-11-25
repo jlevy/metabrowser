@@ -168,6 +168,12 @@ async function startChrome(bin, profiles, width, height, boundMs) {
       "--remote-debugging-port=0",
       "--no-first-run",
       "--no-default-browser-check",
+      // A new profile installs Google Chrome's default apps from two CRX files, which it
+      // copies into the system temporary directory a few seconds after it starts and
+      // leaves there, stopped by SIGTERM or SIGKILL alike: 401 KiB a session. That
+      // directory held 2,958 of them, 576 MiB, on 2026-11-24. A test in
+      // tests/test_chrome_starts.py holds this.
+      "--disable-default-apps",
       "--force-device-scale-factor=1",
       `--window-size=${width},${height}`,
       `--user-data-dir=${profile}`,

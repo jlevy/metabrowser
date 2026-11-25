@@ -76,7 +76,9 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 [End-to-End Testing](e2e-testing.md) covers the test layers, the four parts of
 `make test` and the markers that choose them, the outer tiers (`make test-admitted-git`,
 `make test-macos`, and `make test-live-github`), the skips each tier allows, and
-`make test-report`, `make ci-report`, and `make shard-weights`.
+`make test-report`, `make ci-report`, and `make shard-weights`. Its
+[Transient Output](e2e-testing.md#transient-output) says where a run’s temporary files
+live and when they are removed.
 `tests/golden/cli-check-api.tryscript.md` pins a normalized transcript of the
 `--check-api` sequence against a small fixture.
 

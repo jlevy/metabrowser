@@ -17,7 +17,14 @@ import pytest
 
 import metabrowser.builtin_plugins.agents.adapters  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
-from tests import chrome_starts, suite_gates, suite_tiers, suite_timing, suite_workers
+from tests import (
+    chrome_starts,
+    suite_gates,
+    suite_tiers,
+    suite_timing,
+    suite_workers,
+    transient_output,
+)
 from tests.file_ages_git import (  # noqa: F401
     file_ages_git,  # pyright: ignore[reportUnusedImport]
     fixed_file_ages_git,  # pyright: ignore[reportUnusedImport]
@@ -293,24 +300,49 @@ def pytest_runtestloop(session: pytest.Session) -> Generator[None, object, objec
     return (yield)
 
 
-def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
-    """Say which tests would have run gh, so a new one is noticed, and how the run's
-    Chrome starts went (``tests/chrome_starts.py``)."""
+_SUMMARY_LINES = pytest.StashKey[list[str]]()
 
-    basetemp = terminalreporter.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    """Read what the terminal summary reports from the run's base directory, and release
+    the locks of sessions whose process has gone (``tests/transient_output.py``).
+
+    First, because pytest's own ``pytest_sessionfinish`` then removes a passing run's base
+    directory (``tmp_path_retention_policy``) and prunes older sessions' directories, and
+    the terminal summary is written only after that. A base directory given with
+    ``--basetemp``, as pytest-xdist gives each worker its own, is not pytest's to prune.
+    """
+
+    config = session.config
+    basetemp = config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
+    config.stash[_SUMMARY_LINES] = [*_gh_guard_lines(basetemp), *chrome_starts.summary(basetemp)]
+    if config.option.basetemp is None:
+        transient_output.release_dead_locks(basetemp.parent)
+
+
+def _gh_guard_lines(basetemp: Path) -> list[str]:
     # pytest also links ``no-real-ghcurrent`` to the numbered directory; read each once.
     # Under pytest-xdist each worker's base is ``popen-gw<N>`` in this one, with its own
     # stand-in and log, and the summary this process prints reads them all.
     patterns = ("no-real-gh*/calls.log", "popen-gw*/no-real-gh*/calls.log")
     logs = {log.resolve() for pattern in patterns for log in basetemp.glob(pattern)}
     calls = [line for log in sorted(logs) for line in log.read_text(encoding="utf-8").splitlines()]
-    if calls:
-        tests = sorted({line.split("\t", 1)[0].rsplit(" ", 1)[0] for line in calls})
-        terminalreporter.write_line(
-            f"gh guard: {len(calls)} gh call(s) reached the failing stand-in, "
-            f"from {len(tests)} test(s): " + ", ".join(tests)
-        )
-    for line in chrome_starts.summary(basetemp):
+    if not calls:
+        return []
+    tests = sorted({line.split("\t", 1)[0].rsplit(" ", 1)[0] for line in calls})
+    return [
+        f"gh guard: {len(calls)} gh call(s) reached the failing stand-in, "
+        f"from {len(tests)} test(s): " + ", ".join(tests)
+    ]
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """Say which tests would have run gh, so a new one is noticed, and how the run's
+    Chrome starts went (``tests/chrome_starts.py``), as ``pytest_sessionfinish`` read
+    them."""
+
+    for line in terminalreporter.config.stash.get(_SUMMARY_LINES, []):
         terminalreporter.write_line(line)
 
 

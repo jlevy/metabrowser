@@ -207,6 +207,29 @@ when jq is missing and names the directories it searched;
 `METABROWSER_ALLOW_MISSING_TOOLS` does not reach tryscript.
 No CI step installs jq: the GitHub-hosted Ubuntu runner image provides it.
 
+### Transient Output
+
+A pytest session writes under `pytest-of-$USER/pytest-<N>` in the system temporary
+directory (`$TMPDIR` on macOS), one directory per test and, under pytest-xdist, one
+`popen-gw<N>` per worker.
+`tmp_path_retention_policy = "failed"` in `pyproject.toml` removes a passing test’s
+`tmp_path` as the test ends and a passing session’s whole directory as it ends.
+A failing test’s `tmp_path` stays for debugging, beside the directories that
+session-scoped fixtures made, until pytest prunes the session among the oldest beyond
+`tmp_path_retention_count`. A session killed before it ended leaves its lock, which
+would hold the directory for days; the next session to end releases such a lock once its
+process has gone, so pytest prunes the directory too.
+`tests/transient_output.py` has the measurements, and `tests/test_transient_output.py`
+holds the policy and the pruning.
+
+Nothing in that directory outlives a session to save a later one time: what saves time,
+such as the stand-in GitHub origin (`tests/conftest.py`), is a session-scoped fixture,
+built once per session and removed with it.
+A Chrome test’s profile is a directory of its own in the system temporary directory,
+removed after the test (`tests/process_group.py`), and Chrome starts with
+`--disable-default-apps`, without which a session that ran past a few seconds left two
+CRX files there (`tests/dom/chrome-session.mjs`).
+
 ## Test Tiers
 
 `make test` is the default tier.
