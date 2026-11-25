@@ -8,14 +8,19 @@
   The page follows the stack as a pull request’s page follows its head, and offers a new
   comparison rather than swapping it in while you read; the one you are reading stays
   while a pull request is fetched, and keeps loading after the stack moves.
-  A pull request it could not fetch is named, with a **Retry**. Each stack menu opens it
-  from a first row, **Whole stack**
+  A pull request it could not fetch is named, with a **Retry**; Retry and **Show the new
+  comparison** take number keys, as a pull request’s status line’s controls do.
+  Each stack menu opens it from a first row, **Whole stack**
   ([The Stack Page](docs/project/architecture/arch-github-pull-requests.md#the-stack-page)).
 
 - **Plugin routes:** `GET /api/plugin/github/stack` answers a stack’s members, each with
-  its `author` and `avatar`, the members its top lacks, its comparison’s address, and
-  each file’s layers, and `GET /api/plugin/github/stack-comparison` that comparison as a
-  diff document. `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of
-  `number` and admit the stack’s current pair and its last earlier pairs, which are kept
-  in `sources/<slug>/pulls/stack-<n>.snapshots.json`. Each pending member of the `stack`
+  its `author` and `avatar`, the members its top lacks, its top member’s head branch
+  (`head_ref`), its comparison’s address, and each file’s layers, and
+  `GET /api/plugin/github/stack-comparison` that comparison as a diff document.
+  `pull-rendered-diff` and `pull-image` take `stack=<n>` in place of `number` and admit
+  the stack’s current pair and its last earlier pairs, which are kept in
+  `sources/<slug>/pulls/stack-<n>.snapshots.json`. Each pending member of the `stack`
   answer says whether its fetch was running before its record was read (`fetching`).
+  `GET /api/plugin/github/stacks` names a member the repository’s cached list lacks,
+  such as a merged one, by its cached record, so its `titles`, `authors`, and `avatars`
+  name it as the stack’s page does.

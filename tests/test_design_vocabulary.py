@@ -1370,19 +1370,10 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
         assert f'class: "{row} page-header-line"' in page, row
     assert 'class: "github-pull-labels"' in page, "the labels row is a row of chips"
     # A native stack's page is a pull request's header for the whole stack ("The Stack
-    # Page"): the same header and lines, every line under the title but its members, the
-    # stack menu's member rows in a card, at the menu's size, which
-    # tests/dom/github-stack-page-chrome.mjs measures against the menu's.
-    stack = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-page.js").read_text(encoding="utf-8")
-    assert 'class: "github-pull-header page-header page-reading-column"' in stack
-    for row in (
-        "github-pull-branches",
-        "github-pull-status",
-        "github-pull-size",
-        "github-pull-summary metabrowser-diff-host",
-    ):
-        assert f'class: "{row} page-header-line' in stack, row
-    assert 'class: "github-pull-stack-members",' in stack, "the members are a card of rows"
+    # Page"): it builds its header and the lines it shares with a pull request's page with
+    # the pull request page's builders (`pageHeaderParts` and its neighbours in
+    # pull-page.js), and its members with the stack menu's (`stackMemberRow`), so nothing
+    # here restates their classes.
 
 
 def test_a_person_is_one_identity_on_every_page() -> None:
@@ -2688,7 +2679,6 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     member_row = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-member-row.js").read_text(
         encoding="utf-8"
     )
-    assert "stackMemberRow(link, deps.titleNodes, deps.identity)" in page
     assert 'make("span", "github-pull-stack-member-title")' in member_row
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:

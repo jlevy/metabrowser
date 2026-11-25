@@ -1,23 +1,24 @@
 """A native stack's page, in a real Chrome: a pull request's page for the whole stack.
 
 What the stack's page says is browserless, against the stack route's recorded answers: its
-header's rows at first paint and settled, its member rows, and the Diff summary and diff
-drawings it asks for, in ``tests/dom/github-stack-page-session.js`` and
+header's rows at first paint and settled, its member rows, and the diff drawings it asks
+for, in ``tests/dom/github-stack-page-session.js`` and
 ``tests/dom/github-stack-guide-mount-session.js``. What only a browser can tell is held here
-(docs/design-system.md, "The Stack Page"): that nothing on the page moves from its first
-paint, opening the page or its Docs and Changes, while the delayed loading block, on this
-page and on a pull request's, stays where it shows; that the running app gives every member
-its author, merged 8 too, and marks no member current, since none is the page; that the Diff
-summary is closed; that View on GitHub opens the whole stack; that the tabs are a pull
-request's without Files; and that the Pulls tab's Whole stack row is current and in view
-while the page is open and opens it. A member row's layout is not measured: the page draws
-it with the stack menu's builder (`stackMemberRow`), so it is the menu's by construction.
+(docs/design-system.md, "The Stack Page"): that on a stack whose members' records are read,
+nothing on the page moves from its first paint, opening the page or its Docs and Changes,
+while the delayed loading block, on this page and on a pull request's, stays where it
+shows; that the running app gives every member its author, merged 8 too, and marks no
+member current, since none is the page; that the Diff summary is closed; that View on
+GitHub opens the whole stack; that the tabs are a pull request's without Files; and that
+the Pulls tab's Whole stack row is current and in view while the page is open and opens it.
+A stack still being fetched is not measured: its status line says what is being fetched
+and then goes, which moves the lines under it. A member row's layout is not measured either: the page draws it with the stack menu's builder
+(`stackMemberRow`), so it is the menu's by construction.
 
 So this serves a checkout of the GitHub stand-in with a fake ``gh`` whose ``gh stack``
 answers native stacks over the stand-in's pull requests, #70 (8, then 10) and #71 (8, 7,
 then 10, where the top lacks 7), and ``tests/dom/github-stack-page-chrome.mjs`` measures the
-running app. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its screenshots, and
-``METABROWSER_STACK_PAGE_MODE=--before`` takes only those, of a shell before this design.
+running app. ``METABROWSER_STACK_PAGE_SHOTS`` names a directory for its screenshots.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node
@@ -94,7 +95,7 @@ def with_stacks(answers: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_measurement(tmp_path: Path, chrome_profile: Path, *, mode: list[str]) -> GroupRun:
+def run_measurement(tmp_path: Path, chrome_profile: Path) -> GroupRun:
     """Build the stand-in's home with stacks, serve it, and run the measurement."""
 
     chrome = require_chrome()
@@ -142,7 +143,7 @@ def run_measurement(tmp_path: Path, chrome_profile: Path, *, mode: list[str]) ->
         _wait_until_serving(server, port, log)
         shots = os.environ.get("METABROWSER_STACK_PAGE_SHOTS")
         run = run_in_own_group(
-            [node, str(SESSION), f"http://127.0.0.1:{port}", *mode],
+            [node, str(SESSION), f"http://127.0.0.1:{port}"],
             timeout_s=_MEASUREMENT_BUDGET_S,
             env={
                 **os.environ,
@@ -164,9 +165,6 @@ def run_measurement(tmp_path: Path, chrome_profile: Path, *, mode: list[str]) ->
 def test_the_stack_page_is_a_pull_request_page_that_holds_still_in_chrome(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
-    mode = os.environ.get("METABROWSER_STACK_PAGE_MODE")
-    run = run_measurement(tmp_path, chrome_profile, mode=[mode] if mode else [])
-    if mode == "--before":
-        return
+    run = run_measurement(tmp_path, chrome_profile)
     passed = re.fullmatch(r"stack page in Chrome: (\d+) checks passed\n", run.stdout)
     assert passed is not None and int(passed.group(1)) > 0, run.stdout

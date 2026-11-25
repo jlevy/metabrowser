@@ -37,6 +37,10 @@ export function stackLabel(number) {
   return `Stack #${number}`;
 }
 
+/** The words of the row that opens a stack's own page, the stack menu's first row and the
+ * Pulls tab's last under an open stack (docs/design-system.md, "Stacks"). */
+export const WHOLE_STACK = "Whole stack";
+
 /** A member's place in its stack, as GitHub numbers it from the base: "2/4".
  * @param {number} at The member's index in `pulls`, base first.
  * @param {number} length
