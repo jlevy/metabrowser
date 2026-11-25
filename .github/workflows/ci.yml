@@ -34,14 +34,18 @@ concurrency:
 
 env:
   UV_EXCLUDE_NEWER: "14 days"
-  # How long a cache restore waits on a stalled download before it goes on as a miss, in
-  # setup-node, setup-uv, and actions/cache/restore alike (@actions/cache's
-  # getDownloadOptions). The default, 10 minutes, outlasts every job's limit here: one
-  # npm cache restore stalled at 87 % for 7.5 minutes, until its job's limit ended it
-  # (run 44387846150, mb-z4i7). A restore took 0.8 to 3.2 s in 20 setup-node logs of
-  # ci.yml runs drawn at random, and 25 s at the longest in 61 more read for a slow step
-  # (runs 43916652624 to 45539408952); on a miss the step after it fetches what the cache
-  # would have held.
+  # A cache restore's deadline in minutes, in setup-node, setup-uv, and
+  # actions/cache/restore alike (@actions/cache's getDownloadOptions): each 128 MiB segment
+  # of the download must arrive within it, or the restore gives up and the job goes on as
+  # on a miss. It is a wall-clock limit, not a stall detector. Every cache here is one
+  # segment (in run 45545935794 npm's was 111 MB, the admitted Git build's 49 MB, and uv's
+  # 9 MB), so a restore still moving becomes a miss below about 1.85 MB/s for npm. The
+  # default, 10 minutes, outlasts every job's limit here: one npm restore stalled at 87 %
+  # for 7.5 minutes until its job's limit ended it (run 44387846150, mb-z4i7). The slowest
+  # restores that finished took 25 s (npm, in 81 setup-node logs of runs 43916652624 to
+  # 45539408952) and 20 s (the admitted Git build, over runs 43910077901 to 45542298244).
+  # A miss costs the next step's fetch of what the cache held. The Git build is the one
+  # measured: 66 to 109 s in those runs' nine builds, which the admitted-git limit holds.
   SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
 jobs:

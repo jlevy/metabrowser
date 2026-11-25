@@ -64,6 +64,7 @@ And of every workflow file:
   checksum, which puts that uv where setup-uv finds it without fetching anything.
 - every setup-node step comes just after ``INSTALL_NODE`` with its own version, which
   unpacks that Node where setup-node finds it without downloading or copying it.
+  Both rules read the action's name in any case, as GitHub does.
 
 ``devtools/check_supply_chain.py`` holds the ``plan`` job's ``ADMITTED_GITS`` to both
 Git floors and ``publish.yml`` to trusted publishing, and ``tests/test_ci_plan.py``
@@ -719,13 +720,15 @@ def check_workflow(name: str, workflow: Json) -> list[str]:
             given = _mapping(inputs)
             before = job_steps[index - 1].get("run") if index else None
             ran = before.strip() if isinstance(before, str) else None
-            if str(step.get("uses", "")).startswith(SETUP_UV):
+            # GitHub finds an action's owner and repository whatever their case.
+            uses = str(step.get("uses", "")).lower()
+            if uses.startswith(SETUP_UV):
                 wanted = INSTALL_UV.format(
                     version=given.get("version"), checksum=given.get("checksum")
                 )
                 if ran != wanted:
                     errors.append(f"{where} must run `{wanted}` just before setup-uv")
-            if str(step.get("uses", "")).startswith(SETUP_NODE):
+            if uses.startswith(SETUP_NODE):
                 wanted = INSTALL_NODE.format(version=given.get("node-version"))
                 if ran != wanted:
                     errors.append(f"{where} must run `{wanted}` just before setup-node")

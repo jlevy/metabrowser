@@ -310,8 +310,11 @@ more, reviewed on November 17, 2026:
   unpacks it into the runner’s tool cache, so setup-node neither downloads Node nor
   copies it there. setup-node checks no checksum, so the pins are new.
   Reviewed on November 25, 2026: for Node 24.18.0 the script pins release
-  `24.18.0-28070977815`, the one setup-node v6.4.0’s manifest names, published June 24,
-  2026, and each archive’s SHA-256 is the digest GitHub records for that release asset.
+  `24.18.0-28070977815`, published June 24, 2026, and each archive’s SHA-256 is the
+  digest GitHub records for that release asset.
+  setup-node v6.4.0 has no manifest of its own: it reads `versions-manifest.json` from
+  `actions/node-versions` at `main` when it runs, and on that date the manifest named
+  this release for both platforms’ 24.18.0 archives.
   The download had no limit on a slow transfer and the copy went file by file, and each
   stalled for over a minute (mb-z4i7); the script ends a stalled transfer and retries,
   and unpacks in place.

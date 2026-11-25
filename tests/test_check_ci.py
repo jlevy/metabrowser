@@ -663,6 +663,35 @@ def test_every_setup_node_follows_the_install_of_its_own_node(
 
 
 @pytest.mark.parametrize(
+    ("old", "new", "wanted", "action"),
+    [
+        pytest.param(
+            INSTALL_UV_STEP + "\n      - name: Set up uv\n        uses: astral-sh/setup-uv@",
+            "      - name: Set up uv\n        uses: Astral-SH/Setup-UV@",
+            f"bash devtools/install_uv.sh 0.11.26 {LINUX_UV_SHA256}",
+            "setup-uv",
+            id="setup-uv",
+        ),
+        pytest.param(
+            INSTALL_NODE_STEP + "\n      - name: Set up Node\n        uses: actions/setup-node@",
+            "      - name: Set up Node\n        uses: Actions/Setup-Node@",
+            "bash devtools/install_node.sh 24.18.0",
+            "setup-node",
+            id="setup-node",
+        ),
+    ],
+)
+def test_a_setup_action_named_in_another_case_still_follows_its_install(
+    tmp_path: Path, old: str, new: str, wanted: str, action: str
+) -> None:
+    """GitHub runs ``Actions/Setup-Node@`` as ``actions/setup-node@``, so the rule does too."""
+
+    assert _errors(tmp_path, old, new) == (
+        f"ci.yml job lint must run `{wanted}` just before {action}"
+    )
+
+
+@pytest.mark.parametrize(
     "expression", ["github.event.pull_request.title", "github.head_ref", "github.event.issue.body"]
 )
 def test_no_run_line_interpolates_untrusted_input(tmp_path: Path, expression: str) -> None:

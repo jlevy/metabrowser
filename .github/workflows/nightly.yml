@@ -28,8 +28,9 @@ concurrency:
 
 env:
   UV_EXCLUDE_NEWER: "14 days"
-  # As in ci.yml: a cache restore whose download stalls goes on as a miss after a minute,
-  # not the default 10, which outlasts every job's limit here too.
+  # As in ci.yml: a cache restore whose download has not arrived within a minute, a
+  # wall-clock deadline per 128 MiB segment, goes on as a miss, not after the default 10,
+  # which outlasts every job's limit here too.
   SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
 jobs:

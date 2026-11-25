@@ -370,8 +370,8 @@ A limit that trips means a tier grew by half: split its job further, or make its
 tests cheaper. The limit covers the job’s setup too, so each setup download that has
 stalled is bounded: `devtools/install_uv.sh` and `devtools/install_node.sh` fetch the
 pinned uv and Node with retries that end a stalled transfer, and put them where their
-setup actions look first, and `SEGMENT_DOWNLOAD_TIMEOUT_MINS` in a workflow’s `env` ends
-a stalled cache restore as a miss.
+setup actions look first, and `SEGMENT_DOWNLOAD_TIMEOUT_MINS` in a workflow’s `env`
+gives a cache restore a deadline, after which the job goes on as on a miss.
 A job that nears its limit while its sibling parts do not is uneven, not grown: the
 parts are dealt by the measured seconds in `devtools/shard_weights.json`, and
 `make shard-weights` rewrites that file from the newest green run of `main` as `gh`
