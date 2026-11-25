@@ -10,7 +10,7 @@ and not yet built.
 ## Overview
 
 A guided review
-([Reviewing Pull Requests](../../reviewing-pull-requests.md#guided-review)) is a flat
+([Reviewing Pull Requests](../../../reviewing-pull-requests.md#guided-review)) is a flat
 list of steps today.
 The skill already asks for steps organized by concern (keystone decisions, key
 documents, each area of change, ambiguity, testing, future work), but the page shows
