@@ -1160,6 +1160,80 @@ async function main() {
   await new Promise(setImmediate);
   assert.equal(loads7.length, 2, "and nothing is asked after it");
 
+  // Printing draws every chunk not drawn yet in one hold of the reader's place, so rows
+  // above the viewport that turn from estimates into blocks leave the reader where they
+  // were.
+  const printers = new Set();
+  globalThis.window = {
+    addEventListener: (type, listener) => type === "beforeprint" && printers.add(listener),
+    removeEventListener: (_type, listener) => printers.delete(listener),
+  };
+  const loads8 = [];
+  let holds8 = 0;
+  let drawnInHold8 = 0;
+  const root8 = make("div");
+  const section8 = make("section");
+  const spacers8 = () =>
+    section8.children[1].children
+      .flatMap((node) => (node.tagName === "" ? node.children : [node]))
+      .filter((node) => node.className === "diff-markdown-spacer");
+  const view8 = createMarkdownViews({
+    controls: { groupHtml: (spec) => spec, bind: () => () => {} },
+    load: (id) => new Promise((resolve) => loads8.push({ id, resolve })),
+    ensureInert: async () => inert,
+    async loadStyles() {},
+    mutate(change) {
+      holds8 += 1;
+      const before = spacers8().length;
+      change();
+      drawnInHold8 += before - spacers8().length;
+    },
+    now: time.now,
+    later: time.later,
+    cancel: time.cancel,
+  });
+  root8.append(section8);
+  const bar8 = make("div");
+  const source8 = make("div");
+  source8.id = "p";
+  section8.append(bar8, source8);
+  const end8 = make("div");
+  bar8.append(make("button"), end8);
+  view8.add({
+    section: section8,
+    bar: bar8,
+    end: end8,
+    source: source8,
+    id: "p",
+    format: "markdown",
+  });
+  view8.observe(root8, null);
+  observer.notify([{ target: section8, isIntersecting: true }]);
+  loads8[0].resolve({
+    version: "markdown-diff-v1",
+    status: "ready",
+    source_only: false,
+    view: "full",
+    count: 600,
+    folds: [],
+    blocks: Array.from({ length: 600 }, (_, index) => context(index)),
+  });
+  await new Promise(setImmediate);
+  const waiting8 = spacers8().length;
+  assert.ok(waiting8 > 0, "a long document keeps chunks undrawn");
+  assert.equal(printers.size, 1, "the views listen for printing");
+  holds8 = 0;
+  drawnInHold8 = 0;
+  for (const listener of printers) {
+    listener();
+  }
+  assert.equal(spacers8().length, 0, "printing draws every chunk");
+  assert.equal(holds8, 1, "in one hold of the reader's place");
+  assert.equal(drawnInHold8, waiting8, "every chunk drawn inside it");
+  view8.dispose();
+  assert.equal(printers.size, 0, "disposal stops listening for printing");
+  delete globalThis.window;
+
   // A sanitizer that loaded nothing, or whose load failed, is loaded again when Rendered
   // is chosen again. Each failure is logged, not shown.
   const warn2 = console.warn;
