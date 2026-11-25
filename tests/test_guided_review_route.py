@@ -112,8 +112,8 @@ def _closing[T](work: Coroutine[Any, Any, T]) -> T:
 
     A note refused at its deadline starts the child's replacement as the route answers.
     Without the close, ``asyncio.run`` cancels that start while it spawns, which on CPython
-    3.12 and 3.13 never finishes (mb-4g7f), and ``fresh_markdown_child`` fails a test that
-    leaves the child to its loop's end.
+    3.12 and 3.13 never finishes (mb-4g7f), and ``fresh_markdown_child`` fails a test whose
+    loop ended while that start ran.
     """
 
     async def closing() -> T:
