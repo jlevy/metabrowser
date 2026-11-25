@@ -58,6 +58,7 @@
 import { CHANGES_DRAWING, citedPullComparison, DOCS_DRAWING, DOCS_GROUP } from "./diff-drawing.js";
 import {
   attachTabKeys,
+  authorLabel,
   CHANGES_FIRST_SCREEN_MS,
   changesDocuments,
   FAST_POLL_MS,
@@ -843,7 +844,7 @@ export function isStackEnvelope(value) {
 /**
  * @typedef {import("./pull-stacks.js").NativeStack} NativeStack
  * @typedef {import("./stack-member-row.js").StackMemberLine} StackMemberLine
- * @typedef {{state: import("./pull-state.js").PullState, title?: string | null} | null} ListedPull
+ * @typedef {{state: import("./pull-state.js").PullState, title?: string | null, author?: string | null, avatar?: string | null} | null} ListedPull
  */
 
 /**
@@ -880,6 +881,11 @@ export function memberLines(envelope, known, listed) {
   const members = envelope?.members ?? [];
   /** @param {number} number */
   const knownTitle = (number) => known?.titles?.[known.pulls.indexOf(number)] ?? null;
+  /** @param {number} number */
+  const author = (number) => {
+    const row = listed(number);
+    return row?.author ? { login: row.author, avatar: row.avatar ?? null } : null;
+  };
   if (members.length > 0) {
     // A member whose record the server has not read yet keeps the title and the state the
     // Pulls tab gave it, so the answer that says it is being fetched blanks no row.
@@ -888,6 +894,7 @@ export function memberLines(envelope, known, listed) {
       place: stackPosition(member.place - 1, members.length),
       title: member.title ?? knownTitle(member.number) ?? listed(member.number)?.title ?? null,
       state: member.state ?? listed(member.number)?.state ?? null,
+      author: author(member.number),
     }));
   }
   if (known === null || known.pulls.length === 0) {
@@ -901,6 +908,7 @@ export function memberLines(envelope, known, listed) {
       place: stackPosition(at, known.pulls.length),
       title: knownTitle(number) ?? row?.title ?? null,
       state: row?.state ?? null,
+      author: author(number),
     };
   });
 }
@@ -978,10 +986,8 @@ export function diffComparison(comparison) {
 
 /**
  * What the page passes the diff view's `summary` for its header's Diff summary: the
- * comparison read, and where a file the summary opens goes. That is all a pull request's
- * page passes, so the summary starts collapsed, as every Diff summary does, and its rows
- * carry the tree's own marks and nothing of the layers that change each file, which are each
- * member's to show on its own page.
+ * comparison read, and where a file the summary opens goes, as a pull request's page
+ * passes, so the summary starts collapsed, as every Diff summary does.
  *
  * @param {unknown} raw
  * @param {(path: string) => void} openFile
@@ -1261,7 +1267,13 @@ export function mountStackPage(container, ctx, mb) {
     memberList.replaceChildren(
       ...(lines ?? []).map((line) => {
         const row = link({ number: line.number, tab: "" }, `/pull/${line.number}`, "menu-item", []);
-        fillStackMemberRow(row, line, mb.titleNodes);
+        // Each author as the stack menu draws it: no box where it has no avatar, and its
+        // avatar asked for once the row is drawn (docs/design-system.md, "Actor Identity").
+        fillStackMemberRow(row, line, mb.titleNodes, (login, avatar) =>
+          authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
+            placeholder: false,
+          }),
+        );
         return h("li", { class: "github-pull-stack-members-item" }, [row]);
       }),
     );

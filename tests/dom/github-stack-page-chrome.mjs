@@ -301,7 +301,14 @@ try {
   const menuRows =
     await evaluate(`[...document.querySelectorAll(".github-pull-stack-menu .github-pull-stack-member")].map((row) => {
     const style = getComputedStyle(row);
-    return { height: Math.round(row.getBoundingClientRect().height), font: style.fontSize, padding: style.paddingLeft };
+    const by = row.querySelector(".github-pull-stack-member-by:not([hidden])");
+    return {
+      height: Math.round(row.getBoundingClientRect().height),
+      font: style.fontSize,
+      padding: style.paddingLeft,
+      number: row.querySelector(".github-pull-stack-member-number").textContent,
+      author: by?.querySelector(".github-pull-stack-member-author")?.textContent ?? null,
+    };
   })`);
   const opened = await record("open-stack", ".github-pull-stack-page", () =>
     click(".github-pull-stack-whole"),
@@ -309,6 +316,28 @@ try {
   await waitFor(pageReady);
   await frames();
   phase("stack 70");
+  if (!before) {
+    // Opened from the menu, the stack's Whole stack row in the Pulls tab is the current row
+    // and in view. Here the list draws the row only after the address names the page; until
+    // its reveal waited for the row (`wholeRevealPending`), it was marked but left 3,745 px
+    // above the view (mb-cm31).
+    await waitFor(
+      `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')?.getAttribute("aria-current") === "page"`,
+    );
+    await frames();
+    const fromMenu = await evaluate(`(() => {
+      const whole = document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]');
+      const box = whole.getBoundingClientRect();
+      const view = document.querySelector(".tree-content").getBoundingClientRect();
+      return { top: box.top, bottom: box.bottom, viewTop: view.top, viewBottom: view.bottom };
+    })()`);
+    measured.wholeFromMenu = fromMenu;
+    check(
+      "opened from the menu, the Pulls tab's Whole stack row is current and in view",
+      fromMenu.top >= fromMenu.viewTop - 1 && fromMenu.bottom <= fromMenu.viewBottom + 1,
+      JSON.stringify(fromMenu),
+    );
+  }
   // Its other tabs, as a reader opens them, recorded before any theme changes, whose
   // transitions a screencast would catch.
   const docs = await record("stack-docs", ".github-pull-stack-page", () =>
@@ -354,12 +383,26 @@ try {
             padding: style.paddingLeft,
             one_line: [".github-pull-stack-member-title", ".github-pull-stack-member-position", ".github-pull-stack-member-number"]
               .map((part) => line(row.querySelector(part))).every((top, at, all) => Math.abs(top - all[0]) <= 2),
-            number_at_end: Math.round(box.right - number.right) <= parseFloat(style.paddingRight) + 1,
             current: row.hasAttribute("aria-current"),
+            number: row.querySelector(".github-pull-stack-member-number").textContent,
+            // The author after the number, a muted dot before it, as the menu's (mb-cm31).
+            author: (() => {
+              const by = row.querySelector(".github-pull-stack-member-by:not([hidden])");
+              if (by === null) return null;
+              const name = by.querySelector(".github-pull-stack-member-author");
+              const avatar = by.querySelector("img");
+              const end = Math.round(box.right - by.getBoundingClientRect().right) <= parseFloat(style.paddingRight) + 1;
+              return {
+                name: name?.textContent ?? null,
+                weight: name === null ? null : getComputedStyle(name).fontWeight,
+                avatar: avatar === null ? null : Math.round(avatar.getBoundingClientRect().width),
+                after_number: by.getBoundingClientRect().left >= number.right,
+                at_end: end,
+              };
+            })(),
           };
         }),
         summary_open: summary?.getAttribute("aria-expanded") ?? null,
-        marks: page.querySelectorAll(".diff-file-marks, .diff-file-mark").length,
         counterpart: counterpart?.getAttribute("href") ?? null,
         tabs: [...page.querySelectorAll(".tab-bar .tab-btn")].filter((tab) => !tab.hidden).map((tab) => tab.textContent),
         size: page.querySelector(".github-pull-size")?.innerText ?? null,
@@ -390,7 +433,7 @@ try {
     );
     check(
       "the members are listed top first",
-      page.members.map((row) => row.text.split("#").at(-1)).join(",") === "10,8",
+      page.members.map((row) => row.number).join(",") === "#10,#8",
       JSON.stringify(page.members),
     );
     for (const row of page.members) {
@@ -405,11 +448,25 @@ try {
           row.padding === page.inset,
         JSON.stringify({ row, menu: menuRows[0], inset: page.inset }),
       );
-      check(`${row.text}: its number ends the row`, row.number_at_end);
+      const menu = menuRows.find((each) => each.number === row.number) ?? null;
+      // The author the menu names for the member, bold, after the number, ending the row; a
+      // member whose author the Pulls tab has not read, as the menu has none, has none.
+      check(
+        `${row.text}: its author is the menu's, and ends the row after its number, bold`,
+        menu !== null &&
+          (row.author?.name ?? null) === menu.author &&
+          (row.author === null ||
+            (Number(row.author.weight) >= 600 && row.author.after_number && row.author.at_end)),
+        JSON.stringify({ row: row.author, menu }),
+      );
       check(`${row.text}: no member is the page`, !row.current);
     }
+    check(
+      "a member's author is shown",
+      page.members.some((row) => row.author !== null),
+      JSON.stringify(page.members.map((row) => row.author)),
+    );
     check("the Diff summary is closed", page.summary_open === "false", String(page.summary_open));
-    check("no layer marks", page.marks === 0, String(page.marks));
     check(
       "View on GitHub opens the whole stack",
       page.counterpart === "https://github.com/octo/demo/stack/70",

@@ -27,11 +27,6 @@ type MetabrowserRenderContext = {
   /** How the host opens one of a comparison's changed files at its own address, as a pull
    *  request's Changes does at `/pull/<n>/files/<path>`; absent where a file has none. */
   openFile?: (path: string) => void;
-  /** A host's marks on each file's bar and Diff summary row, each a short link, as a stack's
-   *  page names the layers that change a file ("2/4"); a plain press takes *open* if given. */
-  fileMarks?: (
-    path: string,
-  ) => ReadonlyArray<{ text: string; label: string; href: string; open?: () => void }>;
   /** How long a comparison's first screen of Markdown files waits for Rendered, for a page
    *  that keeps the comparison out of sight until its handle's `firstScreen` settles. */
   markdownHoldMs?: number;

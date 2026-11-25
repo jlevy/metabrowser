@@ -575,7 +575,6 @@ async function run() {
   assert.equal(container.querySelector(".github-pull-guided-review"), null);
   const changes = drawings.findLast((drawing) => drawing.render)?.render;
   assert.equal(changes.summary, false, "the header draws the Diff summary, the diff none");
-  assert.ok(!("fileMarks" in changes), "no layer marks");
   report.left = {
     tab: active(),
     read_aborted: reads[5].signal.aborted,

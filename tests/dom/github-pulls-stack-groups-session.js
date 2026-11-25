@@ -435,7 +435,7 @@ async function mountStory() {
   /** One panel's controller over recorded answers, with every effect it asks for logged. */
   function mount({ filter = "all", list = "current" } = {}) {
     // `requests` counts every request, which Home's reset makes none of.
-    const log = { opened: [], marks: [], prefetch: [], requests: 0 };
+    const log = { opened: [], marks: [], prefetch: [], revealed: [], requests: 0 };
     let model = null;
     let anchor = null;
     /** The row the current-row mark is on. */
@@ -482,7 +482,9 @@ async function mountStory() {
             log.marks.push(`focus ${rowName(next)}`);
           }
         },
-        reveal() {},
+        reveal(key) {
+          log.revealed.push(key);
+        },
         open(route) {
           log.opened.push(route.number);
         },
@@ -757,6 +759,33 @@ async function mountStory() {
   record("a failed refresh keeps the snapshot, which still groups", story, retained);
   story.controller.setStacks(index("empty"));
   record("a repository with no stacks: flat", story, index("empty"));
+  // ── A stack's page named before the list knows the stacks: its Whole stack row is marked
+  // and revealed once the stacks arrive and draw it, as a pull request's row is revealed once
+  // the list holds it.
+  const early = mount();
+  await early.controller.start({ shown: true });
+  await settle();
+  early.log.revealed.length = 0;
+  early.controller.setCurrent(null, { stack: 286 });
+  const revealedFlat = early.log.revealed.splice(0).map(rowName);
+  early.controller.setStacks(current);
+  record(
+    "an address of Stack #286's page before the stacks are known: its row is revealed when they draw it",
+    early,
+    current,
+    {
+      "revealed while flat": revealedFlat,
+      "revealed once grouped": early.log.revealed.splice(0).map(rowName),
+      current: rowName(early.marked()),
+      tabStop: rowName(early.anchor()),
+    },
+  );
+  early.controller.setStacks(index("absent"));
+  early.controller.setStacks(current);
+  record("stacks read again: the row is not revealed again", early, current, {
+    revealed: early.log.revealed.splice(0).map(rowName),
+  });
+
   const other = mount({ filter: "open", list: "another_reader" });
   other.controller.setStacks(current);
   await other.controller.start({ shown: true });

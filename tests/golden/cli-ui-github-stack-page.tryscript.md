@@ -204,7 +204,7 @@ $ node tests/dom/github-stack-page-session.js
       "rows": "title, corner, members, merge, size, summary",
       "members": [
         "(unknown) WIP: draft the next page 2/2 · #10",
-        "merged Say more in the guide 1/2 · #8"
+        "merged Say more in the guide 1/2 · #8 · octo"
       ],
       "merge": null,
       "status": [],
@@ -215,7 +215,7 @@ $ node tests/dom/github-stack-page-session.js
       "rows": "title, corner, members, merge, size, summary",
       "members": [
         "(unknown) WIP: draft the next page 2/2 · #10",
-        "merged Say more in the guide 1/2 · #8"
+        "merged Say more in the guide 1/2 · #8 · octo"
       ],
       "merge": null,
       "status": [],
@@ -226,7 +226,7 @@ $ node tests/dom/github-stack-page-session.js
       "rows": "title, corner, members, merge, size, summary",
       "members": [
         "draft WIP: draft the next page 2/2 · #10",
-        "merged Say more in the guide 1/2 · #8"
+        "merged Say more in the guide 1/2 · #8 · octo"
       ],
       "merge": "wip → topic",
       "status": [],
@@ -238,7 +238,7 @@ $ node tests/dom/github-stack-page-session.js
       "members": [
         "draft WIP: draft the next page 3/3 · #10",
         "open Count to two in the app 2/3 · #7",
-        "merged Say more in the guide 1/3 · #8"
+        "merged Say more in the guide 1/3 · #8 · octo"
       ],
       "merge": "wip → topic",
       "status": [

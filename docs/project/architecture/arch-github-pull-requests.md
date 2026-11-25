@@ -1250,18 +1250,18 @@ member’s own guide current.
   description that carries the guide introduces its member, not the stack, so the
   navigation starts at step 1 (`first` in `createGuideNavigation`), and the refusals
   speak of the stack (`STACK_MESSAGES` in `guided-review.js`). The guide is read at the
-  comparison the page draws, so it shows what Files, Docs, and Changes show, and follows
-  the offer and take they follow: it is mounted again only when the reader takes the
-  comparison offered. The guide shown stays while the stack is pending or cannot be
-  shown, as the drawn comparison does (`guideShown`), and a step read then says so in
-  its place, under the guide’s steps.
-  A new revision of the carrier’s record is read in place while the comparison drawn is
-  the current one. While it is not, the navigation is held at the revision read there
-  (`behind` in `createGuideNavigation`): a step answer for another revision, which the
-  carrier moving with the stack gives, is that step’s `stack_moved`, never a new guide,
-  and the guide’s steps stay.
-  A whole document a step cites is drawn from the comparison the page drew while that is
-  the one the step was read at.
+  comparison the page draws, so it shows what the Diff summary, Docs, and Changes show,
+  and follows the offer and take they follow: it is mounted again only when the reader
+  takes the comparison offered.
+  The guide shown stays while the stack is pending or cannot be shown, as the drawn
+  comparison does (`guideShown`), and a step read then says so in its place, under the
+  guide’s steps. A new revision of the carrier’s record is read in place while the
+  comparison drawn is the current one.
+  While it is not, the navigation is held at the revision read there (`behind` in
+  `createGuideNavigation`): a step answer for another revision, which the carrier moving
+  with the stack gives, is that step’s `stack_moved`, never a new guide, and the guide’s
+  steps stay. A whole document a step cites is drawn from the comparison the page drew
+  while that is the one the step was read at.
   `tests/dom/github-stack-guide-mount-session.js` runs this glue on the production page.
 - **The member’s page.** `render_part` leaves a block that reads as a stack’s guide out
   of the description, as it leaves a guide’s, and Conversation puts a card in its place
