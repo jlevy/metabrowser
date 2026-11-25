@@ -61,7 +61,8 @@
         "version": "markdown-diff-v1",
         "status": "ready",
         "blocks": [
-          {"kind": "context", "side": "new", "html": "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>", "source_only": false},
+          {"kind": "removed", "side": "old", "html": "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-old-plain\">Plain</h1>", "source_only": false},
+          {"kind": "added", "side": "new", "html": "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain-page\">Plain <ins>Page</ins></h1>", "source_only": false},
           {"kind": "context", "side": "new", "html": "<p>Text.</p>", "source_only": false}
         ],
         "source_only": false,
@@ -81,7 +82,7 @@
           ]
         },
         "view": "concise",
-        "count": 2,
+        "count": 3,
         "folds": []
       }
     },
@@ -986,7 +987,8 @@
     "<h1 id=\"user-content-53205693cc2502516bbe3652-new-notes\">Notes</h1>": [{"tag": "h1", "attrs": [["id", "user-content-53205693cc2502516bbe3652-new-notes"]], "children": ["Notes"]}],
     "<p>The <del>old</del> body.</p>": [{"tag": "p", "attrs": [], "children": ["The ", {"tag": "del", "attrs": [], "children": ["old"]}, " body."]}],
     "<p>The <ins>new</ins> body.</p>": [{"tag": "p", "attrs": [], "children": ["The ", {"tag": "ins", "attrs": [], "children": ["new"]}, " body."]}],
-    "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>": [{"tag": "h1", "attrs": [["id", "user-content-71ee10c56ecf50774ee672b1-new-plain"]], "children": ["Plain"]}],
+    "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-old-plain\">Plain</h1>": [{"tag": "h1", "attrs": [["id", "user-content-71ee10c56ecf50774ee672b1-old-plain"]], "children": ["Plain"]}],
+    "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain-page\">Plain <ins>Page</ins></h1>": [{"tag": "h1", "attrs": [["id", "user-content-71ee10c56ecf50774ee672b1-new-plain-page"]], "children": ["Plain ", {"tag": "ins", "attrs": [], "children": ["Page"]}]}],
     "<p>Text.</p>": [{"tag": "p", "attrs": [], "children": ["Text."]}],
     "<h1 id=\"user-content-25ebc7ae7b51d35c4452a791-new-long\">Long</h1>": [{"tag": "h1", "attrs": [["id", "user-content-25ebc7ae7b51d35c4452a791-new-long"]], "children": ["Long"]}],
     "<p>See <span>the deep part</span> <del>now</del>.</p>": [{"tag": "p", "attrs": [], "children": ["See ", {"tag": "span", "attrs": [], "children": ["the deep part"]}, " ", {"tag": "del", "attrs": [], "children": ["now"]}, "."]}],

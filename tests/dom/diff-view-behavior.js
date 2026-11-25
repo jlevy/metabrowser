@@ -108,6 +108,16 @@ class FakeElement {
     this.append(...nodes);
   }
 
+  get previousElementSibling() {
+    const siblings = this.parentNode?.children ?? [];
+    return siblings[siblings.indexOf(this) - 1] ?? null;
+  }
+
+  get nextElementSibling() {
+    const siblings = this.parentNode?.children ?? [];
+    return siblings[siblings.indexOf(this) + 1] ?? null;
+  }
+
   remove() {
     if (this.parentNode) {
       this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
