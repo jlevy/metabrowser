@@ -3469,7 +3469,7 @@ column, past the icon, as a tree’s title wraps past its icon.
 The last line is the lines the pull request changes, its
 [brief change line](#brief-change-line) of its line totals alone, a total of zero left
 out, “+1,234” for a pull request that only adds lines, with the registry’s chevron after
-them, from the text column, and the age at the row’s end, muted
+them, from the text column, and the age at the row’s end, in its freshness ink
 ([Ages End the Row](#ages-end-the-row)): “+1,234 −567 ›” and “3d”. The item holds the
 pull request’s changed-files tree, which hangs under it, is owned by the row’s link
 through `aria-owns`, whose `aria-expanded` alone says whether it is open, and starts
@@ -3678,13 +3678,15 @@ A surface that leaves a field out keeps the order of the rest: a pull request in
 stack reads “title · #455 · jlevy”, and a row with no room for an author ends with its
 number.
 
-One builder draws the fields on every row of the GitHub plugin that shows them,
-`stackMemberRow` in `stack-member-row.js`: a Pulls row’s run (`PULLS_RUN`), and a
-stack’s member in the stack menu and on the stack’s own page (`MEMBER_LINE`). The order,
-and the muted dots that part the fields, are its; a surface chooses only its layout, a
-run that wraps in the text column or one line whose title is cut short before the rest.
-A field that is absent draws neither itself nor the dot before it, in either layout and
-whether the row was drawn without it or lost it later, so no row shows a stray dot.
+One builder draws the fields of a Pulls row and of a stack’s members, `stackMemberRow`
+in `stack-member-row.js`: a Pulls row’s run (`PULLS_RUN`), and a stack’s member in the
+stack menu and on the stack’s own page (`MEMBER_LINE`). A guided review’s pull request
+rows do not draw through it yet, and name the number before the title.
+The order, and the muted dots that part the fields, are its; a surface chooses only its
+layout, a run that wraps in the text column or one line whose title is cut short before
+the rest. A field that is absent draws neither itself nor the dot before it, in either
+layout and whether the row was drawn without it or lost it later, so no row shows a
+stray dot.
 
 The shell cannot import the GitHub plugin, so its own rows keep the order in their own
 code: Quick Search’s pull request results, “title #N · Merged”, and a ref selector row’s
@@ -6833,7 +6835,7 @@ revisions
   draw the rows they bring into view, that a focused row keeps focus, and that the
   filter narrows the list; `tests/test_ref_selector_pulls_chrome.py` does the same over
   branches that are pull requests’ heads, with the two heights, each row where the rows
-  before it put it, the pull request’s icon, number, and title, and the filter’s finds.
+  before it put it, the pull request’s icon, title, and number, and the filter’s finds.
 
 A checkout also has the live working tree and can switch between it and pinned
 revisions.
