@@ -5,7 +5,7 @@ title: "Guided reviews: groups, decision rationale, rendered documents, stack ro
 kind: epic
 status: in_progress
 priority: 1
-version: 31
+version: 32
 spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
 refs:
   - kind: pr
@@ -54,8 +54,9 @@ child_order_hints:
   - is-01m8a3f37c0s767r9vbxkdtpex
   - is-01m8a4nktj57nytxbengdmfd67
   - is-01m8a64n37rhg7nya1e434qa2y
+  - is-01m8abhzp7e78ayr7ht6gn8t27
 created_at: 2026-11-25T00:03:14.324Z
-updated_at: 2026-11-25T21:37:36.303Z
+updated_at: 2026-11-25T21:59:57.894Z
 ---
 User request 2026-11-24: (1) optional groups of steps, recommended by the skill; (2) a rationale step beside the key decisions; (3) documents in guided steps drawn rendered with the diff view chooser, reusing its components and coordinating with mb-qn7e (Full | Concise | Source); (4) a design for a stack-wide rollup of guided reviews, groundwork only. Plan: docs/project/specs/active/plan-2026-11-24-guided-review-groups.md.
 
