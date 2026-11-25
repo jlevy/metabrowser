@@ -4566,11 +4566,20 @@ function holdPlace(view, anchor = null) {
       row !== null && anchor.row !== undefined
         ? row.getBoundingClientRect().top - anchor.row.top
         : anchor.section.getBoundingClientRect().top - anchor.top;
-    if (pane !== null && Math.abs(moved) >= 0.5) {
+    if (pane !== null && Math.abs(moved) >= HOLD_PLACE_MIN_PX) {
       pane.scrollTop += moved;
     }
   }
 }
+
+// The least drift `holdPlace` puts back. The pane's scroll position takes whole pixels, so a
+// smaller move is made as a whole one, past the row, and Chrome's own anchoring, which keeps a
+// row's rounded place, then holds it there. Measured 2026-11-25 in headless Chrome, opening a
+// hunk gap above the pane's top (tests/dom/diff-hunk-gap-chrome.mjs): at half a pixel, a
+// drift of 0.5 px moved the pane from 1146 to 1147, and the row at the pane's top ended 1 px
+// above where it was, 1.1-1.5 px while the gap's group grew; at a whole pixel it ended where
+// it was and stayed within 0.48 px of it at every frame.
+const HOLD_PLACE_MIN_PX = 1;
 
 /**
  * Keep holding a Diff | Current choice's row while its file's open folds draw their rows,
