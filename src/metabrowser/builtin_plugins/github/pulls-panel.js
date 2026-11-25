@@ -4789,6 +4789,37 @@ export function mountPullsPanel(container, ctx, mb) {
         })
       : null;
 
+  /**
+   * Draw the window now as its rows measure, if their measures move it: the rows drawn are
+   * measured as `rowSizes` will measure them, and a window frame waiting for a measure taken
+   * is drawn at once. A lane calls this before its read names the rows drawn, so a window
+   * first placed at `ROW_ESTIMATE_PX` and not yet drawn again at its rows' heights names the
+   * rows those heights draw: at 340 px the browser was idle between the frame that measured
+   * 47 rows and the frame that drew 49, and the read named 47 (mb-hb4a). The rows in view
+   * are all among those drawn, so one pass places the window; the measures force no layout
+   * the next frame would not have done.
+   */
+  function settleWindow() {
+    if (windowDisposed || !panelShown) {
+      return;
+    }
+    let remeasured = false;
+    if (rowSizes !== null) {
+      for (const [key, entry] of [...painted, ...paintedStacks]) {
+        remeasured =
+          rowWindow.measure(key, entry.item.getBoundingClientRect().height) || remeasured;
+      }
+    }
+    if (!remeasured && windowFrame === null) {
+      return;
+    }
+    if (windowFrame !== null) {
+      window.cancelAnimationFrame(windowFrame);
+      windowFrame = null;
+    }
+    paintViewport();
+  }
+
   function cancelCoreSample() {
     if (coreFrame !== null) {
       window.cancelAnimationFrame(coreFrame);
@@ -5494,6 +5525,7 @@ export function mountPullsPanel(container, ctx, mb) {
             }),
           schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),
           cancel: (cancel) => /** @type {() => void} */ (cancel)(),
+          settle: settleWindow,
           isVisible: () => document.visibilityState === "visible" && panelShown,
           now: () => Date.now(),
           changed: () => queueWindow(),

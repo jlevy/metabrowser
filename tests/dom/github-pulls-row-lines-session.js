@@ -26,6 +26,11 @@
 // items and expand nothing, Space toggles the files, Right opens them, Left closes them, and
 // Enter opens the pull request. `focus` goes on from there: every key acts on the item with
 // focus, even after a poll has moved the list's Tab stop to the current pull request.
+// `window` mounts it in a pane whose rows lay out shorter than `ROW_ESTIMATE_PX`, with the
+// browser's frames, its resize notifications, and its idle time in the session's hands: the
+// first window, placed at the estimate, draws fewer rows than the window the rows' heights
+// place, and the one read of their lines names every row that window draws, whether the browser
+// is idle after the frame that measured the rows or before it (mb-hb4a).
 // `invariants` are the relations every step holds.
 
 const assert = require("node:assert/strict");
@@ -106,6 +111,9 @@ async function laneStory(lines, prefetch) {
   const asked = [];
   let answers = (numbers) => answerFor(recordedRows("summed"), numbers);
   const repaints = [];
+  // What the panel's window does when a read is about to name its rows: nothing, but where a
+  // step says its rows' measures move it.
+  let settleWindow = () => {};
   const deps = () => ({
     keep,
     index,
@@ -124,6 +132,7 @@ async function laneStory(lines, prefetch) {
     cancel(handle) {
       idle = idle.filter((callback) => callback !== handle);
     },
+    settle: () => settleWindow(),
     isVisible: () => true,
     now: () => now,
     changed: (numbers) => repaints.push(numbers === null ? "every row" : numbers.join(",")),
@@ -289,6 +298,29 @@ async function laneStory(lines, prefetch) {
     await runIdle();
   });
   assert.equal(steps.at(-1).asked.length, 0, "the same refresh's list is not read again");
+  // The panel's first window is placed at `ROW_ESTIMATE_PX`, and the rows' measures move it;
+  // the browser can be idle between the frame that measured them and the frame that draws the
+  // window they place. The read settles the window before it names its rows, so the rows that
+  // window adds are in the one read, not a second one (mb-hb4a).
+  index.clear();
+  settleWindow = () => {
+    settleWindow = () => {};
+    rows = [...rows, { number: 102, head: "7".repeat(40) }];
+    lane.want(rows, SOURCE);
+  };
+  await step(
+    "read again from nothing, the window drawing #102 too once its rows are measured: one read names all five",
+    async () => {
+      lane.want(rows, SOURCE);
+      await runIdle();
+    },
+  );
+  assert.deepEqual(
+    steps.at(-1).asked,
+    [`GET ${ROUTE}?numbers=106,105,104,103,102`],
+    "one read names every row the settled window draws",
+  );
+  rows = rows.filter((row) => row.number !== 102);
   // A server that serves no GitHub repository has no row's list: one answer says so.
   index.clear();
   lane.dispose();
@@ -969,6 +1001,276 @@ async function rowStory(lines, totals = null) {
   }
 }
 
+/** Rows by number in words: the first and the last of them and how many, or "none". */
+const span = (numbers) =>
+  numbers.length === 0
+    ? "none"
+    : numbers.length === 1
+      ? `#${numbers[0]}`
+      : `#${numbers[0]} to #${numbers.at(-1)}, ${numbers.length} rows`;
+
+/**
+ * Mount the production panel in a pane `PANE_PX` tall whose rows each lay out `ROW_PX` tall,
+ * shorter than `ROW_ESTIMATE_PX`, with the browser's frames, its layout's resize
+ * notifications, and its idle time in the session's hands. The first window is placed at the
+ * estimate, and the window the rows' heights place draws more of them. The browser is idle
+ * once between the frame that drew the first window and the next: after that frame laid the
+ * rows out and measured them, the window's frame waiting (`measured`), or before it
+ * (`unmeasured`). Either way the one read of their lines names every row the window draws
+ * (mb-hb4a): the lane settles the window before its read names the rows.
+ *
+ * @param {"measured" | "unmeasured"} idleAfter
+ */
+async function windowStory(idleAfter) {
+  const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
+  const PANE_PX = 600;
+  // A closed row whose run is two lines, as most are at 380 px: the 2 px pad, two 19.5 px
+  // lines, and 20 px of last line (`ROW_ESTIMATE_PX` in pulls-panel.js).
+  const ROW_PX = 61;
+  /** @type {FakeElement | null} */
+  let pane = null;
+  const heightOf = (node) =>
+    node.classList?.contains("github-pulls-item")
+      ? ROW_PX
+      : node.classList?.contains("github-pulls-spacer")
+        ? Number.parseFloat(node.style.height) || 0
+        : 0;
+  // The list at the pane's top, scrolled with it, and its items and spacers laid out in its
+  // order.
+  class WindowElement extends FakeElement {
+    getBoundingClientRect() {
+      const box = (top, height) => ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 300,
+        width: 300,
+      });
+      if (this === pane) {
+        return box(0, PANE_PX);
+      }
+      if (this.classList.contains("github-pulls-list")) {
+        return box(-pane.scrollTop, 0);
+      }
+      if (
+        !this.classList.contains("github-pulls-item") &&
+        !this.classList.contains("github-pulls-spacer")
+      ) {
+        return super.getBoundingClientRect();
+      }
+      let top = -pane.scrollTop;
+      for (const node of this.parentNode?.childNodes ?? []) {
+        if (node === this) {
+          break;
+        }
+        top += heightOf(node);
+      }
+      return box(top, heightOf(this));
+    }
+  }
+  /** Each ResizeObserver the panel makes, and the height it was last told of each target. */
+  const observers = [];
+  class ResizeObserverStandIn {
+    constructor(callback) {
+      this.callback = callback;
+      this.told = new Map();
+      observers.push(this);
+    }
+    observe(target) {
+      this.told.set(target, null);
+    }
+    unobserve(target) {
+      this.told.delete(target);
+    }
+    disconnect() {
+      this.told.clear();
+    }
+  }
+  /** A frame's layout: each observer is told of the boxes whose height changed since it was
+   * last told, a box observed anew among them, as a browser tells it after layout. */
+  const layout = () => {
+    for (const observer of observers) {
+      const entries = [];
+      for (const [target, told] of observer.told) {
+        const height = target.getBoundingClientRect().height;
+        if (height !== told) {
+          observer.told.set(target, height);
+          entries.push({ target, borderBoxSize: [{ blockSize: height, inlineSize: 300 }] });
+        }
+      }
+      if (entries.length > 0) {
+        observer.callback(entries, observer);
+      }
+    }
+  };
+  /** @type {Map<number, () => void>} */
+  const frames = new Map();
+  let frameIds = 0;
+  /** @type {(() => void)[]} */
+  let idle = [];
+  const requests = [];
+  const document = {
+    activeElement: null,
+    visibilityState: "visible",
+    addEventListener() {},
+    createElement: (tag) => new WindowElement(tag),
+    createDocumentFragment: () => new FakeNode("#fragment"),
+    importNode: (node) => new WindowElement(node.localName),
+  };
+  const respond = (body, status = 200) =>
+    Promise.resolve({ status, headers: { get: () => null }, json: async () => body });
+  const globals = {
+    document,
+    window: {
+      addEventListener() {},
+      setTimeout: () => 0,
+      clearTimeout() {},
+      requestAnimationFrame(callback) {
+        frameIds += 1;
+        frames.set(frameIds, callback);
+        return frameIds;
+      },
+      cancelAnimationFrame(id) {
+        frames.delete(id);
+      },
+    },
+    getComputedStyle: () => ({ getPropertyValue: () => "24" }),
+    HTMLElement: FakeElement,
+    Element: FakeElement,
+    MouseEvent: class {},
+    DOMParser: class {
+      parseFromString() {
+        return { body: { firstElementChild: new WindowElement("svg") } };
+      }
+    },
+    IntersectionObserver: class {
+      takeRecords() {}
+      observe() {}
+      disconnect() {}
+    },
+    ResizeObserver: ResizeObserverStandIn,
+    fetch(route) {
+      if (route.startsWith(`${ROUTE}?`)) {
+        const numbers = new URL(route, "http://x").searchParams.get("numbers").split(",");
+        requests.push(numbers.map(Number));
+        const answer = answerFor(recordedRows("summed"), numbers.map(Number));
+        return respond(answer.body, answer.status);
+      }
+      if (route.startsWith("/api/plugin/github/pulls?")) {
+        return respond(listed);
+      }
+      if (route === "/api/plugin/github/pulls-prefetch") {
+        return respond({ prefetch: "not_due" });
+      }
+      return respond(null, 404);
+    },
+  };
+  const saved = {};
+  for (const [name, value] of Object.entries(globals)) {
+    saved[name] = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+  }
+  const restore = () => {
+    for (const [name, descriptor] of Object.entries(saved)) {
+      if (descriptor === undefined) {
+        delete globalThis[name];
+      } else {
+        Object.defineProperty(globalThis, name, descriptor);
+      }
+    }
+  };
+  /** A frame: its animation callbacks, then its layout and the resize notifications. */
+  const frame = async () => {
+    await settle();
+    const due = [...frames.values()];
+    frames.clear();
+    for (const callback of due) {
+      callback();
+    }
+    layout();
+    await settle();
+  };
+  /** An idle period: the idle callbacks asked for before it. */
+  const idlePeriod = async () => {
+    await settle();
+    for (const callback of idle.splice(0)) {
+      callback();
+    }
+    await settle();
+  };
+  try {
+    pane = new WindowElement("div");
+    pane.scrollTop = 0;
+    const container = new WindowElement("div");
+    pane.append(container);
+    const handle = panel.mountPullsPanel(
+      container,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current: null,
+          shown: true,
+          refreshAhead: false,
+          scrollRoot: pane,
+          open() {},
+          file: null,
+          fileHref: (number, file) => `/pull/${number}/files/${file}`,
+          pageFor: () => null,
+          onPageChange: () => () => {},
+          filterChanged() {},
+        },
+      },
+      {
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
+        perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+        filterControls: { groupHtml: () => "<div></div>", bind: () => () => {} },
+        formatAge: () => ({ label: "1m", className: "age-min" }),
+        formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+        whenIdle(callback) {
+          idle.push(callback);
+          return () => {
+            idle = idle.filter((queued) => queued !== callback);
+          };
+        },
+      },
+    );
+    const list = container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
+    const drawn = () =>
+      list.childNodes
+        .filter((node) => node.classList?.contains("github-pulls-item"))
+        .map((node) => Number(node.dataset.number));
+    // The list answers, and its first window is drawn at the estimate.
+    await settle();
+    const first = drawn();
+    if (idleAfter === "measured") {
+      await frame();
+    }
+    await idlePeriod();
+    for (let turn = 0; turn < 4; turn += 1) {
+      await frame();
+      await idlePeriod();
+    }
+    const last = drawn();
+    handle.dispose();
+    restore();
+    return {
+      idle:
+        idleAfter === "measured"
+          ? "after the frame that measured the first window's rows, before the next"
+          : "before the first window's rows were laid out",
+      "drawn at the estimate": span(first),
+      "drawn at the rows' heights": span(last),
+      asked: requests.map(span),
+      oneRead: requests.length === 1 && requests[0].join() === last.join(),
+    };
+  } catch (error) {
+    restore();
+    throw error;
+  }
+}
+
 (async () => {
   const lines = await import(pathToFileURL(path.join(GITHUB, "row-lines.js")).href);
   const prefetch = await import(pathToFileURL(path.join(GITHUB, "comparison-prefetch.js")).href);
@@ -1009,6 +1311,21 @@ async function rowStory(lines, totals = null) {
     lines.documentRowLines.clear();
     prefetch.documentComparisons.clear();
     totals.push(...(await rowStory(lines, cases)).drawn);
+  }
+  // The window placed at the estimate and drawn again at its rows' heights: one read names
+  // every row it draws, whenever the browser is idle between the two frames (mb-hb4a).
+  const windows = [];
+  for (const idleAfter of ["measured", "unmeasured"]) {
+    lines.documentRowLines.clear();
+    prefetch.documentComparisons.clear();
+    const story = await windowStory(idleAfter);
+    assert.ok(story.oneRead, `${story.idle}: one read names every row drawn`);
+    assert.notEqual(
+      story["drawn at the estimate"],
+      story["drawn at the rows' heights"],
+      `${story.idle}: the rows' heights move the window`,
+    );
+    windows.push(story);
   }
   // Every step of the row story holds the item's one zone (mb-1z7j) and the rule for a row
   // with a disclosure toggle (docs/design-system.md, "A Click on the Toggle's Line Toggles"):
@@ -1089,8 +1406,9 @@ async function rowStory(lines, totals = null) {
     "the story presses every part of an item",
   );
   // One part a run, so each transcript block stays one reviewable size: `lane`, `row`,
-  // `totals`, `tree`, or `focus`. (A block also has to stay under the size at which the transcript
-  // runner's matcher, a regular expression built from the block, is too large to compile.)
+  // `totals`, `tree`, `focus`, or `window`. (A block also has to stay under the size at which
+  // the transcript runner's matcher, a regular expression built from the block, is too large
+  // to compile.)
   // With none, the run holds every part's invariants and says how many steps each took.
   const lineSteps = row.steps.filter((step) => "lines" in step);
   const treeSteps = row.steps.slice(lineSteps.length, row.focusFrom);
@@ -1111,15 +1429,18 @@ async function rowStory(lines, totals = null) {
             ? { tree: treeSteps }
             : part === "focus"
               ? { focus: focusSteps }
-              : {
-                  steps: {
-                    lane: lane.length,
-                    row: lineSteps.length,
-                    totals: totals.length,
-                    tree: treeSteps.length,
-                    focus: focusSteps.length,
-                  },
-                };
+              : part === "window"
+                ? { window: windows }
+                : {
+                    steps: {
+                      lane: lane.length,
+                      row: lineSteps.length,
+                      totals: totals.length,
+                      tree: treeSteps.length,
+                      focus: focusSteps.length,
+                      window: windows.length,
+                    },
+                  };
   process.stdout.write(`${JSON.stringify({ ...printed, invariants: true }, null, 2)}\n`);
 })().catch((error) => {
   process.stderr.write(`${error.stack || error}\n`);

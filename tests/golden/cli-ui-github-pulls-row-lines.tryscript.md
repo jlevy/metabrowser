@@ -46,18 +46,28 @@ A press on the lines or the chevron toggles the files and opens no page, a modif
 middle press on them does neither, and a press anywhere else on the row opens it, a
 modified one the browser’s (`tree`).
 
+`window` mounts the panel in a pane 600 px tall whose rows lay out 61 px tall, shorter
+than `ROW_ESTIMATE_PX`, with the browser’s frames, its resize notifications, and its
+idle time in the session’s hands (mb-hb4a). The first window, placed at the estimate,
+draws fewer rows than the window the rows’ heights place, and the browser is idle once
+between the frame that drew it and the next: after that frame measured its rows, or
+before it laid them out.
+Either way the lane has the panel settle its window before the read names its rows, so
+one read (`asked`) names every row the window draws.
+
 Run alone, the session holds every part’s invariants and says how many steps each took;
-`lane`, `row`, `totals`, `tree`, and `focus` print each part.
+`lane`, `row`, `totals`, `tree`, `focus`, and `window` print each part.
 
 ```console
 $ node tests/dom/github-pulls-row-lines-session.js
 {
   "steps": {
-    "lane": 23,
+    "lane": 24,
     "row": 2,
     "totals": 8,
     "tree": 26,
-    "focus": 8
+    "focus": 8,
+    "window": 2
   },
   "invariants": true
 }
@@ -498,6 +508,28 @@ $ node tests/dom/github-pulls-row-lines-session.js lane
         "#103": "none"
       },
       "asked": [],
+      "lane": {
+        "wanted": [],
+        "running": null,
+        "awaiting": [],
+        "refusedAll": false
+      }
+    },
+    {
+      "step": "read again from nothing, the window drawing #102 too once its rows are measured: one read names all five",
+      "shows": {
+        "#106": "shown 249 files: 3 added, 243 modified, 1 removed, 2 renamed; +1093 −493",
+        "#105": "shown 1 file: 1 modified; +3 −1",
+        "#104": "none",
+        "#103": "none",
+        "#102": "none"
+      },
+      "asked": [
+        "GET /api/plugin/github/pull-files-summary?numbers=106,105,104,103,102"
+      ],
+      "repainted": [
+        "106,105,104,103,102"
+      ],
       "lane": {
         "wanted": [],
         "running": null,
@@ -1583,6 +1615,34 @@ $ node tests/dom/github-pulls-row-lines-session.js focus
       "opened": [
         "#103"
       ]
+    }
+  ],
+  "invariants": true
+}
+? 0
+```
+
+```console
+$ node tests/dom/github-pulls-row-lines-session.js window
+{
+  "window": [
+    {
+      "idle": "after the frame that measured the first window's rows, before the next",
+      "drawn at the estimate": "#106 to #59, 48 rows",
+      "drawn at the rows' heights": "#106 to #57, 50 rows",
+      "asked": [
+        "#106 to #57, 50 rows"
+      ],
+      "oneRead": true
+    },
+    {
+      "idle": "before the first window's rows were laid out",
+      "drawn at the estimate": "#106 to #59, 48 rows",
+      "drawn at the rows' heights": "#106 to #57, 50 rows",
+      "asked": [
+        "#106 to #57, 50 rows"
+      ],
+      "oneRead": true
     }
   ],
   "invariants": true
