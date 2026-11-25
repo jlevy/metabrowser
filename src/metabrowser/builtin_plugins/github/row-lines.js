@@ -13,7 +13,9 @@
 //
 // - Only for the rows the list draws, its rows in view and the window's overscan, in one
 //   request for all of them, when the browser is idle and once no comparison is being read, so
-//   a page's own read goes first (`keep.quiet`). A read is the cache alone: no GitHub call, no
+//   a page's own read goes first (`keep.quiet`). The rows it names are the window's once its
+//   rows are measured (`settle`), not the window first placed at estimated heights, which the
+//   measures move by a row or more. A read is the cache alone: no GitHub call, no
 //   Git, and no fetch. The lists themselves are the ones the Pulls tab already has read, the
 //   changed files its prefetch names for the rows in view and a reader's own expansions, so a
 //   row's line asks GitHub for nothing.
@@ -165,10 +167,12 @@ export const documentRowLines = createRowLineIndex();
  *   read(numbers: number[], signal: AbortSignal): Promise<{status: number, body: unknown}>,
  *   schedule(callback: () => void): unknown,
  *   cancel(handle: unknown): void,
+ *   settle(): void,
  *   isVisible(): boolean,
  *   now(): number,
  *   changed(numbers: number[] | null): void,
- * }} deps `changed` repaints the rows named, or every row for null.
+ * }} deps `changed` repaints the rows named, or every row for null. `settle` brings the
+ *   rows drawn up to date, asking `want` again if they changed, before a read names them.
  */
 export function createRowLines(deps) {
   const keep = deps.keep ?? documentComparisons;
@@ -248,6 +252,12 @@ export function createRowLines(deps) {
       return;
     }
     handle = deps.schedule(() => {
+      // The rows drawn as their window stands once measured, so one read names every row
+      // drawn: the browser can be idle between the frame that measured the rows of a window
+      // placed at `ROW_ESTIMATE_PX` and the one that draws it again at their heights, and the
+      // rows that frame adds would wait for a second read (mb-hb4a). While the handle is
+      // held, the `want` this asks for schedules nothing more.
+      deps.settle();
       handle = null;
       void run();
     });
