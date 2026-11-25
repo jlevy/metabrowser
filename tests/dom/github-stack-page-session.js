@@ -9,11 +9,13 @@
 // a new answer does to the comparison drawn (`comparisonAction`), each file's layer marks,
 // the line about members the top lacks, and the controller (`createStackController`) over a
 // scripted poll, over a read that fails and then finds its answer current, over a cold
-// stack of more members than the server fetches at once, one of whose fetches fails, and
-// over a read asked for while one is on its way. Then the body's state machine
-// (`bodyPlan` and its events) and the notices above it (`statusNotices`) over a reader who
-// opens a file while the stack moves. What is left to the glue (`mountStackPage`) is the
-// drawing: its header, tabs, buttons, and the diff views it mounts.
+// stack of more members than the server fetches at once, one of whose fetches fails, over
+// a read asked for while one is on its way, over a fetch that ends once the stack is no
+// longer linear, and over an answer read as a fetch ended before its record. Then the
+// body's state machine (`bodyPlan` and its events) and the notices above it
+// (`statusNotices`) over a reader who opens a file while the stack moves. What is left to
+// the glue (`mountStackPage`) is the drawing: its header, tabs, buttons, and the diff views
+// it mounts.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -266,6 +268,147 @@ async function coldStack(page, pending) {
   return { asked, rendered, delay_after_failure: delayAfterFailure };
 }
 
+/**
+ * A member's fetch the server took while the stack was pending, which ends without moving
+ * the member, by which time the stack is not linear (`absent`): the ask ends as on any
+ * other answer, and the page goes back to reading at the absent stack's cadence.
+ */
+async function absentAsk(page, notLinear) {
+  let now = START;
+  /** When the one fetch ends, once the ask started it. @type {number | null} */
+  let ends = null;
+  const asked = [];
+  const reads = [];
+  /** @type {Array<{at: number, callback: () => void}>} */
+  let timers = [];
+
+  function envelope() {
+    const ended = ends !== null && now >= ends;
+    const members = notLinear.members.map((member) => ({
+      ...member,
+      pending: member.number === 8,
+      fetching: member.number === 8 && ends !== null && !ended,
+    }));
+    return ended
+      ? { ...notLinear, members, pending: [8] }
+      : { ...notLinear, state: "pending", reason: null, members, pending: [8] };
+  }
+
+  const controller = page.createStackController(
+    {
+      async request(method, _route, options) {
+        if (method === "POST") {
+          ends ??= now + 3000;
+          asked.push(`${(now - START) / 1000}s #${options.body.number} 202`);
+          return { status: 202, etag: null, body: {} };
+        }
+        const body = envelope();
+        reads.push(`${(now - START) / 1000}s ${body.state}`);
+        return { status: 200, etag: `"${JSON.stringify(body)}"`, body };
+      },
+      schedule(callback, delayMs) {
+        timers.push({ at: now + delayMs, callback });
+        return timers.length;
+      },
+      cancel() {},
+      now: () => now,
+      isVisible: () => true,
+      render() {},
+    },
+    { number: 72 },
+  );
+  await controller.start();
+  await settle();
+  for (let step = 0; step < 100 && timers.length > 0; step += 1) {
+    timers.sort((a, b) => a.at - b.at);
+    const next = timers[0];
+    if (next.at > START + 60000) {
+      break;
+    }
+    timers = timers.slice(1);
+    now = next.at;
+    next.callback();
+    await settle();
+  }
+  controller.dispose();
+  return { asked, reads };
+}
+
+/**
+ * The reader's fetch of a member with no record ends, and one answer shows it ended before
+ * the record it wrote is read; the next read has it. The page confirms an ended fetch with
+ * one more read before it names the member as failed, so it names none.
+ */
+async function endedRace(page, pending) {
+  let now = START;
+  let gets = 0;
+  const rendered = [];
+  /** @type {Array<{at: number, callback: () => void}>} */
+  let timers = [];
+
+  function envelope() {
+    // Read 0 is before the ask, read 1 after its fetch ended, and read 2 has the record.
+    const has = gets >= 2;
+    const member = {
+      number: 101,
+      place: 1,
+      title: null,
+      state: "open",
+      base: has ? "b".repeat(40) : null,
+      head: has ? "c".repeat(40) : null,
+      in_top: null,
+      pending: !has,
+      fetching: false,
+    };
+    return {
+      ...pending,
+      members: [member],
+      pending: has ? [] : [101],
+      state: has ? "current" : "pending",
+    };
+  }
+
+  const controller = page.createStackController(
+    {
+      async request(method) {
+        if (method === "POST") {
+          return { status: 202, etag: null, body: {} };
+        }
+        const body = envelope();
+        gets += 1;
+        return { status: 200, etag: `"${gets}"`, body };
+      },
+      schedule(callback, delayMs) {
+        timers.push({ at: now + delayMs, callback });
+        return timers.length;
+      },
+      cancel() {},
+      now: () => now,
+      isVisible: () => true,
+      render(model) {
+        rendered.push({
+          at: `${(now - START) / 1000}s`,
+          state: model.envelope?.state ?? null,
+          failed: model.failed,
+        });
+      },
+    },
+    { number: 81 },
+  );
+  await controller.start();
+  await settle();
+  while (gets < 3 && timers.length > 0) {
+    timers.sort((a, b) => a.at - b.at);
+    const next = timers[0];
+    timers = timers.slice(1);
+    now = next.at;
+    next.callback();
+    await settle();
+  }
+  controller.dispose();
+  return rendered;
+}
+
 /** A read asked for while one is on its way waits for it: one loop, one timer. */
 async function oneLoop(page, current) {
   let gets = 0;
@@ -442,6 +585,8 @@ async function main() {
   const recovery = await recovering(page, current);
   const cold = await coldStack(page, pending);
   const one_loop = await oneLoop(page, current);
+  const absent_ask = await absentAsk(page, notLinear);
+  const ended_race = await endedRace(page, pending);
   const body = bodySession(page, pending, current, lacking, notLinear);
 
   // The header lists the members top first, as every stack menu does.
@@ -460,6 +605,8 @@ async function main() {
         recovery,
         cold,
         one_loop,
+        absent_ask,
+        ended_race,
         body,
         order,
       },

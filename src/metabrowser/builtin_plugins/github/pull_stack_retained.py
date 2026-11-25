@@ -16,14 +16,15 @@ observed, that reader.
 Admission reads it with :func:`retained_stack_pair`, which fails closed: a file it cannot
 read now admits nothing and says so, and a malformed one retains nothing. The ``stack``
 route writes it when it answers a pair the file does not end with, by atomic replacement
-in the directory it read the members' records from; two processes that write at once can
-lose one pair, which then answers ``stack_moved``, as a pair never retained does.
+under the source's alias lock, as every writer of the ``pulls`` directory does, so two
+writers lose no pair and a cache clear removes the file whole.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -33,6 +34,7 @@ from pydantic import StringConstraints, TypeAdapter, ValidationError
 
 from metabrowser.builtin_plugins.github.pull_record import Reader, Sha, _Model
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
+from metabrowser.cache.locks import source_alias_lock
 from metabrowser.cache.paths import source_stack_snapshots
 from metabrowser.home import PrivateStorageError, SharedEntryPolicy, write_private_file_atomic
 
@@ -55,6 +57,7 @@ MAX_RETAINED_STACK_PAIRS: Final = 8
 _MAX_BYTES: Final = 128 * 1024
 
 type _Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")]
+type _Identity = tuple[int, int, int, int]
 
 
 class RetainedStackPair(_Model):
@@ -70,9 +73,11 @@ class RetainedStackPair(_Model):
 
 _PAIRS = TypeAdapter(tuple[RetainedStackPair, ...])
 
-# The digest each stack's file was last seen to end with, so that a page's poll, which
-# answers the same pair each time, reads and writes nothing.
-_LAST: OrderedDict[tuple[str, str, int], tuple[str, str, str]] = OrderedDict()
+# The file each stack's pairs were last seen in, by its identity (device, inode,
+# modification time, and size), and the pair it ends with: a page's poll, which answers the
+# same pair each time, then costs one lstat and writes nothing, and a file that cache-clear
+# removed or another writer replaced is read and written again.
+_LAST: OrderedDict[tuple[str, str, int], tuple[str, str, str, _Identity]] = OrderedDict()
 _LAST_LOCK: Final = threading.Lock()
 _MAX_LAST: Final = 64
 
@@ -83,22 +88,37 @@ def _read(home: Path, slug: str, number: int, *, shared: SharedEntryPolicy) -> b
     )
 
 
-def retain_stack_pair(published: PublishedSource, pair: StackPair, reader: str) -> None:
-    """Keep *pair*, which the ``stack`` route answers now, as stack's most recent. Blocking.
+def _identity(home: Path, slug: str, number: int) -> _Identity | None:
+    try:
+        status = os.lstat(home / source_stack_snapshots(slug, number))
+    except OSError:
+        return None
+    return (status.st_dev, status.st_ino, status.st_mtime_ns, status.st_size)
 
-    A file that cannot be read now is left as it was; one no writer of this format could
-    have written starts over. A write that fails is logged and leaves admission as it was.
+
+def retain_stack_pair(published: PublishedSource, pair: StackPair, reader: str) -> None:
+    """Keep *pair*, which the ``stack`` route answers now, as stack's most recent. Blocking:
+    run it with :func:`~metabrowser.cache.locks.run_lock_section`.
+
+    It writes under the source's alias lock, which every writer of the ``pulls`` directory
+    takes (:func:`.pull_record.clear_pulls`). A file that cannot be read now is left as it
+    was; one no writer of this format could have written starts over. A write that fails is
+    logged and leaves admission as it was.
     """
 
     from metabrowser.builtin_plugins.github.pull_stack import StackPair as _Pair
 
     assert isinstance(pair, _Pair)
-    seen = (str(published.home), published.slug, pair.number)
+    home, slug, number = published.home, published.slug, pair.number
+    seen = (str(home), slug, number)
     last = (published.store_id, reader, pair.digest)
     with _LAST_LOCK:
-        if _LAST.get(seen) == last:
-            _LAST.move_to_end(seen)
-            return
+        known = _LAST.get(seen)
+    if known is not None and known[:3] == last and known[3] == _identity(home, slug, number):
+        with _LAST_LOCK:
+            if seen in _LAST:
+                _LAST.move_to_end(seen)
+        return
     try:
         entry = RetainedStackPair(
             store=published.store_id,
@@ -110,14 +130,30 @@ def retain_stack_pair(published: PublishedSource, pair: StackPair, reader: str) 
             in_top=pair.in_top,
         )
     except ValidationError as exc:
-        log.debug("not retaining stack %s's comparison: %s", pair.number, exc)
+        log.debug("not retaining stack %s's comparison: %s", number, exc)
         return
     try:
-        previous = _history_for_write(published.home, published.slug, pair.number)
+        with source_alias_lock(home, slug):
+            _write(home, slug, number, entry)
+            identity = _identity(home, slug, number)
     except (OSError, PrivateStorageError) as exc:
-        log.debug("not retaining stack %s's comparison: %s", pair.number, exc)
+        log.debug("not retaining stack %s's comparison: %s", number, exc)
         return
-    kept = [old for old in previous if old.reader == reader and old.digest != pair.digest]
+    if identity is None:
+        return
+    with _LAST_LOCK:
+        _LAST[seen] = (*last, identity)
+        _LAST.move_to_end(seen)
+        while len(_LAST) > _MAX_LAST:
+            _LAST.popitem(last=False)
+
+
+def _write(home: Path, slug: str, number: int, entry: RetainedStackPair) -> None:
+    """End stack *number*'s file with *entry*, keeping its reader's earlier pairs within the
+    bounds. Under the source's alias lock."""
+
+    previous = _history_for_write(home, slug, number)
+    kept = [old for old in previous if old.reader == entry.reader and old.digest != entry.digest]
     kept.append(entry)
     kept = kept[-MAX_RETAINED_STACK_PAIRS:]
     body = b""
@@ -129,18 +165,7 @@ def retain_stack_pair(published: PublishedSource, pair: StackPair, reader: str) 
             break
         kept = kept[1:]
     if kept and tuple(kept) != previous:
-        try:
-            write_private_file_atomic(
-                published.home, source_stack_snapshots(published.slug, pair.number), body
-            )
-        except (OSError, PrivateStorageError) as exc:
-            log.debug("not retaining stack %s's comparison: %s", pair.number, exc)
-            return
-    with _LAST_LOCK:
-        _LAST[seen] = last
-        _LAST.move_to_end(seen)
-        while len(_LAST) > _MAX_LAST:
-            _LAST.popitem(last=False)
+        write_private_file_atomic(home, source_stack_snapshots(slug, number), body)
 
 
 def _history_for_write(home: Path, slug: str, number: int) -> tuple[RetainedStackPair, ...]:
