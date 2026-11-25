@@ -629,12 +629,14 @@ collection:
   groups do not nest, and an empty group is refused.
   Steps outside a group may sit between groups.
   The page numbers the steps 1 to n through the groups, as `step` counts them.
-- Pin `merge_base` and `head` to the comparison Metabrowser holds for the pull request,
-  which the route checks the pins against: `.record.comparison.base` and
-  `.record.comparison.head`, the `left=` and `right=` of its `.comparison_route`, as
-  [Publish and Confirm It](#publish-and-confirm-it) reads them.
-  Never compute `merge_base` with `git merge-base`, which answers the head itself once
-  the base branch holds the head, as after a merge.
+- Pin `merge_base` and `head` to the pull request’s comparison, which the route checks
+  them against. When you open the pull request, Git gives the base its record will hold,
+  `git merge-base origin/<base branch> HEAD`, and the head is the one you pushed; once
+  it exists, take `.record.comparison.base` and `.record.comparison.head` from its
+  record, the `left=` and `right=` of its `.comparison_route`.
+  [Publish and Confirm It](#publish-and-confirm-it) has both.
+  Never take `git merge-base` for a pull request that has merged or closed: once the
+  base branch holds the head, it answers the head itself.
 - A reference names a changed `path`, alone for the file’s whole diff, or with a `side`,
   `old` or `new`, and lines that lie inside one hunk on that side.
   Test each range against the hunks the comparison route answers for its file
@@ -665,34 +667,49 @@ collection:
 
 ### Publish and Confirm It
 
-The record of the pull request holds the pins and the hunks a guide is written against,
-so open the pull request first, with its prose, and add the block once its record is
-read.
-The `guided-review` route reads the cached description, and no route checks a block
-before it is published, so the order is: pin, check what you can, publish, then read
-every step through the route and fix what it reports.
+The `guided-review` route reads the cached description, so no route checks a block
+before it is published: pin, check what you can, publish, then read every step through
+the route and fix what it reports.
+
+When you open the pull request with its guide, pin from Git: after
+`git fetch origin <base branch>`, the base layer’s branch for a stacked pull request,
+pin `merge_base` to `git merge-base origin/<base branch> HEAD` and `head` to the head
+you pushed, `git rev-parse HEAD`, and publish the description with
+`gh pr create --body-file <tmp>/body.md`. Then refresh the record, confirm the pins
+against it, and test the ranges, as below; when either is off, fix the block and publish
+it again with `gh pr edit`.
+
+When the pull request exists, as after a push or to change a published guide, or has
+merged or closed, take the pins from its record instead: once the base branch holds the
+head, `git merge-base` answers the head itself.
 
 Refresh the record after every push and every edit of the description.
 From a pull-request URL, run `<invocation> <url> --no-serve` and the record check of
 [From a Pull-Request URL](#from-a-pull-request-url), which must show the fetch
 succeeded; beside a checkout, POST the refresh of
 [Beside a Checkout](#beside-a-checkout) and use `<checkout>` in place of `<url>`. Either
-leaves the record in `<tmp>/pull.json`; read the pins from it:
+leaves the record in `<tmp>/pull.json`; read its pins, `merge_base` first and `head`
+second:
 
 ```shell
-jq -r '.record.comparison.base, .record.comparison.head' <tmp>/pull.json
+jq -er '.record.comparison.base, .record.comparison.head' <tmp>/pull.json
 ```
 
-Pin `merge_base` to the first line and `head` to the second, which must be the full ID
-of the head you pushed, `git rev-parse HEAD`; when it is not, the record is older than
-the push, so refresh it again.
+`-e` stops the recipe when the record has no comparison, and
+`.record.unavailable.comparison` says why.
+`head` must be the pull request’s head: `git rev-parse HEAD` for a head you just pushed,
+and GitHub’s, `gh pr view <n> --json headRefOid --jq .headRefOid`, for any other; when
+it is not, the record is older than the push, so refresh it again.
+A guide whose pins differ from these reads `stale`.
 
 Before you publish, parse the block’s YAML with a parser you have, and test each range
 against its file’s hunks with the `&file=<path>` recipe of
-[From a Pull-Request URL](#from-a-pull-request-url).
+[From a Pull-Request URL](#from-a-pull-request-url), which reads the record: for a pull
+request you open with its guide, test them as soon as it opens.
 That is all a check can do before publishing: whether the page reads the guide, and each
 reference, is the route’s answer alone.
-Write the whole description to a file, the prose and then the block, and publish it:
+Write the whole description to a file, the prose and then the block, and publish it,
+with `gh pr create` as above when you open the pull request, and otherwise:
 
 ```shell
 gh pr edit <n> --body-file <tmp>/body.md
@@ -879,14 +896,24 @@ guides a reviewer must read:
   jq -r '.manifest.files[] | select((.new // .old).path | test("(^|/)(changelog\\.d|tests?|fixtures|golden)/") | not) | "\(.kind) +\(.additions) \((.new // .old).path)"' <tmp>/docs.json
 ```
 
+The folder names are common conventions, not rules: adjust them to the repository’s own,
+such as a testdata or .changeset folder, and read what the filter dropped, the same
+command without `| not`, before you rely on it.
+
 Read each layer’s description from its record, which a `current` stack has cached for
 every layer, rather than from GitHub, and its own guide with the outline and step
 recipes of [Publish and Confirm It](#publish-and-confirm-it), `<n>` the layer’s number:
 
 ```shell
 <invocation> <url> --api '/api/plugin/github/pull?number=<n>' --format json > <tmp>/layer.json &&
-  jq -r '.state, .record.pull.body' <tmp>/layer.json
+  jq -r '.state, .record.pull.body_truncated, .record.pull.body' <tmp>/layer.json
 ```
+
+- `.state` is `current` for a record fetched moments ago and `stale` for an older one,
+  whose description may predate an edit made since: when the exact wording matters, read
+  that layer’s URL with `--no-serve` first.
+- When `.record.pull.body_truncated` is true, the record holds only the start of a long
+  description: read it from GitHub, `gh pr view <n> --json body --jq .body`.
 
 Only the description you edit starts from the copy GitHub has, `gh pr view`, as in
 [Publish and Confirm It](#publish-and-confirm-it).

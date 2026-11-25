@@ -178,6 +178,15 @@ refs/remotes/origin/topic
 ? 0
 ```
 
+With no record, and so no comparison, the pin recipe exits 1 rather than give pins.
+
+```console
+$ jq -er '.record.comparison.base, .record.comparison.head' tmp/pull.json
+null
+null
+? 1
+```
+
 The record has no comparison route, so the diff recipe stops before it runs `metab`.
 
 ```console
@@ -251,7 +260,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 ```
 
 ```console
-$ jq -r '.record.comparison.base, .record.comparison.head' tmp/pull.json
+$ jq -er '.record.comparison.base, .record.comparison.head' tmp/pull.json
 f92fd713acd521d4ebb62fb9f345ec927b8b6d1b
 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a
 ? 0
