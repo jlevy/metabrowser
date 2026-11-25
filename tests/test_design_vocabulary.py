@@ -2684,7 +2684,12 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # selected row, and for a stack member at rest, hovered and current.
     assert "A pull request’s title is always bold in normal text ink" in doc
     assert 'h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title))' in panel
-    assert 'h("span", { class: "github-pull-stack-member-title" })' in page
+    # The stack menu and a stack's page draw a member with one builder (stack-member-row.js).
+    member_row = (REPO_ROOT / BUILTIN_PLUGINS / "github/stack-member-row.js").read_text(
+        encoding="utf-8"
+    )
+    assert "stackMemberRow(link, deps.titleNodes, deps.identity)" in page
+    assert 'make("span", "github-pull-stack-member-title")' in member_row
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:
         assert github[title]["color"] == "var(--text)", title

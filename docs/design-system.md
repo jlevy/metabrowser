@@ -3642,6 +3642,7 @@ author after the number.
 | --- | --- |
 | A Pulls row | `.github-pulls-by`, ending the run after the number, cut short only where it is wider than a line |
 | A stack menu’s member | `.github-pull-stack-member-by`, ending the line after the number, at most a third of it |
+| A member on a stack’s page | The stack menu’s member row itself, drawn by its builder, `stackMemberRow` |
 | A guide’s pull request row | `.github-pull-guide-row-by`, after the title, at most a third of the line |
 | The pull request page’s title | The header’s sentence, “jlevy wants to merge 3 commits”, which names the merger once the pull request is merged, as github.com’s does |
 
@@ -4024,10 +4025,13 @@ answer lands moving nothing under the title.
 settled, and the drawings the page asks for against the stack route’s recorded answers;
 `tests/dom/github-stack-guide-mount-session.js` mounts the page and holds that the rows
 of its first paint are its settled rows and that the Diff summary is closed.
-`tests/test_github_stack_page_chrome.py` measures in headless Chrome that the header’s
-rows are a pull request’s, in its order; that a member row is the stack menu’s, its
-author after its number at the row’s end; that View on GitHub opens the whole stack; and
-that nothing on the page moves from its first paint, opening the page or its tabs.
+`tests/test_github_stack_page_chrome.py` measures in headless Chrome that nothing on the
+page moves from its first paint, opening the page or its tabs; that every member names
+its author; and that View on GitHub opens the whole stack.
+A member row is not measured there: the page draws it with the stack menu’s builder,
+`stackMemberRow` in `stack-member-row.js`, so it is the menu’s row by construction, and
+its ages are a pull request’s page’s, `pullAge` in `pull-page.js`, in their freshness
+ink.
 
 ### Stack Groups in the Pulls Tab
 
@@ -4126,33 +4130,32 @@ mounts the panel and the page’s stack menu to hold the tree’s roles, places,
 each open stack ending in its Whole stack row, which a key or a press opens and an
 address of the stack’s page marks.
 `tests/test_github_stack_page_chrome.py` holds in headless Chrome that the row is the
-current row and in view on the stack’s page, that a press on it and `J` onto it from the
-last member open the page, and that its glyph and words start where the members’ icons
-and titles do. `tests/dom/github-pulls-stack-lines-session.js` runs what each heading
-shows of its change line, and when it is read, against the production code on the
-route’s recorded answers, and mounts the panel to print a heading waiting, with its
-line, with none, and with “(estimated)”. `tests/test_github_pulls_stack_lines_chrome.py`
-measures in headless Chrome, at every width down to the pane’s minimum in both themes,
-that nothing in a stack’s row moves when its line arrives, that the row stays one line
-with its label whole and the line whole or out of view, never cut short, and that the
-line’s inks and weights are the component’s. `tests/test_github_pulls_stacks_chrome.py`
-measures the same design in headless Chrome against a running server with two native
-stacks: the shared label tokens, a stack’s row that shows its label alone with its size
-in its accessible name, where rows start, hover and focus, the toolbar’s fit, real keys
-and presses, a row’s toggle among them, the scroll, a pull request’s row with the state
-icon centered on its run’s first line, the number and the author in its run, and the
-toggle and the age at the row’s end on its last line, a member’s place and dot after its
-title and its missing icon, and the menu’s order and ink, each member’s author after its
+current row and in view on the stack’s page, and that a press on it and `J` onto it from
+the last member open the page.
+`tests/dom/github-pulls-stack-lines-session.js` runs what each heading shows of its
+change line, and when it is read, against the production code on the route’s recorded
+answers, and mounts the panel to print a heading waiting, with its line, with none, and
+with “(estimated)”. `tests/test_github_pulls_stack_lines_chrome.py` measures in headless
+Chrome, at every width down to the pane’s minimum in both themes, that nothing in a
+stack’s row moves when its line arrives, that the row stays one line with its label
+whole and the line whole or out of view, never cut short, and that the line’s inks and
+weights are the component’s. `tests/test_github_pulls_stacks_chrome.py` measures the
+same design in headless Chrome against a running server with two native stacks: the
+shared label tokens, a stack’s row that shows its label alone with its size in its
+accessible name, where rows start, hover and focus, the toolbar’s fit, real keys and
+presses, a row’s toggle among them, the scroll, a pull request’s row with the state icon
+centered on its run’s first line, the number and the author in its run, and the toggle
+and the age at the row’s end on its last line, a member’s place and dot after its title
+and its missing icon, and the menu’s order and ink, each member’s author after its
 number, on its baseline, and cut short at a third of the line for GitHub’s longest
 login, and the Whole stack row’s glyph and words where the members’ icons and titles
-start, in the menu and in the list.
-`tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width down to
-the pane’s minimum and holds that a place sits after the title with its dot before it,
-and the run ends inside the row with nothing scrolling sideways; that one stack’s place
-shows whole; that every line of the run starts in the text column, the icon centered on
-its first line, and the run ends with the author, the last line under it with the
-chevron in the text column and the age at the row’s end; and that the author follows the
-number and ends the run inside the row.
+start. `tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width
+down to the pane’s minimum and holds that a place sits after the title with its dot
+before it, and the run ends inside the row with nothing scrolling sideways; that one
+stack’s place shows whole; that every line of the run starts in the text column, the
+icon centered on its first line, and the run ends with the author, the last line under
+it with the chevron in the text column and the age at the row’s end; and that the author
+follows the number and ends the run inside the row.
 `tests/dom/github-pulls-row-lines-session.js` runs what each row’s run and last line
 show, when it is read, and what a press and each key do, against the production code on
 the summary route’s recorded answers, and `tests/test_github_pulls_row_lines_chrome.py`

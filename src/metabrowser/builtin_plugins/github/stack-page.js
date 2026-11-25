@@ -66,13 +66,14 @@ import {
   isPlainClick,
   manifestFiles,
   noFiles,
+  pullAge,
   SLOW_POLL_MS,
   stackMemberAuthor,
   textRefusalNote,
 } from "./pull-page.js";
 import { stackLabel, stackMenuOrder, stackPosition, watchStacks } from "./pull-stacks.js";
 import { listedState } from "./pull-state.js";
-import { fillStackMemberRow } from "./stack-member-row.js";
+import { stackMemberRow } from "./stack-member-row.js";
 
 export const STACK_ROUTE = "/api/plugin/github/stack";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
@@ -1197,6 +1198,13 @@ export function mountStackPage(container, ctx, mb) {
    * @type {boolean | null} */
   let coldHeld = null;
   let membersKey = "";
+  /**
+   * Each member's item and row (`stackMemberRow`), by number, kept while the member is, so
+   * an answer that changes a line changes only its nodes and an author's avatar keeps its
+   * image (docs/design-system.md, "A Repaint Keeps Its Images").
+   * @type {Map<number, {item: HTMLElement, row: import("./stack-member-row.js").StackMemberRow}>}
+   */
+  const memberRows = new Map();
   let mergeKey = "";
   let statusKey = "";
   /** The comparison read once for the Diff summary and Changes, by its key.
@@ -1255,19 +1263,38 @@ export function mountStackPage(container, ctx, mb) {
       return;
     }
     membersKey = key;
-    memberList.replaceChildren(
-      ...(lines ?? []).map((line) => {
-        const row = link({ number: line.number, tab: "" }, `/pull/${line.number}`, "menu-item", []);
-        // Each author as the stack menu draws it: no box where it has no avatar, and its
-        // avatar asked for once the row is drawn (docs/design-system.md, "Actor Identity").
-        fillStackMemberRow(row, line, mb.titleNodes, (login, avatar) =>
+    const drawn = (lines ?? []).map((line) => {
+      let member = memberRows.get(line.number);
+      if (member === undefined) {
+        const anchor = link(
+          { number: line.number, tab: "" },
+          `/pull/${line.number}`,
+          "menu-item",
+          [],
+        );
+        // The stack menu's member row, its author drawn as the menu draws it: no box where it
+        // has no avatar (docs/design-system.md, "Actor Identity").
+        const row = stackMemberRow(anchor, mb.titleNodes, (login, avatar) =>
           authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
             placeholder: false,
           }),
         );
-        return h("li", { class: "github-pull-stack-members-item" }, [row]);
-      }),
-    );
+        member = { item: h("li", { class: "github-pull-stack-members-item" }, [anchor]), row };
+        memberRows.set(line.number, member);
+      }
+      member.row.show(line);
+      return member.item;
+    });
+    const listed = new Set((lines ?? []).map((line) => line.number));
+    for (const number of [...memberRows.keys()]) {
+      if (!listed.has(number)) {
+        memberRows.delete(number);
+      }
+    }
+    const shown = [...memberList.children];
+    if (shown.length !== drawn.length || shown.some((item, at) => item !== drawn[at])) {
+      memberList.replaceChildren(...drawn);
+    }
   }
 
   /** @param {{head: string, base: string} | null} merge */
@@ -1650,22 +1677,8 @@ export function mountStackPage(container, ctx, mb) {
               ? { number: target, tab: "" }
               : { number: target, tab: "files", file: path },
           ),
-        age: (iso) => {
-          const at = Date.parse(iso);
-          if (!Number.isFinite(at)) {
-            return h("span", {}, [iso]);
-          }
-          const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-          return h(
-            "span",
-            {
-              class: `github-pull-age ${className}`,
-              "data-tip-text": mb.formatTimestamp(at / 1000),
-              "data-age-at": String(at),
-            },
-            [label],
-          );
-        },
+        // A pull request's page's age, in its freshness ink.
+        age: (iso) => pullAge(mb, iso),
         shortCommit: (sha) => mb.shortCommit(sha),
         // A cited pull request's author, as a stack menu's member draws it.
         identity: (login, avatar) =>

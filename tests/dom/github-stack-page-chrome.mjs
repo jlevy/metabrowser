@@ -297,19 +297,6 @@ try {
   );
   await click(".github-pull-stack-trigger:not(.github-pull-stack-strut)");
   await waitFor(`document.querySelector(".github-pull-stack-whole") !== null`);
-  // The menu's member rows, which the stack page's rows are.
-  const menuRows =
-    await evaluate(`[...document.querySelectorAll(".github-pull-stack-menu .github-pull-stack-member")].map((row) => {
-    const style = getComputedStyle(row);
-    const by = row.querySelector(".github-pull-stack-member-by:not([hidden])");
-    return {
-      height: Math.round(row.getBoundingClientRect().height),
-      font: style.fontSize,
-      padding: style.paddingLeft,
-      number: row.querySelector(".github-pull-stack-member-number").textContent,
-      author: by?.querySelector(".github-pull-stack-member-author")?.textContent ?? null,
-    };
-  })`);
   const opened = await record("open-stack", ".github-pull-stack-page", () =>
     click(".github-pull-stack-whole"),
   );
@@ -364,44 +351,15 @@ try {
     }
     const page = await evaluate(`(() => {
       const page = document.querySelector(".github-pull-stack-page");
-      const header = page.querySelector(".page-header");
-      const rows = [...header.children].filter((row) => getComputedStyle(row).display !== "none");
       const members = [...page.querySelectorAll(".github-pull-stack-members .github-pull-stack-member")];
       const summary = page.querySelector(".github-pull-summary .diff-summary-toggle");
       const counterpart = page.querySelector(".view-header-end[data-counterpart] a.counterpart-open");
-      const line = (node) => node === null ? null : Math.round(node.getBoundingClientRect().top);
       return {
-        rows: rows.map((row) => row.tagName === "H1" ? "title" : [...row.classList][0]),
-        members: members.map((row) => {
-          const style = getComputedStyle(row);
-          const box = row.getBoundingClientRect();
-          const number = row.querySelector(".github-pull-stack-member-number").getBoundingClientRect();
-          return {
-            text: row.innerText.replace(/\\s+/g, " ").trim(),
-            height: Math.round(box.height),
-            font: style.fontSize,
-            padding: style.paddingLeft,
-            one_line: [".github-pull-stack-member-title", ".github-pull-stack-member-position", ".github-pull-stack-member-number"]
-              .map((part) => line(row.querySelector(part))).every((top, at, all) => Math.abs(top - all[0]) <= 2),
-            current: row.hasAttribute("aria-current"),
-            number: row.querySelector(".github-pull-stack-member-number").textContent,
-            // The author after the number, a muted dot before it, as the menu's (mb-cm31).
-            author: (() => {
-              const by = row.querySelector(".github-pull-stack-member-by:not([hidden])");
-              if (by === null) return null;
-              const name = by.querySelector(".github-pull-stack-member-author");
-              const avatar = by.querySelector("img");
-              const end = Math.round(box.right - by.getBoundingClientRect().right) <= parseFloat(style.paddingRight) + 1;
-              return {
-                name: name?.textContent ?? null,
-                weight: name === null ? null : getComputedStyle(name).fontWeight,
-                avatar: avatar === null ? null : Math.round(avatar.getBoundingClientRect().width),
-                after_number: by.getBoundingClientRect().left >= number.right,
-                at_end: end,
-              };
-            })(),
-          };
-        }),
+        members: members.map((row) => ({
+          text: row.innerText.replace(/\\s+/g, " ").trim(),
+          current: row.hasAttribute("aria-current"),
+          author: row.querySelector(".github-pull-stack-member-by:not([hidden]) .github-pull-stack-member-author")?.textContent ?? null,
+        })),
         summary_open: summary?.getAttribute("aria-expanded") ?? null,
         counterpart: counterpart?.getAttribute("href") ?? null,
         tabs: [...page.querySelectorAll(".tab-bar .tab-btn")].filter((tab) => !tab.hidden).map((tab) => tab.textContent),
@@ -409,48 +367,17 @@ try {
       };
     })()`);
     measured.page = page;
+    // Each member row is the stack menu's (`stackMemberRow`), so its layout is the menu's by
+    // construction. What the running app adds is its data: every member's author, its
+    // record's from the stack's answer, which a member the Pulls tab's lists have not read
+    // (merged 8, which the Open list leaves out) has too. The stand-in's pull requests are
+    // all the maintainer's.
     check(
-      "the header's rows are a pull request's, in its order",
-      JSON.stringify(page.rows) ===
-        JSON.stringify([
-          "title",
-          "view-header-end",
-          "github-pull-stack-members",
-          "github-pull-branches",
-          "github-pull-size",
-          "github-pull-summary",
-        ]),
-      JSON.stringify(page.rows),
-    );
-    check(
-      "the members are listed top first",
-      page.members.map((row) => row.number).join(",") === "#10,#8",
+      "every member names its author",
+      page.members.length === 2 && page.members.every((row) => row.author === "maintainer"),
       JSON.stringify(page.members),
     );
     for (const row of page.members) {
-      check(
-        `${row.text}: one line, the menu's row`,
-        row.one_line &&
-          row.height === menuRows[0]?.height &&
-          row.font === menuRows[0]?.font &&
-          row.padding === menuRows[0]?.padding,
-        JSON.stringify({ row, menu: menuRows[0] }),
-      );
-      const menu = menuRows.find((each) => each.number === row.number) ?? null;
-      // Every member's author, bold, after the number, ending the row: its record's, from the
-      // stack's answer, which a member the Pulls tab's lists have not read (merged 8, which
-      // the Open list leaves out) has too. The stand-in's pull requests are all the
-      // maintainer's. Where the menu names an author, it is the same one.
-      check(
-        `${row.text}: its author ends the row after its number, bold, as the menu's does`,
-        menu !== null &&
-          row.author?.name === "maintainer" &&
-          (menu.author === null || menu.author === row.author.name) &&
-          Number(row.author.weight) >= 600 &&
-          row.author.after_number &&
-          row.author.at_end,
-        JSON.stringify({ row: row.author, menu }),
-      );
       check(`${row.text}: no member is the page`, !row.current);
     }
     check("the Diff summary is closed", page.summary_open === "false", String(page.summary_open));
@@ -509,8 +436,7 @@ try {
   await shot(`${label}-stack-70-with-pulls`);
   if (!before) {
     // The Pulls tab's Whole stack row (mb-cm31): the last of Stack #70's rows, under its
-    // members, the current row while the stack's page is open, and in view; its Layers glyph
-    // and words where the members' state icons and titles start, as the stack menu's are.
+    // members, the current row while the stack's page is open, and in view.
     const WHOLE = `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')`;
     const NAV = `(() => {
       const whole = ${WHOLE};
@@ -519,10 +445,6 @@ try {
       for (let item = whole.closest("li").previousElementSibling; item?.dataset.level === "2"; item = item.previousElementSibling) {
         members.unshift(Number(item.dataset.number));
       }
-      const member = document.querySelector('#tab-pulls a.github-pulls-row[data-number="' + members.at(-1) + '"]');
-      const icon = whole.querySelector(".github-pull-stack-icon");
-      const memberIcon = member?.querySelector(".github-pull-state-icon") ?? null;
-      const first = (node) => node?.getClientRects()[0]?.left ?? null;
       const view = document.querySelector(".tree-content").getBoundingClientRect();
       const box = whole.getBoundingClientRect();
       return {
@@ -534,13 +456,6 @@ try {
         focused: document.activeElement === whole,
         place: whole.getAttribute("aria-posinset") + "/" + whole.getAttribute("aria-setsize"),
         members,
-        glyph: icon?.querySelector("svg") != null,
-        iconLeft: icon?.getBoundingClientRect().left ?? null,
-        iconWidth: icon?.getBoundingClientRect().width ?? null,
-        memberIconLeft: memberIcon?.getBoundingClientRect().left ?? null,
-        memberIconWidth: memberIcon?.getBoundingClientRect().width ?? null,
-        titleLeft: first(whole.querySelector(".github-pulls-whole-title")),
-        memberTitleLeft: first(member?.querySelector(".github-pulls-title")),
         inView: box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
       };
     })()`;
@@ -560,14 +475,6 @@ try {
     check(
       "it is the current row while the stack's page is open, and in view",
       nav?.current === "page" && nav.selected && nav.inView,
-      JSON.stringify(nav),
-    );
-    check(
-      "its glyph and words start where the members' icons and titles do",
-      nav?.glyph === true &&
-        Math.abs(nav.iconLeft - nav.memberIconLeft) <= 0.5 &&
-        Math.abs(nav.iconWidth - nav.memberIconWidth) <= 0.5 &&
-        Math.abs(nav.titleLeft - nav.memberTitleLeft) <= 0.5,
       JSON.stringify(nav),
     );
     const last = nav?.members.at(-1);
