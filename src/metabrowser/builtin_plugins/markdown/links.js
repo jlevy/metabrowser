@@ -16,6 +16,9 @@ const IMAGE_EXTENSIONS = new Set([
 ]);
 const AUDIO_EXTENSIONS = new Set([".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav"]);
 const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
+// An embedded PDF is the pdf plugin's card, never a viewer (link-enhancer.js
+// `mountPdfEmbed`); a PDF named without the extension is a resource, as before.
+const PDF_EXTENSION = ".pdf";
 
 /**
  * @typedef {object} LinkIntent
@@ -27,7 +30,7 @@ const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
  * @property {"filesystem" | "git_revision"=} sourceKind
  */
 
-/** @typedef {"image" | "audio" | "video" | "resource"} MediaKind */
+/** @typedef {"image" | "audio" | "video" | "pdf" | "resource"} MediaKind */
 /** @typedef {Readonly<{completePrefix: boolean, reverseSlashes: readonly number[], sourcePath: string, sourceKind: "filesystem" | "git_revision"}>} PreparedSourcePath */
 /** @typedef {Readonly<{done: boolean, pathVisits: number, result: PreparedSourcePath | null}>} SourcePathStep */
 /** @typedef {Readonly<{step: (maxPathVisits: number) => SourcePathStep}>} TrustedSourcePathContext */
@@ -519,6 +522,9 @@ function mediaKindForAuthoredPath(encodedPath) {
   }
   if (VIDEO_EXTENSIONS.has(extension)) {
     return "video";
+  }
+  if (extension === PDF_EXTENSION) {
+    return "pdf";
   }
   return "resource";
 }

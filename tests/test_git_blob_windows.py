@@ -315,7 +315,8 @@ def test_a_jsonl_blob_past_the_parser_ceiling_reports_it_like_the_filesystem(
             assert response.status_code == 200
             payload = json.loads(response.text)
             assert payload["type"] == "error"
-            assert "JSONL content exceeds" in payload["error"]
+            assert payload["error"] == "This log is too large to show here."
+            assert "JSONL content exceeds" in payload["detail"]
 
     asyncio.run(run())
 

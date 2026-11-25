@@ -497,7 +497,7 @@ try {
   scenario({ stderr: "error connecting to api.github.com\n", exit: 1 });
   await waitFor(reloadReady);
   await click(".github-pulls-refresh");
-  await waitFor(`(${connection}).includes("could not be reached")`);
+  await waitFor(`(${connection}).includes("Could not reach GitHub")`);
   await measure("pulls unreachable");
   scenario({ stderr: "To get started with GitHub CLI, please run:  gh auth login\n", exit: 4 });
   await waitFor(reloadReady);

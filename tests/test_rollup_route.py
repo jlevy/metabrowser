@@ -280,7 +280,10 @@ def test_rollup_route_rejects_unknown_rank(tmp_path: Path) -> None:
     app = SimpleNamespace(state=SimpleNamespace())
     response = asyncio.run(server.api_rollup(_request(app, {"path": "", "ext_rank": "popularity"})))
     assert response.status_code == 400
-    assert json.loads(bytes(response.body)) == {"error": "Unknown ext_rank: 'popularity'"}
+    assert json.loads(bytes(response.body)) == {
+        "error": "This folder summary could not be made.",
+        "detail": "Unknown ext_rank: 'popularity'",
+    }
 
 
 def test_rollup_route_rejects_unknown_ignored_and_encoding(tmp_path: Path) -> None:
@@ -289,7 +292,10 @@ def test_rollup_route_rejects_unknown_ignored_and_encoding(tmp_path: Path) -> No
     for name, value in (("ignored", "only"), ("encoding", "msgpack")):
         response = asyncio.run(server.api_rollup(_request(app, {"path": "", name: value})))
         assert response.status_code == 400
-        assert json.loads(bytes(response.body)) == {"error": f"Unknown {name}: {value!r}"}
+        assert json.loads(bytes(response.body)) == {
+            "error": "This folder summary could not be made.",
+            "detail": f"Unknown {name}: {value!r}",
+        }
 
 
 def test_rollup_route_node_budget_defaults_clamps_and_resolves_max(

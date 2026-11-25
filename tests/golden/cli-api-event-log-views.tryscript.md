@@ -1828,8 +1828,9 @@ $ metab root --api '/api/plugin/event-log/timeline?path=events-20261119T220000Z-
 api: /api/plugin/event-log/timeline?path=events-20261119T220000Z-p7007-000.jsonl&parent=7007:99
 status: 404
 {
-  "error": "no span 7007:99 in this log",
-  "code": "span_missing"
+  "error": "This span is not in this log.",
+  "code": "span_missing",
+  "detail": "no span 7007:99 in this log"
 }
 Error: /api/plugin/event-log/timeline?path=events-20261119T220000Z-p7007-000.jsonl&parent=7007:99 returned HTTP 404
 ? 1
@@ -1876,7 +1877,7 @@ $ metab root --api '/api/plugin/event-log/errors?path=absent.jsonl'
 api: /api/plugin/event-log/errors?path=absent.jsonl
 status: 404
 {
-  "error": "Not found",
+  "error": "This log file was not found.",
   "code": "not_found"
 }
 Error: /api/plugin/event-log/errors?path=absent.jsonl returned HTTP 404
@@ -1888,8 +1889,9 @@ $ metab root --api '/api/plugin/event-log/errors?path=events.jsonl'
 api: /api/plugin/event-log/errors?path=events.jsonl
 status: 415
 {
-  "error": "None of its 2 lines is an event log record of schema version 1",
-  "code": "not_an_event_log"
+  "error": "This file is not an event log.",
+  "code": "not_an_event_log",
+  "detail": "None of its 2 lines is an event log record of schema version 1"
 }
 Error: /api/plugin/event-log/errors?path=events.jsonl returned HTTP 415
 ? 1

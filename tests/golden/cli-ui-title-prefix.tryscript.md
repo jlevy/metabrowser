@@ -21,8 +21,11 @@ The transcript pins these behaviors:
   optional `!`, and the colon.
   A scope is one or more characters other than parentheses, so a space or a comma may be
   in it, and an empty `()` is not a scope.
-- A prefix counts only at 16 characters or fewer, the colon included, counted in code
-  points: `refactor(stack):` counts, and `refactor(stacks):` does not.
+- A prefix counts only at 32 characters or fewer, the colon included, counted in code
+  points: `feat(view-on-github):` and `fix(source-freshness, checkout):` count, and
+  `test(source-freshness, checkout):` does not.
+  The cap keeps a lowercase word and a parenthetical sentence before a colon, such as
+  `note(this is how the cache and the scroller keep a row):`, the title’s own text.
 - Whitespace and something else must follow the colon.
   A title with no space after its colon, or nothing but whitespace after it, has no
   prefix.
@@ -60,32 +63,58 @@ $ node tests/dom/title-prefix-session.js
       "prefix": "feat!:",
       "characters": 6
     },
-    "exactly 16 characters": {
+    "16 characters, the first cap": {
       "title": "refactor(stack): name the stack's Control chords",
       "prefix": "refactor(stack):",
       "characters": 16
     },
     "17 characters": {
       "title": "refactor(stacks): name the stack's Control chords",
-      "prefix": null
+      "prefix": "refactor(stacks):",
+      "characters": 17
     },
     "17 characters, from this repository": {
       "title": "revert(markdown): restore the table of contents",
-      "prefix": null
+      "prefix": "revert(markdown):",
+      "characters": 17
+    },
+    "a hyphenated scope, 21 characters": {
+      "title": "feat(view-on-github): open the pull request on github.com",
+      "prefix": "feat(view-on-github):",
+      "characters": 21
+    },
+    "24 characters, from this repository": {
+      "title": "fix(provider-resources): bound the resource reads",
+      "prefix": "fix(provider-resources):",
+      "characters": 24
     },
     "a scope with a space": {
       "title": "fix(ui, git): a landing waits for the HEAD read",
       "prefix": "fix(ui, git):",
       "characters": 13
     },
-    "a scope with a space, past 16": {
+    "a scope with a space, 20 characters": {
       "title": "fix(commits, pulls): a landing waits for the HEAD read; stack keys wait",
+      "prefix": "fix(commits, pulls):",
+      "characters": 20
+    },
+    "exactly 32 characters": {
+      "title": "fix(source-freshness, checkout): read the HEAD once",
+      "prefix": "fix(source-freshness, checkout):",
+      "characters": 32
+    },
+    "33 characters": {
+      "title": "test(source-freshness, checkout): read the HEAD once",
       "prefix": null
     },
-    "16 characters in code points": {
-      "title": "refactor(🚀🚀🚀🚀🚀): launch the stack",
-      "prefix": "refactor(🚀🚀🚀🚀🚀):",
-      "characters": 16
+    "32 characters in code points": {
+      "title": "refactor(🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀): launch the stack",
+      "prefix": "refactor(🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀):",
+      "characters": 32
+    },
+    "a sentence that looks like a prefix": {
+      "title": "note(this is how the cache and the scroller keep a row): read on",
+      "prefix": null
     },
     "an empty scope": {
       "title": "fix(): keep the scroller rule",
@@ -147,7 +176,7 @@ $ node tests/dom/title-prefix-session.js
       "characters": 9
     }
   },
-  "noPrefixDrawsItsTextAlone": 14,
+  "noPrefixDrawsItsTextAlone": 13,
   "markup": {
     "nodes": [
       {

@@ -51,18 +51,18 @@ $ node tests/dom/markdown-render-refusal-session.js
     "abort": null
   },
   "notes": {
-    "render_deadline": "This document took longer than 5 seconds to render, so its source is shown.",
-    "renderer_exited": "The renderer stopped while rendering this document, so its source is shown.",
-    "renderer_unavailable": "The document renderer could not start, so this document’s source is shown. Reload the page to try again.",
-    "renderer_busy": "The document renderer is busy with other documents, so this document’s source is shown. Reload the page to try again.",
-    "shortened": "This document took longer than 0.25 seconds to render, so its source is shown."
+    "render_deadline": "This document took too long to render, so its source is shown.",
+    "renderer_exited": "This document could not be rendered, so its source is shown.",
+    "renderer_unavailable": "This document could not be rendered, so its source is shown. Reload the page to try again.",
+    "renderer_busy": "This document could not be rendered, so its source is shown. Reload the page to try again.",
+    "shortened": "This document took too long to render, so its source is shown."
   },
   "documentTab": {
     "classes": [
       "content-body",
       "md-body"
     ],
-    "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"render_deadline\">This document took longer than 5 seconds to render, so its source is shown.</div><div class=\"metabrowser-render-refused-source\"></div>",
+    "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"render_deadline\">This document took too long to render, so its source is shown.</div><div class=\"metabrowser-render-refused-source\"></div>",
     "renderError": false,
     "renders": [
       {
@@ -91,7 +91,7 @@ $ node tests/dom/markdown-render-refusal-session.js
       "content-body",
       "md-body"
     ],
-    "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"render_deadline\">This document took longer than 5 seconds to render, so its source is shown. Showing the first 10 B of 4096 B; the Source tab shows the rest.</div><div class=\"metabrowser-render-refused-source\"></div>",
+    "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"render_deadline\">This document took too long to render, so its source is shown. Showing the first 10 B of 4096 B; the Source tab shows the rest.</div><div class=\"metabrowser-render-refused-source\"></div>",
     "renderError": false,
     "renders": [
       {
@@ -116,27 +116,30 @@ $ node tests/dom/markdown-render-refusal-session.js
   },
   "otherCodes": {
     "renderer_exited": {
-      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_exited\">The renderer stopped while rendering this document, so its source is shown.</div><div class=\"metabrowser-render-refused-source\"></div>",
+      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_exited\">This document could not be rendered, so its source is shown.</div><div class=\"metabrowser-render-refused-source\"></div>",
       "renderError": false
     },
     "renderer_unavailable": {
-      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_unavailable\">The document renderer could not start, so this document’s source is shown. Reload the page to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
+      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_unavailable\">This document could not be rendered, so its source is shown. Reload the page to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
       "renderError": false
     },
     "renderer_busy": {
-      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_busy\">The document renderer is busy with other documents, so this document’s source is shown. Reload the page to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
+      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_busy\">This document could not be rendered, so its source is shown. Reload the page to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
       "renderError": false
     }
   },
   "renderFailure": {
     "renderError": true,
-    "sources": []
+    "sources": [],
+    "logged": [
+      "metabrowser: the document could not be rendered · KPress render failed"
+    ]
   },
   "readmePanel": {
     "classes": [
       "folder-overview-panel-document"
     ],
-    "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"render_deadline\">This document took longer than 5 seconds to render, so its source is shown. Showing the first 19 B of 9000 B. <a class=\"metabrowser-render-refused-open\" href=\"/view/README.md\">Open the file</a></div><div class=\"metabrowser-render-refused-source\"></div>",
+    "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"render_deadline\">This document took too long to render, so its source is shown. Showing the first 19 B of 9000 B. <a class=\"metabrowser-render-refused-open\" href=\"/view/README.md\">Open the file</a></div><div class=\"metabrowser-render-refused-source\"></div>",
     "renderError": false,
     "renders": [
       {

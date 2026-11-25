@@ -213,10 +213,10 @@ function skippedNotice(log, mb) {
   if (skipped === 0) {
     return null;
   }
+  // Why each was skipped is the route's (`skipped`), for an agent.
   return notice(
-    `${mb.formatInteger(skipped)} ${skipped === 1 ? "line was" : "lines were"} not read: ` +
-      "a torn last line, a record of another schema version, a record with no usable time, " +
-      "or a line that is not a record. Raw JSON shows every line.",
+    `${mb.formatInteger(skipped)} ${skipped === 1 ? "line was" : "lines were"} not read. ` +
+      "Raw JSON shows every line.",
   );
 }
 
@@ -329,7 +329,7 @@ function detail(row) {
     fact("Open records", String(row.opens ?? 0));
   }
   if (row.orphan === true) {
-    fact("Started", "before this file: the span above it is in an earlier segment");
+    fact("Started", "before this file: the span above it is in an earlier file");
   }
   const body = make("div", "event-log-detail", [facts]);
   const attrs = JSON.stringify(row.attrs, null, 2);
@@ -483,12 +483,16 @@ function frame(container, filterable) {
  * @param {unknown} error
  */
 function showFailure(parts, error) {
-  const status = /** @type {{status?: number, payload?: {error?: string}}} */ (error);
-  const reason =
-    status?.payload?.error ??
-    (error instanceof Error ? error.message : "The log could not be read.");
+  // The route's `error` is its reader sentence; its `detail`, and an exception's own text,
+  // are the console's (docs/design-system-messages.md, "Where the Detail Goes").
+  const answer = /** @type {{payload?: {error?: unknown}}} */ (error)?.payload;
+  const said =
+    typeof answer?.error === "string" && answer.error
+      ? answer.error
+      : "Could not read the event log.";
+  console.error("metabrowser event log: the view could not be read", error);
   parts.summary.replaceChildren();
-  parts.body.replaceChildren(notice(`Could not read the event log: ${reason}`, "error"));
+  parts.body.replaceChildren(notice(said, "error"));
 }
 
 /**
@@ -1199,7 +1203,7 @@ export function mountEventLogView(container, ctx, mb, view) {
     // work is not known to be stuck, and the heading does not say it was.
     parts.body.append(
       heading(
-        continues ? "Not ended in this segment" : "Still running when the log ended",
+        continues ? "Not ended in this file" : "Still running when the log ended",
         mb.formatInteger(count(unfinished.total)),
       ),
     );
@@ -1208,7 +1212,7 @@ export function mountEventLogView(container, ctx, mb, view) {
     } else if (continues) {
       parts.body.append(
         notice(
-          "The server went on logging in a later segment, which may hold the end of this work.",
+          "The log continues in a later file, which may hold the end of this work.",
           "neutral",
         ),
       );
@@ -1229,9 +1233,7 @@ export function mountEventLogView(container, ctx, mb, view) {
     const reported = list(reports.examples).map(record);
     if (reported.length === 0) {
       parts.body.append(
-        make("p", "event-log-cause-line", [
-          "No page reported a request or wait failing. A page's reports say what it saw, not why, so the causes above come first.",
-        ]),
+        make("p", "event-log-cause-line", ["No page reported a request or wait failing."]),
       );
     } else {
       parts.body.append(

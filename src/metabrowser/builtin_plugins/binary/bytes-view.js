@@ -33,7 +33,7 @@ import {
 
 const EMPTY_TEXT = "This file is empty.";
 const UNAVAILABLE_TEXT = "This file is no longer available.";
-const UNDECODABLE_TEXT = "This file could not be decompressed.";
+const UNDECODABLE_TEXT = "This compressed file could not be read.";
 const FAILED_TEXT = "Could not load these bytes.";
 /**
  * Shown when the view drops the two-tone treatment. The glyphs are unchanged,
@@ -47,8 +47,7 @@ const FAILED_TEXT = "Could not load these bytes.";
  * more than its printable ratio suggests.
  */
 const ACCENT_NOTE =
-  "Coloring is off: this file switches between text and byte codes almost every " +
-  "character, so marking them apart would color nearly everything.";
+  "Coloring is off because this file switches between text and byte codes almost every character.";
 
 /** Fallback line box when the pane cannot be measured. */
 const FALLBACK_LINE_HEIGHT_PX = 18;
@@ -128,12 +127,9 @@ export function renderChunkState(state, mb) {
     case "empty":
       return emptyStateHtml(EMPTY_TEXT, false);
     case "oversize":
-      return emptyStateHtml(
-        `Preview unavailable. Binary previews are limited to ${mb.formatSize(
-          state.maxPreviewBytes || 0,
-        )}.`,
-        false,
-      );
+      // The ceiling itself, `state.maxPreviewBytes`, is a bound, not the reader's
+      // concern (docs/design-system-messages.md).
+      return emptyStateHtml("This file is too large to preview.", false);
     case "undecodable":
       return emptyStateHtml(UNDECODABLE_TEXT, true);
     case "unavailable":

@@ -14,6 +14,15 @@ overflow, revision, slice, disposal, percent-identity, shared root-budget, task-
 bracket-pairing, heading-anchor placement, and page-wide Worker sharing, primary-first
 dispatch, and recovery behavior without requiring a browser.
 
+`pdfEmbeds` is a document’s PDFs through the same chain and the pdf plugin’s production
+card. A link or wiki link to a PDF opens its view.
+An embed, whether `![](…)`, `<img>`, an `<object>`, or `![[…]]`, is a slot holding a
+link to the view until the plugin loads, then the card with one View link; it is never a
+viewer and never `/raw`. A PDF named without `.pdf` stays an image of its `/raw`
+address. The block also pins clicks, the plugin loading only for a document with a PDF,
+print making a card’s image eager, disposal, a document replaced before the plugin
+answers, and a page without the plugin.
+
 ```console
 $ node tests/dom/markdown-functional-session.js
 {
@@ -36,6 +45,77 @@ $ node tests/dom/markdown-functional-session.js
         "internal:notes/Later.md"
       ]
     }
+  },
+  "pdfEmbeds": {
+    "pluginLoadsWithoutAPdf": 0,
+    "beforeLoad": {
+      "[the report](report.pdf)": "a → /view/papers/report.pdf",
+      "![The report](report.pdf)": "pdf slot: link \"report.pdf\" → /view/papers/report.pdf",
+      "<object data=\"report.pdf\">": "pdf slot: link \"report.pdf\" → /view/papers/report.pdf",
+      "![[report.pdf]]": "pdf slot: link \"report.pdf\" → /view/papers/report.pdf",
+      "[[report.pdf]]": "a → /view/papers/report.pdf",
+      "![A scan](scan)": "img → /raw?path=papers%2Fscan"
+    },
+    "shown": {
+      "[the report](report.pdf)": "a → /view/papers/report.pdf",
+      "![The report](report.pdf)": "pdf slot: card ready, image /api/plugin/pdf/preview-image?key=preview-1, \"report.pdf · 1 page · View\", View → /view/papers/report.pdf",
+      "<object data=\"report.pdf\">": "pdf slot: card ready, image /api/plugin/pdf/preview-image?key=preview-1, \"report.pdf · 1 page · View\", View → /view/papers/report.pdf",
+      "![[report.pdf]]": "pdf slot: card ready, image /api/plugin/pdf/preview-image?key=preview-1, \"report.pdf · 1 page · View\", View → /view/papers/report.pdf",
+      "[[report.pdf]]": "a → /view/papers/report.pdf",
+      "![A scan](scan)": "img → /raw?path=papers%2Fscan"
+    },
+    "clicks": {
+      "fallback": {
+        "opened": true,
+        "target": {
+          "path": "papers/report.pdf"
+        }
+      },
+      "view": {
+        "opened": true,
+        "target": {
+          "path": "papers/report.pdf"
+        }
+      },
+      "modified": {
+        "opened": false
+      }
+    },
+    "pluginLoads": {
+      "calls": 3,
+      "names": [
+        "pdf"
+      ]
+    },
+    "previewsAsked": [
+      "/api/plugin/pdf/preview?path=papers%2Freport.pdf",
+      "/api/plugin/pdf/preview?path=papers%2Freport.pdf",
+      "/api/plugin/pdf/preview?path=papers%2Freport.pdf"
+    ],
+    "print": [
+      "eager",
+      "eager",
+      "eager"
+    ],
+    "disposal": {
+      "cardsLeft": 0,
+      "slots": 3
+    },
+    "replacedBeforeLoad": {
+      "asked": 0,
+      "shows": {
+        "![The report](report.pdf)": "pdf slot: link \"report.pdf\" → /view/papers/report.pdf",
+        "<object data=\"report.pdf\">": "pdf slot: link \"report.pdf\" → /view/papers/report.pdf",
+        "![[report.pdf]]": "pdf slot: link \"report.pdf\" → /view/papers/report.pdf"
+      }
+    },
+    "withoutPlugin": {
+      "![The report](report.pdf)": "pdf slot: link \"report.pdf\" → /view/papers/report.pdf",
+      "<object data=\"report.pdf\">": "pdf slot: link \"report.pdf\" → /view/papers/report.pdf",
+      "![[report.pdf]]": "pdf slot: link \"report.pdf\" → /view/papers/report.pdf"
+    },
+    "viewersDrawn": 0,
+    "rawAddressesOfThePdf": 0
   },
   "publishedRoutes": {
     "complete": {

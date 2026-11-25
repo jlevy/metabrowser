@@ -287,7 +287,7 @@ it.
 | Controls | `--ui-small-font-size` | Chips and the counts in their menus, badges, buttons, filters, menus, fold expanders, and a tree row’s leading change letter, its slot’s glyph |
 | Keycaps and their hint strips | `--kbd-font-size` | A [key](#keyboard-keys), and a strip of hints that labels keys, at the navigation column’s foot and in Quick Search, so a key and its word read as one mark |
 | Labels | `--label-font-size` | All-caps tabs, table headers, stat labels, group headings, and dialog titles, at the controls’ size: labels differ by caps treatment, not by another size |
-| Monospace blocks | `--mono-block-font-size` | Source, diffs and their hunk headers, review hunks, logs and their event headers, raw JSON, and a verbatim error, at the controls’ size |
+| Monospace blocks | `--mono-block-font-size` | Source, diffs and their hunk headers, review hunks, logs and their event headers, and raw JSON, at the controls’ size |
 | Ref chip | `--git-ref-font-size` | `--git-ref-font-scale` of the size it inherits, so slightly smaller than the text it sits in: the ramp’s one relative size, because a chip sits in text of several sizes and reads as part of it ([Branch Chips](#branch-chips)) |
 | Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges |
 
@@ -382,7 +382,7 @@ a pull request, and a commit.
 
 ```text
 +------------------------------------------------------------------------------+
-| [Up] ~/wrk/project / docs / specs  [copy]                                    |  1 eyebrow, optional; its rule
+| [Up] ~/wrk/project / docs / specs /  [copy]                                  |  1 eyebrow, optional; its rule
 +------------------------------------------------------------------------------+    the top bar's
 | [icon] Title, at the page title's size  33.9 KB · 2h ago  [View on GitHub v] |  2 heading row, 3 metadata; the corner
 | DOCUMENT   SOURCE                                                            |  4 tab bar
@@ -410,9 +410,10 @@ the shell’s own: a `.view-header` block holding `.view-header-eyebrow`,
 A plugin that draws a header, as the GitHub plugin draws a pull request’s, writes those
 classes.
 
-**The eyebrow** is a quiet line above the title: context, its served root dimmed and its
-crumbs links. It is the top bar’s half over the main view, the twin of the navigation’s
-path row across the divider: that row’s height, `--pane-header-row-height`, its rule,
+**The eyebrow** is a quiet line above the title: context, the address of the folder that
+holds the item, whose crumbs are links.
+It is the top bar’s half over the main view, the twin of the navigation’s path row
+across the divider: that row’s height, `--pane-header-row-height`, its rule,
 `1px solid var(--border)`, at the same height, and its text at that row’s size,
 `--nav-font-size`, centered as that row centers its path, so the two rules are one line
 across the window and the two rows’ text sits on one baseline.
@@ -423,6 +424,15 @@ It is a target of `--view-header-up-size`, WCAG 2.2’s minimum target size
 A file’s and a folder’s always have one, because where a file is matters: Up, which
 keeps its place disabled at the served root, and the folders above the item, but not the
 item, which is the title under it.
+The served root’s whole address, such as `~/wrk/project`, is one crumb that opens the
+root: the directories above the served root are not open, so none is a crumb of its own.
+Each folder under the root, down to the item’s own folder, is a crumb that opens it, and
+each crumb is followed by a slash that is text, never a link, so the address ends in a
+slash, as `~/wrk/project / docs / specs /` does, and its last crumb is the folder Up
+opens. A long root is cut from its start, so the end of its address survives; a served
+mirror’s root is the repository’s name and is cut at its end (`.folder-crumb-root` in
+`static/styles.css`). At the served root itself the eyebrow is the directory that holds
+the root, dimmed and not a link, since nothing above the root is open.
 A pull request’s or a commit’s has one only when it carries something the rows under it
 do not, such as the repository and branch it belongs to.
 Where a kind has no eyebrow, it writes it empty, and an empty eyebrow is left out: the
@@ -1847,6 +1857,11 @@ box fill.
 
 Build a partial-content notice through `mb.partialNoticeHtml` rather than by hand, so a
 new view gets the markup, the severity, and the placement together.
+
+What a notice, an empty state, or an error may say, and where the detail it leaves out
+goes, is the subject of [Reader Messages](design-system-messages.md): one statement in
+the reader’s terms and at most one remedy, never a commit list, an internal path, or an
+exception’s text.
 
 ### Continuing Partial Content
 
@@ -3444,8 +3459,11 @@ the colon:
 - The scope is one or more characters other than parentheses, so a list such as
   `fix(ui, git):` counts, as conventional-changelog’s parser reads one, and an empty
   `()` does not.
-- It counts only at 16 characters or fewer, colon included, counted in code points:
-  `refactor(stack):` counts, and `refactor(stacks):` is part of the title.
+- It counts only up to `TITLE_PREFIX_MAX_CHARS` in `static/formatters.js`, colon
+  included, counted in code points, set from the prefixes of real commit subjects as
+  `tests/dom/title-prefix-session.js` records: `feat(view-on-github):` counts, and a
+  parenthetical sentence such as
+  `note(this is how the cache and the scroller keep a row):` is part of the title.
 - Whitespace and more of the title follow the colon.
   `fix:keep` and a title that ends at its colon have no prefix.
 
@@ -4123,10 +4141,8 @@ names for it:
   control, where a badge inside the target would be cut off.
   It covers the icon or the crumb’s last letter, never the file name, note, size, path,
   or author that follows.
-  A crumb narrower than a keycap, such as the root’s `/`, lets the keycap reach back
-  over the text before it: at the root, the end of the dimmed root name, the folder Up
-  opens. The target and the anchor become containing blocks through zero-specificity
-  rules, so one that already declares a position keeps it.
+  The target and the anchor become containing blocks through zero-specificity rules, so
+  one that already declares a position keeps it.
 - **Hover-revealed controls take no key.** A control that appears only on hover or
   focus, such as either copy button, is ancillary
   ([Keyboard Shortcuts](#keyboard-shortcuts)), so it is never a badge target and the
@@ -6003,7 +6019,7 @@ A tooltip earns its place by one of these:
 
 | Reason | Examples |
 | --- | --- |
-| The name of a glyph-only control or mark | Copy, print, the parent folder’s arrow, the theme and font segments, the filter drawer’s chevron, the served root’s “/” |
+| The name of a glyph-only control or mark | Copy, print, the parent folder’s arrow, the theme and font segments, the filter drawer’s chevron |
 | What a letter, badge, or color abbreviates | A Git file’s status letter, a compression badge, a front-matter error |
 | The exact value behind a rounded or relative one | An age’s exact time on the pull request page; a tree row’s exact date, a folder’s other total, and the exact bytes of a size its chip rounds |
 | What a control does that its words do not say | The ref selector’s “Switch branch or tag”, the HTML preview’s “Open as full page” (its own tab, still sandboxed), a View file control’s commit, a freshness line’s “Press to refresh now”, a fallback layout’s reason |

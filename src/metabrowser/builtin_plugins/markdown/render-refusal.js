@@ -47,33 +47,19 @@ export function renderRefusal(error) {
 }
 
 /**
- * How long the deadline is, as the notice says it: "5 seconds", "0.25 seconds".
- *
- * @param {number | null} milliseconds
- */
-function deadlineText(milliseconds) {
-  if (milliseconds === null) {
-    return "too long";
-  }
-  const seconds = milliseconds / 1000;
-  return `longer than ${seconds} second${seconds === 1 ? "" : "s"}`;
-}
-
-/**
- * The sentence the notice says for *refusal*.
+ * The sentence the notice says for *refusal*. The deadline and the renderer's state are
+ * the refusal's (`deadlineMs`, `code`), for a test or an agent; the notice says what the
+ * reader sees (docs/design-system-messages.md).
  *
  * @param {RenderRefusal} refusal
  */
 export function refusalNote(refusal) {
   switch (refusal.code) {
     case "render_deadline":
-      return `This document took ${deadlineText(refusal.deadlineMs)} to render, so its source is shown.`;
-    case "renderer_exited":
-      return "The renderer stopped while rendering this document, so its source is shown.";
+      return "This document took too long to render, so its source is shown.";
     case "renderer_unavailable":
-      return "The document renderer could not start, so this document’s source is shown. Reload the page to try again.";
     case "renderer_busy":
-      return "The document renderer is busy with other documents, so this document’s source is shown. Reload the page to try again.";
+      return "This document could not be rendered, so its source is shown. Reload the page to try again.";
     default:
       return "This document could not be rendered, so its source is shown.";
   }
@@ -100,7 +86,7 @@ export async function sourceWindow(path, raw, signal) {
   url.searchParams.set("path", path);
   const response = await fetch(url.toString(), { signal });
   if (!response.ok) {
-    throw new Error(`Could not read the source of ${path}: HTTP ${response.status}`);
+    throw new Error(`Could not read the source of ${path}`, { cause: response.status });
   }
   const envelope = /** @type {Record<string, any>} */ (await response.json());
   if (envelope?.type !== "text" || typeof envelope.content !== "string") {

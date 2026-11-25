@@ -1354,28 +1354,19 @@
    * @returns {string | null}
    */
   function commitBodyNote(body) {
+    // The bound and the deadline are the answer's (`max_bytes`, `deadline_ms`), for an
+    // agent; the note says what the reader sees (docs/design-system-messages.md).
     switch (typeof body?.code === "string" ? body.code : null) {
-      case "body_too_large": {
-        const kib = typeof body?.max_bytes === "number" ? Math.floor(body.max_bytes / 1024) : null;
-        const bound = kib === null ? "too long" : `longer than ${kib} KiB`;
-        return `This message is ${bound}, so it is shown as written rather than as Markdown.`;
-      }
-      case "render_deadline": {
-        const seconds = typeof body?.deadline_ms === "number" ? body.deadline_ms / 1000 : null;
-        const took =
-          seconds === null
-            ? "too long"
-            : `longer than ${seconds} second${seconds === 1 ? "" : "s"}`;
-        return `This message took ${took} to render, so it is shown as written.`;
-      }
+      case "body_too_large":
+        return "This message is too long to render, so it is shown as written.";
+      case "render_deadline":
+        return "This message took too long to render, so it is shown as written.";
       case "renderer_exited":
-        return "The renderer stopped while rendering this message, so it is shown as written.";
-      case "renderer_unavailable":
-        return "The renderer could not start, so this message is shown as written. Reload the page to try again.";
-      case "renderer_busy":
-        return "The renderer is busy with other texts, so this message is shown as written. Reload the page to try again.";
       case "render_failed":
         return "This message could not be rendered, so it is shown as written.";
+      case "renderer_unavailable":
+      case "renderer_busy":
+        return "This message could not be rendered, so it is shown as written. Reload the page to try again.";
       default:
         return null;
     }
@@ -2839,7 +2830,7 @@
     if (controller === null || !freshness) {
       paint({
         state: "not_found",
-        title: "Commit not found",
+        title: "This commit was not found.",
         detail: "This commit is not in the repository.",
         retry: false,
       });
@@ -2884,16 +2875,15 @@
    * Say what an address with a short commit ID or a ref name needs, instead of that the
    * commit could not be loaded.
    *
-   * @param {string} revision
    * @param {MetabrowserPreviewClaim} previewClaim
    */
-  function showRevisionNotFull(revision, previewClaim) {
+  function showRevisionNotFull(previewClaim) {
     shell()?.renderPreviewNode(
       missingCommitNode(
         {
           state: "not_full",
-          title: "Full commit ID needed",
-          detail: `A commit’s address uses its full 40- or 64-character lowercase ID, not “${revision}”.`,
+          title: "This address needs the full commit ID.",
+          detail: "Use the commit’s full lowercase ID in the address, or open it from its row.",
           retry: false,
         },
         null,
@@ -3040,7 +3030,7 @@
             // one; a mirror's fetch from the origin continues after it.
             await showMissingCommit(revision, previewClaim);
           } else if (refusedRevision === revision) {
-            showRevisionNotFull(revision, previewClaim);
+            showRevisionNotFull(previewClaim);
           } else {
             bridge.renderPreviewHtml(
               '<div class="preview-empty">Could not load this commit.</div>',
@@ -3128,7 +3118,7 @@
       // one, which is the worse failure.
       html += `<div class="git-commit-file git-commit-file-note">This commit changes ${
         stats.files_changed || files.length
-      } files; the diff below is bounded.</div>`;
+      } files; only some of them are shown below.</div>`;
     }
     // The commit's diff is rendered by the diff plugin's own view over
     // this commit's first-parent comparison — the history view composes

@@ -108,7 +108,7 @@ async function run() {
     [recording.not_fetched_remotes, "with no store, the list is the checkout's own, and says so"],
     [
       recording.refused_remotes,
-      "an origin that needs credentials is not fetched, and the list says why",
+      "an origin that needs credentials is not fetched, and the list says so",
     ],
   ]) {
     page = createPage(onFile);

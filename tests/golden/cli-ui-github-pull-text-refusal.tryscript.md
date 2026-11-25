@@ -36,7 +36,7 @@ $ node tests/dom/github-pull-text-refusal-session.js
       "part": "body",
       "unavailable": true,
       "text": "The app counts to one.\r\n\r\nThis t",
-      "note": "This text took longer than 0.2 seconds to render, so it is shown as plain text."
+      "note": "This text took too long to render, so it is shown as written."
     },
     {
       "part": "issue_comment/3341937855",
@@ -44,12 +44,12 @@ $ node tests/dom/github-pull-text-refusal-session.js
     }
   ],
   "notes": {
-    "render_deadline": "This text took longer than 5 seconds to render, so it is shown as plain text.",
-    "renderer_exited": "The renderer stopped while rendering this text, so it is shown as plain text.",
-    "renderer_unavailable": "The renderer could not start, so this text is shown as plain text. Reload the page to try again.",
-    "renderer_busy": "The renderer is busy with other texts, so this text is shown as plain text. Reload the page to try again.",
-    "render_failed": "This text could not be rendered, so it is shown as plain text.",
-    "recorded": "This text took longer than 0.2 seconds to render, so it is shown as plain text.",
+    "render_deadline": "This text took too long to render, so it is shown as written.",
+    "renderer_exited": "This text could not be rendered, so it is shown as written.",
+    "renderer_unavailable": "This text could not be rendered, so it is shown as written. Reload the page to try again.",
+    "renderer_busy": "This text could not be rendered, so it is shown as written. Reload the page to try again.",
+    "render_failed": "This text could not be rendered, so it is shown as written.",
+    "recorded": "This text took too long to render, so it is shown as written.",
     "unknown_part": null,
     "ok": null
   }

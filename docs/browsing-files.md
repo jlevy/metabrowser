@@ -197,6 +197,12 @@ Links resolve the way GitHub resolves them:
 - **Published sites:** when an MkDocs, Docusaurus, or Jekyll configuration sits at the
   served root, a link to a published page such as `/guide/` opens the source file behind
   it, if no file has that exact path.
+- **PDFs:** a link to a `.pdf` opens the PDF’s own page in Metabrowser.
+  An embedded one, such as `![](report.pdf)`, `<img src="report.pdf">`, or
+  `![[report.pdf]]`, is a card with the PDF’s first page, its name, and its page count,
+  or why there is no image, and a View link to that page; a document never opens the
+  PDF’s viewer itself.
+  A PDF named without `.pdf` embeds as any other file does.
 
 Obsidian wiki links work too:
 
@@ -210,7 +216,8 @@ Obsidian wiki links work too:
   block in the document.
   Embeds nest, within limits on depth, count, size, and time; past them, or in a cycle,
   the embed says why it stopped.
-- `![[image.png]]` and other media embed the file.
+- `![[image.png]]` and other media embed the file, and `![[report.pdf]]` shows a PDF’s
+  first page, as an embedded PDF does above.
 
 HTML a README writes for its layout on GitHub lays it out here as github.com does:
 `align` on a paragraph, `div`, heading, image, or table cell or row, and `width` and

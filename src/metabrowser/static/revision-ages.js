@@ -163,14 +163,16 @@
   /** @type {Record<string, string>} */
   const REASONS = {
     git_failed: "Git could not read this revision's file ages.",
-    too_many_files: "This revision has too many files to read their ages.",
-    boundary: "The shallow boundary could not be read, so file ages are unknown.",
+    too_many_files: "This revision has too many files to date.",
+    boundary: "File ages could not be read in this shallow copy.",
   };
 
   /**
    * The sentence about the state of a revision's ages, or null when they are all there: what
    * a filtered count says while they are read, when the read failed, and when some files could
-   * not be dated (a shallow clone, or a read that ran out of time).
+   * not be dated. Why they could not (a shallow clone, or a read that ran out of time) is the
+   * answer's `stop`, for an agent; the reader learns what is known, that they are older than
+   * the bound (docs/design-system-messages.md).
    *
    * @param {{state?: string, reason?: string, files?: number, dated?: number,
    *   older_than?: number | null, stop?: string} | null | undefined} ages
@@ -196,12 +198,12 @@
     if (count === 0) {
       return null;
     }
-    const why = ages.stop === "budget" ? "reading stopped at its time limit" : "a shallow history";
-    const bound =
-      typeof ages.older_than === "number"
-        ? `, older than ${new Date(ages.older_than * 1000).toISOString().slice(0, 10)}`
-        : "";
-    return `${count.toLocaleString()} ${count === 1 ? "file" : "files"} could not be dated (${why}${bound}).`;
+    const files = `${count.toLocaleString()} ${count === 1 ? "file" : "files"}`;
+    if (typeof ages.older_than === "number") {
+      const bound = new Date(ages.older_than * 1000).toISOString().slice(0, 10);
+      return `${files} ${count === 1 ? "is" : "are"} older than ${bound}.`;
+    }
+    return `${files} could not be dated.`;
   }
 
   /** @type {{ages: Parameters<typeof noteText>[0], undated: number | null | undefined} | null} */

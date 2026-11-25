@@ -468,7 +468,8 @@ def test_parsed_endpoint_names_no_host_path_for_a_file_it_cannot_open(
 
     assert response.status_code == 404
     assert response.json() == {
-        "error": "locked.json",
+        "error": "This file is no longer available.",
+        "detail": "locked.json",
         "code": "content_unavailable",
         "path": "locked.json",
     }

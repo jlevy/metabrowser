@@ -83,7 +83,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "detail": "Fetching from the origin, last fetched 6 d ago.",
         "offer": null,
         "error": null
       }
@@ -99,7 +99,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "detail": "Fetching from the origin, last fetched 6 d ago.",
         "offer": null,
         "error": null
       }
@@ -115,7 +115,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "detail": "Fetching from the origin, last fetched 6 d ago.",
         "offer": null,
         "error": null
       }
@@ -129,7 +129,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "detail": "Fetching from the origin, last fetched 6 d ago.",
         "offer": null,
         "error": null
       }
@@ -145,7 +145,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "detail": "Fetching from the origin, last fetched 6 d ago.",
         "offer": null,
         "error": null
       }
@@ -162,7 +162,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Updating to topic…",
         "tone": "refreshing",
-        "detail": "topic is now at 66f65bf, and this page follows it.",
+        "detail": "topic has moved, and this page follows it.",
         "offer": null,
         "error": null
       }
@@ -179,7 +179,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Updating to topic…",
         "tone": "refreshing",
-        "detail": "topic is now at 66f65bf, and this page follows it.",
+        "detail": "topic has moved, and this page follows it.",
         "offer": null,
         "error": null
       },
@@ -293,7 +293,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago. The address this page was opened at is not in the mirror yet; it opens when the fetch brings it.",
+        "detail": "The address this page was opened at opens once it is fetched.",
         "offer": null,
         "error": null
       }
@@ -363,7 +363,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Address not fetched · fetched 5 min ago",
         "tone": "warning",
-        "detail": "The address this page was opened at could not be fetched, so the default branch is shown. The origin could not be read.",
+        "detail": "The address this page was opened at could not be fetched, so the default branch is shown.",
         "offer": "Fetch the address again [Retry]",
         "error": null
       }
@@ -379,7 +379,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago. The address this page was opened at is not in the mirror yet; it opens when the fetch brings it.",
+        "detail": "The address this page was opened at opens once it is fetched.",
         "offer": null,
         "error": null
       }
@@ -400,8 +400,8 @@ $ node tests/dom/source-freshness-session.js
       "commit": {
         "repaints": 1,
         "state": "not_found",
-        "title": "Commit not found · fetched 5 min ago",
-        "detail": "This commit is not in the mirror as fetched 5 min ago.",
+        "title": "This commit was not found in the last fetch, 5 min ago.",
+        "detail": "This commit is not in the mirror as last fetched.",
         "offer": "[Retry]"
       }
     },
@@ -416,7 +416,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
+        "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
         "error": null
       },
@@ -424,7 +424,7 @@ $ node tests/dom/source-freshness-session.js
         "repaints": 1,
         "state": "pending",
         "title": "Fetching this commit…",
-        "detail": "This commit is not in the mirror yet; it opens when the fetch brings it.",
+        "detail": "It opens when it arrives.",
         "offer": null
       }
     },
@@ -439,7 +439,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
+        "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
         "error": null
       },
@@ -447,7 +447,7 @@ $ node tests/dom/source-freshness-session.js
         "repaints": 0,
         "state": "pending",
         "title": "Fetching this commit…",
-        "detail": "This commit is not in the mirror yet; it opens when the fetch brings it.",
+        "detail": "It opens when it arrives.",
         "offer": null
       }
     },
@@ -493,8 +493,8 @@ $ node tests/dom/source-freshness-session.js
       "commit": {
         "repaints": 1,
         "state": "not_found",
-        "title": "Commit not found · fetched 5 min ago",
-        "detail": "This commit is not in the mirror, and the fetch from the origin did not bring it: no branch or tag there reaches it.",
+        "title": "This commit was not found in the last fetch, 5 min ago.",
+        "detail": "No branch or tag on the origin has this commit.",
         "offer": "[Retry]"
       }
     },
@@ -534,7 +534,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
+        "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
         "error": null
       },
@@ -542,7 +542,7 @@ $ node tests/dom/source-freshness-session.js
         "repaints": 1,
         "state": "pending",
         "title": "Fetching this commit…",
-        "detail": "This commit is not in the mirror yet; it opens when the fetch brings it.",
+        "detail": "It opens when it arrives.",
         "offer": null
       }
     },
@@ -566,8 +566,8 @@ $ node tests/dom/source-freshness-session.js
       "commit": {
         "repaints": 1,
         "state": "not_found",
-        "title": "Commit not found · fetched 5 min ago",
-        "detail": "This commit is not in the mirror as fetched 5 min ago.",
+        "title": "This commit was not found in the last fetch, 5 min ago.",
+        "detail": "This commit is not in the mirror as last fetched.",
         "offer": "[Retry]"
       }
     },
@@ -582,7 +582,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "detail": "Fetching from the origin, last fetched 6 d ago.",
         "offer": null,
         "error": null
       },
@@ -590,7 +590,7 @@ $ node tests/dom/source-freshness-session.js
         "repaints": 1,
         "state": "pending",
         "title": "Fetching this commit…",
-        "detail": "This commit is not in the mirror yet; it opens when the fetch brings it.",
+        "detail": "It opens when it arrives.",
         "offer": null
       }
     },
@@ -606,15 +606,15 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refresh failed · fetched 6 d ago",
         "tone": "warning",
-        "detail": "The origin could not be read. The pinned revision is still served from the mirror.",
+        "detail": "The origin could not be read.",
         "offer": null,
         "error": null
       },
       "commit": {
         "repaints": 1,
         "state": "fetch_failed",
-        "title": "Commit not fetched · fetched 6 d ago",
-        "detail": "This commit is not in the mirror, and it could not be fetched. The origin could not be read.",
+        "title": "Could not fetch this commit; the last fetch was 6 d ago.",
+        "detail": "The origin could not be read.",
         "offer": "[Retry]"
       }
     },
@@ -629,7 +629,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refresh failed · fetched 6 d ago",
         "tone": "warning",
-        "detail": "The origin could not be read. The pinned revision is still served from the mirror.",
+        "detail": "The origin could not be read.",
         "offer": null,
         "error": null
       },
@@ -637,7 +637,7 @@ $ node tests/dom/source-freshness-session.js
         "repaints": 0,
         "state": "pending",
         "title": "Fetching this commit…",
-        "detail": "This commit is not in the mirror yet; it opens when the fetch brings it.",
+        "detail": "It opens when it arrives.",
         "offer": null
       }
     },
@@ -652,7 +652,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
+        "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
         "error": null
       },
@@ -660,7 +660,7 @@ $ node tests/dom/source-freshness-session.js
         "repaints": 1,
         "state": "pending",
         "title": "Fetching this commit…",
-        "detail": "This commit is not in the mirror yet; it opens when the fetch brings it.",
+        "detail": "It opens when it arrives.",
         "offer": null
       }
     },
@@ -684,8 +684,8 @@ $ node tests/dom/source-freshness-session.js
       "commit": {
         "repaints": 1,
         "state": "fetch_failed",
-        "title": "Commit not fetched · fetched 5 min ago",
-        "detail": "This commit is not in the mirror, and it could not be fetched. The pull request's refresh, which brings its newer commits, was not queued: too many pull requests are being fetched; try again when one has finished.",
+        "title": "Could not fetch this commit; the last fetch was 5 min ago.",
+        "detail": "Its pull request could not be refreshed while others are being fetched. Try again shortly.",
         "offer": "[Retry]"
       }
     },
@@ -700,15 +700,15 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
+        "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
         "error": "The server did not answer."
       },
       "commit": {
         "repaints": 1,
         "state": "fetch_failed",
-        "title": "Commit not fetched · fetched 5 min ago",
-        "detail": "This commit is not in the mirror, and it could not be fetched. The server did not answer.",
+        "title": "Could not fetch this commit; the last fetch was 5 min ago.",
+        "detail": "This commit could not be fetched.",
         "offer": "[Retry]"
       }
     },
@@ -724,7 +724,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refresh failed · fetched 5 min ago",
         "tone": "warning",
-        "detail": "The repository was not found, or it is private and could not be read. The pinned revision is still served from the mirror.",
+        "detail": "The repository was not found, or it is private and could not be read.",
         "offer": null,
         "error": null
       }
@@ -741,7 +741,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refresh failed · fetched 5 min ago",
         "tone": "warning",
-        "detail": "The origin could not be read. The pinned revision is still served from the mirror.",
+        "detail": "The origin could not be read.",
         "offer": null,
         "error": null
       }
@@ -758,7 +758,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "detail": "Fetching from the origin, last fetched 6 d ago.",
         "offer": null,
         "error": null
       }
@@ -776,7 +776,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refresh failed · fetched 6 d ago",
         "tone": "warning",
-        "detail": "The origin could not be read. The pinned revision is still served from the mirror.",
+        "detail": "The origin could not be read.",
         "offer": null,
         "error": null
       }
@@ -793,7 +793,7 @@ $ node tests/dom/source-freshness-session.js
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "detail": "Fetching from the origin, last fetched 6 d ago.",
         "offer": null,
         "error": null
       }
@@ -828,7 +828,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "stale",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
         "offer": null,
-        "error": "Refresh refused: too many pull requests are being fetched; try again when one has finished."
+        "error": "Other refreshes are running. Try again shortly."
       }
     }
   ],
@@ -1113,7 +1113,7 @@ $ node tests/dom/source-freshness-session.js asks
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
+        "detail": "Fetching from the origin, last fetched 5 min ago.",
         "offer": null,
         "error": null
       }
@@ -1130,7 +1130,7 @@ $ node tests/dom/source-freshness-session.js asks
       "paint": {
         "label": "Updating to topic…",
         "tone": "refreshing",
-        "detail": "topic is now at 0d434c3, and this page follows it.",
+        "detail": "topic has moved, and this page follows it.",
         "offer": null,
         "error": null
       }
@@ -1283,8 +1283,8 @@ $ node tests/dom/source-freshness-session.js asks
       "commit": {
         "repaints": 1,
         "state": "not_found",
-        "title": "Commit not found · fetched 5 min ago",
-        "detail": "This commit is not in the mirror as fetched 5 min ago.",
+        "title": "This commit was not found in the last fetch, 5 min ago.",
+        "detail": "This commit is not in the mirror as last fetched.",
         "offer": "[Retry]"
       },
       "answeredBeforeTheAsk": true
@@ -1305,8 +1305,8 @@ $ node tests/dom/source-freshness-session.js asks
       "commit": {
         "repaints": 0,
         "state": "not_found",
-        "title": "Commit not found · fetched 5 min ago",
-        "detail": "This commit is not in the mirror as fetched 5 min ago.",
+        "title": "This commit was not found in the last fetch, 5 min ago.",
+        "detail": "This commit is not in the mirror as last fetched.",
         "offer": "[Retry]"
       }
     }
@@ -1346,7 +1346,7 @@ $ node tests/dom/source-freshness-session.js folder
       "paint": {
         "label": "Origin fetched 6 d ago",
         "tone": "quiet",
-        "detail": "Metabrowser's store of this checkout's origin was last fetched 6 d ago. The checkout itself is never fetched into.",
+        "detail": "The origin was last fetched 6 d ago, without changing the checkout.",
         "offer": null,
         "error": null
       }
@@ -1362,7 +1362,7 @@ $ node tests/dom/source-freshness-session.js folder
       "paint": {
         "label": "Origin fetched 5 d ago",
         "tone": "quiet",
-        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "detail": "The origin was last fetched 5 d ago, without changing the checkout.",
         "offer": null,
         "error": null
       }
@@ -1378,7 +1378,7 @@ $ node tests/dom/source-freshness-session.js folder
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin into Metabrowser's store. It was last fetched 5 d ago.",
+        "detail": "Fetching from the origin, last fetched 5 d ago.",
         "offer": null,
         "error": null
       }
@@ -1394,7 +1394,7 @@ $ node tests/dom/source-freshness-session.js folder
       "paint": {
         "label": "Refresh failed · origin fetched 5 d ago",
         "tone": "warning",
-        "detail": "The refresh failed. The origin's branches and tags are as last fetched, and the checkout is unchanged.",
+        "detail": "The refresh failed.",
         "offer": null,
         "error": null
       }
@@ -1411,7 +1411,7 @@ $ node tests/dom/source-freshness-session.js folder
       "paint": {
         "label": "Origin fetched 5 d ago",
         "tone": "quiet",
-        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "detail": "The origin was last fetched 5 d ago, without changing the checkout.",
         "offer": null,
         "error": null
       }
@@ -1427,7 +1427,7 @@ $ node tests/dom/source-freshness-session.js folder
       "paint": {
         "label": "Origin fetched 6 d ago",
         "tone": "quiet",
-        "detail": "Metabrowser's store of this checkout's origin was last fetched 6 d ago. The checkout itself is never fetched into.",
+        "detail": "The origin was last fetched 6 d ago, without changing the checkout.",
         "offer": null,
         "error": null
       }
@@ -1444,7 +1444,7 @@ $ node tests/dom/source-freshness-session.js folder
       "paint": {
         "label": "Refreshing…",
         "tone": "refreshing",
-        "detail": "Fetching from the origin into Metabrowser's store. It was last fetched 5 d ago.",
+        "detail": "Fetching from the origin, last fetched 5 d ago.",
         "offer": null,
         "error": null
       }
@@ -1486,7 +1486,7 @@ $ node tests/dom/source-freshness-session.js checkout-branch
       "paint": {
         "label": "Origin fetched 5 d ago",
         "tone": "quiet",
-        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "detail": "The origin was last fetched 5 d ago, without changing the checkout.",
         "offer": null,
         "error": null
       }
@@ -1502,7 +1502,7 @@ $ node tests/dom/source-freshness-session.js checkout-branch
       "paint": {
         "label": "Origin fetched 5 d ago",
         "tone": "quiet",
-        "detail": "Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into.",
+        "detail": "The origin was last fetched 5 d ago, without changing the checkout.",
         "offer": null,
         "error": null
       }
@@ -1519,7 +1519,7 @@ $ node tests/dom/source-freshness-session.js checkout-branch
       "paint": {
         "label": "Updating to trunk…",
         "tone": "refreshing",
-        "detail": "trunk is now at 1667009, and this page follows it.",
+        "detail": "trunk has moved, and this page follows it.",
         "offer": null,
         "error": null
       }
@@ -1547,7 +1547,7 @@ $ node tests/dom/source-freshness-session.js checkout-branch
       "paint": {
         "label": "trunk moved",
         "tone": "warning",
-        "detail": "trunk is now at 732574d, and this page shows the commit before.",
+        "detail": "trunk has moved, and this page shows where it was.",
         "offer": null,
         "error": "Could not follow trunk to its new commit."
       }
@@ -1563,7 +1563,7 @@ $ node tests/dom/source-freshness-session.js checkout-branch
       "paint": {
         "label": "Updating to trunk…",
         "tone": "refreshing",
-        "detail": "trunk is now at 732574d, and this page follows it.",
+        "detail": "trunk has moved, and this page follows it.",
         "offer": null,
         "error": null
       }
@@ -1588,7 +1588,7 @@ $ node tests/dom/source-freshness-session.js checkout-branch
       "paint": {
         "label": "topic no longer exists",
         "tone": "quiet",
-        "detail": "topic no longer exists in this checkout; this page shows its last commit, 732574d.",
+        "detail": "topic no longer exists in this checkout; this page shows its last commit.",
         "offer": null,
         "error": null
       }
@@ -1598,7 +1598,7 @@ $ node tests/dom/source-freshness-session.js checkout-branch
       "paint": {
         "label": "trunk no longer exists · origin fetched 5 d ago",
         "tone": "quiet",
-        "detail": "trunk no longer exists in this checkout; this page shows its last commit, 0b51e01. Metabrowser's store of this checkout's origin was last fetched 5 d ago. The checkout itself is never fetched into."
+        "detail": "trunk no longer exists in this checkout; this page shows its last commit."
       }
     }
   ]

@@ -263,6 +263,12 @@ export function pdfCardSide(change) {
  * (`requires = ["pdf"]` in manifest.toml). The card holds an image the server drew,
  * never a viewer; a page whose plugins cannot load leaves the line alone.
  *
+ * The card carries the file bar's own View file controls (`renderViewFileControl`), so
+ * the PDF's page in Metabrowser, with its viewer, Open, and Download, is one press from
+ * the card and not only from the bar above it. They are registered with the bar's, so a
+ * pin change repaints both, and a refusal is said under the card. A deleted PDF's card
+ * has none, as its bar has none.
+ *
  * @param {MountedDiffState} view
  * @param {Record<string, unknown>} change
  * @param {HTMLElement} body
@@ -282,6 +288,8 @@ function appendPdfCard(view, change, body) {
     dispose() {
       disposed = true;
       card?.dispose();
+      // The card's View file notice goes with it.
+      slot.replaceChildren();
       slot.remove();
     },
   });
@@ -293,9 +301,36 @@ function appendPdfCard(view, change, body) {
         return;
       }
       const name = side.path.slice(side.path.lastIndexOf("/") + 1) || side.path;
-      card = mount(slot, { oid: side.oid, name });
+      const controls = pdfCardControls(view, change);
+      card = mount(slot, { oid: side.oid, name, links: controls.links });
+      if (controls.notice !== null) {
+        slot.append(controls.notice);
+      }
     })
     .catch(() => slot.remove());
+}
+
+/**
+ * The View file controls a PDF card carries: the ones the file bar draws for *change*,
+ * registered with the bar's so a repaint reaches them, and the notice their refusals are
+ * said in, which goes under the card. No controls and no notice where the bar has none.
+ *
+ * @param {MountedDiffState} view
+ * @param {Record<string, unknown>} change
+ * @returns {{links: HTMLElement[], notice: HTMLElement | null}}
+ */
+function pdfCardControls(view, change) {
+  const actions = view.viewFile?.actions(change, view.resolved) ?? [];
+  if (actions.length === 0) {
+    return { links: [], notice: null };
+  }
+  const notice = el("div", "diff-availability diff-file-notice");
+  notice.setAttribute("role", "status");
+  notice.hidden = true;
+  const said = { element: notice, timer: 0 };
+  const links = actions.map((action) => renderViewFileControl(action, view, said));
+  view.viewFileBars.push({ change, controls: links, said });
+  return { links, notice };
 }
 
 // What a file whose availability the table does not name says.
@@ -904,7 +939,7 @@ export function renderFileBody(state, layout) {
       }
       if (state.patch.truncated) {
         state.body.append(
-          noticeEl("warning", "diff-patch-truncated", "This patch was truncated at its bounds."),
+          noticeEl("warning", "diff-patch-truncated", "This patch is too long to show in full."),
         );
       }
     },
@@ -2974,7 +3009,9 @@ async function loadDeferred(file, signal, view) {
   const payload = await loadOneChange(file.revision, path, { signal });
   const result = validateDocument(payload);
   if (!result.ok) {
-    throw new Error(`invalid document: ${result.error}`);
+    // The validator's location rides as the cause, which the console report of a failed
+    // file prints (docs/design-system-messages.md).
+    throw new Error("This diff document is not valid.", { cause: result.error });
   }
   return /** @type {OneFileAnswer} */ (result.document);
 }
@@ -4226,7 +4263,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         }
       }
       if (manifest.truncated) {
-        root.append(noticeEl("warning", "", "The change list was truncated at its bounds."));
+        root.append(noticeEl("warning", "", "The change list is too long to show in full."));
       }
       view.spacer = el("div", "diff-end-spacer");
       root.append(view.spacer);

@@ -314,7 +314,7 @@ async function run() {
     // status line, which showed it on Changes alone (B5 of review B on #506).
     assert.match(
       run.model.filesUnavailable,
-      /too many pull requests/,
+      /other pull requests are being fetched/,
       "the reason outlasts the read",
     );
     assert.equal(run.model.message, null, "the header says nothing of it, on any tab");
@@ -323,14 +323,15 @@ async function run() {
     await run.controller.requestComparison();
     assert.equal(run.posts().length, 1);
     assert.equal(run.model.message, null);
-    assert.doesNotMatch(run.model.filesUnavailable, /too many pull requests/);
+    assert.doesNotMatch(run.model.filesUnavailable, /other pull requests are being fetched/);
     snapshot(run, "Changes' Retry asks again and clears the reason");
     run.state.get = () =>
       answer(failedAfter("lender_missing", "the checkout cannot supply this comparison"));
     await run.controller.poll();
     await settle();
     assert.equal(run.model.message, null, "the earlier refusal is not this attempt's reason");
-    assert.match(run.model.failure, /cannot supply this comparison/);
+    // Said by its outcome; the job's own words stay in `last_refresh.message`.
+    assert.equal(run.model.failure, "The checkout cannot supply these changes.");
     snapshot(run, "a retry that fails shows its own outcome, not the earlier refusal");
     run.controller.dispose();
   }
@@ -344,7 +345,7 @@ async function run() {
     await run.controller.start();
     await settle();
     assert.equal(run.posts().length, 1);
-    assert.match(run.model.filesUnavailable, /too many pull requests/);
+    assert.match(run.model.filesUnavailable, /other pull requests are being fetched/);
     assert.equal(run.model.message, null);
     snapshot(run, "a refused comparison beside a failed refresh is said on Changes");
     run.controller.setTab("");
@@ -353,7 +354,11 @@ async function run() {
     await run.controller.requestRefresh();
     await settle();
     assert.equal(run.posts().length, 1);
-    assert.match(run.model.message, /too many pull requests/, "the refused Refresh is said");
+    assert.match(
+      run.model.message,
+      /other pull requests are being fetched/,
+      "the refused Refresh is said",
+    );
     snapshot(run, "a refused Refresh in the same words is said on the header");
     run.controller.dispose();
   }

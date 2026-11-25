@@ -92,9 +92,18 @@ class StoreError(SourceUnreadableError):
     torn, or names a missing snapshot, or the snapshot is not an fsqlite snapshot.
     """
 
-    def __init__(self, state: StoreState, message: str) -> None:
-        super().__init__(message, state=state)
+    def __init__(self, state: StoreState, message: str, *, detail: str = "") -> None:
+        super().__init__(message, state=state, **({"detail": detail} if detail else {}))
         self.state: StoreState = state
+        self.detail: str = detail
+
+    def wire(self) -> dict[str, str]:
+        """The error as a route answers it: its state, message, and any detail."""
+        return {
+            "state": self.state,
+            "message": str(self),
+            **({"detail": self.detail} if self.detail else {}),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,7 +213,9 @@ def read_marker(path: Path) -> Marker:
     try:
         raw = _read_bounded(path, MARKER_MAX_BYTES)
     except OSError as exc:
-        raise StoreError("invalid", f"fsqlite.json cannot be read: {exc.strerror}") from exc
+        raise StoreError(
+            "invalid", "This store's fsqlite.json cannot be read.", detail=exc.strerror or ""
+        ) from exc
     return parse_marker(raw)
 
 
@@ -221,7 +232,9 @@ def read_current(path: Path | None) -> int:
     except FileNotFoundError as exc:
         raise StoreError("corrupt", "This store has no current pointer.") from exc
     except OSError as exc:
-        raise StoreError("corrupt", f"The current pointer cannot be read: {exc.strerror}") from exc
+        raise StoreError(
+            "corrupt", "This store's current pointer cannot be read.", detail=exc.strerror or ""
+        ) from exc
     return parse_current(raw)
 
 

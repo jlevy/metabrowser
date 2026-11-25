@@ -196,9 +196,8 @@
        highlighted source, code blocks, Markdown inline code, and raw
        log payloads.
 
-     Four deliberate exceptions, and no others:
+     Three deliberate exceptions, and no others:
        .compression-badge          a 7px glyph — iconography, not text
-       .metabrowser-kpress-error-detail   a verbatim error payload
        .log-event-header           structured log values (event type,
                                    timestamps) rather than prose or paths
        .git-commit-sha             a short commit ID, where every character
@@ -2767,10 +2766,7 @@ html.theme-anim .menu {
      that from the anchor's inline end, which is the target's inline end:
      100% is the anchor's padding box, and no anchor has an inline border.
      So the badge covers the end of its own control, an icon or a crumb's
-     last letter, and none of the text after it. A crumb narrower than a
-     keycap, such as the root's /, lets the badge reach back over the text
-     before it: at the root, the end of the dimmed root name, the folder Up
-     opens.
+     last letter, and none of the text after it.
 
    The badge eases in on --motion-reveal, appears at once under reduced
    motion, and goes at once: the registry removes it when the reveal ends,
@@ -5196,17 +5192,19 @@ a.tab-btn {
 /* Geometry, hover, and reveal come from the .icon-btn primitive; only
    the reveal trigger and the copied-confirmation tint live here. */
 
-/* The eyebrow's address (view-header.js, headerEyebrowAddressHtml): the served root
-   and the folders that hold the item. Its crumbs are real buttons for keyboard use. */
+/* The eyebrow's address (view-header.js, headerEyebrowAddressHtml): the served root's
+   address, one crumb to the root, then a crumb for each folder under it that holds the
+   item, each crumb followed by a slash that is text and not a link. Its crumbs are real
+   buttons for keyboard use. */
 .folder-breadcrumb {
   gap: 2px;
 }
 /* The address gives way in the order the reader can afford to lose it: the
-   dimmed root prefix first, then the directories, and the folder that holds the
+   root's address first, then the directories, and the folder that holds the
    item last, because it is the one the title is in. Each shrinking part carries
    its own ellipsis, so a squeezed address ends in a visible "…" instead of being
-   cut mid-word against the eyebrow's clip. The separators and the leading slash
-   hold their size — they are five to eight pixels of structure, not content.
+   cut mid-word against the eyebrow's clip. The separators hold their size —
+   they are five to eight pixels of structure, not content.
 
    The weights matter more than their absolute values: the root outshrinks a
    directory by enough that it is effectively gone before one narrows, and a
@@ -5224,7 +5222,6 @@ a.tab-btn {
 .folder-breadcrumb .folder-crumb:not(.folder-crumb-root):last-of-type {
   flex-shrink: 1;
 }
-.folder-breadcrumb .folder-crumb-root,
 .folder-breadcrumb .folder-crumb-sep {
   flex: 0 0 auto;
 }
@@ -5244,11 +5241,13 @@ a.tab-btn {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
-/* The served root, absolute, ahead of the first slash. Dimmed because it
-   is identical on every page of the app: context for the live part of the
-   address rather than part of it. It gives up its width first, so a long
-   root elides before a folder does — the shrink weight is what puts it
-   first, against the 4 and the 1 the crumbs above carry.
+/* The served root's address, absolute, ahead of the first slash: below the
+   root, the crumb that opens it (.folder-crumb-root), a link as the folders'
+   crumbs are; on the root's own page, the directory that holds the root
+   (.file-header-root), dimmed, because nothing above the served root is open.
+   It gives up its width first, so a long root elides before a folder does —
+   the shrink weight is what puts it first, against the 4 and the 1 the crumbs
+   above carry.
 
    The weight is enormous on purpose, because flex-shrink is proportional
    rather than sequential: every shrinkable item gives up something at every
@@ -5271,9 +5270,18 @@ a.tab-btn {
    5000 gave up cleanly at 13px, with room, and is still finite so the
    ordering below stays real. Once the root reaches zero flex freezes
    it and redistributes the rest, so the 4-to-1 ordering between the
-   directories and the filename applies from there down. */
+   directories and the filename applies from there down. The table was
+   measured while the root was a dimmed prefix beside a separate "/" crumb.
+   Rechecked with the root as its own crumb, the same overflowing box with
+   the crumbs' 2px pad, in Chrome 152 at the eyebrow's 13px: on 900px and
+   760px windows showing a 153-character root / docs / project / specs, the
+   root was cut by 684px and 824px, and each folder's crumb kept its whole
+   width to the thousandth of a pixel. */
 .file-header-root {
   color: var(--muted);
+}
+.file-header-root,
+.folder-breadcrumb .folder-crumb-root {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5293,13 +5301,15 @@ a.tab-btn {
   direction: rtl;
   text-align: left;
 }
-.file-header-root > bdi {
+.file-header-root > bdi,
+.folder-crumb-root > bdi {
   direction: ltr;
 }
 /* A served mirror's root is the repository's name, which is cut at its end as
    it is in the navigation heading: the start of a path is the same on every
    page, and the start of a name is the name. */
-.mirror-source .file-header-root {
+.mirror-source .file-header-root,
+.mirror-source .folder-crumb-root {
   direction: ltr;
 }
 /* Where a served mirror is kept, after the address. A mirror's root is the
@@ -5951,8 +5961,7 @@ a.tab-btn {
   border-color: var(--status-error);
 }
 
-/* A KPress render failure: the document could not be rendered at all, so it
-   stacks its message above a detail block rather than sitting in a row. */
+/* A KPress render failure: the document could not be rendered at all. */
 .metabrowser-kpress-render-error {
   margin: 0 0 12px;
 }
@@ -5979,13 +5988,6 @@ a.tab-btn {
 
 .partial-notice-readout {
   font-variant-numeric: var(--tabular-numerals);
-}
-.metabrowser-kpress-error-detail {
-  margin: 8px 0 0;
-  white-space: pre-wrap;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--mono-block-font-size);
 }
 /* ── Code blocks (highlight.js integration) ─────────────────── */
 

@@ -39,7 +39,7 @@ fsqlite        builtin  sqlite-store            sqlite,table    3      info,sche
 github         builtin  -                       markdown,diff   2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,guided-review,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
 html           builtin  html                    -               2      -
 image          builtin  -                       -               1      -
-markdown       builtin  markdown,mermaid        -               4      -
+markdown       builtin  markdown,mermaid        pdf             4      -
 pdf            builtin  pdf                     -               1      preview,preview-image
 sqlite         builtin  sqlite                  table           3      info,schema,children
 structured     builtin  structured              table           3      parsed
@@ -335,7 +335,9 @@ $ metab --plugins --json
         "markdown",
         "mermaid"
       ],
-      "requires": [],
+      "requires": [
+        "pdf"
+      ],
       "python_requires": [],
       "views": [
         "rendered",
@@ -502,7 +504,7 @@ version:         0.0.1
 sdk_version:     0.8
 source:          builtin
 static_root:     [BUILTIN]/markdown
-requires:        (none)
+requires:        pdf
 python_requires: (none)
 
 kinds:
@@ -565,7 +567,9 @@ $ metab --plugin markdown --json
     "sdk_version": "0.8",
     "source": "builtin",
     "static_root": "[BUILTIN]/markdown",
-    "requires": [],
+    "requires": [
+      "pdf"
+    ],
     "python_requires": [],
     "kinds": [
       {
@@ -691,6 +695,7 @@ plugin requirements:
   folder: requires markdown
   fsqlite: requires sqlite, table
   github: requires markdown, diff
+  markdown: requires pdf
   sqlite: requires table
   structured: requires table
   unknown-jsonl: requires agents

@@ -25,10 +25,16 @@ class ContentReadError(Exception):
 
     ``code`` is the stable token a response envelope carries; ``http_status``
     is what a route answers when it has no more specific shape of its own.
+
+    ``reader_message`` is the sentence a page shows a reader for the failure
+    (docs/design-system-messages.md). ``str()`` is the failure's own account, for an
+    agent and the log: it may name an object ID, a limit, or a command, so a route
+    answers it as ``detail`` (:func:`content_error_wire`), never as ``error``.
     """
 
     code: str = "content_failed"
     http_status: int = 500
+    reader_message: str = "This file could not be read."
 
 
 class ContentUnavailableError(ContentReadError):
@@ -41,6 +47,13 @@ class ContentUnavailableError(ContentReadError):
 
     code = "content_unavailable"
     http_status = 404
+    reader_message = "This file is no longer available."
 
 
-__all__ = ["ContentReadError", "ContentUnavailableError"]
+def content_error_wire(exc: ContentReadError) -> dict[str, str]:
+    """A failed read as a route answers it: the reader's sentence, the failure's own
+    account as ``detail``, and its code."""
+    return {"error": exc.reader_message, "detail": str(exc), "code": exc.code}
+
+
+__all__ = ["ContentReadError", "ContentUnavailableError", "content_error_wire"]

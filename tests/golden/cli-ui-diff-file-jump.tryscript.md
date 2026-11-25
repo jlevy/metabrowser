@@ -147,7 +147,7 @@ $ node tests/dom/diff-file-jump-session.js
       },
       "atTop": "first.py",
       "asked": [],
-      "warning": "The change list was truncated at its bounds."
+      "warning": "The change list is too long to show in full."
     },
     {
       "step": "a jump after a quiet moment: at the top at once, and asked for at once",
