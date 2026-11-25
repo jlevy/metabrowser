@@ -72,8 +72,9 @@
 //                                          marks muted, and its status counts, "21 A",
 //                                          bold in their statuses' ink: the shell's one
 //                                          painter of them
-//     changeLine(change)                 — a brief change line, "10 A, 5 D, 4 M · +1,234
-//                                          −567", from statuses and line totals
+//     changeLine(change, options?)       — a brief change line, "10 A, 5 D, 4 M · +1,234
+//                                          −567", from statuses and line totals; with
+//                                          {omitZeroTotals: true}, a zero total left out
 //     changeLineNodes(line, options?)    — its nodes, the shell's one component for it
 //     countClass(count)                   — shared file-count emphasis class
 //     sizeClass(bytes)                    — shared byte-count emphasis class
@@ -1590,10 +1591,14 @@
     return global.MetabrowserFormatters.countPartsNodes(global.document, parts);
   }
 
-  /** @param {MetabrowserChangeLineInput} change @returns {MetabrowserChangeLine} */
-  function changeLine(change) {
+  /**
+   * @param {MetabrowserChangeLineInput} change
+   * @param {MetabrowserChangeLineBuildOptions} [options]
+   * @returns {MetabrowserChangeLine}
+   */
+  function changeLine(change, options) {
     const formatters = global.MetabrowserFormatters;
-    return formatters.changeLine(change, formatters.formatInteger);
+    return formatters.changeLine(change, formatters.formatInteger, options);
   }
 
   /**

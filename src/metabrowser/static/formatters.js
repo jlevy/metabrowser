@@ -304,16 +304,26 @@
   const CHANGE_LINE_GROUP_CLASS = "change-line-group";
   const CHANGE_LINE_STATUSES_CLASS = "change-line-statuses";
   const CHANGE_LINE_STATS_CLASS = "change-line-stats";
+  const CHANGE_LINE_NONE_CLASS = "change-line-none";
+  // What a line that leaves out its zero totals shows for a change of no lines, in the
+  // totals' place, muted (mb-efum).
+  const NO_LINES = "0 lines";
+  /** @type {ReadonlyArray<"additions" | "deletions">} */
+  const LINE_TOTALS = Object.freeze(["additions", "deletions"]);
 
   /**
    * A brief change line, each count written with *formatCount* and an unknown one as "?":
    * `text` as it reads, and `label` in words, "10 added, 5 deleted, 4 modified; 1,234 lines
-   * added, 567 deleted".
+   * added, 567 deleted". With *options.omitZeroTotals*, a line total of zero is left out,
+   * "+1,234" for a change that only adds lines and "−567" for one that only deletes them,
+   * and a change of no lines at all shows "0 lines", said "no lines changed"; totals that
+   * are both nonzero, or not known, are shown as without it (mb-efum).
    * @param {MetabrowserChangeLineInput} change
    * @param {(count: number) => string} formatCount
+   * @param {MetabrowserChangeLineBuildOptions} [options]
    * @returns {MetabrowserChangeLine}
    */
-  function changeLine(change, formatCount) {
+  function changeLine(change, formatCount, options = {}) {
     /** @param {number | null} count */
     const written = (count) => (count === null ? "?" : formatCount(count));
     /** @type {MetabrowserCountParts} */
@@ -326,22 +336,36 @@
     const deleted = written(change.deletions);
     const additions = `+${added}`;
     const deletions = `${MINUS}${deleted}`;
-    const totals = `${additions} ${deletions}`;
+    const shownTotals = LINE_TOTALS.filter(
+      (side) => options.omitZeroTotals !== true || change[side] !== 0,
+    );
+    const totals =
+      shownTotals.length === 0
+        ? NO_LINES
+        : shownTotals.map((side) => (side === "additions" ? additions : deletions)).join(" ");
     const text = statuses === "" ? totals : `${statuses} · ${totals}`;
+    const addedWords = `${added} ${change.additions === 1 ? "line" : "lines"} added`;
     const lines =
       change.additions === null && change.deletions === null
         ? "line counts unknown"
-        : `${added} ${change.additions === 1 ? "line" : "lines"} added, ${deleted} deleted`;
+        : shownTotals.length === 0
+          ? "no lines changed"
+          : shownTotals.length === 2
+            ? `${addedWords}, ${deleted} deleted`
+            : shownTotals[0] === "additions"
+              ? addedWords
+              : `${deleted} ${change.deletions === 1 ? "line" : "lines"} deleted`;
     const words = change.statuses
       .map((entry) => `${written(entry.count)} ${entry.word}`)
       .join(", ");
     const label = words === "" ? lines : `${words}; ${lines}`;
-    return { statusParts, additions, deletions, text, label };
+    return { statusParts, additions, deletions, shownTotals, text, label };
   }
 
   /**
    * One `span.change-line`: its statuses and the dot after them as one item, so a wrap
-   * breaks after the dot, then its line totals. *options.spoken* is said in the dot's place.
+   * breaks after the dot, then the line totals it shows, or "0 lines" in
+   * `span.change-line-none` where it shows none. *options.spoken* is said in the dot's place.
    * @param {MetabrowserChangeLine} line
    * @param {MetabrowserChangeLineOptions} [options]
    * @returns {Paint}
@@ -367,10 +391,14 @@
     }
     children.push({
       className: CHANGE_LINE_STATS_CLASS,
-      children: [
-        { className: "diff-stat-add", text: line.additions },
-        { className: "diff-stat-del", text: line.deletions },
-      ],
+      children:
+        line.shownTotals.length === 0
+          ? [{ className: CHANGE_LINE_NONE_CLASS, text: NO_LINES }]
+          : line.shownTotals.map((side) =>
+              side === "additions"
+                ? { className: "diff-stat-add", text: line.additions }
+                : { className: "diff-stat-del", text: line.deletions },
+            ),
     });
     return { className: CHANGE_LINE_CLASS, children };
   }

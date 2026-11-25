@@ -15,7 +15,9 @@
 // `lane` drives the lane alone over those answers, with the browser's idle time and its clock
 // in the session's hands, and prints what each row shows at each step and what was asked.
 // `row` mounts the production panel over a stand-in for the DOM with the SDK's own painters
-// (tests/dom/sdk-ref-fixture.js) and prints each row's third line in its three states. `tree`
+// (tests/dom/sdk-ref-fixture.js) and prints each row's third line in its three states.
+// `totals` mounts it again on rows whose totals are zero or not known, and prints the lines
+// they show: a total of zero is left out, and a change of no lines is "0 lines" (mb-efum). `tree`
 // goes on in that panel and prints what a press and each key do on a pull request, one item
 // of three lines (mb-1z7j): a press on its title's two lines opens it and expands nothing, a
 // press anywhere on its third line, the chevron, the number, the author, or the lines,
@@ -300,12 +302,19 @@ async function laneStory(lines, prefetch) {
   return steps;
 }
 
+/** The rows the list draws first, which each story reads. */
+const SHOWN = [106, 105, 104, 103];
+
 /**
  * Mount the production panel over a stand-in for the DOM on the recorded All list, with the
  * SDK's own painters and idle time in the session's hands, and print each row's third line
- * at each step, then what a press and each key do.
+ * at each step, then what a press and each key do. Given *totals*, each drawn row's line
+ * totals in `SHOWN`'s order, its rows are a recorded listed row with those totals, and the
+ * story ends when their lines arrive, with what each shows.
+ *
+ * @param {{additions: number | null, deletions: number | null}[] | null} [totals]
  */
-async function rowStory(lines) {
+async function rowStory(lines, totals = null) {
   const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
   const rowSummaries = recordedRows("summed");
   // A comparison already has its measured size when the navigation reads its totals.
@@ -313,6 +322,18 @@ async function rowStory(lines) {
     ...rowSummaries.get(106),
     size: { state: "measured", pushed_bytes: 22_528, diff_bytes: 60_314 },
   });
+  for (const [at, total] of (totals ?? []).entries()) {
+    const number = SHOWN[at];
+    // A change of no lines renames a file; any other modifies one.
+    const status = total.additions === 0 && total.deletions === 0 ? "renamed" : "modified";
+    rowSummaries.set(number, {
+      ...rowSummaries.get(105),
+      number,
+      generation: String(number).padStart(32, "0"),
+      statuses: [{ status, count: 1 }],
+      ...total,
+    });
+  }
   let filterOptions = [];
   class PanelElement extends FakeElement {
     set innerHTML(markup) {
@@ -466,7 +487,6 @@ async function rowStory(lines) {
       },
     );
     const list = container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
-    const SHOWN = [106, 105, 104, 103];
     const item = (number) =>
       list.childNodes.find(
         (node) =>
@@ -608,6 +628,37 @@ async function rowStory(lines) {
     );
     await runIdle();
     const arrived = thirdLines();
+    if (totals !== null) {
+      // Each row draws the component built with its zero totals left out, after the number's
+      // line's separator, and is described by its words (mb-efum).
+      const drawn = SHOWN.map((number, at) => {
+        const said = sdk.changeLine(lines.rowLineInput(rowSummaries.get(number), null), {
+          omitZeroTotals: true,
+        });
+        const line = shape(lineOf(number).childNodes);
+        assert.deepEqual(
+          line,
+          [" · ", ...shape([...sdk.changeLineNodes(said)])].map((node, place) =>
+            place === 0 ? { class: "github-pulls-sep", children: [node] } : node,
+          ),
+          `#${number} draws the component with its zero totals left out`,
+        );
+        assert.equal(arrived[`#${number}`].words, `Changed files: ${said.label}`);
+        assert.ok(!/[+−]0\b/.test(arrived[`#${number}`].text), `#${number} shows no zero total`);
+        // The totals the line shows, each its class and text.
+        const stats = findByClass(lineOf(number), "change-line-stats").childNodes;
+        return {
+          row: `#${number}`,
+          totals: totals[at],
+          text: arrived[`#${number}`].text,
+          words: arrived[`#${number}`].words,
+          shows: stats.map((node) => `${node.className}: ${textOf(node)}`),
+        };
+      });
+      handle.dispose();
+      restore();
+      return { drawn };
+    }
     steps.push({
       step: "idle: one read for the rows drawn; #106's and #105's lines arrive, and #104 and #103 have none",
       lines: arrived,
@@ -619,7 +670,7 @@ async function rowStory(lines) {
     // with no file statuses (mb-lqkb): the separator, then the same nodes, part for part.
     const { rowLineInput } = lines;
     const summary106 = summaries.summed.body.rows.find((row) => row.number === 106);
-    const said106 = sdk.changeLine(rowLineInput(summary106, null));
+    const said106 = sdk.changeLine(rowLineInput(summary106, null), { omitZeroTotals: true });
     assert.deepEqual(said106.statusParts, [], "the lines name no file statuses");
     assert.deepEqual(
       arrived["#106"].line,
@@ -846,6 +897,27 @@ async function rowStory(lines) {
     }
   }
   const row = await rowStory(lines);
+  // Each story of the zero and unknown totals mounts the panel afresh: nothing it is shown
+  // was read before in the document.
+  const totals = [];
+  for (const cases of [
+    [
+      { additions: 1093, deletions: 0 },
+      { additions: 0, deletions: 493 },
+      { additions: 3, deletions: 1 },
+      { additions: 0, deletions: 0 },
+    ],
+    [
+      { additions: 0, deletions: null },
+      { additions: null, deletions: 2 },
+      { additions: null, deletions: null },
+      { additions: 1, deletions: 0 },
+    ],
+  ]) {
+    lines.documentRowLines.clear();
+    prefetch.documentComparisons.clear();
+    totals.push(...(await rowStory(lines, cases)).drawn);
+  }
   // Every step of the row story holds the item's one zone (mb-1z7j) and the rule for a row
   // with a disclosure toggle (docs/design-system.md, "A Click on the Toggle's Line Toggles"):
   // a press on the line that carries the toggle toggles that item's files, and a press on the
@@ -913,7 +985,7 @@ async function rowStory(lines) {
     "the story presses every part of an item",
   );
   // One part a run, so each transcript block stays one reviewable size: `lane`, `row`,
-  // `tree`, or `focus`. (A block also has to stay under the size at which the transcript
+  // `totals`, `tree`, or `focus`. (A block also has to stay under the size at which the transcript
   // runner's matcher, a regular expression built from the block, is too large to compile.)
   // With none, the run holds every part's invariants and says how many steps each took.
   const lineSteps = row.steps.filter((step) => "lines" in step);
@@ -929,18 +1001,21 @@ async function rowStory(lines) {
       ? { lane }
       : part === "row"
         ? { row: { steps: lineSteps, said: row.said } }
-        : part === "tree"
-          ? { tree: treeSteps }
-          : part === "focus"
-            ? { focus: focusSteps }
-            : {
-                steps: {
-                  lane: lane.length,
-                  row: lineSteps.length,
-                  tree: treeSteps.length,
-                  focus: focusSteps.length,
-                },
-              };
+        : part === "totals"
+          ? { totals }
+          : part === "tree"
+            ? { tree: treeSteps }
+            : part === "focus"
+              ? { focus: focusSteps }
+              : {
+                  steps: {
+                    lane: lane.length,
+                    row: lineSteps.length,
+                    totals: totals.length,
+                    tree: treeSteps.length,
+                    focus: focusSteps.length,
+                  },
+                };
   process.stdout.write(`${JSON.stringify({ ...printed, invariants: true }, null, 2)}\n`);
 })().catch((error) => {
   process.stderr.write(`${error.stack || error}\n`);

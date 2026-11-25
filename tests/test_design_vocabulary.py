@@ -2726,6 +2726,7 @@ _PUNCTUATION_PAINTERS = {
         '...(at === 0 ? [] : [{ punctuation: "," }, " "]),',
         "{ status: entry.status, letter: entry.letter, count: written(entry.count) },",
         'const CHANGE_LINE_CLASS = "change-line";',
+        'const CHANGE_LINE_NONE_CLASS = "change-line-none";',
         "{ statuses: entries, additions: totals.additions, deletions: totals.deletions },",
     ),
     "static/plugin-sdk.js": (
@@ -2860,6 +2861,21 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_counts() ->
         "align-items": "baseline",
         "column-gap": "inherit",
     }
+    # A line that leaves out its zero totals says "0 lines" for a change of none, muted at
+    # its line's weight (mb-efum). Only the Pulls tab's rows and stack headings leave them
+    # out: every other surface that says a change set in brief says both totals.
+    assert shell[".change-line-stats > .change-line-none"] == {"color": "var(--muted)"}
+    panel = (REPO_ROOT / BUILTIN_PLUGINS / "github/pulls-panel.js").read_text(encoding="utf-8")
+    assert panel.count("{ omitZeroTotals: true }") == 2
+    for path in (
+        "builtin_plugins/diff/diff-view.js",
+        "builtin_plugins/github/pull-page.js",
+        "builtin_plugins/github/pull-summary-brief.js",
+        "static/git-panel.js",
+        "static/changed-files-tree.js",
+    ):
+        source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
+        assert "omitZeroTotals" not in source, path
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:

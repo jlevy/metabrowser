@@ -52,6 +52,10 @@
 // Left call, act on the focused item. With SHOTS_DIR set, it saves the item's hover and the
 // inner target's, at 299 px in each theme.
 //
+// It then mounts the rows again, in each theme at every width, with #106's change of no lines
+// and #105's of additions alone (mb-efum): a zero total is left out, "+3", and no lines are a
+// muted "0 lines" at the line's weight, whole wherever #106's recorded line is shown.
+//
 // It also lays out the lines changed of this repository's own pull requests (`REAL_LINES`), to
 // say how wide a typical row's lines are, which the placeholder's width is judged against.
 import fs from "node:fs";
@@ -240,7 +244,8 @@ const MOUNT = `async (width, theme, fresh = true) => {
   window.__opened = [];
   const respond = (body, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-  const summed = new Map(answers.summed.rows.map((row) => [row.number, row]));
+  // A sweep may set a row's totals for itself (\`window.__rowTotals\`, by number).
+  const summed = new Map(answers.summed.rows.map((row) => [row.number, { ...row, ...window.__rowTotals?.[row.number] }]));
   const absent = answers.summed.rows.find((row) => row.reason === "not_cached");
   window.fetch = async (route) => {
     const url = new URL(route, location.href);
@@ -378,10 +383,10 @@ const INKS = `(() => {
   const host = document.querySelector('.github-pulls-change[data-number="106"] .github-pulls-change-line');
   const reference = document.getElementById("reference");
   const summary = window.__answers.summed.rows.find((row) => row.number === 106);
-  // The line totals alone, as the row draws them (mb-lqkb).
+  // The line totals alone, a zero one left out, as the row draws them (mb-lqkb, mb-efum).
   const said = window.metabrowser.changeLine({
     statuses: [], additions: summary.additions, deletions: summary.deletions,
-  });
+  }, { omitZeroTotals: true });
   reference.replaceChildren(...window.metabrowser.changeLineNodes(said));
   const open = document.querySelector('a.github-pulls-row[data-number="${OPEN}"]');
   const openChange = document.querySelector('.github-pulls-change[data-number="${OPEN}"]');
@@ -419,7 +424,7 @@ const REAL = `((lines) => {
   const em = parseFloat(getComputedStyle(host).fontSize);
   const round = (value) => Math.round(value * 100) / 100;
   const widths = lines.map(([number, _added, _modified, _removed, _renamed, additions, deletions]) => {
-    const said = window.metabrowser.changeLine({ statuses: [], additions, deletions });
+    const said = window.metabrowser.changeLine({ statuses: [], additions, deletions }, { omitZeroTotals: true });
     host.replaceChildren(...window.metabrowser.changeLineNodes(said));
     const width = host.querySelector(".change-line").getBoundingClientRect().width;
     return { number, text: said.text, px: round(width), em: round(width / em) };
@@ -911,6 +916,78 @@ async function main() {
         measured["180 px light"]?.[106]?.lines === "dropped",
       JSON.stringify(Object.fromEntries(Object.entries(measured).map(([k, v]) => [k, v?.[106]]))),
     );
+    // A change of no lines and one of additions alone (mb-efum): a zero total is left out,
+    // and "0 lines" is muted, at the line's weight, and whole wherever the recorded line,
+    // "+1,093 −493", which is wider, shows.
+    await browser.evaluate(
+      `(window.__rowTotals = { 106: { additions: 0, deletions: 0 }, 105: { additions: 3, deletions: 0 } }, true)`,
+    );
+    measured.zeroTotals = {};
+    for (const theme of THEMES) {
+      for (const width of WIDTHS) {
+        const at = `${width} px ${theme}`;
+        await browser.evaluate(`(${MOUNT})(${width}, ${JSON.stringify(theme)})`);
+        await browser.waitFor(
+          `(window.__release(), ${JSON.stringify(SHOWN)}.every((number) => document.querySelector('.github-pulls-change[data-number="' + number + '"] .change-line') !== null))`,
+        );
+        await frames();
+        const muted = await browser.evaluate(`(${TOKEN})("--muted")`);
+        const { rows } = await browser.evaluate(READ);
+        const ink = await browser.evaluate(`(() => {
+          const line = document.querySelector('.github-pulls-change[data-number="106"] .change-line');
+          const none = line?.querySelector(".change-line-stats > .change-line-none") ?? null;
+          const added = document.querySelector('.github-pulls-change[data-number="105"] .change-line');
+          return {
+            none: none ? [getComputedStyle(none).color, getComputedStyle(none).fontWeight] : null,
+            line: line ? getComputedStyle(line).fontWeight : null,
+            added: added ? [...added.querySelectorAll(".change-line-stats > *")].map((part) => part.className) : null,
+          };
+        })()`);
+        if (width === 299) {
+          await shot(`row-lines-${theme}-${width}-zero-totals`, width);
+        }
+        const none = rows[106];
+        const lines = onLine(none, none.changeLine);
+        check(
+          `${at} zero totals: #106 says "0 lines", in words "no lines changed"`,
+          none.said === "0 lines" &&
+            none.text === " · 0 lines" &&
+            none.words === "Changed files: no lines changed",
+          JSON.stringify({ said: none.said, text: none.text, words: none.words }),
+        );
+        check(
+          `${at} zero totals: #105 shows its additions alone, "+3"`,
+          rows[105].said === "+3" &&
+            JSON.stringify(ink.added) === JSON.stringify(["diff-stat-add"]),
+          JSON.stringify({ said: rows[105].said, parts: ink.added }),
+        );
+        check(
+          `${at} zero totals: "0 lines" is muted, at the line's weight`,
+          ink.none !== null && ink.none[0] === muted && ink.none[1] === ink.line,
+          JSON.stringify({ ink, muted }),
+        );
+        check(
+          `${at} zero totals: "0 lines" is whole on the third line or out of view, never cut`,
+          (lines === "shown" &&
+            none.statsWhole &&
+            none.stats.right <= none.flow.right + TOLERANCE_PX) ||
+            lines === "dropped",
+          JSON.stringify({ lines, stats: none.stats, flow: none.flow }),
+        );
+        check(
+          `${at} zero totals: "0 lines" shows wherever the recorded line does`,
+          measured[at]?.[106]?.lines !== "shown" || lines === "shown",
+          JSON.stringify({ recorded: measured[at]?.[106]?.lines, lines }),
+        );
+        measured.zeroTotals[at] = {
+          lines,
+          author: onLine(none, none.by),
+          width: none.line?.width ?? null,
+        };
+        lap(`${at} zero totals: #106 ${JSON.stringify(measured.zeroTotals[at])}`);
+      }
+    }
+    await browser.evaluate(`(window.__rowTotals = null, true)`);
     measured.real = await browser.evaluate(`(${REAL})(${JSON.stringify(REAL_LINES)})`);
     check(
       "the real lines are measured in the change line's type",

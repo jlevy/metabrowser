@@ -40,7 +40,7 @@ The line’s `words`, hidden, say it in words, and its row is described by them
 (`aria-describedby`); `chevron` is the way the line’s chevron turns.
 
 Run alone, the session holds every part’s invariants and says how many steps each took;
-`lane`, `row`, `tree`, and `focus` print each part.
+`lane`, `row`, `totals`, `tree`, and `focus` print each part.
 
 ```console
 $ node tests/dom/github-pulls-row-lines-session.js
@@ -48,6 +48,7 @@ $ node tests/dom/github-pulls-row-lines-session.js
   "steps": {
     "lane": 23,
     "row": 2,
+    "totals": 8,
     "tree": 21,
     "focus": 8
   },
@@ -740,6 +741,127 @@ $ node tests/dom/github-pulls-row-lines-session.js row
       "label": "1,093 lines added, 493 deleted"
     }
   },
+  "invariants": true
+}
+? 0
+```
+
+`totals` mounts the panel afresh, twice, on rows whose line totals are zero or not
+known, and prints each row’s totals, its line as drawn (`text`), its `words`, and the
+class and text of each part its line `shows` (mb-efum).
+A total of zero is left out: a pull request that only adds lines shows “+1,093” and one
+that only deletes them “−493”, while one that does both shows both.
+A pull request that changes no lines, one that only renames a file, shows a muted “0
+lines”, said “no lines changed”.
+A total the cache does not know is still “?”, beside a known one or a zero, and both
+unknown say “line counts unknown”.
+No row shows a “+0” or a “−0”, and each draws the SDK’s one component built with
+`omitZeroTotals`.
+
+```console
+$ node tests/dom/github-pulls-row-lines-session.js totals
+{
+  "totals": [
+    {
+      "row": "#106",
+      "totals": {
+        "additions": 1093,
+        "deletions": 0
+      },
+      "text": " · +1,093",
+      "words": "Changed files: 1,093 lines added",
+      "shows": [
+        "diff-stat-add: +1,093"
+      ]
+    },
+    {
+      "row": "#105",
+      "totals": {
+        "additions": 0,
+        "deletions": 493
+      },
+      "text": " · −493",
+      "words": "Changed files: 493 lines deleted",
+      "shows": [
+        "diff-stat-del: −493"
+      ]
+    },
+    {
+      "row": "#104",
+      "totals": {
+        "additions": 3,
+        "deletions": 1
+      },
+      "text": " · +3−1",
+      "words": "Changed files: 3 lines added, 1 deleted",
+      "shows": [
+        "diff-stat-add: +3",
+        "diff-stat-del: −1"
+      ]
+    },
+    {
+      "row": "#103",
+      "totals": {
+        "additions": 0,
+        "deletions": 0
+      },
+      "text": " · 0 lines",
+      "words": "Changed files: no lines changed",
+      "shows": [
+        "change-line-none: 0 lines"
+      ]
+    },
+    {
+      "row": "#106",
+      "totals": {
+        "additions": 0,
+        "deletions": null
+      },
+      "text": " · −?",
+      "words": "Changed files: ? lines deleted",
+      "shows": [
+        "diff-stat-del: −?"
+      ]
+    },
+    {
+      "row": "#105",
+      "totals": {
+        "additions": null,
+        "deletions": 2
+      },
+      "text": " · +?−2",
+      "words": "Changed files: ? lines added, 2 deleted",
+      "shows": [
+        "diff-stat-add: +?",
+        "diff-stat-del: −2"
+      ]
+    },
+    {
+      "row": "#104",
+      "totals": {
+        "additions": null,
+        "deletions": null
+      },
+      "text": " · +?−?",
+      "words": "Changed files: line counts unknown",
+      "shows": [
+        "diff-stat-add: +?",
+        "diff-stat-del: −?"
+      ]
+    },
+    {
+      "row": "#103",
+      "totals": {
+        "additions": 1,
+        "deletions": 0
+      },
+      "text": " · +1",
+      "words": "Changed files: 1 line added",
+      "shows": [
+        "diff-stat-add: +1"
+      ]
+    }
+  ],
   "invariants": true
 }
 ? 0

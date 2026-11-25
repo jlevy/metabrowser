@@ -51,7 +51,8 @@ function shellPainters() {
   return {
     shortCommit: formatters.shortCommit,
     countPartsNodes: (parts) => formatters.countPartsNodes(globalThis.document, parts),
-    changeLine: (change) => formatters.changeLine(change, formatters.formatInteger),
+    changeLine: (change, options) =>
+      formatters.changeLine(change, formatters.formatInteger, options),
     changeLineNodes: (line, options) =>
       formatters.changeLineNodes(globalThis.document, line, options),
     // The size line is a view helper (plugin-sdk-views.js), taken from the SDK as a page

@@ -7856,6 +7856,13 @@ pre.code-block.metabrowser-source-lines > code {
   font-weight: var(--weight-bold);
 }
 
+/* A line that leaves out its zero totals (`omitZeroTotals`, the Pulls tab's rows and stack
+   headings) says "0 lines" in their place for a change of no lines: muted and at its line's
+   weight, as there are no lines to ink (mb-efum). */
+.change-line-stats > .change-line-none {
+  color: var(--muted);
+}
+
 /* A commit's or pull request's title draws a conventional-commit prefix, "feat(ledger):",
    at regular weight, and the rest at the title's own: bold wherever a title is bold
    (docs/design-system.md, "Titles"; mb-z57p). formatters.js's titleNodes and titleHtml

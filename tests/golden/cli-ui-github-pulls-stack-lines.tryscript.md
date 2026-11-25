@@ -7,9 +7,10 @@ env:
 # Golden Test: A Stack Heading’s Brief Change Line
 
 Each “Stack #N” heading in the Pulls tab shows its stack’s brief change line beside its
-label, “Stack #286 · +5 −0”: the lines of the stack’s combined change, its members’ own
+label, “Stack #286 · +5”: the lines of the stack’s combined change, its members’ own
 changed files accumulated, each file once and their lines summed, which the server does
-from the cache (`GET stack-change`); the line counts no files by status (mb-lqkb).
+from the cache (`GET stack-change`); the line counts no files by status (mb-lqkb), and
+leaves out a total of zero (mb-efum).
 This browserless session runs the production code that decides what each heading shows,
 `builtin_plugins/github/stack-lines.js`, on the server’s own answers, the stack changes
 `tests/test_github_stack_change.py` records and the list and stack snapshot the
@@ -48,8 +49,12 @@ drawn through the SDK’s one component for it (`said`), its line totals alone.
 Its accessible name says the line in words after the label.
 Mounted again in a fresh document with a member’s list that could not count a binary
 file, the muted “(estimated)” follows the totals, and the name says it.
-The placeholder is one node across paints, the label stays the node it was, and the line
-drawn is the component’s nodes, part for part.
+Mounted again, a fresh document each, with each of `totals`, the line `shows` a total of
+zero left out, “−4” for a stack that only deletes lines, as “+5” is one that only adds
+them, and both where both are nonzero; a muted “0 lines”, said “no lines changed”, for a
+stack that changes none; and “?” for a total not known, beside a zero or a known one.
+No heading shows a “+0” or a “−0”. The placeholder is one node across paints, the label
+stays the node it was, and the line drawn is the component’s nodes, part for part.
 
 `retryMinutes` is when a stack whose answer keeps naming a member not yet settled is
 asked again over two and a half hours, the list drawing it each minute: a minute on,
@@ -643,7 +648,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
               "github-pulls-stack-change"
             ],
             "label": "Stack #286",
-            "text": "·+5−0",
+            "text": "·+5",
             "change": [
               {
                 "class": "summary-punctuation",
@@ -663,19 +668,13 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                         "children": [
                           "+5"
                         ]
-                      },
-                      {
-                        "class": "diff-stat-del",
-                        "children": [
-                          "−0"
-                        ]
                       }
                     ]
                   }
                 ]
               }
             ],
-            "name": "Stack #286: 5 lines added, 0 deleted; 3 pull requests, 2 in this list, 1 under Stack #290"
+            "name": "Stack #286: 5 lines added; 3 pull requests, 2 in this list, 1 under Stack #290"
           }
         },
         "requests": []
@@ -689,7 +688,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
               "github-pulls-stack-change"
             ],
             "label": "Stack #286",
-            "text": "·+5−0(estimated)",
+            "text": "·+5(estimated)",
             "change": [
               {
                 "class": "summary-punctuation",
@@ -709,12 +708,6 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                         "children": [
                           "+5"
                         ]
-                      },
-                      {
-                        "class": "diff-stat-del",
-                        "children": [
-                          "−0"
-                        ]
                       }
                     ]
                   }
@@ -727,7 +720,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                 ]
               }
             ],
-            "name": "Stack #286: 5 lines added, 0 deleted, estimated; 3 pull requests, 2 in this list, 1 under Stack #290"
+            "name": "Stack #286: 5 lines added, estimated; 3 pull requests, 2 in this list, 1 under Stack #290"
           }
         },
         "requests": [
@@ -737,9 +730,80 @@ $ node tests/dom/github-pulls-stack-lines-session.js
       }
     ],
     "said": {
-      "text": "+5 −0",
-      "label": "5 lines added, 0 deleted"
-    }
+      "text": "+5",
+      "label": "5 lines added"
+    },
+    "totals": [
+      {
+        "totals": {
+          "additions": 0,
+          "deletions": 4
+        },
+        "text": "·−4",
+        "shows": [
+          "diff-stat-del: −4"
+        ],
+        "name": "Stack #286: 4 lines deleted; 3 pull requests, 2 in this list, 1 under Stack #290"
+      },
+      {
+        "totals": {
+          "additions": 5,
+          "deletions": 4
+        },
+        "text": "·+5−4",
+        "shows": [
+          "diff-stat-add: +5",
+          "diff-stat-del: −4"
+        ],
+        "name": "Stack #286: 5 lines added, 4 deleted; 3 pull requests, 2 in this list, 1 under Stack #290"
+      },
+      {
+        "totals": {
+          "additions": 0,
+          "deletions": 0
+        },
+        "text": "·0 lines",
+        "shows": [
+          "change-line-none: 0 lines"
+        ],
+        "name": "Stack #286: no lines changed; 3 pull requests, 2 in this list, 1 under Stack #290"
+      },
+      {
+        "totals": {
+          "additions": 0,
+          "deletions": null
+        },
+        "text": "·−?",
+        "shows": [
+          "diff-stat-del: −?"
+        ],
+        "name": "Stack #286: ? lines deleted; 3 pull requests, 2 in this list, 1 under Stack #290"
+      },
+      {
+        "totals": {
+          "additions": null,
+          "deletions": 4
+        },
+        "text": "·+?−4",
+        "shows": [
+          "diff-stat-add: +?",
+          "diff-stat-del: −4"
+        ],
+        "name": "Stack #286: ? lines added, 4 deleted; 3 pull requests, 2 in this list, 1 under Stack #290"
+      },
+      {
+        "totals": {
+          "additions": null,
+          "deletions": null
+        },
+        "text": "·+?−?",
+        "shows": [
+          "diff-stat-add: +?",
+          "diff-stat-del: −?"
+        ],
+        "name": "Stack #286: line counts unknown; 3 pull requests, 2 in this list, 1 under Stack #290"
+      }
+    ]
   },
   "retryMinutes": [
     0,

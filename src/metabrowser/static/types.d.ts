@@ -692,6 +692,7 @@ type MetabrowserFormatterRuntime = Readonly<{
   changeLine(
     change: MetabrowserChangeLineInput,
     formatCount: (count: number) => string,
+    options?: MetabrowserChangeLineBuildOptions,
   ): MetabrowserChangeLine;
   /** A brief change line as nodes: its one `span.change-line`. */
   changeLineNodes(
@@ -1857,7 +1858,10 @@ type MetabrowserSdk = {
   /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567", from a change set's statuses and
    *  line totals, in the shell's number format: the one component for one
    *  (docs/design-system.md, "Brief Change Line"). */
-  changeLine(change: MetabrowserChangeLineInput): MetabrowserChangeLine;
+  changeLine(
+    change: MetabrowserChangeLineInput,
+    options?: MetabrowserChangeLineBuildOptions,
+  ): MetabrowserChangeLine;
   /** A brief change line as nodes for its element, painted as the shell paints every one: its
    *  one `span.change-line`. */
   changeLineNodes(
@@ -4650,6 +4654,9 @@ declare global {
     additions: string;
     /** "−567". */
     deletions: string;
+    /** The line totals it shows, in order: both, unless `omitZeroTotals` left out a zero
+     *  one; none for a change of no lines, which it shows as "0 lines". */
+    shownTotals: ReadonlyArray<"additions" | "deletions">;
     /** "10 A, 5 D, 4 M · +1,234 −567". */
     text: string;
     /** "10 added, 5 deleted, 4 modified; 1,234 lines added, 567 deleted". */
@@ -4680,6 +4687,14 @@ declare global {
     label: string;
     /** What each size is, for the size's tooltip; null before the size is known. */
     tooltip: string | null;
+  };
+
+  /** How a brief change line is built for where it stands. */
+  type MetabrowserChangeLineBuildOptions = {
+    /** Leave out a line total of zero: "+1,234" for a change that only adds lines, "−567" for
+     *  one that only deletes them, and a muted "0 lines", said "no lines changed", for one
+     *  of none. Totals both nonzero, or not known, are shown as without it. */
+    omitZeroTotals?: boolean;
   };
 
   /** How a brief change line is painted where it stands. */
