@@ -2,7 +2,6 @@ base:
   assignee: null
   description_hash: sha256v7:5e67b02f8bfe7562288b900f166fd820112b9f09d9a99c13293d9a217b70a90f
   labels:
-    - linear
     - Feature
   priority: 1
   slot: backlog
@@ -15,7 +14,7 @@ external_key: OS-581
 external_url: https://linear.app/finterm-ai/issue/OS-581/branches-follow-the-repository-a-view-of-a-branch-tracks-it-in-mirror
 refinement_slot: backlog
 refinement_state_id: 30434c7c-0bd1-48d7-9b9e-1d658e48c852
-remote_updated_at: 2026-11-25T02:24:52.774Z
+remote_updated_at: 2026-11-25T03:59:18.469Z
 state: linked
-synced_at: 2026-11-25T02:24:53.030Z
+synced_at: 2026-11-25T03:59:18.818Z
 type: lk

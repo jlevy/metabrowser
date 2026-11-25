@@ -2,7 +2,6 @@ base:
   assignee: null
   description_hash: sha256v7:b98d9e157b7a9c0a0c959e235b664d1ed78a9189b7d4e229faf8ed2e509e684c
   labels:
-    - linear
     - Improvement
   priority: 1
   slot: todo
@@ -14,7 +13,7 @@ external_key: OS-612
 external_url: https://linear.app/finterm-ai/issue/OS-612/epic-instant-transitions-and-stable-layout-for-the-native-app
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-22T21:14:20.630Z
+remote_updated_at: 2026-11-25T03:59:16.743Z
 state: linked
-synced_at: 2026-11-22T21:15:34.668Z
+synced_at: 2026-11-25T03:59:17.007Z
 type: lk

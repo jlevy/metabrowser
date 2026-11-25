@@ -2,7 +2,6 @@ base:
   assignee: null
   description_hash: sha256v7:0ebe13d812c5518c61b70aa1c0086dcca1084ee8a64647b0bf5cb6a2d36c6cdd
   labels:
-    - linear
     - Improvement
   priority: 1
   slot: todo
@@ -15,7 +14,7 @@ external_key: OS-616
 external_url: https://linear.app/finterm-ai/issue/OS-616/source-and-checkout-kinds-one-mode-and-one-icon-for-a-cloud-mirror-a
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-25T02:20:04.762Z
+remote_updated_at: 2026-11-25T03:59:19.414Z
 state: linked
-synced_at: 2026-11-25T02:24:53.856Z
+synced_at: 2026-11-25T03:59:19.652Z
 type: lk
