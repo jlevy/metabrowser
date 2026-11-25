@@ -5,14 +5,18 @@ title: The plugins toggle in settings does not work
 kind: bug
 status: closed
 priority: 2
-version: 3
+version: 4
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/812
+    at: 2026-11-25T03:49:59.553Z
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-25T00:41:11.803Z
-updated_at: 2026-11-25T03:49:30.709Z
+updated_at: 2026-11-25T03:49:59.556Z
 started_at: 2026-11-25T00:45:05.263Z
 closed_at: 2026-11-25T03:49:30.706Z
 close_reason: "Merged in #812 (a94b19411): the plugin list sat in a disclosure that toggled only from its chevron, not its title; Plugins is now its own tab, tested by pressing the tab."

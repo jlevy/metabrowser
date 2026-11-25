@@ -5,14 +5,18 @@ title: The settings health check's log overlaps and is hard to copy
 kind: bug
 status: closed
 priority: 2
-version: 3
+version: 4
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/812
+    at: 2026-11-25T03:50:02.428Z
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-25T00:41:14.105Z
-updated_at: 2026-11-25T03:49:35.529Z
+updated_at: 2026-11-25T03:50:02.457Z
 started_at: 2026-11-25T00:45:07.703Z
 closed_at: 2026-11-25T03:49:35.524Z
 close_reason: "Merged in #812 (a94b19411): the Check Setup report is one read-only selectable text view holding exactly Copy Report's text, so no check overlaps the next and any part copies as plain text."
