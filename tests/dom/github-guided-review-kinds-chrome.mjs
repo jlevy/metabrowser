@@ -3,7 +3,9 @@
 // kind of reference (`kinds` in tests/github_pull_fixture.py): its second step cites 8, a
 // merged pull request; 10's draft document and 9's change to src/app.txt; 50, which the
 // list of pull requests alone knows, and 2000, which nothing here knows; 7's own head as a
-// commit; and a commit the store lacks.
+// commit; and a commit the store lacks. Its native stacks are the stack page's, 70 (8, then
+// 10) and 71 (8, 7, then 10), so 8's place is 1/3, in 71, 7's own stack, and 50 and 2000
+// are in none.
 //
 //   CHROME_BIN=... CHROME_PROFILES=<dir> node tests/dom/github-guided-review-kinds-chrome.mjs <base URL>
 //
@@ -13,11 +15,12 @@
 // What only a browser holds, and the browserless session cannot
 // (github-guided-review-mount-behavior.js pins the rows' words and where they go):
 //
-// 1. A row is one line, the stack menu's member row's height, inside its bordered card, its
-//    icon or ID, its number, its dot, and its title side by side, the title cut short at
-//    the row's end with its ellipsis when it does not fit, at a desktop width and at a
-//    phone's with the navigation pane hidden, as the reading column is on a phone, and
-//    nothing runs past the page.
+// 1. A row is one line, the stack menu's member row's height, inside its bordered card. A
+//    pull request's is a stack's member row (stack-member-row.js), its title at the row's
+//    start and its last part at the row's end, a place in a stack named by its tip, and a
+//    commit's ends in when it was committed. The title is cut short with its ellipsis when it
+//    does not fit, at a desktop width and at a phone's with the navigation pane hidden, as
+//    the reading column is on a phone, and nothing runs past the page.
 // 2. Another pull request's document is drawn by the diff view from that pull request's own
 //    routes, which the real server admits: its bar is the diff's own, and the guide's bar
 //    for the file names the pull request only when the view could not draw it.
@@ -50,9 +53,15 @@ const ROWS = `[...document.querySelectorAll(".github-pull-guide-row")].map((card
   const row = card.querySelector(".github-pull-guide-row-link");
   const box = row.getBoundingClientRect();
   const frame = card.getBoundingClientRect();
-  const title = row.querySelector(".github-pull-guide-row-title");
+  const title = row.querySelector(".github-pull-guide-row-title, .github-pull-stack-member-title");
   const parts = [...row.children].map((part) => part.getBoundingClientRect());
   const style = title ? getComputedStyle(title) : null;
+  // A pull request's run, each part shown, in the order drawn, and the row's last part shown.
+  const run = row.querySelector(".github-pull-stack-member-copy");
+  const shown = (part) => part.getClientRects().length > 0;
+  const runParts = run ? [...run.children].filter(shown) : [];
+  const last = run ? runParts.at(-1) : row.lastElementChild;
+  const edge = box.right - parseFloat(getComputedStyle(row).paddingRight);
   return {
     text: row.textContent.replace(/\\s+/g, " ").trim(),
     height: Math.round(box.height),
@@ -62,6 +71,15 @@ const ROWS = `[...document.querySelectorAll(".github-pull-guide-row")].map((card
     // Its parts on one line: they share a middle, each after the one before.
     oneLine: parts.every((part) => Math.abs((part.top + part.bottom) / 2 - (box.top + box.bottom) / 2) <= 2),
     apart: parts.every((part, at) => at === 0 || part.left >= parts[at - 1].right - 0.5),
+    runApart: runParts.every(
+      (part, at) =>
+        at === 0 ||
+        part.getBoundingClientRect().left >= runParts[at - 1].getBoundingClientRect().right - 0.5,
+    ),
+    // Its last part ends where the row's text ends: a pull request's author, or its number
+    // when it has none, and a commit's age.
+    ends: last ? Math.abs(last.getBoundingClientRect().right - edge) <= 1 : null,
+    tip: row.querySelector(".github-pull-stack-member-position")?.dataset.tipText ?? null,
     cut: title ? title.scrollWidth > title.clientWidth : null,
     ellipsis: style ? style.textOverflow : null,
     bordered: parseFloat(getComputedStyle(card).borderTopWidth) > 0,
@@ -86,6 +104,13 @@ try {
     await chrome.send("Input.dispatchKeyEvent", { type: "keyUp", ...key });
   };
   await chrome.send("Page.enable");
+  // The repository's stacks, as a reader has them once they have opened a member, before the
+  // guide asks where its pull requests sit.
+  await go("/pull/8");
+  await waitFor(`document.querySelector(".github-pull-title-text") !== null`);
+  await waitFor(
+    `fetch("/api/plugin/github/stack?number=71", {cache: "no-store"}).then((r) => r.json()).then((a) => a.state === "current")`,
+  );
   await go("/pull/7");
   await waitFor(
     `document.querySelector(".github-pull-guide-position")?.textContent === "Overview"`,
@@ -102,16 +127,13 @@ try {
   // phone's width. The pane keeps its width in a narrow window, so it is hidden there, as
   // `\` hides it, and the reading column takes the window.
   const rows = await evaluate(ROWS);
-  // Each with its author after its title, where this copy knows the pull request
-  // (docs/design-system.md, "Authors Follow Pull Requests").
+  // The rows' words and order are the member row's builder's (stack-member-row.js), which
+  // the browserless session pins; here, where each sits. 8 is in 71, its guide's own stack,
+  // and 50 and 2000 in none.
   same(
-    "the step's pull requests",
-    rows.slice(0, 3).map((row) => row.text),
-    [
-      "#8 · Say more in the guide · maintainer",
-      "#50 · Work item 50 · contributor",
-      "#2000 · Pull request #2000",
-    ],
+    "8's place names its stack in its tip",
+    rows.slice(0, 3).map((row) => row.tip),
+    ["Stack #71, position 1 of 3", null, null],
   );
   check(
     "the commit's row: its short ID, its subject, and when it was committed",
@@ -132,6 +154,11 @@ try {
       );
       check(`${label}: row ${at + 1} is inside its card`, row.inside);
       check(`${label}: row ${at + 1}'s parts are on one line`, row.oneLine && row.apart);
+      check(`${label}: row ${at + 1}'s run's parts stand apart`, row.runApart);
+      // The rows but the commit the store lacks, which names nothing at its end.
+      if (at < 4) {
+        check(`${label}: row ${at + 1}'s last part ends the row`, row.ends === true);
+      }
       check(`${label}: row ${at + 1}'s card has a border`, row.bordered);
       if (row.ellipsis !== null) {
         check(
@@ -143,7 +170,7 @@ try {
   };
   measure("desktop", rows);
   await evaluate(
-    `document.querySelector(".github-pull-guide-row .github-pull-guide-row-title").textContent = ${JSON.stringify(LONG)}`,
+    `document.querySelector(".github-pull-guide-row .github-pull-stack-member-title").textContent = ${JSON.stringify(LONG)}`,
   );
   const long = await evaluate(ROWS);
   measure("a long title", long);

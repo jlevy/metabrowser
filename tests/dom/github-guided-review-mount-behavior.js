@@ -389,8 +389,10 @@ function host({ allowlist = true } = {}) {
             .map((section) => {
               const row = section.querySelector(".github-pull-guide-row-link");
               if (row !== null) {
-                const place = row.querySelector(".github-pull-guide-row-place");
-                const tip = place?.dataset.tipText;
+                // A pull request's place is a stack member's, whose tip names its stack.
+                const tip = row
+                  .querySelector(".github-pull-stack-member-position")
+                  ?.getAttribute("data-tip-text");
                 return `${row.tag === "a" ? `row to ${row.href}` : "row"}: ${row.textContent.replace(/\s+/g, " ").trim()}${tip ? ` (tip: ${tip})` : ""}`;
               }
               const pull = section.querySelector(".github-pull-guide-reference-pull");
@@ -806,8 +808,8 @@ async function run() {
             title: "Say <b>more</b>",
             state: "merged",
             stack: { number: 71, place: 1, count: 3 },
-            // Its author follows its title (docs/design-system.md, "Authors Follow Pull
-            // Requests"), drawn by the page's `identity`.
+            // Its author, drawn by the page's `identity` in a stack member's row
+            // (stack-member-row.js).
             author: "maintainer",
             avatar: null,
           },
@@ -846,6 +848,13 @@ async function run() {
           kind: "commit",
           commit: "f".repeat(40),
           target: { subject: "Fetched with its pull request", committed_at: null },
+        }),
+        // One with its time, which still ends its row, after the note
+        // (docs/design-system.md, "Ages End the Row").
+        cited({
+          kind: "commit",
+          commit: "d".repeat(40),
+          target: { subject: "Fetched and dated", committed_at: "2026-08-29T14:40:00Z" },
         }),
       ],
     });

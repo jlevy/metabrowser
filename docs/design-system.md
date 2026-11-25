@@ -311,7 +311,7 @@ it.
 | Labels | `--label-font-size` | All-caps tabs, table headers, stat labels, group headings, and dialog titles, at the controls’ size: labels differ by caps treatment, not by another size |
 | Monospace blocks | `--mono-block-font-size` | Source, diffs and their hunk headers, review hunks, logs and their event headers, and raw JSON, at the controls’ size |
 | Ref chip | `--git-ref-font-size` | `--git-ref-font-scale` of the size it inherits, so slightly smaller than the text it sits in: the ramp’s one relative size, because a chip sits in text of several sizes and reads as part of it ([Branch Chips](#branch-chips)) |
-| Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges, after a stack member’s place in a stack menu and in a Pulls row, and between a guide’s pull request row’s number and title |
+| Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges, after a stack member’s place in a stack menu, in a Pulls row, and in a guide’s pull request row |
 
 A path reads at its region’s size, and its metadata with it.
 The navigation column’s header path is list text, the size of the rows it heads, in a
@@ -3336,8 +3336,8 @@ reader does with it.
 | Document | A Markdown file a step cites whole, as Docs draws it, and a YAML or JSON file, as Changes draws it: the file bar, the rendered layer and its Rendered and Source choice, and Diff and Current; one that could not be drawn, the guide’s bar for it above the view’s notice | `mountRenderedFile` in the diff plugin, `DOCS_DRAWING`, `CHANGES_DRAWING`, `.github-pull-guide-document` |
 | Out of date | One warning notice above the guide and its one remedy, or a quiet line when no file it cites changed; a step that cites a changed file is marked “changed” in the list and on its card, in muted text | `OUTDATED`, `CHANGED`, `.github-pull-guide-stale`, `.github-pull-guide-step-changed` |
 | Another pull request’s file | An excerpt or a document, as a file of this pull request is drawn, under a bar that names that pull request’s number before the path, in a pull request number’s weight and muted ink; its Open full diff opens the file in that pull request’s Changes | `referenceBar`, `.github-pull-guide-reference-pull` |
-| Pull request | One row in an excerpt’s card, as the [stack menu](#stacks) lists a member: the state icon, the number in bold, a muted dot, and the title, which alone gives way, then its stack place, muted, “Stack #71 1/3”; one this copy has not read keeps the icon’s slot empty and names itself by its number | `pullRow`, `pullStateIcon`, `stackLabel`, `stackPosition`, `.github-pull-guide-row` |
-| Commit | One such row, as the Commits tab lists a commit: its [short ID](#short-commit-ids), its subject, and when it was committed, muted; a plain link to the commit’s page; one the store lacks says it is unavailable beside its ID | `commitRow`, `COMMIT_UNAVAILABLE`, `.github-pull-guide-commit` |
+| Pull request | One row in an excerpt’s card, a stack’s [member row](#stacks) in its order: the state icon and the title, which alone gives way, then at the row’s end its place in a stack, “1/3”, whose tip names the stack, “Stack #71, position 1 of 3”, its number, and its author, each after a muted dot; one in no stack has no place, and one this copy has not read keeps the icon’s slot empty and names itself by its number | `pullRow`, `stackMemberRow`, `stackPosition`, `stackPlaceHint`, `.github-pull-guide-row`, `.github-pull-stack-member` |
+| Commit | One such row, as the Commits tab lists a commit: its [short ID](#short-commit-ids), its subject, and at the row’s end when it was committed, the age in its freshness ink ([Ages End the Row](#ages-end-the-row)); a plain link to the commit’s page; one the store lacks says it is unavailable beside its ID, and one this checkout cannot open says so after its subject | `commitRow`, `COMMIT_UNAVAILABLE`, `.github-pull-guide-commit` |
 
 A new part of the guide takes its words from these constants and its look from an
 existing part of the design system.
@@ -3617,7 +3617,7 @@ that shows a number takes it:
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
 | The ref selector, on a branch’s row | `.source-ref-selector-pull-number`, after the state icon |
-| A guide’s pull request row | `.github-pull-guide-row-number`, after the state icon |
+| A guide’s pull request row | `.github-pull-stack-member-number`, as a stack menu’s member has it |
 | A guide’s file of another pull request | `.github-pull-guide-reference-pull`, before the path |
 
 The GitHub plugin’s three are one rule.
@@ -3643,7 +3643,7 @@ author after the number.
 | A Pulls row | `.github-pulls-by`, ending the run after the number, cut short only where it is wider than a line |
 | A stack menu’s member | `.github-pull-stack-member-by`, ending the line after the number, at most a third of it |
 | A member on a stack’s page | The stack menu’s member row itself, drawn by its builder, `stackMemberRow` |
-| A guide’s pull request row | `.github-pull-guide-row-by`, after the title, at most a third of the line |
+| A guide’s pull request row | `.github-pull-stack-member-by`, as a stack menu’s member has it |
 | The pull request page’s title | The header’s sentence, “jlevy wants to merge 3 commits”, which names the merger once the pull request is merged, as github.com’s does |
 
 Two surfaces show no author:
@@ -3868,8 +3868,11 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
   its place, its number, and its author, “Fix the reader · 14/15 · #455 · jlevy”.
   A Pulls row’s run has all four, its age at the row’s end on the line below
   ([The Pulls Tab](#the-pulls-tab)); the stack menu’s member row has all four on one
-  line; and the stack button shows the place alone, “⧉14/15”, with no author, since the
-  row it ends has no room for one
+  line, and so does a guide’s pull request row, drawn by the same builder
+  (`stackMemberRow` in `stack-member-row.js`), whose place’s tip names its stack, and
+  which, for a pull request in no stack, has no place and keeps the rest in order; and
+  the stack button shows the place alone, “⧉14/15”, with no author, since the row it
+  ends has no room for one
   ([Authors Follow Pull Requests](#authors-follow-pull-requests)). Every member in the
   menu has one layout, one line tall, so the members line up and every row of the menu
   is as tall as the others: the state icon in the tree’s icon slot, a tree row’s gap,

@@ -172,12 +172,14 @@ A guide whose head the local copy lacks marks no step and says some may not matc
 an excerpt it says the file may have changed, and in a reference’s place that its lines
 may have. A guide whose cited files did not change says so in a quiet line.
 A step can cite past its pull request: another pull request is a row as the stack menu
-lists a member, with its place in a stack, and goes to that pull request’s page, and one
-this copy has not read is named by its number; a file of another pull request is drawn
-under a bar that names that pull request, whose Open full diff opens the file in that
-pull request’s Changes, and one that is not loaded here says how to load it; a commit is
-a row of its subject, when it was committed, and its short ID, a plain link to the
-commit, and one the store lacks says it is unavailable.
+lists a member, its title, its place in a stack, whose tip names the stack, its number,
+and its author, and goes to that pull request’s page, and one this copy has not read is
+named by its number; a file of another pull request is drawn under a bar that names that
+pull request, whose Open full diff opens the file in that pull request’s Changes, and
+one that is not loaded here says how to load it; a commit is a row of its short ID, its
+subject, and when it was committed, a plain link to the commit, one the store lacks says
+it is unavailable, and one this checkout cannot open says so before when it was
+committed, which ends the row.
 None of them is marked changed, even when the guide is stale and a path another pull
 request’s reference names changed.
 A guide whose merge base alone moved is out of date too: a step that cites a file
@@ -239,7 +241,7 @@ $ node tests/dom/github-guided-review-mount-behavior.js
   "a guide behind a newer head on GitHub: none; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
   "a guide whose head this copy lacks: warning: This guide was written for an earlier version of this pull request, so some steps may not match it. Its author can update the guide.; > Overview | 1 Step 1 | 2 Step 2 | 3 Step 3",
   "and its step: Step 1; src/app.txt: This file may have changed since the guide was written. | gone.txt: This path is not in the comparison. | src/app.txt: These lines may have changed since the guide was written.",
-  "a step past its pull request: Guided Review | Step 1 of 3; row to /pull/8: #8 · Say <b>more</b> · maintainer Stack #71 1/3 (tip: Stack #71, position 1 of 3) | row to /pull/2000: #2000 · Pull request #2000 | #9 src/app.txt: no note | #12 docs/plan.md: This pull request has not been loaded here. Open it to load its changes. | row to /commit/cccccccccccccccccccccccccccccccccccccccc: ccccccc Count <i>to</i> two committed now | row: eeeeeee This commit is unavailable. | row: fffffff Fetched with its pull request Not in this checkout.",
+  "a step past its pull request: Guided Review | Step 1 of 3; row to /pull/8: Say <b>more</b> 1/3 · #8 · maintainer (tip: Stack #71, position 1 of 3) | row to /pull/2000: Pull request #2000 #2000 | #9 src/app.txt: no note | #12 docs/plan.md: This pull request has not been loaded here. Open it to load its changes. | row to /commit/cccccccccccccccccccccccccccccccccccccccc: ccccccc Count <i>to</i> two committed now | row: eeeeeee This commit is unavailable. | row: fffffff Fetched with its pull request Not in this checkout. | row: ddddddd Fetched and dated Not in this checkout. committed now",
   "its pull request row, then its other pull request's Open full diff, open: #8 front page; #9 files src/app.txt",
   "a guide whose cited files did not change: quiet: This guide was written for an earlier version of this pull request, but the files it cites have not changed.",
   "a guide whose merge base alone moved: warning: This guide was written for an earlier version of this pull request, so steps marked changed may not match it. Its author can update the guide.; > Overview | 1 Step 1 changed | 2 Step 2 | 3 Step 3",

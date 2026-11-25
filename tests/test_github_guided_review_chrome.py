@@ -17,10 +17,12 @@ and where a list's markers fall against the bordered box around them are paint t
 measured here: a marker on or past a border is what the first out-of-date notice drew (mb-u46w).
 
 A step that cites past its pull request draws a pull request and a commit as rows, whose
-height, borders, and cut titles are paint, so ``tests/dom/github-guided-review-kinds-chrome.mjs``
-measures them, at a desktop width and a phone's, and that another pull request's document draws
-from that pull request's own routes on the real server, on a stand-in whose pull request 7's
-guide cites every kind of reference (``--describe 7 kinds``).
+height, borders, cut titles, and parts' order along the line are paint, so
+``tests/dom/github-guided-review-kinds-chrome.mjs`` measures them, at a desktop width and a
+phone's, and that another pull request's document draws from that pull request's own routes on
+the real server, on a stand-in whose pull request 7's guide cites every kind of reference
+(``--describe 7 kinds``), with the stack page's native stacks, so one cited pull request has a
+place in a stack and the others have none.
 
 Where each row of the step list starts is paint too, so
 ``tests/dom/github-guided-review-outline-chrome.mjs`` measures it, in the light and the dark
@@ -42,6 +44,7 @@ leads a process group of its own, which Chrome joins (tests/process_group.py).
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -53,6 +56,7 @@ import pytest
 
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
+from tests.test_github_stack_page_chrome import with_stacks
 from tests.test_nav_metadata_chrome import (
     _SERVER_STOP_S,
     _SERVING_BUDGET_S,
@@ -91,9 +95,11 @@ def _session(
     mode: str,
     session: Path,
     describe: Sequence[tuple[str, str]] = (("8", "grouped"),),
+    stacks: bool = False,
 ) -> str:
     """Build the stand-in in fixture *mode*, write each guide *describe* names into its pull
-    request's description, serve pull request 7, and run *session* on it."""
+    request's description, with *stacks* give it the stack page's native stacks, serve pull
+    request 7, and run *session* on it."""
     chrome = require_chrome()
     node = require_node()
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
@@ -112,6 +118,12 @@ def _session(
             check=False,
         )
         assert built.returncode == 0, built.stderr[-4000:]
+    if stacks:
+        answers = stand_in / "fake-gh-scenario.json"
+        answers.write_text(
+            json.dumps(with_stacks(json.loads(answers.read_text(encoding="utf-8")))),
+            encoding="utf-8",
+        )
     port = _free_port()
     log = tmp_path / "server.log"
     with log.open("w", encoding="utf-8") as output:
@@ -161,7 +173,9 @@ def test_guided_review_documents_in_chrome(tmp_path: Path, chrome_profile: Path)
 
 
 def test_guided_review_reference_rows_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
-    stdout = _session(tmp_path, chrome_profile, "--guided", KINDS, describe=(("7", "kinds"),))
+    stdout = _session(
+        tmp_path, chrome_profile, "--guided", KINDS, describe=(("7", "kinds"),), stacks=True
+    )
     passed = re.fullmatch(r"guided review references in Chrome: (\d+) checks passed\n", stdout)
     assert passed is not None and int(passed.group(1)) > 0, stdout
 

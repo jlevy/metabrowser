@@ -8385,9 +8385,12 @@ export function mountPullPage(container, ctx, mb) {
             ),
           age: (iso) => age(iso),
           shortCommit: (sha) => mb.shortCommit(sha),
-          // A cited pull request's author, as a stack menu's member draws it.
+          // A cited pull request's title and author, as a stack menu's member draws them.
+          titleNodes: mb.titleNodes,
           identity: (login, avatar) =>
-            authorLabel(mb, login, avatar, "github-pull-guide-row-author", { placeholder: false }),
+            authorLabel(mb, login, avatar, "github-pull-stack-member-author", {
+              placeholder: false,
+            }),
           loadStyles: (assets) =>
             Promise.all([
               textStyles(

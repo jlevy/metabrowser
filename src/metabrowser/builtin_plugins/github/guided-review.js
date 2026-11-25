@@ -1,7 +1,7 @@
 // Loaded when Guided Review opens. Only the visible step asks for excerpts.
 
-import { stackLabel, stackPlaceHint, stackPosition } from "./pull-stacks.js";
-import { pullStateIcon } from "./pull-state.js";
+import { stackPlaceHint, stackPosition } from "./pull-stacks.js";
+import { stackMemberRow } from "./stack-member-row.js";
 
 /**
  * @typedef {{op: "add" | "del" | "context", text: string}} Line
@@ -56,6 +56,7 @@ import { pullStateIcon } from "./pull-state.js";
  *   openPull: (number: number, path: string | null) => void,
  *   age: (iso: string) => HTMLElement, shortCommit: (sha: string) => string,
  *   identity: (login: string, avatar: string | null) => HTMLElement,
+ *   titleNodes: (title: string) => Array<Node | string>,
  *   subject: GuideSubject["kind"]}} ReferenceWays
  *   Where a reference goes and how a row says when, which, and whose: a file to its Changes
  *   address, the pull request's or the stack's, and another pull request to its page or a
@@ -534,15 +535,21 @@ const plainPress = (event) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
 /**
- * A `{pull}` reference: the pull request as the stack menu lists a member, its state icon,
- * its number in bold, a muted dot, and its title, and after them its place in a stack when
- * it has one. It goes to the pull request's page. One this copy has not read keeps the
- * icon's slot empty and names itself by its number, as a member with no title does.
+ * A `{pull}` reference: the pull request as a stack's member row draws it
+ * (`stackMemberRow`, docs/design-system.md, "Stacks"), in the one order a member reads in
+ * wherever it appears: its state icon, its title, which alone gives way, and at the line's
+ * end its place in a stack in bold, "1/3", a muted dot, its number, and another dot and its
+ * author, "Fix the reader · 1/3 · #8 · jlevy". Nothing around the row names the place's
+ * stack, as a stack menu's heading or a stack's page does, so the place's tip names it,
+ * "Stack #71, position 1 of 3"; a pull request in no stack has no place, and its line ends
+ * at its number and its author. It goes to the pull request's page. One this copy has not
+ * read keeps the icon's slot empty and names itself by its number, as a member with no title
+ * does.
  *
- * @param {Reference} reference @param {(number: number, path: string | null) => void} openPull
- * @param {(login: string, avatar: string | null) => HTMLElement} identity
+ * @param {Reference} reference
+ * @param {Pick<ReferenceWays, "openPull" | "identity" | "titleNodes">} ways
  */
-function pullRow(reference, openPull, identity) {
+function pullRow(reference, ways) {
   const number = reference.pull ?? 0;
   const target = /** @type {PullTarget | null} */ (reference.target);
   const link = /** @type {HTMLAnchorElement} */ (
@@ -552,58 +559,33 @@ function pullRow(reference, openPull, identity) {
   link.addEventListener("click", (event) => {
     if (plainPress(event)) {
       event.preventDefault();
-      openPull(number, null);
+      ways.openPull(number, null);
     }
   });
-  const state = target?.state ?? null;
-  const icon =
-    state === null ? element("span", "", "github-pull-state-icon") : pullStateIcon(state);
-  if (state === null) {
-    icon.setAttribute("aria-hidden", "true");
-  }
-  const title = target?.title ?? `Pull request #${number}`;
-  const copy = element("span", "", "github-pull-guide-row-copy");
-  const dot = element("span", "·", "github-pull-stack-dot");
-  dot.setAttribute("aria-hidden", "true");
-  copy.append(
-    element("strong", `#${number}`, "github-pull-guide-row-id github-pull-guide-row-number"),
-    " ",
-    dot,
-    " ",
-    element("span", title, "github-pull-guide-row-title"),
-  );
-  // Its author follows, after a muted dot, as a stack menu's member has it
-  // (docs/design-system.md, "Authors Follow Pull Requests").
-  const author = target?.author ?? null;
-  if (author !== null) {
-    const second = element("span", "·", "github-pull-stack-dot");
-    second.setAttribute("aria-hidden", "true");
-    const by = element("span", "", "github-pull-guide-row-by");
-    by.append(" ", second, " ", identity(author, target?.avatar ?? null));
-    copy.append(" ", by);
-  }
-  // A flex row draws no space between its parts; the spaces keep its text, and so the
-  // link's name, in words.
-  link.append(icon, " ", copy);
   const stack = target?.stack ?? null;
-  if (stack !== null) {
-    const place = element(
-      "span",
-      `${stackLabel(stack.number)} ${stackPosition(stack.place - 1, stack.count)}`,
-      "github-pull-guide-row-place",
-    );
-    place.dataset.tipText = stackPlaceHint(stack.number, stack.place - 1, stack.count);
-    link.append(" ", place);
-  }
+  const author = target?.author ?? null;
+  stackMemberRow(link, ways.titleNodes, ways.identity).show({
+    number,
+    place: stack === null ? null : stackPosition(stack.place - 1, stack.count),
+    ...(stack === null
+      ? {}
+      : { placeTip: stackPlaceHint(stack.number, stack.place - 1, stack.count) }),
+    title: target?.title ?? null,
+    state: target?.state ?? null,
+    author: author === null ? null : { login: author, avatar: target?.avatar ?? null },
+  });
   const section = element("section", "", "github-pull-guide-reference github-pull-guide-row");
   section.append(link);
   return section;
 }
 
 /**
- * A `{commit}` reference: the commit as the Commits tab lists one, its subject, when it was
- * committed, and its short ID, going to the commit's own page, which opens in full. One the
- * repository's copy here lacks says so in its place, beside its ID.
+ * A `{commit}` reference: the commit as the Commits tab lists one, its short ID, its subject,
+ * and at the row's end when it was committed, the page's age (`pullAge` in pull-page.js) in
+ * its freshness ink, going to the
+ * commit's own page, which opens in full. One the repository's copy here lacks says so in its
+ * place, beside its ID; one this checkout cannot open says so after its subject, so the age
+ * still ends the row (docs/design-system.md, "Ages End the Row").
  *
  * @param {Reference} reference
  * @param {{age: (iso: string) => HTMLElement, shortCommit: (sha: string) => string}} words
@@ -631,15 +613,15 @@ function commitRow(reference, words) {
   }
   const copy = element("span", "", "github-pull-guide-row-copy");
   copy.append(element("span", target?.subject ?? "Commit", "github-pull-guide-row-title"));
+  if (href === null) {
+    copy.append(" ", element("span", COMMIT_ELSEWHERE, "github-pull-quiet"));
+  }
   link.append(id, " ", copy);
   const when = target?.committed_at ?? null;
   if (when !== null) {
     const committed = element("span", "committed ", "github-pull-guide-row-place");
     committed.append(words.age(when));
     link.append(" ", committed);
-  }
-  if (reference.href === null) {
-    link.append(" ", element("span", COMMIT_ELSEWHERE, "github-pull-quiet"));
   }
   section.append(link);
   return section;
@@ -742,9 +724,7 @@ function renderDocument(reference, format, note, open, drawDocument, pins, drawn
 function renderReference(reference, ways, change, drawers, drawn) {
   const drawing = referenceDrawing(reference, drawers);
   if (drawing === "row") {
-    return reference.kind === "pull"
-      ? pullRow(reference, ways.openPull, ways.identity)
-      : commitRow(reference, ways);
+    return reference.kind === "pull" ? pullRow(reference, ways) : commitRow(reference, ways);
   }
   const path = reference.path ?? "";
   const other = reference.kind === "pull_file" ? reference.pull : null;
@@ -955,6 +935,7 @@ let groupHeadings = 0;
  *   age: (iso: string) => HTMLElement,
  *   shortCommit: (sha: string) => string,
  *   identity: (login: string, avatar: string | null) => HTMLElement,
+ *   titleNodes: (title: string) => Array<Node | string>,
  *   loadStyles: (assets: unknown) => Promise<unknown>,
  *   loadDrawPatch: () => Promise<DrawPatch>,
  *   loadDrawDocument: () => Promise<DrawDocument>,
@@ -962,13 +943,14 @@ let groupHeadings = 0;
  *   refusalNote: RefusalNote,
  * }} deps *open* goes to a file's Changes address, and *openPull* to another pull
  *   request's page, or to a file in its Changes. *age* and *shortCommit* say when a commit
- *   was made and name it, as the Commits tab does, and *identity* draws a pull request's
- *   author as a stack menu's member does. *loadStyles* loads the stylesheets the
- *   guide is drawn in: KPress's, from the manifest a ready step carries, and the diff
- *   plugin's; the guide waits for them, as a description does. *loadDrawPatch* loads the
- *   diff plugin's file renderer, which draws the excerpts, and *loadDrawDocument* its view
- *   of one whole file, which draws a file the rendered route renders; the view loads the
- *   rendered layer when it draws one, so a guide that cites none never loads it.
+ *   was made and name it, as the Commits tab does; *identity* draws a pull request's
+ *   author, and *titleNodes*, the SDK's, its title, as a stack menu's member does.
+ *   *loadStyles* loads the stylesheets the guide is drawn in: KPress's, from the manifest a
+ *   ready step carries, and the diff plugin's; the guide waits for them, as a description
+ *   does. *loadDrawPatch* loads the diff plugin's file renderer, which draws the excerpts,
+ *   and *loadDrawDocument* its view of one whole file, which draws a file the rendered route
+ *   renders; the view loads the rendered layer when it draws one, so a guide that cites none
+ *   never loads it.
  *   *loadDrawProse* loads the allowlist a note's rendered Markdown is inserted through, and
  *   *refusalNote* says why a note's render was refused, in a description's words.
  */
@@ -981,6 +963,7 @@ export function mountGuidedReview(host, introduction, subject, deps) {
     age: deps.age,
     shortCommit: deps.shortCommit,
     identity: deps.identity,
+    titleNodes: deps.titleNodes,
     subject: subject.kind,
   };
   const stacked = subject.kind === "stack";

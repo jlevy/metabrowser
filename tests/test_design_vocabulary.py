@@ -2736,7 +2736,6 @@ _PULL_NUMBERS = frozenset(
         ".github-pull-stack-position",
         ".github-pull-stack-member-position",
         ".github-pull-stack-member-number",
-        ".github-pull-guide-row-number",
         ".github-pull-guide-reference-pull",
         ".search-palette-pull-number",
         ".source-ref-selector-pull-number",
@@ -3145,7 +3144,8 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert page.count("authorLabel(mb, ") == 6, (
         "the header, the description, a card, a reply, a member, a guide's pull request row"
     )
-    assert page.count("{ placeholder: false }") == 2, (
+    # Biome sets the guide's on lines of their own, so its braces are read past white space.
+    assert len(re.findall(r"\{\s*placeholder: false,?\s*\}", page)) == 2, (
         "a stack menu member and a guide's pull request row"
     )
     assert "{ slot: true }" not in page and "github-pull-avatar-slot" not in github
