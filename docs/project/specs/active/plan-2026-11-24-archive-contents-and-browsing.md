@@ -127,16 +127,34 @@ makes “a file of files” one, so a plugin installed later for 7z, ISO images,
   neither a file nor a table source’s has no generation, so a watch on it never fires.
 - **No archive reader exists.** Nothing in `src/` imports `zipfile` or `tarfile`. The
   file-type registry already groups archive extensions in the `archives` family
-  (`data/file-rollup-format/recommended-file-types.toml`), and gives EPUB its own.
+  (`src/metabrowser/data/file-rollup-format/recommended-file-types.toml`), and gives
+  EPUB its own.
 - **The requirements are written down.** `TODO.md` asks for safe member paths, symlink
   and traversal rejection, duplicate-name handling, nesting limits, and aggregate
   decompression limits before any container format ships.
   Bead `mb-p7ts` tracks that, and `mb-380k` sketched a ZIP container on the flat
   contract.
-- **A Git blob is the precedent for a member.** It is bytes with no file on disk, and
-  every route that answers on a pin already reads through `ContentRef` and
-  `read_content_window`; a consumer that needs a file, as the SQLite reader does, copies
-  the blob into a private folder first.
+- **A Git blob is the nearest precedent for a member,** bytes with no file on disk, but
+  the routes do not share one reader.
+  On a folder, `api_file`, `raw_file`, and `api_kpress_render` (`server.py`) resolve
+  through `resolve_session_identity` and `ArtifactPath`; on a pin, `git_revision_file`,
+  `git_revision_raw`, and `git_revision_kpress_render` (`git/content_routes.py`) call
+  the tree source’s `read_blob` and `read_blob_window`. Only sidekicks, such as the
+  binary chunk and table hooks, read through `ContentRef` and `read_content_window`. A
+  consumer that needs a file, as the SQLite reader does, copies the blob into a private
+  folder named by its object ID (`reader_pool().blob` in `sqlite_readers.py` accepts
+  only an alphanumeric ID).
+- **Binary rules are folder-only.** `_binary_kind` (`server.py`) is consulted on a
+  served folder; every pin classification site applies `magic` rules alone, so a file
+  claimed by name is `binary` on a pin.
+- **A magic rule’s `exts` never narrow it.** `classify_magic`
+  (`plugin_loader/classify.py`) ignores them, and magic rules run before binary rules,
+  so a second plugin cannot claim one ZIP-based extension by the ZIP signature without
+  claiming every ZIP.
+- **A large `.tar.gz` never reaches the binary rules.** Past
+  `ARTIFACT_MAX_COMPRESSED_BYTES` it sniffs as unknown, takes the text path, and fails
+  to a hard-coded `binary` in `api_file`; below it, every `/api/file` call decodes the
+  whole gzip stream to validate it.
 
 ### Archive Formats in Brief
 
@@ -154,9 +172,19 @@ Three properties of ZIP matter below:
 - A Unix symlink is a member whose external attributes carry `S_IFLNK` and whose data is
   the link target.
 
-`zipfile` reads the whole central directory into memory and trusts its declared size,
-and `tarfile` reads a whole pax or GNU long-name header at once, so both need a bound
-applied before they read.
+The standard library’s readers are unsafe to point at hostile archives as they are:
+
+- `zipfile` reads the whole central directory into memory, fails the whole archive on
+  one member’s invalid UTF-8 name or corrupt Unicode-path field, cuts names at a NUL (so
+  two NUL names become false duplicates), and checks for overlapping entries only when a
+  member is opened.
+- `tarfile` gathers a pax or GNU long-name header from many reads into one buffer,
+  decompresses with no output bound, follows symlinks and hardlinks in `extractfile` (a
+  hardlink through `getmembers()`, which loads the whole archive), and treats an invalid
+  header after the first as the end of the archive, so a damaged listing looks complete.
+
+So the plugin parses both formats’ directories itself, with every read bounded, and uses
+`zlib`, `bz2`, and `lzma` directly to decompress one member’s bytes.
 
 ## Design
 
@@ -165,10 +193,11 @@ applied before they read.
 1. **Formats in the plugin, protocols in core.** Core stays consumer-agnostic: the ZIP
    and tar readers, their safety rules, and their views are the `archive` plugin’s; core
    gains a member-source protocol and folder-like children, which name no format.
-2. **A member is read like a blob.** It has bytes, a size, a time, and an identity, and
-   no file on disk. Phase 2 gives it a `ContentRef`, so every route that reads through
-   the content reader answers for a member unchanged, and a consumer that needs a file
-   takes the copy path a pin already takes.
+2. **A member is read through the content reader.** It has bytes, a size, a time, and an
+   identity, and no file on disk.
+   Phase 2 first moves the file, raw, and render handlers onto `ContentRef` on both
+   subjects, then gives a member a `ContentRef`, so every route answers for it through
+   one path, and a consumer that needs a file takes the copy path a pin takes.
 3. **No member name is a filesystem path.** Bytes that must be kept are stored under a
    key derived from what they were computed from, never under a member’s name, so `..`,
    an absolute name, or a case collision cannot reach the disk.
@@ -194,14 +223,26 @@ applied before they read.
     to a blob. So Phase 1 makes one classifier change: an `ext` or `exts` entry with an
     inner dot matches the name’s compound extension (`fs_paths.derive_ext`, which gives
     `archive.tar.gz` the extension `.tar.gz`), on a folder and on a pin alike.
+  - **Three more classifier changes in Phase 1,** each generic:
+    - binary rules apply at every pin classification site, against the blob’s display
+      name and its compound extension;
+    - a name-based binary rule for a compound extension is matched before the sniff, and
+      a file it claims is not a transparent gzip artifact: `api_file` does not decode
+      it, and its `ContentRef` carries its stored bytes on a folder as on a pin
+      ([Decision 10](#decision-10-a-compressed-tar-is-an-archive-not-a-gzip-file));
+    - a `magic` rule may set `restrict_exts = true`, so its `exts` narrow the match and
+      a dedicated plugin can claim `.epub` by the ZIP signature at a higher priority
+      without claiming every ZIP.
   - Views: Contents (`contents`, key `V`, the default, client-rendered) and Bytes
     (`bytes`, key `B`), the `binary` plugin’s view, which that plugin exports for a kind
     that keeps it.
   - Data hooks: `listing` in Phase 1; `children` in Phase 2.
   - `requires = ["binary"]`.
 - **`names.py`:** member-name normalization and the safety rules below.
-- **`reader.py`:** format detection, the bounded file object, and the ZIP and tar index
-  builders.
+- **`reader.py`:** format detection from the stored bytes’ magic numbers (gzip, bzip2,
+  xz, ZIP, ustar), never from what the content reader decompressed; the ZIP
+  central-directory parser and the tar header parser; and member decompression with
+  `zlib`, `bz2`, and `lzma`.
 - **`index_cache.py`:** the parsed indexes, kept by archive generation.
 - **`sidekick.py`:** the data hooks.
 - **`source.py`** and **`store.py`** (Phase 2): the member-source adapter and the
@@ -235,12 +276,16 @@ bytes) and, when it stops early, why.
 
 How each format is read:
 
-- **ZIP:** the reader finds the end-of-central-directory record (and the ZIP64 locator)
-  itself and refuses a central directory past `CENTRAL_DIRECTORY_MAX_BYTES` or a member
-  count past `LISTING_MAX_MEMBERS` before handing the file to `zipfile`.
-- **tar:** `tarfile` reads through a bounded file object that refuses any single read
-  past `EXTENDED_HEADER_MAX_BYTES`, the read `tarfile` makes for a pax or GNU long-name
-  header, and stops the scan at `LISTING_MAX_MEMBERS` entries.
+- **ZIP:** the reader finds the end-of-central-directory record (and the ZIP64 locator),
+  refuses a central directory past `CENTRAL_DIRECTORY_MAX_BYTES` or a member count past
+  `LISTING_MAX_MEMBERS`, and parses each entry itself, so a bad name or extra field
+  marks that member rather than failing the archive.
+  It records each member’s data span and marks members whose spans overlap.
+- **tar:** the reader parses each 512-byte header itself, checking its checksum, type
+  flag, and size before reading anything the header announces; it refuses a pax or GNU
+  long-name header past `EXTENDED_HEADER_MAX_BYTES` and stops at `LISTING_MAX_MEMBERS`.
+  An invalid header after the first is a damaged archive, which the listing reports as
+  stopped, not complete.
   An uncompressed tar on a seekable file seeks over member data.
 - **Compressed tar:** the reader decompresses the archive’s on-disk bytes itself, with
   `gzip`, `bz2`, or `lzma`, rather than through `gz_io`, whose caps bound single-file
@@ -250,9 +295,10 @@ How each format is read:
   through `TableHandle.local_path`. **On a pin** the blob is copied once into the
   materialization store under its object ID, which never goes stale, within
   `ARCHIVE_COPY_MAX_BYTES`, since ZIP needs random access and a blob only streams.
-  Phase 1 needs the store’s copy path for this; Phase 2 widens it to members.
-- **Never extracted.** No code path calls `extract`, `extractall`, or `extractfile` into
-  a name-derived path.
+  The copy streams from the object store into the file, never through memory.
+  Phase 1 therefore builds the store, with its bounds; Phase 2 widens it to members.
+- **Never extracted.** No code path calls `zipfile` or `tarfile` extraction; member data
+  is read by the index’s offsets, and links resolve from the plugin’s own index.
 
 The index cache is bounded by `INDEX_CACHE_MAX_ENTRIES` and an estimate of each index’s
 memory, and keyed by the archive’s identity and generation: the stat generation on a
@@ -268,11 +314,14 @@ served folder, the object ID on a pin.
 | Two entries with one path | Every entry listed; earlier ones marked `shadowed` | The last one, the one extraction leaves |
 | A file and a directory at one path | Both listed; the file marked `shadowed` | The directory |
 | A symlink | Listed with its target | Its page says it is a link and links to the target when the target, resolved lexically against the link’s directory, names a member; it is never followed |
-| A tar hardlink | Listed with its target | Reads the earlier member it names, which `tarfile` resolves inside the archive; a missing target is a problem |
+| A tar hardlink | Listed with its target | Reads the earlier member it names, resolved from the index; a missing target is a problem |
+| ZIP members whose data spans overlap (an overlap bomb) | Listed with `overlapping` | No |
+| A name or extra field that cannot be decoded | Listed with `bad_name`; the rest of the archive lists | No |
 | A device, FIFO, or other special member | Listed | Its page says what it is; no bytes |
 | An encrypted ZIP member | Listed with `encrypted` | Its page says it is encrypted |
 | A compression method `zipfile` cannot read (Deflate64, Zstandard, PPMd, and others) | Listed with the method’s name | Its page names the method |
-| A name not valid UTF-8 | Shown decoded with replacement characters | By the inventory’s identity spelling (`native_inventory_path`), which is lossless |
+| A name not valid UTF-8 | Shown decoded with replacement characters, escaped before JSON | By the inventory’s identity spelling (`canonical_inventory_path`), which is lossless |
+| A segment that starts with `g1-` | Listed | Escaped as the SQLite plugin escapes table segments (`builtin_plugins/sqlite/database.py`), since a pin reads leading `g1-` segments as its own path |
 
 Case differences (`A` and `a`) are distinct members: nothing is written under a name, so
 nothing collides. A member’s declared size is shown as declared; Phase 2’s reads stop at
@@ -291,15 +340,19 @@ in its docstring; the measurement task in each phase records the curves.
 | `EXTENDED_HEADER_MAX_BYTES` | One pax or GNU long-name header | The longest headers in real archives, such as source tarballs with deep trees |
 | `TAR_SCAN_MAX_BYTES`, `LISTING_DEADLINE` | A compressed tar’s scan | gzip, bzip2, and xz decompression throughput |
 | `INDEX_CACHE_MAX_ENTRIES` | Indexes held in memory | Memory per indexed entry |
-| `ARCHIVE_COPY_MAX_BYTES` | A pin’s archive copied into the store | Copy time from the object store |
-| `MEMBER_READ_MAX_BYTES` (Phase 2) | Decompressed bytes one member read may produce | The largest window any view asks for (`TEXT_PREVIEW_REQUEST_MAX_BYTES` and the binary plugin’s chunk ceiling) |
+| `ARCHIVE_COPY_MAX_BYTES` | A pin’s archive streamed into the store | Copy time from the object store |
+| `STORE_MAX_BYTES`, `STORE_MAX_ENTRIES` | The store, from Phase 1’s pin copies on | As the PDF previews area is bounded (`builtin_plugins/pdf/preview_store.py`) |
+| `MEMBER_WINDOW_MAX_BYTES` (Phase 2) | Decompressed bytes one windowed read may produce | The largest window a view asks for (`TEXT_PREVIEW_REQUEST_MAX_BYTES` and the binary plugin’s chunk ceiling) |
+| `MEMBER_WHOLE_MAX_BYTES` (Phase 2) | A member read or materialized whole, for `/raw`, KPress, and the SQLite copy | Real members: images, PDFs, and databases inside archives |
 | `TAR_MATERIALIZE_MAX_BYTES` (Phase 2) | A compressed tar decompressed into the store | Disk and time to decompress, against the store’s bound |
-| `STORE_MAX_BYTES`, `STORE_MAX_ENTRIES` (Phase 2) | The materialization store | As the PDF previews area is bounded (`builtin_plugins/pdf/preview_store.py`) |
 | `ARCHIVE_NESTING_MAX` (Phase 2) | Archives inside archives | The deepest nesting real artifacts carry (a `.jar` in a `.war` in an `.ear`) |
-| `MEMBER_MAX_DEPTH` (Phase 2) | Segments in a member path | Real archives: a packed `node_modules` tree passes `MAX_CONTAINER_INNER_DEPTH` |
+| `MAX_CONTAINER_INNER_DEPTH` (raised in Phase 2) | Segments in an inner path | Real archives, such as a packed `node_modules` tree; it stays one value, since a pin checks depth before it knows the kind |
 
-Every decompression in one request draws from that request’s `Budget`, so a bomb split
-across many members, or nested, stops at one total.
+`Budget` in `table_source.py` is a wall clock only, and `/api/file` and `/raw` run with
+none. Phase 2 adds a member-read budget to `member_source.py` that counts decompressed
+bytes, bytes written to the store, and time, across every member and nesting level one
+request touches, so a bomb split across members or nested inside another archive stops
+at one total, on disk as in memory.
 
 ### Phase 1: The Contents View
 
@@ -375,17 +428,22 @@ the route threadpool under the request’s `Budget`:
 | --- | --- |
 | `generation()` | The archive’s generation, which every member shares |
 | `entries(directory, after, limit)` | One page of a directory’s members, as children rows |
-| `stat(inner)` | A member’s type, size, time, link target, and whether it can be read and why not |
+| `stat(inner)` | A member’s type, declared size, time, link target, and whether it can be read and why not; a member’s `ContentStat` says its size is declared, and a read that finds otherwise is an error the route reports |
 | `read(inner, offset, max_bytes)` | A bounded window of a member’s bytes |
 
 #### Members in the Content Reader
 
-- **Resolution.** When the nearest file ancestor of a path is a container whose kind has
-  a member source, the source’s `stat` decides the inner path, and
-  `ContentSource.open_ref`, on the served folder and on a pin, returns a member
-  `ContentRef`: the archive’s identity and generation, the inner path, and a reader that
-  calls the source’s `read`. `read_content_window` and every helper over it then work
-  for a member.
+- **Moving the handlers first.** `api_file`, `raw_file`, and `api_kpress_render`, and
+  their pin counterparts `git_revision_file`, `git_revision_raw`, and
+  `git_revision_kpress_render`, read through `ContentRef` before any member exists, with
+  their goldens unchanged; a member then needs no branch in any of them.
+- **Resolution** is keyed on the member-source registry, not on `container`, so it works
+  before the tree learns to expand archives.
+  When the nearest file ancestor of a path has a kind with a member source, the source’s
+  `stat` decides the inner path, and `ContentSource.open_ref`, on the served folder and
+  on a pin, returns a member `ContentRef`: the archive’s identity and generation, the
+  inner path, and a reader that calls the source’s `read`. `read_content_window` and
+  every helper over it then work for a member.
 - **Classification.** `/api/file` classifies a member file as a Git blob is classified:
   its logical name and sniffed prefix through the same steps, without `path_glob`, so
   `docs/readme.md` is `markdown` and a nested `.jar` is `archive`. A member directory is
@@ -396,14 +454,17 @@ the route threadpool under the request’s `Budget`:
   The path form matters for an HTML member, whose relative stylesheets and images then
   resolve inside the archive
   ([HTML Preview](../../architecture/arch-server-and-content.md#html-preview)).
-- **Validators.** A member’s fingerprint is its archive’s generation and its path, so
-  every member of a pinned archive is immutable to the cache.
-- **Routes that require a file.** `/api/kpress/render` and every other route that checks
-  `is_file()` read through the content reader instead, as they already do for a pin.
+- **Validators.** A member’s fingerprint is a hex SHA-256 of its archive’s generation
+  and its path, so every member of a pinned archive is immutable to the cache and the
+  fingerprint passes wherever an object ID is checked; no member name reaches a
+  filename.
 - **Consumers that need a file** take the copy path: the SQLite reader receives a member
-  as it receives a blob, and `TableHandle.local_path` is none for a member.
-- **The member-depth bound.** `MEMBER_MAX_DEPTH` replaces `MAX_CONTAINER_INNER_DEPTH`
-  for a container with a member source, since real archives are deeper than diffs.
+  as it receives a blob, through a core helper that streams any `ContentRef` into a
+  private file within a bound (see [Framework Surfaces](#framework-surfaces)), and
+  `TableHandle.local_path` answers none unless its path is a file, so a member never
+  takes the served-folder branch.
+- **The depth bound.** `MAX_CONTAINER_INNER_DEPTH` rises from a measurement of real
+  archives; it stays one value, since a pin checks depth before it knows the kind.
 
 #### Folder-Like Children
 
@@ -419,8 +480,8 @@ the route threadpool under the request’s `Budget`:
 - **The chevron lookup** matches a name’s compound extension (`.tar.gz`), as Phase 1’s
   classifier change does, not only its last suffix.
 - **Binary rules may be containers.** The manifest check that refuses `binary = true`
-  beside `container` goes, and the container walk applies binary rules, so a compressed
-  tar is a container by name.
+  beside `container` goes, and the container walk applies binary rules on a folder and a
+  pin, so a compressed tar is a container by name.
 - **Deep links reveal members.** Revealing `/view/app.zip/docs/readme.md` expands the
   archive and its directories, as it expands folders today.
 - **The archive’s children hook** reads its index through its own member source, so the
@@ -467,12 +528,17 @@ children do today.
 
 #### Trust
 
-- **Page profile:** a member is served under its subject’s profile, the same as any file
-  in that folder, because the page policy belongs to the shell, not to a file.
-- **Server-side parsers** treat a member as bytes from an untrusted source: a PDF
-  member’s preview renders only in the sandboxed child, and a SQLite member is read with
-  the untrusted source’s settings, since an archive is often a download its reader never
-  opened.
+Every decision the server makes per response treats a member as untrusted content,
+whatever its subject’s profile, because an archive is often a download its reader never
+opened:
+
+- **`/raw`** answers a member with the untrusted sandbox (no `allow-scripts`);
+  `_RawTrustHeaderMiddleware` already sets the sandbox per response.
+- **Markdown** members render through the inert path and its deadline, not in a server
+  thread, which closes the T7 residual for them.
+- **Server-side parsers:** a PDF member’s preview renders only in the sandboxed child,
+  and a SQLite member is read with the untrusted source’s settings.
+- **The page policy** stays the subject’s: it belongs to the shell a member is drawn in.
 - **The macOS app’s Open** treats a member as a pin’s file: a quarantined, read-only
   copy, never a path under the folder.
 
@@ -485,6 +551,11 @@ The threat model gains the archive entries in T4 and T7.
 | `mountArchiveContents` export | 1 | `archive/index.js` | A plugin that claims a ZIP-based format, such as an EPUB reader |
 | Bytes view export | 1 | `binary/index.js` | Any binary-format plugin that keeps the Bytes tab |
 | Compound extensions in kind rules | 1 | `plugin_loader/classify.py` | Any format named by a compound suffix, on a folder and a pin |
+| Binary rules on a pin, and before the gzip sniff | 1 | `server.py`, `git/content_routes.py` | Any binary format claimed by name |
+| `restrict_exts` on a magic rule | 1 | `plugin_loader/manifest.py`, `classify.py` | A plugin that claims one ZIP-based format, such as `.epub` |
+| File, raw, and render handlers on `ContentRef` | 2 | `server.py`, `git/content_routes.py` | Every content kind, on either subject |
+| Streaming a `ContentRef` into a private file | 2 | `source.py` | The SQLite reader and any consumer that needs a file |
+| Member-read budget (bytes, store writes, time) | 2 | `member_source.py` | Any member source |
 | `[[member_source]]` and `member_source.py` | 2 | Manifest, core, `plugin_api` | Installed plugins for 7z, ISO, `.asar`; a plugin that claims `.epub` reusing the ZIP source |
 | Member `ContentRef` | 2 | `source.py`, `git/tree_source.py` | Every route and sidekick that reads through the content reader |
 | Folder-like children and paged children | 2 | Container contract, `static/app.js` | Any container with a hierarchy |
@@ -520,7 +591,8 @@ A follows the pin, which already proves the content reader carries every view.
 - **B. By an extension list.**
 
 **Recommendation: A.** It finds every ZIP-based format without a list to maintain, and a
-dedicated plugin claims its format at a higher priority when one exists.
+dedicated plugin claims its own extension with a `restrict_exts` magic rule at a higher
+priority when one exists.
 
 ### Decision 4: Reading Members of a Compressed Tar
 
@@ -552,13 +624,15 @@ hiding a link misleads.
 
 ### Decision 7: A Member’s Trust
 
-- **A. The subject’s page profile; untrusted for server-side parsers.**
-- **B. Every member inert.**
-- **C. The subject’s profile everywhere.**
+- **A. Untrusted in every per-response decision (`/raw`’s sandbox, inert Markdown,
+  server-side parsers), with the shell’s page policy the subject’s.**
+- **B. The subject’s profile everywhere.**
+- **C. A page policy per file.**
 
-**Recommendation: A.** B needs a page policy per file, which the shell does not have.
-C would render an untrusted PDF or open an untrusted database outside the sandbox
-because it arrived inside a trusted folder.
+**Recommendation: A.** B would run a downloaded archive’s HTML scripts, and render its
+PDF and Markdown outside their sandboxes, because the archive sat in a trusted folder.
+C needs a page policy the shell does not have, and A gets the same protection from the
+places the server already decides per response.
 
 ### Decision 8: Nested Archives
 
@@ -576,52 +650,70 @@ the common case, and the request budget bounds the total.
 **Recommendation: A,** as the owner asked for every ZIP-based format.
 Contents of an `.epub` or `.docx` is more useful than its bytes.
 
+### Decision 10: A Compressed Tar Is an Archive, Not a Gzip File
+
+- **A. A name-based binary rule claims `.tar.gz` before the sniff, and the file keeps
+  its stored bytes.**
+- **B. Keep gzip transparency and read the logical tar stream.**
+
+**Recommendation: A.** B classifies a large `.tar.gz` as `binary` without consulting any
+rule, decodes the whole stream on every `/api/file`, hands a reader tar bytes on a
+folder but gzip bytes on a pin and for `.tgz`, and caps an archive at single-file
+preview limits. A gives one byte stream on both subjects, and the reader bounds its own
+decompression.
+
 ## Implementation Plan
 
 Each phase is one stack, its layers listed below; implementation beads may be finer.
 
 ### Phase 1: The Contents View
 
-- [ ] **Reader and listing** (layer 1, `mb-7l96`): compound extensions in kind rules,
-  the plugin’s manifest and kind rules, `names.py`, `reader.py`, the index cache, the
-  pin copy in a first cut of the store, and the `listing` hook; deterministic fixtures,
-  unit tests for every safety rule and bound at its edge, the measurements that set the
-  Phase 1 constants, `cli-api-archive-listing.tryscript.md`, and `kind: archive` lines
-  in `cli-show.tryscript.md` for a ZIP, a jar, an EPUB, a tar, and each compressed tar,
-  on a folder and on a pin
+- [ ] **Reader, listing, and kind** (layer 1, `mb-7l96`): the four classifier changes
+  (compound extensions, binary rules on a pin, binary rules before the gzip sniff, and
+  `restrict_exts`); the plugin’s manifest and kind rules; `names.py`, `reader.py`, the
+  index cache, and the store with its bounds; the `listing` hook; deterministic and
+  hostile fixtures, unit tests for every safety rule and bound at its edge, and the
+  measurements that set the Phase 1 constants.
+  In the same layer, since the build checks a kind and a route where they land:
+  `cli-api-archive-listing.tryscript.md`, `kind: archive` lines in
+  `cli-show.tryscript.md` for each format on a folder and on a pin, the route’s parity
+  row, the `archive` row in
+  [Views, Models, and Routes](../../architecture/arch-views-models-routes.md), and the
+  built-in plugin lists (`test_plugin_requirements.py`, `check_distribution.py`, the
+  `cli-plugins` golden and the plugin counts in others)
 - [ ] **Contents view** (layer 2, `mb-53xr`): the model and view, the Bytes view export
   and its reuse, `mountArchiveContents`, the watch, the render measurement in Chrome,
   `tests/dom/archive-contents-session.js` with `cli-ui-archive-contents.tryscript.md`,
-  and the parity rows
-- [ ] **Documents and lists** (with layer 2, `mb-54di`): the built-in plugin lists
-  (`test_plugin_requirements.py`, `check_distribution.py`, the `cli-plugins` golden and
-  the plugin counts in others), the `archive` row in
-  [Views, Models, and Routes](../../architecture/arch-views-models-routes.md), the
-  Archive row and status line in
-  [Plugin System](../../architecture/arch-plugin-system.md), T4 and T7 in the
-  [threat model](../../architecture/arch-threat-model.md), `TODO.md`, `docs/plugins.md`
-  for the two exports, [Browsing Files](../../../browsing-files.md), and a changelog
-  fragment
-- [ ] **Verification** (`mb-54di`): Contents in Chrome, Safari, and the macOS app on a
-  folder, a pin, and an `--untrusted` folder, with real archives: a wheel, a source
-  tarball, an Android `.apk`, an `.epub`, and a hostile fixture
+  and its parity rows
+- [ ] **Documents and verification** (with layer 2, `mb-54di`): the Archive row and
+  status line in [Plugin System](../../architecture/arch-plugin-system.md), T4 and T7 in
+  the [threat model](../../architecture/arch-threat-model.md), `TODO.md`,
+  `docs/plugins.md` for the exports and `restrict_exts`,
+  [Browsing Files](../../../browsing-files.md), and a changelog fragment; then Contents
+  in Chrome, Safari, and the macOS app on a folder, a pin, and an `--untrusted` folder,
+  with real archives (a wheel, a source tarball, an Android `.apk`, an `.epub`) and a
+  hostile fixture
 
 ### Phase 2: Archives as Folders
 
-- [ ] **Member sources and member content** (layer 1, `mb-xyz9`): `member_source.py`,
-  the manifest table and its checks, `plugin_api` re-exports, the doctor’s report,
-  member `ContentRef`s on both sources, member classification, `/raw` and the
-  file-requiring routes, the store’s member paths, `MEMBER_MAX_DEPTH`, the archive’s
-  adapter, and `cli-api-archive-members.tryscript.md` (`--show` and `/api/file` on a
-  Markdown, image, CSV, and HTML member, `/raw` in both forms, each unreadable case)
+- [ ] **Member sources and member content** (layer 1, `mb-xyz9`): first the six file,
+  raw, and render handlers onto `ContentRef` with goldens unchanged; then
+  `member_source.py` with its member-read budget, the manifest table and its checks,
+  `plugin_api` re-exports, the doctor’s report, resolution keyed on member sources,
+  member `ContentRef`s on both subjects, member classification, the trust rules, the
+  `ContentRef`-to-file helper, `local_path` answering none for a member, the raised
+  depth bound, the archive’s adapter, and `cli-api-archive-members.tryscript.md`
+  (`--show` and `/api/file` on a Markdown, image, CSV, and HTML member, `/raw` in both
+  forms with its sandbox, each unreadable case)
 - [ ] **Folder-like children** (layer 2, `mb-0dja`): the children wire’s `folder` flag
   and pages, the tree’s folder-like rows, compound-extension chevrons, binary-rule
-  containers, deep links that reveal members, the archive’s `children` hook, Contents
-  rows that link to members, the tree session and golden for nested rows, and the parity
-  rows
+  containers on both subjects, deep links that reveal members, the archive’s `children`
+  hook and `container` declaration, Contents rows that link to members, the tree session
+  and golden for nested rows, and the parity rows
 - [ ] **Nested archives, pins, and live members** (layer 3, `mb-tf53`): nesting through
-  the store, member watch generations, the copy path for the SQLite reader and the PDF
-  preview’s untrusted rule, the app’s Open for a member, and their goldens
+  the store, compressed-tar materialization, member watch generations, the SQLite
+  reader’s copy and the PDF preview’s untrusted rule for members, the app’s Open for a
+  member, and their goldens
 - [ ] **Documents and verification** (`mb-3ny3`): the container contract and member
   sources in [Plugin System](../../architecture/arch-plugin-system.md) and
   `docs/plugins.md`, the threat model’s Phase 2 entries, the URL grammar row, a
@@ -666,9 +758,10 @@ requires.
 ## Open Questions
 
 1. **`.tar.zst`.** Python’s standard library reads Zstandard from 3.14
-   (`compression.zstd`); the supported range starts at 3.12. Wait for 3.14 as the floor,
-   or take a third-party reader under the cool-off with the single-file `.zst` roadmap
-   item? Recommendation: decide with `.zst`, outside this plan.
+   (`compression.zstd`), which is above the floor `pyproject.toml` supports.
+   Wait for 3.14 as the floor, or take a third-party reader under the cool-off with the
+   single-file `.zst` roadmap item?
+   Recommendation: decide with `.zst`, outside this plan.
 2. **Printing Contents.** A listing is complete, so it could print with every directory
    open. Worth adding in Phase 1?
 3. **Members in Quick Search.** A later phase could index members of archives the reader
