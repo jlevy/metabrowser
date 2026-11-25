@@ -40,8 +40,8 @@ import Testing
     /// so stopping them takes the whole grace period.
     private final class Children: @unchecked Sendable {
         let launched = Recorder<String>()
-        /// What each launch's environment says of recording a recent target: nil when the
-        /// server may record, "0" when it is told not to.
+        /// What each launch's environment says of recording a recent target: "0" when the
+        /// server is told not to.
         let recording = Recorder<String?>()
         private(set) var made: [FakeProcess] = []
         var line: String
@@ -64,11 +64,13 @@ import Testing
 
     private func server(
         createdWith created: RuntimeSetup, accepted: @escaping () -> RuntimeSetup?, children: Children,
-        gate: LaunchGate? = nil, grace: Duration = .milliseconds(100)
+        gate: LaunchGate? = nil, grace: Duration = .milliseconds(100), inherited: [String: String] = [:]
     ) -> FolderServer {
         let root = URL(filePath: "/tmp/root", directoryHint: .isDirectory)
         let launch = CLIServeLaunch()
-        let spec = { (setup: RuntimeSetup) in launch.spec(serving: root, with: setup, inherited: [:], logURL: nil) }
+        let spec = { (setup: RuntimeSetup) in
+            launch.spec(serving: root, with: setup, inherited: inherited, logURL: nil)
+        }
         let supervisor = ServerSupervisor(
             spec: spec(created), launch: launch, policy: fastPolicy(grace: grace), gate: gate,
             makeProcess: { children.make($0) },
@@ -76,23 +78,26 @@ import Testing
         return FolderServer(supervisor: supervisor, accepted: accepted, spec: spec)
     }
 
-    /// The recent targets change only when the user opens something (mb-40k4): the server
-    /// of a folder the user just opened records it, and no later launch of that folder
-    /// does, since Retry, Restart Server, and an upgrade's restart are not opens.
-    @Test func onlyTheStartOfAnOpenLetsItsServerRecordARecentTarget() async {
-        let children = Children(line: servingLine)
+    /// No server the app starts records a recent target (mb-1q02). The app records each
+    /// open itself, once, as it shows it (`RecentTargetsMenu.shown`), so a folder's
+    /// first start, Retry, Restart Server, and the restart an upgrade offers are each told
+    /// not to, whatever the app itself was started with: its value is passed on to the
+    /// `metab` commands it runs (`ChildEnvironment.passedThrough`), not to its servers.
+    @Test func noServerTheAppStartsRecordsARecentTarget() async {
         let now = setup("/opt/metab", "0.12.1")
-        let subject = server(createdWith: now, accepted: { now }, children: children)
-        #expect(await subject.start(recordsOpen: true) == .launched)
-        #expect(await subject.restart() == .launched)
-        #expect(await subject.restart() == .launched)
-        #expect(children.recording.all == [nil, "0", "0"])
+        for inherited in [nil, "", "0", "1"] {
+            let children = Children(line: servingLine)
+            let environment = inherited.map { [RecentTargets.recordVariable: $0] } ?? [:]
+            let subject = server(createdWith: now, accepted: { now }, children: children, inherited: environment)
+            #expect(await subject.start() == .launched)
+            #expect(await subject.restart() == .launched)
+            #expect(children.recording.all == ["0", "0"], "started with \(inherited ?? "nothing")")
+        }
+        #expect(RecentTargets.serverRecords == "0")
     }
 
-    /// An open whose first server dies before it announces itself has recorded nothing,
-    /// so the Retry that follows still carries the open; once a server is ready it does
-    /// not (review A7).
-    @Test func anOpenWhoseFirstServerDiedIsRecordedByTheRetry() async {
+    /// A server whose first start dies is told the same on the Retry that follows.
+    @Test func aRetryAfterAServerDiedRecordsNothing() async {
         let children = Children(line: "Error: no free port")
         let now = setup("/opt/metab", "0.12.1")
         let subject = server(createdWith: now, accepted: { now }, children: children)
@@ -101,56 +106,36 @@ import Testing
             while children.made.isEmpty { await Task.yield() }
             children.made[0].exitOnItsOwn()
         }
-        #expect(await subject.start(recordsOpen: true) == .launched)
+        #expect(await subject.start() == .launched)
         guard case .failed = subject.supervisor.state else {
             Issue.record("expected the first start to fail, got \(subject.supervisor.state)")
             return
         }
         children.line = servingLine
         #expect(await subject.restart() == .launched)
-        #expect(await subject.restart() == .launched)
-        #expect(children.recording.all == [nil, nil, "0"])
-    }
-
-    /// A start that is not an open joins the same server and records nothing: Command-R
-    /// in a restored window still waiting its turn starts its server this way (review A6).
-    @Test func aStartThatIsNotAnOpenIsToldNotToRecord() async {
-        let children = Children(line: servingLine)
-        let now = setup("/opt/metab", "0.12.1")
-        let subject = server(createdWith: now, accepted: { now }, children: children)
-        #expect(await subject.start() == .launched)
-        #expect(await subject.start(recordsOpen: true) == .launched)  // already running: joined
-        #expect(await subject.restart() == .launched)
         #expect(children.recording.all == ["0", "0"])
     }
 
-    /// A restored folder's start is not an open, whenever its turn comes, and neither is
-    /// anything that follows it.
-    @Test func aRestoredFoldersServerIsToldNotToRecord() async {
+    /// A restored folder's start, and a start held for a runtime, are told the same.
+    @Test func aRestoredOrHeldStartRecordsNothing() async {
         let children = Children(line: servingLine)
         let now = setup("/opt/metab", "0.12.1")
-        let subject = server(createdWith: now, accepted: { now }, children: children)
-        #expect(await subject.start(holding: false) == .launched)
-        #expect(await subject.restart() == .launched)
-        #expect(children.recording.all == ["0", "0"])
-    }
+        let restored = server(createdWith: now, accepted: { now }, children: children)
+        #expect(await restored.start(holding: false) == .launched)
+        #expect(children.recording.all == ["0"])
 
-    /// An open that had to wait for a runtime is still an open when its server starts.
-    @Test func anOpenHeldForARuntimeRecordsWhenItStarts() async {
-        let children = Children(line: servingLine)
+        let held = Children(line: servingLine)
         let old = setup("/opt/metab", "0.12.1")
         let runtime = selection(with: old)
         let recheck = runtime.startRecheck()
         _ = runtime.finishRecheck(recheck, fingerprint: stamp(2), result: .tooOld(version: "0.12.0"))
-        let subject = server(createdWith: old, accepted: { runtime.launchableSetup }, children: children)
-        #expect(await subject.start(recordsOpen: true) == .waitingForRuntime)
-        #expect(children.recording.all == [])
+        let subject = server(createdWith: old, accepted: { runtime.launchableSetup }, children: held)
+        #expect(await subject.start() == .waitingForRuntime)
         let search = runtime.startSearch()
         let found = setup("/opt/new/metab", "0.13.0", 3)
         _ = runtime.finishSearch(search, with: DiscoveryReport(setup: found, tried: []))
         #expect(await subject.resume() == .launched)
-        #expect(await subject.restart() == .launched)
-        #expect(children.recording.all == [nil, "0"])
+        #expect(held.recording.all == ["0"])
     }
 
     @Test func aStartRunsTheRuntimeAcceptedWhenItStartsNotTheOneTheFolderWasMadeWith() async {

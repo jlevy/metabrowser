@@ -34,7 +34,7 @@ struct StatusView: View {
                     revealServerLog: revealServerLog, showSettings: showSettings)
             case .waitingForSelection:
                 VStack(spacing: 12) {
-                    Text("Metabrowser opens \(folderName) when you select it.").font(.headline)
+                    Text("Metabrowser opens \(folderName) when you bring it forward.").font(.headline)
                     Text("macOS can ask your permission before an app reads this location.")
                     Text(folderPath).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
                 }

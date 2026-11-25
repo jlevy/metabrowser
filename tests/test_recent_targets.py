@@ -13,11 +13,14 @@ import fcntl
 import json
 import logging
 import os
+import pty
+import signal
 import stat
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from typing import TextIO, cast
 
 import pytest
 import yaml
@@ -47,6 +50,7 @@ from metabrowser.recent_targets import (
     record_quietly,
     recorded_path,
     recording_enabled,
+    serve_records,
 )
 from tests.child_io import read_line
 from tests.test_nav_metadata_chrome import _free_port
@@ -979,14 +983,57 @@ def test_a_root_a_server_cannot_record_does_not_stop_it(
 # ── Opting out ─────────────────────────────────────────────────────
 
 
+class _Stdin:
+    """A standard input that is, or is not, a terminal."""
+
+    def __init__(self, terminal: bool) -> None:
+        self.terminal = terminal
+
+    def isatty(self) -> bool:
+        return self.terminal
+
+
+_TERMINAL = cast("TextIO", _Stdin(True))
+_PIPE = cast("TextIO", _Stdin(False))
+
+
 @pytest.mark.parametrize("value", ["0", "false", "no", "off", "OFF", " 0 "])
 def test_recording_is_off_when_the_variable_says_so(value: str) -> None:
+    """Nothing records, a person's serve at a terminal included."""
+
     assert not recording_enabled({RECORD_ENV: value})
+    assert not serve_records({RECORD_ENV: value}, _TERMINAL)
 
 
 @pytest.mark.parametrize("environ", [{}, {RECORD_ENV: "1"}, {RECORD_ENV: ""}, {RECORD_ENV: "yes"}])
-def test_recording_is_on_otherwise(environ: dict[str, str]) -> None:
+def test_an_explicit_add_records_unless_the_variable_says_no(environ: dict[str, str]) -> None:
+    """``--recent-add`` is itself a request to record, so it needs no terminal."""
+
     assert recording_enabled(environ)
+
+
+@pytest.mark.parametrize("value", ["1", "true", "yes", "on", "ON", " 1 "])
+def test_a_serve_told_to_record_records_without_a_terminal(value: str) -> None:
+    """As ``--present`` tells the server it starts for a browser, whose stdin is not a terminal."""
+
+    assert serve_records({RECORD_ENV: value}, _PIPE)
+
+
+@pytest.mark.parametrize("environ", [{}, {RECORD_ENV: ""}, {RECORD_ENV: "2"}])
+def test_a_serve_nobody_told_records_only_at_a_terminal(environ: dict[str, str]) -> None:
+    """A person typed ``metab ROOT``; an agent, a test, a golden, or a tool did not
+    (mb-1q02): their serves made up most of one user's list."""
+
+    assert serve_records(environ, _TERMINAL)
+    assert not serve_records(environ, _PIPE)
+
+
+def test_a_serve_with_no_stdin_or_a_closed_one_is_not_at_a_terminal(tmp_path: Path) -> None:
+    closed = (tmp_path / "stdin").open("w", encoding="utf-8")
+    closed.close()
+
+    assert not serve_records({}, closed)
+    assert not serve_records({}, cast("TextIO", object()))
 
 
 def test_a_server_told_not_to_record_touches_nothing(
@@ -1016,9 +1063,9 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
 ) -> None:
     """``metab ROOT`` is in the list by the time its ``Serving`` line can be read.
 
-    That is what the macOS app relies on: the server it starts for a folder records the
-    folder, and ``metab FILE`` records the file's folder, which is what it serves, with
-    the file as where the open pointed.
+    That is what a shell that waits for the line relies on: the serve records the folder,
+    and ``metab FILE`` records the file's folder, which is what it serves, with the file
+    as where the open pointed.
     """
 
     config = tmp_path / "config"
@@ -1058,8 +1105,8 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
                 True,
             )
         ]
-        # A server of another folder that is not an open, as one the macOS app restores
-        # is not, serves and leaves the list as it was.
+        # A server of another folder told not to record, as every server the macOS app
+        # starts is, serves and leaves the list as it was.
         quiet = subprocess.Popen(
             [
                 str(console_script),
@@ -1083,6 +1130,72 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
             _stop(quiet)
     finally:
         _stop(process)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX pipes and pseudo-terminals")
+def test_only_a_serve_at_a_terminal_records_without_being_told(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``metab ROOT`` as an agent or a tool runs it, its stdin a pipe and the variable
+    unset, serves and records nothing; as a person runs it, at a terminal, it records.
+
+    This is the rule that keeps agents' and tools' folders out of the user's list without
+    anyone remembering to opt out (mb-1q02).
+    """
+
+    config = tmp_path / "config"
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(config))
+    monkeypatch.delenv(RECORD_ENV)
+    console_script = Path(sys.executable).with_name("metab")
+    agents, persons = tmp_path / "agents", tmp_path / "persons"
+    agents.mkdir()
+    persons.mkdir()
+
+    def serve(root: Path, stdin: int) -> subprocess.Popen[str]:
+        # Not the default port, which parallel workers' servers search from too.
+        command = [str(console_script), str(root), "--no-open", "--port", str(_free_port())]
+        return subprocess.Popen(
+            command,
+            stdin=stdin,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+
+    agent = serve(agents, subprocess.PIPE)
+    try:
+        assert read_line(agent).startswith("Serving ")
+        assert read(config).targets == ()
+    finally:
+        _end(agent)
+    controller, terminal = pty.openpty()
+    try:
+        person = serve(persons, terminal)
+        try:
+            assert read_line(person).startswith("Serving ")
+            assert [target.root for target in read(config).targets] == [recorded_path(persons)]
+        finally:
+            _end(person)
+    finally:
+        os.close(terminal)
+        os.close(controller)
+
+
+def _end(process: subprocess.Popen[str]) -> None:
+    """Stop a server without ``--exit-on-eof`` with SIGTERM to its group, within a bound."""
+
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        process.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=5)
+    except ProcessLookupError:
+        process.wait(timeout=5)
+    for stream in (process.stdin, process.stdout, process.stderr):
+        if stream is not None:
+            stream.close()
 
 
 def _stop(process: subprocess.Popen[str]) -> None:

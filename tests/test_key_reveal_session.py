@@ -361,16 +361,18 @@ def test_the_session_runs_on_the_recording() -> None:
     assert age["trigger"] == "By age"
     for quick in (
         "with the menu closed, T is Quick Search",
-        "with focus outside the open menu, T is Quick Search",
+        "with focus outside the open menu, T is Quick Search, which closes it",
     ):
         assert by_name[quick]["pressed"] == {"key": "t", "handled": True}, quick
         assert by_name[quick]["focus"] == "combobox", quick
     by_type = by_name["1 focuses By age, the checked row, and T chooses By file type"]
     assert by_type["focus"]["row"] == "By age" and by_type["focus"]["checked"] == "true"
     assert by_type["trigger"] == "By file type"
-    assert by_name["with focus outside the open menu, T is Quick Search"]["trigger"] == (
-        "By file type"
-    )
+    outside = by_name["with focus outside the open menu, T is Quick Search, which closes it"]
+    assert outside["trigger"] == "By file type"
+    # Quick Search's box taking focus closes the menu, as focus arriving outside any menu
+    # does (docs/design-system.md, "Every Menu Closes Alike").
+    assert outside["did"] == ["opened the group menu", "closed the group menu"]
     assert by_name["N chooses No grouping"]["trigger"] == "No grouping"
 
     # What a navigation and a key cost: one publication, and while revealed one pass.

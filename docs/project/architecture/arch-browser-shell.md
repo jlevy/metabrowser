@@ -26,7 +26,7 @@ it, may read them, and an installed plugin uses the SDK.
 | Stores | `resource-context.js`, `directory-totals-store.js`, `inventory-scope.js`, `known-file-catalog.js`, `catalog-feed.js` |
 | Tree and filters | `tree-expansion.js`, `tree-keyboard-navigation.js`, `tree-filter-model.js`, `filter-state.js`, `filter-controls.js`, `pending-tally-diagnostics.js` |
 | Main tabs | `main-tabs.js`, `git-panel.js` with `git-graph.js` and `git-history-window.js`, `pulls-nav.js`, `pull-route.js` |
-| Keyboard and dialogs | `keyboard-shortcuts.js`, `shell-keymap.js`, `plugin-shortcuts.js`, `key-reveal.js`, `keyboard-help.js`, `overlay-layer.js` |
+| Keyboard and dialogs | `keyboard-shortcuts.js`, `shell-keymap.js`, `plugin-shortcuts.js`, `key-reveal.js`, `keyboard-help.js`, `overlay-layer.js`, `menus.js` (how every menu closes) |
 | Quick Search | `search-controller.js`, `search-palette.js`, `file-fuzzy-match.js` |
 | Pinned revisions, mirrors, and a checkout’s revisions | `git-path.js`, `revision-ages.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
 | Shared rendering | `formatters.js`, `icons.js`, `charts.js`, `file-type-taxonomy.js`, `inert-html.js`, `source-append.js`, `theme-state.js`, `document-width.js`, `request-error.js`, `contribution-registry.js` |
@@ -322,6 +322,7 @@ them; the note beside the budget says why.
 | Core shell modules | Eager | The shell template’s script tags in `server.py` | The note beside the startup gates in `performance-budgets.toml` |
 | Search, Help, keyboard, Git, and Pulls tools | On demand, once the first tree is usable; Pulls only in a shell that drew the tab | `shell-tools` in `on_demand_script_bundles` | The same note |
 | The event log’s reporter and its Details | On demand, with the shell’s tools once the first tree is usable, or at a page’s first wait or Details before then; requests answered before it loaded are read from Resource Timing | `event-reports`, and the last script of `shell-tools`, in `on_demand_script_bundles` | The comment beside the bundle in `server.py` |
+| How every menu closes | On demand, with the shell’s tools once the first tree is usable, or at the first menu opened before then | `menus.js` in `shell-tools`, and the SDK’s `menus.dismissible` in `filter-controls.js`, which forwards to it | The comment beside `menus_url` in `server.py` |
 | The plugin shortcut queue | Eager, since a plugin can attach a key before the registry exists | `queueShortcut` in `plugin-sdk.js` | The comment beside it |
 | Line gutter, SDK view helpers, and the syntax service | On demand, beside the view compositor and before any plugin code | `sdk-views` | [exp-037](../../../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | A file’s and a folder’s view header | On demand, beside the view compositor and the SDK view helpers | `view-header` | The comment beside the bundle in `server.py` |

@@ -198,7 +198,8 @@ $ metab --help
 │                               refused it.                                    │
 │ --recent                      List the recent targets: the folders and       │
 │                               repositories opened lately, most recent first. │
-│                               Every serve records its ROOT.                  │
+│                               A serve records its ROOT when run at a         │
+│                               terminal or with METABROWSER_RECORD_RECENT=1.  │
 │ --recent-add                  Record ROOT as a recent target, as serving it  │
 │                               would, without serving.                        │
 │ --recent-forget               Remove ROOT from the recent targets.           │

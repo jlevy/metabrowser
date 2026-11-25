@@ -14,5 +14,6 @@ metabrowser.commit_ids:SHORT_COMMIT_CHARS = 7
 metabrowser.cli.present:RELEASE_BUNDLE_ID = "io.github.jlevy.metabrowser"
 metabrowser.cli.present:DEV_BUNDLE_ID = "io.github.jlevy.metabrowser.dev"
 metabrowser.cli.present:MINIMUM_METAB_KEY = "MetabrowserMinimumMetab"
-metabrowser.cli.doctor:STORAGE_OVERRIDES = ["METABROWSER_CACHE_DIR", "METABROWSER_CONFIG_DIR", "XDG_CACHE_HOME", "XDG_CONFIG_HOME"]
+metabrowser.cli.doctor:STORAGE_OVERRIDES = ["METABROWSER_CACHE_DIR", "XDG_CACHE_HOME", "XDG_CONFIG_HOME"]
+metabrowser.cli.doctor:LAUNCH_STORAGE_OVERRIDES = ["METABROWSER_CONFIG_DIR"]
 metabrowser.cli.present:OPENS_URLS_KEY = "MetabrowserOpensURLs"

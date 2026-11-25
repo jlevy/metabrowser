@@ -123,8 +123,15 @@ class Element extends Node {
       (this.listeners.get(type) ?? []).filter((held) => held !== listener),
     );
   }
+  /** Focus moves here, and the document hears it arrive, as its focusin capture does;
+   * focus left to the page, the body, arrives nowhere, as in a browser. */
   focus() {
     this.ownerDocument.activeElement = this;
+    const arrived =
+      this === this.ownerDocument.body ? [] : this.ownerDocument.capturing.get("focusin");
+    for (const listener of arrived ?? []) {
+      listener({ type: "focusin", target: this });
+    }
   }
   get isConnected() {
     let at = this;
@@ -150,7 +157,8 @@ class Element extends Node {
     }
     return null;
   }
-  /** Dispatch *type* here and on each ancestor, as a bubbling event does. */
+  /** Dispatch *type* at the document's capture listeners, here and on each ancestor, and
+   * at the document's own, as a bubbling event does. */
   dispatch(type, init = {}) {
     let stopped = false;
     let prevented = false;
@@ -158,6 +166,9 @@ class Element extends Node {
       type,
       target: this,
       ...init,
+      get defaultPrevented() {
+        return prevented;
+      },
       preventDefault() {
         prevented = true;
       },
@@ -165,10 +176,17 @@ class Element extends Node {
         stopped = true;
       },
     };
+    const document = this.ownerDocument;
+    for (const listener of document.capturing.get(type) ?? []) {
+      listener(event);
+    }
     for (let at = this; at !== null && !stopped; at = at.parentNode) {
       for (const listener of at.listeners?.get(type) ?? []) {
         listener(event);
       }
+    }
+    for (const listener of stopped ? [] : (document.bubbling.get(type) ?? [])) {
+      listener(event);
     }
     return { prevented, stopped };
   }
@@ -179,21 +197,20 @@ function makeDocument() {
     activeElement: null,
     cookie: "",
     capturing: new Map(),
+    bubbling: new Map(),
     createElement(tag) {
       return new Element(document, tag);
     },
     addEventListener(type, listener, capture) {
-      if (capture === true) {
-        document.capturing.set(type, [...(document.capturing.get(type) ?? []), listener]);
-      }
+      const held = capture === true ? document.capturing : document.bubbling;
+      held.set(type, [...(held.get(type) ?? []), listener]);
     },
     removeEventListener(type, listener, capture) {
-      if (capture === true) {
-        document.capturing.set(
-          type,
-          (document.capturing.get(type) ?? []).filter((held) => held !== listener),
-        );
-      }
+      const held = capture === true ? document.capturing : document.bubbling;
+      held.set(
+        type,
+        (held.get(type) ?? []).filter((each) => each !== listener),
+      );
     },
     documentElement: { getAttribute: () => null },
     head: { append() {} },

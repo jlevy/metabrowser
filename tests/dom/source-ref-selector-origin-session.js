@@ -31,7 +31,9 @@ const recording = JSON.parse(
   ),
 );
 
-const checkout = (shown) => ({ shown, checkout: true });
+// The checkout's HEAD is on trunk, which server.py writes on the row
+// (`data-working-branch`) and each listing reads again.
+const checkout = (shown) => ({ shown, checkout: true, workingBranch: "trunk" });
 
 async function run() {
   const steps = [];

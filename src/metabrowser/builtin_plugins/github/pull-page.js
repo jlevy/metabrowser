@@ -4341,7 +4341,7 @@ export function stackMemberState(source, target, number, current) {
  * trigger.
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null}} deps
+ * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean, state?(number: number): import("./pull-state.js").PullState | null, menus?: MetabrowserMenus}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
@@ -4387,6 +4387,14 @@ export function createStackMenu(initial, number, deps) {
   root.append(trigger);
   const listening = new AbortController();
   const signal = listening.signal;
+  // It closes as every menu does (docs/design-system.md, "Every Menu Closes Alike").
+  const dismissal = deps.menus?.dismissible({
+    name: "github-pull-stack-menu",
+    trigger,
+    inside: (node) => menu.contains(node),
+    isOpen: () => root.open,
+    close: () => close(),
+  });
   /** @type {HTMLElement[]} */
   const links = [];
   /**
@@ -4509,6 +4517,7 @@ export function createStackMenu(initial, number, deps) {
   /** @param {boolean} [focus] */
   function close(focus = false) {
     root.open = false;
+    dismissal?.closed();
     trigger.setAttribute("aria-expanded", "false");
     if (focus && trigger.isConnected) {
       trigger.focus({ preventScroll: true });
@@ -4542,6 +4551,7 @@ export function createStackMenu(initial, number, deps) {
     () => {
       trigger.setAttribute("aria-expanded", String(root.open));
       if (root.open && !signal.aborted) {
+        dismissal?.opened();
         populate();
         deps.onOpen();
         // A press opens the menu here, with focus on the trigger; a key that opened it
@@ -4570,16 +4580,11 @@ export function createStackMenu(initial, number, deps) {
         } else {
           root.open = true;
           trigger.setAttribute("aria-expanded", "true");
+          dismissal?.opened();
           populate();
           deps.onOpen();
           focusCurrent();
         }
-        return;
-      }
-      if (key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        close(true);
         return;
       }
       if (key === "Tab" && root.open) {
@@ -4606,6 +4611,7 @@ export function createStackMenu(initial, number, deps) {
       if (at < 0) {
         root.open = true;
         trigger.setAttribute("aria-expanded", "true");
+        dismissal?.opened();
         populate();
         deps.onOpen();
         focusCurrent();
@@ -4628,38 +4634,6 @@ export function createStackMenu(initial, number, deps) {
     capture: true,
     signal,
   });
-  document.addEventListener(
-    "pointerdown",
-    (event) => {
-      if (root.open && event.target instanceof Node && !root.contains(event.target)) {
-        close();
-      }
-    },
-    { signal },
-  );
-  document.addEventListener(
-    "keydown",
-    (event) => {
-      if (
-        root.open &&
-        event.key === "Escape" &&
-        !(event.altKey || event.ctrlKey || event.metaKey)
-      ) {
-        event.preventDefault();
-        close(true);
-      }
-    },
-    { signal },
-  );
-  root.addEventListener(
-    "focusout",
-    (event) => {
-      if (event.relatedTarget instanceof Node && !root.contains(event.relatedTarget)) {
-        close();
-      }
-    },
-    { signal },
-  );
   return Object.freeze({
     element: root,
     close,
@@ -4694,6 +4668,7 @@ export function createStackMenu(initial, number, deps) {
     dispose() {
       listening.abort();
       close();
+      dismissal?.dispose();
     },
   });
 }
@@ -5768,19 +5743,11 @@ export function mountPullPage(container, ctx, mb) {
     ]);
 
   /** Only shell-owned icon constants enter this parser, never pull-request content.
-   * @param {"toggle" | "layers"} name
+   * @param {"layers"} name
    */
   const registryIcon = (name) =>
     new DOMParser().parseFromString(mb.icons[name] || "", "text/html").body.firstElementChild;
-  const chevronSvg = registryIcon("toggle");
   const stackSvg = registryIcon("layers");
-  function chevron() {
-    return chevronSvg === null
-      ? null
-      : h("span", { class: "github-pull-fold-chevron", "aria-hidden": "true" }, [
-          document.importNode(chevronSvg, true),
-        ]);
-  }
 
   /** One link per tab, kept across paints so a poll does not take focus from one. */
   const tabLinks = PULL_TABS.map(({ id, label }) => {
@@ -5840,6 +5807,7 @@ export function mountPullPage(container, ctx, mb) {
         currentTitle: model.pull?.title ?? "",
         named,
         titleNodes: mb.titleNodes,
+        menus: mb.menus,
         state: (target) =>
           stackMemberState(stackIdentity?.source ?? null, target, number, stackPullState),
         onOpen() {
@@ -6889,9 +6857,9 @@ export function mountPullPage(container, ctx, mb) {
           // Native, so the browser opens and closes it and a repaint just closes it.
           const lines = `line${earlierLines === 1 ? "" : "s"}`;
           const plain = hunkLines([{ kind: "context", text: earlier }]);
+          // The fold's glyph is `.fold-expander`'s, drawn from `details[open]`.
           const disclosure = h("details", { class: "github-pull-hunk-earlier" }, [
             h("summary", { class: "fold-expander disclosure-toggle" }, [
-              chevron(),
               h("span", { class: "github-pull-fold-closed" }, [`${earlierLines} earlier ${lines}`]),
               h("span", { class: "github-pull-fold-open" }, [`Hide ${earlierLines} ${lines}`]),
             ]),

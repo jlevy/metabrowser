@@ -54,6 +54,7 @@ const PRODUCTION_MODULES = [
   "plugin-sdk.js",
   "filter-state.js",
   "filter-controls.js",
+  "menus.js",
   "tree-filter-model.js",
 ];
 

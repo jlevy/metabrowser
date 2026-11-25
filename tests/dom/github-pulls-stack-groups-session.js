@@ -661,6 +661,11 @@ async function mountStory() {
     createElement: (tag) => new FakeElement(tag),
     createTextNode: (text) => text,
     addEventListener: (type, listener) => listeners.set(type, listener),
+    removeEventListener(type, listener) {
+      if (listeners.get(type) === listener) {
+        listeners.delete(type);
+      }
+    },
     importNode: (node) => new FakeElement(node.localName),
   };
   const stack = shared.byPull.get(9)[0];
@@ -679,6 +684,7 @@ async function mountStory() {
     icon: null,
     currentTitle: "",
     titleNodes: require("./sdk-ref-fixture.js").refHelpers(document).titleNodes,
+    menus: require("./sdk-ref-fixture.js").refHelpers(document).menus,
     onOpen() {},
   };
   const menu = page.createStackMenu(stack, 9, menuDeps);
