@@ -32,12 +32,16 @@ listing it, waits; a read that fails shows nothing and is asked again a minute o
 server with no GitHub repository answers once for every row.
 
 `row` mounts the panel over a stand-in for the DOM with the SDK’s own painters and
-prints each row’s third line as drawn (`parts`, and the number’s and author’s `meta`):
-first holding the shell’s pending placeholder after the author, then with #106’s and
-#105’s lines changed arrived, drawn through the SDK’s one component for it (`said`) with
-no file statuses, and #104 and #103 with none and no separator.
+prints each row’s third line as drawn (`parts`, the number’s and author’s `meta`, and
+the text the number’s line `shown`): first holding the shell’s pending placeholder after
+the author, then with #106’s and #105’s lines changed arrived, drawn through the SDK’s
+one component for it (`said`) with no file statuses, and #104 and #103 with none and no
+separator. `spoken` is what the item says for its number’s line, in its link’s hidden
+text, the number, the author, and the age, read with the title as the item’s name.
 The line’s `words`, hidden, say it in words, and its row is described by them
 (`aria-describedby`); `chevron` is the way the line’s chevron turns.
+A modified press, which on a link opens a new tab, toggles nothing on the change line
+and opens no page, and on the title it is the browser’s (`tree`).
 
 Run alone, the session holds every part’s invariants and says how many steps each took;
 `lane`, `row`, `totals`, `tree`, and `focus` print each part.
@@ -49,7 +53,7 @@ $ node tests/dom/github-pulls-row-lines-session.js
     "lane": 23,
     "row": 2,
     "totals": 8,
-    "tree": 21,
+    "tree": 24,
     "focus": 8
   },
   "invariants": true
@@ -546,7 +550,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-by",
               "github-pulls-change-line"
             ],
-            "said": "#106 · contributor · ",
+            "shown": "#106 · contributor · ",
+            "spoken": "#106 · contributor · 1m",
             "text": " · ",
             "line": [
               {
@@ -581,7 +586,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-by",
               "github-pulls-change-line"
             ],
-            "said": "#105 · contributor · ",
+            "shown": "#105 · contributor · ",
+            "spoken": "#105 · contributor · 1m",
             "text": " · ",
             "words": "Changed files",
             "chevron": "collapsed"
@@ -599,7 +605,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-by",
               "github-pulls-change-line"
             ],
-            "said": "#104 · contributor · ",
+            "shown": "#104 · contributor · ",
+            "spoken": "#104 · contributor · 1m",
             "text": " · ",
             "words": "Changed files",
             "chevron": "collapsed"
@@ -617,7 +624,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-by",
               "github-pulls-change-line"
             ],
-            "said": "#103 · contributor · ",
+            "shown": "#103 · contributor · ",
+            "spoken": "#103 · contributor · 1m",
             "text": " · ",
             "words": "Changed files",
             "chevron": "collapsed"
@@ -641,7 +649,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-by",
               "github-pulls-change-line"
             ],
-            "said": "#106 · contributor · +1,093−493",
+            "shown": "#106 · contributor · +1,093−493",
+            "spoken": "#106 · contributor · 1m",
             "text": " · +1,093−493",
             "line": [
               {
@@ -689,7 +698,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-by",
               "github-pulls-change-line"
             ],
-            "said": "#105 · contributor · +3−1",
+            "shown": "#105 · contributor · +3−1",
+            "spoken": "#105 · contributor · 1m",
             "text": " · +3−1",
             "words": "Changed files: 3 lines added, 1 deleted",
             "chevron": "collapsed"
@@ -707,7 +717,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-by",
               "github-pulls-change-line"
             ],
-            "said": "#104 · contributor",
+            "shown": "#104 · contributor",
+            "spoken": "#104 · contributor · 1m",
             "text": "",
             "words": "Changed files",
             "chevron": "collapsed"
@@ -725,7 +736,8 @@ $ node tests/dom/github-pulls-row-lines-session.js row
               "github-pulls-by",
               "github-pulls-change-line"
             ],
-            "said": "#103 · contributor",
+            "shown": "#103 · contributor",
+            "spoken": "#103 · contributor · 1m",
             "text": "",
             "words": "Changed files",
             "chevron": "collapsed"
@@ -948,6 +960,69 @@ $ node tests/dom/github-pulls-row-lines-session.js tree
       "pressed": {
         "item": 105,
         "on": "author"
+      },
+      "tree": [
+        "#106 · treeitem · level 1 · 1/102 · expanded false · described by github-pull-change-106",
+        "  #106's change line · hidden · chevron collapsed · no stop",
+        "#105 · treeitem · level 1 · 2/102 · expanded false · owns github-pull-files-105 · described by github-pull-change-105 · Tab stop · focused",
+        "  #105's change line · hidden · chevron collapsed · no stop",
+        "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+        "  #104's change line · hidden · chevron collapsed · no stop",
+        "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+        "  #103's change line · hidden · chevron collapsed · no stop"
+      ]
+    },
+    {
+      "step": "a Cmd-press on #105's number toggles nothing and opens no page",
+      "pressed": {
+        "item": 105,
+        "on": "number",
+        "modifier": "metaKey"
+      },
+      "handled": {
+        "defaultPrevented": false
+      },
+      "tree": [
+        "#106 · treeitem · level 1 · 1/102 · expanded false · described by github-pull-change-106",
+        "  #106's change line · hidden · chevron collapsed · no stop",
+        "#105 · treeitem · level 1 · 2/102 · expanded false · owns github-pull-files-105 · described by github-pull-change-105 · Tab stop · focused",
+        "  #105's change line · hidden · chevron collapsed · no stop",
+        "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+        "  #104's change line · hidden · chevron collapsed · no stop",
+        "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+        "  #103's change line · hidden · chevron collapsed · no stop"
+      ]
+    },
+    {
+      "step": "a Ctrl-press on #105's chevron toggles nothing either",
+      "pressed": {
+        "item": 105,
+        "on": "chevron",
+        "modifier": "ctrlKey"
+      },
+      "handled": {
+        "defaultPrevented": false
+      },
+      "tree": [
+        "#106 · treeitem · level 1 · 1/102 · expanded false · described by github-pull-change-106",
+        "  #106's change line · hidden · chevron collapsed · no stop",
+        "#105 · treeitem · level 1 · 2/102 · expanded false · owns github-pull-files-105 · described by github-pull-change-105 · Tab stop · focused",
+        "  #105's change line · hidden · chevron collapsed · no stop",
+        "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+        "  #104's change line · hidden · chevron collapsed · no stop",
+        "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+        "  #103's change line · hidden · chevron collapsed · no stop"
+      ]
+    },
+    {
+      "step": "a Cmd-press on #106's title is the browser's, a new tab: nothing opens here",
+      "pressed": {
+        "item": 106,
+        "on": "title",
+        "modifier": "metaKey"
+      },
+      "handled": {
+        "defaultPrevented": false
       },
       "tree": [
         "#106 · treeitem · level 1 · 1/102 · expanded false · described by github-pull-change-106",

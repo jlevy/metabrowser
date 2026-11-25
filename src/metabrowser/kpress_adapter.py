@@ -418,15 +418,24 @@ def export_kpress_document(request: KPressExportRequest) -> dict[str, object]:
 # of the prose, where nothing the document wrote can be: titles in it are escaped.
 _KPRESS_PROSE = '<div class="kpress-prose'
 _KPRESS_TOC = re.compile(r"<button\b[^>]*\bdata-kpress-toc-toggle\b.*?</nav>", re.DOTALL)
+# KPress's front-matter error notice, ahead of the layout: the sentence the server handed
+# it, escaped. The allowlist drops its box and keeps its title and sentence, run together
+# with no space between them ahead of the prose, so the page draws the notice from the
+# render's `frontmatter_error` diagnostic instead (builtin_plugins/markdown/inert-render.js).
+_KPRESS_FRONTMATTER_ERROR = re.compile(
+    r'<aside class="kpress-frontmatter-error"[^>]*>.*?</aside>', re.DOTALL
+)
 
 
 def _without_kpress_toc(html: str) -> tuple[str, bool]:
-    """*html* without KPress's table of contents, and whether it had one."""
+    """*html* without KPress's table of contents or front-matter error notice, and whether
+    it had a table of contents."""
 
     prose = html.find(_KPRESS_PROSE)
     if prose < 0:
         return html, False
     chrome, found = _KPRESS_TOC.subn("", html[:prose], count=1)
+    chrome = _KPRESS_FRONTMATTER_ERROR.sub("", chrome, count=1)
     return chrome + html[prose:], found > 0
 
 
@@ -501,7 +510,9 @@ def inert_render(
 
     KPress's table of contents leaves the HTML too, since its script cannot run; ``toc``
     says whether KPress drew one, and the model's ``headings`` -- its entries -- point at
-    the headings' ``user-content-`` anchors, for the page to draw its own from them.
+    the headings' ``user-content-`` anchors, for the page to draw its own from them. So
+    does its front-matter error notice, whose box the allowlist cannot keep; the page draws
+    it from the ``frontmatter_error`` diagnostic, which stays.
 
     *rewrite_local* is passed to :func:`~metabrowser.inert_html.harden_document`: a page
     that shows a document from outside the served tree, such as a pull request's rendered

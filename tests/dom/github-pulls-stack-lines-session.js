@@ -585,9 +585,7 @@ async function headingStory() {
     const { stackLineInput } = await import(
       pathToFileURL(path.join(GITHUB, "stack-lines.js")).href
     );
-    const said = sdk.changeLine(stackLineInput(changes.current.body, null), {
-      omitZeroTotals: true,
-    });
+    const said = sdk.changeLine(stackLineInput(changes.current.body), { omitZeroTotals: true });
     assert.deepEqual(said.statusParts ?? [], [], "the line counts no files by status");
     const expected = shape([
       ...sdk.countPartsNodes([{ separator: "·" }]),
@@ -653,7 +651,7 @@ async function headingStory() {
       }
       requests.splice(0);
       const drawn = headings()["Stack #286"];
-      const built = sdk.changeLine(stackLineInput(answer.body, null), { omitZeroTotals: true });
+      const built = sdk.changeLine(stackLineInput(answer.body), { omitZeroTotals: true });
       assert.deepEqual(
         drawn.change,
         shape([...sdk.countPartsNodes([{ separator: "·" }]), ...sdk.changeLineNodes(built)]),

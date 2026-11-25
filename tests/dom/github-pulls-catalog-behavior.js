@@ -368,7 +368,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   replacedTail.state.cached = 700;
   replacedTail.state.generation = "two";
   replacedTail.state.first += 1;
-  await replacedTail.controller.reload();
+  await replacedTail.controller.refresh();
   replacedTail.requests.length = 0;
   await replacedTail.controller.reachedEnd();
   assert.equal(replacedTail.controller.snapshot().rows, 600);
@@ -578,7 +578,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   refreshRace.controller.onVisibilityChange();
   await settle();
   await refreshRace.respond();
-  void refreshRace.controller.reload();
+  void refreshRace.controller.refresh();
   await settle();
   refreshRace.state.refreshing = true;
   await refreshRace.respond(1);
@@ -590,7 +590,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   assert.equal(refreshRace.model().connection.state, "connected");
   assert.equal(refreshRace.model().connection.refreshing, true);
   assert.match(refreshRace.model().connection.text, /^Updated /u);
-  assert.equal(refreshRace.model().connection.reload, false);
+  assert.equal(refreshRace.model().connection.canRefresh, false);
   assert.equal(refreshRace.controller.snapshot().timer, "fast");
   refreshRace.controller.onVisibilityChange();
   await settle();
@@ -687,7 +687,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   await receive(top("epoch:1", [old]));
   await starting;
   assert.deepEqual(arrivals.flashes, [], "initial population is neutral");
-  void arrivals.controller.reload();
+  void arrivals.controller.refresh();
   await receive({ pulls: top("epoch:2", [newer, old], { refreshing: true }) }, 202);
   assert.deepEqual(arrivals.flashes, [], "a POST cannot create arrivals");
   arrivals.state.now += 2_000;
@@ -726,9 +726,9 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   watch.requests.length = 0;
   watch.state.online = false;
   watch.controller.onOffline();
-  await watch.controller.reload();
+  await watch.controller.refresh();
   assert.equal(watch.model().connection.text, "Offline. Showing the pull requests last loaded.");
-  assert.equal(watch.model().connection.reload, false);
+  assert.equal(watch.model().connection.canRefresh, false);
   await tick(watch);
   assert.deepEqual(providerAsks(watch), []);
   watch.state.online = true;
@@ -759,7 +759,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
     assert.deepEqual(transient.model().connection, {
       state: "paused",
       text: outage,
-      reload: false,
+      canRefresh: false,
       refreshing: true,
     });
     assert.equal(transient.model().live, outage);
@@ -778,7 +778,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   transient.state.automatic = true;
   await tick(transient);
   assert.equal(transient.model().connection.state, "connected");
-  assert.equal(transient.model().connection.reload, true);
+  assert.equal(transient.model().connection.canRefresh, true);
   assert.equal(transient.model().connection.retrying, undefined);
   assert.notEqual(transient.model().live, outage);
   transient.dispose();
@@ -813,12 +813,12 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
 
   const reload = await watchRig("not_found_or_private");
   reload.state.automatic = false;
-  const reloading = reload.controller.reload();
-  await reload.controller.reload();
+  const reloading = reload.controller.refresh();
+  await reload.controller.refresh();
   assert.equal(reload.model().connection.state, "paused");
   assert.equal(reload.model().connection.refreshing, true, "rows are held: no spinner");
   assert.equal(reload.model().connection.retrying, undefined);
-  assert.equal(reload.model().connection.reload, false);
+  assert.equal(reload.model().connection.canRefresh, false);
   assert.deepEqual(providerAsks(reload), [{ state: "open", target: 500, retry: true }]);
   await reload.respond();
   await reloading;
@@ -830,8 +830,8 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
     at(Date.parse("2026-09-17T12:00:30Z") + 8_000),
   );
   assert.match(rate.model().connection.text, /Next attempt after/u);
-  assert.equal(rate.model().connection.reload, false);
-  await rate.controller.reload();
+  assert.equal(rate.model().connection.canRefresh, false);
+  await rate.controller.refresh();
   assert.deepEqual(providerAsks(rate), []);
   assert.equal([...rate.timers.values()][0].delay, 8_000);
   rate.state.now += 8_001;

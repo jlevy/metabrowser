@@ -1724,6 +1724,20 @@ body {
   color: var(--link);
 }
 
+/* The one focus ring for a button or summary no rule rings. Like the link base above it
+   has zero specificity, the pseudo-class inside `:where()` too, so every family's own
+   `:focus-visible` rule still wins, and it only replaces the user agent's ring, an outline
+   in the platform's accent color outside the box, which a diff file bar's label drew
+   (seen in Chrome on 2026-11-24, mb-2t80). Any rule that rings a control wins over it,
+   KPress's document sheet too, whose ring is 3px and outset on a `summary` inside
+   `article.kpress`, so a control the app draws inside a KPress article states its own
+   ring, as a rendered diff's run of unchanged blocks does. A link is not included: its
+   ring is its context's (docs/design-system.md, "Focus Ring"). */
+:where(button:focus-visible, summary:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
 /* Global scrollbars — every scroll container in the app inherits
    the same minimal style. Containers that sit on a non-default
    surface override --scrollbar-bg locally (e.g. .tree-content sets
@@ -3282,6 +3296,13 @@ html:not([data-app-font="system"]) .tree-pane #tab-files {
   gap: 6px;
   color: var(--text);
 }
+/* The offer's sentence wraps and its button does not: Reload page, two words, broke
+   over two lines in the default pane while the sentence beside it kept its width
+   (seen in Chrome on 2026-11-24, mb-qkvr). */
+.source-freshness-offer > .btn {
+  flex: none;
+  white-space: nowrap;
+}
 .source-freshness-error {
   color: var(--status-error-text);
 }
@@ -4453,7 +4474,7 @@ a.tab-btn {
    In a pane too narrow for that, the row wraps between its controls, in order and as
    late as it can, so no control is cut, scrolled out of reach, or cut short: the
    leading controls stay first, and the trailing group, which takes the line's end
-   with an auto margin (Clear and the chevron on Files, Reload on Pulls), moves down
+   with an auto margin (Clear and the chevron on Files, Refresh on Pulls), moves down
    whole and stays right-aligned. A segmented group wider than a whole line takes the
    cluster layout instead (`.chip-group[data-fit="wrap"]`).
 
@@ -4462,19 +4483,20 @@ a.tab-btn {
    by a line and a gap for each line it adds, and a wrapped toolbar reads as one. A
    control is one line tall: a shorter one is centred in a line's height rather than
    making its line shorter, as Show ignored's checkbox is in the Files drawer
-   (`.filter-drawer-row`), and a taller one, a `.btn` such as Reload (26 px at the
+   (`.filter-drawer-row`), and a taller one, a `.btn` such as Refresh (26 px at the
    default size, two over a chip), is held to it rather than making its line, and so
    the one-line toolbar, taller. A cluster's own lines are a row's apart.
 
    Measured in headless Chrome on 2026-11-15, and the Files rows again on 2026-11-18
-   once Show ignored moved into the drawer (mb-ey0d), pane widths 179 px (the
+   once Show ignored moved into the drawer (mb-ey0d), and the Pulls rows again on
+   2026-11-24 once Reload became Refresh (mb-qkvr), pane widths 179 px (the
    narrowest, 180 less the pane's border) to 420 px, both font sets; the themes lay out
    alike. The widths each row fits one line from, default set / system set, the Pulls
    tallies "Open 100, Closed 2, All 102" unless four-digit:
      Files, no filter set                             179 / 179 (the narrowest)
      Files, a filter set, "No grouping" (its widest)  204 / 216
-     Pulls, Show and Reload                           276 / 308
-     Pulls, Show and Reload, four-digit tallies       303 / 341
+     Pulls, Show and Refresh                          279 / 312
+     Pulls, Show and Refresh, four-digit tallies      306 / 346
    Before this rule, the Files row ran up to 17.69 px past the default pane in the
    system set and 118 px past the narrowest pane, and the Pulls toolbar 8.05 px past
    the default pane in the system set, scrolled out of sight (35.77 px in the default
@@ -7737,8 +7759,22 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--status-error-text);
 }
 
+/* A notice in the history list is its sentence, then its control: Retry after a page that
+   failed, Refresh after history that moved. They share a line where both fit and wrap
+   where they do not, a toolbar's one spacing apart either way. As a plain block a failed
+   page's Retry touched its sentence's last word, both edges at 224.31 px in a 300 px
+   column (measured in Chrome on 2026-11-24, mb-qkvr). */
+.git-history-failed,
+.git-history-stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nav-toolbar-gap);
+}
+
 /* Rides the .btn primitive; only the spacing is local. */
-.git-panel-refresh {
+.git-panel-refresh,
+.git-panel-retry {
   margin-top: 10px;
 }
 
@@ -8272,7 +8308,7 @@ pre.code-block.metabrowser-source-lines > code {
   background: var(--hover-bg);
 }
 
-/* .git-panel-refresh is not listed here: it rides .btn, which carries the
+/* .git-panel-refresh and .git-panel-retry are not listed here: they ride .btn, which carries the
    family's focus ring. .git-commit-file is a bare native button and needs
    its own. */
 .git-commit-file:focus-visible {

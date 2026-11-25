@@ -51,7 +51,7 @@ function withSqlite(container, sdk, mount) {
       if (!disposed) {
         const notice = document.createElement("p");
         notice.className = "notice sqlite-error";
-        notice.textContent = "Could not load this view. Reload to try again.";
+        notice.textContent = "Could not load this view. Reload the page to try again.";
         container.replaceChildren(notice);
       }
     },

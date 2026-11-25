@@ -84,7 +84,7 @@ Each control is numbered only while it is shown:
 | Screen | Numbered controls |
 | --- | --- |
 | The Files tab | Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has Modified within, and Group by age, only where its Git can read file ages |
-| The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
+| The Pulls tab | Open, Closed, and All, then Refresh, which keeps its number while it waits |
 | A pull request page | The header’s links and actions, such as Browse code and Refresh, in the order the header shows them; Refresh keeps its number while it waits |
 
 The navigation pane’s numbers come first, so a pull request page’s numbers continue

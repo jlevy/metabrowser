@@ -57,9 +57,9 @@ problem, including a discovery error beside plugins that loaded, so a script can
 mistake a partial registry for a complete one.
 
 The Mac app shows the same discovery inventory for its selected runtime under **Settings
-→ Information → Plugins**. This is what a new app server discovers.
+→ Plugins**. This is what a new app server discovers.
 Browser renderers load as their views are needed.
-See [Mac app settings](macos-app.md#choosing-a-metab).
+See [Mac app settings](macos-app.md#settings).
 
 ## Built-in Agent Support
 
@@ -76,7 +76,7 @@ payloads. The Codex provider reads known tables using Python’s SQLite library.
 The `sqlite` plugin separately provides general-purpose database browsing and requires
 `table`. The bundled `fsqlite` plugin adds store-specific views and requires both
 `sqlite` and `table`. `metab --plugins` lists these edges in its `REQUIRES` column.
-The Mac app shows them in Settings alongside each plugin.
+The Mac app shows them in Settings → Plugins alongside each plugin.
 
 The [agent browsing guide](working-with-agents.md#browsing-agent-history) explains what
 Agents reads and how the session lists work.

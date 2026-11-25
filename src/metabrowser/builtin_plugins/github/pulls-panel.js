@@ -11,21 +11,22 @@
 // The list is a tree: a row is one anchor in the role of a tree's item, in a list item with no
 // role of its own, and the row's changed files hang off it as a folder's children do
 // (pull-files-view.js): a `.tree-children[role="group"]` after it, which it owns, and
-// `aria-expanded` on it. A pull request is one item of three lines (mb-1z7j): the anchor's
-// two, its title and its number's line, and under them its brief change line (row-lines.js),
-// which carries the chevron, as a folder's line does. The three are one hover, one selection,
-// and one keyboard stop (`.github-pulls-entry`). The rule for a row with a disclosure toggle
-// (docs/design-system.md, "A Click on the Toggle's Line Toggles"): a click on the line that
-// carries the toggle toggles, and a click on the larger item that includes it does not. So a
-// click on the change line, anywhere on it, toggles the files and opens no page, and a click
-// on the title or the number's line opens the pull request and expands nothing. No row expands
-// on its own: not on an open, a selection, or a key's walk. Up and Down walk the pull requests
-// as wholes, and bring the whole item into view; on one, Space toggles its files, Right opens
-// them or goes to the first, Left closes them or goes to its stack's row, and Enter opens it.
-// Every key acts on the row that has focus (`anchorFocusedRow`). The change line is the
-// pointer's alone: hidden from assistive technology, it leaves the tree its items and groups,
-// and its words describe the row. The walk goes by `rows`, not by the DOM, so it reads the
-// same however a row is drawn.
+// `aria-expanded` on it. A pull request is one item of three lines (mb-1z7j): the anchor's two,
+// its title's (mb-85op), and under them its change line, which carries the chevron, as a
+// folder's line does, then its number, its author, and its brief change line (row-lines.js,
+// mb-lqkb). The three are one hover, one selection, and one keyboard stop
+// (`.github-pulls-entry`). The rule for a row with a disclosure toggle (docs/design-system.md,
+// "A Click on the Toggle's Line Toggles"): a click on the line that carries the toggle toggles,
+// and a click on the larger item that includes it does not. So a click on the change line,
+// anywhere on it, the number and the author included, toggles the files and opens no page, and
+// a click on the title opens the pull request and expands nothing; a modified click toggles
+// nothing, and on the title is the browser's, a new tab. No row expands on its own: not on an
+// open, a selection, or a key's walk. Up and Down walk the pull requests as wholes, and bring
+// the whole item into view; on one, Space toggles its files, Right opens them or goes to the
+// first, Left closes them or goes to its stack's row, and Enter opens it. Every key acts on the
+// row that has focus (`anchorFocusedRow`). The change line is the pointer's alone: hidden from
+// assistive technology, it leaves the tree its items and groups, and its words describe the
+// row. The walk goes by `rows`, not by the DOM, so it reads the same however a row is drawn.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. Idle startup may warm the catalog and lightweight PR metadata in both
@@ -276,7 +277,7 @@ const CHECKOUT_NOT_LISTED =
  *   countSuffix: string | null,
  *   catalogReady: boolean,
  *   connection: {state: "working" | "connected" | "paused" | "unavailable", text: string,
- *     reload: boolean, retrying?: true, refreshing?: true, help?: "install" | "update"} | null,
+ *     canRefresh: boolean, retrying?: true, refreshing?: true, help?: "install" | "update"} | null,
  *   refreshingRows?: number[],
  *   empty: string | null,
  *   progress: string | null,
@@ -464,7 +465,7 @@ export function describePulls(envelope, page) {
     model.connection = {
       state: online ? (working ? "working" : "unavailable") : "paused",
       text: online ? (working ? FETCHING : (page.error ?? "")) : "Offline.",
-      reload: online && !working,
+      canRefresh: online && !working,
     };
     model.live = model.connection.text;
     return model;
@@ -497,23 +498,23 @@ export function describePulls(envelope, page) {
   const asking = page.requesting === true || envelope.refreshing;
   const working = asking || envelope.state === "pending" || envelope.state === "absent";
   if (!online) {
-    model.connection = { state: "paused", text: `Offline.${cached}`, reload: false };
+    model.connection = { state: "paused", text: `Offline.${cached}`, canRefresh: false };
   } else if (page.error !== null) {
     model.connection = {
       state: "unavailable",
       text: page.error + cached,
-      reload: !heldByRate && !asking,
+      canRefresh: !heldByRate && !asking,
     };
   } else if (failure !== null) {
     model.connection = {
       ...failure,
       state: "paused",
       text: failure.text + cached,
-      reload: !heldByRate && !asking,
+      canRefresh: !heldByRate && !asking,
       ...(asking ? (holding ? { refreshing: true } : { retrying: true }) : {}),
     };
   } else if ((working || page.more) && !holding) {
-    model.connection = { state: "working", text: FETCHING, reload: false };
+    model.connection = { state: "working", text: FETCHING, canRefresh: false };
   } else {
     // Rows are shown: their age stays, and a refresh running breathes it.
     const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
@@ -521,7 +522,7 @@ export function describePulls(envelope, page) {
     model.connection = {
       state: "connected",
       text: `Updated ${age}${note}`,
-      reload: !working,
+      canRefresh: !working,
       ...(working ? { refreshing: true } : {}),
     };
   }
@@ -1690,7 +1691,7 @@ export function createPullsController(deps, options = {}) {
   function holdRows(list, rows, source) {
     const next = rows.map((row) => describeRow(row));
     if (source !== null) {
-      noteListed(source, next);
+      noteListed(source, filter, next);
     }
     const same =
       next.length === list.rows.length &&
@@ -3532,9 +3533,9 @@ export function createPullsController(deps, options = {}) {
       anchorAt(stackRowKey(stack));
       return true;
     },
-    /** A press of Reload asks the repository's existing catalog job. */
-    reload() {
-      if (!live() || model().connection?.reload !== true || refreshReads.size > 0) {
+    /** A press of Refresh asks the repository's existing catalog job. */
+    refresh() {
+      if (!live() || model().connection?.canRefresh !== true || refreshReads.size > 0) {
         return Promise.resolve();
       }
       held().error = null;
@@ -3732,13 +3733,13 @@ export function mountPullsPanel(container, ctx, mb) {
     connectionMessage,
   ]);
   const connectionHelp = h("span", { hidden: "" });
-  const reloadButton = h(
+  const refreshButton = h(
     "button",
-    { type: "button", class: "btn github-pulls-reload", "aria-disabled": "true" },
-    ["Reload"],
+    { type: "button", class: "btn github-pulls-refresh", "aria-disabled": "true" },
+    ["Refresh"],
   );
-  reloadButton.addEventListener("click", () => void controller.reload());
-  filters.append(reloadButton);
+  refreshButton.addEventListener("click", () => void controller.refresh());
+  filters.append(refreshButton);
   const connection = h("div", { class: "github-pulls-connection nav-metadata nav-metadata-note" }, [
     connectionText,
     connectionHelp,
@@ -3762,7 +3763,7 @@ export function mountPullsPanel(container, ctx, mb) {
   container.classList.add("github-pulls");
   // The filters are the tab's toolbar: in the navigation's toolbar slot when the host has one,
   // at the slot's height, so the list starts where the Files tree does. There they are a
-  // toolbar row, which wraps between its controls in a narrow pane, Reload last and at the
+  // toolbar row, which wraps between its controls in a narrow pane, Refresh last and at the
   // line's end (`.nav-toolbar-row` in the shell's styles.css). The count and connection lines
   // go in the band under the slot when the host has one (`.nav-metadata-band`), outside the
   // scroller that holds the list, so their rule runs the pane's width and they stay in view
@@ -4169,12 +4170,12 @@ export function mountPullsPanel(container, ctx, mb) {
   /**
    * A stack member's place in its stack, at the start of its title's flow, after the state
    * icon, then a muted dot before the title: "14/15 · title" (docs/design-system.md, "Stacks";
-   * mb-vkhd), the stack menu's member line's dot (`.github-pull-stack-dot`). It has no stack icon of its own: the stack's row it sits under has
-   * it. The place of its row's own stack comes first, bare, and any other stack's is named by
-   * the Layers glyph before its number. A pull request in no stack has neither place nor
-   * dot, so its title follows the icon. A passive part of the row's one primary link,
-   * named by its accessible name; the Pulls column shows no tooltips (docs/design-system.md,
-   * "Tooltips Add Information").
+   * mb-vkhd), the stack menu's member line's dot (`.github-pull-stack-dot`). It has no stack
+   * icon of its own: the stack's row it sits under has it. The place of its row's own stack
+   * comes first, bare, and any other stack's is named by the Layers glyph before its number.
+   * A pull request in no stack has neither place nor dot, so its title follows the icon. A
+   * passive part of the row's one primary link, named by its accessible name; the Pulls
+   * column shows no tooltips (docs/design-system.md, "Tooltips Add Information").
    *
    * @param {HTMLElement} element
    * @param {number} number
@@ -4585,7 +4586,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (line.phase === "shown") {
         // Its line totals alone, with no file statuses, a total of zero left out, as a pull
         // request's row says its own (mb-lqkb, mb-efum).
-        const said = mb.changeLine(stackLineInput(line.change, null), { omitZeroTotals: true });
+        const said = mb.changeLine(stackLineInput(line.change), { omitZeroTotals: true });
         // "Stack #286 · +1,234 −567": the dot is a count summary's separator, which the name,
         // saying the line in words, needs no word for.
         // Totals a member's list could not count, a binary file it listed, are not exact:
@@ -5131,7 +5132,7 @@ export function mountPullsPanel(container, ctx, mb) {
     spinner.hidden = !working && !retrying;
     // Rows are shown: the age (or the outage being retried) breathes, and nothing spins.
     connectionMessage.classList.toggle("mb-refreshing", refreshing);
-    // Busy is said of the status text, never of the row's Reload or help link.
+    // Busy is said of the status text, never of the row's Refresh or help link.
     if (working || retrying || refreshing) {
       connectionText.setAttribute("aria-busy", "true");
     } else {
@@ -5155,7 +5156,7 @@ export function mountPullsPanel(container, ctx, mb) {
         alignRefreshing(list);
       }
     }
-    reloadButton.setAttribute("aria-disabled", String(connected?.reload !== true));
+    refreshButton.setAttribute("aria-disabled", String(connected?.canRefresh !== true));
     const help = connected?.help ?? "";
     if (connectionHelp.dataset.help !== help) {
       connectionHelp.dataset.help = help;
@@ -5427,12 +5428,12 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     },
   });
-  // The state chips and Reload are situational: through the SDK's shortcut surface each takes
+  // The state chips and Refresh are situational: through the SDK's shortcut surface each takes
   // a number, 1 to 9, from its place among the screen's numbered controls, so the panel picks
   // no digit, and a hidden panel's controls hold none (docs/design-system.md, "Keyboard
   // Shortcuts"). A number runs what a click runs. A chip's number then focuses the chip, as
   // the group's arrow keys do, since the list it replaces may have held focus; a waiting
-  // Reload keeps its place and does nothing, as its click does. Each lasts until disposal
+  // Refresh keeps its place and does nothing, as its click does. Each lasts until disposal
   // aborts `signal`.
   if (typeof mb.shortcuts?.attach === "function") {
     for (const { chip, value } of tallies) {
@@ -5446,9 +5447,9 @@ export function mountPullsPanel(container, ctx, mb) {
         signal,
       });
     }
-    mb.shortcuts.attach(reloadButton, {
-      activate: () => void controller.reload(),
-      id: "github.pulls.reload",
+    mb.shortcuts.attach(refreshButton, {
+      activate: () => void controller.refresh(),
+      id: "github.pulls.refresh",
       numbered: true,
       signal,
     });
@@ -5529,12 +5530,15 @@ export function mountPullsPanel(container, ctx, mb) {
       }
       // A press anywhere on a row's change line, the line that carries its toggle, opens or
       // closes its changed files, as a press on a folder's line does, and opens no page; the
-      // item takes the focus, so Space and the arrows go on from it.
+      // item takes the focus, so Space and the arrows go on from it. A modified press, which on
+      // a link opens a new tab, toggles nothing: the title above it is the item's link.
       const change = changeOf(event.target);
       if (change !== null) {
-        const number = Number(change.dataset.number);
-        focusItem(number);
-        toggleRowFiles(number);
+        if (isPlainClick(event)) {
+          const number = Number(change.dataset.number);
+          focusItem(number);
+          toggleRowFiles(number);
+        }
         return;
       }
       const row = rowOf(event.target);

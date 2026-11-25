@@ -271,7 +271,7 @@ async function main() {
     [
       409,
       { code: "ref_moved" },
-      "This pull request's head has moved; reload to see the newer changes.",
+      "This pull request's head has moved; reload the page to see the newer changes.",
     ],
     [409, { code: "unsupported_for_subject" }, "Could not open this commit. Try again."],
     [415, { code: "invalid_request" }, "Could not open this commit. Try again."],

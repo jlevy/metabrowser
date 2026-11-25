@@ -1015,11 +1015,11 @@ async function paintStory(panel, selection = false) {
     const controlsRow = container.childNodes.find((node) =>
       node.classList?.contains("github-pulls-filters"),
     );
-    const reload = controlsRow.childNodes.at(-1);
-    assert(reload.classList.contains("github-pulls-reload"), "Reload follows the state filters");
+    const refresh = controlsRow.childNodes.at(-1);
+    assert(refresh.classList.contains("github-pulls-refresh"), "Refresh follows the state filters");
     assert(
-      reload.getAttribute("aria-checked") === null && reload.tabIndex !== -1,
-      "Reload remains a normal keyboard action rather than a filter chip",
+      refresh.getAttribute("aria-checked") === null && refresh.tabIndex !== -1,
+      "Refresh remains a normal keyboard action rather than a filter chip",
     );
     const [spinner, message] = connectionText.childNodes;
     assert(
@@ -1047,8 +1047,8 @@ async function paintStory(panel, selection = false) {
       "one shared spinner and delay for the first loading message",
     );
     assert(
-      reload.textContent === "Reload" && reload.getAttribute("aria-disabled") === "true",
-      "the same reload control waits while loading",
+      refresh.textContent === "Refresh" && refresh.getAttribute("aria-disabled") === "true",
+      "the same refresh control waits while loading",
     );
     const live = container.childNodes.filter((node) => node.getAttribute("aria-live") === "polite");
     assert(live.length === 1 && live[0].textContent === message.textContent, "one announcement");
@@ -1081,8 +1081,9 @@ async function paintStory(panel, selection = false) {
     await answer(first);
     assert(spinner.hidden && message.textContent.startsWith("Updated "), "the same row settles");
     assert(
-      controlsRow.childNodes.at(-1) === reload && reload.getAttribute("aria-disabled") === "false",
-      "the stable Reload becomes available when settled",
+      controlsRow.childNodes.at(-1) === refresh &&
+        refresh.getAttribute("aria-disabled") === "false",
+      "the stable Refresh becomes available when settled",
     );
     assert(document.activeElement === filterChips.at(-1), "tallies leave the focused chip mounted");
     const filterTallies = filterChips.map((chip) => chip.textContent);
@@ -1439,7 +1440,7 @@ async function paintStory(panel, selection = false) {
     assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
       "loading status": loading,
-      "ready action": reload.textContent,
+      "ready action": refresh.textContent,
       landing: pane.textContent,
       "filter tallies": filterTallies,
       "only the repository name is bold": total.childNodes.map((node) => ({
@@ -1535,9 +1536,9 @@ async function paintStory(panel, selection = false) {
           message.classList.contains("mb-refreshing-muted") &&
           connectionText.getAttribute("aria-busy") === "true" &&
           connection.getAttribute("aria-busy") === null,
-        "the outage breathes, muted, and its text, not the row's Reload, is busy",
+        "the outage breathes, muted, and its text, not the row's Refresh, is busy",
       );
-      assert(reload.getAttribute("aria-disabled") === "true", "Reload waits for the retry");
+      assert(refresh.getAttribute("aria-disabled") === "true", "Refresh waits for the retry");
     };
     assertRetry();
     await answer({
@@ -1696,7 +1697,7 @@ async function paintStory(panel, selection = false) {
 
 // ── The numbers ────────────────────────────────────────────────
 //
-// The state chips and Reload are situational, so each takes a number from its place on screen
+// The state chips and Refresh are situational, so each takes a number from its place on screen
 // through the SDK's shortcut surface (docs/design-system.md, "Keyboard Shortcuts"). The
 // shortcut stand-in is the production registry and plugin facade, static/keyboard-shortcuts.js
 // and static/plugin-shortcuts.js, loaded whole into a realm of their own as `shell-tools` loads
@@ -1928,8 +1929,8 @@ async function numberStory(panel) {
     );
     const chips = filters.childNodes.filter((node) => node.dataset.chipValue !== undefined);
     const chip = (value) => chips.find((node) => node.dataset.chipValue === value);
-    const reload = filters.childNodes.at(-1);
-    assert(reload.classList.contains("github-pulls-reload"), "Reload ends the filter row");
+    const refresh = filters.childNodes.at(-1);
+    assert(refresh.classList.contains("github-pulls-refresh"), "Refresh ends the filter row");
     const numbers = () => registry.liveNumbers().map((node, at) => `${at + 1} ${name(node)}`);
     /** What one act asked of the server and the list, what else ran, and where it moved focus. */
     async function acted(what, act) {
@@ -1973,14 +1974,14 @@ async function numberStory(panel) {
         return event.defaultPrevented;
       });
     // A click on a segment, as static/filter-controls.js reports one: nothing for the chip
-    // already chosen, else the group's change. A click on Reload is its own listener.
+    // already chosen, else the group's change. A click on Refresh is its own listener.
     const clickChip = (value) =>
       acted(`click ${name(chip(value))}`, () => {
         if (chip(value).getAttribute("aria-checked") !== "true") {
           chipChange("github-pulls-filter", value, "one");
         }
       });
-    const clickReload = () => acted("click Reload", () => reload.listeners.get("click")());
+    const clickRefresh = () => acted("click Refresh", () => refresh.listeners.get("click")());
     /** Answer the oldest request waiting on *route* with a recorded answer. */
     async function answer(route, recording) {
       const at = answers.findIndex((waiting) => waiting.route.split("?")[0] === route);
@@ -1998,24 +1999,24 @@ async function numberStory(panel) {
     // The Pulls tab shows, the Files tab's filter bar is hidden, and the list is loading.
     story["the Pulls tab, loading"] = numbers();
     assert(
-      numbers().join() === "1 Open,2 Closed,3 All,4 Reload,5 Browse code",
-      "the chips and Reload take 1 to 4 in reading order, before the page's link",
+      numbers().join() === "1 Open,2 Closed,3 All,4 Refresh,5 Browse code",
+      "the chips and Refresh take 1 to 4 in reading order, before the page's link",
     );
     assert(
-      reload.getAttribute("aria-disabled") === "true",
-      "positive control: Reload waits while the list loads",
+      refresh.getAttribute("aria-disabled") === "true",
+      "positive control: Refresh waits while the list loads",
     );
-    story["Reload waits"] = [await press("4"), await clickReload()];
+    story["Refresh waits"] = [await press("4"), await clickRefresh()];
     await answer("/api/plugin/github/pulls", recorded.more_done);
-    assert(reload.getAttribute("aria-disabled") === "false", "the settled Reload is available");
+    assert(refresh.getAttribute("aria-disabled") === "false", "the settled Refresh is available");
     story["the Pulls tab, settled"] = numbers();
     const byKey = await press("4");
     await answer("/api/plugin/github/pulls-refresh", recorded.not_due);
-    const byClick = await clickReload();
-    story.Reload = [byKey, byClick];
+    const byClick = await clickRefresh();
+    story.Refresh = [byKey, byClick];
     assert(
       byKey.asked.length === 1 && JSON.stringify(byKey.asked) === JSON.stringify(byClick.asked),
-      "Reload's number asks for what its click asks for",
+      "Refresh's number asks for what its click asks for",
     );
     // Each chip's number, then each chip's click, from the same list: the same asks in the
     // same order. Then the chip already chosen: its number, like its click, asks for nothing.
@@ -2058,7 +2059,7 @@ async function numberStory(panel) {
     );
     // Holding Shift shows each live number on its control.
     registry.setRevealed(true);
-    story["the keycaps while Shift is held"] = [...chips, reload, recency, types, browseCode]
+    story["the keycaps while Shift is held"] = [...chips, refresh, recency, types, browseCode]
       .map((node) => {
         const badge = node.childNodes.find((child) => child.classList?.contains("kbd-badge"));
         return `${name(node)} ${badge?.textContent ?? "none"}`;
@@ -2082,7 +2083,7 @@ async function numberStory(panel) {
     pullsTab.append(filters);
     assert(
       numbers().join() === "1 Browse code",
-      "a disposed panel's chips and Reload hold no number",
+      "a disposed panel's chips and Refresh hold no number",
     );
     filters.remove();
     story["after disposal"] = [await press("1"), await press("2")];

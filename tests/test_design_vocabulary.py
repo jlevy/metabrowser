@@ -2536,7 +2536,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert "controls.groupHtml(" in panel
     assert 'class: "github-pulls-connection nav-metadata nav-metadata-note"' in panel
     assert 'class: "github-pulls-status nav-metadata"' in panel
-    assert 'class: "btn github-pulls-reload"' in panel
+    assert 'class: "btn github-pulls-refresh"' in panel
     assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel
     # No control or notice counts the rows held. Below them, pages still on their way show
@@ -2594,14 +2594,15 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert (label["color"], label["font-weight"]) == ("var(--text)", "var(--weight-bold)")
     # A pull request's number is bold wherever it names the pull request, the weight of a
     # stack's position, through one token (mb-vrvs): one rule in the GitHub plugin for the
-    # title's, a Pulls row's, and a stack member's, and the shell's Quick Search result
-    # and ref selector; no other rule sets a number's weight. In headless Chrome each
-    # computes to 700 (github-pulls-stacks-chrome.mjs, github-pull-header-chrome.mjs).
+    # title's and a Pulls row's, and the shell's Quick Search result and ref selector; no
+    # other rule sets a number's weight. A stack menu's member shows no number (mb-as06).
+    # In headless Chrome each computes to 700 (github-pulls-stacks-chrome.mjs,
+    # github-pull-header-chrome.mjs).
     assert "### Pull Request Numbers" in doc
     shell_css = (STATIC / "styles.css").read_text(encoding="utf-8")
     assert shell_css.count("--pull-number-weight:") == 1
     assert "--pull-number-weight: var(--weight-bold);" in shell_css
-    numbers = (".github-pull-number", ".github-pulls-number", ".github-pull-stack-member-number")
+    numbers = (".github-pull-number", ".github-pulls-number")
     weighted = [
         (selector, declarations["font-weight"])
         for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
@@ -2621,7 +2622,6 @@ _PULL_NUMBERS = frozenset(
     {
         ".github-pull-number",
         ".github-pulls-number",
-        ".github-pull-stack-member-number",
         ".github-pull-stack-position",
         ".github-pull-stack-member-position",
         ".search-palette-pull-number",
@@ -4424,6 +4424,27 @@ def test_a_link_no_rule_colors_is_the_link_color() -> None:
                 assert not (rule == selector and "color" in declarations), (
                     f"{selector} recolors a link the base already colors"
                 )
+
+
+def test_a_control_no_rule_rings_takes_the_one_ring() -> None:
+    """A button or summary that no rule rings draws the one ring, not the user agent's.
+
+    The base is zero-specificity, `:focus-visible` inside the `:where` too, so every family's
+    own `:focus-visible` rule still wins; it states the ring from the four tokens and nothing
+    else; and it rings the elements a control is built from, `button` and `summary`, and not
+    links, whose ring is their context's (docs/design-system.md, "Focus Ring"). Because any
+    rule wins, KPress's ring on a `summary` in `article.kpress` does too, so the rendered
+    diff's fold states the ring itself; tests/test_diff_markdown_fold_chrome.py reads it.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    base = ":where(button:focus-visible, summary:focus-visible)"
+    assert dict(_declarations(_rule(styles, base))) == {
+        "outline": "var(--focus-ring-width) solid var(--focus-ring-color)",
+        "outline-offset": "var(--focus-ring-offset)",
+    }
+    # One base, stated once: a second would be a fork of it.
+    assert styles.count(base) == 1
 
 
 _STATUS_TEXT_TOKENS = (

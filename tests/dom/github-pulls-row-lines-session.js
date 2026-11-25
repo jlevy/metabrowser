@@ -537,8 +537,9 @@ async function rowStory(lines, totals = null) {
       );
     const textOf = (node) =>
       node.data !== undefined ? node.data : node.childNodes.map(textOf).join("");
-    /** Each row's third line as drawn: its parts, the number's line's parts and text, the
-     * lines' text, and its item's name and state, and #106's lines part for part. */
+    /** Each row's third line as drawn: its parts, the number's line's parts and the text it
+     * shows, the lines' text, and its item's name and state, and #106's lines part for part;
+     * and what the item says for its number's line, in its link's hidden text (`spoken`). */
     const thirdLines = () =>
       Object.fromEntries(
         SHOWN.map((number) => {
@@ -552,7 +553,8 @@ async function rowStory(lines, totals = null) {
                 ...meta.childNodes.map((node) => node.className),
                 ...childByClass(meta, "github-pulls-line").childNodes.map((node) => node.className),
               ],
-              said: textOf(meta),
+              shown: textOf(meta),
+              spoken: textOf(childByClass(rowOf(number), "sr-only")),
               text: textOf(lineOf(number)),
               ...(number === 106 ? { line: shape(lineOf(number).childNodes) } : {}),
               words: textOf(wordsOf(number)),
@@ -710,6 +712,11 @@ async function rowStory(lines, totals = null) {
       ["github-pull-state-icon", "github-pulls-place", "github-pulls-title"],
     );
     assert.equal(textOf(childByClass(rowOf(106), "sr-only")), "#106 · contributor · 1m");
+    // Each item says its number's line in words, whatever its third line shows: the number,
+    // the author, and the age, read with the title as the item's name.
+    for (const number of SHOWN) {
+      assert.equal(arrived[`#${number}`].spoken, `#${number} · contributor · 1m`);
+    }
     assert.equal(arrived["#106"].words, `Changed files: ${said106.label}`);
     assert.equal(
       rowOf(106).getAttribute("aria-describedby"),
@@ -768,6 +775,48 @@ async function rowStory(lines, totals = null) {
       105,
       "author",
       findByClass(changeOf(105), "github-pulls-by"),
+    );
+    // A modified press, which on a link opens a new tab, toggles nothing on the line that
+    // carries the toggle and opens no page; on the title, the item's link, it is the
+    // browser's, which opens the pull request in a new tab (`defaultPrevented` false).
+    const modifiedPress = (what, number, part, target, modifier) =>
+      keyStep(
+        what,
+        () => {
+          const event = Object.assign(new globalThis.MouseEvent(), {
+            target,
+            button: 0,
+            [modifier]: true,
+            defaultPrevented: false,
+            preventDefault() {
+              this.defaultPrevented = true;
+            },
+          });
+          list.listeners.get("click")(event);
+          return { defaultPrevented: event.defaultPrevented };
+        },
+        { item: number, on: part, modifier },
+      );
+    await modifiedPress(
+      "a Cmd-press on #105's number toggles nothing and opens no page",
+      105,
+      "number",
+      findByClass(changeOf(105), "github-pulls-number"),
+      "metaKey",
+    );
+    await modifiedPress(
+      "a Ctrl-press on #105's chevron toggles nothing either",
+      105,
+      "chevron",
+      childByClass(changeOf(105), "github-pulls-toggle"),
+      "ctrlKey",
+    );
+    await modifiedPress(
+      "a Cmd-press on #106's title is the browser's, a new tab: nothing opens here",
+      106,
+      "title",
+      findByClass(rowOf(106), "github-pulls-title"),
+      "metaKey",
     );
     await press(
       "a press on #106's state icon opens it again, and its files stay closed",
@@ -955,7 +1004,14 @@ async function rowStory(lines, totals = null) {
     if (before !== null) {
       const changed = Object.keys(now).filter((number) => now[number] !== before[number]);
       if (step.pressed !== undefined) {
-        const onToggle = ["chevron", "change line", "number", "author"].includes(step.pressed.on);
+        // A modified press toggles nothing, wherever it lands, and opens no page.
+        const onToggle =
+          step.pressed.modifier === undefined &&
+          ["chevron", "change line", "number", "author"].includes(step.pressed.on);
+        if (step.pressed.modifier !== undefined) {
+          assert.equal(step.opened, undefined, `${step.step}: a modified press opens no page`);
+          assert.deepEqual(step.handled, { defaultPrevented: false }, step.step);
+        }
         assert.deepEqual(
           changed,
           onToggle ? [String(step.pressed.item)] : [],
