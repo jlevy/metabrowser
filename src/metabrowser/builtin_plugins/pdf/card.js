@@ -135,10 +135,10 @@ function whenNear(target, ask) {
  * Mount a PDF card in *host*: its first page once the preview is ready, the file's name,
  * and its page count, or, when there is no preview, the reason.
  *
- * *links* are the file's actions (an Open or Download link), shown below the name; a card
- * for bytes the page does not serve, such as a side of a diff's change, has none, and the
- * file is reached through its file bar's View file. The image is not a link: every action
- * is a plain link with its own label.
+ * *links* are the file's actions, shown below the name: in a document, View, to the PDF's
+ * page in Metabrowser; in a diff, its file bar's View file controls, since the page does
+ * not serve a change's bytes and the PDF's page has Open and Download. The image is not
+ * a link: every action is a control with its own label.
  *
  * @param {HTMLElement} host
  * @param {{path?: string, oid?: string, name: string, links?: HTMLElement[]}} options
