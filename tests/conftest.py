@@ -156,6 +156,13 @@ def fresh_markdown_child() -> Generator[None]:
     of #527, A13), and a worker a test left running would carry its child into the next.
     A test that runs the serve path in-process marks the process as serving pages, which
     starts the child ahead of documents; the next test begins as a one-shot command.
+
+    A test whose event loop closed while the worker still had a child, or a start, on it
+    fails: it skipped the close the server's lifespan always makes
+    (``ProjectionWorker.aclose``). ``asyncio.run`` then cancels a start still spawning
+    together with the task connecting its pipes, and on CPython 3.12 and 3.13 that start
+    never finishes, so the run never returns (mb-4g7f); a child that did start outlives
+    its loop, which logs that the loop handling it is closed.
     """
 
     from metabrowser.diff import markdown_projection_worker as worker_module
@@ -167,10 +174,24 @@ def fresh_markdown_child() -> Generator[None]:
     yield
     serving.pages = False
     if shared.cache_info().currsize:
+        worker = shared()
+        loop = worker._loop  # pyright: ignore[reportPrivateUsage]
+        stranded = (
+            loop is not None
+            and loop.is_closed()
+            and (worker._process is not None or worker._starting is not None)  # pyright: ignore[reportPrivateUsage]
+        )
         # Its event loop may be closed by now; stopping kills the child by its process.
         with contextlib.suppress(RuntimeError):
-            shared().stop()
+            worker.stop()
         shared.cache_clear()
+        if stranded:
+            pytest.fail(
+                "The event loop that used the shared Markdown child worker closed with its"
+                " child, or a start, still on it: end that loop with"
+                " `await shared_worker().aclose()`, as the server's lifespan does",
+                pytrace=False,
+            )
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────

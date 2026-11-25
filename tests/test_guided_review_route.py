@@ -15,7 +15,7 @@ import html
 import json
 import re
 import subprocess
-from collections.abc import Iterator, Sequence
+from collections.abc import Coroutine, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
@@ -106,6 +106,25 @@ def _real_child(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pull_text_render, "shared_worker", worker_module.shared_worker)
 
 
+def _closing[T](work: Coroutine[Any, Any, T]) -> T:
+    """*work* on an event loop that ends as the server's lifespan ends one, with the real
+    Markdown child's work on it closed (``ProjectionWorker.aclose``).
+
+    A note refused at its deadline starts the child's replacement as the route answers.
+    Without the close, ``asyncio.run`` cancels that start while it spawns, which on CPython
+    3.12 and 3.13 never finishes (mb-4g7f), and ``fresh_markdown_child`` fails a test that
+    leaves the child to its loop's end.
+    """
+
+    async def closing() -> T:
+        try:
+            return await work
+        finally:
+            await worker_module.shared_worker().aclose()
+
+    return asyncio.run(closing())
+
+
 def _cache(stand: _Stand, body: str) -> PullRecord:
     """Pull request 7 cached with *body* as its description."""
     answers = scenario(stand.origin)
@@ -134,7 +153,7 @@ def _ask(
     stand: _Stand, step: int = 1, number: int = 7, repository: ListedRepository | None = None
 ) -> dict[str, Any]:
     host = PullHost(ServedPulls(stand.published), lambda _n: False, lambda _n: "started")
-    return asyncio.run(guided_review.guided_review(host, number, step, repository))
+    return _closing(guided_review.guided_review(host, number, step, repository))
 
 
 def _rows(answer: dict[str, Any], at: int = 0) -> list[str]:
@@ -537,7 +556,7 @@ def test_the_published_guides_notes_render_inert(
         # One event loop, so one child renders every note.
         return [await guided_review.guided_review(host, 7, k) for k in range(1, len(steps) + 1)]
 
-    for answer, step in zip(asyncio.run(every_step()), steps, strict=True):
+    for answer, step in zip(_closing(every_step()), steps, strict=True):
         paragraph = html.escape(step.note, quote=False)
         assert answer["note_html"] == f"\n<div><div><p>{paragraph}</p></div></div>"
 
