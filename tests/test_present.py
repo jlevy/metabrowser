@@ -81,6 +81,7 @@ from metabrowser.home import (
     write_private_file_atomic,
 )
 from metabrowser.open_in import OPEN_IN_ENV, OpenInChoice, OpenInError, OpenInPreference
+from metabrowser.recent_targets import RECORD_ENV
 from tests.test_nav_metadata_chrome import _free_port
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -960,6 +961,56 @@ def test_a_server_that_says_where_it_serves_runs_detached(
         assert log.stat().st_mode & 0o777 == 0o600
         assert log.read_text().startswith(f"Serving {value} at ")
         assert f"stop it with kill {delivery.pid}" in delivery.message
+    finally:
+        _stop(delivery.pid)
+
+
+class _Stdin:
+    """A standard input that is, or is not, a terminal."""
+
+    def __init__(self, terminal: bool) -> None:
+        self.terminal = terminal
+
+    def isatty(self) -> bool:
+        return self.terminal
+
+
+@posix_only
+@pytest.mark.parametrize(
+    ("setting", "terminal", "told"),
+    [
+        (None, True, "1"),  # a person's --present at a terminal
+        (None, False, "0"),  # an agent's or a tool's
+        ("1", False, "1"),
+        ("0", True, "0"),
+    ],
+)
+def test_the_server_for_a_browser_records_as_the_present_itself_would(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    setting: str | None,
+    terminal: bool,
+    told: str,
+) -> None:
+    """Its stdin is never a terminal, so it is told whether the open is a person's
+    (mb-1q02): the rule a serve follows (``recent_targets.serve_records``)."""
+
+    seen = tmp_path / "told"
+    _server(
+        monkeypatch,
+        tmp_path,
+        f'printf \'%s\\n\' "${{{RECORD_ENV}-unset}}" > "{seen}"\n{_SERVES}',
+    )
+    if setting is None:
+        monkeypatch.delenv(RECORD_ENV, raising=False)
+    else:
+        monkeypatch.setenv(RECORD_ENV, setting)
+    monkeypatch.setattr(sys, "stdin", _Stdin(terminal))
+
+    delivery = serve_detached(*_notes(tmp_path), "")
+    try:
+        assert delivery.code == "server_started"
+        assert seen.read_text() == f"{told}\n"
     finally:
         _stop(delivery.pid)
 

@@ -180,16 +180,11 @@ final class FolderSession: ManagedServer {
 
     /// A folder the user opened: starts its server from the runtime accepted when it
     /// spawns, unless one is starting, running, or stopping, and returns once that start
-    /// is ready or has failed. That server records the folder as a recent target, which no
-    /// other start does (`FolderServer.start`): not a restored folder's, a reload's, a
-    /// retry's, or a restart's. Without an accepted runtime the windows say so, and the
-    /// start waits for `resume()`.
-    ///
-    /// With `recording` false the server records nothing, as for a restored folder: Help >
-    /// Open Event Log opens the log's directory, which is not a folder the user chose to
-    /// open, so it stays out of Open Recent.
-    func startServer(recording: Bool = true) async {
-        settle(await server.start(recordsOpen: recording))
+    /// is ready or has failed. Without an accepted runtime the windows say so, and the
+    /// start waits for `resume()`. The app records the open as it shows it
+    /// (`RecentTargetsMenu.noteOpened`), and the server records nothing.
+    func startServer() async {
+        settle(await server.start())
     }
 
     /// Command-R in a window whose server has not started, such as a restored folder's

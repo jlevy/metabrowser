@@ -9,10 +9,10 @@ import ShellCore
 /// entries from one answer, up to `RecentTargets.menuLimit` (`RecentTargets.rows`).
 ///
 /// A menu shows the last answer at once. The app asks again when it becomes active, when
-/// File > Open Recent opens, when the Dock menu is asked for, and once the server it
-/// started for an open has started; an answer that arrives while Open Recent is open
-/// redraws it, and the Dock, which takes a copy of its menu, shows a newer answer the
-/// next time it is opened.
+/// File > Open Recent opens, when the Dock menu is asked for, and after each change it
+/// makes, an open's among them; an answer that arrives while Open Recent is open redraws
+/// it, and the Dock, which takes a copy of its menu, shows a newer answer the next time it
+/// is opened.
 ///
 /// The app no longer registers folders with `NSDocumentController`: macOS would add its
 /// own recent-documents list to the Dock menu beside this one. What an earlier build
@@ -38,6 +38,8 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
     /// Whether to ask once more when the answer under way arrives.
     private var asksAgain = false
     private var askedAt: ContinuousClock.Instant?
+    /// The changes to the list, an open's, a forget, or a clear, made one at a time.
+    private var changes = RecentTargets.Changes()
     /// The Open Recent menu to redraw when an answer arrives.
     private weak var menu: NSMenu?
 
@@ -50,24 +52,21 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         NSDocumentController.shared.clearRecentDocuments(nil)
     }
 
-    /// `root` was asked for, by the user: a folder, or a repository by its address. Its
-    /// server records it as it starts, so the app tells `metab` itself only for one that
-    /// `isOpen` already, which starts none.
-    func noteOpened(_ root: URL, isOpen: Bool) {
-        if isOpen { change(RecentTargets.addArguments(RecentTargets.target(root))) }
+    /// The user opened `root`, a folder or a repository by its address, which moves to the
+    /// front of the list (`metab ROOT --recent-add`). Every open comes here once, as it is
+    /// shown (`AppDelegate.showOpened`), and nothing else records one: no server the app
+    /// starts does (`RecentTargets.serverRecords`). The Dock menu, which nothing else
+    /// refreshes until the app is activated or a menu opens, lists it next.
+    func noteOpened(_ root: URL) {
+        change(RecentTargets.addArguments(RecentTargets.target(root)))
     }
 
     /// Asks `metab` for the list, unless an answer is on its way or is newer than
-    /// `RecentTargets.refreshInterval`.
+    /// `RecentTargets.refreshInterval`. A change still waiting for a runtime runs first,
+    /// and the list is asked for once it is made.
     func refresh() {
+        guard changes.isIdle else { return runChanges() }
         if let askedAt, askedAt.duration(to: .now) < RecentTargets.refreshInterval { return }
-        ask()
-    }
-
-    /// Asks `metab` for the list now, whatever the last answer's age: an open the app
-    /// started has a server that recorded it, so the Dock menu, which nothing else
-    /// refreshes until the app is activated or a menu opens, lists it next.
-    func refreshAfterOpen() {
         ask()
     }
 
@@ -113,9 +112,15 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         if let menu, shown.0 != items || shown.1 != problem { draw(.openRecent, into: menu) }
     }
 
-    /// Runs a command that changes the list, then asks for the list again.
+    /// Runs a command that changes the list after those asked for before it, then asks for
+    /// the list again. With no `metab` to run, it waits for the next `refresh()`.
     private func change(_ arguments: [String]) {
-        guard let setup = setup() else { return }
+        changes.ask(arguments)
+        runChanges()
+    }
+
+    private func runChanges() {
+        guard changes.hasNext, let setup = setup(), let arguments = changes.next() else { return }
         let spec = RecentTargets.spec(arguments, with: setup, inherited: ProcessInfo.processInfo.environment)
         Task { [weak self] in
             let result = await CommandRunner.run(spec, timeout: RecentTargets.timeout)
@@ -124,8 +129,13 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
                 AppLog.app.error(
                     "metab \(arguments.last ?? "", privacy: .public) failed: \(said, privacy: .public)")
             }
-            self?.ask()
+            self?.changed()
         }
+    }
+
+    private func changed() {
+        changes.finished()
+        if changes.isIdle { ask() } else { runChanges() }
     }
 
     // MARK: - The two menus
