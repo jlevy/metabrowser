@@ -56,6 +56,7 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>diff file 
 <link rel="stylesheet" href="/static/styles.css">
 <link rel="stylesheet" href="/diff/styles.css">
 <script src="/static/icons.js"></script>
+<script src="/static/formatters.js"></script>
 <script>window.metabrowser = { icons: window.MetabrowserIcons };</script>
 <script src="/static/filter-controls.js"></script>
 </head><body><div id="preview-pane" class="preview-pane"><div id="host" class="metabrowser-diff-host"></div></div></body></html>`;
@@ -105,8 +106,8 @@ const BARS = [
     path: LONG,
     chooser: false,
     view: "View file",
-    add: "+12,345",
-    del: "12,345",
+    additions: 12345,
+    deletions: 12345,
   },
 ];
 
@@ -114,6 +115,7 @@ const BARS = [
 const MOUNT = `(bars) => {
   const icons = window.MetabrowserIcons;
   const controls = window.metabrowser.filterControls;
+  const formatters = window.MetabrowserFormatters;
   const el = (tag, className, children = []) => {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -133,10 +135,12 @@ const MOUNT = `(bars) => {
     const copy = el("button", "icon-btn icon-btn-reveal diff-file-copy");
     copy.type = "button";
     copy.innerHTML = icons.copy;
-    const stats = el("span", "diff-file-stats", [
-      el("span", "diff-stat-add", [spec.add ?? "+1"]),
-      el("span", "diff-stat-del", ["\\u2212" + (spec.del ?? "0")]),
-    ]);
+    // Its lines through the shell's brief change line, as renderFileBar paints them.
+    const line = formatters.changeLine(
+      { statuses: [], additions: spec.additions ?? 1, deletions: spec.deletions ?? 0 },
+      formatters.formatInteger,
+    );
+    const stats = el("span", "diff-file-stats", formatters.changeLineNodes(document, line));
     const facts = el("span", "diff-file-facts", [stats]);
     const lead = el("div", "diff-file-lead", [toggle, copy, facts]);
     const end = el("div", "diff-file-end");

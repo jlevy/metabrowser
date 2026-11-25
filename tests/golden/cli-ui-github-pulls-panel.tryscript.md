@@ -1010,18 +1010,19 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "the row whose page is shown": "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-describedby=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
     "its parts": [
       "span .github-pulls-heading",
+      "span .github-pulls-byline aria-hidden=\"true\"",
       "span .sr-only"
     ],
     "its text leads with its title": true,
     "a PR preview leaves its files expanded": false,
     "Right on its row opens its cached changed files": "/api/plugin/github/pull-files?number=105&offset=0",
-    "they hang under its three lines as a group": [
+    "they hang under its item as a group": [
       "div .github-pulls-entry",
       "div .tree-children.github-pull-files role=\"group\" id=\"github-pull-files-105\" aria-label=\"Changed files of #105: 2 files\""
     ],
-    "its row owns them, and its change line, hidden, only turns its chevron": [
+    "its row owns them, and its toggle, hidden, only turns its chevron": [
       "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-describedby=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
-      "div .github-pulls-change.disclosure-toggle.expanded aria-hidden=\"true\""
+      "span .github-pulls-change.disclosure-toggle.expanded aria-hidden=\"true\""
     ],
     "a title written as markup is one text node": [
       {
@@ -1301,7 +1302,7 @@ row is marked busy, and `beat` is the one start time the breaths are aligned to.
 
 ```console
 $ node tests/dom/github-pulls-viewport-behavior.js
-{"case":"viewport-height-increase","before":43,"after":90,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000,"oneVisibleFlash":true,"retainedReadingPlace":true,"titleBreathing":{"admitted":{"asked":[438,437,436,435],"breathing":[438,437,436,435],"busyRows":0},"settled":[],"moved":{"asked":[372,371,370],"breathing":[372,371,370]},"offline":[],"beat":[100,100,50,100]}}
+{"case":"viewport-height-increase","before":43,"after":78,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000,"oneVisibleFlash":true,"retainedReadingPlace":true,"titleBreathing":{"admitted":{"asked":[454,453,452,451],"breathing":[454,453,452,451],"busyRows":0},"settled":[],"moved":{"asked":[404,403,402],"breathing":[404,403,402]},"offline":[],"beat":[100,100,50,100]}}
 ? 0
 ```
 

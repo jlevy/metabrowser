@@ -354,10 +354,17 @@
         panelId === "files" ? (keepSaved ? "tab" : route === "tab" ? "open" : route) : null;
       activateNavPanel(panelId);
       if (panelId === "pulls") {
-        window.MetabrowserPullsNav?.routeChanged({ preserveScroll: keepSaved });
         const scroller = document.getElementById("tree-content");
-        if (scroller && keepSaved) {
-          // Marking the selected PR can reveal its row over the panel's saved scroll.
+        const shown = scroller?.scrollTop;
+        window.MetabrowserPullsNav?.routeChanged({ preserveScroll: keepSaved });
+        if (scroller && keepSaved && scroller.scrollTop !== shown) {
+          // Marking the selected PR can reveal its row over the panel's saved scroll, so a
+          // scroll the marking moved is put back. One it did not move is left alone: the
+          // saved scroll is already back (`activateNavPanel`), and the panel, shown, has kept
+          // the row a reveal placed in view from it (pulls-panel.js, `keptPlace`). Set again
+          // over that, it moved the list from under the row wherever the rows stood at other
+          // heights than when it was saved, as stacks read while the reader was away regroup
+          // them, and the panel, taking it for the reader's scroll, let the row go out of view.
           scroller.scrollTop = /** @type {number} */ (scroll);
         }
       }

@@ -1,4 +1,4 @@
-- **Pulls titles run to two lines.** A Pulls row’s title wraps onto a second line, which
-  starts under the state icon, and a longer title is cut short with an ellipsis at the
-  second line’s end. Every row is the same height whatever its title’s length
+- **Pulls titles are never cut short.** A Pulls row’s title wraps onto as many lines as
+  it needs, each starting under the title rather than under the state icon, and a row is
+  as tall as its title and the parts after it
   ([The Pulls Tab](docs/design-system.md#the-pulls-tab)).

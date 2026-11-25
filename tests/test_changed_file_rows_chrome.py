@@ -20,10 +20,11 @@ Before the shared rows the Diff summary's content started 2 px left of the Pulls
 ``tests/dom/diff-summary-chrome.mjs`` opens the Diff summary in the running app, on a served
 patch five folders deep and on one of 600 files, and this holds (mb-hi4l):
 
-- the tree's first level starts one indentation step, ``--tree-indent``, in from the header,
-  its chevron from the header's chevron and its name from the header's words, and each level
-  one step more, at every depth to five, in a patch's toolbar (the commit page's and the pull
-  request header's are held by ``tests/test_git_commit_summary_chrome.py`` and
+- the header's chevron comes after its words, as on every toggle that expands a diff summary
+  (mb-f0pz), and the tree's first level starts one indentation step, ``--tree-indent``, in
+  from the header, its chevron from the header's words, and each level one step more, at
+  every depth to five, in a patch's toolbar (the commit page's and the pull request header's
+  are held by ``tests/test_git_commit_summary_chrome.py`` and
   ``tests/test_github_pull_header_chrome.py``);
 - opened, the tree has no scroll bar and no scroll of its own: it is as tall as its rows, in
   the page's flow;
@@ -32,7 +33,8 @@ patch five folders deep and on one of 600 files, and this holds (mb-hi4l):
 - the header starts collapsed with no tree, and the arrows move the focus ring along the rows.
 
 Before, the first level started 4 px in from the header, with nested levels 16 px apart, and
-the tree scrolled in a box at most 60vh tall.
+the tree scrolled in a box at most 60vh tall. While the header led with its chevron, a row's
+chevron and name started one step in from the header's chevron and words.
 
 The served folder is a Git repository too, and on the patch and on a commit's page, where
 the diff's toolbar ends with its choosers' group after the Diff summary or the File type
@@ -417,15 +419,13 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
     step = opened["step"]
     header = opened["header"]
     rows = opened["rows"]
-    # Every depth from one to five, each one step in from the one above it, and the first one
-    # step in from the header: its chevron from the header's chevron, its name from its words.
+    # The header's chevron comes after its words (mb-f0pz). Every depth from one to five,
+    # each one step in from the one above it, and the first one step in from the header: its
+    # chevron from the header's words.
+    assert header["chevron"] >= header["wordsEnd"] - TOLERANCE, header
     assert {row["level"] for row in rows} >= {1, 2, 3, 4, 5}, rows
     for row in rows:
-        assert abs(row["lead"] - header["chevron"] - step * row["level"]) <= TOLERANCE, (
-            row,
-            header,
-        )
-        assert abs(row["name"] - header["words"] - step * row["level"]) <= TOLERANCE, (
+        assert abs(row["lead"] - header["words"] - step * row["level"]) <= TOLERANCE, (
             row,
             header,
         )
