@@ -2,13 +2,25 @@
 // conventional-commit prefix, and the markup every title surface draws from it.
 //
 // One function splits a title, `titlePrefix` in formatters.js: a type of lowercase letters,
-// an optional parenthetical scope, an optional "!", and the colon, 16 characters at most,
-// with whitespace and something else after it. `titleNodes` and `titleHtml` beside it draw
-// the prefix in a `span.title-prefix`, which the shell's stylesheet sets at regular weight,
-// and the plugin SDK's `mb.titleNodes` hands its title to the same function. The Pulls rows,
-// the pull request page's title, its stack menu, its Conversation's commits, Quick Search's
-// pull requests, the Commits tab's rows, a commit's page, and its tooltip all draw a title
-// through one of them (docs/design-system.md, "Titles").
+// an optional parenthetical scope, an optional "!", and the colon, 32 characters at most
+// (TITLE_PREFIX_MAX_CHARS), with whitespace and something else after it. `titleNodes` and
+// `titleHtml` beside it draw the prefix in a `span.title-prefix`, which the shell's
+// stylesheet sets at regular weight, and the plugin SDK's `mb.titleNodes` hands its title
+// to the same function. The Pulls rows, the pull request page's title, its stack menu, its
+// Conversation's commits, Quick Search's pull requests, the Commits tab's rows, a commit's
+// page, and its tooltip all draw a title through one of them (docs/design-system.md,
+// "Titles").
+//
+// Why 32 (mb-htmy). The measurement lives here, beside the cases that pin it, because
+// formatters.js is a startup script and its comments count against the startup-script
+// transfer budget (devtools/check_startup_scripts.py). The cap keeps a lowercase word and a
+// parenthetical sentence before a colon, "note(this is how … keep a row):", the title's own
+// text, since a scope may hold spaces. The first cap, 16, cut real scopes such as
+// "feat(view-on-github):" (21). Measured 2026-11-24 with TITLE_PREFIX over deduplicated
+// `git log --all --format=%s` subjects: all 3,788 prefixes in this repository are 24 or
+// fewer; of 52,066 in 188 other repositories, 99.94% are 32 or fewer, and most of the 29
+// longer ones scope a list of issue IDs or a phrase such as "review A of #12, finding 1",
+// which reads as a sentence.
 //
 // This runs the real formatters.js and plugin SDK and records, for each case, what the split
 // answers. It fails if a part ever drops a character of the title, if the SDK's nodes differ
@@ -58,16 +70,30 @@ const CASES = [
   ["a type alone", "fix: keep the scroller rule and the Tab stop of a lost landing"],
   ["a breaking change", "refactor(api)!: drop the version 1 routes"],
   ["a breaking change, no scope", "feat!: separate cache and config roots"],
-  ["exactly 16 characters", "refactor(stack): name the stack's Control chords"],
+  ["16 characters, the first cap", "refactor(stack): name the stack's Control chords"],
   ["17 characters", "refactor(stacks): name the stack's Control chords"],
   ["17 characters, from this repository", "revert(markdown): restore the table of contents"],
+  // The shape of the owner's report (mb-htmy): 21 characters, past the first cap.
+  [
+    "a hyphenated scope, 21 characters",
+    "feat(view-on-github): open the pull request on github.com",
+  ],
+  ["24 characters, from this repository", "fix(provider-resources): bound the resource reads"],
   ["a scope with a space", "fix(ui, git): a landing waits for the HEAD read"],
   [
-    "a scope with a space, past 16",
+    "a scope with a space, 20 characters",
     "fix(commits, pulls): a landing waits for the HEAD read; stack keys wait",
   ],
-  // 16 code points and 21 UTF-16 units: a character is a code point.
-  ["16 characters in code points", "refactor(🚀🚀🚀🚀🚀): launch the stack"],
+  ["exactly 32 characters", "fix(source-freshness, checkout): read the HEAD once"],
+  ["33 characters", "test(source-freshness, checkout): read the HEAD once"],
+  // 32 code points and 53 UTF-16 units: a character is a code point.
+  ["32 characters in code points", `refactor(${"🚀".repeat(21)}): launch the stack`],
+  // A lowercase word and a parenthetical sentence before a colon look like a prefix; the
+  // cap keeps them the title's own text.
+  [
+    "a sentence that looks like a prefix",
+    "note(this is how the cache and the scroller keep a row): read on",
+  ],
   ["an empty scope", "fix(): keep the scroller rule"],
   ["no space after the colon", "fix:keep the scroller rule"],
   ["no space after the colon, with a scope", "feat(ledger):chart strategies"],

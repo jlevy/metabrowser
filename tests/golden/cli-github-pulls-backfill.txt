@@ -167,7 +167,7 @@ status: 200
 {"state": "closed", "target": 400, "background": true}
 --- gh ---
 gh api repos/octo/demo/issues?state=all&sort=updated&direction=desc&per_page=1
-## A reader's Reload is never held. Its scan observes 4,000 points left, and the backfill resumes from the top to the oldest pull request in the same job.
+## A reader's Refresh is never held. Its scan observes 4,000 points left, and the backfill resumes from the top to the oldest pull request in the same job.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---

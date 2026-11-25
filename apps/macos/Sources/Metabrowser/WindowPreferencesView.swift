@@ -1,7 +1,7 @@
 import ShellCore
 import SwiftUI
 
-/// The window preferences in Settings, in the user defaults `WindowPreferences` reads.
+/// Settings > General: the window preferences, in the user defaults `WindowPreferences` reads.
 struct WindowPreferencesView: View {
     @AppStorage(WindowPreferences.placementKey) private var placement = WindowPreferences.defaultPlacement
     @AppStorage(WindowPreferences.restoreKey) private var restoresLastSession =

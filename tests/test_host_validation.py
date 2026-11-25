@@ -99,11 +99,13 @@ def test_wildcard_bind_hosts_are_never_registered() -> None:
     assert client.get("/api/capabilities", headers={"host": "[::]:8411"}).status_code == 421
 
 
-def test_rejection_message_names_the_recovery_options() -> None:
+def test_rejection_message_names_the_recovery() -> None:
+    """One remedy (docs/design-system-messages.md): the setting, which admits a name that a
+    tunnel or proxy reaches the server by, where binding `--host` to it would fail."""
     client = TestClient(app)
     resp = client.get("/api/capabilities", headers={"host": "workstation.example"})
     assert resp.status_code == 421
-    assert "--host workstation.example" in resp.text
+    assert resp.text.startswith("'workstation.example' is not a permitted name")
     assert "METABROWSER_ALLOWED_HOSTS" in resp.text
 
 

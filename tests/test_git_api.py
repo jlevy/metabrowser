@@ -970,7 +970,10 @@ def test_route_commit_preserves_operational_git_failures(repo: Path) -> None:
         )
 
     assert response.status_code == 500
-    assert _json(response) == {"error": "git command failed"}
+    assert _json(response) == {
+        "error": "This is too large to read from Git.",
+        "detail": "git command failed",
+    }
 
 
 def test_route_commit_does_not_hide_a_generic_command_failure(repo: Path) -> None:
@@ -987,7 +990,10 @@ def test_route_commit_does_not_hide_a_generic_command_failure(repo: Path) -> Non
         )
 
     assert response.status_code == 500
-    assert _json(response) == {"error": "git command failed"}
+    assert _json(response) == {
+        "error": "Could not read this from Git.",
+        "detail": "git command failed",
+    }
 
 
 def test_route_commit_returns_detail_for_a_known_commit(repo: Path) -> None:

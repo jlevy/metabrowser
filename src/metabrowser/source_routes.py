@@ -72,7 +72,7 @@ from metabrowser.checkout_revisions import (
     checkout_revisions,
 )
 from metabrowser.checkout_store import CheckoutStore, OriginStore, checkout_store
-from metabrowser.content_errors import ContentReadError
+from metabrowser.content_errors import ContentReadError, content_error_wire
 from metabrowser.git.process import GitError, GitLocation
 from metabrowser.git.ref_state import ref_state
 from metabrowser.git.repo import repo_info
@@ -736,8 +736,8 @@ async def api_source_refs(request: Request) -> Response:
         # Git does not take the served root for a repository's root.
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
     except CheckoutGitUnsupportedError as exc:
-        # Its own words: the Git needed, and no path.
-        return _error(str(exc), exc.code, exc.http_status)
+        # The Git needed is the detail; the page says Git is too old.
+        return JSONResponse(content_error_wire(exc), status_code=exc.http_status)
     except ContentReadError as exc:
         # Git's text can name the store, so only the code leaves the server.
         log.warning("listing the refs failed: %s", exc)
@@ -1401,7 +1401,7 @@ async def api_source_pin(request: Request) -> JSONResponse:
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
     except CheckoutGitUnsupportedError as exc:
-        return _error(str(exc), exc.code, exc.http_status)
+        return JSONResponse(content_error_wire(exc), status_code=exc.http_status)
     except ContentReadError as exc:
         # A Git failure while resolving or opening. Its text can name the store, so
         # only the code leaves the server.

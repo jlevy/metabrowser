@@ -62,7 +62,7 @@ $ node tests/dom/quick-search-pulls-session.js
     "Pull request #123, Fix <em>renderer</em>, Merged"
   ],
   "selectedAfterFileGrowth": "Pull request #123, Fix <em>renderer</em>, Merged",
-  "limitedStatus": "No matches in 5 indexed files. Scanning continues. No matching cached pull requests. Search by number for older pull requests.",
+  "limitedStatus": "No matches in 5 indexed files. Scanning continues. No matching pull requests. Search by number for older pull requests.",
   "recents": [
     "Pull request #124, Render the latest state, Closed",
     "Pull request #123, Fix <em>renderer</em>, Merged"

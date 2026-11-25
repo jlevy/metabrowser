@@ -24,7 +24,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from metabrowser.content_errors import ContentReadError
+from metabrowser.content_errors import ContentReadError, content_error_wire
 from metabrowser.table_source import (
     Budget,
     OpenedTableSource,
@@ -54,7 +54,7 @@ async def _answer(request: Request, answer: Answer) -> JSONResponse:
         return JSONResponse(error_wire(path, exc), status_code=exc.http_status)
     except ContentReadError as exc:
         return JSONResponse(
-            {"type": "table_error", "path": path, "code": exc.code, "error": str(exc)},
+            {"type": "table_error", "path": path, **content_error_wire(exc)},
             status_code=exc.http_status,
         )
     return JSONResponse(payload)

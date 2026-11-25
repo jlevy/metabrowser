@@ -619,7 +619,7 @@ def test_diff_file_bar_keeps_its_actions_by_the_name_and_its_chooser_at_its_end(
     assert "justify-content: flex-end;" in wrapping_end
     # Copy path shows while the pointer is on the bar or the keyboard's focus is in it, the
     # reveal contract of every `.icon-btn-reveal` ("Copyable Identifiers Use One Delegate"),
-    # and through its own "Copied!", as a file header's does. The focus is `:focus-visible`:
+    # and through its own "Copied", as a file header's does. The focus is `:focus-visible`:
     # in headless Chrome a mouse press on the name focused the disclosure, and under
     # `:focus-within` the control stayed at full opacity with the pointer off the bar.
     reveal = (
@@ -2550,7 +2550,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert "controls.groupHtml(" in panel
     assert 'class: "github-pulls-connection nav-metadata nav-metadata-note"' in panel
     assert 'class: "github-pulls-status nav-metadata"' in panel
-    assert 'class: "btn github-pulls-reload"' in panel
+    assert 'class: "btn github-pulls-refresh"' in panel
     assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel
     # No control or notice counts the rows held. Below them, pages still on their way show
@@ -4408,6 +4408,27 @@ def test_a_link_no_rule_colors_is_the_link_color() -> None:
                 assert not (rule == selector and "color" in declarations), (
                     f"{selector} recolors a link the base already colors"
                 )
+
+
+def test_a_control_no_rule_rings_takes_the_one_ring() -> None:
+    """A button or summary that no rule rings draws the one ring, not the user agent's.
+
+    The base is zero-specificity, `:focus-visible` inside the `:where` too, so every family's
+    own `:focus-visible` rule still wins; it states the ring from the four tokens and nothing
+    else; and it rings the elements a control is built from, `button` and `summary`, and not
+    links, whose ring is their context's (docs/design-system.md, "Focus Ring"). Because any
+    rule wins, KPress's ring on a `summary` in `article.kpress` does too, so the rendered
+    diff's fold states the ring itself; tests/test_diff_markdown_fold_chrome.py reads it.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    base = ":where(button:focus-visible, summary:focus-visible)"
+    assert dict(_declarations(_rule(styles, base))) == {
+        "outline": "var(--focus-ring-width) solid var(--focus-ring-color)",
+        "outline-offset": "var(--focus-ring-offset)",
+    }
+    # One base, stated once: a second would be a fork of it.
+    assert styles.count(base) == 1
 
 
 _STATUS_TEXT_TOKENS = (

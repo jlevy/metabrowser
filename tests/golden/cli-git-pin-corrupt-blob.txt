@@ -45,7 +45,8 @@ exit: 1
 api: /api/file?path=g1-bm90ZS50eHQ
 status: 409
 {
-  "error": "object_corrupt: a16e251c35a5a793c82f2070221df3828a0e5cc1",
+  "error": "This file's content is damaged in this checkout.",
+  "detail": "object_corrupt: a16e251c35a5a793c82f2070221df3828a0e5cc1",
   "code": "object_corrupt",
   "oid": "a16e251c35a5a793c82f2070221df3828a0e5cc1"
 }

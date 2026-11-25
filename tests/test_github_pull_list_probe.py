@@ -659,7 +659,7 @@ def test_a_change_a_probe_found_starts_the_delta_scan_at_once_and_only_once(
         await coordinator.aclose()
         return scans
 
-    # The scan it started was told to read the delta first, as a reader's Reload is.
+    # The scan it started was told to read the delta first, as a reader's Refresh is.
     assert asyncio.run(exercise()) == [(("all", 500), True)]
     assert github.statuses == [200, 304]
 

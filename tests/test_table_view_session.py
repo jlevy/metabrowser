@@ -16,7 +16,8 @@ the answers in ``tests/fixtures/table-view-responses.json``,
 ``tests/fixtures/table-view-records-responses.json``: what the in-process application
 answered for each request the page makes, over the files in ``tests/fixtures/table-view/``
 and the files ``BOUNDED`` writes. The record-list recording is a JSON list of mappings,
-the structured kind's Table view, and a JSON mapping, which is not a list of records.
+the structured kind's Table view, and a JSON list one of whose items is not a mapping,
+which is not a list of records though the Table tab is offered on it.
 
 A bound meets a file in a test only at a size no recording should hold, so the bounds
 recording lowers it, through the same names the server reads, for the one file that
@@ -87,14 +88,15 @@ LONG: list[tuple[str, Params]] = [
 ]
 
 
-# A JSON list of mappings, and a mapping, which is not one: the structured kind's Table.
+# A JSON list of mappings, and a list with an item that is not a mapping, which is not
+# one though the Table tab is offered on it: the structured kind's Table.
 RECORDS: list[tuple[str, Params]] = [
     ("schema", {}),
     ("rows", {"limit": "200"}),
     ("record", {"key": "@1", "generation": GENERATION}),
     ("rows", {"sort": "age", "order": "asc", "limit": "200"}),
 ]
-CONFIG: list[tuple[str, Params]] = [("schema", {})]
+MIXED: list[tuple[str, Params]] = [("schema", {})]
 
 
 # Pages bounded in cells: three fields, a comma in one's name, and a page of nine cells
@@ -294,7 +296,7 @@ def _record_file(
 def _record_lists(tmp_path: Path) -> dict[str, Any]:
     with _serve(tmp_path) as client:
         answers = _record_file(client, "records.json", RECORDS)
-        answers.update(_record_file(client, "config.json", CONFIG))
+        answers.update(_record_file(client, "mixed.json", MIXED))
         return {"answers": answers}
 
 
@@ -478,7 +480,7 @@ def test_the_record_list_recording_is_what_the_routes_answer(tmp_path: Path) -> 
     recorded = _record_lists(tmp_path)
     check_recording("table-view-records-responses.json", recorded, transcript=TRANSCRIPT)
     answers = recorded["answers"]
-    refused = answers[_key("schema", {"path": "config.json"})]
+    refused = answers[_key("schema", {"path": "mixed.json"})]
     assert (refused["status"], refused["body"]["code"]) == (422, "source_unreadable")
     record = answers[_key("record", {"path": "records.json", "key": "@1", "generation": "G"})]
     assert record["body"]["cells"]["meta"] == {"json": {"born": 1815, "notes": {"first": True}}}
@@ -543,7 +545,7 @@ def test_the_session_plays_the_recordings_and_asks_for_nothing_else() -> None:
 def test_every_recorded_answer_is_ok_but_the_refusals(name: str) -> None:
     recording = json.loads((FIXTURES.parent / name).read_text(encoding="utf-8"))
     for key, answer in recording["answers"].items():
-        expected = 400 if "f.score=gt%3Ahigh" in key else 422 if "config.json" in key else 200
+        expected = 400 if "f.score=gt%3Ahigh" in key else 422 if "mixed.json" in key else 200
         assert answer["status"] == expected, key
 
 
@@ -681,7 +683,7 @@ def test_a_refused_watch_says_the_table_is_not_following(session: dict[str, Any]
         "live: a watch refused says the table is not following its file, until it is live again"
     ]
     assert refused["notes while refused"] == [
-        "This table is not following changes to its file now: this page watches as many files as it may."
+        "This table is not following changes to its file now."
     ]
     assert refused["notes once live"] == []
 

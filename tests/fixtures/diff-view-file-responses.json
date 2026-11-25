@@ -1529,7 +1529,8 @@
     },
     "status": 409,
     "body": {
-      "error": "source does not support pin",
+      "error": "This is not available here.",
+      "detail": "source does not support pin",
       "code": "unsupported_for_subject",
       "capability": "pin"
     }

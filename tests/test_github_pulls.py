@@ -4581,7 +4581,7 @@ def test_each_refresh_route_starts_a_readers_click_where_the_ceiling_does_not_co
 ) -> None:
     """A9 of review A on #737: the unit tests proved the context and the coordinator's copy
     of it, and nothing proved a route enters it, so a handler that dropped ``_whose`` would
-    count a reader's Reload against the process's ceiling unseen.
+    count a reader's Refresh against the process's ceiling unseen.
 
     The start each route calls is replaced by one that spends where it is called, which is
     where the job it starts would copy its context from.

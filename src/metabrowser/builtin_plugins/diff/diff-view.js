@@ -228,7 +228,7 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   too_large: "This change is too large to show inline.",
   timed_out: "Producing this diff timed out.",
   failed: "Could not produce this diff.",
-  stale: "The comparison changed underneath this file. Refresh to reload it.",
+  stale: "The comparison changed underneath this file. Reload the page to see it as it is now.",
   unsupported: "This change cannot be shown as a text diff.",
 });
 
@@ -340,7 +340,7 @@ const UNAVAILABLE_COPY = "These changes are unavailable.";
 // said as what it is and not as a failure of this page; in a document with no source to
 // ask, a deferred file is simply unavailable, which the table above's fallback says.
 const DEFERRED_AGAIN_COPY =
-  "The server did not load this file's changes. Reload the page to ask again.";
+  "The server did not load this file's changes. Reload the page to try again.";
 
 // Chrome 151, five runs of explorations/diff-intraline/benchmark.html:
 // ordinary edits completed in <= 1.2 ms, an 8 MiB mostly-equal line in
@@ -939,7 +939,7 @@ export function renderFileBody(state, layout) {
       }
       if (state.patch.truncated) {
         state.body.append(
-          noticeEl("warning", "diff-patch-truncated", "This patch was truncated at its bounds."),
+          noticeEl("warning", "diff-patch-truncated", "This patch is too long to show in full."),
         );
       }
     },
@@ -3009,7 +3009,9 @@ async function loadDeferred(file, signal, view) {
   const payload = await loadOneChange(file.revision, path, { signal });
   const result = validateDocument(payload);
   if (!result.ok) {
-    throw new Error(`invalid document: ${result.error}`);
+    // The validator's location rides as the cause, which the console report of a failed
+    // file prints (docs/design-system-messages.md).
+    throw new Error("This diff document is not valid.", { cause: result.error });
   }
   return /** @type {OneFileAnswer} */ (result.document);
 }
@@ -4261,7 +4263,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         }
       }
       if (manifest.truncated) {
-        root.append(noticeEl("warning", "", "The change list was truncated at its bounds."));
+        root.append(noticeEl("warning", "", "The change list is too long to show in full."));
       }
       view.spacer = el("div", "diff-end-spacer");
       root.append(view.spacer);

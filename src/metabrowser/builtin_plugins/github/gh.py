@@ -487,7 +487,10 @@ async def _run_in(
         await kill_when_spawned(spawning)
         raise
     except OSError as exc:
-        raise GhError(f"could not run gh: {exc.strerror}") from exc
+        # The system's reason goes to the gh span, and the error keeps it as its cause: the
+        # message is what an answer's reader field may show.
+        event_log.current().set(spawn_error=exc.strerror or type(exc).__name__)
+        raise GhError("could not run gh") from exc
     try:
         return await _finish(proc, args, timeout_s=timeout_s, max_bytes=max_bytes)
     finally:

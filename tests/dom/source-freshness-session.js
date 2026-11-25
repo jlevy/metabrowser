@@ -328,7 +328,7 @@ function paintOf(model) {
       offer === null
         ? null
         : offer.kind === "switch"
-          ? `${offer.text} ${offer.commit} [${offer.button}] → ${offer.ref}`
+          ? `${offer.text} [${offer.button}] → ${offer.ref}`
           : `${offer.text} [${offer.button}]`,
     error: model.error,
   };
@@ -1403,7 +1403,7 @@ async function run() {
         followed.follow.commit === onHead.pin &&
         followed.offer === null &&
         followed.label === "Updating to pull request #7…" &&
-        followed.detail.startsWith("Pull request #7 is now at "),
+        followed.detail === "Pull request #7 has moved, and this page follows it.",
       `a pull request's head is followed, and named: ${JSON.stringify(followed)}`,
     );
     const byId = { ...onHead, follows: false, pin: recorded.stale.pin };
@@ -1415,7 +1415,7 @@ async function run() {
       offered.follow === null &&
         offered.offer?.kind === "switch" &&
         offered.offer.ref === byId.ref &&
-        offered.offer.text === "Pull request #7 is now at" &&
+        offered.offer.text === "Pull request #7 has moved" &&
         offered.offer.button === "Switch",
       `a commit opened by its ID is offered its ref's new tip: ${JSON.stringify(offered)}`,
     );
@@ -1430,8 +1430,8 @@ async function run() {
       { shown: { pin: gone.pin, ref: "refs/heads/topic" }, nowMs: NOW_MS },
     );
     assert(
-      goneRow.detail.includes(" Pull request #7 is no longer on the origin;") &&
-        branchGone.detail.includes(" topic is no longer on the origin;"),
+      goneRow.detail.startsWith("Pull request #7 is no longer on the origin;") &&
+        branchGone.detail.startsWith("topic is no longer on the origin;"),
       `a sentence the label starts: ${JSON.stringify({ goneRow, branchGone })}`,
     );
 
@@ -1463,7 +1463,7 @@ async function run() {
       refused.requests.includes(asked("/view/")) &&
         refused.reloads === 0 &&
         refused.paint.error === "Could not switch to that commit." &&
-        refused.paint.offer?.startsWith("Pull request #7 is now at ") &&
+        refused.paint.offer === "Pull request #7 has moved [Switch] → refs/pull/7/head" &&
         taken.requests.includes(asked("/view/")) &&
         taken.reloads === 1 &&
         taken.navigated === undefined &&

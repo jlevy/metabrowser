@@ -484,6 +484,11 @@ do not combine an unrelated rewrite with a release fix.
   The registries in `file_extensions.py` and the bound in `settings.py` are injected
   together as the browser’s authority; `test_plugin_sdk_syntax_token_contracts` checks
   every mapping against the vendored grammar registry.
+- A message the page shows a reader, whether a notice, an empty state, or an error,
+  follows [Reader Messages](design-system-messages.md): one statement and at most one
+  remedy, with the detail left in the route’s JSON and the console.
+  `tests/test_reader_messages.py` holds what a machine can check of it, in the browser
+  scripts and in the server’s answers.
 - First-party JavaScript and TypeScript filenames use lowercase kebab-case, because the
   same names appear in imports, manifests, URLs, documents, and test shims.
   Standard dotted roles such as `types.d.ts` are valid, and vendored assets keep their

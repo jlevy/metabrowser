@@ -296,8 +296,22 @@ async function documentTab(rendered, answer, envelope, complete) {
     const result = await documentTab(rendered, REFUSALS[code], FILE_ENVELOPE, SLOW_TEXT);
     session.otherCodes[code] = { markup: result.markup, renderError: result.renderError };
   }
-  const failed = await documentTab(rendered, FAILED, FILE_ENVELOPE, SLOW_TEXT);
-  session.renderFailure = { renderError: failed.renderError, sources: failed.sources };
+  // A failed render's detail goes to the console, not the notice
+  // (docs/design-system-messages.md): record that it did.
+  const logged = [];
+  const consoleError = console.error;
+  console.error = (message, error) => logged.push(`${message} · ${error.message}`);
+  let failed;
+  try {
+    failed = await documentTab(rendered, FAILED, FILE_ENVELOPE, SLOW_TEXT);
+  } finally {
+    console.error = consoleError;
+  }
+  session.renderFailure = {
+    renderError: failed.renderError,
+    sources: failed.sources,
+    logged,
+  };
 
   // The folder Overview's README panel: the README is not the page's file, so its window
   // is read from /api/file, and the notice links to the file for the rest.

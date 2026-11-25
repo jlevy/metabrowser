@@ -1254,7 +1254,7 @@ function liveInvariants() {
   assert.equal(model.livePillText(true, 0), "Paused");
   assert.equal(model.livePillText(true, 1), "Paused · 1 change");
   // A busy source's refusal keeps the rows and says why, as every other refusal does.
-  assert.match(model.liveFailure("busy"), /writer is busy/);
+  assert.match(model.liveFailure("busy"), /file is busy/);
   assert.match(model.liveFailure(null), /rows last read/);
 }
 
@@ -1568,7 +1568,8 @@ async function bounds() {
 // The structured kind's Table view: a JSON list of mappings, whose record draws each nested
 // value with the renderer its view hands the table (structured/index.js passes the
 // structured plugin's inline tree; this stand-in writes the value it was given), and a
-// JSON mapping, which is not a list of records.
+// JSON list one of whose items is not a mapping: the server offers the Table tab on a
+// file that starts as a list of records, and this one is not.
 async function recordLists() {
   const drawnTrees = [];
   let released = 0;
@@ -1616,18 +1617,18 @@ async function recordLists() {
   view.handle.dispose();
   view.container.remove();
 
-  const mapping = mount("config.json", "", { renderJson });
-  await ready(mapping);
-  const said = shown(mapping);
-  step("a JSON mapping: not a list of records, said in place of the table", {
+  const mixed = mount("mixed.json", "", { renderJson });
+  await ready(mixed);
+  const said = shown(mixed);
+  step("a JSON list with an item that is not a mapping: said in place of the table", {
     requests: takeRequests(),
-    toolbar: find(mapping.container, hasClass("table-toolbar")).hidden ? "hidden" : "shown",
+    toolbar: find(mixed.container, hasClass("table-toolbar")).hidden ? "hidden" : "shown",
     notes: said.notes,
     table: said.table,
-    links: findAll(mapping.container, hasClass("table-reset")).length,
+    links: findAll(mixed.container, hasClass("table-reset")).length,
   });
-  mapping.handle.dispose();
-  mapping.container.remove();
+  mixed.handle.dispose();
+  mixed.container.remove();
 }
 
 async function main() {

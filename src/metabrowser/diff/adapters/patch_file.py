@@ -14,6 +14,7 @@ file a user just clicked.
 
 from __future__ import annotations
 
+import logging
 from base64 import b64encode
 from collections.abc import Sequence
 from hashlib import sha256
@@ -41,6 +42,8 @@ from metabrowser.diff.format import (
     SourceInfo,
     Totals,
 )
+
+log = logging.getLogger(__name__)
 
 MAX_PATCH_BYTES = 8 * 1024 * 1024
 """Refusal cap for one pasted-in patch document. A bound on parse cost:
@@ -570,9 +573,9 @@ def _without_unmodeled_sections(document: ChangeSetDocument) -> ChangeSetDocumen
                 deletions=None,
             )
         )
-    warning = (
-        f"{len(left_out)} section(s) could not be modeled and are left out: {name_paths(left_out)}"
-    )
+    # A warning is shown on the page as it is (diff-view.js), so it names files, never why
+    # the model refused them (docs/design-system-messages.md).
+    warning = f"Changes to these files could not be read and are left out: {name_paths(left_out)}"
     return document.model_copy(
         update={
             "resolved": document.resolved.model_copy(
@@ -700,15 +703,19 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
     truncated = truncated_input or section_truncated
     warnings: list[str] = []
     if truncated:
-        warnings.append("input truncated at parser bounds")
+        warnings.append("This patch is too long to show in full, so its end is left out.")
     if context_format:
-        warnings.append("context-format diff is not supported; regenerate with unified output")
+        warnings.append("A context-format patch cannot be shown. Regenerate it as a unified diff.")
     elif not sections and data.strip():
         # Nonempty input with no recognizable diff section: an empty manifest
         # alone would read as "no changes", which is not what happened.
-        warnings.append("no diff sections recognized in this input")
+        warnings.append("No changes could be read from this patch.")
     if dropped_sections:
-        warnings.append(f"{dropped_sections} unparseable section(s) skipped")
+        warnings.append(
+            "1 part of this patch could not be read and is left out."
+            if dropped_sections == 1
+            else f"{dropped_sections} parts of this patch could not be read and are left out."
+        )
     document = ChangeSetDocument.model_construct(
         schema_="file-diff-v1",
         schema_version=1,
@@ -758,8 +765,9 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
         try:
             return validate_document(dump_document(kept))
         except (ValidationError, ValueError):
-            reason = str(exc).splitlines()[0][:200]
+            # Why the model refused it names the model's fields: the log's, not the page's.
+            log.info("patch could not be modeled: %s", str(exc).splitlines()[0][:200])
             document = _degraded_document(
-                digest, truncated, (*warnings, f"input could not be modeled: {reason}")
+                digest, truncated, (*warnings, "This patch could not be read.")
             )
             return validate_document(dump_document(document))

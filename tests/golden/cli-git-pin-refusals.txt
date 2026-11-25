@@ -4,7 +4,8 @@ exit: 1
 api: /api/recent
 status: 409
 {
-  "error": "source does not support recency",
+  "error": "This is not available here.",
+  "detail": "source does not support recency",
   "code": "unsupported_for_subject",
   "capability": "recency"
 }
@@ -16,7 +17,8 @@ exit: 1
 api: /api/tree?recency=24h
 status: 409
 {
-  "error": "source does not support recency",
+  "error": "This is not available here.",
+  "detail": "source does not support recency",
   "code": "unsupported_for_subject",
   "capability": "recency"
 }
@@ -125,7 +127,8 @@ status: 416
 {
   "type": "error",
   "path": "g1-Ymlu/g1-b3ZlcnNpemUuYmlu",
-  "error": "Requested preview window exceeds the stream budget for this blob",
+  "error": "This part of the file is past what can be shown here.",
+  "detail": "Requested preview window exceeds the stream budget for this blob",
   "max_offset": 16777216
 }
 --- stderr ---

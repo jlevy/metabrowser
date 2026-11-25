@@ -243,13 +243,15 @@ def partial_clone_version_label() -> str:
 class CheckoutGitUnsupportedError(ContentReadError):
     """The host's Git is not one a checkout's revisions are read with.
 
-    The message names the release needed and no path, so a route and ``--ref`` say it as
-    it is. *partial_clone* is the stricter need of a checkout that names a promisor
-    remote (:data:`PARTIAL_CLONE_GIT_MINIMUM`).
+    The message names the release needed and no path: ``--ref`` says it as it is, and a
+    route answers it as ``detail`` beside ``reader_message`` (:func:`content_error_wire`).
+    *partial_clone* is the stricter need of a checkout that names a promisor remote
+    (:data:`PARTIAL_CLONE_GIT_MINIMUM`).
     """
 
     code = "unsupported_git"
     http_status = 409
+    reader_message = "Git on this machine is too old to show this checkout's branches and tags."
 
     def __init__(self, detected: str | None, required: str, *, partial_clone: bool = False) -> None:
         found = "no git is on PATH" if detected is None else f"this is {detected or 'unknown'}"

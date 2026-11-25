@@ -57,9 +57,11 @@ The structured kind’s Table view draws a JSON list of mappings through the sam
 A nested value is its JSON text in the grid, and in the record it is drawn by the
 renderer the source’s view hands the table, the structured plugin’s inline tree, which a
 stand-in takes the place of here; going back to the table releases each tree.
-A field whose values are of several types sorts numbers before text, and a document that
-is not a list of records says so in place of the table, with no toolbar and no way back
-to a table it does not have.
+A field whose values are of several types sorts numbers before text.
+The server offers the Table tab only on a file that starts as a list of records, so a
+mapping has none; a list one of whose items is not a mapping still has the tab, and it
+says the file is not a list of records in place of the table, with no toolbar and no way
+back to a table it does not have.
 
 ```console
 $ node tests/dom/table-view-session.js
@@ -1026,7 +1028,7 @@ $ node tests/dom/table-view-session.js
     "status": "At least 256 rows match",
     "chips": [],
     "notes": [
-      "The table stopped looking after 4,096 rows, at the time a request may take; these are the matches among them."
+      "These are the matches among the first 4,096 rows."
     ],
     "empty": null,
     "table": {
@@ -1058,7 +1060,7 @@ $ node tests/dom/table-view-session.js
     ],
     "status": "At least 256 rows match",
     "notes": [
-      "The table stopped looking after 4,096 rows, at the time a request may take; these are the matches among them."
+      "These are the matches among the first 4,096 rows."
     ],
     "rowcount": "-1"
   },
@@ -1071,7 +1073,7 @@ $ node tests/dom/table-view-session.js
     "status": "12,288 rows",
     "chips": [],
     "notes": [
-      "This table is too large to sort by “n” in the time a request may take. Show the table’s own order or try again."
+      "This table is too large to sort by “n”. Show the table’s own order."
     ],
     "empty": null,
     "table": "hidden",
@@ -1119,7 +1121,7 @@ $ node tests/dom/table-view-session.js
     "status": "2 rows",
     "chips": [],
     "notes": [
-      "Every row of this table was read, but some of their values were not; those are not shown."
+      "Some values in this table are too large to show."
     ],
     "empty": null,
     "table": {
@@ -1150,7 +1152,7 @@ $ node tests/dom/table-view-session.js
     "status": "At least 3 rows",
     "chips": [],
     "notes": [
-      "This table is larger than its source reads: rows, counts, sorts, and filters cover its leading part only."
+      "Only part of this table is shown, and counts, sorts, and filters cover that part."
     ],
     "empty": null,
     "table": {
@@ -1265,13 +1267,13 @@ $ node tests/dom/table-view-session.js
     "record": null,
     "focus": null
   },
-  "a JSON mapping: not a list of records, said in place of the table": {
+  "a JSON list with an item that is not a mapping: said in place of the table": {
     "requests": [
-      "schema?path=config.json"
+      "schema?path=mixed.json"
     ],
     "toolbar": "hidden",
     "notes": [
-      "This document is not a list of records: its top level is a mapping, not a list."
+      "This document is not a list of records: item 2 of its list is text, not a mapping."
     ],
     "table": "hidden",
     "links": 0
@@ -1554,7 +1556,7 @@ $ node tests/dom/table-view-session.js live
   },
   "live: a watch refused says the table is not following its file, until it is live again": {
     "notes while refused": [
-      "This table is not following changes to its file now: this page watches as many files as it may."
+      "This table is not following changes to its file now."
     ],
     "notes once live": [],
     "pill": "Live"
