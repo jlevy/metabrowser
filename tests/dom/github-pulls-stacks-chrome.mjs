@@ -135,6 +135,21 @@ const LIST = `(() => {
         members: [],
       };
       stacks.push(open);
+    } else if (row.classList.contains("github-pulls-whole-row") && open !== null) {
+      // The stack's Whole stack row, the last of its set, under its members (mb-cm31).
+      const icon = row.querySelector(".github-pull-stack-icon");
+      open.whole = {
+        text: row.textContent,
+        name: row.getAttribute("aria-label"),
+        href: row.getAttribute("href"),
+        place: row.getAttribute("aria-posinset") + "/" + row.getAttribute("aria-setsize"),
+        glyph: icon?.querySelector("svg") !== null && icon !== null,
+        ink: icon === null ? null : getComputedStyle(icon).color,
+        iconLeft: left(icon),
+        iconWidth: icon?.getBoundingClientRect().width ?? null,
+        titleLeft: row.querySelector(".github-pulls-whole-title")?.getClientRects()[0]?.left ?? null,
+        height: row.getBoundingClientRect().height,
+      };
     } else if (row.getAttribute("aria-level") === "2" && open !== null) {
       const place = row.querySelector(".github-pulls-place");
       open.members.push({
@@ -266,6 +281,8 @@ const LIST = `(() => {
     flatIcon: left(flat?.querySelector(".github-pull-state-icon")),
     memberTitle: textStart(member),
     memberIcon: left(member?.querySelector(".github-pull-state-icon")),
+    memberIconWidth: member?.querySelector(".github-pull-state-icon")?.getBoundingClientRect().width ?? null,
+    stackInk: stackRow === null ? null : getComputedStyle(stackRow.querySelector(".github-pull-stack-icon")).color,
     memberLast: left(member?.querySelector(".github-pulls-change")),
     flatLast: left(flat?.querySelector(".github-pulls-change")),
     slotWidth: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot")),
@@ -672,6 +689,37 @@ try {
           )
         : /^Stack #286: .+; 4 pull requests$/.test(first?.name ?? ""),
       first?.name,
+    );
+    // Each open stack's last row is its Whole stack row (mb-cm31), a link to the stack's own
+    // page: the stack's Layers glyph, muted as on the stack's row, in the state icon's slot,
+    // where the members' icons start, and its words where their titles start, as the stack
+    // menu's Whole stack row has them.
+    check(
+      "each open stack ends in its Whole stack row, which links to the stack's page",
+      list.stacks.every(
+        (stack) =>
+          stack.expanded !== "true" ||
+          (stack.whole?.text === "Whole stack" &&
+            stack.whole.href === `/stack/${stack.stack}` &&
+            stack.whole.name === `Whole stack, Stack #${stack.stack}` &&
+            stack.whole.place === `${stack.members.length + 1}/${stack.members.length + 1}`),
+      ),
+      JSON.stringify(list.stacks.map(({ stack, expanded, whole }) => ({ stack, expanded, whole }))),
+    );
+    check(
+      "its glyph and words start where the members' icons and titles do",
+      first?.whole?.glyph === true &&
+        first.whole.ink === list.stackInk &&
+        Math.abs(first.whole.iconLeft - list.memberIcon) <= 0.5 &&
+        Math.abs(first.whole.iconWidth - list.memberIconWidth) <= 0.5 &&
+        Math.abs(first.whole.titleLeft - list.memberTitle) <= 0.5,
+      JSON.stringify({
+        whole: first?.whole,
+        memberIcon: list.memberIcon,
+        memberIconWidth: list.memberIconWidth,
+        memberTitle: list.memberTitle,
+        stackInk: list.stackInk,
+      }),
     );
     check(
       "#10, in two stacks, sits once, and its badge names the other",

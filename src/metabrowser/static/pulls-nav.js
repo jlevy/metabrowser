@@ -22,28 +22,31 @@
   const PREFETCH_IDLE_TIMEOUT_MS = 2000;
 
   /**
-   * What an address names, for the panel: a pull request's page, or the list and its filter.
+   * What an address names, for the panel: a pull request's page, a native stack's page, or
+   * the list and its filter.
    *
-   * `file` is the changed file a page's address names, or null.
+   * `file` is the changed file a page's address names, or null. `stack` is the stack whose
+   * own page the address is, whose Whole stack row the list marks, or null.
    *
    * @param {MetabrowserPublicPullRouteRuntime} routes
    * @param {string} pathname
    * @param {string} search
-   * @returns {Readonly<{page: number | null, filter: string | null, file: string | null}> | null}
+   * @returns {Readonly<{page: number | null, filter: string | null, file: string | null, stack: number | null}> | null}
    */
   function pullAddress(routes, pathname, search) {
     const list = routes.parsePulls(pathname, search);
     if (list !== null) {
-      return Object.freeze({ page: null, filter: list.state, file: null });
+      return Object.freeze({ page: null, filter: list.state, file: null, stack: null });
     }
     const page = routes.parsePull(pathname);
     if (page === null) {
       // A stack's page is in this space too, and names no one pull request.
-      return routes.parseStack(pathname) === null
+      const stack = routes.parseStack(pathname);
+      return stack === null
         ? null
-        : Object.freeze({ page: null, filter: null, file: null });
+        : Object.freeze({ page: null, filter: null, file: null, stack: stack.number });
     }
-    return Object.freeze({ page: page.number, filter: null, file: page.file || null });
+    return Object.freeze({ page: page.number, filter: null, file: page.file || null, stack: null });
   }
 
   /**
@@ -78,7 +81,7 @@
    *   toolbar?(): HTMLElement | null,
    *   metadata?(): HTMLElement | null,
    *   scrollRoot(): HTMLElement | null,
-   *   openPull(route: {number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}): Promise<unknown>,
+   *   openPull(route: {number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean, stack?: boolean}): Promise<unknown>,
    *   pageFor(number: number): unknown,
    *   schedulePrefetch(callback: () => void): unknown,
    *   cancelPrefetch(handle: unknown): void,
@@ -151,7 +154,7 @@
                 metadata: deps.metadata?.() ?? null,
                 scrollRoot: deps.scrollRoot(),
                 open: (
-                  /** @type {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}} */ route,
+                  /** @type {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean, stack?: boolean}} */ route,
                 ) => deps.openPull(route),
                 // A changed file's row links to its address through the route's encoder, and
                 // has no link where the path cannot be one.
@@ -178,7 +181,10 @@
           // The reader may have moved on while it loaded.
           handle?.setShown(shown);
           const there = address();
-          handle?.setCurrent(there?.page ?? null, there?.file ?? null, { preserveScroll });
+          handle?.setCurrent(there?.page ?? null, there?.file ?? null, {
+            preserveScroll,
+            stack: there?.stack ?? null,
+          });
         } catch (error) {
           console.error("metabrowser pulls tab: the list could not load", error);
           if (shown && !disposed) {
@@ -290,6 +296,7 @@
       if (handle !== null) {
         handle.setCurrent(here?.page ?? null, here?.file ?? null, {
           preserveScroll,
+          stack: here?.stack ?? null,
           ...(options.again === true ? { again: true } : {}),
         });
         if (here?.filter) {
@@ -534,6 +541,10 @@
           }
           if (target.matches(".github-pulls-stack-row")) {
             return event?.repeat === true || nav.toggleStack(Number(target.dataset.stack));
+          }
+          // A Whole stack row has nothing to expand: Space opens the stack's page, as Enter does.
+          if (target.matches(".github-pulls-whole-row")) {
+            return event?.repeat === true || nav.activateAnchor();
           }
           if (target.matches(".github-pulls-row")) {
             return event?.repeat === true || nav.toggleFiles(Number(target.dataset.number));

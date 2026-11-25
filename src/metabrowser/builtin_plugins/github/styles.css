@@ -1791,6 +1791,39 @@
   justify-self: center;
   color: var(--muted);
 }
+/* A stack's Whole stack row (pulls-panel.js, `paintWholeRow`), the last under its open stack,
+   opens the stack's own page. It is one line in a member's row grid: the stack's Layers glyph,
+   muted, in the state icon's slot, and "Whole stack" in the members' title column, one
+   --github-pull-row-gap (the tree's icon gap) past the glyph, as the stack menu's Whole stack
+   row has them (`.github-pull-stack-whole`). It hovers, takes the focus ring, and takes the
+   current-row mark as a pull request's row does, on its own ground, since no entry holds it
+   (`.github-pulls-entry`). */
+.github-pulls-row.github-pulls-whole-row {
+  grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);
+  padding-bottom: 2px;
+  scroll-margin-block-start: calc(var(--chip-height) + 12px);
+}
+.github-pulls-whole-row > .github-pull-stack-icon {
+  display: inline-flex;
+  justify-content: center;
+  color: var(--muted);
+}
+.github-pulls-whole-row > .github-pulls-whole-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.github-pulls-whole-row:hover {
+  background: var(--hover-bg);
+}
+.github-pulls-whole-row:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  background: var(--hover-bg);
+}
+.github-pulls-whole-row.selected {
+  background: var(--highlight-bg);
+}
 /* The heading is one line whatever it holds, a line of the row's content box: "Stack #N"
    then, after a muted dot, the stack's line totals, "· +1,234 −567", the shell's brief
    change line of its totals alone, with no file statuses, as a pull request's row says its

@@ -152,9 +152,11 @@ type MetabrowserPullsPanelHandle = Readonly<{
     /**
      * *preserveScroll* keeps the list where the reader left it; *again* shows the pull
      * request again when the address names the one already current, for an open of the
-     * pull request shown (docs/design-system.md, "Navigation Reveals the Item").
+     * pull request shown (docs/design-system.md, "Navigation Reveals the Item"). *stack*,
+     * with no pull request, is the native stack whose own page the address names, whose
+     * Whole stack row the list marks.
      */
-    options?: { preserveScroll?: boolean; again?: boolean },
+    options?: { preserveScroll?: boolean; again?: boolean; stack?: number | null },
   ): void;
   setFilter(state: string): void;
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;

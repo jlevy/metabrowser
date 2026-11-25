@@ -463,6 +463,109 @@ try {
   await frames();
   phase("pulls");
   await shot(`${label}-stack-70-with-pulls`);
+  if (!before) {
+    // The Pulls tab's Whole stack row (mb-cm31): the last of Stack #70's rows, under its
+    // members, the current row while the stack's page is open, and in view; its Layers glyph
+    // and words where the members' state icons and titles start, as the stack menu's are.
+    const WHOLE = `document.querySelector('#tab-pulls .github-pulls-whole-row[data-stack="70"]')`;
+    const NAV = `(() => {
+      const whole = ${WHOLE};
+      if (whole === null) return null;
+      const members = [];
+      for (let item = whole.closest("li").previousElementSibling; item?.dataset.level === "2"; item = item.previousElementSibling) {
+        members.unshift(Number(item.dataset.number));
+      }
+      const member = document.querySelector('#tab-pulls a.github-pulls-row[data-number="' + members.at(-1) + '"]');
+      const icon = whole.querySelector(".github-pull-stack-icon");
+      const memberIcon = member?.querySelector(".github-pull-state-icon") ?? null;
+      const first = (node) => node?.getClientRects()[0]?.left ?? null;
+      const view = document.querySelector(".tree-content").getBoundingClientRect();
+      const box = whole.getBoundingClientRect();
+      return {
+        address: location.pathname,
+        text: whole.textContent,
+        href: whole.getAttribute("href"),
+        current: whole.getAttribute("aria-current"),
+        selected: whole.classList.contains("selected"),
+        focused: document.activeElement === whole,
+        place: whole.getAttribute("aria-posinset") + "/" + whole.getAttribute("aria-setsize"),
+        members,
+        glyph: icon?.querySelector("svg") != null,
+        iconLeft: icon?.getBoundingClientRect().left ?? null,
+        iconWidth: icon?.getBoundingClientRect().width ?? null,
+        memberIconLeft: memberIcon?.getBoundingClientRect().left ?? null,
+        memberIconWidth: memberIcon?.getBoundingClientRect().width ?? null,
+        titleLeft: first(whole.querySelector(".github-pulls-whole-title")),
+        memberTitleLeft: first(member?.querySelector(".github-pulls-title")),
+        inView: box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+      };
+    })()`;
+    await waitFor(`${WHOLE}?.getAttribute("aria-current") === "page"`);
+    const nav = await evaluate(NAV);
+    measured.nav = { open: nav };
+    check(
+      "the Pulls tab's Whole stack row ends Stack #70's members and links to its page",
+      nav !== null &&
+        nav.text === "Whole stack" &&
+        nav.href === "/stack/70" &&
+        nav.members.length > 0 &&
+        nav.members.every((number) => [10, 8].includes(number)) &&
+        nav.place === `${nav.members.length + 1}/${nav.members.length + 1}`,
+      JSON.stringify(nav),
+    );
+    check(
+      "it is the current row while the stack's page is open, and in view",
+      nav?.current === "page" && nav.selected && nav.inView,
+      JSON.stringify(nav),
+    );
+    check(
+      "its glyph and words start where the members' icons and titles do",
+      nav?.glyph === true &&
+        Math.abs(nav.iconLeft - nav.memberIconLeft) <= 0.5 &&
+        Math.abs(nav.iconWidth - nav.memberIconWidth) <= 0.5 &&
+        Math.abs(nav.titleLeft - nav.memberTitleLeft) <= 0.5,
+      JSON.stringify(nav),
+    );
+    const last = nav?.members.at(-1);
+    // A member's row takes the mark; a press on the Whole stack row opens the stack's page
+    // again and gives it back; and J from the last member walks onto it and opens the page.
+    await click(`#tab-pulls a.github-pulls-row[data-number="${last}"]`);
+    await waitFor(
+      `location.pathname === "/pull/${last}" && ${WHOLE}.getAttribute("aria-current") === null`,
+    );
+    await click('#tab-pulls .github-pulls-whole-row[data-stack="70"] .github-pulls-whole-title');
+    await waitFor(
+      `location.pathname === "/stack/70" && ${WHOLE}.getAttribute("aria-current") === "page"`,
+    );
+    measured.nav.pressed = await evaluate(NAV);
+    await click(`#tab-pulls a.github-pulls-row[data-number="${last}"]`);
+    await waitFor(`location.pathname === "/pull/${last}"`);
+    await evaluate(
+      `document.querySelector('#tab-pulls a.github-pulls-row[data-number="${last}"]').focus()`,
+    );
+    for (const type of ["keyDown", "keyUp"]) {
+      await send("Input.dispatchKeyEvent", {
+        type,
+        key: "j",
+        code: "KeyJ",
+        windowsVirtualKeyCode: 74,
+        ...(type === "keyDown" ? { text: "j" } : {}),
+      });
+    }
+    await waitFor(`location.pathname === "/stack/70" && document.activeElement === ${WHOLE}`);
+    await waitFor(`${WHOLE}.getAttribute("aria-current") === "page"`);
+    measured.nav.walked = await evaluate(NAV);
+    check(
+      "a press on it, and J onto it from the last member, open the stack's page and mark it",
+      measured.nav.pressed?.address === "/stack/70" &&
+        measured.nav.pressed.current === "page" &&
+        measured.nav.walked?.address === "/stack/70" &&
+        measured.nav.walked.current === "page" &&
+        measured.nav.walked.focused,
+      JSON.stringify(measured.nav),
+    );
+    await shot(`${label}-stack-70-whole-row`);
+  }
 
   await send("Page.navigate", { url: `${base}/stack/71` });
   await waitFor(pageReady);

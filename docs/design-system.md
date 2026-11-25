@@ -3776,7 +3776,7 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
 | Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the row of ages; a Pulls row’s place, after its title and a muted dot, before the number, as a stack menu’s member line has it, with no icon |
 | Member row | One line: the pull request’s state icon, `.github-pull-state-icon`; its title, bold in normal text ink, cut short before its place; and at the line’s end, together, its position, bold, a muted dot, `.github-pull-stack-dot`, its number, `.github-pull-stack-member-number`, and, where it is known, another dot and its author, `.github-pull-stack-member-by`, the shell’s actor identity, “14/15 · #N · jlevy”, a Pulls row’s order, the title, the place, the number, and the author. On the current pull request, `aria-current="page"` and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu; the stack’s page, in a card |
-| Whole stack row | The menu’s first row: the stack’s Layers glyph, `.github-pull-stack-icon`, muted, in the state icon’s slot, and “Whole stack” where a member’s title starts, in a member row’s gap | The stack menu, opening the stack’s page |
+| Whole stack row | The stack’s Layers glyph, `.github-pull-stack-icon`, muted, in the state icon’s slot, and “Whole stack” where a member’s title starts, in a member row’s gap | The stack menu’s first row, and the Pulls tab’s last row under an open stack’s members, `.github-pulls-whole-row`; each opens the stack’s page |
 | Stack group row | The registry’s chevron, the Layers icon, and the label, with no count, since its pull requests are the rows under it ([Heading Tallies](#heading-tallies)); then, after a muted dot, the stack’s [brief change line](#brief-change-line) | The Pulls tab |
 
 - **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
@@ -4025,9 +4025,24 @@ width.
   flat: the rows and the pull request page say nothing of stacks either.
   A snapshot kept through a failed or expired refresh still groups, as the places and
   the stack menu still show it.
+- **Whole stack.** An open stack’s last row, one level in, after its pull requests, is
+  its Whole stack row, a link to the stack’s own page, `/stack/<n>`
+  ([The Stack Page](#the-stack-page)), as the stack menu’s first row is: the stack’s
+  Layers glyph, muted, in the state icon’s slot, where the members’ icons start, and
+  “Whole stack” at the tree’s icon gap from it, where their titles start.
+  It is one of its stack’s set, so the members’ places in the tree count it (“3/4”, and
+  “4/4” for it), and a closed stack hides it with its pull requests.
+  While the address is the stack’s page, it is the current row, with a pull request’s
+  current-row mark, `--highlight-bg` and the 2px `--highlight-bar`, and it is shown as a
+  current pull request’s row is: an address that names the stack’s page opens the stack
+  if the reader closed it and scrolls the row into view (`setCurrent`’s `stack`,
+  `pullAddress` in `pulls-nav.js`).
 - **Keys.** A stack’s row is a row of the tree, as a folder is: `J` and `K` stop on it
   and open nothing; Enter and Space open or close it; Right opens it, or goes to its
   first pull request; Left closes it, or from a pull request in it, goes to it.
+  The Whole stack row is a row as a pull request’s is: `J` and `K` stop on it and open
+  the stack’s page, Enter and Space open it, a press opens it, Right does nothing, since
+  it holds no files, and Left goes to its stack’s row.
   An address that names a pull request in a closed stack opens the stack.
   A grouped list’s Tab stop, until the reader moves it, is its first row.
 - **Scroll.** A grouping that arrives at the top of the list keeps the top, so its first
@@ -4077,23 +4092,29 @@ width.
 
 `tests/dom/github-pulls-stack-groups-session.js` runs the grouping, the keys, and what
 an open reads ahead against the production code on the server’s recorded answers, and
-mounts the panel and the page’s stack menu to hold the tree’s roles, places, and order.
-`tests/dom/github-pulls-stack-lines-session.js` runs what each heading shows of its
-change line, and when it is read, against the production code on the route’s recorded
-answers, and mounts the panel to print a heading waiting, with its line, with none, and
-with “(estimated)”. `tests/test_github_pulls_stack_lines_chrome.py` measures in headless
-Chrome, at every width down to the pane’s minimum in both themes, that nothing in a
-stack’s row moves when its line arrives, that the row stays one line with its label
-whole and the line whole or out of view, never cut short, and that the line’s inks and
-weights are the component’s. `tests/test_github_pulls_stacks_chrome.py` measures the
-same design in headless Chrome against a running server with two native stacks: the
-shared label tokens, a stack’s row that shows its label alone with its size in its
-accessible name, where rows start, hover and focus, the toolbar’s fit, real keys and
-presses, a row’s toggle among them, the scroll, a pull request’s row with the state icon
-centered on its run’s first line, the number, the author, and the age in its run, and
-the toggle on its last line, a member’s place and dot after its title and its missing
-icon, and the menu’s order and ink, each member’s author after its number, and the Whole
-stack row’s glyph and words where the members’ icons and titles start.
+mounts the panel and the page’s stack menu to hold the tree’s roles, places, and order,
+each open stack ending in its Whole stack row, which a key or a press opens and an
+address of the stack’s page marks.
+`tests/test_github_stack_page_chrome.py` holds in headless Chrome that the row is the
+current row and in view on the stack’s page, that a press on it and `J` onto it from the
+last member open the page, and that its glyph and words start where the members’ icons
+and titles do. `tests/dom/github-pulls-stack-lines-session.js` runs what each heading
+shows of its change line, and when it is read, against the production code on the
+route’s recorded answers, and mounts the panel to print a heading waiting, with its
+line, with none, and with “(estimated)”. `tests/test_github_pulls_stack_lines_chrome.py`
+measures in headless Chrome, at every width down to the pane’s minimum in both themes,
+that nothing in a stack’s row moves when its line arrives, that the row stays one line
+with its label whole and the line whole or out of view, never cut short, and that the
+line’s inks and weights are the component’s. `tests/test_github_pulls_stacks_chrome.py`
+measures the same design in headless Chrome against a running server with two native
+stacks: the shared label tokens, a stack’s row that shows its label alone with its size
+in its accessible name, where rows start, hover and focus, the toolbar’s fit, real keys
+and presses, a row’s toggle among them, the scroll, a pull request’s row with the state
+icon centered on its run’s first line, the number, the author, and the age in its run,
+and the toggle on its last line, a member’s place and dot after its title and its
+missing icon, and the menu’s order and ink, each member’s author after its number, and
+the Whole stack row’s glyph and words where the members’ icons and titles start, in the
+menu and in the list.
 `tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width down to
 the pane’s minimum and holds that a place sits after the title with its dot before it,
 and the run ends inside the row with nothing scrolling sideways; that one stack’s place
