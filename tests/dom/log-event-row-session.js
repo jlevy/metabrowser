@@ -158,6 +158,7 @@ for (const relative of [
   "static/navigation.js",
   "static/plugin-sdk.js",
   "static/filter-controls.js",
+  "static/menus.js",
   "static/icons.js",
 ]) {
   const filename = path.join(sourceRoot, relative);

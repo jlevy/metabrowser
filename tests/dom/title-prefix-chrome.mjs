@@ -63,6 +63,10 @@ const SCRIPTS = [
   "navigation.js",
   "inert-html.js",
   "plugin-sdk.js",
+  // `metabrowser.menus`, the closing every menu has, which the stack menu and the
+  // views' menus use, and the shell tool it forwards to.
+  "filter-controls.js",
+  "menus.js",
   "plugin-sdk-views.js",
   "file-fuzzy-match.js",
   "known-file-catalog.js",
@@ -325,7 +329,7 @@ const MEASURE = `async (titles) => {
     const menu = pageModule.createStackMenu(
       { number: 286, base_ref: "main", open: true, pulls: [6, 7, 8], titles: [PULL, PULL_PLAIN, null] },
       7,
-      { link: () => document.createElement("a"), icon: null, currentTitle: PULL_PLAIN, titleNodes: mb.titleNodes, onOpen() {} },
+      { link: () => document.createElement("a"), icon: null, currentTitle: PULL_PLAIN, titleNodes: mb.titleNodes, onOpen() {}, menus: mb.menus },
     );
     const holder = document.createElement("div");
     holder.className = "github-pull-stacks";

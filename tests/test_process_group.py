@@ -132,6 +132,7 @@ CHROME_TESTS = (
     "tests.test_markdown_badges_chrome",
     "tests.test_markdown_diagrams_chrome",
     "tests.test_markdown_github_layout_chrome",
+    "tests.test_menu_dismissal_chrome",
     "tests.test_nav_collapse_chrome",
     "tests.test_nav_metadata_chrome",
     "tests.test_nav_reveal_chrome",

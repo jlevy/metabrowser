@@ -1929,6 +1929,10 @@ type MetabrowserSdk = {
     options?: { signal?: AbortSignal },
   ): Promise<MetabrowserPluginData>;
   filterControls?: MetabrowserFilterControls;
+  /** How every menu closes (docs/plugins.md, "Menus"); feature-detect `menus?.dismissible`.
+   *  static/filter-controls.js sets it, so a load where that script failed has none, and
+   *  the shell's own callers feature-detect it too (tests/test_menu_dismissal.py). */
+  menus?: MetabrowserMenus;
   filterState?: MetabrowserFilterState;
   /** A view's letter keys and badges (SDK 0.7); feature-detect `shortcuts?.attach`. */
   shortcuts?: MetabrowserPluginShortcutsApi;
@@ -3321,6 +3325,34 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
 }>;
 
 declare global {
+  /** Why a menu closed: a press outside it, focus or the window leaving it, Escape, or another menu opening. */
+  type MetabrowserMenuClose = "outside" | "away" | "escape" | "other";
+  /** One menu, as `metabrowser.menus.dismissible` closes it (docs/design-system.md, "Every Menu Closes Alike"). */
+  type MetabrowserDismissibleMenu = {
+    /** The menu's surface class beside `.menu`, which tests/test_menu_dismissal.py reads. */
+    name: string;
+    /** The button that opens it, or a function that finds it: inside the menu, and where Escape gives focus back. */
+    trigger: HTMLElement | null | (() => HTMLElement | null);
+    /** Whether a node is the menu's own, beyond its trigger: its panel, and anything it places. */
+    inside(node: Node): boolean;
+    isOpen(): boolean;
+    /** Close it, as its own code does; the helper moves focus only for Escape. */
+    close(how: MetabrowserMenuClose): void;
+  };
+  type MetabrowserDismissibleHandle = {
+    /** Call each time the menu opens: it closes any other menu and starts listening. */
+    opened(): void;
+    /** Call when the menu's own code closes it, so the listeners go at once. */
+    closed(): void;
+    /** Stop for good, when the menu goes. */
+    dispose(): void;
+  };
+  /** How every menu closes (static/menus.js). The SDK's `menus` is in the startup scripts and
+   * forwards to it, asking for the shell's tools when a menu opens before they arrive. */
+  type MetabrowserMenus = {
+    dismissible(menu: MetabrowserDismissibleMenu): MetabrowserDismissibleHandle;
+  };
+
   /** A watched file's new generation (`file.changed`); null when nothing readable is there. */
   type MetabrowserFileChange = { path: string; generation: string | null };
   /** Where a file watch stands: waiting for a connection (or for a hidden page to be shown,
@@ -4918,6 +4950,8 @@ declare global {
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserNavCollapse?: MetabrowserNavCollapseRuntime;
+    /** static/menus.js, a shell tool; the SDK's `menus` forwards to it. */
+    MetabrowserMenus?: MetabrowserMenus;
     MetabrowserRevisionAges?: MetabrowserRevisionAgesRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
