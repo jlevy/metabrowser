@@ -148,7 +148,8 @@ const LEADING = "+7,56";
 // ── The page ────────────────────────────────────────────────────────────────
 
 // The shell's tokens and sheet, then the diff plugin's, then KPress's document sheets; the
-// shell's icons and its SDK's chip family; and the comparison and its new side's lines.
+// shell's icons, its brief change line's builder and painters, and its SDK's chip family;
+// and the comparison and its new side's lines.
 // Below the file, room for the pane to bring its last hunk to the top, as the files after
 // it do on a page.
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>diff hunk gap</title>
@@ -159,6 +160,7 @@ ${INPUT.sheets.map((sheet) => `<link rel="stylesheet" href="/kpress/${sheet}">`)
 <script>window.METABROWSER_SETTINGS = { DIFF_GAP_LINES: ${GAP_LINES} };</script>
 <script>window.gapInput = ${JSON.stringify({ comparison: COMPARISON, lines: NEW })};</script>
 <script src="/static/icons.js"></script>
+<script src="/static/formatters.js"></script>
 <script>window.metabrowser = { icons: window.MetabrowserIcons };</script>
 <script src="/static/filter-controls.js"></script>
 <script type="module">
@@ -227,7 +229,13 @@ const MOUNT = `async (layout) => {
   const comparison = structuredClone(recorded);
   Object.defineProperty(comparison, "__revision", { value: "HEAD", enumerable: false });
   const prefs = new Map([["diff.layout", layout]]);
+  const formatters = window.MetabrowserFormatters;
   const api = {
+    // A file's bar says its lines with the shell's brief change line, as the SDK hands it
+    // (diff-view.js, renderFileBar).
+    countPartsNodes: (parts) => formatters.countPartsNodes(document, parts),
+    changeLine: (change) => formatters.changeLine(change, formatters.formatInteger),
+    changeLineNodes: (line, options) => formatters.changeLineNodes(document, line, options),
     highlightSyntax: async () => null,
     isLargeTextPreview: () => true,
     langForPath: () => "",
