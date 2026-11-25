@@ -212,16 +212,18 @@ No CI step installs jq: the GitHub-hosted Ubuntu runner image provides it.
 A pytest session writes under `pytest-of-$USER/pytest-<N>` in the system temporary
 directory (`$TMPDIR` on macOS), one directory per test and, under pytest-xdist, one
 `popen-gw<N>` per worker.
-`tmp_path_retention_policy = "failed"` in `pyproject.toml` removes a passing test’s
-`tmp_path` as the test ends and a passing session’s whole directory as it ends.
-`tests/conftest.py` then leaves an empty directory at the passing test’s path, so that
-no later test in the session is handed the same one: a process-wide cache keyed by path
-would carry the earlier test’s state into it.
-A failing test’s `tmp_path` stays for debugging, beside the directories that
-session-scoped fixtures made, until pytest prunes the session among the oldest beyond
-`tmp_path_retention_count`. A session killed before it ended leaves its lock, which
-would hold the directory for days; the next session to end releases such a lock once its
-process has gone, so pytest prunes the directory too.
+pytest keeps them all (`tmp_path_retention_policy = "all"` in `pyproject.toml`), and
+`tests/conftest.py` removes what no one reads.
+After a test’s teardown it empties the test’s `tmp_path`, unless the test failed or
+errored in its setup, its call, or its teardown.
+It keeps the empty directory, so that no later test in the session is handed the same
+path: a process-wide cache keyed by path would carry the earlier test’s state into it.
+As a passing session ends it removes the session’s whole directory.
+So what stays is the `tmp_path` of each test that failed or errored, beside the
+directories that session-scoped fixtures made, until pytest prunes the session among the
+oldest beyond `tmp_path_retention_count`. A session killed before it ended leaves its
+lock, which would hold the directory for days; the next session to end releases such a
+lock once its process has gone, so pytest prunes the directory too.
 `tests/transient_output.py` has the measurements, and `tests/test_transient_output.py`
 holds the policy and the pruning.
 

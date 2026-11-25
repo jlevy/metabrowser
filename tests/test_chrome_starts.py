@@ -38,7 +38,9 @@ THIS = Path(__file__).resolve()
 ROOT = THIS.parents[1]
 DRIVER = THIS.parent / "dom" / "chrome-start-retry.mjs"
 SESSION_SCRIPT = THIS.parent / "dom" / "chrome-session.mjs"
-# The longest case, a nested session: pytest's start and collection, the warm-up and the
+# The longest case, a Chrome session held DEFAULT_APPS_HOLD_MS (below) after it starts:
+# 8.78 s in a CI job, and 18.6 s on a 10-core Mac at a load average near 400, on
+# 2026-11-24. Then a nested session: pytest's start and collection, the warm-up and the
 # probe's two starts of a stand-in that exits, 3.7 s on a 10-core Mac at a load average
 # near 17. The driver's cases each wait at most two of their own bounds (BOUNDS_MS in the
 # driver) and the session's close.

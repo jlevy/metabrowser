@@ -302,13 +302,14 @@ def pytest_runtestloop(session: pytest.Session) -> Generator[None, object, objec
 
 _SUMMARY_LINES = pytest.StashKey[list[str]]()
 _TMP_PATH = pytest.StashKey[Path]()
+_FAILED = pytest.StashKey[bool]()
 
 
 @pytest.hookimpl(wrapper=True)
 def pytest_fixture_setup(
     fixturedef: pytest.FixtureDef[object], request: pytest.FixtureRequest
 ) -> Generator[None, object, object]:
-    """Note the test's ``tmp_path``, however it was asked for, for the teardown below."""
+    """Note the test's ``tmp_path``, however it was asked for, for its reports below."""
 
     result = yield
     if fixturedef.argname == "tmp_path" and isinstance(result, Path):
@@ -316,46 +317,57 @@ def pytest_fixture_setup(
     return result
 
 
-@pytest.hookimpl(wrapper=True)
-def pytest_runtest_teardown(item: pytest.Item) -> Generator[None, object, object]:
-    """Keep the name of a passing test's ``tmp_path``, which pytest has just removed
-    (``tmp_path_retention_policy``), as an empty directory.
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_makereport(item: pytest.Item) -> Generator[None, pytest.TestReport, object]:
+    """Empty the test's ``tmp_path`` after its teardown report, unless one of its reports
+    failed (``tests/transient_output.py``).
 
-    pytest numbers a test's directory one past the highest of its name that exists
-    (``_mk_tmp`` in ``_pytest/tmpdir.py`` keeps the start of the test's name). Without
-    this, the next test whose name starts the same, as a parametrized test's next case
-    does, is handed the same path, and a process-wide cache keyed by path carries the
-    last test's state into it: ``metabrowser.git.tree_source``'s reader pools handed
-    ``test_displayed_missing_blob_repairs_after_record_and_head_advance[True]`` a reader
-    on the event loop of its ``[False]`` case, in every unit job of the first CI run of
-    the policy.
+    The teardown report is made after every fixture's teardown, so a test whose setup
+    errored, or whose teardown failed after its call passed, keeps its directory, as one
+    whose call failed does. Outermost, so that the report seen is the one pytest records,
+    after an expected failure is marked as one.
     """
 
-    try:
-        return (yield)
-    finally:
-        path = item.stash.get(_TMP_PATH, None)
-        if path is not None and not path.exists():
-            with contextlib.suppress(OSError):
-                path.mkdir(mode=0o700)
+    report = yield
+    failed = item.stash.get(_FAILED, False) or report.failed
+    item.stash[_FAILED] = failed
+    path = item.stash.get(_TMP_PATH, None)
+    if report.when == "teardown" and path is not None and not failed:
+        transient_output.empty(path)
+    return report
 
 
 @pytest.hookimpl(tryfirst=True)
-def pytest_sessionfinish(session: pytest.Session) -> None:
-    """Read what the terminal summary reports from the run's base directory, and release
-    the locks of sessions whose process has gone (``tests/transient_output.py``).
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Read what the terminal summary reports from the run's base directory, then release
+    the locks of sessions whose process has gone and remove a passing run's base directory
+    (``tests/transient_output.py``).
 
-    First, because pytest's own ``pytest_sessionfinish`` then removes a passing run's base
-    directory (``tmp_path_retention_policy``) and prunes older sessions' directories, and
-    the terminal summary is written only after that. A base directory given with
-    ``--basetemp``, as pytest-xdist gives each worker its own, is not pytest's to prune.
+    First, because pytest's own ``pytest_sessionfinish`` then prunes older sessions'
+    directories, and the terminal summary is written only after that. A base directory
+    given with ``--basetemp``, as pytest-xdist gives each worker its own, is not this
+    session's to remove. Nothing here raises: from this hook an exception would replace the
+    run's report, its failures included, with pytest's internal error.
     """
 
     config = session.config
-    basetemp = config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
-    config.stash[_SUMMARY_LINES] = [*_gh_guard_lines(basetemp), *chrome_starts.summary(basetemp)]
+    try:
+        basetemp = config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
+    except OSError as error:
+        config.stash[_SUMMARY_LINES] = [f"transient output: no base directory: {error}"]
+        return
+    config.stash[_SUMMARY_LINES] = _summary_lines(basetemp)
     if config.option.basetemp is None:
-        transient_output.release_dead_locks(basetemp.parent)
+        transient_output.end_session(basetemp, passed=exitstatus == 0)
+
+
+def _summary_lines(basetemp: Path) -> list[str]:
+    try:
+        return [*_gh_guard_lines(basetemp), *chrome_starts.summary(basetemp)]
+    except Exception as error:
+        # An error in reading the logs would otherwise replace the run's whole report
+        # (pytest_sessionfinish above), which matters more than these lines.
+        return [f"summary: the run's logs could not be read: {error!r}"]
 
 
 def _gh_guard_lines(basetemp: Path) -> list[str]:
@@ -364,14 +376,21 @@ def _gh_guard_lines(basetemp: Path) -> list[str]:
     # stand-in and log, and the summary this process prints reads them all.
     patterns = ("no-real-gh*/calls.log", "popen-gw*/no-real-gh*/calls.log")
     logs = {log.resolve() for pattern in patterns for log in basetemp.glob(pattern)}
-    calls = [line for log in sorted(logs) for line in log.read_text(encoding="utf-8").splitlines()]
-    if not calls:
-        return []
-    tests = sorted({line.split("\t", 1)[0].rsplit(" ", 1)[0] for line in calls})
-    return [
-        f"gh guard: {len(calls)} gh call(s) reached the failing stand-in, "
-        f"from {len(tests)} test(s): " + ", ".join(tests)
-    ]
+    lines: list[str] = []
+    calls: list[str] = []
+    for log in sorted(logs):
+        try:
+            # The stand-in logs a call's arguments as they were given, in any encoding.
+            calls += log.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as error:
+            lines.append(f"gh guard: {log} could not be read: {error}")
+    if calls:
+        tests = sorted({line.split("\t", 1)[0].rsplit(" ", 1)[0] for line in calls})
+        lines.append(
+            f"gh guard: {len(calls)} gh call(s) reached the failing stand-in, "
+            f"from {len(tests)} test(s): " + ", ".join(tests)
+        )
+    return lines
 
 
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:

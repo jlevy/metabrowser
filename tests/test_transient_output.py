@@ -1,6 +1,7 @@
 """A passing test's ``tmp_path`` is emptied and a passing session's base directory removed,
-a failing test's stays, no test is handed a path an earlier one had, and a killed
-session's directory is pruned like any other (``tests/transient_output.py``).
+the ``tmp_path`` of a test that failed or errored stays, no test is handed a path an
+earlier one had, a killed session's directory is pruned like any other, and none of it
+can hide a run's report (``tests/transient_output.py``).
 
 Nested pytest sessions of this module's ``probe_*`` functions run under a temporary root
 of their own (``PYTEST_DEBUG_TEMPROOT``), so that what they leave, and what they prune, is
@@ -14,10 +15,12 @@ import getpass
 import os
 import subprocess
 import sys
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 
+from tests import chrome_starts
 from tests.transient_output import LOCK_NAME, release_dead_locks
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,14 +36,17 @@ pytestmark = pytest.mark.timeout(NESTED_BOUND_S + 30)
 # A process id no process can hold: above Linux's PID_MAX_LIMIT (2**22) and macOS's
 # highest, 99998. A session that was killed holds one that is no longer running.
 NO_SUCH_PID = 2**22 + 1
+# A lock no session wrote: too large for os.kill, which raises OverflowError for it.
+TOO_LARGE_PID = "99999999999"
 # What the large probe writes: a tree of the shape the suite's heaviest tests leave, in
 # miniature, so its removal is seen without the cost of one.
 LARGE_FILE_BYTES = 1 << 20
 SMALL_FILES = 50
 
 
-def test_the_suite_keeps_only_a_failing_tests_tmp_path(pytestconfig: pytest.Config) -> None:
-    assert pytestconfig.getini("tmp_path_retention_policy") == "failed"
+def test_pytest_itself_keeps_every_tmp_path(pytestconfig: pytest.Config) -> None:
+    # pytest's "failed" would remove a directory before a teardown failure is known.
+    assert pytestconfig.getini("tmp_path_retention_policy") == "all"
 
 
 # ── release_dead_locks ─────────────────────────────────────────────────────────
@@ -65,13 +71,15 @@ def test_only_a_lock_whose_process_has_gone_is_released(tmp_path: Path) -> None:
     unreadable = _session(root, "pytest-4", "not a process")
     unlocked = _session(root, "pytest-5", None)
     not_a_session = _session(root, "elsewhere-6", str(NO_SUCH_PID))
-    (root / "pytest-current").symlink_to(dead)
+    # Named as a session is, but a link: its lock is the one it points at.
+    (root / "pytest-7").symlink_to(not_a_session)
+    too_large = _session(root, "pytest-8", TOO_LARGE_PID)
 
     assert sorted(release_dead_locks(root)) == [garbage, dead]
 
     for directory in (dead, garbage):
         assert not (directory / LOCK_NAME).exists()
-    for directory in (live, being_written, unreadable, not_a_session):
+    for directory in (live, being_written, unreadable, not_a_session, too_large):
         assert (directory / LOCK_NAME).exists(), directory
     assert not (unlocked / LOCK_NAME).exists()
     # Releasing removes nothing but the lock; the pruning is pytest's.
@@ -79,8 +87,25 @@ def test_only_a_lock_whose_process_has_gone_is_released(tmp_path: Path) -> None:
         assert (directory / "output.bin").exists(), directory
 
 
-def test_a_root_that_is_not_there_releases_nothing(tmp_path: Path) -> None:
+@pytest.mark.skipif(
+    os.name != "posix" or os.geteuid() == 0,
+    reason="a directory's mode stops its owner removing a file in it on POSIX, not root",
+)
+def test_a_lock_that_cannot_be_removed_is_left(tmp_path: Path) -> None:
+    root = tmp_path / "pytest-of-someone"
+    stuck = _session(root, "pytest-1", str(NO_SUCH_PID))
+    stuck.chmod(0o500)
+    try:
+        assert release_dead_locks(root) == []
+    finally:
+        stuck.chmod(0o700)
+    assert (stuck / LOCK_NAME).exists()
+
+
+def test_a_root_that_is_not_a_directory_releases_nothing(tmp_path: Path) -> None:
     assert release_dead_locks(tmp_path / "pytest-of-nobody") == []
+    (tmp_path / "pytest-of-a-file").write_text("", encoding="utf-8")
+    assert release_dead_locks(tmp_path / "pytest-of-a-file") == []
 
 
 # ── Nested sessions ────────────────────────────────────────────────────────────
@@ -92,6 +117,11 @@ def _record(name: str, tmp_path: Path) -> None:
         out.write(f"{name}\t{tmp_path}\n")
 
 
+def _evidence(name: str, tmp_path: Path) -> None:
+    (tmp_path / "evidence.txt").write_text(f"what went wrong in {name}\n", encoding="utf-8")
+    _record(name, tmp_path)
+
+
 def probe_a_passing_test_with_a_large_tree(tmp_path: Path) -> None:
     (tmp_path / "large.bin").write_bytes(os.urandom(LARGE_FILE_BYTES))
     for index in range(SMALL_FILES):
@@ -101,8 +131,9 @@ def probe_a_passing_test_with_a_large_tree(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("case", ["first", "second"])
-def probe_a_parametrized_test(tmp_path: Path, case: str) -> None:
-    """Its cases' names start the same, as pytest names their directories."""
+def probe_a_parametrized_test_whose_cases_share_a_prefix(tmp_path: Path, case: str) -> None:
+    """pytest names a test's directory by the first 30 characters of the test's name, the
+    same for both cases here, and numbers it one past the highest of that name there is."""
 
     (tmp_path / "case.txt").write_text(case, encoding="utf-8")
     _record(case, tmp_path)
@@ -112,10 +143,47 @@ def probe_a_test_that_calls_gh() -> None:
     subprocess.run(["gh", "auth", "status"], capture_output=True, check=False, timeout=10)
 
 
+def probe_a_test_that_runs_gh_with_undecodable_arguments() -> None:
+    # The stand-in gh logs its arguments as given: here a byte that is not UTF-8.
+    undecodable = os.fsdecode(b"\xff")
+    subprocess.run(["gh", undecodable], capture_output=True, check=False, timeout=10)
+
+
+def probe_a_test_that_garbles_the_chrome_starts_log(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    log = chrome_starts.log_path(tmp_path_factory.getbasetemp())
+    with log.open("ab") as out:
+        out.write(b'\xff{"test": "cut sh\n')
+
+
 def probe_a_failing_test(tmp_path: Path) -> None:
-    (tmp_path / "evidence.txt").write_text("what went wrong\n", encoding="utf-8")
-    _record("failing", tmp_path)
+    _evidence("call", tmp_path)
     raise AssertionError("this probe fails, so its tmp_path stays")
+
+
+@pytest.fixture
+def errs_in_setup(tmp_path: Path) -> None:
+    _evidence("setup", tmp_path)
+    raise RuntimeError("this fixture errs in setup, so the test's tmp_path stays")
+
+
+@pytest.mark.usefixtures("errs_in_setup")
+def probe_a_test_whose_setup_errors() -> None:
+    raise AssertionError("not reached: the setup erred")
+
+
+@pytest.fixture
+def fails_in_teardown() -> Generator[None]:
+    yield
+    raise RuntimeError("this fixture fails in teardown, so the test's tmp_path stays")
+
+
+@pytest.mark.usefixtures("fails_in_teardown")
+def probe_a_test_whose_teardown_fails(tmp_path: Path) -> None:
+    # The call passes, so pytest's "failed" policy would remove this directory in its own
+    # teardown, before the fixture's teardown fails.
+    _evidence("teardown", tmp_path)
 
 
 def _nested(
@@ -132,11 +200,20 @@ def _nested(
         env={**os.environ, "PYTEST_DEBUG_TEMPROOT": str(temproot), RECORD_ENV: str(record)},
         capture_output=True,
         text=True,
+        errors="replace",
         timeout=NESTED_BOUND_S,
         check=False,
     )
     lines = record.read_text(encoding="utf-8").splitlines()
     return completed, {name: Path(path) for name, path in (line.split("\t") for line in lines)}
+
+
+def _numbered_after(first: Path, second: Path) -> bool:
+    """Whether *second* is the directory pytest numbers next after *first*, the first of
+    its name: so not *first*'s path again, as it is when *first* was removed."""
+
+    stem = first.name.removesuffix("0")
+    return first.name == stem + "0" and (second.parent, second.name) == (first.parent, stem + "1")
 
 
 WORKERS = pytest.mark.parametrize(
@@ -167,7 +244,7 @@ def test_a_passing_session_leaves_nothing_and_prunes_a_killed_one(
     assert completed.returncode == 0, report
     assert "gh guard: 1 gh call(s) reached the failing stand-in" in completed.stdout, report
     assert not recorded["large"].exists()
-    assert recorded["first"] != recorded["second"]
+    assert _numbered_after(recorded["first"], recorded["second"]), recorded
     assert not (root / "pytest-6").exists()
     assert not killed.exists()
     assert (running / LOCK_NAME).exists()
@@ -175,20 +252,45 @@ def test_a_passing_session_leaves_nothing_and_prunes_a_killed_one(
 
 
 @WORKERS
-def test_a_failing_session_keeps_only_the_failing_tests_tmp_path(
+def test_a_failing_session_keeps_only_what_failed_and_still_reports(
     tmp_path: Path, workers: list[str]
 ) -> None:
+    """The ``tmp_path`` of a test that failed in its call, erred in its setup, or failed in
+    its teardown stays, and the rest are emptied. A lock no session wrote and logs that are
+    not UTF-8 leave the report whole: its failures, the gh call and the Chrome log."""
+
     temproot = tmp_path / "temproot"
+    root = temproot / f"pytest-of-{getpass.getuser()}"
+    too_large = _session(root, "pytest-0", TOO_LARGE_PID)
+
     completed, recorded = _nested(
-        tmp_path, temproot, workers, "large_tree or failing_test or parametrized"
+        tmp_path,
+        temproot,
+        workers,
+        "large_tree or parametrized or failing_test or setup_errors or teardown_fails"
+        " or undecodable or garbles",
     )
 
-    assert completed.returncode == 1, completed.stdout + completed.stderr
-    # A passing test's directory is kept empty, so that no later test is handed its path
-    # (pytest_runtest_teardown in tests/conftest.py).
+    out = completed.stdout
+    report = out + completed.stderr
+    assert completed.returncode == 1, report
+    assert "INTERNALERROR" not in report, report
+    assert f"FAILED {THIS}::probe_a_failing_test" in out, report
+    assert f"ERROR {THIS}::probe_a_test_whose_setup_errors" in out, report
+    assert f"ERROR {THIS}::probe_a_test_whose_teardown_fails" in out, report
+    assert "1 failed" in out.splitlines()[-1], report
+    assert (
+        "gh guard: 1 gh call(s) reached the failing stand-in, from 1 test(s): "
+        f"{THIS}::probe_a_test_that_runs_gh_with_undecodable_arguments"
+    ) in out, report
+    assert "chrome starts: 0, 0 failed; 1 unreadable line(s)" in out, report
+    assert (too_large / LOCK_NAME).read_text(encoding="ascii") == TOO_LARGE_PID
+    # A passing test's directory is kept empty, so that no later test is handed its path.
     for passed in ("large", "first", "second"):
         assert list(recorded[passed].iterdir()) == [], passed
-    assert recorded["first"] != recorded["second"]
-    assert (recorded["failing"] / "evidence.txt").read_text(encoding="utf-8") == (
-        "what went wrong\n"
-    )
+    assert _numbered_after(recorded["first"], recorded["second"]), recorded
+    phases = ("call", "setup", "teardown")
+    evidence = [recorded[phase] / "evidence.txt" for phase in phases]
+    assert [path.read_text(encoding="utf-8") if path.exists() else None for path in evidence] == [
+        f"what went wrong in {phase}\n" for phase in phases
+    ]
