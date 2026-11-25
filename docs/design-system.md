@@ -3908,9 +3908,10 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   poll, and the page is the stack the chip would open.
 - **Author’s row and its freshness note:** dropped.
   Each member has its own author; what the page is fetching is said on the status line.
-- **Members:** the one part a pull request’s page lacks, built from an existing
-  component. The stack menu’s member rows, top first, in a card, where the ages and
-  author rows stand on a pull request’s page; no row is the page, so none takes the
+- **Members:** the one part a pull request’s page lacks, built from existing components.
+  The stack menu’s member rows, top first, in a page card, where the ages and author
+  rows stand on a pull request’s page, each row inset as a card’s head is
+  ([Spacing](#the-stack-pages-spacing)); no row is the page, so none takes the
   current-row mark.
 - **Branches:** kept. The merge the stack makes, the top member’s head → the stack’s
   base, in the shell’s merge refs, held a line tall until the stack’s answer names the
@@ -3937,13 +3938,20 @@ Each part of a pull request’s page, and what the stack’s page does with it:
   member’s, and the Files tab the page had is gone, since the Diff summary lists the
   files, as on a pull request’s page.
 - **Guided Review, Docs, and Changes:** kept.
-  A pull request’s tab bodies and drawings, held out of sight until the first screen is
-  ready, with the loading block under the hidden diff, and Docs’ Show every change when
-  it has no documents.
+  A pull request’s tab bodies and drawings, in its columns, held out of sight until the
+  first screen is ready, with the loading block under the hidden diff, and Docs’ Show
+  every change when it has no documents.
+  Docs or Changes that could not load say so in a pull request’s error notice, with
+  Retry.
 - **Body notice and the cold hold:** kept.
   A stack that cannot be shown as one comparison says so in the pull request’s body
   notice, and a page with no member known yet is held out of sight for the quiet period,
   as a pull request’s with no record is.
+- **Layer chips:** dropped.
+  The page’s Files tab marked each file with the places of the members that change it,
+  “2/4”, each a chip that opened the file in that member (`.diff-file-mark`, drawn by
+  the diff view from a host’s `fileMarks`); no page passes marks now, and the combined
+  diff and the Diff summary carry none.
 - **Details for a late or failed read:** dropped for now.
   The page offers no Details; its failures are said on the status line.
 
@@ -3960,6 +3968,37 @@ drawing asks for layer marks.
 rows are a pull request’s, in its order; that a member row is the stack menu’s; that
 View on GitHub opens the whole stack; and that nothing on the page moves from its first
 paint, opening the page or its tabs.
+
+#### The Stack Page’s Spacing
+
+**Every part the stack’s page shares with a pull request’s stands at the same edges with
+the same padding.** No part sets a padding, margin, or inset of its own: each carries
+the pull request page’s classes inside its `.github-pull` scope, which declares the card
+inset, `--github-pull-text-inset`, and the page’s gap and rhythm, so the same component
+looks the same on both pages.
+
+| Part | Spacing, as on a pull request’s page |
+| --- | --- |
+| Header | `.page-header` in the reading column, `.page-reading-column`, at the pane’s gutter, `--content-padding-x`, with the header’s own top and bottom padding |
+| Members | A page card, `.page-card`, as Guided Review’s step list and a step’s card are; each row the stack menu’s, at the menu’s height and size, inset by `--github-pull-text-inset` where the menu insets it by `--menu-row-inset`, so a member’s state icon starts where Guided Review’s badge and a step’s text start below it |
+| Tab bar | In the reading column, its first tab on the header’s content edge |
+| Body | `.github-pull-body`’s padding and gap; in the reading column on Guided Review, for a notice, and before anything is drawn, and across the pane on Docs and Changes, so a diff has room for Split (`bodyInColumn` in `stack-page.js`, as `diffTab` decides it in `pull-page.js`) |
+| Guided Review | `guided-review.js`’s step list and step card ([Guided Review](#guided-review)), their heads, a step’s note, and its references inset by `--github-pull-text-inset` |
+| Notices | `.notice.github-pull-notice`, in the body or the diff’s host |
+
+The page before this design was outside the `.github-pull` scope, so every part that
+reads the card inset had none: Guided Review’s heads, a step’s note, and its references
+stood on their card’s border.
+Its header and body sat inside a second gutter, 24 px in from a pull request’s, and
+Guided Review took the whole pane, its cards 233.75 px wider than a pull request’s in a
+1280 px window with the navigation pane shown (Chrome 152, 2026-11-25).
+`tests/dom/github-stack-page-layout-chrome.mjs`, which
+`tests/test_github_stack_page_chrome.py` runs on the stand-in with guides, measures each
+shared part against a pull request’s, its edges, padding, border, and ground within half
+a pixel, in both schemes at a desktop width and a phone’s; a part a pull request’s page
+pads cannot lose its padding on the stack’s. It holds the members’ card to the step
+list’s border and ground, and each member’s state icon to the badge’s edge.
+`tests/dom/github-stack-page-session.js` runs which column the body takes in each state.
 
 ### Stack Groups in the Pulls Tab
 

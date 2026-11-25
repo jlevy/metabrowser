@@ -41,6 +41,7 @@ the QA runbook's pull-request page walkthrough does::
     github_pull_fixture.py <directory> --serve <number> <port>
 
 With ``--guided`` the descriptions of 7 and 8 carry guides, and 9's two blocks;
+``--guided-stack`` adds a native stack's guide to 10's, for a stack whose top is 10;
 ``--describe`` then writes one of ``GUIDE_VARIANTS`` or ``BUILT_VARIANTS`` into a cached
 description, pinned as the guide already there is::
 
@@ -1323,6 +1324,7 @@ def build_home(
     guided: bool = False,
     documents: bool = False,
     large: bool = False,
+    stack_guide: bool = False,
 ) -> None:
     """Cache the mirror and pull requests 7 to 10 through the production CLI path.
 
@@ -1331,7 +1333,8 @@ def build_home(
     *documents* too, pull request 7 also adds a YAML file, and its guide ends on a step that
     cites it and a Markdown file whole. With *large* as well, it adds a Markdown file whose
     whole patch charges past a step's budget for whole files, which that step cites too
-    (:data:`_DOCUMENT_FILES`).
+    (:data:`_DOCUMENT_FILES`). With *stack_guide*, 10's description also carries the guide
+    of a native stack whose top it is (:data:`_STACK_GUIDE_ITEMS`).
 
     The seams are the in-process goldens' own: the origin URL, the Git floor (the
     machine's Git may be below it), the clock, and a fake ``gh`` first on ``PATH``.
@@ -1351,6 +1354,8 @@ def build_home(
     answers = scenario(origin)
     if guided:
         _add_guides(origin, answers, documents=kept if documents else ())
+    if stack_guide:
+        _add_stack_guide(origin, answers)
     environment = install_fake_gh(directory, answers)
     version, _raw = detect_git_version()
     local = origin.url
@@ -1626,6 +1631,45 @@ def _document_step(paths: tuple[str, ...]) -> str:
         "      note: Check that it reads as a document.\n"
         "      references:\n" + "".join(f"        - {{path: {path}}}\n" for path in cited)
     )
+
+
+# The guide of a stack whose bottom's merge base is the stand-in's base and whose top is 10,
+# as stack 70 (8, then 10) reads it: a group with a note over the layers, then the draft
+# whole, as tests/test_cli_github_stack_golden.py's top guide reads them without the group.
+_STACK_GUIDE_ITEMS: Final = """\
+    - title: Orientation
+      note: The stack's two layers, bottom first.
+      items:
+        - title: The layers
+          note: 8 extends the guide; 10 starts a draft on top of it.
+          references:
+            - {pull: 8}
+            - {pull: 10}
+    - title: The draft
+      note: Read the draft whole.
+      references:
+        - {path: docs/draft.md}
+"""
+
+
+def _add_stack_guide(origin: Origin, answers: dict[str, Any]) -> None:
+    """10's description, with a `stack-review` block pinned to the base and 10's head after
+    what it says: the guide of a stack whose top is 10, which 10 carries."""
+    pull = answers["api"]["repos/octo/demo/pulls/10"]["body"]
+    pull["body"] = f"""{pull["body"]}
+
+```stack-review
+softschema:
+  contract: metabrowser.collection:Collection/v1
+  envelope: collection
+  status: enforced
+collection:
+  comparison:
+    merge_base: "{origin["base"]}"
+    head: "{origin["draft_head"]}"
+  items:
+{_STACK_GUIDE_ITEMS}```
+"""
 
 
 def _add_guides(origin: Origin, answers: dict[str, Any], *, documents: tuple[str, ...]) -> None:
@@ -1904,6 +1948,8 @@ if __name__ == "__main__":
         build_home(Path(sys.argv[1]).resolve(), files=True)
     elif len(sys.argv) == 3 and sys.argv[2] == "--guided":
         build_home(Path(sys.argv[1]).resolve(), guided=True)
+    elif len(sys.argv) == 3 and sys.argv[2] == "--guided-stack":
+        build_home(Path(sys.argv[1]).resolve(), guided=True, stack_guide=True)
     elif len(sys.argv) == 3 and sys.argv[2] in ("--guided-documents", "--guided-large-document"):
         build_home(
             Path(sys.argv[1]).resolve(),
@@ -1922,7 +1968,8 @@ if __name__ == "__main__":
     else:
         raise SystemExit(
             "usage: github_pull_fixture.py <directory> "
-            "[--files | --guided | --guided-documents | --guided-large-document | --checkout "
+            "[--files | --guided | --guided-stack | --guided-documents "
+            "| --guided-large-document | --checkout "
             "| --serve <number> <port> [--exit-on-eof] "
             f"| --describe <number> {{{','.join([*GUIDE_VARIANTS, *BUILT_VARIANTS])}}}] "
             "or --files-refresh <metab arguments>"

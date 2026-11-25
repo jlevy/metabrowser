@@ -2197,19 +2197,27 @@
    classes: its header's title, corner, branches, status, size, and Diff summary rows, its
    tab bar, and its diff's hold. What is here is the one part a pull request's page has no
    row for, the members, which are the stack menu's member rows (`.menu-item` and
-   `.github-pull-stack-member`, above) listed in the header as a bordered card, as a guided
-   step's card lists a pull request it cites (`.github-pull-guide-row`): every row one line
-   at the menu's size, the state icon in the tree's icon slot, the title cut short before
-   the place and the number. No member is this page, so none takes the current-row mark. */
+   `.github-pull-stack-member`, above) listed in the header in a page card (`.page-card`),
+   as a guided step's card lists a pull request it cites (`.github-pull-guide-row`): every
+   row one line at the menu's size, the state icon in the tree's icon slot, the title cut
+   short before the place and the number. No member is this page, so none takes the
+   current-row mark.
+
+   The card insets its rows as every card on a pull request's page insets what it holds,
+   by the card text's inset (`--github-pull-text-inset`), so a member's state icon starts
+   where Guided Review's badge and a step's text start under it. With the menu's own inset,
+   `--menu-row-inset`, the icons stood 8 px nearer the card's edge than every other card's
+   content on the page (Chrome 152, 2026-11-25). The body's column is the pull request
+   page's (`bodyInColumn` in stack-page.js). */
 .github-pull-stack-members {
   margin: 0;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
-  overflow: hidden;
   list-style: none;
 }
 .github-pull-stack-members-item {
   display: flex;
   min-width: 0;
+}
+.github-pull-stack-members .github-pull-stack-member {
+  padding-inline: var(--github-pull-text-inset);
 }

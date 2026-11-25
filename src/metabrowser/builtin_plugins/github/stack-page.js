@@ -499,6 +499,22 @@ export function bodyOpened(body, file) {
  */
 
 /**
+ * Whether the body is set in the reading column, as a pull request's is (pull-page.js, where
+ * Conversation, Guided Review, Checks, and a page with no record take the column, and Docs
+ * and Changes the full pane): Guided Review, a notice, and a body with nothing drawn yet
+ * start and end where the header and the tab bar do, and Docs and Changes keep the full
+ * pane so a diff has room for Split. In the full pane Guided Review's cards ran 233.75 px
+ * past the header's end in a 1280 px window with the navigation pane shown (Chrome 152,
+ * 2026-11-25; docs/design-system.md, "The Stack Page").
+ *
+ * @param {StackBody} body
+ * @param {StackTab} tab
+ */
+export function bodyInColumn(body, tab) {
+  return body.drawn === null || (tab !== "docs" && tab !== "changes");
+}
+
+/**
  * What the body does now, and the body once it has: `wait` before any answer or a tab, a
  * `notice` while nothing is drawn, `mount` the drawn comparison in the tab when that is
  * not what is mounted (Guided Review reads its guide against the stack's comparison, and
@@ -1114,9 +1130,10 @@ export function mountStackPage(container, ctx, mb) {
   // server where this page's address goes (`/api/counterpart`), the stack's own page.
   const corner = h("span", { class: "view-header-end", "data-counterpart": "" });
   // The members, top first, each the stack menu's member row, so the stack reads here as
-  // it does under a pull request's stack button. No member is this page, so none is marked.
+  // it does under a pull request's stack button, in a page card, as every card on a pull
+  // request's page is. No member is this page, so none is marked.
   const memberList = h("ol", {
-    class: "github-pull-stack-members",
+    class: "github-pull-stack-members page-card",
     "aria-label": `Pull requests in ${stackLabel(number)}`,
   });
   // The merge the stack makes, its top member's head → its base, a line tall while the
@@ -1142,7 +1159,8 @@ export function mountStackPage(container, ctx, mb) {
   ]);
   const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Stack" });
   const tabColumn = h("div", { class: "page-reading-column" }, [tabBar]);
-  const body = h("div", { class: "github-pull-body" });
+  // In the reading column until a diff tab draws (`bodyInColumn`), as a pull request's is.
+  const body = h("div", { class: "github-pull-body page-reading-column" });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.replaceChildren(header, tabColumn, body, live);
 
@@ -1810,7 +1828,24 @@ export function mountStackPage(container, ctx, mb) {
         console.error("metabrowser github: the stack's diff could not load", failure);
         loading.remove();
         host.classList.remove("github-pull-diff-holding");
-        host.textContent = "Could not load this stack’s changes. Reload the page to try again.";
+        // A pull request's error notice and its Retry, in its words (`mountDiff` in
+        // pull-page.js), not a bare sentence in the diff's host.
+        const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
+        retry.addEventListener(
+          "click",
+          () => {
+            if (owns()) {
+              void paintDiff(which, comparison, owns, adopt);
+            }
+          },
+          { signal: listening.signal },
+        );
+        host.replaceChildren(
+          h("div", { class: "notice github-pull-notice", "data-severity": "error" }, [
+            docs ? "Docs could not load. " : "Changes could not load. ",
+            retry,
+          ]),
+        );
       }
     }
   }
@@ -1819,6 +1854,7 @@ export function mountStackPage(container, ctx, mb) {
     const plan = bodyPlan(shown, envelope, tab, failed);
     shown = plan.body;
     const action = plan.action;
+    body.classList.toggle("page-reading-column", bodyInColumn(shown, tab));
     if (shown.drawn !== null) {
       void showSummary(shown.drawn);
     }

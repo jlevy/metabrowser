@@ -363,6 +363,15 @@ try {
         counterpart: counterpart?.getAttribute("href") ?? null,
         tabs: [...page.querySelectorAll(".tab-bar .tab-btn")].filter((tab) => !tab.hidden).map((tab) => tab.textContent),
         size: page.querySelector(".github-pull-size")?.innerText ?? null,
+        // A card's inset on a pull request's page, its head's and its text's, resolved.
+        inset: (() => {
+          const probe = document.createElement("div");
+          probe.style.paddingLeft = "var(--github-pull-text-inset)";
+          page.append(probe);
+          const inset = getComputedStyle(probe).paddingLeft;
+          probe.remove();
+          return inset;
+        })(),
       };
     })()`);
     measured.page = page;
@@ -385,13 +394,16 @@ try {
       JSON.stringify(page.members),
     );
     for (const row of page.members) {
+      // The menu's row, at the menu's height and size, inset in its card as a pull request
+      // page's card insets its head and text (tests/dom/github-stack-page-layout-chrome.mjs
+      // measures it against them).
       check(
-        `${row.text}: one line, the menu's row`,
+        `${row.text}: one line, the menu's row, at a card's inset`,
         row.one_line &&
           row.height === menuRows[0]?.height &&
           row.font === menuRows[0]?.font &&
-          row.padding === menuRows[0]?.padding,
-        JSON.stringify({ row, menu: menuRows[0] }),
+          row.padding === page.inset,
+        JSON.stringify({ row, menu: menuRows[0], inset: page.inset }),
       );
       check(`${row.text}: its number ends the row`, row.number_at_end);
       check(`${row.text}: no member is the page`, !row.current);
