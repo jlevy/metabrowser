@@ -233,11 +233,11 @@ const LIST = `(() => {
     labelRoomRight: box(stackRow?.querySelector(".github-pulls-stack-heading"))?.right ?? null,
     flatAgeRight: box(flat?.querySelector(".github-pulls-age"))?.right ?? null,
     // The toolbar's one line: how far past the pane it reaches, and the room left between
-    // the filters and Reload, which sits at the line's end.
+    // the filters and Refresh, which sits at the line's end.
     toolbar: (() => {
       const bar = document.getElementById("nav-toolbar-pulls");
       const group = box(document.querySelector(".github-pulls-filters .chip-group"));
-      const reload = box(document.querySelector(".github-pulls-reload"));
+      const reload = box(document.querySelector(".github-pulls-refresh"));
       const gap = parseFloat(getComputedStyle(document.querySelector(".github-pulls-filters")).columnGap) || 0;
       return {
         width: bar?.clientWidth ?? null,
@@ -321,7 +321,7 @@ const SHELL_TIPS = `(async () => {
   const chipCut = window.metabrowser.refChip(branch, { menu: false });
   chipCut.style.maxWidth = "80px";
   const anchors = {
-    whole: h("button", { type: "button", "data-tip-text": "Reload" }, ["Reload"]),
+    whole: h("button", { type: "button", "data-tip-text": "Refresh" }, ["Refresh"]),
     wholeSpaced: h("span", { "data-tip-text": "stack #286" }, ["  Stack   #286 "]),
     cut: h("span", { "data-tip-text": long, style: "display: block; width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" }, [long]),
     chipWhole: window.metabrowser.refChip("main", { menu: false }),
@@ -1179,7 +1179,7 @@ try {
           gap,
           column: gap,
           cluster,
-          trailing: "github-pulls-reload",
+          trailing: "github-pulls-refresh",
         });
         check(
           `${label}: the toolbar keeps the wrap rule`,

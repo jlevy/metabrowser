@@ -200,7 +200,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "The server now serves another revision [Reload]",
+        "offer": "The server now serves another revision [Reload page]",
         "error": "Could not follow topic to its new commit."
       }
     },
@@ -216,7 +216,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "The server now serves another revision [Reload]",
+        "offer": "The server now serves another revision [Reload page]",
         "error": "Could not follow topic to its new commit."
       }
     },
@@ -230,7 +230,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "The server now serves another revision [Reload]",
+        "offer": "The server now serves another revision [Reload page]",
         "error": "Could not follow topic to its new commit."
       }
     },
@@ -246,7 +246,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "The server now serves another revision [Reload]",
+        "offer": "The server now serves another revision [Reload page]",
         "error": null
       }
     },
@@ -260,7 +260,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "The server now serves another revision [Reload]",
+        "offer": "The server now serves another revision [Reload page]",
         "error": null
       }
     },
@@ -277,7 +277,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "The server now serves another revision [Reload]",
+        "offer": "The server now serves another revision [Reload page]",
         "error": null
       }
     },
@@ -311,7 +311,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "The server now serves another revision [Reload]",
+        "offer": "The server now serves another revision [Reload page]",
         "error": null
       },
       "navigated": [
@@ -330,7 +330,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "The server now serves another revision [Reload]",
+        "offer": "The server now serves another revision [Reload page]",
         "error": null
       }
     },
@@ -465,7 +465,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "The server now serves another revision [Reload]",
+        "offer": "The server now serves another revision [Reload page]",
         "error": "The request to follow the branch failed."
       },
       "commit": {
@@ -487,7 +487,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "The server now serves another revision [Reload]",
+        "offer": "The server now serves another revision [Reload page]",
         "error": "The request to follow the branch failed."
       },
       "commit": {
@@ -512,7 +512,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "The server now serves another revision [Reload]",
+        "offer": "The server now serves another revision [Reload page]",
         "error": "The request to follow the branch failed."
       },
       "commit": {

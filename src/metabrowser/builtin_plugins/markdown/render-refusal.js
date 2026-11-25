@@ -71,9 +71,9 @@ export function refusalNote(refusal) {
     case "renderer_exited":
       return "The renderer stopped while rendering this document, so its source is shown.";
     case "renderer_unavailable":
-      return "The document renderer could not start, so this document’s source is shown. Reload to try again.";
+      return "The document renderer could not start, so this document’s source is shown. Reload the page to try again.";
     case "renderer_busy":
-      return "The document renderer is busy with other documents, so this document’s source is shown. Reload to try again.";
+      return "The document renderer is busy with other documents, so this document’s source is shown. Reload the page to try again.";
     default:
       return "This document could not be rendered, so its source is shown.";
   }

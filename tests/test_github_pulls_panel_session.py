@@ -605,7 +605,7 @@ def test_the_recording_holds_every_failure_the_plan_names() -> None:
 def test_pulls_landing_leaves_connection_status_to_the_sidebar() -> None:
     paint = run_session("github-pulls-panel-session.js", "--part", "all")["paint"]
     assert paint["landing"] == "Select a pull request."
-    assert paint["ready action"] == "Reload"
+    assert paint["ready action"] == "Refresh"
 
 
 def test_catalog_windows_and_late_request_ownership() -> None:

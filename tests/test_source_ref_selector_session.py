@@ -321,10 +321,10 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
         "error"
     ] == ("That ref is no longer in the checkout.")
     assert by_name["a working-tree page left behind offers a reload"]["paint"]["stale"] == (
-        "The server now shows another revision [Reload]"
+        "The server now shows another revision [Reload page]"
     )
     assert by_name["a revision's page left behind offers one too"]["paint"]["stale"] == (
-        "The server now shows the working tree [Reload]"
+        "The server now shows the working tree [Reload page]"
     )
     assert by_name["a folder Git does not take for a repository loses its row"]["paint"] == {
         "removed": True

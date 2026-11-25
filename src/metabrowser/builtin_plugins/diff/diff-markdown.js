@@ -47,7 +47,7 @@ const LOADING_DELAY_MS = 50;
 const REFUSALS = {
   no_changes: "This file's content did not change.",
   nesting: "This file is nested too deeply to show rendered.",
-  deadline: "Rendering this file took too long, so it was stopped. Reload to try again.",
+  deadline: "Rendering this file took too long, so it was stopped. Reload the page to try again.",
   too_large: "This file is too large to show rendered.",
 };
 // A refusal that names no reason: a file the projection could not read as its format.

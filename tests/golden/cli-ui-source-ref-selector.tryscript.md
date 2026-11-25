@@ -704,7 +704,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree",
           "open": false,
-          "stale": "The server now shows another revision [Reload]"
+          "stale": "The server now shows another revision [Reload page]"
         }
       },
       {
@@ -714,7 +714,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Branch: feature",
           "open": false,
-          "stale": "The server now shows the working tree [Reload]"
+          "stale": "The server now shows the working tree [Reload page]"
         }
       },
       {

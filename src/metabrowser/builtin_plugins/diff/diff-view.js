@@ -228,7 +228,7 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   too_large: "This change is too large to show inline.",
   timed_out: "Producing this diff timed out.",
   failed: "Could not produce this diff.",
-  stale: "The comparison changed underneath this file. Refresh to reload it.",
+  stale: "The comparison changed underneath this file. Reload the page to see it as it is now.",
   unsupported: "This change cannot be shown as a text diff.",
 });
 
@@ -305,7 +305,7 @@ const UNAVAILABLE_COPY = "These changes are unavailable.";
 // said as what it is and not as a failure of this page; in a document with no source to
 // ask, a deferred file is simply unavailable, which the table above's fallback says.
 const DEFERRED_AGAIN_COPY =
-  "The server did not load this file's changes. Reload the page to ask again.";
+  "The server did not load this file's changes. Reload the page to try again.";
 
 // Chrome 151, five runs of explorations/diff-intraline/benchmark.html:
 // ordinary edits completed in <= 1.2 ms, an 8 MiB mostly-equal line in

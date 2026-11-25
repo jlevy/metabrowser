@@ -1308,7 +1308,7 @@ const HELD_COMPARISON_FAILURES = new Set([
 
 /**
  * Whether the recorded outcome holds Changes' automatic comparison attempt for the
- * reader's Retry changes: GitHub's rate limit before it lifts, which the job's metadata
+ * reader's Retry of Changes: GitHub's rate limit before it lifts, which the job's metadata
  * read would meet, or one of `HELD_COMPARISON_FAILURES` recorded since the record was
  * written, which a new visit would only repeat. A request with `retry` bypasses the
  * server's own guards, so the page holds itself. Pure.
@@ -1616,7 +1616,7 @@ export function describePull(envelope, page) {
   // A stale record the page is refreshing by itself offers nothing to press: Refresh is for a
   // failure, Changes, or a stale record whose automatic refresh did not run. A rate limit's
   // hold offers none either: the page names when it asks again and asks then, as the Pulls
-  // tab's Reload waits out the same hold, and a press would only meet the limit.
+  // tab's Refresh waits out the same hold, and a press would only meet the limit.
   model.canRefresh =
     !envelope.refreshing &&
     !model.revalidating &&
@@ -1680,8 +1680,8 @@ export function describePull(envelope, page) {
   }
   model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
   if (record.unavailable?.comparison === "no_store" && diffTab(page.tab)) {
-    // Progress only for an attempt running or still to be sent, Retry changes only once one
-    // failed or a recorded outcome holds it, and Fetch changes only when nothing will ask.
+    // Progress only for an attempt running or still to be sent, Retry only once one
+    // failed or a recorded outcome holds it, and Fetch only when nothing will ask.
     // A failed read before any attempt waits for the next good one, which then asks.
     const queued = comparisonQueued(envelope, page);
     const failed = page.comparisonAttempted === true || comparisonHeld(envelope, page.nowMs);
@@ -1840,9 +1840,9 @@ export function refusedTextNote(status, body) {
     case "renderer_exited":
       return "The renderer stopped while rendering this text, so it is shown as plain text.";
     case "renderer_unavailable":
-      return "The renderer could not start, so this text is shown as plain text. Reload to try again.";
+      return "The renderer could not start, so this text is shown as plain text. Reload the page to try again.";
     case "renderer_busy":
-      return "The renderer is busy with other texts, so this text is shown as plain text. Reload to try again.";
+      return "The renderer is busy with other texts, so this text is shown as plain text. Reload the page to try again.";
     case "render_failed":
       return "This text could not be rendered, so it is shown as plain text.";
     default:
@@ -2566,7 +2566,7 @@ export function createPullController(deps, options) {
   /**
    * How long until a rate limit stops holding this page's automatic comparison or its stale
    * record's refresh, or null when none holds either. The page reads again then, so it asks
-   * without waiting for a slow poll and does not keep a hold or a Retry changes painted past it.
+   * without waiting for a slow poll and does not keep a hold or a Retry painted past it.
    */
   function untilHoldLifts() {
     const last = envelope?.last_refresh;
@@ -3134,7 +3134,7 @@ export function createPullController(deps, options) {
   }
 
   /**
-   * A reader's Retry changes or Fetch changes, which the address need not name. What the
+   * A reader's Retry or Fetch of Changes, which the address need not name. What the
    * button was painted from can be older than the model: a hold lifts by the clock alone,
    * and a failed read stops the automatic attempt without repainting. So the click sends
    * whenever the record still lacks its store and nothing else is on its way.
@@ -6077,7 +6077,7 @@ export function mountPullPage(container, ctx, mb) {
     });
     // A Refresh that shows waits while a refresh of what is shown runs or is due, or a rate
     // limit holds it: still shown, marked disabled, it keeps its slot and its number, and a
-    // press does nothing, as its click does (`refreshShown`), as the Pulls tab's Reload waits.
+    // press does nothing, as its click does (`refreshShown`), as the Pulls tab's Refresh waits.
     // Hidden as it waited, it gave its number to the offer after it, so a second 3 switched the
     // served pin (B2 of review B on #506). One that was not showing stays hidden, so a refresh
     // the page runs by itself numbers nothing new.
@@ -7995,7 +7995,7 @@ export function mountPullPage(container, ctx, mb) {
             type: "button",
             class: `btn ${retry ? "github-pull-retry-changes" : "github-pull-fetch-changes"}`,
           },
-          [retry ? "Retry changes" : "Fetch changes"],
+          [retry ? "Retry" : "Fetch"],
         );
         ask.addEventListener("click", () => void controller.requestComparison());
         message.append(ask);

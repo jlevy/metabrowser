@@ -233,10 +233,12 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
 
     # Another tab switched the server back: this page is refused, and offers a reload.
     assert (result["switchedOutside"], result["refused"]) == (200, 409)
-    assert result["stale"]["stale"] == "The server now shows the working treeReload"
+    assert result["stale"]["stale"] == "The server now shows the working treeReload page"
     # It sits at the pane's foot, after the indexing row and under the tree: outside the
-    # Files toolbar and the metadata band under it, which hide with the Files tab.
+    # Files toolbar and the metadata band under it, which hide with the Files tab. Its
+    # button's label, Reload page, is one line beside the sentence, which wraps.
     stale_at = {
+        "buttonLines": 1,
         "after": "index-progress",
         "inToolbarOrBand": False,
         "shown": True,

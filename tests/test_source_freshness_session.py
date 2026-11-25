@@ -728,7 +728,7 @@ def test_the_session_runs_on_the_recording() -> None:
     refused_follow = by_name["a refused follow says why and offers a reload"]
     assert refused_follow["reloads"] == 0
     assert refused_follow["paint"]["error"].startswith("Could not follow topic")
-    assert refused_follow["paint"]["offer"].endswith("[Reload]")
+    assert refused_follow["paint"]["offer"].endswith("[Reload page]")
     again = by_name["a refused follow is not asked again on the next poll"]
     assert not any(request.startswith("POST /api/source/pin") for request in again["requests"])
     assert again["paint"]["error"] == refused_follow["paint"]["error"]
@@ -784,7 +784,7 @@ def test_the_session_runs_on_the_recording() -> None:
     history = {row["failure"]: row["means"] for row in transcript["history"]}
     assert history["a refresh moved the refs"] == "stale"
     assert by_name["an unchanged status is a 304"]["repaints"] == 0
-    assert by_name["switched before the first poll"]["paint"]["offer"].endswith("[Reload]")
+    assert by_name["switched before the first poll"]["paint"]["offer"].endswith("[Reload page]")
     guard = transcript["guard"]
     page = guard["page"]
     # The status route, another origin, and the event log's routes name no pin; a route

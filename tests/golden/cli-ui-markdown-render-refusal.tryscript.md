@@ -53,8 +53,8 @@ $ node tests/dom/markdown-render-refusal-session.js
   "notes": {
     "render_deadline": "This document took longer than 5 seconds to render, so its source is shown.",
     "renderer_exited": "The renderer stopped while rendering this document, so its source is shown.",
-    "renderer_unavailable": "The document renderer could not start, so this document’s source is shown. Reload to try again.",
-    "renderer_busy": "The document renderer is busy with other documents, so this document’s source is shown. Reload to try again.",
+    "renderer_unavailable": "The document renderer could not start, so this document’s source is shown. Reload the page to try again.",
+    "renderer_busy": "The document renderer is busy with other documents, so this document’s source is shown. Reload the page to try again.",
     "shortened": "This document took longer than 0.25 seconds to render, so its source is shown."
   },
   "documentTab": {
@@ -120,11 +120,11 @@ $ node tests/dom/markdown-render-refusal-session.js
       "renderError": false
     },
     "renderer_unavailable": {
-      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_unavailable\">The document renderer could not start, so this document’s source is shown. Reload to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
+      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_unavailable\">The document renderer could not start, so this document’s source is shown. Reload the page to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
       "renderError": false
     },
     "renderer_busy": {
-      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_busy\">The document renderer is busy with other documents, so this document’s source is shown. Reload to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
+      "markup": "<div class=\"notice metabrowser-render-refused\" data-severity=\"warning\" role=\"status\" data-refusal=\"renderer_busy\">The document renderer is busy with other documents, so this document’s source is shown. Reload the page to try again.</div><div class=\"metabrowser-render-refused-source\"></div>",
       "renderError": false
     }
   },

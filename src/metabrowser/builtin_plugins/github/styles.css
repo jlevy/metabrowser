@@ -404,8 +404,8 @@
   cursor: pointer;
 }
 /* A Refresh that waits for a refresh running, or for a rate limit to lift, stays in its place
-   and keeps its number, muted, and does nothing, as the Pulls tab's waiting Reload does
-   (`.github-pulls-reload[aria-disabled="true"]`). */
+   and keeps its number, muted, and does nothing, as the Pulls tab's waiting Refresh does
+   (`.github-pulls-refresh[aria-disabled="true"]`). */
 .github-pull-text-action[aria-disabled="true"] {
   color: var(--muted);
   text-decoration: none;
@@ -1125,7 +1125,7 @@
   min-width: 0;
   max-width: 100%;
 }
-.github-pulls-reload {
+.github-pulls-refresh {
   flex: none;
   margin-inline-start: auto;
 }
@@ -1176,7 +1176,7 @@
 .github-pulls-connection-spinner.mb-delayed-loading {
   order: 1;
 }
-.github-pulls-reload[aria-disabled="true"] {
+.github-pulls-refresh[aria-disabled="true"] {
   color: var(--muted);
   border-color: var(--border);
   cursor: default;

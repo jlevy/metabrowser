@@ -65,7 +65,7 @@ def test_a_tip_that_adds_or_a_form_the_shell_holds_is_not(tmp_path: Path, line: 
 def test_a_repeat_fails_the_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = _source(tmp_path, 'h("button", { "data-tip-text": "Reload" }, ["Reload"])')
+    path = _source(tmp_path, 'h("button", { "data-tip-text": "Refresh" }, ["Refresh"])')
     monkeypatch.setattr(check, "ROOT", tmp_path)
     monkeypatch.setattr(check, "_candidates", lambda: [path])
     monkeypatch.setattr(check, "_size_findings", list)

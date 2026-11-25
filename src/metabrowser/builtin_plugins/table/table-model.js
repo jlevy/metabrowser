@@ -774,7 +774,7 @@ export function pageNotes(page) {
       `The table stopped looking after ${examined} rows, at the time a request may take; these are the matches among them.`,
     );
   } else if (page.reason === "cursor_expired") {
-    notes.push("This table changed while it was being read; reload it to continue.");
+    notes.push("This table changed while it was being read; reload the page to continue.");
   }
   if (page.skipped) {
     notes.push(

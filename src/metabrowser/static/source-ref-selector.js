@@ -1709,7 +1709,7 @@
     const reload = document.createElement("button");
     reload.type = "button";
     reload.className = "btn source-ref-selector-reload";
-    reload.textContent = "Reload";
+    reload.textContent = "Reload page";
     staleOffer.append(staleText, reload);
     stale.append(staleOffer);
     const panel = document.createElement("div");

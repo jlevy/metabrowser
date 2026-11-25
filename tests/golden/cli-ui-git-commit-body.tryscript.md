@@ -471,8 +471,8 @@ $ node tests/dom/git-commit-body-session.js
     "body_too_large": "This message is longer than 64 KiB, so it is shown as written rather than as Markdown.",
     "render_deadline": "This message took longer than 1 second to render, so it is shown as written.",
     "renderer_exited": "The renderer stopped while rendering this message, so it is shown as written.",
-    "renderer_unavailable": "The renderer could not start, so this message is shown as written. Reload to try again.",
-    "renderer_busy": "The renderer is busy with other texts, so this message is shown as written. Reload to try again.",
+    "renderer_unavailable": "The renderer could not start, so this message is shown as written. Reload the page to try again.",
+    "renderer_busy": "The renderer is busy with other texts, so this message is shown as written. Reload the page to try again.",
     "render_failed": "This message could not be rendered, so it is shown as written.",
     "commit_not_found": null,
     "none": null

@@ -492,21 +492,21 @@ try {
   await paneWidth(null);
   // A refresh that cannot reach GitHub, then one gh refuses until it is signed in, then no
   // gh at all: the rows stay, and the connection line says why and what to do.
-  // Reload answers only while no refresh runs, as when the catalog's pages still arrive.
-  const reloadReady = `document.querySelector(".github-pulls-reload")?.getAttribute("aria-disabled") === "false"`;
+  // Refresh answers only while no refresh runs, as when the catalog's pages still arrive.
+  const reloadReady = `document.querySelector(".github-pulls-refresh")?.getAttribute("aria-disabled") === "false"`;
   scenario({ stderr: "error connecting to api.github.com\n", exit: 1 });
   await waitFor(reloadReady);
-  await click(".github-pulls-reload");
+  await click(".github-pulls-refresh");
   await waitFor(`(${connection}).includes("could not be reached")`);
   await measure("pulls unreachable");
   scenario({ stderr: "To get started with GitHub CLI, please run:  gh auth login\n", exit: 4 });
   await waitFor(reloadReady);
-  await click(".github-pulls-reload");
+  await click(".github-pulls-refresh");
   await waitFor(`(${connection}).includes("gh auth login")`);
   await measure("pulls signed out");
   fs.chmodSync(GH_BIN, 0o644);
   await waitFor(reloadReady);
-  await click(".github-pulls-reload");
+  await click(".github-pulls-refresh");
   await waitFor(`(${connection}).includes("Install GitHub CLI")`);
   await measure("pulls without gh");
 } finally {

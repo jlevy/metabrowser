@@ -1208,7 +1208,7 @@ $ node tests/dom/preview-pane-state-session.js
           "owner": "pull-request",
           "path": null,
           "phase": "external",
-          "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+          "shows": "preview-empty preview-error: Could not load the pull-request page. Reload the page to try again."
         },
         "scriptRequests": [
           "pull-route.js"
@@ -1220,7 +1220,7 @@ $ node tests/dom/preview-pane-state-session.js
           "owner": "pull-request",
           "path": null,
           "phase": "external",
-          "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+          "shows": "preview-empty preview-error: Could not load the pull-request page. Reload the page to try again."
         },
         "scriptRequests": [
           "pull-route.js"
@@ -1233,7 +1233,7 @@ $ node tests/dom/preview-pane-state-session.js
             "owner": "pull-request",
             "path": null,
             "phase": "external",
-            "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+            "shows": "preview-empty preview-error: Could not load the pull-request page. Reload the page to try again."
           },
           "scriptRequests": [
             "plugin-sdk-views.js",
@@ -1260,7 +1260,7 @@ $ node tests/dom/preview-pane-state-session.js
             "owner": "pull-request",
             "path": null,
             "phase": "external",
-            "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+            "shows": "preview-empty preview-error: Could not load the pull-request page. Reload the page to try again."
           },
           "scriptRequests": [
             "plugin-sdk-views.js",

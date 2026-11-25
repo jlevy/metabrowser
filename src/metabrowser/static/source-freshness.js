@@ -308,7 +308,7 @@
       offer = {
         kind: "reload",
         text: "The server now serves another revision",
-        button: "Reload",
+        button: "Reload page",
       };
     } else if (retrySelection) {
       offer = { kind: "retry", text: "Fetch the address again", button: "Retry" };

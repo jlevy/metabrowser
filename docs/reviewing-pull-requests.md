@@ -429,7 +429,7 @@ while enough of your GitHub rate limit remains.
 The page names a problem only when it cannot refresh: `Offline`, a rate limit with the
 time of its next check, or the last failure with **Refresh**. The page tries a failure
 again once a window while it stays open, except one you must fix, such as GitHub CLI
-missing or signed out, which waits for **Refresh**. The Pulls tab’s **Reload** asks for
+missing or signed out, which waits for **Refresh**. The Pulls tab’s **Refresh** asks for
 a new check of the list.
 
 The page follows the pull request.
