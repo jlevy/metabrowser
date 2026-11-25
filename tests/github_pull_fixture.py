@@ -269,8 +269,12 @@ def _commit(
     return (stream + "\n").encode()
 
 
-def build_origin(directory: Path) -> Origin:
-    """The origin; every pull-request ref is written the way GitHub writes it."""
+def build_origin(directory: Path, *, more: Mapping[str, str] | None = None) -> Origin:
+    """The origin; every pull-request ref is written the way GitHub writes it.
+
+    *more* are files pull request 7's head adds besides its own, for a guide that cites them
+    (:func:`build_home` with *documents*); every other build leaves the recipe as it is.
+    """
 
     origin = directory / "github-pull-origin.git"
     env = git_env(directory)
@@ -296,7 +300,7 @@ def build_origin(directory: Path) -> Origin:
                 "refs/pull/7/head",
                 4,
                 "count to two",
-                {"src/app.txt": "one\ntwo\n", "docs/new.md": "# New\n"},
+                {"src/app.txt": "one\ntwo\n", "docs/new.md": "# New\n", **(more or {})},
                 parent=3,
             ),
             _commit(
@@ -1313,13 +1317,21 @@ def _patched(target: object, name: str, value: object) -> Generator[None]:
 
 
 def build_home(
-    directory: Path, *, files: bool = False, guided: bool = False, documents: bool = False
+    directory: Path,
+    *,
+    files: bool = False,
+    guided: bool = False,
+    documents: bool = False,
+    large: bool = False,
 ) -> None:
     """Cache the mirror and pull requests 7 to 10 through the production CLI path.
 
     With *files*, :func:`build_file_lists` adds lists of changed files.
     With *guided*, the fake GitHub serves guides against known fixture comparisons; with
-    *documents* too, pull request 7's guide ends on a step that cites a Markdown file whole.
+    *documents* too, pull request 7 also adds a YAML file, and its guide ends on a step that
+    cites it and a Markdown file whole. With *large* as well, it adds a Markdown file whose
+    whole patch charges past a step's budget for whole files, which that step cites too
+    (:data:`_DOCUMENT_FILES`).
 
     The seams are the in-process goldens' own: the origin URL, the Git floor (the
     machine's Git may be below it), the clock, and a fake ``gh`` first on ``PATH``.
@@ -1333,10 +1345,12 @@ def build_home(
     from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
     from metabrowser.git.process import detect_git_version
 
-    origin = build_origin(directory)
+    kept = ("config/settings.yaml", "docs/large.md") if large else ("config/settings.yaml",)
+    more = {path: _DOCUMENT_FILES[path] for path in kept} if documents else None
+    origin = build_origin(directory, more=more)
     answers = scenario(origin)
     if guided:
-        _add_guides(origin, answers, documents=documents)
+        _add_guides(origin, answers, documents=kept if documents else ())
     environment = install_fake_gh(directory, answers)
     version, _raw = detect_git_version()
     local = origin.url
@@ -1449,20 +1463,40 @@ def grouped_guide_body(origin: Origin) -> str:
     return _guide_body(origin["base"], origin["fork_head"], GUIDE_VARIANTS["grouped"])
 
 
-# A step whose one reference names a Markdown file whole, which the guide draws as Docs does.
-_DOCUMENT_STEP = """    - title: Read the new guide whole
-      note: Check that it reads as a document.
-      references:
-        - {path: docs/new.md}
-"""
+# The files a documents build adds to pull request 7's head: a YAML file, which a step that
+# cites it whole draws as Changes does, and a Markdown file whose whole patch charges past
+# MAX_STEP_PATCH_BYTES in guided_review.py, though the file is inside the rendered route's
+# read bound, as test_guided_review_route.py checks.
+_DOCUMENT_FILES: Final[dict[str, str]] = {
+    "config/settings.yaml": "count: 2\nname: demo\n",
+    "docs/large.md": "# Large\n\n"
+    + "".join(
+        f"Paragraph {n} of a document a step cites whole, past the step's budget for whole files.\n\n"
+        for n in range(1, 3001)
+    ),
+}
 
 
-def _add_guides(origin: Origin, answers: dict[str, Any], *, documents: bool = False) -> None:
+def _document_step(paths: tuple[str, ...]) -> str:
+    """A step that names docs/new.md and each of *paths* whole: files the rendered route
+    renders, which the guide draws whole, and, with docs/large.md, src/app.txt after it,
+    whose patch still has the step's whole budget."""
+    cited = ("docs/new.md", *paths, *(("src/app.txt",) if "docs/large.md" in paths else ()))
+    return (
+        "    - title: Read the new guide whole\n"
+        "      note: Check that it reads as a document.\n"
+        "      references:\n" + "".join(f"        - {{path: {path}}}\n" for path in cited)
+    )
+
+
+def _add_guides(origin: Origin, answers: dict[str, Any], *, documents: tuple[str, ...]) -> None:
     fence = guide_body(origin)
     api = answers["api"]
     if documents:
         head, close, tail = fence.rpartition("```")
-        api["repos/octo/demo/pulls/7"]["body"]["body"] = head + _DOCUMENT_STEP + close + tail
+        api["repos/octo/demo/pulls/7"]["body"]["body"] = (
+            head + _document_step(documents) + close + tail
+        )
     else:
         api["repos/octo/demo/pulls/7"]["body"]["body"] = fence
     api["repos/octo/demo/pulls/8"]["body"]["body"] = fence
@@ -1728,8 +1762,13 @@ if __name__ == "__main__":
         build_home(Path(sys.argv[1]).resolve(), files=True)
     elif len(sys.argv) == 3 and sys.argv[2] == "--guided":
         build_home(Path(sys.argv[1]).resolve(), guided=True)
-    elif len(sys.argv) == 3 and sys.argv[2] == "--guided-documents":
-        build_home(Path(sys.argv[1]).resolve(), guided=True, documents=True)
+    elif len(sys.argv) == 3 and sys.argv[2] in ("--guided-documents", "--guided-large-document"):
+        build_home(
+            Path(sys.argv[1]).resolve(),
+            guided=True,
+            documents=True,
+            large=sys.argv[2] == "--guided-large-document",
+        )
     elif len(sys.argv) == 5 and sys.argv[2] == "--describe" and sys.argv[4] in GUIDE_VARIANTS:
         describe(Path(sys.argv[1]).resolve(), int(sys.argv[3]), sys.argv[4])
     elif len(sys.argv) == 2:
@@ -1737,7 +1776,7 @@ if __name__ == "__main__":
     else:
         raise SystemExit(
             "usage: github_pull_fixture.py <directory> "
-            "[--files | --guided | --guided-documents | --checkout "
+            "[--files | --guided | --guided-documents | --guided-large-document | --checkout "
             "| --serve <number> <port> [--exit-on-eof] "
             f"| --describe <number> {{{','.join(GUIDE_VARIANTS)}}}] "
             "or --files-refresh <metab arguments>"

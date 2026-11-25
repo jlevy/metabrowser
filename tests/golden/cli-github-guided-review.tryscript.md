@@ -66,6 +66,7 @@ status: 200
       "start_line": 1,
       "end_line": 2,
       "state": "ready",
+      "rendered": null,
       "href": "/pull/7/files/src/app.txt",
       "hunks": [
         {
@@ -264,6 +265,7 @@ status: 200
       "start_line": 1,
       "end_line": 1,
       "state": "ready",
+      "rendered": null,
       "href": "/pull/7/files/docs/new.md",
       "hunks": [
         {
@@ -290,6 +292,7 @@ status: 200
       "start_line": null,
       "end_line": null,
       "state": "ready",
+      "rendered": null,
       "href": "/pull/7/files/src/app.txt",
       "hunks": [
         {
@@ -322,6 +325,7 @@ status: 200
       "start_line": null,
       "end_line": null,
       "state": "path_not_changed",
+      "rendered": null,
       "href": null,
       "hunks": [],
       "truncated": false
@@ -332,6 +336,7 @@ status: 200
       "start_line": 2,
       "end_line": 4,
       "state": "range_unavailable",
+      "rendered": null,
       "href": "/pull/7/files/src/app.txt",
       "hunks": [],
       "truncated": false
@@ -543,6 +548,7 @@ status: 200
       "start_line": 1,
       "end_line": 2,
       "state": "path_not_changed",
+      "rendered": null,
       "href": null,
       "hunks": [],
       "truncated": false
@@ -966,6 +972,43 @@ status: 200
   "state": "invalid",
   "message": "The guided-review block does not satisfy the v1 SoftSchema at items.0.items.0."
 }
+? 0
+```
+
+# Documents
+
+A file a step cites whole that the rendered route renders, by that route’s own rule on
+both sides of the change, answers `rendered`, its format, and no hunks.
+The page draws it whole from the comparison route’s one-file answer and the rendered
+route, within their own bounds, so the guided route reads no patch for it and charges it
+nothing against the step’s budget for whole files (`MAX_STEP_PATCH_BYTES`). In a
+documents build, pull request 7 also adds `config/settings.yaml` and `docs/large.md`, a
+Markdown file whose whole patch charges past that budget, and its guide ends on a step
+that cites them whole: each answers `ready`, and `src/app.txt`, cited whole after them,
+still has the whole budget for its patch.
+Every other reference answers `rendered` null, as the steps above do.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" documents --guided-large-document > documents.log 2>&1 || (cat documents.log >&2 && exit 1)
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/documents/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/guided-review?number=7&step=3' --format json > documents.json
+selection: pull_request
+pin: 12b02e42ead211903e888a8862ac6d47784204c5 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ jq -c '.state, .title, (.references[] | [.path, .side, .state, .rendered, (.hunks | length)])' documents.json
+"ready"
+"Read the new guide whole"
+["docs/new.md",null,"ready","markdown",0]
+["config/settings.yaml",null,"ready","yaml",0]
+["docs/large.md",null,"ready","markdown",0]
+["src/app.txt",null,"ready",null,1]
 ? 0
 ```
 

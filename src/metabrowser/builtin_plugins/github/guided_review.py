@@ -56,6 +56,8 @@ from metabrowser.git.process import (
 from metabrowser.view_routes import format_pull_href
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from markdown_it.token import Token
     from pydantic import GetJsonSchemaHandler
     from pydantic.json_schema import JsonSchemaValue
@@ -80,7 +82,7 @@ _MARKDOWN = MarkdownIt("commonmark").disable("inline")
 # Each item hydrates at most as many paths as the measured first paint of Changes
 # (INITIAL_PULL_FILES in sidekick.py), in one run of the diff source. A ranged reference
 # renders its lines (MAX_EXCERPT_BYTES), and a path alone its file's whole patch
-# (MAX_STEP_PATCH_BYTES).
+# (MAX_STEP_PATCH_BYTES), or, for a file the rendered route renders, nothing at all.
 MAX_REFERENCES = 8
 # Every entry of a collection's items counts: an item at the top, a group, and each item in a
 # group, so a group holds at most MAX_ITEMS - 1 items. A group is a title and an optional
@@ -133,7 +135,9 @@ MAX_EXCERPT_BYTES = MAX_BODY_BYTES
 # its own where Changes serializes them. So this bounds the drawing just under the largest
 # step measured to draw within about 200 ms here, the 1,956,140 bytes of charge. A file past
 # what is left says its diff is too large to show in the step, beside its Open full diff
-# link.
+# link. A file the rendered route renders (Markdown, YAML, JSON) cited whole charges
+# nothing here: the page draws it from its own reads, which that route's bounds and the
+# comparison route's one-file read bound, as Docs and Changes draw it (_step_references).
 MAX_STEP_PATCH_BYTES: Final = 1_950_000
 
 # A stale guide's answer names the commits after the guide's head, newest first, and counts
@@ -623,22 +627,34 @@ def _references(
     *,
     truncated: bool,
     too_large: frozenset[str] = frozenset(),
+    documents: Mapping[str, str] | None = None,
 ) -> list[dict[str, object]]:
-    """Each reference of a step as the page draws it, its excerpt or its file's patch.
+    """Each reference of a step as the page draws it: its excerpt, its file's patch, or
+    the format the page draws the whole file in.
 
     *too_large* are the changes whose patches the diff source left out for their size,
-    alone or beside the step's other files.
+    alone or beside the step's other files. *documents* are the files the step cites whole
+    that the rendered route renders, each with its format: such a reference answers
+    `rendered`, the format, and no hunks, since the page draws that file whole from the
+    comparison route's one-file answer and the rendered route, within their own bounds,
+    so it charges nothing to the step's budget for whole files. Every other reference
+    answers `rendered` null.
     """
     output: list[dict[str, object]] = []
     remaining = MAX_EXCERPT_BYTES
     whole = MAX_STEP_PATCH_BYTES
+    formats = documents or {}
     for reference in references:
         change = changes.get(reference.path)
         href = None
         hunks: list[dict[str, object]] = []
         cut = False
+        rendered = formats.get(reference.path) if reference.side is None else None
         if change is None:
             state = "manifest_truncated" if truncated else "path_not_changed"
+        elif rendered is not None:
+            href = format_pull_href(number, "files", reference.path)
+            state = "ready"
         else:
             href = format_pull_href(number, "files", reference.path)
             patch = patches.get(change.id)
@@ -661,6 +677,7 @@ def _references(
             {
                 **reference.model_dump(),
                 "state": state,
+                "rendered": rendered,
                 "href": href,
                 "hunks": hunks,
                 "truncated": cut,
@@ -678,7 +695,15 @@ async def _step_references(
     rebase, or a force push, whether or not the store still has the commits it was written
     for: a reference that still resolves shows what the pull request changes now, and one
     that does not says so in its place.
+
+    A file the step cites whole that the rendered route renders, by that route's own rule
+    on the manifest's change, both its sides (`rendered_format`), is not read here: the
+    page draws it whole as the diff view does, from that file's own reads.
     """
+    # The rendered route's module, imported with the step's read rather than this module:
+    # the description's render imports this module, and never needs the projections.
+    from metabrowser.builtin_plugins.github.pull_rendered_diff import rendered_format
+
     base, head = comparison.base, comparison.head
     # The record's own comparison is the pull request's kept manifest (pull_manifest.py),
     # the one Changes reads.
@@ -689,12 +714,21 @@ async def _step_references(
         for change in manifest.files
         if (side := change.new or change.old) is not None and side.path_b64 is None
     }
+    documents = {
+        ref.path: rendered
+        for ref in step.references
+        if ref.side is None
+        and (change := changes.get(ref.path)) is not None
+        and (rendered := rendered_format(change)) is not None
+    }
     ranged = {ref.path for ref in step.references if ref.side is not None}
     wanted: dict[str, None] = {}
     skipped: set[str] = set()
     for ref in step.references:
         change = changes.get(ref.path)
         if change is None or change.availability is not Availability.ready:
+            continue
+        if ref.side is None and ref.path in documents:
             continue
         # A file whose changed lines alone charge past a step's whole files is never drawn
         # whole, so it is not read for that: every row charges at least 80 bytes.
@@ -722,6 +756,7 @@ async def _step_references(
         patches,
         truncated=manifest.truncated,
         too_large=too_large,
+        documents=documents,
     )
 
 

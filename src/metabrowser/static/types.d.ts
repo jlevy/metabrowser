@@ -22,7 +22,7 @@ type MetabrowserRenderContext = {
   /** The owner of a selected comparison read, while its view is mounting. */
   comparisonSignal?: AbortSignal;
   /** One changed file of the comparison, by its path: the diff view draws the comparison
-   *  route's one-file answer, as the diff plugin's `loadRenderedFile` asks it to. */
+   *  route's one-file answer, as the diff plugin's `mountRenderedFile` asks it to. */
   file?: string;
   /** How the host opens one of a comparison's changed files at its own address, as a pull
    *  request's Changes does at `/pull/<n>/files/<path>`; absent where a file has none. */
@@ -1478,29 +1478,18 @@ type DiffExports = {
     patch: Record<string, unknown>,
     api: MetabrowserPublicSdk,
   ) => { dispose(): void };
-  /** The rendered layer, loaded on demand, and one changed file of a comparison drawn whole
-   * as that comparison's diff draws it; null when the layer did not load. */
-  loadRenderedFile: () => Promise<DiffRenderedFile | null>;
-};
-
-/** A comparison as the diff view's `render` takes it. */
-type DiffComparison = NonNullable<MetabrowserRenderContext["comparison"]>;
-
-/** One changed file of a comparison, as the diff plugin's `loadRenderedFile` answers it.
- * `format` is the format a file at *path* renders in, by the rendered layer's own rule, or
- * null, as for a comparison that names no rendered route. `mount` draws the file from the
- * comparison route's one-file answer with the diff view's own `render`, *ctx* as a host
- * passes that view; `settled` settles once it is drawn or says why not, and `dispose` ends
- * the read on its way or the drawn view. */
-type DiffRenderedFile = Readonly<{
-  format(comparison: DiffComparison, path: string): "markdown" | "yaml" | "json" | null;
-  mount(
+  /** One changed file of a comparison drawn whole from the comparison route's one-file
+   * answer by the diff view's own `render`, rendered layer included, *ctx* as a host passes
+   * that view. `settled` is true once the file is drawn, and false when it is not: the
+   * view's notice then says why in its place, or the handle was disposed first. `dispose`
+   * ends the read on its way or removes what was drawn. */
+  mountRenderedFile: (
     container: HTMLElement,
-    comparison: DiffComparison,
+    comparison: NonNullable<MetabrowserRenderContext["comparison"]>,
     path: string,
     ctx?: MetabrowserRenderContext,
-  ): { settled: Promise<void>; dispose(): void };
-}>;
+  ) => { settled: Promise<boolean>; dispose(): void };
+};
 
 /** What the GitHub plugin exports for the shell. */
 type GithubExports = {
@@ -4797,7 +4786,6 @@ declare global {
   type MetabrowserPluginAssets = PluginAssets;
   type MetabrowserAgentLogRenderers = AgentLogRenderers;
   type MetabrowserGithubPullStateIcon = GithubExports["pullStateIcon"];
-  type MetabrowserDiffRenderedFile = DiffRenderedFile;
   type MetabrowserStructuredExports = StructuredExports;
   type MetabrowserStructuredTreeRow = StructuredTreeRow;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;

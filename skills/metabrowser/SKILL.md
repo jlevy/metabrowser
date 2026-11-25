@@ -594,6 +594,8 @@ collection:
   and needs no quotes; a folded block, `>-`, joins them into one.
 - A step’s whole files share one size budget, and a file past it answers
   `patch_too_large`: split the step, or cite the file’s ranges instead.
+  A whole Markdown, YAML, or JSON file the page draws rendered answers its format as
+  `rendered` and takes nothing from that budget.
   `MAX_REFERENCES` caps a step’s references, so split a step that needs more.
   `MAX_ITEMS` caps the steps and groups together; past it, cite what a reviewer must
   read.

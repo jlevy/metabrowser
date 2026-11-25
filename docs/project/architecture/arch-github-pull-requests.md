@@ -1033,19 +1033,26 @@ in `guided-review.js`), so its hunk bars, folds, type, row height, gutter, and c
 fills are Changes’. A range is one hunk in the diff model’s shape (`_rows_hunk` in
 `guided_review.py`), and a path alone is its file’s whole patch, within the step’s
 budget for whole files; a file past it, or past what the diff source reads in one run,
-is answered `patch_too_large`. A path alone of a format the diff view renders
-(`renderedFormat` in `diff-markdown.js`: Markdown, YAML, JSON) is a document instead
-(`referenceDrawing` in `guided-review.js`): the diff plugin’s own view of that file
-(`loadRenderedFile` in `diff/index.js`), drawn with the options the Docs tab gives its
-documents (`DOCS_DRAWING` in `pull-page.js`), so its file bar, rendered layer, Rendered
-| Source chooser, and Diff | Current are Docs’, and whatever Docs learns to draw a
-document with, the step’s document draws with too.
+is answered `patch_too_large`. A path alone of a file the rendered route renders, by
+that route’s own rule on both sides of the change (`rendered_format` in
+`pull_rendered_diff.py`: Markdown, YAML, JSON), is a document instead: the guided route
+answers its format as `rendered`, reads no patch for it, gives it no hunks, and charges
+it nothing against the step’s budget for whole files (`_step_references` in
+`guided_review.py`), so a large document is bounded only by the rendered route’s own
+bounds. The page draws it (`referenceDrawing` in `guided-review.js`) with the diff
+plugin’s own view of that file (`mountRenderedFile` in `diff/index.js`): a Markdown file
+with the options the Docs tab gives its documents (`DOCS_DRAWING` in `pull-page.js`),
+and a YAML or JSON file, which Docs does not list, with the options Changes draws with
+(`CHANGES_DRAWING`), so its file bar, its rendered layer and that layer’s chooser, and
+its Diff and Current are that tab’s, and whatever the tab learns to draw a file with,
+the step’s document draws with too.
 The view reads the comparison route’s one-file answer by path, whose manifest entry
-carries the id the rendered route asks for, so the guided route’s answer is unchanged
-and the rendered answer keeps that route’s bounds.
+carries the id the rendered route asks for.
 The page draws a document only while its own comparison is the one the step was read at;
-at another, or with no rendered route, the reference draws its patch, as does a range of
-any file and a whole file of any other format.
+at another, the reference says its file’s diff is unavailable, and with no rendered
+route the view draws the file without the rendered layer.
+A document the view could not draw keeps the guide’s bar for it, with its name and its
+Open full diff, above the view’s one-sentence notice.
 Each document is in the step’s list of drawn views, so a step change, or the page
 ending, disposes it and aborts its read.
 A ready step carries KPress’s stylesheet manifest, as the description’s Markdown route

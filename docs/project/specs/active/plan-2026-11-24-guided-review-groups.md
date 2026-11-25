@@ -166,20 +166,24 @@ A decision with an obvious reason needs no rationale line.
 
 ### What Changes
 
-A reference that names a whole file (a path alone) of a format the diff view renders
-(`renderedFormat` in `diff/diff-markdown.js`: Markdown, YAML, JSON) draws that file as
-the Docs tab draws it: the file’s bar, the rendered layer, and its chooser, in Docs’
-unfolded, unified Current view (`DOCS_DRAWING` in `pull-page.js`), since a step cites a
-document whole to have it read.
-Every other reference draws as today: a range keeps its source hunk, and a whole file of
-another format its patch.
+A reference that names a whole file (a path alone) of a format the rendered route
+renders, by that route’s own rule (`rendered_format` in `pull_rendered_diff.py`:
+Markdown, YAML, JSON), is a document: the guided route answers its format as `rendered`,
+and the page draws that file rendered, with the file’s bar, the rendered layer, and its
+chooser. A Markdown file draws as the Docs tab draws it, in Docs’ unfolded, unified
+Current view (`DOCS_DRAWING` in `pull-page.js`), since a step cites a document whole to
+have it read. A YAML or JSON file, which Docs does not list, draws as the Changes tab
+draws it (`CHANGES_DRAWING`). Every other reference draws as today: a range keeps its
+source hunk, and a whole file of another format its patch.
 
 ### Reuse, Not a Copy
 
 The step mounts the diff plugin’s own file view for that one file, from the comparison
 route’s one-file answer (`file=<path>`, which deferred files already use).
 Its manifest entry carries the file’s id, which the rendered route takes as its own
-`file=`, so the guided route’s answer needs no id of its own.
+`file=`, so the guided route’s answer needs no id of its own, only the format.
+The guided route asks the rendered route’s own rule which references are documents, so
+the page never asks the rendered route for a file it would refuse by format.
 That brings the chooser, the projection route, sanitizing, place keeping, and, once
 `mb-qn7e` lands, the Full | Concise | Source modes and windowed drawing, with no code of
 the guide’s own. The diff plugin exports one entry point for it beside `mountFilePatch`,
@@ -199,8 +203,10 @@ otherwise.
 The rendered answer keeps its own route’s bounds (`_MARKDOWN_PAIR_MAX_BYTES` and
 `_MAX_HTML_BYTES` in `pull_rendered_diff.py`), and a refused file keeps its chooser with
 Rendered unavailable, saying why, as in Changes.
-The step’s source excerpt budgets (`MAX_STEP_PATCH_BYTES`) still bound what the guided
-route hydrates for that reference.
+The guided route hydrates no patch for a document and charges it nothing against the
+step’s budget for whole files (`MAX_STEP_PATCH_BYTES`), so a document past that budget
+is drawn, bounded by the rendered route alone.
+Every other whole file keeps that budget and answers `patch_too_large` past it.
 
 ## Phase 3: Stack Rollups (`mb-ri96`, Designed Only)
 
