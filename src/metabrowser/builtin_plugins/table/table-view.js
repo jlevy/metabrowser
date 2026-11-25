@@ -419,7 +419,7 @@ export function mountTable(container, ctx, host = {}) {
   // The Columns and header menus close as every menu does (docs/design-system.md, "Every
   // Menu Closes Alike"): a press, focus, or the window leaving the menu and its opener, or
   // Escape, which gives focus back to the opener; its opener's click toggles it.
-  const dismissal = sdk.menus.dismissible({
+  const dismissal = sdk.menus?.dismissible({
     name: "table-menu",
     trigger: () => openMenu?.opener ?? null,
     inside: (node) => Boolean(openMenu?.menu.contains(node)),
@@ -2209,7 +2209,7 @@ export function mountTable(container, ctx, host = {}) {
     // focus leaves it for anything but its opener, as Tab past its last control does.
     menu.setAttribute("tabindex", "-1");
     root.append(menu);
-    dismissal.opened();
+    dismissal?.opened();
     const anchor = opener.getBoundingClientRect?.();
     const frameBox = root.getBoundingClientRect?.();
     if (anchor && frameBox) {
@@ -2229,7 +2229,7 @@ export function mountTable(container, ctx, host = {}) {
     }
     const { menu, opener } = openMenu;
     openMenu = null;
-    dismissal.closed();
+    dismissal?.closed();
     opener.setAttribute("aria-expanded", "false");
     menu.remove();
     if (restore && opener.isConnected) {
@@ -2959,7 +2959,7 @@ export function mountTable(container, ctx, host = {}) {
       hideCard();
       sdk.tooltip?.hide(root);
       closeMenu(false);
-      dismissal.dispose();
+      dismissal?.dispose();
       win.removeEventListener("popstate", onPopState);
       win.removeEventListener("beforeprint", onBeforePrint);
       win.removeEventListener("afterprint", onAfterPrint);
