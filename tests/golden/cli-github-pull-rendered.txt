@@ -579,7 +579,10 @@ status: 200
         "loading": "stylesheet"
       }
     ]
-  }
+  },
+  "view": "full",
+  "count": 2,
+  "folds": []
 }
 --- stderr ---
 selection: pull_request
@@ -727,7 +730,10 @@ status: 200
         "loading": "stylesheet"
       }
     ]
-  }
+  },
+  "view": "full",
+  "count": 1,
+  "folds": []
 }
 --- stderr ---
 selection: pull_request
@@ -899,7 +905,10 @@ status: 200
         "loading": "stylesheet"
       }
     ]
-  }
+  },
+  "view": "full",
+  "count": 5,
+  "folds": []
 }
 --- stderr ---
 selection: pull_request
@@ -1065,7 +1074,10 @@ status: 200
         "loading": "stylesheet"
       }
     ]
-  }
+  },
+  "view": "full",
+  "count": 4,
+  "folds": []
 }
 --- stderr ---
 selection: pull_request
@@ -1225,7 +1237,10 @@ status: 200
         "loading": "stylesheet"
       }
     ]
-  }
+  },
+  "view": "full",
+  "count": 3,
+  "folds": []
 }
 --- stderr ---
 selection: pull_request
@@ -1379,7 +1394,10 @@ status: 200
         "loading": "stylesheet"
       }
     ]
-  }
+  },
+  "view": "full",
+  "count": 2,
+  "folds": []
 }
 --- stderr ---
 selection: pull_request
@@ -1575,7 +1593,10 @@ status: 200
         "loading": "stylesheet"
       }
     ]
-  }
+  },
+  "view": "full",
+  "count": 1,
+  "folds": []
 }
 --- stderr ---
 selection: pull_request

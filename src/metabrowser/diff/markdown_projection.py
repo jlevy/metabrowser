@@ -367,6 +367,10 @@ class MarkdownDiffBlock(TypedDict):
     html: str
     # This block's source differs from its counterpart in something no render shows.
     source_only: bool
+    # The lines of its side the block's source spans, from 0, the end not included: what
+    # the route folds by (`metabrowser.diff.markdown_views`). The route keeps it off the
+    # wire, since the page draws a block from its HTML alone.
+    lines: list[int]
 
 
 class FrontmatterDiffEntry(TypedDict):
@@ -1935,6 +1939,7 @@ class _Projector:
         self,
         kind: Literal["context", "removed", "added"],
         node: _Element,
+        block: _Block,
         *,
         source_only: bool = False,
     ) -> None:
@@ -1951,6 +1956,7 @@ class _Projector:
                     references=self.references,
                 ),
                 "source_only": source_only,
+                "lines": [block.start, block.end],
             }
         )
 
@@ -2000,7 +2006,9 @@ class _Projector:
         ):
             self.group(old[left:stop_left], new[right:stop_right], offset(left, right))
             if stop_right < len(new):
-                self.emit("context", wrapped(new[stop_right].node, False, stop_right))
+                self.emit(
+                    "context", wrapped(new[stop_right].node, False, stop_right), new[stop_right]
+                )
             left, right = stop_left + 1, stop_right + 1
 
     def source(self, block: _Block, old_side: bool) -> list[bytes]:
@@ -2048,7 +2056,7 @@ class _Projector:
                     self.notice = True
                 elif lines[0] != lines[1]:
                     self.blank = True
-                self.emit("context", wrap(after.node, False, index), source_only=hidden)
+                self.emit("context", wrap(after.node, False, index), after, source_only=hidden)
             return
         if len(old) == len(new) == 1 and self.pair(old[0], new[0], wrap):
             return
@@ -2098,10 +2106,10 @@ class _Projector:
         self.consume(old, new)
         for index, block in enumerate(old):
             self.moved.append((True, block, len(self.blocks)))
-            self.emit("removed", wrap(block.node, True, index), source_only=source_only)
+            self.emit("removed", wrap(block.node, True, index), block, source_only=source_only)
         for index, block in enumerate(new):
             self.moved.append((False, block, len(self.blocks)))
-            self.emit("added", wrap(block.node, False, index), source_only=source_only)
+            self.emit("added", wrap(block.node, False, index), block, source_only=source_only)
 
     def flag_moves(self) -> None:
         """Flag a block removed in one place and added in another, its text unchanged,
@@ -2166,8 +2174,8 @@ class _Projector:
         self.work += inline.work
         source_only = self.differs([old], [new])
         self.consume([old], [new])
-        self.emit("removed", wrap(inline.old, True, 0), source_only=source_only)
-        self.emit("added", wrap(inline.new, False, 0), source_only=source_only)
+        self.emit("removed", wrap(inline.old, True, 0), old, source_only=source_only)
+        self.emit("added", wrap(inline.new, False, 0), new, source_only=source_only)
         return True
 
 
@@ -2436,6 +2444,7 @@ def bind_markdown_diff(
             "side": block["side"],
             "html": _REFERENCE.sub(bound, block["html"]),
             "source_only": block["source_only"],
+            "lines": block["lines"],
         }
         for block in projection["blocks"]
     ]

@@ -13,6 +13,17 @@ it never hides. A page's request sent before the reader asks names ``prefetch=1`
 also starts the projection process and waits for it, so the first screen of Changes is
 computed in that process while the reader is still on Conversation.
 
+A ready Markdown answer is one of the page's two rendered views of the file, which
+``view`` names: ``full`` (the default), every block; ``concise``, each change with the
+unchanged blocks beside it and the runs between folded, a fold of many source lines
+withheld; or ``prefer-full``, Full for a document small enough to draw whole and Concise
+otherwise, as a pull request's Docs tab opens one (:mod:`metabrowser.diff.markdown_views`). The answer says which in ``view``, and both list the
+projection's ``count`` of blocks and its ``folds``, so the page draws either view from
+either answer once it holds the blocks. ``blocks=I-J`` answers the projection's blocks
+from *I* up to *J* alone, for a withheld fold the reader opens. The route keeps one
+projection a file and puts each answer together from its encoded blocks, so neither
+parameter is part of what it keeps.
+
 A Markdown pair is read up to :data:`_MARKDOWN_PAIR_MAX_BYTES`, whatever a projection in
 a thread may hold: past the thread's budgets the pair is the Markdown child's, whose
 deadline bounds it (:meth:`ProjectionWorker.prepare`). A pair the child was stopped on is
@@ -26,8 +37,10 @@ import asyncio
 import base64
 import hashlib
 import json
+import re
 from collections import OrderedDict
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -49,6 +62,7 @@ from metabrowser.diff.format import (
 )
 from metabrowser.diff.markdown_projection import (
     MARKDOWN_DIFF_VERSION,
+    MarkdownDiffBlock,
     MarkdownRefusal,
     bind_markdown_diff,
 )
@@ -58,6 +72,7 @@ from metabrowser.diff.markdown_projection_worker import (
     ProjectionWorker,
     shared_worker,
 )
+from metabrowser.diff.markdown_views import Fold, fold_runs, prefers_full
 from metabrowser.diff.structured_projection import (
     Format,
     structured_byte_budget,
@@ -148,6 +163,11 @@ _BATCH_LINES = 2_000
 _KEPT_LINES = 20_000
 # Loads that wait for the projection slot before more are refused (see _Slot).
 _MAX_WAITING = 4
+# The views a Markdown answer can be (see the module docstring); the empty one is Full.
+type View = Literal["full", "concise", "prefer-full"]
+_VIEWS: frozenset[str] = frozenset({"", "full", "concise", "prefer-full"})
+# A range of a projection's blocks, ``I-J``, the end not included.
+_RANGE = re.compile(r"(\d{1,7})-(\d{1,7})")
 
 
 def _fallback(
@@ -178,12 +198,98 @@ class _Unkept(Exception):
         self.stopped = stopped
 
 
-def _encoded(answer: dict[str, Any]) -> bytes:
+def _encoded(answer: object) -> bytes:
     """*answer* as ``JSONResponse`` renders it, encoded once and kept so."""
 
     return json.dumps(
         answer, ensure_ascii=False, allow_nan=False, indent=None, separators=(",", ":")
     ).encode("utf-8")
+
+
+def _object(fields: Sequence[tuple[str, bytes]]) -> bytes:
+    """A JSON object of already encoded values, in *fields*' order."""
+
+    return b"{" + b",".join(_encoded(key) + b":" + value for key, value in fields) + b"}"
+
+
+@dataclass(frozen=True, slots=True)
+class _Kept:
+    """What the route keeps of one file's answer: its encoded body, or, for a ready Markdown
+    projection, the encoded fields around its blocks, each block encoded on its own, and
+    the folds Concise draws, from which every view is put together without decoding."""
+
+    body: bytes = b""
+    fields: tuple[tuple[str, bytes], ...] = ()
+    blocks: tuple[bytes, ...] = ()
+    # The HTML bytes of the blocks, for `prefers_full`.
+    html_bytes: int = 0
+    folds: tuple[Fold, ...] = ()
+
+    @property
+    def markdown(self) -> bool:
+        return bool(self.fields)
+
+    @property
+    def weight(self) -> int:
+        return (
+            len(self.body)
+            + sum(len(key) + len(value) for key, value in self.fields)
+            + sum(len(block) for block in self.blocks)
+            + sum(len(each) for fold in self.folds for each in fold.ids)
+        )
+
+
+def _kept(answer: dict[str, Any]) -> _Kept:
+    """An answer as the route keeps it."""
+
+    if answer.get("version") != MARKDOWN_DIFF_VERSION or answer.get("status") != "ready":
+        return _Kept(body=_encoded(answer))
+    blocks = cast("list[MarkdownDiffBlock]", answer["blocks"])
+    return _Kept(
+        fields=tuple((key, _encoded(value)) for key, value in answer.items() if key != "blocks"),
+        # A block's line span is for folding here, and the page does not read it.
+        blocks=tuple(
+            _encoded({key: value for key, value in block.items() if key != "lines"})
+            for block in blocks
+        ),
+        html_bytes=sum(len(block["html"].encode()) for block in blocks),
+        folds=tuple(fold_runs(blocks)),
+    )
+
+
+def _view_answer(kept: _Kept, view: View) -> bytes:
+    """A ready Markdown projection as *view* draws it (see the module docstring)."""
+
+    if view == "prefer-full":
+        view = "full" if prefers_full(len(kept.blocks), kept.html_bytes) else "concise"
+    withheld = [fold for fold in kept.folds if view == "concise" and fold.withheld]
+    skipped = {index for fold in withheld for index in range(fold.at, fold.at + fold.count)}
+    sent = [block for index, block in enumerate(kept.blocks) if index not in skipped]
+    folds = [
+        {
+            "at": fold.at,
+            "count": fold.count,
+            "lines": fold.lines,
+            **({"withheld": True, "ids": list(fold.ids)} if fold in withheld else {}),
+        }
+        for fold in kept.folds
+    ]
+    fields = [*kept.fields, ("view", _encoded(view)), ("count", _encoded(len(kept.blocks)))]
+    fields.append(("folds", _encoded(folds)))
+    return _object([fields[0], fields[1], ("blocks", b"[" + b",".join(sent) + b"]"), *fields[2:]])
+
+
+def _range_answer(kept: _Kept, start: int, stop: int) -> bytes:
+    """A ready Markdown projection's blocks from *start* up to *stop*, for one fold."""
+
+    return _object(
+        [
+            ("version", _encoded(MARKDOWN_DIFF_VERSION)),
+            ("status", _encoded("ready")),
+            ("at", _encoded(start)),
+            ("blocks", b"[" + b",".join(kept.blocks[start:stop]) + b"]"),
+        ]
+    )
 
 
 class _Busy(Exception):
@@ -430,14 +536,19 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
         number = None
     base, head = params.get("left", ""), params.get("right", "")
     file_id = params.get("file", "")
+    view = params.get("view", "")
+    asked = params.get("blocks")
+    span = None if asked is None else _RANGE.fullmatch(asked)
     if (
         number is None
         or not is_full_revision(base)
         or not is_full_revision(head)
         or not file_id
         or len(file_id) > 128
+        or view not in _VIEWS
+        or (asked is not None and (view or span is None or int(span[1]) >= int(span[2])))
     ):
-        return JSONResponse({"code": "invalid_rendered_diff"}, status_code=400, headers=_NO_STORE)
+        return _invalid()
     snapshot = Snapshot(number, base, head, params.get("store", ""))
     published, admission = await admitted_snapshot(request, snapshot)
     if admission == "unknown":
@@ -454,10 +565,10 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
         await worker.settle()
     cache = getattr(state, "pull_rendered_diff_cache", None)
     if cache is None:
-        cache = state.pull_rendered_diff_cache = LoadingCache[tuple[str, ...], bytes](
-            max_values=32, max_weight=_MAX_KEPT_BYTES, weigh=len
+        cache = state.pull_rendered_diff_cache = LoadingCache[tuple[str, ...], _Kept](
+            max_values=32, max_weight=_MAX_KEPT_BYTES, weigh=lambda kept: kept.weight
         )
-    cache = cast("LoadingCache[tuple[str, ...], bytes]", cache)
+    cache = cast("LoadingCache[tuple[str, ...], _Kept]", cache)
     slot = getattr(state, "pull_rendered_diff_slot", None)
     if slot is None:
         slot = state.pull_rendered_diff_slot = _Slot()
@@ -477,11 +588,20 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
             return Response(refused[1], media_type="application/json", headers=_NO_STORE)
         del stopped[key]
 
-    async def load() -> bytes:
-        return _encoded(await _project(published, snapshot, file_id, namespace, state))
+    async def load() -> _Kept:
+        return _kept(await _project(published, snapshot, file_id, namespace, state))
 
     try:
-        body = await cache.get(key, lambda: slot.run(load))
+        kept = await cache.get(key, lambda: slot.run(load))
+        if not kept.markdown:
+            body = kept.body
+        elif span is not None:
+            start, stop = int(span[1]), int(span[2])
+            if stop > len(kept.blocks):
+                return _invalid()
+            body = _range_answer(kept, start, stop)
+        else:
+            body = _view_answer(kept, cast("View", view or "full"))
     except _Unkept as answered:
         if answered.stopped:
             stopped[key] = (monotonic(), answered.body)
@@ -498,3 +618,7 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
     except GitPathError:
         body = _encoded(_fallback())
     return Response(body, media_type="application/json", headers=_NO_STORE)
+
+
+def _invalid() -> Response:
+    return JSONResponse({"code": "invalid_rendered_diff"}, status_code=400, headers=_NO_STORE)
