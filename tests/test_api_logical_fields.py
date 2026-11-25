@@ -170,7 +170,8 @@ def test_api_file_jsonl_parse_does_not_trust_forged_gzip_isize(tmp_path: Path, m
     body = _call_file("forged.jsonl.gz")
 
     assert body["type"] == "error"
-    assert "decompressed content exceeds 64 bytes" in body["error"]
+    assert body["error"] == "This compressed file is too large to read here."
+    assert "decompressed content exceeds 64 bytes" in body["detail"]
 
 
 def test_api_file_rejects_forged_large_gzip_preview_offset(tmp_path: Path) -> None:

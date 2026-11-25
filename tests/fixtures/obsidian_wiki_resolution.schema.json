@@ -53,7 +53,7 @@
               },
               "path": { "type": "string" },
               "fragment": { "type": "string" },
-              "mediaKind": { "enum": ["markdown", "image", "audio", "video", "resource"] },
+              "mediaKind": { "enum": ["markdown", "image", "audio", "video", "pdf", "resource"] },
               "reason": { "type": "string" },
               "candidateCount": { "type": "integer", "minimum": 0 },
               "candidates": { "type": "array", "items": { "type": "string" } }

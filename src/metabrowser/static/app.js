@@ -1107,12 +1107,13 @@ async function loadTree(options = {}) {
       renderInitialTreeRows();
 
       /** Replace whatever is on screen with a failure the reader can act on. */
-      function failTree(reason) {
-        console.warn(`loadTree: ${reason}`);
+      /** @param {unknown} cause */
+      function failTree(cause) {
+        console.warn("loadTree: could not load the tree", cause);
         const treeEl = document.getElementById("tree-content");
         if (treeEl) {
           treeEl.innerHTML =
-            '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
+            '<div class="preview-empty" role="alert">Could not load files. Reload the page to try again.</div>';
         }
       }
 
@@ -1121,7 +1122,7 @@ async function loadTree(options = {}) {
       try {
         resp = await fetch(treeUrl(""));
         if (!resp.ok) {
-          failTree(`HTTP ${resp.status}`);
+          failTree({ status: resp.status });
           return;
         }
         data = await _perf.measureAsync(
@@ -1133,7 +1134,7 @@ async function loadTree(options = {}) {
         // A throw lands here as a non-ok status does: the inline rows are already
         // painted, so a dropped connection or a malformed body would otherwise leave a tree
         // that appears complete with no chrome, no counts, and no error.
-        failTree(String(error));
+        failTree(error);
         return;
       }
       observeFileAges(data.ages);
@@ -1381,7 +1382,7 @@ async function loadGroupedTreeInner(state, load) {
     // A refresh that fails keeps the sections on screen; its pacing retries it with a
     // backoff (requestGroupedRefresh). A first load has nothing to keep.
     if (owns() && !preserve) {
-      failGroupedTree(String(error));
+      failGroupedTree(error);
     }
     return false;
   }
@@ -1550,12 +1551,13 @@ function groupingRowPrefetchUrl(row) {
   );
 }
 
-function failGroupedTree(reason) {
-  console.warn(`loadGroupedTree: ${reason}`);
+/** @param {unknown} cause */
+function failGroupedTree(cause) {
+  console.warn("loadGroupedTree: could not load the groups", cause);
   var panel = document.getElementById("tab-files");
   if (panel) {
     panel.innerHTML =
-      '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
+      '<div class="preview-empty" role="alert">Could not load files. Reload the page to try again.</div>';
   }
 }
 
@@ -2801,16 +2803,12 @@ function responseErrorDetail(body) {
   var text = String(body || "").trim();
   if (text) {
     try {
-      var parsed = JSON.parse(text);
-      var detail = parsed?.error || parsed?.detail;
-      if (typeof detail === "string" && detail.trim()) {
-        return detail.trim();
+      var said = JSON.parse(text)?.error;
+      if (typeof said === "string" && said.trim()) {
+        return said.trim();
       }
     } catch (_error) {
-      // A plain-text response is already suitable for the preview message.
-    }
-    if (text.length <= 400) {
-      return text;
+      // Not JSON.
     }
   }
   return "The server could not complete the request.";
@@ -5396,7 +5394,7 @@ function fetchRecent(cursor, preserveRows) {
         showInitialError: () => {
           if (results) {
             results.innerHTML =
-              '<div class="recent-empty nav-error" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
+              '<div class="recent-empty nav-error" role="alert">Could not load recently modified files. Reload the page to try again.</div>';
           }
         },
       });
@@ -5554,7 +5552,7 @@ function setRecentContinuityStatus(status) {
   var text =
     status === "retrying"
       ? "Recent files may be out of date; retrying…"
-      : "Recent files may be out of date. Change the filter or refresh to try again.";
+      : "Recent files may be out of date. Reload the page to try again.";
   if (existing) {
     existing.textContent = text;
     return;
@@ -6636,7 +6634,7 @@ async function selectFile(path, preferredViewId) {
         const preview = document.getElementById("preview-pane");
         if (!preview) {
           return {
-            message: "Could not display the file. Refresh the page to try again.",
+            message: "Could not display the file. Reload the page to try again.",
             status: "error",
           };
         }
@@ -7171,7 +7169,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
                 viewMetaAttrs(view) +
                 ' data-active-view="false"' +
                 hidden +
-                '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
+                '><div class="preview-empty" role="alert">This view is unavailable. Reload the page to try again.</div></div>';
             }
           }
         } else {
@@ -9099,7 +9097,7 @@ function showPullPageLoadFailure(claim, what = "the pull-request page") {
     stopFolderHeaderSubscription();
   }
   renderPreviewHtml(
-    previewErrorHtml(`Could not load ${what}.`, "Refresh the page to try again."),
+    previewErrorHtml(`Could not load ${what}.`, "Reload the page to try again."),
     held,
   );
 }
@@ -10026,7 +10024,7 @@ if (isGitRevisionSource() && !window.MetabrowserGitPath) {
     const pane = document.getElementById(id);
     if (pane) {
       pane.innerHTML =
-        '<div class="preview-empty" role="alert">This page did not load completely. Refresh the page to try again.</div>';
+        '<div class="preview-empty" role="alert">This page did not load completely. Reload the page to try again.</div>';
     }
   }
   throw new Error("metabrowser: git-path.js did not load on a pinned revision's page");

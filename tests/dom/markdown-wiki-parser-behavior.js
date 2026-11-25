@@ -418,6 +418,66 @@ function check(name, condition, detail = "failed") {
     JSON.stringify(missingSelection),
   );
 
+  // Front matter is metadata: KPress strips it before Markdown reads it, and the server
+  // parses it from the file. Its last key, over the closing `---`, would read as a setext
+  // heading, and an anchor written there made the YAML a parse error on a pinned page.
+  const frontMatter = [
+    "---",
+    'title: "Tide Tables"',
+    'up: "[[Parent]]"',
+    "note: <!-- an aside",
+    "anchor: ends with ^tail",
+    "bead: tide-k7m2",
+    "---",
+    "",
+  ].join("\n");
+  const noted = module.preprocessObsidianWiki(`${frontMatter}### Sub\n\n[[Body]]\n`);
+  check(
+    "front matter is copied as written",
+    noted.source.startsWith(frontMatter),
+    noted.source.slice(0, frontMatter.length + 80),
+  );
+  check(
+    "front matter holds no heading, link, or block",
+    noted.targetCount === 1 && noted.blockCount === 0,
+    JSON.stringify({ blocks: noted.blockCount, targets: noted.targetCount }),
+  );
+  check(
+    "a heading after front matter has no parent from it",
+    noted.source.includes('id="obsidian-heading-Sub"') &&
+      !noted.source.includes("obsidian-heading-bead"),
+    noted.source,
+  );
+  check(
+    "an unclosed comment in front matter leaves the body's links",
+    noted.source.includes('data-mb-wiki-target="Body"'),
+    noted.source,
+  );
+  const onlyFrontMatter = module.preprocessObsidianWiki(frontMatter);
+  check(
+    "front matter alone changes nothing",
+    onlyFrontMatter.changed === false && onlyFrontMatter.source === frontMatter,
+    JSON.stringify(onlyFrontMatter),
+  );
+  check(
+    "a front-matter key is not a heading to embed",
+    module.selectTransclusionSource(`${frontMatter}# Body\n`, "obsidian-heading-bead: tide-k7m2")
+      .status === "missing",
+  );
+  check(
+    "a front-matter line is not a block to embed",
+    module.selectTransclusionSource(`${frontMatter}# Body\n`, "obsidian-block-tail").status ===
+      "missing",
+  );
+  check(
+    "a block after front matter selects its own lines",
+    module.selectTransclusionSource(`${frontMatter}Kept. ^kept\n`, "obsidian-block-kept").source ===
+      "Kept.\n",
+    JSON.stringify(
+      module.selectTransclusionSource(`${frontMatter}Kept. ^kept\n`, "obsidian-block-kept"),
+    ),
+  );
+
   if (failures.length) {
     console.error(`markdown wiki parser FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);

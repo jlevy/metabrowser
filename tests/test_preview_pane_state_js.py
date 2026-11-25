@@ -31,7 +31,7 @@ SDK_SANDBOX = Path(__file__).resolve().parent / "dom" / "sdk-sandbox.js"
 SELECT_A_FILE = "Select a file to preview."
 PULL_PAGE_FAILED = (
     "preview-empty preview-error: Could not load the pull-request page. "
-    "Refresh the page to try again."
+    "Reload the page to try again."
 )
 from tests.shell_request import shell_request
 
@@ -299,8 +299,8 @@ def test_on_demand_code_that_does_not_arrive_is_said_and_asked_for_again(
     file = refused["viewHelpersOpeningAFile"]
     assert file["failed"]["pane"]["phase"] == "error"
     assert file["failed"]["pane"]["shows"] == (
-        "preview-empty preview-error: Could not open this file. "
-        "Failed to load asset: /static/plugin-sdk-views.js"
+        # The asset that failed is the console's (docs/design-system-messages.md).
+        "preview-empty preview-error: Could not open this file. Reload the page to try again."
     )
     assert file["reopened"]["scriptRequests"] == ["plugin-sdk-views.js"]
     assert file["reopened"]["pane"]["phase"] == "content"

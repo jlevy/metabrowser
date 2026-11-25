@@ -270,7 +270,8 @@ def test_a_disk_hit_cannot_answer_for_a_missing_commit(
     base = envelope["record"]["comparison"]["base"]
     refused = client.get(envelope["comparison_route"].replace(f"left={base}", f"left={'0' * 40}"))
     assert refused.status_code == 404
-    assert "unknown revision" in refused.json()["message"]
+    assert refused.json()["message"] == "This commit is not in this repository."
+    assert "unknown revision" in refused.json()["detail"]
     assert "etag" not in refused.headers
 
 
@@ -392,8 +393,12 @@ def test_corrupt_manifest_is_discarded_before_backing_repair_and_restart(
         assert refused.status_code == 409
         assert refused.json()["error"] == "object_corrupt"
         if deny_parent:
-            assert "could not be discarded" in refused.json()["message"]
-            assert "Clear the affected repository cache" in refused.json()["message"]
+            # The diff shows the message; what happened and its fix are the agent's detail.
+            assert refused.json()["message"] == (
+                "This repository’s saved copy is damaged, so these changes cannot be shown."
+            )
+            assert "could not be discarded" in refused.json()["detail"]
+            assert "Clear the affected repository cache" in refused.json()["detail"]
             assert str(stand.tmp_path) not in refused.text
         else:
             assert "could not be discarded" not in refused.json()["message"]

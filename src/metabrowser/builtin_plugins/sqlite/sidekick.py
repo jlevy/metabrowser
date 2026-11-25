@@ -61,9 +61,16 @@ from metabrowser.sqlite_access import SqliteAccessError
 from metabrowser.sqlite_readers import BLOB_MAX_BYTES, request_deadline
 
 
-def _error(path: str, code: str, message: str, status: int) -> JSONResponse:
+def _error(path: str, code: str, message: str, status: int, *, detail: str = "") -> JSONResponse:
     return JSONResponse(
-        {"type": "sqlite_error", "path": path, "code": code, "error": message}, status_code=status
+        {
+            "type": "sqlite_error",
+            "path": path,
+            "code": code,
+            "error": message,
+            **({"detail": detail} if detail else {}),
+        },
+        status_code=status,
     )
 
 
@@ -78,7 +85,7 @@ async def _resolve(path: str) -> tuple[ContentRef, str] | JSONResponse:
                 return _error(path, "not_found", "Not found", 404)
             ref, inner = child
     except ContentReadError as exc:
-        return _error(path, exc.code, str(exc), exc.http_status)
+        return _error(path, exc.code, exc.reader_message, exc.http_status, detail=str(exc))
     return ref, inner
 
 
@@ -123,7 +130,7 @@ async def info_handler(request: Request) -> JSONResponse:
         payload |= await run_in_threadpool(database.call, "info", {}, deadline=deadline)
     except SqliteAccessError as exc:
         payload.setdefault("generation", None)
-        payload["error"] = {"state": exc.state, "message": str(exc)}
+        payload["error"] = exc.wire()
     return JSONResponse(payload)
 
 
@@ -152,7 +159,7 @@ async def schema_handler(request: Request) -> JSONResponse:
         )
     except SqliteAccessError as exc:
         payload.setdefault("generation", None)
-        payload["error"] = {"state": exc.state, "message": str(exc)}
+        payload["error"] = exc.wire()
         return JSONResponse(payload)
     if name is not None and not answer["objects"]:
         return _error(path, "table_not_found", f"no table {inner!r} in this database", 404)
@@ -191,7 +198,7 @@ async def children_handler(request: Request) -> JSONResponse:
     try:
         ref = await resolve_content(path)
     except ContentReadError as exc:
-        return _error(path, exc.code, str(exc), exc.http_status)
+        return _error(path, exc.code, exc.reader_message, exc.http_status, detail=str(exc))
     if ref is None:
         # A listing is asked of the database itself, never of one of its tables.
         return _error(path, "not_found", "Not found", 404)
@@ -205,7 +212,7 @@ async def children_handler(request: Request) -> JSONResponse:
             # A `.db` file that is not SQLite has the chevron its extension gives it, and
             # nothing under it.
             return JSONResponse({"children": []})
-        return JSONResponse({"children": [], "error": {"state": exc.state, "message": str(exc)}})
+        return JSONResponse({"children": [], "error": exc.wire()})
     return JSONResponse({"children": child_rows(ref.identity, catalog_tables(catalog))})
 
 

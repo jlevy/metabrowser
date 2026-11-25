@@ -43,12 +43,17 @@ def test_a_refused_document_shows_its_source_under_one_notice() -> None:
         assert 'data-severity="warning"' in drawn["markup"], name
         assert len(drawn["sources"]) == 1 and drawn["sources"][0]["continues"] is False, name
         assert "metabrowser-kpress-host" not in drawn["classes"], name
-    assert "took longer than 5 seconds" in session["documentTab"]["markup"]
+    assert "took too long to render" in session["documentTab"]["markup"]
     assert session["documentTab"]["fetched"] == []
     assert "the Source tab shows the rest" in session["partialWindow"]["markup"]
     assert session["readmePanel"]["fetched"] == ["/api/file?path=README.md"]
     assert 'href="/view/README.md"' in session["readmePanel"]["markup"]
-    assert session["renderFailure"] == {"renderError": True, "sources": []}
+    # A failed render's detail goes to the console, not the box.
+    assert session["renderFailure"] == {
+        "renderError": True,
+        "sources": [],
+        "logged": ["metabrowser: the document could not be rendered · KPress render failed"],
+    }
 
 
 def test_a_refused_pull_request_text_stays_plain_and_says_why() -> None:
@@ -57,7 +62,7 @@ def test_a_refused_pull_request_text_stays_plain_and_says_why() -> None:
     body = next(entry for entry in session["told"] if entry["part"] == "body")
     assert body["unavailable"] is True
     assert body["note"] == session["notes"]["recorded"]
-    assert body["note"].endswith("so it is shown as plain text.")
+    assert body["note"].endswith("so it is shown as written.")
     assert any(entry.get("rendered") for entry in session["told"])
     assert session["notes"]["unknown_part"] is None
     assert session["notes"]["ok"] is None

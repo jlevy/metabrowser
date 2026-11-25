@@ -105,14 +105,14 @@ export function sizeBars(buckets, formatSize) {
  */
 export function progressView(progress, formatInteger) {
   if (progress.state === "error") {
-    return { phase: "error", text: "Reading the sessions failed." };
+    return { phase: "error", text: "Could not read the sessions." };
   }
   if (progress.complete) {
     return {
       phase: "complete",
       text:
         progress.failed > 0
-          ? `Session indexing finished. ${formatInteger(progress.failed)} could not be read.`
+          ? `${formatInteger(progress.failed)} ${progress.failed === 1 ? "session" : "sessions"} could not be read.`
           : "Session details indexed.",
     };
   }

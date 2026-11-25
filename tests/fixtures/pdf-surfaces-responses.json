@@ -21,6 +21,15 @@
             }
           ]
         },
+        "preview": {
+          "status": "ready",
+          "key": "preview-1",
+          "width": 480,
+          "height": 320,
+          "pages": 1,
+          "image": "/api/plugin/pdf/preview-image?key=preview-1",
+          "rendered": true
+        },
         "raw": {
           "href": "/raw?path=papers%2Freport.pdf",
           "status": 200,
@@ -41,6 +50,11 @@
               "default": true
             }
           ]
+        },
+        "preview": {
+          "status": "unavailable",
+          "reason": "unreadable",
+          "message": "This PDF could not be read."
         },
         "raw": {
           "href": "/raw?path=papers%2Fascii.pdf",
@@ -63,6 +77,15 @@
             }
           ]
         },
+        "preview": {
+          "status": "ready",
+          "key": "preview-1",
+          "width": 480,
+          "height": 320,
+          "pages": 1,
+          "image": "/api/plugin/pdf/preview-image?key=preview-1",
+          "rendered": false
+        },
         "raw": {
           "href": "/raw?path=scans%2Funtitled",
           "status": 200,
@@ -83,6 +106,11 @@
               "default": true
             }
           ]
+        },
+        "preview": {
+          "status": "unavailable",
+          "reason": "not_a_pdf",
+          "message": "This file does not begin as a PDF does."
         },
         "raw": {
           "href": "/raw?path=notes%2Fnot-really.pdf",
@@ -117,6 +145,11 @@
             }
           ]
         },
+        "preview": {
+          "status": "unavailable",
+          "reason": "no_sandbox",
+          "message": "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
+        },
         "raw": {
           "href": "/raw?path=papers%2Freport.pdf",
           "status": 200,
@@ -137,6 +170,11 @@
               "default": true
             }
           ]
+        },
+        "preview": {
+          "status": "unavailable",
+          "reason": "no_sandbox",
+          "message": "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
         },
         "raw": {
           "href": "/raw?path=papers%2Fascii.pdf",
@@ -159,6 +197,11 @@
             }
           ]
         },
+        "preview": {
+          "status": "unavailable",
+          "reason": "no_sandbox",
+          "message": "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
+        },
         "raw": {
           "href": "/raw?path=scans%2Funtitled",
           "status": 200,
@@ -179,6 +222,11 @@
               "default": true
             }
           ]
+        },
+        "preview": {
+          "status": "unavailable",
+          "reason": "no_sandbox",
+          "message": "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
         },
         "raw": {
           "href": "/raw?path=notes%2Fnot-really.pdf",
@@ -213,6 +261,11 @@
             }
           ]
         },
+        "preview": {
+          "status": "unavailable",
+          "reason": "no_sandbox",
+          "message": "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
+        },
         "raw": {
           "href": "/raw?path=g1-cGFwZXJz%2Fg1-cmVwb3J0LnBkZg",
           "status": 200,
@@ -233,6 +286,11 @@
               "default": true
             }
           ]
+        },
+        "preview": {
+          "status": "unavailable",
+          "reason": "no_sandbox",
+          "message": "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
         },
         "raw": {
           "href": "/raw?path=g1-cGFwZXJz%2Fg1-YXNjaWkucGRm",
@@ -255,6 +313,11 @@
             }
           ]
         },
+        "preview": {
+          "status": "unavailable",
+          "reason": "no_sandbox",
+          "message": "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
+        },
         "raw": {
           "href": "/raw?path=g1-c2NhbnM%2Fg1-dW50aXRsZWQ",
           "status": 200,
@@ -276,6 +339,11 @@
             }
           ]
         },
+        "preview": {
+          "status": "unavailable",
+          "reason": "no_sandbox",
+          "message": "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
+        },
         "raw": {
           "href": "/raw?path=g1-bm90ZXM%2Fg1-bm90LXJlYWxseS5wZGY",
           "status": 200,
@@ -291,7 +359,7 @@
     "schema": "file-diff-v1",
     "schema_version": 1,
     "resolved": {
-      "comparison_id": "git:7b8203de61c0a0cd",
+      "comparison_id": "git:6319b14452812d18",
       "source": {
         "name": "git"
       },
@@ -304,7 +372,7 @@
       },
       "right": {
         "kind": "commit",
-        "id": "bc886a35310e7ecf5943626727fa24f111c28763"
+        "id": "dc9be3ebe83f91bb208ecfb56ece9077230b18ca"
       },
       "options": {
         "context": 3,
@@ -384,7 +452,7 @@
             "mode": "100644",
             "content": {
               "kind": "git_object",
-              "oid": "428fc5377bc9c5bdbcf5cc0292c24c04e12f654a"
+              "oid": "a8c84b8788a38f312bc4cdd9359fbf7b19b770f4"
             }
           },
           "binary": true,
@@ -401,7 +469,7 @@
             "mode": "100644",
             "content": {
               "kind": "git_object",
-              "oid": "428fc5377bc9c5bdbcf5cc0292c24c04e12f654a"
+              "oid": "a8c84b8788a38f312bc4cdd9359fbf7b19b770f4"
             }
           },
           "binary": true,
@@ -505,6 +573,26 @@
           }
         ],
         "truncated": false
+      }
+    }
+  },
+  "pinComparisonPreviews": {
+    "noSandbox": {
+      "/api/plugin/pdf/preview?oid=a8c84b8788a38f312bc4cdd9359fbf7b19b770f4": {
+        "status": "unavailable",
+        "reason": "no_sandbox",
+        "message": "Previews of this source's PDFs are drawn only in a sandbox, which this system lacks."
+      }
+    },
+    "sandbox": {
+      "/api/plugin/pdf/preview?oid=a8c84b8788a38f312bc4cdd9359fbf7b19b770f4": {
+        "status": "ready",
+        "key": "preview-2",
+        "width": 480,
+        "height": 320,
+        "pages": 1,
+        "image": "/api/plugin/pdf/preview-image?key=preview-2",
+        "rendered": true
       }
     }
   }

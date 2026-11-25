@@ -310,8 +310,10 @@ def test_api_file_internal_error_degrades_to_error_view(tmp_path: Path, monkeypa
     assert body["type"] == "error"
     assert body["kind"] == "error"
     assert body["views"] == []
-    assert "Internal error while rendering this file" in body["error"]
-    assert "RuntimeError: boom" in body["error"]
+    # The page shows `error`; the exception's type and text are the agent's `detail`.
+    assert body["error"] == "An unexpected error stopped this preview."
+    assert "Internal error while rendering this file" in body["detail"]
+    assert "RuntimeError: boom" in body["detail"]
     assert "server 500" in body["warning"]
 
 
@@ -332,7 +334,8 @@ def test_api_file_parse_error_has_a_composable_error_envelope(tmp_path: Path, mo
         "kind": "error",
         "views": [],
         "path": "broken.jsonl",
-        "error": "malformed event",
+        "error": "This log could not be read.",
+        "detail": "malformed event",
     }
 
 

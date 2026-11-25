@@ -141,10 +141,11 @@ pipe, so that such a rule matches it and nothing else.
 > in. A checkout’s `.venv/bin/metab` is an editable install that runs the checkout’s own
 > `src/`, so an agent that can write the checkout can change that code inside the
 > sandbox and then run it outside, with no prompt under an allow rule.
-> To use a source build, point the rule, and the app’s Settings > Choose metab…, at a
-> separate checkout the agent never works in; the app’s servers run that `metab` too.
-> Otherwise add no rule, and approve each run when the agent asks: the skill adds
-> `--open-in app` to each, so a run you approve hands the app a target or sends nothing.
+> To use a source build, point the rule, and the app’s Settings > Runtime > Choose
+> metab…, at a separate checkout the agent never works in; the app’s servers run that
+> `metab` too. Otherwise add no rule, and approve each run when the agent asks: the skill
+> adds `--open-in app` to each, so a run you approve hands the app a target or sends
+> nothing.
 
 - **Claude Code:** the sandbox is off by default.
   When it is on, it blocks the Apple Events and Launch Services requests `open` makes,

@@ -422,10 +422,14 @@ async def pull_comparison_handler(request: Request) -> Response:
         try:
             await asyncio.to_thread(invalidate_pull_manifest, published, number, (left, right))
         except (OSError, PrivateStorageError):
+            # The diff shows `message` (diff/index.js); what happened and what fixes it stay
+            # in `detail`, for `metab --api` and agents.
             return JSONResponse(
                 {
                     "error": "object_corrupt",
-                    "message": "An object does not match its ID, and its cached comparison could not be discarded. Clear the affected repository cache before retrying.",
+                    "message": "This repository’s saved copy is damaged, so these changes cannot be shown.",
+                    "detail": "An object does not match its ID, and its cached comparison could "
+                    "not be discarded. Clear the affected repository cache before retrying.",
                 },
                 status_code=409,
                 headers=_NO_STORE,
@@ -1039,8 +1043,8 @@ async def cache_clear_handler(request: Request) -> JSONResponse:
         name = repository.source.removeprefix("https://github.com/")
         return JSONResponse(
             {
-                "error": f"the GitHub cache of {name} could not be cleared: "
-                f"{cache_failure_reason(exc)}",
+                "error": f"the GitHub cache of {name} could not be cleared",
+                "detail": cache_failure_reason(exc),
                 "code": "cache_unwritable",
             },
             status_code=409,

@@ -759,7 +759,7 @@
         const said = document.createElement("p");
         said.className = "github-pulls-empty";
         said.setAttribute("role", "alert");
-        said.textContent = "Could not load the pull requests. Refresh the page to try again.";
+        said.textContent = "Could not load the pull requests. Reload the page to try again.";
         container.replaceChildren(said);
       },
     });

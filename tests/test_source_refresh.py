@@ -222,7 +222,8 @@ def test_a_folder_reports_no_freshness_and_refuses_both_routes(tmp_path: Path) -
     assert status["latest"] is None and status["last_outcome"] is None
     assert refresh.status_code == 409
     assert refresh.json() == {
-        "error": "source does not support refresh",
+        "error": "This is not available here.",
+        "detail": "source does not support refresh",
         "code": "unsupported_for_subject",
         "capability": "refresh",
     }

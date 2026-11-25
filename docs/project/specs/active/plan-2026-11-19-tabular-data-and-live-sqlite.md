@@ -933,6 +933,12 @@ Views bind to a kind, and nothing offers a view per file.
 proves to be noise. A dedicated kind is not an option: its list predicate, under the
 classifier’s byte bounds, would miss exactly the large files that most need a table.
 
+**Follow-on (2026-11-24):** the owner found the tab and its notice on every other file
+noise, so B landed as a file kind’s `offer` ([Plugins](../../../plugins.md#views)). It
+reads the file’s first bytes rather than its parse, since a YAML parse on every open
+would cost seconds, so it decides how a file starts (`structured/offer.py`), and a list
+that starts with a mapping but is not one of records still has the tab and its notice.
+
 ### Decision 13: Where SQLite Connections Run
 
 - **A. A small pool of reader processes,** each serving one request at a time, which

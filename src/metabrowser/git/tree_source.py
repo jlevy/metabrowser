@@ -143,6 +143,7 @@ class GitObjectUnavailableError(GitError, ContentUnavailableError):
 
     code = "object_unavailable"
     http_status = 404
+    reader_message = "This file's content is not in this checkout."
 
     def __init__(self, oid: str) -> None:
         self.oid = oid
@@ -154,6 +155,7 @@ class GitObjectCorruptError(GitError, ContentUnavailableError):
 
     code = "object_corrupt"
     http_status = 409
+    reader_message = "This file's content is damaged in this checkout."
 
     def __init__(self, oid: str) -> None:
         self.oid = oid
@@ -182,6 +184,7 @@ class GitBlobTooLargeError(GitError):
 
     code = "blob_too_large"
     http_status = 413
+    reader_message = "This file is too large to show here."
 
     def __init__(self, *, oid: str, size: int, max_bytes: int) -> None:
         self.oid = oid

@@ -250,8 +250,9 @@ def test_a_pin_with_no_mirror_is_headed_as_before_and_carries_nothing_of_one(
 def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     folder, mirror, hostile = run_session("mirror-heading-session.js")
 
-    # A file's eyebrow is its Up control and its folder's address; its name is the title.
-    assert folder["mainHeading"]["file"]["text"] == "\u2191 ~/wrk/squares / docs"
+    # A file's eyebrow is its Up control and its folder's address, each crumb followed by
+    # its slash; its name is the title.
+    assert folder["mainHeading"]["file"]["text"] == "\u2191 ~/wrk/squares / docs /"
     assert folder["mainHeading"]["file"]["title"] == "guide.md"
     assert folder["mainHeading"]["root"] == "\u2191 ~/wrk squares"
     location = f"~/.cache/metabrowser/repos/{STORE_KEY_STAND_INS[0]}/repository.git"
@@ -261,7 +262,7 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     # The note names the store's directory, and the tooltip the bare repository inside it.
     directory = location.removesuffix("/repository.git")
     assert directory != location
-    assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs mirror in {directory}"
+    assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs / mirror in {directory}"
     assert mirror["mainHeading"]["root"] == f"\u2191 mirror in {directory} squares"
     assert mirror["details"] == {
         "location": location,
@@ -270,7 +271,7 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
         "after": "3 files 140 bytes",
     }
     assert folder["details"]["source"] is None
-    assert hostile["mainHeading"]["file"]["text"].startswith("\u2191 a<b>&\ufffdx / docs ")
+    assert hostile["mainHeading"]["file"]["text"].startswith("\u2191 a<b>&\ufffdx / docs / ")
     for page, title in (
         (folder, "squares \u2022 Metabrowser"),
         (mirror, "squares \u2022 Metabrowser"),

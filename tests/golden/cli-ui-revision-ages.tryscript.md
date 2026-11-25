@@ -225,12 +225,12 @@ $ node tests/dom/revision-ages-session.js
     "ready": null,
     "dating": "Reading file ages…",
     "failedGit": "Git could not read this revision's file ages. Files show no age.",
-    "failedTooMany": "This revision has too many files to read their ages. Files show no age.",
+    "failedTooMany": "This revision has too many files to date. Files show no age.",
     "failedUnknown": "File ages could not be read. Files show no age.",
-    "partialShallow": "37 files could not be dated (a shallow history, older than 2023-11-14).",
-    "partialCut": "10 files could not be dated (reading stopped at its time limit, older than 2023-11-14).",
-    "partialOne": "1 file could not be dated (a shallow history).",
-    "partialFilteredList": "7 files could not be dated (a shallow history).",
+    "partialShallow": "37 files are older than 2023-11-14.",
+    "partialCut": "10 files are older than 2023-11-14.",
+    "partialOne": "1 file could not be dated.",
+    "partialFilteredList": "7 files could not be dated.",
     "partialNoneInTheList": null
   },
   "the page's own functions meet the module": {
@@ -295,13 +295,13 @@ $ node tests/dom/revision-ages-session.js
     },
     "aShallowHistoryIsSaid": {
       "tallyLine": [
-        "37 files could not be dated (a shallow history, older than 2023-11-14)."
+        "37 files are older than 2023-11-14."
       ],
       "timers": 0
     },
     "theLineIsDrawnAgainWithOneClause": {
       "tallyLine": [
-        "37 files could not be dated (a shallow history, older than 2023-11-14)."
+        "37 files are older than 2023-11-14."
       ]
     },
     "theRecentListSaysWhyItIsEmpty": {

@@ -257,7 +257,7 @@ async function run() {
   await painted(handle);
   const inNewer = HEADER + 310 + 1000 + 120;
   assert.equal(pane.scrollTop, inNewer, "the reader is in c.py, a file further down, as before");
-  const note = "The pull request’s head moved from 85fcb2f to 9999999. Show the earlier changes";
+  const note = "Changes now show this pull request’s newer commits. Show the earlier changes";
   assert.equal(said(container, ".github-pull-followed"), note);
   assert.deepEqual(
     [entry().pullChanges.shown.right, entry().pullChanges.from.right, entry().pullChanges.chosen],
@@ -289,7 +289,7 @@ async function run() {
   assert.equal(said(container, ".github-pull-followed"), null);
   assert.equal(
     said(container, ".github-pull-newer-offer"),
-    "The pull request now ends at 9999999. Show the newer changes",
+    "This pull request has newer commits. Show the newer changes",
   );
   assert.equal(pane.scrollTop, HEADER + 1000 + 120);
   pane.events.get("wheel")();
@@ -488,7 +488,7 @@ async function run() {
   assert.equal(said(container, ".github-pull-followed"), null);
   assert.equal(
     said(container, ".github-pull-newer-offer"),
-    "The pull request now ends at 9999999. Show the newer changes",
+    "This pull request has newer commits. Show the newer changes",
   );
   assert.equal(pane.scrollTop, inEarlier);
   handle.dispose();
@@ -499,7 +499,7 @@ async function run() {
   // pushes an entry with none. The page writes what its diff shows into the entry it lands
   // on, so the reload the next push makes keeps the earlier diff the reader chose there,
   // with the newer offered (mb-eg5f, A1 of review A on #758).
-  const offerNewest = "The pull request now ends at 8888888. Show the newer changes";
+  const offerNewest = "This pull request has newer commits. Show the newer changes";
   for (const [how, route] of [
     ["walk", { number: 7, tab: "files", file: "b.py", replace: true, jumped: true }],
     ["click", { number: 7, tab: "files", file: "b.py" }],

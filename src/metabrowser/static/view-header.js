@@ -44,38 +44,36 @@
     } = shell;
 
     /**
-     * A view header's eyebrow address: the served root dimmed, the root slash, and a crumb
-     * per folder above the item, whose name is the title; at the root, the directory that
-     * holds it, dimmed. A crumb's tip is its name, shown only while it is cut short
-     * (`tipAddsInformation` in app.js).
+     * A view header's eyebrow address: the served root's whole address, one crumb to the
+     * root, then a crumb per folder above the item, whose name is the title, each crumb
+     * followed by a separator that is text; at the root, the directory that holds it,
+     * dimmed. The folders above the served root are not open, so the address is the root's
+     * one crumb rather than a crumb each. A crumb's tip is its own text, shown only while it
+     * is cut short (`tipAddsInformation` in app.js).
      * @param {string} path served-root-relative path; "" is the root itself
      */
     function headerEyebrowAddressHtml(path) {
       const root = servedRoot();
       const segments = path ? path.split("/") : [];
-      // <bdi> isolates the path from .file-header-root's start-truncation direction.
-      /** @param {string} text */
-      const dimmed = (text) =>
-        text ? `<span class="file-header-root"><bdi>${esc(text)}</bdi></span>` : "";
+      // <bdi> isolates the path from the start-truncation direction of .file-header-root
+      // and .folder-crumb-root.
       if (segments.length === 0) {
-        return dimmed(servedRootParent(root)) + mirrorHeading("note");
+        const parent = esc(servedRootParent(root));
+        return (
+          (parent ? `<span class="file-header-root"><bdi>${parent}</bdi></span>` : "") +
+          mirrorHeading("note")
+        );
       }
-      const rootCrumb = `<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir=""${ownedControlAttr()} data-tip-text="Served root">/</button>`;
-      const crumbs = [];
+      const separator = '<span class="folder-crumb-sep">/</span>';
+      const address = esc(root);
+      let html = `<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir=""${ownedControlAttr()} data-tip-text="${address}"><bdi>${address}</bdi></button>${separator}`;
       let walked = "";
       for (let i = 0; i < segments.length - 1; i++) {
         walked = walked ? `${walked}/${segments[i]}` : segments[i];
         const name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));
-        crumbs.push(
-          `<button type="button" class="folder-crumb" data-nav-dir="${esc(walked)}"${ownedControlAttr()} data-tip-text="${name}">${name}</button>`,
-        );
+        html += `<button type="button" class="folder-crumb" data-nav-dir="${esc(walked)}"${ownedControlAttr()} data-tip-text="${name}">${name}</button>${separator}`;
       }
-      return (
-        dimmed(root) +
-        rootCrumb +
-        crumbs.join('<span class="folder-crumb-sep">/</span>') +
-        mirrorHeading("note")
-      );
+      return html + mirrorHeading("note");
     }
 
     /**

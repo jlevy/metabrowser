@@ -140,7 +140,7 @@ private let repository = URL(string: "https://github.com/octo/absent")!
     /// Only a failure a sign-in in Terminal can fix starts again when the app becomes
     /// active: a network failure can be minutes into a clone, which a retry fetches from
     /// zero; a rate limit asks for fewer requests; and without `gh` nothing changes until
-    /// Find Again.
+    /// a Refresh in Settings > Runtime.
     @Test func onlyWhatASignInFixesRechecksOnActivation() {
         #expect(GitHubFailure.Kind.allCases.filter(\.rechecksOnActivation) == [.notSignedIn, .notFound])
         let rechecks = { (line: String) in self.diagnosed(line)?.rechecksOnActivation }

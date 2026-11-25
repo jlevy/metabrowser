@@ -364,7 +364,7 @@ async function main() {
   );
   assert.equal(
     refusalReason(refused("too_large", "deadline"), "markdown"),
-    "Rendering this file took too long, so it was stopped. Reload to try again.",
+    "Rendering this file took too long, so it was stopped. Reload the page to try again.",
   );
   assert.equal(
     refusalReason(refused("too_large"), "json"),

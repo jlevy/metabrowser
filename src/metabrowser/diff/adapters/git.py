@@ -84,6 +84,12 @@ from metabrowser.git.shallow import PARENT_UNAVAILABLE, merge_base_answer, recor
 
 _NO_MERGE_BASE = "these two commits share no history, so they have no merge base"
 
+# What a page says for each refusal (docs/design-system-messages.md); the texts above, which
+# name revisions and Git's states, are the refusals' detail.
+_UNKNOWN_COMMIT = "This commit is not in this repository."
+_NO_SHARED_HISTORY = "These two commits share no history, so they cannot be compared."
+_FILE_NOT_COMPARED = "This file is not in this comparison."
+
 log = logging.getLogger(__name__)
 
 MAX_MANIFEST_FILES = 2000
@@ -309,7 +315,7 @@ def say_left_out(
         for change in files
     ]
     named = [display_path(change) for change in files if change.id in gone]
-    warning = f"{len(named)} file(s) could not be read from the produced diff: {name_paths(named)}"
+    warning = f"Changes to these files could not be read: {name_paths(named)}"
     return marked, resolved.model_copy(update={"warnings": (*resolved.warnings, warning)})
 
 
@@ -622,7 +628,11 @@ class GitDiffSource:
                 self._location,
             )
         except GitError as exc:
-            raise DiffSourceError(f"unknown revision {revision!r}") from exc
+            raise DiffSourceError(
+                f"unknown revision {revision!r}",
+                reader_message=_UNKNOWN_COMMIT,
+                code="commit_not_found",
+            ) from exc
         return out.decode("ascii").strip()
 
     def _listable(self, revision: str) -> bool:
@@ -646,7 +656,11 @@ class GitDiffSource:
             )
         except GitTimeoutError as exc:
             # One name at a time would wait as long again, and refuse the first name so.
-            raise DiffSourceError(f"unknown revision {revisions[0]!r}") from exc
+            raise DiffSourceError(
+                f"unknown revision {revisions[0]!r}",
+                reader_message=_UNKNOWN_COMMIT,
+                code="commit_not_found",
+            ) from exc
         except GitError as exc:
             log.debug("rev-parse of %d names failed: %s", len(revisions), failure_detail(exc))
             return None
@@ -679,7 +693,14 @@ class GitDiffSource:
                     # added, a wrong answer with no warning, on a store and a served
                     # shallow checkout alike.
                     if await recorded_parents(self._location, right):
-                        raise DiffSourceError(PARENT_UNAVAILABLE) from None
+                        raise DiffSourceError(
+                            PARENT_UNAVAILABLE,
+                            reader_message=(
+                                "This commit's parent is not in this copy of the repository, "
+                                "so its changes cannot be shown."
+                            ),
+                            code="parent_unavailable",
+                        ) from None
                     left = ""  # root commit; git's empty-tree side
                     await self._ensure_empty_tree_oid()
         else:
@@ -720,10 +741,17 @@ class GitDiffSource:
             if not answer.certain:
                 raise DiffSourceError(
                     "this store's history is too shallow to know what these two commits share "
-                    "(base_uncertain)"
+                    "(base_uncertain)",
+                    reader_message=(
+                        "This copy of the repository has too little history to compare "
+                        "these commits."
+                    ),
+                    code="base_uncertain",
                 )
             if answer.merge_base is None:
-                raise DiffSourceError(_NO_MERGE_BASE)
+                raise DiffSourceError(
+                    _NO_MERGE_BASE, reader_message=_NO_SHARED_HISTORY, code="no_merge_base"
+                )
             return answer.merge_base
         try:
             out = await run_git_at(["merge-base", left, right], self._location)
@@ -731,7 +759,9 @@ class GitDiffSource:
             # Exit status 1 is Git's answer for histories with no common commit.
             if exc.returncode != 1:
                 raise
-            raise DiffSourceError(_NO_MERGE_BASE) from exc
+            raise DiffSourceError(
+                _NO_MERGE_BASE, reader_message=_NO_SHARED_HISTORY, code="no_merge_base"
+            ) from exc
         return out.decode("ascii").strip()
 
     async def _ensure_empty_tree_oid(self) -> None:
@@ -1068,7 +1098,11 @@ class GitDiffSource:
         by_id = {entry.id: entry for entry in listed.files}
         missing = [file_id for file_id in file_ids if file_id not in by_id]
         if missing:
-            raise DiffSourceError(f"no file {missing[0]!r} in this comparison")
+            raise DiffSourceError(
+                f"no file {missing[0]!r} in this comparison",
+                reader_message=_FILE_NOT_COMPARED,
+                code="file_not_in_comparison",
+            )
         changes = [by_id[file_id] for file_id in file_ids]
         target = self._location.target
         if (
@@ -1417,14 +1451,20 @@ class GitDiffSource:
         manifest = await self.manifest(resolved)
         change = next((entry for entry in manifest.files if entry.id == file_id), None)
         if change is None:
-            raise DiffSourceError(f"no file {file_id!r} in this comparison")
+            raise DiffSourceError(
+                f"no file {file_id!r} in this comparison",
+                reader_message=_FILE_NOT_COMPARED,
+                code="file_not_in_comparison",
+            )
         entry = change.old if side == "old" else change.new
         if entry is None or entry.content.kind is not ContentRefKind.git_object:
             raise DiffSourceError(f"file {file_id!r} has no {side} git content")
         try:
             blob = await self._read_blob(str(entry.content.oid))
         except GitBlobTooLargeError as exc:
-            raise DiffSourceError(str(exc)) from exc
+            raise DiffSourceError(
+                str(exc), reader_message=exc.reader_message, code=exc.code
+            ) from exc
         except (GitObjectUnavailableError, GitPathError, GitError) as exc:
             raise DiffSourceError(f"file {file_id!r} has no {side} git content") from exc
         yield blob

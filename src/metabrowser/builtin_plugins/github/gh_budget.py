@@ -17,7 +17,7 @@ observed.
 Four kinds of work go below the floor, and only a hold stops them (the owner's rule,
 2026-11-22):
 
-- a reader's own action (Retry, Reload, Fetch), which is never asked;
+- a reader's own action (Retry, Refresh, Fetch), which is never asked;
 - the probes of the pull request on a visible page, conditional reads GitHub does not
   count when it answers ``304``; and
 - the full read of a change such a probe finds, or the catalog reports, on that pull

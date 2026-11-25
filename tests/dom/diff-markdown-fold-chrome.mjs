@@ -235,6 +235,38 @@ const COLOR = `new Promise((resolve) => {
   };
   requestAnimationFrame(frame);
 })`;
+// The summaries whose keyboard ring the session reads, and how many presses of Tab it allows
+// to reach both from the page's start: a handful do on this small page, so the bound only
+// stops a page that lost one.
+const RINGED = {
+  fold: "details.diff-markdown-context > summary",
+  own: ".kpress-doc details > summary",
+};
+const TAB_STEPS = 20;
+// In the page, once the keyboard has focused the summary *selector* names: the ring it
+// draws, beside the shell's ring tokens resolved where it is; null while focus is elsewhere.
+const RING = `(selector) => {
+  const summary = document.querySelector(selector);
+  if (document.activeElement !== summary) return null;
+  const probe = document.createElement("span");
+  probe.style.outline = "var(--focus-ring-width) solid var(--focus-ring-color)";
+  probe.style.outlineOffset = "var(--focus-ring-offset)";
+  summary.append(probe);
+  const token = getComputedStyle(probe);
+  const ring = { width: token.outlineWidth, color: token.outlineColor, offset: token.outlineOffset };
+  probe.remove();
+  const style = getComputedStyle(summary);
+  return {
+    visible: summary.matches(":focus-visible"),
+    ring,
+    drawn: {
+      style: style.outlineStyle,
+      width: style.outlineWidth,
+      color: style.outlineColor,
+      offset: style.outlineOffset,
+    },
+  };
+}`;
 // In the page: a comparison of a quote and a code block, mounted as the fold's is, beside a
 // document holding the same blocks.
 const MOUNT_QUOTED = `(blocks) => {
@@ -394,6 +426,24 @@ try {
     y: resting.y,
   });
   const hovered = await chrome.evaluate(COLOR);
+  // The keyboard walks the page from its start to the fold's summary, then to the
+  // document's own, so `:focus-visible` holds on each as it does for a reader.
+  await chrome.evaluate("(document.activeElement?.blur(), true)");
+  /** @type {Record<string, any>} */
+  const rings = {};
+  for (let step = 0; step < TAB_STEPS && !(rings.fold && rings.own); step += 1) {
+    for (const type of ["keyDown", "keyUp"]) {
+      await chrome.send("Input.dispatchKeyEvent", {
+        type,
+        key: "Tab",
+        code: "Tab",
+        windowsVirtualKeyCode: 9,
+      });
+    }
+    for (const [part, selector] of Object.entries(RINGED)) {
+      rings[part] ??= await chrome.evaluate(`(${RING})(${JSON.stringify(selector)})`);
+    }
+  }
   const quotedMounted = await chrome.evaluate(`(${MOUNT_QUOTED})(${JSON.stringify(INPUT.quoted)})`);
   await chrome.evaluate("document.fonts.ready.then(() => true)");
   /** @type {Record<string, any>} */
@@ -403,7 +453,39 @@ try {
     quoted[theme] = await chrome.evaluate(QUOTED);
   }
   process.stderr.write(
-    `${JSON.stringify({ closed, opened, reclosed, resting, hovered, quoted }, rounded)}\n`,
+    `${JSON.stringify({ closed, opened, reclosed, resting, hovered, rings, quoted }, rounded)}\n`,
+  );
+
+  // The fold draws the shell's one ring (docs/design-system.md, "Focus Ring"). KPress's
+  // document sheet rings a summary inside `article.kpress` 3px wide and 2px outside its box,
+  // above the shell's zero-specificity base, so the diff's sheet states the ring for the
+  // fold; the document's own summary keeps KPress's ring, which shows that rule is live.
+  for (const [part, label] of [
+    ["fold", "the fold's summary"],
+    ["own", "a document's own summary"],
+  ]) {
+    check(
+      `Tab reaches ${label}, which matches :focus-visible`,
+      rings[part]?.visible === true,
+      JSON.stringify(rings[part] ?? null),
+    );
+  }
+  const foldRing = rings.fold?.drawn;
+  const oneRing = rings.fold?.ring;
+  check(
+    "the focused fold draws the shell's one ring, not KPress's",
+    foldRing?.style === "solid" &&
+      foldRing.width === oneRing.width &&
+      foldRing.color === oneRing.color &&
+      foldRing.offset === oneRing.offset,
+    JSON.stringify(rings.fold ?? null),
+  );
+  check(
+    "a document's own focused summary keeps KPress's ring",
+    rings.own?.drawn.style === "solid" &&
+      rings.own.drawn.width !== rings.own.ring.width &&
+      rings.own.drawn.offset !== rings.own.ring.offset,
+    JSON.stringify(rings.own ?? null),
   );
 
   // Closed: one quiet line, the summary, between the blocks around it.

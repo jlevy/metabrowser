@@ -310,7 +310,11 @@ def test_a_title_holds_two_lines_and_never_more() -> None:
 
 
 def test_the_state_row_is_one_line_held_by_a_strut() -> None:
-    """The author and the sentence share one line at a chip's height; the branches, the next."""
+    """The author and the sentence share one line; the branches, the next (mb-646g).
+
+    The row of ages above them ends in the stack's slot and Refresh's, and the slot's strut
+    holds that row at a chip's height until a chip arrives.
+    """
 
     css = _github_css()
     meta = _rule(css, ".github-pull-meta")
@@ -346,12 +350,11 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "width: 0;" in strut and "visibility: hidden;" in strut
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
     assert "btn github-pull-stack-trigger github-pull-stack-strut" in page
-    # The author's row ends in the stack's slot, which holds a strut until a chip arrives
-    # (mb-cf0l): the sentence keeps its start, and is only cut short at its end. On the row
-    # that also held the merge, a late chip took its width from the sentence and the merge
-    # (review E3 on #370). The freshness note sits between them, after the sentence, the two
-    # the row's lead (mb-ne91).
-    assert "[\n    stateLead,\n    stackColumn,\n  ]);" in page
+    # The author's row is its lead alone, the sentence and then the freshness note (mb-ne91):
+    # the stack's slot is on the row of ages (mb-646g). On the author's row (mb-cf0l) the chip
+    # stood a row below the state and ages it belongs with, and on the row that also held the
+    # merge a late chip took its width from the sentence and the merge (review E3 on #370).
+    assert 'h("div", { class: "github-pull-meta page-header-line" }, [stateLead]);' in page
     assert 'h("span", { class: "github-pull-meta-lead" }, [stateDetails, freshnessNote]);' in page
     # The state badge leads the row of ages (mb-4ydo), one line in every state.
     opened = _rule(css, ".github-pull-opened")
@@ -363,9 +366,10 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "text-overflow" not in ages
     assert "text-overflow: ellipsis;" in _rule(css, ".github-pull-quiet > .github-pull-ages")
     assert "flex: none;" in _rule(css, ".github-pull-quiet > .github-pull-ages-links")
-    # Refresh ends it, after Browse code (A1 of review A on #506).
-    assert "placeChildren(openedRow, [stateBadge, opened.row, refresh]);" in page
-    assert "margin-inline-start: auto;" in _rule(css, ".github-pull-opened > .github-pull-refresh")
+    # Refresh ends it, after Browse code (A1 of review A on #506), with the stack's slot just
+    # before it (mb-646g), on a record's row and on the one held before a record.
+    assert "placeChildren(openedRow, [stateBadge, opened.row, stackColumn, refresh]);" in page
+    assert "          stackColumn,\n          refresh,\n        ]);" in page
     assert 'h("div", { class: "github-pull-branches page-header-line" })' in page
 
 
@@ -395,7 +399,7 @@ def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
 def test_labels_have_a_row_while_unknown_or_present() -> None:
     """A label's height, held while the record is on its way; none for no labels (mb-2u08).
 
-    The stack's chip is on the author's row. A record's labels come with it, so whether the
+    The stack's chip is on the row of ages. A record's labels come with it, so whether the
     row is there is decided with the record's first paint; a label's color arriving later
     changes no chip's box (tests/dom/github-pull-header-chrome.mjs measures both).
     """
@@ -415,19 +419,34 @@ def test_labels_have_a_row_while_unknown_or_present() -> None:
     assert "children.push(openedRow, stateRow, branchesRow, labelsRow);" in page
 
 
-def test_the_stack_chip_ends_the_authors_row() -> None:
-    """A late chip lands in the row's empty end, at the header's content edge (mb-cf0l)."""
+def test_the_stack_chip_ends_the_row_of_ages_before_refresh() -> None:
+    """A late chip lands in the row's empty end, before Refresh's slot, moving it not (mb-646g).
+
+    The slot takes the row's spare width, so Refresh, which keeps its box held hidden, ends
+    the row on the header's content edge whatever the slot holds. The ages take only the
+    width the chips leave, so they give way before a chip does, and a chip's position is cut
+    short only once they have none left. tests/dom/github-pull-header-chrome.mjs measures it.
+    """
 
     css = _github_css()
     stacks = _rule(css, ".github-pull-stacks")
-    assert "margin-inline-start: auto;" in stacks and "flex: none;" in stacks
+    assert "margin-inline-start: auto;" in stacks and "flex: 0 1 auto;" in stacks
+    assert "min-width: 0;" in stacks
     assert ".github-pull-stacks[hidden]" not in css, "the slot is never hidden"
-    # The author's row positions the stack's menu, which hangs from the chip's end.
-    assert "position: relative;" in _rule(css, ".github-pull-meta")
+    # One auto margin on the row: a second, on Refresh, would split the spare width with the
+    # slot's and leave the chip in the middle of the row.
+    assert ".github-pull-opened > .github-pull-refresh" not in css
+    assert "visibility: hidden;" in _rule(css, ".github-pull-refresh[hidden]")
+    # The ages' basis is nothing, and they grow to their own width at most.
+    ages = _rule(css, ".github-pull-opened > .github-pull-quiet")
+    assert "flex: 1 1 0;" in ages and "max-width: max-content;" in ages
+    position = _rule(css, ".github-pull-stack-trigger > .github-pull-stack-position")
+    assert "min-width: 0;" in position and "text-overflow: ellipsis;" in position
+    # The row of ages positions the stack's menu, which hangs from the row's end.
+    assert "position: relative;" in _rule(css, ".github-pull-opened")
+    assert "position: relative;" not in _rule(css, ".github-pull-meta")
     menu = _rule(css, ".github-pull-stack-menu")
     assert "inset-inline-end: 0;" in menu and "inset-inline-start" not in menu
-    page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
-    assert 'h("div", { class: "github-pull-meta page-header-line" }, [\n    stateLead,' in page
 
 
 def test_the_freshness_note_ends_the_authors_row_in_a_slot_of_its_widest_age() -> None:
@@ -589,7 +608,9 @@ def test_a_stack_members_place_is_on_its_numbers_line() -> None:
     # whole (github-pull-header-chrome.mjs measures it at 180 to 420 px).
     part = _rule(css, ".github-pulls-id")
     assert "white-space: nowrap;" in part and "min-width: 0;" in part
-    assert "flex: none;" in _rule(css, ".github-pulls-number")
+    # The number's own rule, not the weight's, whose selector list ends in it too.
+    own = re.search(r"(?m)(?<!,\n)^\.github-pulls-number \{([^}]*)\}", css)
+    assert own is not None and "flex: none;" in own.group(1)
     assert "text-overflow: ellipsis;" in _rule(
         css, ".github-pulls-place > .github-pull-stack-position"
     )

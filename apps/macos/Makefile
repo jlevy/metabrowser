@@ -44,10 +44,11 @@ release_variant = $(or $(VARIANT),release)
 build:
 	$(SWIFT) build
 
-# Three test processes, so no suite shares the main actor with WebKit's startup or the
-# stress suite's spawns, which each stall it for seconds on a loaded runner: see
-# ignoreSIGPIPELikeTheApp in Tests/ShellCoreTests/Support.swift, and
-# ExitObservationStressTests.swift. The patterns also match StagedDownloadTests.
+# Four test processes, so no suite shares the main actor with WebKit's startup, the
+# Settings window's, or the stress suite's spawns, which each stall it for seconds on a
+# loaded runner: see ignoreSIGPIPELikeTheApp and runAppKitEventLoop in
+# Tests/ShellCoreTests/Support.swift, and ExitObservationStressTests.swift. The patterns
+# also match StagedDownloadTests.
 webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAuthorizationTests PageRevealWebKitTests \
 	WebViewWebKitTests PageFindWebKitTests OpenFileWebKitTests
 #
@@ -62,14 +63,30 @@ webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAut
 # in about one full-suite run in four, and the test took 3 to 40 s; serial passed 18 of 18,
 # in 0.3 to 1.2 s. The whole serial run takes about 7 s.
 #
+# SettingsWindowTests opens the app's Settings window on screen and runs AppKit's event
+# loop for the rest of its process. Measured on 2026-11-24 with the machine's load
+# average near 400, back to back: the unit process without it passed once and once missed
+# StartupDeadlineTests' 10 s bound, in 12 and 14 s; with it, it failed two and four
+# wall-clock bounds, HealthCheckTests' 2 s one by 6 to 8 s both times, in 37 and 35 s.
+window_suites := SettingsWindowTests
+#
+# Each test process runs through scripts/swift-test.sh, which fails one that exits 0 without
+# swift-testing's summary of a passed run of at least one test: a window-server event once
+# ended a process that way with its tests unrun, and a process whose filters match no test
+# at all exits 0 too. It checks only that count, so a process that runs some tests passes
+# even when one of its filters names no suite. SWIFT is quoted so that a value of several
+# words, such as "xcrun swift", reaches it whole, as it reaches $(SWIFT) build.
+swift_test = SWIFT='$(SWIFT)' scripts/swift-test.sh
+#
 # The WebKit gate's driver ships in no product, so nothing else would notice a change to
 # the app's views or configuration that broke its build; the gate itself needs Chrome and
 # a logged-in session, so only its build and its Node tests, which need neither, run here.
 test:
 	$(SWIFT) build --product WebKitDriver
-	$(SWIFT) test --skip ExitObservationStressTests $(webkit_suites:%=--skip %)
-	$(SWIFT) test --no-parallel $(webkit_suites:%=--filter %)
-	$(SWIFT) test --filter ExitObservationStressTests
+	$(swift_test) --skip ExitObservationStressTests $(webkit_suites:%=--skip %) $(window_suites:%=--skip %)
+	$(swift_test) --no-parallel $(webkit_suites:%=--filter %)
+	$(swift_test) --no-parallel $(window_suites:%=--filter %)
+	$(swift_test) --filter ExitObservationStressTests
 	scripts/test-scripts.sh
 	node --test 'webkit-gate/*.test.mjs'
 

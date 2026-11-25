@@ -623,11 +623,21 @@ async function main() {
   {
     const { sdk } = createSdk();
     const container = newContainer();
-    views.mountEventLogView(container, { path: "absent.jsonl" }, sdk, "errors");
-    await settle();
+    // The failure's detail goes to the console, not the notice
+    // (docs/design-system-messages.md): record that it did.
+    const logged = [];
+    const consoleError = console.error;
+    console.error = (message, error) => logged.push(`${message} · ${error.status}`);
+    try {
+      views.mountEventLogView(container, { path: "absent.jsonl" }, sdk, "errors");
+      await settle();
+    } finally {
+      console.error = consoleError;
+    }
     story["a file the server refuses is said so, in an alert"] = {
       requests: taken(),
       body: outline(container),
+      logged,
     };
   }
   {

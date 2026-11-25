@@ -42,7 +42,11 @@ from metabrowser.diff.markdown_projection_worker import (
     ProjectionWorker,
     shared_worker,
 )
-from metabrowser.frontmatter_yaml import FrontmatterError, load_frontmatter_yaml
+from metabrowser.frontmatter_yaml import (
+    FRONTMATTER_ERROR_MESSAGE,
+    FrontmatterError,
+    load_frontmatter_yaml,
+)
 from metabrowser.git.tree_source import GitPath
 from tests.git_pin_harness import fast_import_store, pinned_client
 from tests.required_tools import needs_git
@@ -706,8 +710,10 @@ def test_an_alias_bomb_in_front_matter_reaches_the_child_as_the_loaders_reason_o
     # The text and the reason; written out, the value would be megabytes.
     assert len(answer.content) < 4_096
     assert answer.json()["frontmatter"] is None
-    assert answer.json()["frontmatter_error"] == _alias_levels_reason()
-    assert "larger than 1,048,576 characters" in answer.json()["frontmatter_error"]
+    # The child is handed the page's sentence; the loader's reason is the agent's detail.
+    assert answer.json()["frontmatter_error"] == FRONTMATTER_ERROR_MESSAGE
+    assert answer.json()["frontmatter_error_detail"] == _alias_levels_reason()
+    assert "larger than 1,048,576 characters" in answer.json()["frontmatter_error_detail"]
 
 
 @needs_git
@@ -729,7 +735,8 @@ def test_an_alias_bomb_in_front_matter_reaches_the_child_as_the_loaders_reason_o
     assert status == 200, body
     assert size < 4_096
     assert body["frontmatter"] is None
-    assert body["frontmatter_error"] == _alias_levels_reason()
+    assert body["frontmatter_error"] == FRONTMATTER_ERROR_MESSAGE
+    assert body["frontmatter_error_detail"] == _alias_levels_reason()
 
 
 class _Watched(dict[str, Any]):
