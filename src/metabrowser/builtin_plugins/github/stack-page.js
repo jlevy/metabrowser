@@ -12,10 +12,14 @@
 // (stack-member-row.js), in a card; the merge the stack makes, the top member's head → the
 // base; the status line while the page has something to say; the size line, "1 file
 // changed"; and the Diff summary as the last line, drawn from the comparison the page shows,
-// closed, as a pull request's page draws its own. Every row is decided at first paint
-// (`stackHeader`): the members come from the shared stack snapshot (pull-stacks.js) before
-// the stack's own answer, and the size line and the summary hold the shell's pending
-// placeholder until theirs, so nothing under the title moves as the answer lands.
+// closed, as a pull request's page draws its own. The header, its title, its status line
+// with its numbered controls, and its pending placeholders are built with the pull request
+// page's own builders (`pageHeaderParts`, `titleHeading`, `statusLine`,
+// `numberHeaderControls`, `summaryPlaceholders`), so they are a pull request's by
+// construction. Every row but the status line is decided at first paint (`stackHeader`):
+// the members come from the shared stack snapshot (pull-stacks.js) before the stack's own
+// answer, and the size line and the summary hold the shell's pending placeholder until
+// theirs, so nothing under the title moves as the answer lands.
 //
 // Its tabs are a pull request's Guided Review, Docs, and Changes, with Guided Review only
 // when a member's description carries the stack's guide; Conversation and Checks are each
@@ -31,9 +35,9 @@
 //   pull request's Changes.
 //
 // Docs and Changes draw the combined diff exactly as a pull request's tabs draw its own:
-// the same drawings, and, as there, laid out out of sight until the first screen's Markdown
-// waits no more, at most `CHANGES_FIRST_SCREEN_MS`, so the first screen the reader sees is
-// the one that stays.
+// the same drawings, and the same hold (`holdDiff`), out of sight until the first screen's
+// Markdown waits no more, at most `CHANGES_FIRST_SCREEN_MS`, so the first screen the reader
+// sees is the one that stays.
 //
 // The page reads the stack route on a poll, as a pull request's page reads its own, while
 // it is in sight. It asks `pull-refresh` for each member the answer names as pending, a
