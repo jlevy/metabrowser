@@ -5,7 +5,7 @@ title: "Guided reviews: groups, decision rationale, rendered documents, stack ro
 kind: epic
 status: in_progress
 priority: 1
-version: 18
+version: 20
 spec_path: docs/project/research/research-2026-11-22-annotated-collections-and-guided-pr.md
 refs:
   - kind: pr
@@ -32,7 +32,12 @@ child_order_hints:
   - is-01m88aj8sxzsep6h7kvm2j7dwp
   - is-01m88ajdw8ej7xdph4bznerffe
   - is-01m88ajjdgnm69241ea0x9zrf1
+  - is-01m88tv745atsmky56h05dnn0f
 created_at: 2026-11-25T00:03:14.324Z
-updated_at: 2026-11-25T03:52:28.675Z
+updated_at: 2026-11-25T07:48:58.076Z
 ---
 User request 2026-11-24: (1) optional groups of steps, recommended by the skill; (2) a rationale step beside the key decisions; (3) documents in guided steps drawn rendered with the diff view chooser, reusing its components and coordinating with mb-qn7e (Full | Concise | Source); (4) a design for a stack-wide rollup of guided reviews, groundwork only. Plan: docs/project/specs/active/plan-2026-11-24-guided-review-groups.md.
+
+## Notes
+
+Owner decision 2026-11-25: the stack-review stack (#822 phase 0, then the stack page mb-vad1, reference kinds mb-9dmv, the stack guide mb-ri96) merges together only once phases 2 and 3 are built and stacked on top; #822 and the stack page wait for them (review A3 on #822).
