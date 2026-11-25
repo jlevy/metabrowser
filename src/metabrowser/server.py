@@ -1838,6 +1838,10 @@ async def index(
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree-expansion.js")
     nav_collapse_url = _static_asset_url("nav-collapse.js")
+    # How every menu closes (docs/design-system.md, "Every Menu Closes Alike"): no menu is
+    # open before the first tree, and one opened sooner asks for this bundle. Loaded at
+    # startup, it put the startup scripts 870 bytes over their budget (2026-11-25).
+    menus_url = _static_asset_url("menus.js")
     tree_filter_model_url = _static_asset_url("tree-filter-model.js")
     pending_tally_diagnostics_url = _static_asset_url("pending-tally-diagnostics.js")
     known_file_catalog_url = _static_asset_url("known-file-catalog.js")
@@ -2235,6 +2239,7 @@ async def index(
         # continues in the background.
         "shell-tools": [
             main_tabs_asset,
+            {"src": menus_url, "provides": "MetabrowserMenus"},
             {"src": known_file_catalog_url},
             {"src": catalog_feed_url},
             {"src": file_fuzzy_match_url},

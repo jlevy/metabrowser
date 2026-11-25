@@ -27,6 +27,13 @@ const source = fs.readFileSync(
   "utf-8",
 );
 vm.runInContext(source, sandbox, { filename: "filter-controls.js" });
+// The closing every menu has, which a dropdown's Escape and outside press reach, as the
+// shell's tools load it.
+vm.runInContext(
+  fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/menus.js"), "utf-8"),
+  sandbox,
+  { filename: "menus.js" },
+);
 
 const fc = sandbox.metabrowser.filterControls;
 const failures = [];

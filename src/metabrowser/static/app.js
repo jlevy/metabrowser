@@ -653,7 +653,6 @@ function initSettingsControl() {
     for (var i = 0; i < themeSegs.length; i++) {
       themeSegs[i].innerHTML = themeModeIcon(themeSegs[i].dataset.themeChoice);
       themeSegs[i].addEventListener("click", (e) => {
-        e.stopPropagation();
         var segment = e.currentTarget;
         if (segment instanceof HTMLElement) {
           applyThemeMode(segment.dataset.themeChoice, true);
@@ -664,7 +663,6 @@ function initSettingsControl() {
     for (var j = 0; j < fontSegs.length; j++) {
       fontSegs[j].innerHTML = proseFontIcon(fontSegs[j].dataset.fontChoice);
       fontSegs[j].addEventListener("click", (e) => {
-        e.stopPropagation();
         var segment = e.currentTarget;
         if (segment instanceof HTMLElement) {
           applyProseFont(segment.dataset.fontChoice, true);
@@ -697,15 +695,12 @@ function initSettingsControl() {
     // Reading width. `input` applies live so the column follows the number as
     // it is typed or stepped; `change` (commit, blur) is what normalizes and
     // writes back, so an out-of-range or half-typed value is not snapped under
-    // the caret mid-edit. Clicks inside must not close the menu.
+    // the caret mid-edit.
     var charsInput = /** @type {HTMLInputElement | null} */ (
       document.getElementById("doc-max-chars-input")
     );
     if (charsInput) {
       charsInput.value = String(getStoredDocMaxChars());
-      charsInput.addEventListener("click", (e) => {
-        e.stopPropagation();
-      });
       charsInput.addEventListener("input", (event) => {
         var field = event.currentTarget;
         if (field instanceof HTMLInputElement && field.value !== "") {
@@ -724,21 +719,20 @@ function initSettingsControl() {
     var setOpen = (open) => {
       wrap.setAttribute("aria-expanded", open ? "true" : "false");
     };
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
+    var dismissal = window.metabrowser.menus.dismissible({
+      name: "settings-menu",
+      trigger: btn,
+      inside: (node) => wrap.contains(node),
+      isOpen,
+      close: () => setOpen(false),
+    });
+    btn.addEventListener("click", () => {
       void window.MetabrowserAssets?.ensureAsset("remote-images");
       setOpen(!isOpen());
-    });
-    // Dismiss on outside click or Escape.
-    document.addEventListener("click", (e) => {
-      if (isOpen() && e.target instanceof Node && !wrap.contains(e.target)) {
-        setOpen(false);
-      }
-    });
-    document.addEventListener("keydown", (e) => {
-      // A key held with Command, Control, or Option is the browser's.
-      if (e.key === "Escape" && !(e.altKey || e.ctrlKey || e.metaKey) && isOpen()) {
-        setOpen(false);
+      if (isOpen()) {
+        dismissal.opened();
+      } else {
+        dismissal.closed();
       }
     });
 
@@ -2298,32 +2292,21 @@ function initRootDetails() {
       status.textContent = "Repository link actions are unavailable.";
     }
   };
-  /** @param {Event} event */
-  const outside = (event) => {
-    if (!event.composedPath().includes(details)) {
-      void setOpen(false);
-    }
-  };
-  document.addEventListener("pointerdown", outside, true);
-  document.addEventListener("click", outside, true);
-  window.addEventListener("blur", () => void setOpen(false));
-  details.addEventListener("keydown", (event) => {
-    if (event.altKey || event.ctrlKey || event.metaKey) {
-      return;
-    }
-    if (!panel.hidden && event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      void setOpen(false);
-      trigger.focus();
+  const dismissal = window.metabrowser.menus.dismissible({
+    name: "root-details-panel",
+    trigger,
+    inside: (node) => panel.contains(node),
+    isOpen: () => !panel.hidden,
+    close: () => void setOpen(false),
+  });
+  trigger.addEventListener("click", () => {
+    void setOpen(Boolean(panel.hidden));
+    if (panel.hidden) {
+      dismissal.closed();
+    } else {
+      dismissal.opened();
     }
   });
-  details.addEventListener("focusout", (event) => {
-    if (event.relatedTarget instanceof Node && !details.contains(event.relatedTarget)) {
-      void setOpen(false);
-    }
-  });
-  trigger.addEventListener("click", () => void setOpen(Boolean(panel.hidden)));
 }
 
 // Lookup table from "page-more" sentinel id to the deferred slice.

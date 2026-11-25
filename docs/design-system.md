@@ -1121,8 +1121,8 @@ The tooltip clears while the menu is open.
 The circled i has a distinct dot and foot at sidebar size.
 It uses the shared icon-only button with muted ink at rest and the same highlight on
 hover, focus, or while the menu is open.
-Its button owns the open state and shares the
-[menu dismissal rule](#shared-overlay-lifecycle).
+Its button owns the open state and closes as
+[every menu closes](#every-menu-closes-alike).
 
 The menu shows information about the folder, including its local path, file count, size,
 and commit when available.
@@ -2289,7 +2289,8 @@ the merged purple.
 #### Action Menu
 
 Click a branch or tag chip to open its menu.
-Click the same chip again to close it.
+Click the same chip again to close it; it closes as
+[every menu closes](#every-menu-closes-alike).
 A down chevron fades in over a translucent backdrop at the trailing edge on hover,
 keyboard focus, and while the menu is open.
 The transition uses `--transition-fast` and is skipped under reduced motion.
@@ -3029,7 +3030,8 @@ the one stack design ([Stacks](#stacks)). A Layers icon and position/total, such
 The menu shows titles, ordinals, and PR numbers, ordered from stack top to base, with
 the current member marked.
 Its links are created only when opened.
-Arrow keys, Home, End, Escape, outside click, and focus return follow the menu pattern.
+Arrow keys, Home, End, and focus return follow the menu pattern, and it closes as
+[every menu closes](#every-menu-closes-alike).
 On a selected PR on macOS and iOS, Control-N opens the next member toward the stack top
 and Control-P the previous one toward its base, with or without Shift; Help lists them
 in its Pull request stack group.
@@ -4610,10 +4612,10 @@ with consistent gaps, so the set can wrap without drawing one frame around sever
 A `.chip-menu` composes the floating `.menu` surface rather than introducing a second
 menu look, and adds what `.menu` and the native `.menu-select` lack: picking several
 things. Its trigger summarises the selection the way a select does (`Any age`,
-`Past week`, `.md +2`) so the closed control still answers “what is filtered?”.
-Dismissal follows the same rule as every other floating menu: Escape or outside
-interaction. Opening one puts focus on its checked row, and closing it gives focus back
-to the trigger ([Keys in a Menu](#keys-in-a-menu)). The trigger uses the shared Lucide
+`Past week`, `.md +2`) so the closed control still answers “what is filtered?”. It
+closes as [every menu closes](#every-menu-closes-alike), a press on the bar beside it
+included. Opening one puts focus on its checked row, and closing it gives focus back to
+the trigger ([Keys in a Menu](#keys-in-a-menu)). The trigger uses the shared Lucide
 disclosure chevron at the standard chrome glyph size, rotated downward; do not
 substitute a text caret or shrink it to fit the label.
 
@@ -6279,6 +6281,41 @@ Opening and closing meet these requirements:
 - `dispose()` removes portals, scrims, registrations, observers, and listeners and
   restores any focus, trigger, or inert state it changed.
 
+### Every Menu Closes Alike
+
+Every menu closes the same way, wherever it is and whoever draws it: the Files tab’s
+Group by and filter dropdowns, every other filter bar’s, the branch chooser, the gear,
+the root’s details, a ref’s action menu, View on GitHub’s menu, a pull request’s stack
+menu, and a table’s column menus.
+
+- **A press or a tap outside** the menu and its trigger closes it, and the press goes on
+  to act on what it landed on, as a press beside the branch chooser always has.
+  A press inside the menu leaves it open.
+- **A second press on the trigger** closes it, through the trigger’s own toggle.
+- **Escape** closes it and gives focus back to its trigger.
+  An Escape that a surface above the menu took first, such as Quick Search’s, closes
+  only that surface, and one held with Command, Control, or Option is the browser’s.
+- **Focus arriving outside** the menu and its trigger closes it, as does the window
+  losing focus, to another application or to a frame in the page, such as an HTML
+  preview, whose presses never reach the page.
+  Focus that goes nowhere, as when the focused row is removed, leaves it open.
+- **Opening one menu closes any other**, so at most one is open.
+
+A press inside a filter bar beside its open dropdown closes the dropdown once the
+control it landed on has acted: on the control’s click, or a checkbox’s change, since
+the bar is redrawn as the dropdown closes and would otherwise take that control from
+under the press. So a press on the drawer’s chevron opens the drawer, a press on Show
+ignored turns it off, and a press on another dropdown’s trigger opens that one, each
+closing the dropdown that was open.
+
+The behavior is one helper’s, `metabrowser.menus.dismissible` (`static/menus.js`,
+reached through `static/filter-controls.js`), and a plugin’s menu uses it too
+([Menus](plugins.md#menus)). A menu says how it closes and which nodes are its own; the
+helper listens on the document only while a menu is open.
+`tests/test_menu_dismissal.py` fails a `.menu` surface that does not close through it,
+`tests/dom/menu-dismissal-session.js` walks each rule without a browser, and
+`tests/test_menu_dismissal_chrome.py` presses each menu in Chrome.
+
 ### Surface Anatomy and Styling
 
 Floating surfaces use the shared raised surface, border, chrome radius, shadow, z-index,
@@ -6602,10 +6639,10 @@ marks, by a press, Enter, Space, `↓`, or `↑` ([Stacks](#stacks)); on its but
 filter’s trigger, `Home` and `End` open nothing.
 
 - **Closing.** Escape, a second click on the trigger, and a choice that closes a
-  single-select menu give focus back to the trigger.
-  Focus the reader moved elsewhere in the page stays there, and an Escape that a surface
-  above the menu took, such as Quick Search’s or Help’s, closes only that surface: the
-  topmost closes first.
+  single-select menu give focus back to the trigger
+  ([Every Menu Closes Alike](#every-menu-closes-alike)). Focus the reader moved
+  elsewhere in the page stays there, and an Escape that a surface above the menu took,
+  such as Quick Search’s or Help’s, closes only that surface: the topmost closes first.
 - **Staying.** A pick in a multi-select menu leaves it open with focus on the row
   picked, and a rebuild of the bar while a row or a trigger has focus, such as a tally
   refresh, puts focus back on the same control, or on the trigger of a menu the rebuild

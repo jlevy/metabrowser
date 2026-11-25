@@ -1288,10 +1288,21 @@
     });
     observer.observe(doc.body, { childList: true, subtree: true });
 
+    const sourceChip = refMenuSourceChips.get(trigger);
+    // It closes as every menu does (docs/design-system.md, "Every Menu Closes Alike"); a
+    // press on the source chip beneath its overlay is the trigger's.
+    const dismissal = global.metabrowser.menus.dismissible({
+      name: "git-ref-menu",
+      trigger,
+      inside: (node) => menu.contains(node) || Boolean(sourceChip?.contains(node)),
+      isOpen: () => menu.isConnected,
+      close: () => close(false),
+    });
     /** @param {boolean} focus */
     function close(focus) {
       controller.abort();
       observer.disconnect();
+      dismissal.dispose();
       activeRefMenu = null;
       menu.remove();
       trigger.setAttribute("aria-expanded", "false");
@@ -1322,23 +1333,19 @@
         ? rect.bottom + margin
         : rect.top - menu.offsetHeight - margin,
     )}px`;
+    dismissal.opened();
     items[last ? items.length - 1 : 0].focus({ preventScroll: true });
-    const sourceChip = refMenuSourceChips.get(trigger);
-    const outside = (/** @type {PointerEvent | FocusEvent} */ event) => {
-      const target = event.target;
-      if (!(target instanceof Node) || menu.contains(target) || trigger.contains(target)) {
-        return;
-      }
-      if (event.type === "pointerdown" && sourceChip?.contains(target)) {
-        // A press can land on the source chip beneath its overlay. Keep focus
-        // from moving to the underlying row before it forwards the click.
-        event.preventDefault();
-        return;
-      }
-      close(false);
-    };
-    doc.addEventListener("pointerdown", outside, { capture: true, signal });
-    doc.addEventListener("focusin", outside, { signal });
+    // A press can land on the source chip beneath its overlay. Keep focus from moving to
+    // the underlying row before it forwards the click.
+    doc.addEventListener(
+      "pointerdown",
+      (event) => {
+        if (event.target instanceof Node && sourceChip?.contains(event.target)) {
+          event.preventDefault();
+        }
+      },
+      { capture: true, signal },
+    );
     doc.addEventListener(
       "scroll",
       (event) => {
@@ -1368,16 +1375,13 @@
               : event.key === "End"
                 ? items.length - 1
                 : null;
-      if (event.key !== "Escape" && next === null) {
+      // Escape is the shared closing's, which gives focus back to the trigger.
+      if (next === null) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
-      if (next === null) {
-        close(true);
-      } else {
-        items[next].focus({ preventScroll: true });
-      }
+      items[next].focus({ preventScroll: true });
     });
   }
 
@@ -2369,9 +2373,9 @@
    * the menu hid would leave it nowhere (WebKit does not focus a clicked button). Tab or a
    * press outside closes it and leaves focus to the key or the press. A chord held with
    * Command, Control, or Option is left to the browser, but for Option-Tab, which closes
-   * it as Tab does. Its one listener outside the button, for that press, is held only
-   * while the menu is open. Focus that leaves the button for another element, such as a
-   * framed preview a click went into, which sends this document no press, closes it too.
+   * it as Tab does. A press, focus, or the window leaving it closes it too, through the
+   * shared closing every menu has (`metabrowser.menus.dismissible`), whose listeners are
+   * held only while a menu is open.
    *
    * Copy Link's result, "Link copied" or "Copy failed", shows under the button for
    * `COUNTERPART_COPIED_MS` in a status line, a polite live region a screen reader
@@ -2462,48 +2466,35 @@
 
     /** @type {HTMLElement[]} */
     const items = [copy, external];
-    /** @type {((event: Event) => void) | null} */
-    let outside = null;
     /** @param {boolean} refocus whether focus goes back to the chevron */
     function close(refocus) {
       if (!menu.hidden) {
         menu.hidden = true;
         more.setAttribute("aria-expanded", "false");
       }
-      if (outside !== null) {
-        doc.removeEventListener("pointerdown", outside, true);
-        outside = null;
-      }
+      dismissal.closed();
       if (refocus) {
         more.focus();
       }
     }
+    // It closes as every menu does (docs/design-system.md, "Every Menu Closes Alike").
+    const dismissal = global.metabrowser.menus.dismissible({
+      name: "counterpart-menu",
+      trigger: more,
+      inside: (node) => menu.contains(node),
+      isOpen: () => !menu.hidden,
+      close: () => close(false),
+    });
     /** @param {number} at the item to focus, from the end when negative */
     function show(at) {
       if (menu.hidden) {
         menu.hidden = false;
         more.setAttribute("aria-expanded", "true");
-        outside = (event) => {
-          const target = /** @type {Node | null} */ (event.target);
-          if (!root.isConnected || target === null || !root.contains(target)) {
-            close(false);
-          }
-        };
-        doc.addEventListener("pointerdown", outside, true);
+        dismissal.opened();
       }
       items[((at % items.length) + items.length) % items.length].focus();
     }
     more.addEventListener("click", () => (menu.hidden ? show(0) : close(true)));
-    // Focus has moved by the time a later task runs: to an element outside the button, a
-    // frame among them, the menu closes; to nothing, a press outside has closed it already.
-    root.addEventListener("focusout", () => {
-      global.setTimeout(() => {
-        const now = doc.activeElement;
-        if (!menu.hidden && now && now !== doc.body && !root.contains(now)) {
-          close(false);
-        }
-      }, 0);
-    });
     // A chord is the browser's and the app's, Command-Up among them (mb-i1wy).
     more.addEventListener("keydown", (event) => {
       if (event.altKey || event.ctrlKey || event.metaKey) {
@@ -2526,13 +2517,10 @@
       }
       const at = items.indexOf(/** @type {HTMLElement} */ (doc.activeElement));
       const moves = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: -1 };
+      // Escape is the shared closing's, which gives focus back to the chevron.
       if (event.key in moves) {
         event.preventDefault();
         show(moves[/** @type {keyof typeof moves} */ (event.key)]);
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        close(true);
       }
     });
     return root;

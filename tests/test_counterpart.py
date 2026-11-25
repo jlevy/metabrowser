@@ -279,9 +279,16 @@ def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None
     # The menu holds a listener on the document only while it is open.
     for step in told["menu"]:
         assert step["outsideListeners"] == (1 if step["menu"] == "open" else 0), step
-    # Escape is the menu's: it closes it and goes no further.
+    # Escape reaches the document, where the shell's menu closing takes it and closes the
+    # menu, focus back on the chevron (docs/design-system.md, "Every Menu Closes Alike").
     escapes = [step for step in told["menu"] if step["step"] == "Escape"]
-    assert escapes and all(step["prevented"] and step["stopped"] for step in escapes)
+    assert escapes and all(
+        step["prevented"]
+        and not step["stopped"]
+        and step["menu"] == "closed"
+        and step["focus"] == "the chevron"
+        for step in escapes
+    )
     tips = [(step.get("tip"), step.get("tipAfter")) for step in told["copy"][:3]]
     assert tips == [
         ("Link copied", "Copy Link or Open in Browser"),

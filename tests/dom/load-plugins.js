@@ -115,6 +115,7 @@ load(
   path.join(repoRoot, "src", "metabrowser", "static", "filter-controls.js"),
   "filter-controls.js",
 );
+load(path.join(repoRoot, "src", "metabrowser", "static", "menus.js"), "menus.js");
 load(path.join(repoRoot, "src", "metabrowser", "static", "icons.js"), "icons.js");
 
 if (typeof sandbox.metabrowser?.registerView !== "function") {

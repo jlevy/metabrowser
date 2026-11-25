@@ -63,6 +63,10 @@ function createSdkSandbox(overrides = {}) {
     "view-state.js",
     "navigation.js",
     "plugin-sdk.js",
+    // `metabrowser.menus`, the closing every menu has, which the views' menus use, and the
+    // shell tool it forwards to.
+    "filter-controls.js",
+    "menus.js",
     "plugin-sdk-views.js",
   ]) {
     const filepath = path.join(staticDir, filename);

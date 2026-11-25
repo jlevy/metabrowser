@@ -46,6 +46,7 @@ const MODULES = [
   "pull-route.js",
   "filter-controls.js",
   "main-tabs.js",
+  "menus.js",
   "keyboard-shortcuts.js",
   "overlay-layer.js",
   "keyboard-help.js",
@@ -1490,12 +1491,14 @@ const PARTS = {
         trigger: plain.groupTrigger(),
       }),
     );
-    // Focus outside the open menu: its letters wait, and T is Quick Search's.
+    // Focus gone from the open menu to nothing, as when its focused row is removed: its
+    // letters wait, and T is Quick Search's, whose box taking focus closes the menu
+    // (docs/design-system.md, "Every Menu Closes Alike").
     plain.press("1");
-    plain.document.body.focus();
+    plain.document.activeElement.blur();
     const outsideT = { key: "t", handled: plain.press("t") };
     steps.push(
-      plain.record("with focus outside the open menu, T is Quick Search", {
+      plain.record("with focus outside the open menu, T is Quick Search, which closes it", {
         pressed: outsideT,
         focus: plain.document.activeElement.getAttribute("role"),
         trigger: plain.groupTrigger(),
