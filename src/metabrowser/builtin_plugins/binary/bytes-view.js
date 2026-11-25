@@ -46,7 +46,8 @@ const FAILED_TEXT = "Could not load these bytes.";
  * of mostly readable strings punctuated by field separators alternates far
  * more than its printable ratio suggests.
  */
-const ACCENT_NOTE = "Coloring is off for this file, which mixes text and byte codes too closely.";
+const ACCENT_NOTE =
+  "Coloring is off because this file switches between text and byte codes almost every character.";
 
 /** Fallback line box when the pane cannot be measured. */
 const FALLBACK_LINE_HEIGHT_PX = 18;

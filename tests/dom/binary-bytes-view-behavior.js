@@ -650,8 +650,10 @@ function contentOf(container) {
     requests[0].reject(oversize);
     await mounted;
     check(
-      "the oversize state names the exact cutoff",
-      container.innerHTML.includes("1024 B"),
+      // The cutoff is the answer's (`max_preview_bytes`), not the sentence's.
+      "the oversize state says the file is too large",
+      container.innerHTML.includes("This file is too large to preview.") &&
+        !container.innerHTML.includes("1024 B"),
       container.innerHTML,
     );
     check(

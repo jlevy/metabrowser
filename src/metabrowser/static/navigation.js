@@ -942,8 +942,6 @@
   const OPEN_ERROR_MESSAGE = "Could not open this file. Try again.";
   const UNREACHABLE_SUMMARY = "Metabrowser is not reachable.";
   const UNREACHABLE_DETAIL = "Start it again with metab <folder>, and this page reconnects.";
-  // What a failure the server did not describe shows: a renderer's exception or a body
-  // that is not JSON. Its own text goes to the console (docs/design-system-messages.md).
   const UNEXPECTED_DETAIL = "Reload the page to try again.";
 
   /** @typedef {"starting" | "idle" | "loading" | "content" | "error" | "unreachable" | "external"} PreviewPanePhase */
@@ -1019,9 +1017,7 @@
 
   /**
    * The message for one failed selection: a connection state when the server
-   * could not be reached, the file error the response described when it has a
-   * `summary` (app.js marks a response's error so), and otherwise a fixed remedy, so a
-   * renderer's exception or a parser's never reaches the page.
+   * could not be reached, the file error a response described, or else a fixed remedy.
    *
    * @param {unknown} error
    * @returns {PreviewFailure}

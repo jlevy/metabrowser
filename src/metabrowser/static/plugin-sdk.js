@@ -605,8 +605,6 @@
           })
         : await decode();
     if (data && data.type === "plugin_error") {
-      // The message is the answer's reader sentence; its `detail` is the agent's, and
-      // stays on the payload (docs/design-system-messages.md, "Where the Detail Goes").
       /** @type {Error & {status?: number, payload?: unknown}} */
       const err = new Error(data.error || PLUGIN_DATA_FAILED);
       err.status = resp.status;
@@ -616,7 +614,6 @@
     return data;
   }
 
-  // What a failed data hook or render says when its answer names no reader sentence.
   const PLUGIN_DATA_FAILED = "Could not load this view's data.";
   const KPRESS_RENDER_FAILED = "This document could not be rendered.";
 
@@ -1081,9 +1078,6 @@
     };
   }
 
-  // A render's failure as a reader reads it: the answer's `error`, its reader sentence.
-  // Its `detail`, `diagnostics`, and status stay on the error's payload and status for a
-  // caller that logs them (docs/design-system-messages.md, "Where the Detail Goes").
   function formatKpressError(payload) {
     const body = payload && typeof payload === "object" ? payload : {};
     return typeof body.error === "string" && body.error ? body.error : KPRESS_RENDER_FAILED;

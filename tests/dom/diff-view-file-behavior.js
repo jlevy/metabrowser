@@ -417,7 +417,7 @@ async function main() {
   const refused = page([{ status: 404, body: { code: "selection_not_found" } }], { pin: PARENT });
   equal("a refusal reaches the control in words", await refused.opener.switchTo(toCommit), {
     kind: "refused",
-    message: `Commit ${at} is not in the mirror, and its origin does not have it.`,
+    message: "This commit is not on the origin.",
   });
 
   // The release is the diff's to show only when the switch was its own.

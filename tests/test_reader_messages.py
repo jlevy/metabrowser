@@ -224,15 +224,6 @@ BROWSER_RULES: dict[str, Callable[[Record], bool]] = {
 # A file a rule does not apply to, and why. An entry whose file no longer breaks the rule
 # fails test_every_allowlist_entry_is_still_needed, so the list only shrinks.
 BROWSER_ALLOWLIST: dict[tuple[str, str], str] = {
-    ("builtin_plugins/github/guided-review.js", "mechanics"): (
-        "rewritten in claude/concise-guide-notice (mb-b9qd)"
-    ),
-    ("builtin_plugins/github/guided-review.js", "commit-id"): (
-        "rewritten in claude/concise-guide-notice (mb-b9qd)"
-    ),
-    ("builtin_plugins/github/guided-review.js", "list-in-notice"): (
-        "rewritten in claude/concise-guide-notice (mb-b9qd)"
-    ),
     ("builtin_plugins/diff/diff-model.js", "exception-text"): (
         "the validators return a FormatError's location as data for their tests; the views "
         "that call them log it and show a fixed sentence (diff/index.js INVALID_DOCUMENT)"
@@ -263,13 +254,19 @@ def shipped_scripts() -> list[Path]:
     return scripts
 
 
+# A hang guard, not a speed budget: reading every shipped script took 3.5 s on a laptop
+# at a load average near 200 (2026-11-24), and test_suite_gates holds a child's bound
+# under the suite's timeout.
+EXTRACT_TIMEOUT_S = 30
+
+
 def extract(paths: Iterable[Path]) -> list[Record]:
     require_node()
     result = subprocess.run(
         ["node", str(EXTRACTOR), *map(str, paths)],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=EXTRACT_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, f"extractor failed:\n{result.stderr}"
@@ -386,6 +383,11 @@ def test_what_no_reader_sees_is_not_a_message(tmp_path: Path) -> None:
 # A server finding a page never shows, and why, keyed by module and enclosing function.
 # An entry that no longer matches fails test_every_server_allowlist_entry_is_still_needed.
 SERVER_ALLOWLIST: dict[tuple[str, str], str] = {
+    ("builtin_plugins/github/sidekick.py", "pull_cores_prepare_handler"): (
+        "core_request's ValueError is this package's own account of a malformed batch the "
+        "pulls panel's code sent; the panel reads only the answer's status and "
+        '"preparation" (pulls-panel.js), never its error'
+    ),
     ("cache/atomic.py", "parse_record"): (
         "a cache record's validation reasons reach the log, the command line, and the "
         "/api/cache/ routes, which no page calls; a page's acquisition answers a fixed "
@@ -577,12 +579,46 @@ def _bindings(tree: ast.Module, defined: set[str]) -> Iterator[tuple[str, list[a
                     yield argument.arg, node.body
 
 
+def _answer_helpers(tree: ast.Module) -> dict[str, tuple[set[int], set[str]]]:
+    """The module's functions that put a parameter into a reader field, as
+    `_refusal(message, code, status)` puts `message` in `error`: for each, the positions
+    and names of those parameters, so a call that passes exception text through one is
+    read as the field it fills."""
+    helpers: dict[str, tuple[set[int], set[str]]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        positional = [argument.arg for argument in (*node.args.posonlyargs, *node.args.args)]
+        if positional[:1] in (["self"], ["cls"]):
+            positional = positional[1:]
+        filled: set[str] = set()
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Dict):
+                values = [
+                    value
+                    for key, value in zip(inner.keys, inner.values, strict=True)
+                    if isinstance(key, ast.Constant) and key.value in READER_FIELDS
+                ]
+            elif isinstance(inner, ast.Call):
+                values = [
+                    keyword.value for keyword in inner.keywords if keyword.arg in READER_FIELDS
+                ]
+            else:
+                continue
+            filled |= {value.id for value in values if isinstance(value, ast.Name)}
+        names = filled & {*positional, *(argument.arg for argument in node.args.kwonlyargs)}
+        if names:
+            helpers[node.name] = ({i for i, arg in enumerate(positional) if arg in names}, names)
+    return helpers
+
+
 def server_findings(
     modules: Iterable[Path], defined: set[str], cli_errors: set[str]
 ) -> Iterator[Finding]:
     for module in modules:
         tree = ast.parse(module.read_text(encoding="utf-8"))
         owner = _function_names(tree)
+        helpers = _answer_helpers(tree)
         relative = module.relative_to(PACKAGE) if module.is_relative_to(PACKAGE) else module
         seen: set[int] = set()
         for name, body in _bindings(tree, defined):
@@ -614,6 +650,10 @@ def server_findings(
                         and called.endswith(("Error", "Exception"))
                     ):
                         carried += node.args
+                    if called in helpers:
+                        positions, names = helpers[called]
+                        carried += [arg for i, arg in enumerate(node.args) if i in positions]
+                        carried += [kw.value for kw in node.keywords if kw.arg in names]
                 if id(node) not in seen and any(_carries(value, name) for value in carried):
                     seen.add(id(node))
                     yield Finding(
@@ -684,6 +724,16 @@ def handler():
         read()
     except Exception as exc:
         return {"summary": f"{type(exc).__name__}: {exc}"}
+""",
+    "passed to a helper that writes the answer": """
+def _refusal(message: str, code: str) -> dict[str, str]:
+    return {"error": message, "code": code}
+
+def handler():
+    try:
+        read()
+    except ValueError as exc:
+        return _refusal(f"This log could not be read: {type(exc).__name__}: {exc}", "bad")
 """,
     "wrapped in a Metabrowser error": """
 class ReadError(Exception):

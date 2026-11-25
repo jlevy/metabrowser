@@ -1107,7 +1107,7 @@ async function loadTree(options = {}) {
       renderInitialTreeRows();
 
       /** Replace whatever is on screen with a failure the reader can act on. */
-      /** @param {unknown} cause What failed, for the console; the page says only that it did. */
+      /** @param {unknown} cause */
       function failTree(cause) {
         console.warn("loadTree: could not load the tree", cause);
         const treeEl = document.getElementById("tree-content");
@@ -1551,7 +1551,7 @@ function groupingRowPrefetchUrl(row) {
   );
 }
 
-/** @param {unknown} cause What failed, for the console; the page says only that it did. */
+/** @param {unknown} cause */
 function failGroupedTree(cause) {
   console.warn("loadGroupedTree: could not load the groups", cause);
   var panel = document.getElementById("tab-files");
@@ -2803,15 +2803,12 @@ function responseErrorDetail(body) {
   var text = String(body || "").trim();
   if (text) {
     try {
-      // The answer's `error` is its reader sentence; `detail` is the agent's, and a
-      // plain-text body is a proxy's or a framework's, so neither is shown
-      // (docs/design-system-messages.md, "Where the Detail Goes").
       var said = JSON.parse(text)?.error;
       if (typeof said === "string" && said.trim()) {
         return said.trim();
       }
     } catch (_error) {
-      // Not JSON: the fixed sentence below says it.
+      // Not JSON.
     }
   }
   return "The server could not complete the request.";

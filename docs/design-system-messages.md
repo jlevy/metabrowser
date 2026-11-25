@@ -166,7 +166,8 @@ Each rule fails on a planted violation in the same module:
 On the server it parses every module under `src/metabrowser/` except the command line’s
 and fails when an answer’s reader field (`error`, `message`, or `summary`), or a
 Metabrowser error that becomes one, carries the text or type name of a caught exception
-that Metabrowser did not define.
+that Metabrowser did not define, whether directly or through a helper in the same module
+that writes the field.
 Its allowlists are explicit, each entry with its reason, and an entry whose violation is
 gone fails the check until it is removed.
 
