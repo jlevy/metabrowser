@@ -3,9 +3,9 @@ type: is
 id: is-01m88754ykaf22y6zjm6knjmxz
 title: Collection references to a pull request, a file as a pull request changes it, and a commit
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -16,8 +16,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-25T02:04:34.103Z
-updated_at: 2026-11-25T13:37:52.952Z
+updated_at: 2026-11-25T14:08:33.331Z
 started_at: 2026-11-25T07:53:39.977Z
+closed_at: 2026-11-25T14:08:33.330Z
+close_reason: "Merged in #834 with stack 809 (1d6bae3)"
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes

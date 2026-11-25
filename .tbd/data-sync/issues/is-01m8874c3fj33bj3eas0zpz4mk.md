@@ -3,9 +3,9 @@ type: is
 id: is-01m8874c3fj33bj3eas0zpz4mk
 title: Guide notes render as sanitized Markdown
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m8806zrnxn9jwj89hffd2yv7
 hold: null
 hold_until: null
 created_at: 2026-11-25T02:04:08.616Z
-updated_at: 2026-11-25T04:00:27.768Z
+updated_at: 2026-11-25T14:08:31.594Z
 started_at: 2026-11-25T03:08:03.188Z
+closed_at: 2026-11-25T14:08:31.593Z
+close_reason: "Merged in #822 with stack 809 (1d6bae3)"
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes
